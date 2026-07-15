@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: casefile-postgres
+    network_mode: bridge
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-casefile}
+      POSTGRES_USER: ${POSTGRES_USER:-casefile}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-casefile}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - casefile-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  casefile-postgres-data:

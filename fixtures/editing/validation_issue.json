@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "issue_id": "issue_restart_time",
+  "rule_id": "CF-S1-TIME-001",
+  "severity": "S1",
+  "title": "事件结束时间早于开始时间",
+  "object_refs": [
+    {"object_type": "event", "object_id": "evt_restart_seven"}
+  ],
+  "evidence_refs": [
+    {"object_type": "information_unit", "object_id": "info_restart_log"}
+  ],
+  "explanation": "事件时间范围无法成立，会破坏时间线验证。",
+  "impact_refs": [
+    {"object_type": "reasoning_path", "object_id": "path_causal_restart"}
+  ],
+  "fix_hint": "将事件开始时间恢复为日志记录的 20:00。",
+  "detection_type": "deterministic",
+  "status": "open",
+  "validator_version": "1.0.0",
+  "extensions": {
+    "casefile.fixture": {"purpose": "patch_candidate_input"}
+  }
+}

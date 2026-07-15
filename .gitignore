@@ -1,0 +1,28 @@
+# Product and architecture documents are local inputs, not repository content.
+/docs/
+
+# Local knowledge-base metadata and pasted reference assets.
+/.obsidian/
+/Pasted image*.png
+
+# Local runtime state and secrets.
+/var/
+.env
+.env.*
+!.env.example
+
+# Dependencies and generated caches.
+node_modules/
+.next/
+coverage/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/

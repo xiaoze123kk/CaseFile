@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/casefile/common.schema.json",
+  "title": "CaseFile Common Contracts",
+  "$defs": {
+    "ActorRef": {
+      "title": "ActorRef",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": ["user", "agent", "system"]
+        },
+        "actor_id": {
+          "type": "string",
+          "pattern": "^(?:user|agent|system)_[a-z0-9][a-z0-9_]{0,55}$"
+        }
+      }
+    },
+    "ObjectRef": {
+      "title": "ObjectRef",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_type", "object_id"],
+      "properties": {
+        "object_type": {
+          "type": "string",
+          "enum": [
+            "casefile",
+            "resolution_spec",
+            "entity",
+            "relationship",
+            "location",
+            "event",
+            "information_unit",
+            "claim",
+            "hypothesis",
+            "reasoning_path",
+            "phase",
+            "constraint",
+            "structure_lock",
+            "source_fragment"
+          ]
+        },
+        "object_id": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 64
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"object_type": {"const": "casefile"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^case_[a-z0-9][a-z0-9_]{0,55}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "resolution_spec"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^res_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "entity"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^ent_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "relationship"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^rel_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "location"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^loc_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "event"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^evt_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "information_unit"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^info_[a-z0-9][a-z0-9_]{0,55}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "claim"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^claim_[a-z0-9][a-z0-9_]{0,54}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "hypothesis"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^hyp_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "reasoning_path"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^path_[a-z0-9][a-z0-9_]{0,55}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "phase"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^phase_[a-z0-9][a-z0-9_]{0,54}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "constraint"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^con_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "structure_lock"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^lock_[a-z0-9][a-z0-9_]{0,55}$"}}}
+        },
+        {
+          "if": {"properties": {"object_type": {"const": "source_fragment"}}},
+          "then": {"properties": {"object_id": {"type": "string", "pattern": "^src_[a-z0-9][a-z0-9_]{0,56}$"}}}
+        }
+      ]
+    },
+    "ObjectRefList": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/ObjectRef"}
+    },
+    "CoreMetadata": {
+      "title": "CoreMetadata",
+      "type": "object",
+      "required": [
+        "tags",
+        "source_refs",
+        "confidence",
+        "confirmation_status",
+        "created_by",
+        "updated_at",
+        "revision"
+      ],
+      "properties": {
+        "description": {"type": "string"},
+        "tags": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "source_refs": {"$ref": "#/$defs/ObjectRefList"},
+        "confidence": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confirmation_status": {
+          "type": "string",
+          "enum": ["user_confirmed", "ai_inferred", "unresolved"]
+        },
+        "created_by": {"$ref": "#/$defs/ActorRef"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "revision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "Extensions": {
+      "title": "Extensions",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$"
+      },
+      "additionalProperties": true
+    },
+    "RuleId": {
+      "type": "string",
+      "pattern": "^CF-S[012]-[A-Z0-9]+(?:-[A-Z0-9]+)*-[0-9]{3}$"
+    },
+    "JsonPointer": {
+      "type": "string",
+      "pattern": "^(?:/(?:[^~/]|~[01])*)*$"
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.0",
+  "casefile_id": "case_vanishing_route",
+  "title": "消失的航线",
+  "status": "draft",
+  "version": {"version_id": "draft_vanishing_route_1", "version_no": 1, "parent_version_id": null},
+  "brief_ref": {"brief_id": "brief_vanishing_route", "version": 1},
+  "project_profile": {
+    "content_type": "interactive_reasoning",
+    "target_audience": "teen_general",
+    "primary_use_case": "idea_to_playtest",
+    "genres": ["adventure", "mystery"],
+    "target_duration_minutes": 45,
+    "target_participant_count": 4,
+    "difficulty_template": "easy",
+    "collaboration_mode": "solo"
+  },
+  "resolution_specs": [
+    {
+      "id": "res_best_route",
+      "title": "最优撤离路线",
+      "question_type": "path_discovery",
+      "target_question": "哪条路线能在风暴前抵达安全港？",
+      "conclusion_mode": "optimal",
+      "required_slots": [{"slot_id": "slot_route", "value_type": "text", "required": true}],
+      "accepted_answers": ["北侧灯塔航线"],
+      "required_claim_refs": [],
+      "fairness_requirements": ["所有候选路线的时间信息都可获得"],
+      "tags": ["route"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_route_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-07-02T08:00:00Z",
+      "revision": 1
+    }
+  ],
+  "entities": [],
+  "relationships": [],
+  "locations": [],
+  "events": [],
+  "information_units": [],
+  "claims": [],
+  "hypotheses": [],
+  "reasoning_paths": [],
+  "phases": [],
+  "constraints": [],
+  "structure_locks": [],
+  "content_notices": [],
+  "extensions": {"casefile.fixture": {"purpose": "optimal_conclusion"}}
+}
