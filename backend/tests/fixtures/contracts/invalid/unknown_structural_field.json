@@ -1,0 +1,17 @@
+{
+  "casefile": {
+    "schema_version": "0.1.0",
+    "title": "Unknown structural field",
+    "unknown": true
+  },
+  "narrative_phases": [],
+  "entities": [],
+  "events": [],
+  "information_units": [],
+  "claims": [],
+  "hypotheses": [],
+  "reasoning_paths": [],
+  "resolution_spec": null,
+  "constraints": [],
+  "knowledge_states": []
+}

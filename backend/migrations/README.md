@@ -1,6 +1,6 @@
 # CaseFile 数据库迁移职责说明
 
-本目录维护 PostgreSQL 17 的个人版数据库结构。Alembic migration 是结构事实来源，`backend/src/casefile/data_postgres/models/` 的 SQLAlchemy metadata 必须与唯一 head 一致。
+本目录维护 PostgreSQL 18 的个人版数据库结构。Alembic migration 是结构事实来源，`backend/src/casefile/data_postgres/models/` 的 SQLAlchemy metadata 必须与唯一 head 一致。
 
 ## 当前五段基线
 

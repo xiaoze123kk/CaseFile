@@ -1,0 +1,13 @@
+{
+  "casefile": {"schema_version": "0.1.0", "title": "开放解释案例"},
+  "narrative_phases": [],
+  "entities": [{"object_id": "entity_signal", "entity_kind": "concept", "name": "未知信号", "description": null, "traits": [], "attributes": {"ambiguous": true}, "source": {"kind": "import"}, "confidence": 0.5, "confirmation_status": "unresolved"}],
+  "events": [],
+  "information_units": [],
+  "claims": [],
+  "hypotheses": [],
+  "reasoning_paths": [],
+  "resolution_spec": {"object_id": "resolution_interpretation", "question_type": "open_interpretation", "target_question": "信号意味着什么？", "conclusion_pattern": {"mode": "open"}, "status": "draft", "slots": [], "source": {"kind": "user"}, "confidence": null, "confirmation_status": "unresolved"},
+  "constraints": [],
+  "knowledge_states": []
+}

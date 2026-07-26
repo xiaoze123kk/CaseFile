@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:casefile:schema:casefile:0.1.0",
+  "title": "CaseFile 0.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "casefile",
+    "narrative_phases",
+    "entities",
+    "events",
+    "information_units",
+    "claims",
+    "hypotheses",
+    "reasoning_paths",
+    "resolution_spec",
+    "constraints",
+    "knowledge_states"
+  ],
+  "properties": {
+    "casefile": {"$ref": "#/$defs/casefile"},
+    "narrative_phases": {"type": "array", "items": {"$ref": "#/$defs/narrative_phase"}},
+    "entities": {"type": "array", "items": {"$ref": "#/$defs/entity"}},
+    "events": {"type": "array", "items": {"$ref": "#/$defs/event"}},
+    "information_units": {"type": "array", "items": {"$ref": "#/$defs/information_unit"}},
+    "claims": {"type": "array", "items": {"$ref": "#/$defs/claim"}},
+    "hypotheses": {"type": "array", "items": {"$ref": "#/$defs/hypothesis"}},
+    "reasoning_paths": {"type": "array", "items": {"$ref": "#/$defs/reasoning_path"}},
+    "resolution_spec": {"oneOf": [{"$ref": "#/$defs/resolution_spec"}, {"type": "null"}]},
+    "constraints": {"type": "array", "items": {"$ref": "#/$defs/constraint"}},
+    "knowledge_states": {"type": "array", "items": {"$ref": "#/$defs/knowledge_state"}}
+  },
+  "$defs": {
+    "object_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,127}$"},
+    "nullable_object_id": {"oneOf": [{"$ref": "#/$defs/object_id"}, {"type": "null"}]},
+    "non_blank": {"type": "string", "minLength": 1, "pattern": "\\S"},
+    "nullable_string": {"oneOf": [{"type": "string"}, {"type": "null"}]},
+    "confidence": {"oneOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "null"}]},
+    "open_object": {"type": "object", "additionalProperties": true},
+    "object_id_array": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/object_id"},
+      "uniqueItems": true
+    },
+    "casefile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "title"],
+      "properties": {
+        "schema_version": {"const": "0.1.0"},
+        "title": {"$ref": "#/$defs/non_blank"}
+      }
+    },
+    "narrative_phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "name", "phase_order", "release_rule", "status", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "name": {"$ref": "#/$defs/non_blank"},
+        "phase_order": {"type": "integer", "minimum": 1},
+        "description": {"$ref": "#/$defs/nullable_string"},
+        "release_rule": {"$ref": "#/$defs/open_object"},
+        "status": {"enum": ["draft", "active", "retired"]},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "person_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "background"],
+      "properties": {
+        "role": {"$ref": "#/$defs/nullable_string"},
+        "background": {"$ref": "#/$defs/nullable_string"}
+      }
+    },
+    "location_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geo", "movement_rules", "adjacent_location_object_ids"],
+      "properties": {
+        "geo": {"$ref": "#/$defs/open_object"},
+        "movement_rules": {"$ref": "#/$defs/open_object"},
+        "adjacent_location_object_ids": {"$ref": "#/$defs/object_id_array"}
+      }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "entity_kind", "name", "description", "traits", "attributes", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "entity_kind": {"enum": ["person", "location", "organization", "object", "concept", "other"]},
+        "name": {"$ref": "#/$defs/non_blank"},
+        "description": {"$ref": "#/$defs/nullable_string"},
+        "traits": {"type": "array"},
+        "attributes": {"$ref": "#/$defs/open_object"},
+        "person": {"$ref": "#/$defs/person_extension"},
+        "location": {"$ref": "#/$defs/location_extension"},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"entity_kind": {"const": "person"}}}, "then": {"required": ["person"], "not": {"required": ["location"]}}},
+        {"if": {"properties": {"entity_kind": {"const": "location"}}}, "then": {"required": ["location"], "not": {"required": ["person"]}}},
+        {"if": {"properties": {"entity_kind": {"enum": ["organization", "object", "concept", "other"]}}}, "then": {"not": {"anyOf": [{"required": ["person"]}, {"required": ["location"]}]}}}
+      ]
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "title", "summary", "start_time", "end_time", "narrative_order", "narrative_phase_object_id", "location_object_id", "actor_object_ids", "visibility", "truth_status", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "title": {"$ref": "#/$defs/non_blank"},
+        "summary": {"$ref": "#/$defs/nullable_string"},
+        "start_time": {"oneOf": [{"$ref": "#/$defs/open_object"}, {"type": "null"}]},
+        "end_time": {"oneOf": [{"$ref": "#/$defs/open_object"}, {"type": "null"}]},
+        "narrative_order": {"type": "integer", "minimum": 1},
+        "narrative_phase_object_id": {"$ref": "#/$defs/nullable_object_id"},
+        "location_object_id": {"$ref": "#/$defs/nullable_object_id"},
+        "actor_object_ids": {"$ref": "#/$defs/object_id_array"},
+        "visibility": {"enum": ["public", "restricted", "hidden"]},
+        "truth_status": {"enum": ["true", "false", "uncertain", "disputed"]},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "evidence_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_kind", "source_event_object_id"],
+      "properties": {
+        "evidence_kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "source_event_object_id": {"$ref": "#/$defs/nullable_object_id"}
+      }
+    },
+    "testimony_extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["speaker_person_object_id", "quote_text", "audio_asset_ref"],
+      "properties": {
+        "speaker_person_object_id": {"$ref": "#/$defs/object_id"},
+        "quote_text": {"$ref": "#/$defs/non_blank"},
+        "audio_asset_ref": {"$ref": "#/$defs/nullable_string"}
+      }
+    },
+    "information_unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "information_kind", "title", "body_text", "source_credibility", "visible_from_phase_object_id", "is_misleading", "status", "supports_claim_object_ids", "refutes_claim_object_ids", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "information_kind": {"enum": ["evidence", "testimony", "document", "observation", "clue", "other"]},
+        "title": {"$ref": "#/$defs/non_blank"},
+        "body_text": {"$ref": "#/$defs/non_blank"},
+        "source_credibility": {"$ref": "#/$defs/confidence"},
+        "visible_from_phase_object_id": {"$ref": "#/$defs/nullable_object_id"},
+        "is_misleading": {"type": "boolean"},
+        "status": {"enum": ["draft", "active", "retired"]},
+        "supports_claim_object_ids": {"$ref": "#/$defs/object_id_array"},
+        "refutes_claim_object_ids": {"$ref": "#/$defs/object_id_array"},
+        "evidence": {"$ref": "#/$defs/evidence_extension"},
+        "testimony": {"$ref": "#/$defs/testimony_extension"},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"information_kind": {"const": "evidence"}}}, "then": {"required": ["evidence"], "not": {"required": ["testimony"]}}},
+        {"if": {"properties": {"information_kind": {"const": "testimony"}}}, "then": {"required": ["testimony"], "not": {"required": ["evidence"]}}},
+        {"if": {"properties": {"information_kind": {"enum": ["document", "observation", "clue", "other"]}}}, "then": {"not": {"anyOf": [{"required": ["evidence"]}, {"required": ["testimony"]}]}}}
+      ]
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "statement", "status", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "statement": {"$ref": "#/$defs/non_blank"},
+        "status": {"enum": ["unresolved", "supported", "refuted", "disputed"]},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "title", "summary", "status", "score", "exclusion_rule", "claim_object_ids", "required_information_object_ids", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "title": {"$ref": "#/$defs/non_blank"},
+        "summary": {"$ref": "#/$defs/nullable_string"},
+        "status": {"enum": ["draft", "active", "supported", "refuted", "discarded"]},
+        "score": {"$ref": "#/$defs/confidence"},
+        "exclusion_rule": {"$ref": "#/$defs/open_object"},
+        "claim_object_ids": {"$ref": "#/$defs/object_id_array"},
+        "required_information_object_ids": {"$ref": "#/$defs/object_id_array"},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "reasoning_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_key", "ordinal", "source_object_id", "node_type", "statement", "attributes"],
+      "properties": {
+        "node_key": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,127}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "source_object_id": {"$ref": "#/$defs/nullable_object_id"},
+        "node_type": {"$ref": "#/$defs/non_blank"},
+        "statement": {"$ref": "#/$defs/non_blank"},
+        "attributes": {"$ref": "#/$defs/open_object"}
+      }
+    },
+    "reasoning_edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from_node_key", "to_node_key", "argument_kind", "confidence", "human_confirmed", "attributes"],
+      "properties": {
+        "from_node_key": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,127}$"},
+        "to_node_key": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,127}$"},
+        "argument_kind": {"$ref": "#/$defs/non_blank"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "human_confirmed": {"type": "boolean"},
+        "attributes": {"$ref": "#/$defs/open_object"}
+      }
+    },
+    "reasoning_path": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "name", "reasoning_type", "status", "confidence", "human_confirmed", "summary", "nodes", "edges", "source", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "name": {"$ref": "#/$defs/non_blank"},
+        "reasoning_type": {"enum": ["deductive", "inductive", "abductive", "mixed"]},
+        "status": {"enum": ["draft", "active", "confirmed", "rejected"]},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "human_confirmed": {"type": "boolean"},
+        "summary": {"$ref": "#/$defs/nullable_string"},
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/reasoning_node"}},
+        "edges": {"type": "array", "items": {"$ref": "#/$defs/reasoning_edge"}},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "resolution_slot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slot_key", "label", "is_required", "ordinal", "value"],
+      "properties": {
+        "slot_key": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,127}$"},
+        "label": {"$ref": "#/$defs/non_blank"},
+        "is_required": {"type": "boolean"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "value": {}
+      }
+    },
+    "resolution_spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "question_type", "target_question", "conclusion_pattern", "status", "slots", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "question_type": {"$ref": "#/$defs/non_blank"},
+        "target_question": {"$ref": "#/$defs/non_blank"},
+        "conclusion_pattern": {"$ref": "#/$defs/open_object"},
+        "status": {"enum": ["draft", "resolved", "locked"]},
+        "slots": {"type": "array", "items": {"$ref": "#/$defs/resolution_slot"}},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "target_object_id", "constraint_kind", "constraint_level", "rule", "status", "conflict_status", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "target_object_id": {"$ref": "#/$defs/nullable_object_id"},
+        "constraint_kind": {"$ref": "#/$defs/non_blank"},
+        "constraint_level": {"enum": ["hard", "soft"]},
+        "rule": {"$ref": "#/$defs/open_object"},
+        "status": {"enum": ["active", "inactive"]},
+        "conflict_status": {"enum": ["none", "potential", "confirmed", "resolved"]},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    },
+    "knowledge_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["information_unit_object_id", "cognition_status", "disclosure_status", "acquired_from_object_id", "certainty", "ordinal"],
+      "properties": {
+        "information_unit_object_id": {"$ref": "#/$defs/object_id"},
+        "cognition_status": {"enum": ["unknown", "suspected", "known", "believed", "disbelieved"]},
+        "disclosure_status": {"enum": ["hidden", "available", "revealed"]},
+        "acquired_from_object_id": {"$ref": "#/$defs/nullable_object_id"},
+        "certainty": {"$ref": "#/$defs/confidence"},
+        "ordinal": {"type": "integer", "minimum": 1}
+      }
+    },
+    "knowledge_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_id", "entity_object_id", "narrative_phase_object_id", "status", "notes", "entries", "source", "confidence", "confirmation_status"],
+      "properties": {
+        "object_id": {"$ref": "#/$defs/object_id"},
+        "entity_object_id": {"$ref": "#/$defs/object_id"},
+        "narrative_phase_object_id": {"$ref": "#/$defs/object_id"},
+        "status": {"enum": ["unknown", "partial", "known", "misinformed"]},
+        "notes": {"$ref": "#/$defs/nullable_string"},
+        "entries": {"type": "array", "items": {"$ref": "#/$defs/knowledge_entry"}},
+        "source": {"$ref": "#/$defs/open_object"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "confirmation_status": {"enum": ["user_confirmed", "ai_inferred", "unresolved"]}
+      }
+    }
+  }
+}

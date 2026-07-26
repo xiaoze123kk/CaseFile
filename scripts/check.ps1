@@ -20,7 +20,7 @@ Push-Location $repoRoot
 try {
     & (Join-Path $PSScriptRoot "check-migration-names.ps1")
 
-    & $python -c "import alembic, psycopg, sqlalchemy"
+    & $python -c "import alembic, fastapi, jsonschema, psycopg, rfc8785, sqlalchemy"
     if ($LASTEXITCODE -ne 0) {
         throw "Python dependencies are missing. Install backend development dependencies first."
     }

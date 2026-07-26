@@ -232,8 +232,12 @@ class Event(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
-    start_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    end_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    start_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
+    end_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     narrative_order: Mapped[int] = mapped_column(Integer, nullable=False)
     narrative_phase_id: Mapped[int | None] = mapped_column(BigInteger)
     location_id: Mapped[int | None] = mapped_column(BigInteger)
