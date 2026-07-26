@@ -1,0 +1,44 @@
+[project]
+name = "casefile-backend"
+version = "0.1.0"
+description = "CaseFile personal-product PostgreSQL foundation"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "alembic>=1.14,<2",
+  "psycopg[binary]>=3.2,<4",
+  "sqlalchemy>=2.0.36,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.13,<2",
+  "pytest>=8.3,<10",
+  "ruff>=0.8,<1",
+]
+
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/casefile"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "postgres: requires CASEFILE_TEST_DATABASE_URL pointing to a disposable *_test PostgreSQL database",
+]
+
+[tool.ruff]
+src = ["src", "tests"]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+strict = true
+warn_unreachable = true

@@ -1,0 +1,32 @@
+# Product and architecture documents are local inputs, not repository content.
+/docs/
+
+# Local runtime state and secrets.
+/var/
+.env
+.env.*
+!.env.example
+
+# Dependencies, virtual environments, and generated caches.
+/node_modules/
+/.obsidian/
+/.ruff_cache/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.coverage
+coverage/
+htmlcov/
+
+# Editor and operating-system files.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
