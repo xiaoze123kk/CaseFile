@@ -12,6 +12,7 @@ import {
 } from "@/components/prototype-ui";
 import { usePrototype } from "@/store/prototype-store";
 
+import motionStyles from "./intake-motion.module.css";
 import styles from "./intake.module.css";
 
 const intakeRoutes = [
@@ -41,12 +42,43 @@ const intakeRoutes = [
   },
 ];
 
+const INTAKE_OPENING_MOTION_KEY = "casefile:intake-opening-motion:v1";
+
+export function claimIntakeOpeningMotion(storage: {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+}) {
+  if (storage.getItem(INTAKE_OPENING_MOTION_KEY)) return false;
+
+  storage.setItem(INTAKE_OPENING_MOTION_KEY, "played");
+  return true;
+}
+
 export function IntakeHome() {
   const router = useRouter();
   const { state, dispatch, ready } = usePrototype();
   const [planningNotice, setPlanningNotice] = useState<string | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
+  const [openingMotion, setOpeningMotion] = useState(false);
+  const openingMotionDecision = useRef<boolean | null>(null);
   const polishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (openingMotionDecision.current === null) {
+      try {
+        openingMotionDecision.current = claimIntakeOpeningMotion(
+          window.sessionStorage,
+        );
+      } catch {
+        openingMotionDecision.current = true;
+      }
+    }
+
+    if (!openingMotionDecision.current) return;
+
+    const frame = window.requestAnimationFrame(() => setOpeningMotion(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(
     () => () => {
@@ -81,7 +113,9 @@ export function IntakeHome() {
   return (
     <main
       aria-busy={!ready}
-      className={`document ${styles.homeDocument}`}
+      className={`document ${styles.homeDocument} ${
+        openingMotion ? motionStyles.openingMotion : ""
+      }`}
     >
       <DocumentHeader
         eyebrow="建案中心 / CASE OPENING"
@@ -231,7 +265,9 @@ export function IntakeHome() {
           </div>
 
           <div className={styles.recordComparison}>
-            <section className={styles.ideaRecord}>
+            <section
+              className={`${styles.ideaRecord} ${motionStyles.ideaPaper}`}
+            >
               <header>
                 <span>原始创意 / AUTHOR SOURCE</span>
                 <StatusBadge tone="dark">人工原稿</StatusBadge>
@@ -254,7 +290,9 @@ export function IntakeHome() {
                 <span>来源：人工输入</span>
                 <span>记录：永久保留</span>
               </footer>
-              <div className={styles.recordActions}>
+              <div
+                className={`${styles.recordActions} ${motionStyles.recordActions}`}
+              >
                 <button
                   aria-label="让 Agent 润色当前原始创意"
                   disabled={isPolishing || originalLength === 0}

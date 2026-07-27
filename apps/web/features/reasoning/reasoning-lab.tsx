@@ -3,7 +3,13 @@
 import "@xyflow/react/dist/style.css";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   DocumentHeader,
@@ -15,11 +21,15 @@ import {
   getReasoningSource,
   type ReasoningPath,
   type ReasoningProposalChange,
+  type ReasoningSourceObject,
 } from "@/lib/reasoning-prototype";
+import type { DraftEvent } from "@/lib/prototype-model";
 import { usePrototype } from "@/store/prototype-store";
 
 import { ReasoningCanvas } from "./reasoning-canvas";
+import motionStyles from "./reasoning-motion.module.css";
 import styles from "./reasoning-lab.module.css";
+import sourceStyles from "./reasoning-source-preview.module.css";
 
 const pathKindLabels: Record<ReasoningPath["kind"], string> = {
   primary: "主路径",
@@ -34,12 +44,45 @@ const reasoningTypeLabels: Record<ReasoningPath["reasoningType"], string> = {
   mixed: "混合",
 };
 
+const sourceTypeLabels: Record<ReasoningSourceObject["type"], string> = {
+  brief: "Brief",
+  event: "事件",
+  information: "信息",
+  phase: "叙事阶段",
+  constraint: "约束",
+};
+
+const generationTracePath =
+  "M30 170 L78 134 L138 159 L186 123 L207 151";
+const generationTraceStart = 8;
+const generationTraceEnd = 96;
+
 const generationStages = [
-  { threshold: 8, label: "固定 Draft Revision 与对象清单" },
-  { threshold: 32, label: "建立整卷对象与引用索引" },
-  { threshold: 58, label: "识别核心问题与竞争路径" },
-  { threshold: 82, label: "检查来源、反证与待求证缺口" },
-  { threshold: 96, label: "投影节点坐标与来源包" },
+  {
+    threshold: generationTraceStart,
+    label: "固定 Draft Revision 与对象清单",
+    point: { x: 30, y: 170 },
+  },
+  {
+    threshold: 32,
+    label: "建立整卷对象与引用索引",
+    point: { x: 78, y: 134 },
+  },
+  {
+    threshold: 58,
+    label: "识别核心问题与竞争路径",
+    point: { x: 138, y: 159 },
+  },
+  {
+    threshold: 82,
+    label: "检查来源、反证与待求证缺口",
+    point: { x: 186, y: 123 },
+  },
+  {
+    threshold: generationTraceEnd,
+    label: "投影节点坐标与来源包",
+    point: { x: 207, y: 151 },
+  },
 ];
 
 function statusLabel(status: ReturnType<typeof usePrototype>["state"]["reasoning"]["status"]) {
@@ -62,9 +105,146 @@ function proposalBelongsToPath(
   return node?.pathId === pathId || edge?.pathId === pathId;
 }
 
+function SourceInspectorDetail({
+  activePath,
+  onClose,
+  onOpenInWorkbench,
+  returnLabel,
+  source,
+  sourceEvent,
+}: {
+  activePath: ReasoningPath;
+  onClose: () => void;
+  onOpenInWorkbench: (sourceId: string) => void;
+  returnLabel: string;
+  source: ReasoningSourceObject;
+  sourceEvent?: DraftEvent;
+}) {
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const titleId = `reasoning-source-detail-${source.id}`;
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [source.id]);
+
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    }
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
+  return (
+    <section
+      aria-labelledby={titleId}
+      className={sourceStyles.inspectorPreview}
+      id="reasoning-source-detail"
+    >
+      <header className={sourceStyles.previewHeader}>
+        <div>
+          <span>来源详情</span>
+          <b>SOURCE QUICKLOOK</b>
+        </div>
+        <button onClick={onClose} type="button">
+          ← {returnLabel}
+        </button>
+      </header>
+
+      <div className={sourceStyles.previewBody}>
+        <div className={sourceStyles.previewLead}>
+          <div>
+            <span>{sourceTypeLabels[source.type]}</span>
+            <b>{source.id}</b>
+          </div>
+          <h3 id={titleId} ref={titleRef} tabIndex={-1}>
+            {source.label}
+          </h3>
+          <p>{source.meta}</p>
+        </div>
+
+        <dl className={sourceStyles.previewFacts}>
+          <div>
+            <dt>当前路径</dt>
+            <dd>{activePath.code}</dd>
+          </div>
+          <div>
+            <dt>来源类型</dt>
+            <dd>{sourceTypeLabels[source.type]}</dd>
+          </div>
+          <div>
+            <dt>关联锚点</dt>
+            <dd>{source.targetEventId ?? "无事件锚点"}</dd>
+          </div>
+        </dl>
+
+        {sourceEvent ? (
+          <section className={sourceStyles.eventAnchor}>
+            <span>关联事件 · {sourceEvent.id}</span>
+            <h4>
+              {sourceEvent.time} · {sourceEvent.title}
+            </h4>
+            <p>{sourceEvent.description}</p>
+            <dl>
+              <div>
+                <dt>地点</dt>
+                <dd>{sourceEvent.location}</dd>
+              </div>
+              <div>
+                <dt>阶段</dt>
+                <dd>{sourceEvent.phase}</dd>
+              </div>
+              <div>
+                <dt>参与者</dt>
+                <dd>{sourceEvent.participants}</dd>
+              </div>
+              <div>
+                <dt>可见范围</dt>
+                <dd>{sourceEvent.visibility}</dd>
+              </div>
+            </dl>
+          </section>
+        ) : source.targetEventId ? (
+          <div className={sourceStyles.standaloneNote}>
+            关联事件 {source.targetEventId} 未找到，暂时无法在工作台定位。
+          </div>
+        ) : (
+          <div className={sourceStyles.standaloneNote}>
+            这是独立的 {sourceTypeLabels[source.type]}
+            来源，可直接在推理实验室核对，不需要切换页面。
+          </div>
+        )}
+      </div>
+
+      <footer className={sourceStyles.previewFooter}>
+        <span>查看不会修改 Draft；需要编辑正文时再前往工作台。</span>
+        {source.targetEventId && sourceEvent ? (
+          <button
+            onClick={() => onOpenInWorkbench(source.id)}
+            type="button"
+          >
+            在工作台定位 ↗
+          </button>
+        ) : (
+          <b>{source.targetEventId ? "锚点不可用" : "无需跳转"}</b>
+        )}
+      </footer>
+    </section>
+  );
+}
+
 export function ReasoningLab() {
   const router = useRouter();
   const { state, dispatch, ready } = usePrototype();
+  const [previewedSourceId, setPreviewedSourceId] = useState<string | null>(
+    null,
+  );
+  const sourcePreviewTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const sourcePreviewTriggerKeyRef = useRef<string | null>(null);
   const reasoning = state.reasoning;
   const metrics = useMemo(
     () => getReasoningOverviewMetrics(reasoning),
@@ -81,6 +261,9 @@ export function ReasoningLab() {
     reasoning.proposals.find(
       (proposal) => proposal.id === reasoning.selectedProposalId,
     ) ?? pendingChanges[0];
+  const previewedSource = previewedSourceId
+    ? getReasoningSource(previewedSourceId)
+    : undefined;
 
   useEffect(() => {
     if (reasoning.status !== "running") return;
@@ -127,14 +310,55 @@ export function ReasoningLab() {
     return () => window.clearTimeout(timer);
   }, [dispatch, reasoning.progress, reasoning.status]);
 
-  function openSource(sourceId: string) {
+  const previewSource = useCallback((
+    sourceId: string,
+    trigger?: HTMLButtonElement,
+  ) => {
+    if (!getReasoningSource(sourceId)) return;
+    const sourceTrigger =
+      trigger ??
+      (document.activeElement instanceof HTMLButtonElement
+        ? document.activeElement
+        : undefined);
+    sourcePreviewTriggerRef.current = sourceTrigger ?? null;
+    sourcePreviewTriggerKeyRef.current =
+      sourceTrigger?.dataset.sourceTriggerKey ?? null;
+    setPreviewedSourceId(sourceId);
+  }, []);
+
+  const closeSourcePreview = useCallback(() => {
+    const previousTrigger = sourcePreviewTriggerRef.current;
+    const previousTriggerKey = sourcePreviewTriggerKeyRef.current;
+    setPreviewedSourceId(null);
+    window.requestAnimationFrame(() => {
+      if (previousTrigger?.isConnected) {
+        previousTrigger.focus();
+        return;
+      }
+
+      if (!previousTriggerKey) return;
+      document
+        .querySelector<HTMLButtonElement>(
+          `[data-source-trigger-key="${CSS.escape(previousTriggerKey)}"]`,
+        )
+        ?.focus();
+    });
+  }, []);
+
+  const openSourceInWorkbench = useCallback((sourceId: string) => {
     const source = getReasoningSource(sourceId);
-    if (!source?.targetEventId) return;
+    if (
+      !source?.targetEventId ||
+      !state.draft.events.some((event) => event.id === source.targetEventId)
+    ) {
+      return;
+    }
     dispatch({ type: "select-event", id: source.targetEventId });
     router.push(`/workbench#event=${encodeURIComponent(source.targetEventId)}`);
-  }
+  }, [dispatch, router, state.draft.events]);
 
   function openPath(pathId: string) {
+    setPreviewedSourceId(null);
     dispatch({ type: "select-reasoning-path", id: pathId });
   }
 
@@ -159,7 +383,10 @@ export function ReasoningLab() {
     ) : reasoning.status === "idle" ? null : (
       <button
         className={styles.headerButton}
-        onClick={() => dispatch({ type: "start-reasoning-run" })}
+        onClick={() => {
+          setPreviewedSourceId(null);
+          dispatch({ type: "start-reasoning-run" });
+        }}
         type="button"
       >
         重新生成整卷图
@@ -199,16 +426,29 @@ export function ReasoningLab() {
           pendingCount={pendingChanges.length}
         />
       ) : (
-        <section className={styles.pathWorkspace}>
+        <section className={`${styles.pathWorkspace} ${motionStyles.pathWorkspace}`}>
           <PathNavigator
             activePathId={activePath?.id ?? ""}
+            onOpenOverview={() => {
+              setPreviewedSourceId(null);
+              dispatch({ type: "open-reasoning-overview" });
+            }}
             onOpenPath={openPath}
             paths={reasoning.paths}
           />
-          <ReasoningCanvas />
+          <ReasoningCanvas
+            key={activePath?.id}
+            onClearSourcePreview={() => setPreviewedSourceId(null)}
+            onPreviewSource={previewSource}
+            previewedSourceId={previewedSource?.id}
+          />
           <ReasoningInspector
             activePath={activePath}
-            onOpenSource={openSource}
+            onClearSourcePreview={() => setPreviewedSourceId(null)}
+            onCloseSourcePreview={closeSourcePreview}
+            onOpenSourceInWorkbench={openSourceInWorkbench}
+            onPreviewSource={previewSource}
+            previewedSource={previewedSource}
             selectedNode={selectedNode}
             selectedProposal={selectedProposal}
           />
@@ -227,7 +467,10 @@ function ReasoningEmptyState() {
   return (
     <section className={styles.emptyStage}>
       <div className={styles.emptyHero}>
-        <div className={styles.orbitMark} aria-hidden="true">
+        <div
+          className={`${styles.orbitMark} ${motionStyles.idleMark}`}
+          aria-hidden="true"
+        >
           <i />
           <i />
           <i />
@@ -286,7 +529,7 @@ function ReasoningEmptyState() {
         </div>
 
         <button
-          className={styles.generateButton}
+          className={`${styles.generateButton} ${motionStyles.generateButton}`}
           onClick={() => dispatch({ type: "start-reasoning-run" })}
           type="button"
         >
@@ -327,12 +570,60 @@ function ReasoningEmptyState() {
 function ReasoningRunningState() {
   const { state, dispatch } = usePrototype();
   const reasoning = state.reasoning;
+  const traceProgress = Math.min(
+    100,
+    Math.max(
+      0,
+      ((reasoning.progress - generationTraceStart) /
+        (generationTraceEnd - generationTraceStart)) *
+        100,
+    ),
+  );
 
   return (
     <section className={styles.runningStage} aria-live="polite">
-      <div className={styles.runningPulse} aria-hidden="true">
+      <div
+        aria-label="推理图生成进度"
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={reasoning.progress}
+        aria-valuetext={`${reasoning.progress}% · ${reasoning.stage}`}
+        className={`${styles.runningPulse} ${motionStyles.runningPulse}`}
+        role="progressbar"
+      >
         <i />
         <i />
+        <svg
+          aria-hidden="true"
+          className={motionStyles.networkTrace}
+          focusable="false"
+          viewBox="0 0 240 220"
+        >
+          <path
+            className={motionStyles.networkGuide}
+            d={generationTracePath}
+            pathLength="100"
+          />
+          <path
+            className={motionStyles.networkProgress}
+            d={generationTracePath}
+            pathLength="100"
+            style={{ strokeDashoffset: 100 - traceProgress }}
+          />
+          {generationStages.map((stage) => (
+            <circle
+              className={`${motionStyles.tracePoint} ${
+                reasoning.progress >= stage.threshold
+                  ? motionStyles.tracePointActive
+                  : ""
+              }`}
+              cx={stage.point.x}
+              cy={stage.point.y}
+              key={stage.threshold}
+              r="5"
+            />
+          ))}
+        </svg>
         <b>{reasoning.progress}%</b>
       </div>
       <div className={styles.runningContent}>
@@ -406,7 +697,7 @@ function ReasoningOverview({
   const reasoning = state.reasoning;
 
   return (
-    <section className={styles.overviewStage}>
+    <section className={`${styles.overviewStage} ${motionStyles.overviewStage}`}>
       {reasoning.status === "stale" ? (
         <div className={styles.staleBanner} role="status">
           <b>REVISION GUARD</b>
@@ -455,9 +746,10 @@ function ReasoningOverview({
             <button
               className={`${styles.pathCard} ${
                 styles[`pathCard_${path.kind}`]
-              }`}
+              } ${motionStyles.pathCard}`}
               key={path.id}
               onClick={() => onOpenPath(path.id)}
+              style={{ animationDelay: `${90 + index * 80}ms` }}
               type="button"
             >
               <header>
@@ -517,19 +809,19 @@ function ReasoningOverview({
 function PathNavigator({
   paths,
   activePathId,
+  onOpenOverview,
   onOpenPath,
 }: {
   paths: ReasoningPath[];
   activePathId: string;
+  onOpenOverview: () => void;
   onOpenPath: (pathId: string) => void;
 }) {
-  const { dispatch } = usePrototype();
-
   return (
     <aside className={styles.pathNavigator}>
       <header>
         <button
-          onClick={() => dispatch({ type: "open-reasoning-overview" })}
+          onClick={onOpenOverview}
           type="button"
         >
           ← 总览
@@ -566,14 +858,25 @@ function PathNavigator({
 
 function ReasoningInspector({
   activePath,
+  onClearSourcePreview,
+  onCloseSourcePreview,
+  onOpenSourceInWorkbench,
+  onPreviewSource,
+  previewedSource,
   selectedNode,
   selectedProposal,
-  onOpenSource,
 }: {
   activePath?: ReasoningPath;
+  onClearSourcePreview: () => void;
+  onCloseSourcePreview: () => void;
+  onOpenSourceInWorkbench: (sourceId: string) => void;
+  onPreviewSource: (
+    sourceId: string,
+    trigger?: HTMLButtonElement,
+  ) => void;
+  previewedSource?: ReasoningSourceObject;
   selectedNode: ReturnType<typeof usePrototype>["state"]["reasoning"]["nodes"][number] | undefined;
   selectedProposal?: ReasoningProposalChange;
-  onOpenSource: (sourceId: string) => void;
 }) {
   const { state, dispatch } = usePrototype();
   const reasoning = state.reasoning;
@@ -585,6 +888,14 @@ function ReasoningInspector({
   const pending = pathProposals.filter(
     (proposal) => proposal.status === "pending",
   );
+  const contextualProposal =
+    pathProposals.find((proposal) => proposal.id === selectedProposal?.id) ??
+    pathProposals[0];
+  const previewedSourceEvent = previewedSource?.targetEventId
+    ? state.draft.events.find(
+        (event) => event.id === previewedSource.targetEventId,
+      )
+    : undefined;
   const selectedCount = reasoning.proposals.filter(
     (proposal) => proposal.status === "pending" && proposal.selected,
   ).length;
@@ -610,86 +921,113 @@ function ReasoningInspector({
           </button>
         </header>
 
-        <div className={styles.proposalList}>
-          {pathProposals.map((proposal) => (
-            <button
-              className={
-                proposal.id === selectedProposal?.id
-                  ? styles.proposalActive
-                  : ""
-              }
-              key={proposal.id}
-              onClick={() => {
-                dispatch({
-                  type: "select-reasoning-proposal",
-                  id: proposal.id,
-                });
-                if (proposal.targetType === "node") {
-                  dispatch({
-                    type: "select-reasoning-node",
-                    id: proposal.targetId,
-                  });
+        <div className={styles.reviewInspectorBody}>
+          <div className={styles.proposalList}>
+            {pathProposals.map((proposal) => (
+              <button
+                className={
+                  proposal.id === contextualProposal?.id
+                    ? styles.proposalActive
+                    : ""
                 }
-              }}
-              type="button"
-            >
-              <i
-                aria-label={proposal.selected ? "已选择" : "未选择"}
-                aria-checked={proposal.selected}
-                className={proposal.selected ? styles.proposalChecked : ""}
-                onClick={(event) => {
-                  event.stopPropagation();
+                key={proposal.id}
+                onClick={() => {
+                  onClearSourcePreview();
                   dispatch({
-                    type: "toggle-reasoning-proposal",
+                    type: "select-reasoning-proposal",
                     id: proposal.id,
                   });
+                  if (proposal.targetType === "node") {
+                    dispatch({
+                      type: "select-reasoning-node",
+                      id: proposal.targetId,
+                    });
+                  }
                 }}
-                role="checkbox"
-              />
-              <span>
-                <b>{proposal.label}</b>
-                <small>{proposal.description}</small>
-              </span>
-              <strong>
-                {proposal.confidence
-                  ? `${Math.round(proposal.confidence * 100)}%`
-                  : "—"}
-              </strong>
-            </button>
-          ))}
-          {pathProposals.length === 0 ? (
-            <p className={styles.noProposal}>本路径没有待审候选。</p>
-          ) : null}
-        </div>
+                type="button"
+              >
+                <i
+                  aria-label={proposal.selected ? "已选择" : "未选择"}
+                  aria-checked={proposal.selected}
+                  className={proposal.selected ? styles.proposalChecked : ""}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    dispatch({
+                      type: "toggle-reasoning-proposal",
+                      id: proposal.id,
+                    });
+                  }}
+                  role="checkbox"
+                />
+                <span>
+                  <b>{proposal.label}</b>
+                  <small>{proposal.description}</small>
+                </span>
+                <strong>
+                  {proposal.confidence
+                    ? `${Math.round(proposal.confidence * 100)}%`
+                    : "—"}
+                </strong>
+              </button>
+            ))}
+            {pathProposals.length === 0 ? (
+              <p className={styles.noProposal}>本路径没有待审候选。</p>
+            ) : null}
+          </div>
 
-        {selectedProposal ? (
-          <div className={styles.proposalDetail}>
-            <span className={styles.eyebrow}>STRUCTURED RATIONALE</span>
-            <h3>{selectedProposal.label}</h3>
-            <p>{selectedProposal.rationale}</p>
-            <div className={styles.sourceChips}>
-              {selectedProposal.sourceIds.map((sourceId) => {
-                const source = getReasoningSource(sourceId);
-                return (
-                  <button
-                    disabled={!source?.targetEventId}
-                    key={sourceId}
-                    onClick={() => onOpenSource(sourceId)}
-                    type="button"
-                  >
-                    {sourceId}
-                    {source?.targetEventId ? " ↗" : ""}
-                  </button>
-                );
-              })}
+          {previewedSource && activePath ? (
+            <SourceInspectorDetail
+              activePath={activePath}
+              key={previewedSource.id}
+              onClose={onCloseSourcePreview}
+              onOpenInWorkbench={onOpenSourceInWorkbench}
+              returnLabel={
+                pathProposals.length > 0 ? "返回候选" : "返回检查器"
+              }
+              source={previewedSource}
+              sourceEvent={previewedSourceEvent}
+            />
+          ) : contextualProposal ? (
+            <div className={styles.proposalDetail}>
+              <span className={styles.eyebrow}>STRUCTURED RATIONALE</span>
+              <h3>{contextualProposal.label}</h3>
+              <p>{contextualProposal.rationale}</p>
+              <div className={styles.sourceChips}>
+                {contextualProposal.sourceIds.map((sourceId) => {
+                  const source = getReasoningSource(sourceId);
+                  return (
+                    <button
+                      aria-controls={source ? "reasoning-source-detail" : undefined}
+                      data-source-trigger-key={`proposal:${contextualProposal.id}:${sourceId}`}
+                      disabled={!source}
+                      key={sourceId}
+                      onClick={(event) =>
+                        onPreviewSource(sourceId, event.currentTarget)
+                      }
+                      type="button"
+                    >
+                      {sourceId}
+                      {source ? " →" : ""}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+          ) : (
+            <div className={styles.noSelection}>
+              <b>NO PATH CANDIDATE</b>
+              <p>此路径没有候选变更，仍可从画布查看来源。</p>
+            </div>
+          )}
+
+          {contextualProposal ? (
             <div className={styles.proposalActions}>
               <button
-                disabled={selectedProposal.status !== "pending"}
+                disabled={contextualProposal.status !== "pending"}
                 onClick={() =>
                   dispatch({
                     type: "reject-reasoning-proposal",
-                    id: selectedProposal.id,
+                    id: contextualProposal.id,
                   })
                 }
                 type="button"
@@ -697,20 +1035,20 @@ function ReasoningInspector({
                 拒绝当前
               </button>
               <button
-                disabled={selectedProposal.status !== "pending"}
+                disabled={contextualProposal.status !== "pending"}
                 onClick={() =>
                   dispatch({
                     type: "toggle-reasoning-proposal",
-                    id: selectedProposal.id,
+                    id: contextualProposal.id,
                   })
                 }
                 type="button"
               >
-                {selectedProposal.selected ? "取消选择" : "加入批准"}
+                {contextualProposal.selected ? "取消选择" : "加入批准"}
               </button>
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
         <footer className={styles.approvalFooter}>
           <div>
@@ -733,93 +1071,109 @@ function ReasoningInspector({
     <aside className={styles.inspectorPanel}>
       <header className={styles.inspectorHeader}>
         <div>
-          <span>节点检查器</span>
-          <b>OBJECT INSPECTOR</b>
+          <span>{previewedSource ? "来源检查器" : "节点检查器"}</span>
+          <b>{previewedSource ? "SOURCE INSPECTOR" : "OBJECT INSPECTOR"}</b>
         </div>
         <StatusBadge tone={reasoning.status === "stale" ? "red" : "dark"}>
           {statusLabel(reasoning.status)}
         </StatusBadge>
       </header>
 
-      {reasoning.status === "stale" ? (
-        <div className={styles.inspectorStale}>
-          <b>REVISION MISMATCH</b>
-          <p>{reasoning.stage}</p>
-          <button
-            onClick={() => dispatch({ type: "start-reasoning-run" })}
-            type="button"
-          >
-            基于当前 Draft 重新生成
-          </button>
-        </div>
-      ) : null}
-
-      {selectedNode ? (
-        <div className={styles.nodeInspector}>
-          <span className={styles.eyebrow}>{selectedNode.kind}</span>
-          <label>
-            <span>节点标题</span>
-            <input
-              defaultValue={selectedNode.label}
-              disabled={
-                reasoning.status !== "ready" || !selectedNode.userEditable
-              }
-              key={selectedNode.id}
-              onBlur={(event) =>
-                dispatch({
-                  type: "rename-reasoning-node",
-                  id: selectedNode.id,
-                  label: event.target.value,
-                })
-              }
-            />
-          </label>
-          <p>{selectedNode.statement}</p>
-          <dl>
-            <div>
-              <dt>状态</dt>
-              <dd>{selectedNode.status}</dd>
-            </div>
-            <div>
-              <dt>置信度</dt>
-              <dd>
-                {selectedNode.confidence === undefined
-                  ? "—"
-                  : `${Math.round(selectedNode.confidence * 100)}%`}
-              </dd>
-            </div>
-            <div>
-              <dt>来源</dt>
-              <dd>{selectedNode.sourceIds.length}</dd>
-            </div>
-          </dl>
-          <div className={styles.inspectorSources}>
-            <b>来源清单</b>
-            {selectedNode.sourceIds.map((sourceId) => {
-              const source = getReasoningSource(sourceId);
-              return (
-                <button
-                  disabled={!source?.targetEventId}
-                  key={sourceId}
-                  onClick={() => onOpenSource(sourceId)}
-                  type="button"
-                >
-                  <span>
-                    <b>{sourceId}</b>
-                    <small>{source?.label ?? "未知来源"}</small>
-                  </span>
-                  <i>{source?.targetEventId ? "工作台 ↗" : source?.type}</i>
-                </button>
-              );
-            })}
+      <div className={styles.nodeInspectorBody}>
+        {reasoning.status === "stale" ? (
+          <div className={styles.inspectorStale}>
+            <b>REVISION MISMATCH</b>
+            <p>{reasoning.stage}</p>
+            <button
+              onClick={() => dispatch({ type: "start-reasoning-run" })}
+              type="button"
+            >
+              基于当前 Draft 重新生成
+            </button>
           </div>
-        </div>
-      ) : (
-        <div className={styles.noSelection}>
-          <b>SELECT A NODE</b>
-          <p>选择画布节点以查看来源、置信度和可编辑字段。</p>
-        </div>
-      )}
+        ) : null}
+
+        {previewedSource && activePath ? (
+          <SourceInspectorDetail
+            activePath={activePath}
+            key={previewedSource.id}
+            onClose={onCloseSourcePreview}
+            onOpenInWorkbench={onOpenSourceInWorkbench}
+            returnLabel="返回节点"
+            source={previewedSource}
+            sourceEvent={previewedSourceEvent}
+          />
+        ) : selectedNode ? (
+          <div className={styles.nodeInspector}>
+            <span className={styles.eyebrow}>{selectedNode.kind}</span>
+            <label>
+              <span>节点标题</span>
+              <input
+                defaultValue={selectedNode.label}
+                disabled={
+                  reasoning.status !== "ready" || !selectedNode.userEditable
+                }
+                key={selectedNode.id}
+                onBlur={(event) =>
+                  dispatch({
+                    type: "rename-reasoning-node",
+                    id: selectedNode.id,
+                    label: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <p>{selectedNode.statement}</p>
+            <dl>
+              <div>
+                <dt>状态</dt>
+                <dd>{selectedNode.status}</dd>
+              </div>
+              <div>
+                <dt>置信度</dt>
+                <dd>
+                  {selectedNode.confidence === undefined
+                    ? "—"
+                    : `${Math.round(selectedNode.confidence * 100)}%`}
+                </dd>
+              </div>
+              <div>
+                <dt>来源</dt>
+                <dd>{selectedNode.sourceIds.length}</dd>
+              </div>
+            </dl>
+            <div className={styles.inspectorSources}>
+              <b>来源清单</b>
+              {selectedNode.sourceIds.map((sourceId) => {
+                const source = getReasoningSource(sourceId);
+                return (
+                  <button
+                    aria-controls={source ? "reasoning-source-detail" : undefined}
+                    data-source-trigger-key={`node:${selectedNode.id}:${sourceId}`}
+                    disabled={!source}
+                    key={sourceId}
+                    onClick={(event) =>
+                      onPreviewSource(sourceId, event.currentTarget)
+                    }
+                    type="button"
+                  >
+                    <span>
+                      <b>{sourceId}</b>
+                      <small>{source?.label ?? "未知来源"}</small>
+                    </span>
+                    <i>{source ? "快速查看 →" : "未解析"}</i>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className={styles.noSelection}>
+            <b>SELECT A NODE</b>
+            <p>选择画布节点以查看来源、置信度和可编辑字段。</p>
+          </div>
+        )}
+      </div>
 
       <footer className={styles.inspectorFootnote}>
         证据与事件正文仍由 CaseFile 工作台维护；此处只编辑推理语义。

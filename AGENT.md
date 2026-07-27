@@ -102,9 +102,9 @@
 | `apps/web/components/archive-shell.tsx` | 全站侧栏、模块导航、品牌入口、可检索协作线程的命令面板、规划入口说明和本地重置入口。 |
 | `apps/web/public/casefile-brand.png` | 用户确认并按导航栏尺寸优化的 CaseFile 品牌位图；由前端品牌容器居中裁切展示。 |
 | `apps/web/components/prototype-ui.tsx` | Case Spine、文档头、面板头、状态徽记等跨业务设计系统组件。 |
-| `apps/web/features/intake/` | 原始创意、Agent 独立润色候选、来源账本、Brief 编辑和人工批准流程。 |
+| `apps/web/features/intake/` | 原始创意、Agent 独立润色候选、来源账本、Brief 编辑、人工批准流程，以及建案中心按会话播放的卷宗启封动效。 |
 | `apps/web/features/workbench/` | CaseFile 对象索引、事件时间线、事件检查器，以及绑定 Draft Revision 的 Agent 全局协作抽屉、只读任务锁、结构化变更集审阅和可搜索/收藏/归档的线程索引。 |
-| `apps/web/features/reasoning/` | 推理实验室的整卷生成态、路径总览、React Flow 聚焦画布、候选审阅器和来源回跳交互。 |
+| `apps/web/features/reasoning/` | 推理实验室的整卷生成态、与真实进度绑定的因果点火动效、路径总览、React Flow 静态因果画布、候选审阅器，以及实验室内来源快速查看与显式工作台定位交互。 |
 | `apps/web/features/quality/` | ValidationIssue 筛选、确定性证据链、PatchCandidate 人工审阅和显式重新验证。 |
 | `apps/web/features/benchmark/` | Benchmark 配置、运行与结果界面。 |
 | `apps/web/features/simulation/` | 玩家模拟配置、运行进度和报告。 |

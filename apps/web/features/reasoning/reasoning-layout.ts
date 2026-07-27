@@ -9,12 +9,56 @@ import type {
 const NODE_WIDTH = 244;
 const NODE_HEIGHT = 124;
 const BUNDLE_HEIGHT = 138;
+const BUNDLE_SOURCE_ROW_HEIGHT = 62;
+const BUNDLE_SOURCE_LIST_MAX_HEIGHT = 248;
+
+function reasoningNodeHeight(
+  node: ReasoningNode,
+  expandedBundleIds: ReadonlySet<string>,
+) {
+  if (node.kind !== "source-bundle") return NODE_HEIGHT;
+  if (!expandedBundleIds.has(node.id)) return BUNDLE_HEIGHT;
+
+  return (
+    BUNDLE_HEIGHT +
+    Math.min(
+      node.sourceIds.length * BUNDLE_SOURCE_ROW_HEIGHT,
+      BUNDLE_SOURCE_LIST_MAX_HEIGHT,
+    )
+  );
+}
+
+export function getReasoningAutoLayoutUpdates(
+  nodeIds: readonly string[],
+  storedPositions: Record<string, ReasoningNodePosition>,
+  currentLayout: Record<string, ReasoningNodePosition>,
+  nextLayout: Record<string, ReasoningNodePosition>,
+): Record<string, ReasoningNodePosition> {
+  return Object.fromEntries(
+    nodeIds.flatMap((nodeId) => {
+      const storedPosition = storedPositions[nodeId];
+      const currentLayoutPosition = currentLayout[nodeId];
+      const nextLayoutPosition = nextLayout[nodeId];
+      const followsAutomaticLayout =
+        !storedPosition ||
+        !currentLayoutPosition ||
+        (Math.abs(storedPosition.x - currentLayoutPosition.x) < 0.5 &&
+          Math.abs(storedPosition.y - currentLayoutPosition.y) < 0.5);
+
+      return followsAutomaticLayout && nextLayoutPosition
+        ? [[nodeId, nextLayoutPosition]]
+        : [];
+    }),
+  );
+}
 
 export function layoutReasoningPath(
   nodes: ReasoningNode[],
   edges: ReasoningEdge[],
   direction: "LR" | "TB" = "LR",
+  expandedBundleIds: readonly string[] = [],
 ): Record<string, ReasoningNodePosition> {
+  const expandedBundles = new Set(expandedBundleIds);
   const graph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: direction,
@@ -28,7 +72,7 @@ export function layoutReasoningPath(
   nodes.forEach((node) => {
     graph.setNode(node.id, {
       width: NODE_WIDTH,
-      height: node.kind === "source-bundle" ? BUNDLE_HEIGHT : NODE_HEIGHT,
+      height: reasoningNodeHeight(node, expandedBundles),
     });
   });
 
@@ -45,8 +89,7 @@ export function layoutReasoningPath(
       const layoutNode = graph.node(node.id) as
         | { x: number; y: number }
         | undefined;
-      const height =
-        node.kind === "source-bundle" ? BUNDLE_HEIGHT : NODE_HEIGHT;
+      const height = reasoningNodeHeight(node, expandedBundles);
       return [
         node.id,
         {

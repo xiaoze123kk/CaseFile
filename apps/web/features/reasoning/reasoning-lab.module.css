@@ -1301,6 +1301,20 @@
   background: rgba(250, 250, 245, 0.98);
 }
 
+.reviewInspectorBody {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.nodeInspectorBody {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .inspectorHeader {
   display: flex;
   min-height: 52px;
@@ -1338,7 +1352,9 @@
 }
 
 .proposalList {
+  flex: 0 1 auto;
   min-height: 0;
+  max-height: 34%;
   overflow: auto;
   border-bottom: 1px solid var(--rule);
 }
@@ -1423,6 +1439,7 @@
 }
 
 .proposalDetail {
+  flex: 1;
   min-height: 0;
   padding: 15px;
   overflow: auto;
@@ -1466,10 +1483,13 @@
 .proposalActions {
   display: flex;
   gap: 7px;
-  margin-top: 15px;
+  padding: 9px 12px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper-low);
 }
 
 .proposalActions button {
+  flex: 1;
   min-height: 30px;
   padding: 0 9px;
   border: 1px solid var(--rule);
@@ -1557,6 +1577,7 @@
 }
 
 .nodeInspector {
+  flex: 1;
   min-height: 0;
   padding: 16px;
   overflow: auto;
@@ -1686,6 +1707,7 @@
 
 .noSelection {
   display: grid;
+  flex: 1;
   place-content: center;
   padding: 28px;
   color: var(--ink-faint);

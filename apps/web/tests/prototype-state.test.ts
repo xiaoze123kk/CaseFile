@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { claimIntakeOpeningMotion } from "@/features/intake/intake-home";
 import {
   agentThreadMatchesQuery,
   canCompilePrototype,
@@ -11,6 +12,17 @@ import {
 import { prototypeReducer } from "@/store/prototype-store";
 
 describe("prototype state flow", () => {
+  it("plays the intake opening motion only once per browser session", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+
+    expect(claimIntakeOpeningMotion(storage)).toBe(true);
+    expect(claimIntakeOpeningMotion(storage)).toBe(false);
+  });
+
   it("keeps the original idea when adopting an Agent suggestion", () => {
     const initial = createDefaultPrototypeState();
     const withNewOriginal = prototypeReducer(initial, {
