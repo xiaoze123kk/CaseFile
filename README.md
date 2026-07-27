@@ -4,6 +4,43 @@ CaseFile 当前只面向个人用户。仓库已经包含 PostgreSQL 数据底�
 机器契约，以及项目、人物/地点、事件、引用和 Snapshot 的首个 FastAPI 纵向切片。
 不包含 Workspace、Membership、邀请、团队角色、评论或共享项目。
 
+## 可点击前端原型
+
+`apps/web` 是 React 19 + Next.js 16 App Router + TypeScript 实现的本地前端原型。
+它覆盖建案中心、Brief 确认、CaseFile 工作台、质量中心与多目标编译器，并使用浏览器
+`localStorage` 演示完整状态闭环；当前不调用真实 Agent、Validator 或 Compiler 服务。
+
+首次运行先安装 workspace 依赖：
+
+```powershell
+pnpm install
+```
+
+启动前端：
+
+```powershell
+pnpm dev:web
+```
+
+也可以使用统一入口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
+```
+
+浏览器访问 `http://127.0.0.1:3000`。核心路由为：
+
+- `/`：建案中心与 Agent 润色候选审阅
+- `/brief`：Brief 编辑与人工采纳
+- `/workbench`：事件时间线和属性编辑
+- `/quality`：确定性验证、PatchCandidate 审阅与编译门禁
+
+执行前端完整检查：
+
+```powershell
+pnpm check:web
+```
+
 ## 数据库底座
 
 - Python 3.12
