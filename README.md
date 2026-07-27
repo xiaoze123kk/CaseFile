@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 - `/`：建案中心与 Agent 润色候选审阅
 - `/brief`：Brief 编辑与人工采纳
-- `/workbench`：事件时间线和属性编辑
+- `/workbench`：事件时间线、属性编辑、全 Draft Agent 协作任务与可检索线程索引
 - `/quality`：确定性验证、PatchCandidate 审阅与编译门禁
 
 执行前端完整检查：

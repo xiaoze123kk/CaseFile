@@ -17,7 +17,7 @@
 
 .loadingRecord span {
   color: var(--ink-faint);
-  font-size: 7px;
+  font-size: var(--font-label);
   letter-spacing: 0.16em;
 }
 
@@ -53,7 +53,7 @@
   align-self: end;
   color: var(--ink-muted);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
   letter-spacing: 0.07em;
 }
 
@@ -68,7 +68,7 @@
 .readinessCard small {
   grid-column: 1 / -1;
   color: var(--ink-muted);
-  font-size: 7px;
+  font-size: var(--font-label);
   line-height: 1.45;
 }
 
@@ -115,7 +115,7 @@
   place-items: center;
   border: 1px solid var(--rule);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
   font-style: normal;
 }
 
@@ -129,13 +129,13 @@
 .gateSequence article small {
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .gateSequence article strong {
-  font-size: 10px;
+  font-size: var(--font-body);
 }
 
 .gatePassed > i {
@@ -191,7 +191,7 @@
 .metricStrip dt {
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -199,7 +199,7 @@
 .metricStrip dd {
   margin: 7px 0 0;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 14px;
+  font-size: var(--font-heading);
   font-weight: 700;
 }
 
@@ -246,7 +246,7 @@
   border: 0;
   border-right: 1px solid var(--hairline);
   background: transparent;
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .filterBar > button:hover,
@@ -258,7 +258,7 @@
 .filterBar button b {
   margin-left: 4px;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .reportAge {
@@ -266,7 +266,7 @@
   margin-left: auto;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .issueReview {
@@ -301,7 +301,7 @@
   border-bottom: 1px solid var(--rule);
   background: var(--paper-low);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .issueRow {
@@ -330,7 +330,7 @@
   place-items: center;
   border: 1px solid var(--rule);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
   font-weight: 700;
 }
 
@@ -355,7 +355,7 @@
 
 .issueTitle strong {
   overflow: hidden;
-  font-size: 9px;
+  font-size: var(--font-body-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -364,7 +364,7 @@
   overflow: hidden;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -372,7 +372,7 @@
 .objectId,
 .issueState {
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .objectId {
@@ -401,11 +401,11 @@
 
 .emptyIssues b {
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .emptyIssues span {
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .issueDetail {
@@ -438,7 +438,7 @@
 .patchHeading span {
   color: var(--red);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   letter-spacing: 0.08em;
 }
 
@@ -461,14 +461,14 @@
 
 .ruleStrip span {
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .ruleStrip code,
 .ruleStrip b {
   overflow: hidden;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -476,7 +476,7 @@
 .issueExplanation {
   margin: 10px 0;
   color: var(--ink-muted);
-  font-size: 8px;
+  font-size: var(--font-ui);
   line-height: 1.55;
 }
 
@@ -499,20 +499,20 @@
 .traceRoute article > span {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .traceRoute article strong {
   margin-top: 6px;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .traceRoute article small {
   margin-top: 4px;
   overflow: hidden;
   color: var(--ink-muted);
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -520,7 +520,7 @@
 .traceRoute > i {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 8px;
+  font-size: var(--font-ui);
   font-style: normal;
   text-align: center;
 }
@@ -554,14 +554,14 @@
 
 .traceFacts span {
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .traceFacts b {
   margin-top: 4px;
   overflow: hidden;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -594,7 +594,7 @@
 }
 
 .patchHeading strong {
-  font-size: 10px;
+  font-size: var(--font-body);
 }
 
 .diffBlock {
@@ -609,7 +609,7 @@
   color: var(--ink-muted);
   border-bottom: 1px solid var(--hairline);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .diffBlock code:last-child {
@@ -632,7 +632,7 @@
 .patchReview p {
   margin: 7px 0;
   color: var(--ink-muted);
-  font-size: 7px;
+  font-size: var(--font-label);
   line-height: 1.4;
 }
 
@@ -683,13 +683,13 @@
   place-items: center;
   background: var(--red);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .localNotice span {
   align-self: center;
   padding: 0 12px;
-  font-size: 7px;
+  font-size: var(--font-label);
   line-height: 1.45;
 }
 

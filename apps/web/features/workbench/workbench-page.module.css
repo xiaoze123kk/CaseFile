@@ -1,5 +1,139 @@
 .document {
+  position: relative;
   grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.lockedDocument {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.headerActions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.agentButton {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  min-width: 170px;
+  padding: 0 10px 0 0;
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper-high);
+  text-align: left;
+}
+
+.agentButton > span {
+  display: grid;
+  grid-row: 1 / span 2;
+  width: 30px;
+  height: 100%;
+  margin-right: 9px;
+  place-items: center;
+  color: white;
+  background: var(--red);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-body);
+  font-weight: 800;
+}
+
+.agentButton b {
+  align-self: end;
+  padding-top: 5px;
+  font-size: var(--font-label);
+}
+
+.agentButton small {
+  align-self: start;
+  max-width: 118px;
+  padding-bottom: 4px;
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agentButton:hover,
+.agentButtonActive {
+  color: white;
+  background: var(--ink);
+}
+
+.agentButton:hover small,
+.agentButtonActive small {
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.lockBanner {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 54px;
+  color: var(--red);
+  border-bottom: 1px solid var(--red);
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 8px,
+      rgba(169, 38, 9, 0.04) 8px,
+      rgba(169, 38, 9, 0.04) 16px
+    ),
+    var(--red-soft);
+}
+
+.lockBanner > span {
+  display: grid;
+  align-self: stretch;
+  place-items: center;
+  color: white;
+  background: var(--red);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-label);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.lockBanner > div {
+  display: flex;
+  min-width: 0;
+  padding: 7px 13px;
+  flex-direction: column;
+}
+
+.lockBanner strong {
+  font-size: var(--font-label);
+}
+
+.lockBanner small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lockBanner button {
+  align-self: stretch;
+  padding: 0 14px;
+  color: var(--red);
+  border: 0;
+  border-left: 1px solid var(--red-line);
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.lockBanner button:hover {
+  color: white;
+  background: var(--red);
 }
 
 .loading {
@@ -12,12 +146,12 @@
 
 .loading span {
   color: var(--red);
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .loading strong {
   margin-top: 12px;
-  font-size: 13px;
+  font-size: var(--font-heading);
 }
 
 .workspace {
@@ -79,13 +213,13 @@
 .sectionCaption span,
 .sectionCaption small {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   letter-spacing: 0.08em;
 }
 
 .sectionCaption small {
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .objectGroups,
@@ -130,11 +264,11 @@
 .groupCode,
 .groupCount {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .objectGroups strong {
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .groupCount {
@@ -171,14 +305,14 @@
   grid-column: 1;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .registerList button strong {
   grid-column: 1;
   margin-top: 3px;
   overflow: hidden;
-  font-size: 8px;
+  font-size: var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -189,7 +323,7 @@
   align-self: center;
   color: var(--ink-muted);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .registerList .activeRegister {
@@ -214,13 +348,13 @@
 .pinnedList span {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .pinnedList strong {
   grid-column: 1;
   margin-top: 3px;
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .pinnedList small {
@@ -228,7 +362,7 @@
   grid-column: 2;
   align-self: center;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .modeSwitch {
@@ -244,7 +378,7 @@
   border-left: 1px solid var(--hairline);
   border-radius: 0;
   background: transparent;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .modeSwitch button:hover {
@@ -275,19 +409,19 @@
 }
 
 .timelineToolbar strong {
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .timelineToolbar small {
   grid-column: 2;
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .timelineToolbar > span {
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .redDot {
@@ -317,7 +451,7 @@
   color: white;
   background: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .staleNotice > div {
@@ -326,17 +460,17 @@
 }
 
 .staleNotice strong {
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .staleNotice small {
   margin-top: 3px;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .staleNotice a {
   color: inherit;
-  font-size: 7px;
+  font-size: var(--font-label);
   font-weight: 700;
   text-decoration: none;
 }
@@ -394,7 +528,7 @@
   padding-top: 11px;
   color: var(--ink);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
+  font-size: var(--font-body-sm);
   font-weight: 700;
 }
 
@@ -415,7 +549,7 @@
 
 .eventHeading strong {
   overflow: hidden;
-  font-size: 10px;
+  font-size: var(--font-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -423,7 +557,7 @@
 .eventHeading > span {
   margin-left: auto;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .eventBody p {
@@ -431,7 +565,7 @@
   margin: 6px 0 7px;
   overflow: hidden;
   color: var(--ink-muted);
-  font-size: 7px;
+  font-size: var(--font-label);
   line-height: 1.55;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -448,7 +582,7 @@
   color: var(--ink-muted);
   border: 1px solid var(--hairline);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
   font-style: normal;
   white-space: nowrap;
 }
@@ -462,13 +596,13 @@
 
 .referenceCount b {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
+  font-size: var(--font-body-sm);
 }
 
 .referenceCount small {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .activeEvent .timelineRail i {
@@ -516,14 +650,14 @@
 }
 
 .linkedRecords header span {
-  font-size: 7px;
+  font-size: var(--font-label);
   font-weight: 700;
 }
 
 .linkedRecords header small {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .linkedRecords > div {
@@ -547,13 +681,13 @@
 .linkedRecords article span {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .linkedRecords article strong {
   margin-top: 4px;
   overflow: hidden;
-  font-size: 7px;
+  font-size: var(--font-label);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -561,7 +695,7 @@
 .linkedRecords article small {
   margin-top: 4px;
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .inspectorForm {
@@ -582,7 +716,7 @@
 .inspectorIdentity span,
 .inspectorIdentity strong {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .inspectorIdentity strong {
@@ -593,7 +727,7 @@
   grid-column: 1 / -1;
   margin-top: 4px;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .wideField,
@@ -612,7 +746,7 @@
 .fieldGrid label > span {
   margin-bottom: 4px;
   color: var(--ink-muted);
-  font-size: 6px;
+  font-size: var(--font-caption);
   font-weight: 650;
 }
 
@@ -631,7 +765,7 @@
   border-radius: 0;
   outline: none;
   background: var(--paper-high);
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .inspectorForm input,
@@ -657,6 +791,15 @@
 .inspectorForm select:focus,
 .inspectorForm textarea:focus {
   border-color: var(--red);
+}
+
+.inspectorForm input:disabled,
+.inspectorForm select:disabled,
+.inspectorForm textarea:disabled {
+  cursor: not-allowed;
+  color: var(--ink-muted);
+  background: var(--paper-low);
+  opacity: 0.72;
 }
 
 .inspectorForm .issueField {
@@ -686,14 +829,14 @@
   align-items: center;
   gap: 6px;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .issueCard > span b {
   padding: 2px 4px;
   color: white;
   background: var(--red);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .issueCard:hover > span b {
@@ -703,17 +846,17 @@
 
 .issueCard > strong {
   margin-top: 7px;
-  font-size: 9px;
+  font-size: var(--font-body-sm);
 }
 
 .issueCard p {
   margin: 5px 0 6px;
-  font-size: 6px;
+  font-size: var(--font-caption);
   line-height: 1.6;
 }
 
 .issueCard small {
-  font-size: 6px;
+  font-size: var(--font-caption);
   font-weight: 700;
 }
 
@@ -734,7 +877,7 @@
   place-items: center;
   color: white;
   background: var(--ink);
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .clearCard div {
@@ -743,13 +886,13 @@
 }
 
 .clearCard strong {
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .clearCard small {
   margin-top: 3px;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .formFooter {
@@ -767,13 +910,13 @@
   color: var(--ink-faint);
   flex-direction: column;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .formFooter > span strong {
   margin-top: 3px;
   color: var(--ink);
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 @keyframes panelEnter {

@@ -35,7 +35,7 @@
   border: 1px solid white;
   background: var(--paper);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
   font-weight: 800;
   transform: rotate(-2deg);
 }
@@ -54,7 +54,7 @@
 
 .snapshotCard span {
   color: rgba(255, 255, 255, 0.58);
-  font-size: 5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.08em;
 }
 
@@ -62,7 +62,7 @@
   margin-top: 4px;
   overflow: hidden;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 9px;
+  font-size: var(--font-body-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -71,7 +71,7 @@
   margin-top: 3px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 5px;
+  font-size: var(--font-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -80,7 +80,7 @@
   padding: 4px 5px;
   color: var(--ink);
   background: white;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .snapshotStale {
@@ -110,7 +110,7 @@
   margin-top: -13px;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.08em;
 }
 
@@ -154,7 +154,7 @@
   place-items: center;
   border: 1px solid currentColor;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .profilePicker label > span {
@@ -165,7 +165,7 @@
 
 .profilePicker strong {
   overflow: hidden;
-  font-size: 7px;
+  font-size: var(--font-label);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -175,7 +175,7 @@
   margin-top: 3px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -205,20 +205,20 @@
 
 .artifactSection > header span {
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.08em;
 }
 
 .artifactSection > header small {
   color: var(--red);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .artifactSection > header button {
   color: var(--ink-muted);
   border: 0;
   background: transparent;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .artifactSection > header button:hover {
@@ -258,7 +258,7 @@
 .artifactIndex {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .artifactName {
@@ -270,7 +270,7 @@
 .artifactName strong {
   overflow: hidden;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -279,7 +279,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -287,7 +287,7 @@
 .artifactList label > b {
   color: var(--ink-muted);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .buildReceipt {
@@ -312,14 +312,14 @@
 
 .buildReceipt small {
   color: var(--ink-faint);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .buildReceipt b {
   margin-top: 3px;
   overflow: hidden;
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -363,14 +363,14 @@
 }
 
 .compileButton span {
-  font-size: 9px;
+  font-size: var(--font-body-sm);
   font-weight: 700;
 }
 
 .compileButton b {
   color: var(--red);
   font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .compileButton:hover b {
@@ -394,7 +394,7 @@
   gap: 7px;
   min-height: 30px;
   color: var(--ink-muted);
-  font-size: 6px;
+  font-size: var(--font-caption);
   line-height: 1.45;
 }
 
@@ -436,18 +436,18 @@
 
 .completedPackage span {
   color: rgba(255, 255, 255, 0.62);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .completedPackage strong {
   margin-top: 3px;
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .completedPackage small {
   margin-top: 2px;
   color: rgba(255, 255, 255, 0.64);
-  font-size: 5px;
+  font-size: var(--font-micro);
 }
 
 .completedPackage button {
@@ -455,7 +455,7 @@
   color: white;
   border: 1px solid white;
   background: transparent;
-  font-size: 6px;
+  font-size: var(--font-caption);
   white-space: nowrap;
 }
 

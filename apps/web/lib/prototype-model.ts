@@ -1,3 +1,10 @@
+import type { ValidationIssue } from "@casefile/contracts";
+
+import {
+  createDefaultReasoningState,
+  type PrototypeReasoningState,
+} from "./reasoning-prototype";
+
 export type CaseStage = "idea" | "brief" | "draft" | "validated" | "compiled";
 
 export type SuggestionStatus = "idle" | "pending" | "adopted" | "rejected";
@@ -7,6 +14,29 @@ export type ValidationStatus = "fresh" | "stale" | "running";
 export type IssueStatus = "open" | "pending-revalidation" | "resolved";
 
 export type CompilerStatus = "blocked" | "idle" | "building" | "completed";
+
+export type AgentTaskStatus =
+  | "idle"
+  | "preview"
+  | "running"
+  | "review"
+  | "stale"
+  | "validating"
+  | "completed";
+
+export type AgentThreadStatus =
+  | "running"
+  | "review"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+export type AgentThreadTaskType =
+  | "audit"
+  | "gaps"
+  | "flow"
+  | "patch"
+  | "custom";
 
 export type BriefTextField =
   | "oneLineConcept"
@@ -52,8 +82,66 @@ export interface CompilerArtifact {
   selected: boolean;
 }
 
+export type AgentChangeField = keyof Pick<
+  DraftEvent,
+  | "description"
+  | "phase"
+  | "visibility"
+>;
+
+export interface AgentChange {
+  id: string;
+  objectId: string;
+  objectLabel: string;
+  field: AgentChangeField;
+  before: string;
+  after: string;
+  rationale: string;
+  selected: boolean;
+  status: "pending" | "applied" | "rejected";
+}
+
+export interface AgentThread {
+  id: string;
+  label: string;
+  taskType: AgentThreadTaskType;
+  instruction: string;
+  baseRevision: number;
+  outcomeRevision?: number;
+  status: AgentThreadStatus;
+  summary: string;
+  findings: string[];
+  objectIds: string[];
+  changeCount: number;
+  validatorRunId?: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedOrder: number;
+  favorite: boolean;
+  archived: boolean;
+  sourceThreadId?: string;
+}
+
+export interface PrototypeAgentState {
+  status: AgentTaskStatus;
+  taskId: string;
+  threadId: string;
+  taskLabel: string;
+  instruction: string;
+  taskType: AgentThreadTaskType;
+  sourceThreadId: string;
+  mutationTask: boolean;
+  baseRevision: number;
+  progress: number;
+  stage: string;
+  readObjectIds: string[];
+  findings: string[];
+  changes: AgentChange[];
+  history: AgentThread[];
+}
+
 export interface PrototypeState {
-  storageVersion: 1;
+  storageVersion: 4;
   project: {
     projectId: string;
     displayName: string;
@@ -95,6 +183,8 @@ export interface PrototypeState {
     status: CompilerStatus;
     artifacts: CompilerArtifact[];
   };
+  agent: PrototypeAgentState;
+  reasoning: PrototypeReasoningState;
 }
 
 const defaultEvents: DraftEvent[] = [
@@ -194,7 +284,7 @@ const defaultIssues: PrototypeIssue[] = [
 
 export function createDefaultPrototypeState(): PrototypeState {
   return {
-    storageVersion: 1,
+    storageVersion: 4,
     project: {
       projectId: "CF-017",
       displayName: "空间站不断重启",
@@ -281,6 +371,118 @@ export function createDefaultPrototypeState(): PrototypeState {
         },
       ],
     },
+    agent: {
+      status: "idle",
+      taskId: "",
+      threadId: "",
+      taskLabel: "",
+      instruction: "",
+      taskType: "custom",
+      sourceThreadId: "",
+      mutationTask: false,
+      baseRevision: 18,
+      progress: 0,
+      stage: "等待任务",
+      readObjectIds: [],
+      findings: [],
+      changes: [],
+      history: [
+        {
+          id: "THREAD-0041",
+          label: "谜底闭环审查",
+          taskType: "audit",
+          instruction: "审查整个 Draft 的唯一根因与信息回收闭环。",
+          baseRevision: 17,
+          status: "completed",
+          summary: "确认唯一根因成立，记录 2 项信息回收建议。",
+          findings: [
+            "唯一根因与四条证据链保持一致。",
+            "INFO-2107 仍需要更明确的回收事件。",
+          ],
+          objectIds: ["CF-017", "EVL-1823", "INFO-2107", "BR-1800"],
+          changeCount: 0,
+          validatorRunId: "VAL-0017",
+          createdAt: "今天 10:18",
+          updatedAt: "今天 10:23",
+          updatedOrder: 41,
+          favorite: true,
+          archived: false,
+        },
+        {
+          id: "THREAD-0040",
+          label: "第五人权限链补全",
+          taskType: "gaps",
+          instruction: "补全第五人权限记录的获得、隐藏与回收链路。",
+          baseRevision: 16,
+          outcomeRevision: 17,
+          status: "completed",
+          summary: "采纳 2 项变更并通过 VAL-0017。",
+          findings: ["权限记录的获取顺序需要与角色可见范围同步。"],
+          objectIds: ["EVL-1823", "EVL-1825", "INFO-2107"],
+          changeCount: 2,
+          validatorRunId: "VAL-0017",
+          createdAt: "昨天 18:42",
+          updatedAt: "昨天 18:51",
+          updatedOrder: 40,
+          favorite: false,
+          archived: false,
+        },
+        {
+          id: "THREAD-0039",
+          label: "阶段 03 时间锚点复核",
+          taskType: "flow",
+          instruction: "只读检查阶段 03 的时间锚点与事件顺序。",
+          baseRevision: 16,
+          status: "cancelled",
+          summary: "任务在梳理知识状态阶段由用户取消。",
+          findings: [],
+          objectIds: ["EVL-1812", "PHASE-03"],
+          changeCount: 0,
+          createdAt: "昨天 16:12",
+          updatedAt: "昨天 16:14",
+          updatedOrder: 39,
+          favorite: false,
+          archived: false,
+        },
+        {
+          id: "THREAD-0038",
+          label: "角色信息公平性检查",
+          taskType: "audit",
+          instruction: "检查四名角色的信息获取路径是否公平。",
+          baseRevision: 15,
+          status: "failed",
+          summary: "读取角色知识状态时中断，等待重新运行。",
+          findings: ["AI-7712 的阶段 04 知识状态未完成读取。"],
+          objectIds: ["AI-7712", "EVL-1823"],
+          changeCount: 0,
+          createdAt: "7 月 25 日 14:08",
+          updatedAt: "7 月 25 日 14:10",
+          updatedOrder: 38,
+          favorite: false,
+          archived: false,
+        },
+        {
+          id: "THREAD-0037",
+          label: "循环重启线索回收",
+          taskType: "patch",
+          instruction: "为状态回滚事件补上线索消费关系。",
+          baseRevision: 14,
+          outcomeRevision: 15,
+          status: "completed",
+          summary: "变更集已写入 REV.15，历史结论已归档。",
+          findings: ["舱外脚印需要关联到状态回滚事件。"],
+          objectIds: ["EVL-1825", "INFO-4402"],
+          changeCount: 1,
+          validatorRunId: "VAL-0015",
+          createdAt: "7 月 24 日 11:31",
+          updatedAt: "7 月 24 日 11:38",
+          updatedOrder: 37,
+          favorite: false,
+          archived: true,
+        },
+      ],
+    },
+    reasoning: createDefaultReasoningState(18),
   };
 }
 
@@ -295,4 +497,58 @@ export function hasBlockingIssue(state: PrototypeState): boolean {
 export function canCompilePrototype(state: PrototypeState): boolean {
   return state.validation.status === "fresh" && !hasBlockingIssue(state);
 }
-import type { ValidationIssue } from "@casefile/contracts";
+
+export function isDraftReadOnly(state: PrototypeState): boolean {
+  return state.agent.status === "running" && state.agent.mutationTask;
+}
+
+export function isTerminalAgentThread(thread: AgentThread): boolean {
+  return (
+    thread.status === "completed" ||
+    thread.status === "cancelled" ||
+    thread.status === "failed"
+  );
+}
+
+export function agentThreadNeedsAttention(thread: AgentThread): boolean {
+  return thread.status === "review" || thread.status === "failed";
+}
+
+export function agentThreadMatchesQuery(
+  thread: AgentThread,
+  query: string,
+): boolean {
+  const normalized = query.trim().toLocaleLowerCase("zh-CN");
+  if (!normalized) return true;
+  return [
+    thread.id,
+    thread.label,
+    thread.instruction,
+    thread.summary,
+    thread.taskType,
+    `REV.${thread.baseRevision}`,
+    thread.outcomeRevision ? `REV.${thread.outcomeRevision}` : "",
+    thread.validatorRunId ?? "",
+    ...thread.findings,
+    ...thread.objectIds,
+  ]
+    .join(" ")
+    .toLocaleLowerCase("zh-CN")
+    .includes(normalized);
+}
+
+export function sortAgentThreads(threads: AgentThread[]): AgentThread[] {
+  const statusRank = (thread: AgentThread) => {
+    if (thread.status === "running") return 0;
+    if (thread.status === "review") return 1;
+    if (thread.status === "failed") return 2;
+    if (thread.favorite) return 3;
+    return 4;
+  };
+
+  return [...threads].sort(
+    (left, right) =>
+      statusRank(left) - statusRank(right) ||
+      right.updatedOrder - left.updatedOrder,
+  );
+}

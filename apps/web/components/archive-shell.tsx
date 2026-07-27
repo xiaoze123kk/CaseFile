@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { type ReactNode, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
+import {
+  agentThreadMatchesQuery,
+  sortAgentThreads,
+} from "@/lib/prototype-model";
 import { usePrototype } from "@/store/prototype-store";
 
 const modules = [
@@ -25,7 +29,8 @@ const modules = [
     no: "03",
     label: "推理实验室",
     code: "REASONING LAB",
-    status: "规划",
+    href: "/reasoning",
+    status: "可用",
   },
   {
     no: "04",
@@ -64,9 +69,22 @@ function isModuleActive(pathname: string, href?: string) {
 
 export function ArchiveShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { state, reset } = usePrototype();
   const [notice, setNotice] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+
+  const matchingThreads = useMemo(() => {
+    const visibleThreads = sortAgentThreads(
+      state.agent.history.filter(
+        (thread) =>
+          !thread.archived &&
+          agentThreadMatchesQuery(thread, commandQuery),
+      ),
+    );
+    return visibleThreads.slice(0, commandQuery.trim() ? 6 : 3);
+  }, [commandQuery, state.agent.history]);
 
   useEffect(() => {
     function handleKeyboard(event: KeyboardEvent) {
@@ -91,11 +109,26 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
     }
   }
 
+  function openAgentThread(threadId: string) {
+    setCommandOpen(false);
+    const hash = `#agent-thread=${encodeURIComponent(threadId)}`;
+    if (pathname === "/workbench") {
+      window.history.replaceState(null, "", `/workbench${hash}`);
+      window.dispatchEvent(
+        new CustomEvent("casefile:open-agent-thread", {
+          detail: { threadId },
+        }),
+      );
+      return;
+    }
+    router.push(`/workbench${hash}`);
+  }
+
   return (
     <div className="archive-app">
       <aside className="side-rail">
         <Link className="archive-brand" href="/" aria-label="CaseFile 首页">
-          <span className="brand-mark">CF</span>
+          <span className="brand-mark" aria-hidden="true" />
           <span>
             <strong>CaseFile</strong>
             <small>推理卷宗</small>
@@ -165,10 +198,25 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
           >
             <span>◇</span> 项目设置
           </button>
-          <div className="system-seal">
-            <span>CASEFILE / SCHEMA 0.1.0</span>
-            <strong>LOCAL PROTOTYPE</strong>
-          </div>
+          <button
+            aria-label="打开当前用户菜单"
+            className="user-card"
+            onClick={() =>
+              setNotice("当前为秦彻的本地个人空间；账户与偏好设置将在后续版本接入。")
+            }
+            type="button"
+          >
+            <span aria-hidden="true" className="user-avatar">
+              秦
+            </span>
+            <span className="user-summary">
+              <strong>秦彻</strong>
+              <small>本地个人空间 · OWNER</small>
+            </span>
+            <span aria-hidden="true" className="user-menu-mark">
+              •••
+            </span>
+          </button>
         </div>
       </aside>
 
@@ -180,7 +228,7 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
             type="button"
           >
             <span className="search-icon" aria-hidden="true" />
-            <span>搜索对象、正文、ID、引用或命令</span>
+            <span>搜索对象、线程、ID、引用或命令</span>
             <kbd>Ctrl K</kbd>
           </button>
           <div className="utility-actions">
@@ -192,9 +240,6 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
             </button>
             <button onClick={resetPrototype} type="button">
               重置原型
-            </button>
-            <button className="operator" type="button">
-              OP / 秦
             </button>
           </div>
         </header>
@@ -227,20 +272,70 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
                 ESC
               </button>
             </header>
-            <input autoFocus placeholder="输入页面、对象 ID 或命令…" />
-            <div>
-              <Link href="/" onClick={() => setCommandOpen(false)}>
-                <b>01</b><span>返回建案中心</span><small>GO /</small>
-              </Link>
-              <Link href="/brief" onClick={() => setCommandOpen(false)}>
-                <b>02</b><span>审阅 Brief</span><small>GO /BRIEF</small>
-              </Link>
-              <Link href="/workbench" onClick={() => setCommandOpen(false)}>
-                <b>03</b><span>打开事件工作台</span><small>GO /WORKBENCH</small>
-              </Link>
-              <Link href="/quality" onClick={() => setCommandOpen(false)}>
-                <b>04</b><span>查看质量门禁</span><small>GO /QUALITY</small>
-              </Link>
+            <input
+              autoFocus
+              onChange={(event) => setCommandQuery(event.target.value)}
+              placeholder="搜索页面、线程、对象 ID、REV 或 Validator…"
+              value={commandQuery}
+            />
+            <div className="command-results">
+              <section>
+                <header>
+                  <span>页面与命令</span>
+                  <small>NAVIGATION</small>
+                </header>
+                <Link href="/" onClick={() => setCommandOpen(false)}>
+                  <b>01</b>
+                  <span>返回建案中心</span>
+                  <small>GO /</small>
+                </Link>
+                <Link href="/brief" onClick={() => setCommandOpen(false)}>
+                  <b>02</b>
+                  <span>审阅 Brief</span>
+                  <small>GO /BRIEF</small>
+                </Link>
+                <Link href="/workbench" onClick={() => setCommandOpen(false)}>
+                  <b>03</b>
+                  <span>打开事件工作台</span>
+                  <small>GO /WORKBENCH</small>
+                </Link>
+                <Link href="/reasoning" onClick={() => setCommandOpen(false)}>
+                  <b>04</b>
+                  <span>进入推理实验室</span>
+                  <small>GO /REASONING</small>
+                </Link>
+                <Link href="/quality" onClick={() => setCommandOpen(false)}>
+                  <b>05</b>
+                  <span>查看质量门禁</span>
+                  <small>GO /QUALITY</small>
+                </Link>
+              </section>
+              <section>
+                <header>
+                  <span>协作线程</span>
+                  <small>{matchingThreads.length} MATCHES</small>
+                </header>
+                {matchingThreads.map((thread) => (
+                  <button
+                    key={thread.id}
+                    onClick={() => openAgentThread(thread.id)}
+                    type="button"
+                  >
+                    <b>TH</b>
+                    <span>
+                      <strong>{thread.label}</strong>
+                      <small>
+                        {thread.id} · REV.{thread.baseRevision} ·{" "}
+                        {thread.summary}
+                      </small>
+                    </span>
+                    <i>OPEN ↗</i>
+                  </button>
+                ))}
+                {matchingThreads.length === 0 ? (
+                  <p>没有找到匹配的协作线程。</p>
+                ) : null}
+              </section>
             </div>
           </section>
         </div>

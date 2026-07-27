@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   CaseSpine,
@@ -9,9 +9,14 @@ import {
   PanelHeader,
   StatusBadge,
 } from "@/components/prototype-ui";
-import type { DraftEvent } from "@/lib/prototype-model";
+import {
+  agentThreadNeedsAttention,
+  type DraftEvent,
+  isDraftReadOnly,
+} from "@/lib/prototype-model";
 import { usePrototype } from "@/store/prototype-store";
 
+import { AgentCollaborationDrawer } from "./agent-collaboration-drawer";
 import styles from "./workbench-page.module.css";
 
 type TimelineMode = "clock" | "narrative" | "list";
@@ -62,6 +67,12 @@ function eventMarker(event: DraftEvent, mode: TimelineMode) {
 export function WorkbenchPage() {
   const { state, dispatch, ready } = usePrototype();
   const [mode, setMode] = useState<TimelineMode>("clock");
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentPinned, setAgentPinned] = useState(false);
+  const [requestedAgentThreadId, setRequestedAgentThreadId] = useState<
+    string | null
+  >(null);
+  const [agentRequestToken, setAgentRequestToken] = useState(0);
 
   const selectedEvent =
     state.draft.events.find(
@@ -84,12 +95,149 @@ export function WorkbenchPage() {
     );
   }, [mode, state.draft.events]);
 
+  useEffect(() => {
+    if (state.agent.status !== "running") return;
+
+    if (state.agent.progress < 34) {
+      const timer = window.setTimeout(
+        () =>
+          dispatch({
+            type: "update-agent-task",
+            progress: 34,
+            stage: "梳理事件与知识状态",
+            readObjectIds: [
+              "CF-017",
+              "DRAFT-CURRENT",
+              "EVL-1800",
+              "EVL-1812",
+              "EVL-1823",
+              "EVL-1825",
+            ],
+          }),
+        520,
+      );
+      return () => window.clearTimeout(timer);
+    }
+
+    if (state.agent.progress < 68) {
+      const timer = window.setTimeout(
+        () =>
+          dispatch({
+            type: "update-agent-task",
+            progress: 68,
+            stage: "检查因果与信息流",
+            readObjectIds: [
+              "CF-017",
+              "DRAFT-CURRENT",
+              "EVL-1800",
+              "EVL-1812",
+              "EVL-1823",
+              "EVL-1825",
+              "INFO-2107",
+              "AI-7712",
+              "BR-1800",
+            ],
+          }),
+        620,
+      );
+      return () => window.clearTimeout(timer);
+    }
+
+    if (state.agent.progress < 92) {
+      const timer = window.setTimeout(
+        () =>
+          dispatch({
+            type: "update-agent-task",
+            progress: 92,
+            stage: state.agent.mutationTask
+              ? "组织结构化变更集"
+              : "组织全局分析结论",
+            readObjectIds: [
+              "CF-017",
+              "DRAFT-CURRENT",
+              ...state.draft.events.map((event) => event.id),
+              "INFO-2107",
+              "AI-7712",
+              "BR-1800",
+              "VAL-KNOW-001",
+              "VAL-TIME-006",
+              "VAL-CLUE-014",
+            ],
+          }),
+        680,
+      );
+      return () => window.clearTimeout(timer);
+    }
+
+    const timer = window.setTimeout(
+      () => dispatch({ type: "complete-agent-task" }),
+      760,
+    );
+    return () => window.clearTimeout(timer);
+  }, [
+    dispatch,
+    state.agent.mutationTask,
+    state.agent.progress,
+    state.agent.status,
+    state.draft.events,
+  ]);
+
+  useEffect(() => {
+    if (state.agent.status !== "validating") return;
+    const timer = window.setTimeout(() => {
+      dispatch({ type: "complete-validation" });
+      dispatch({ type: "finish-agent-validation" });
+    }, 1100);
+    return () => window.clearTimeout(timer);
+  }, [dispatch, state.agent.status]);
+
+  useEffect(() => {
+    function openThread(threadId: string | undefined) {
+      if (!threadId) return;
+      setRequestedAgentThreadId(threadId);
+      setAgentRequestToken((token) => token + 1);
+      setAgentOpen(true);
+    }
+
+    const hashEventId = window.location.hash.startsWith("#event=")
+      ? decodeURIComponent(window.location.hash.replace("#event=", ""))
+      : undefined;
+    const hashThreadId = window.location.hash.startsWith("#agent-thread=")
+      ? decodeURIComponent(window.location.hash.replace("#agent-thread=", ""))
+      : undefined;
+    const frame = hashThreadId || hashEventId
+      ? window.requestAnimationFrame(() => {
+          openThread(hashThreadId);
+          if (hashEventId) {
+            dispatch({ type: "select-event", id: hashEventId });
+          }
+        })
+      : undefined;
+
+    function handleThreadRequest(event: Event) {
+      const detail = (event as CustomEvent<{ threadId?: string }>).detail;
+      openThread(detail?.threadId);
+    }
+
+    window.addEventListener("casefile:open-agent-thread", handleThreadRequest);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener(
+        "casefile:open-agent-thread",
+        handleThreadRequest,
+      );
+    };
+  }, [dispatch]);
+
+  const draftReadOnly = isDraftReadOnly(state);
+
   function updateEvent(field: EditableEventField, value: string) {
-    if (!selectedEvent) return;
+    if (!selectedEvent || draftReadOnly) return;
     dispatch({ type: "update-event", id: selectedEvent.id, field, value });
   }
 
   function saveEvent() {
+    if (draftReadOnly) return;
     dispatch({ type: "save-event" });
   }
 
@@ -103,18 +251,64 @@ export function WorkbenchPage() {
   }
 
   const validationStale = state.validation.status !== "fresh";
+  const pendingAgentChanges = state.agent.changes.filter(
+    (change) => change.status === "pending",
+  ).length;
+  const attentionThreadCount = state.agent.history.filter(
+    agentThreadNeedsAttention,
+  ).length;
+  const agentButtonLabel =
+    state.agent.status === "running"
+      ? `Agent ${state.agent.progress}%`
+      : state.agent.status === "review"
+        ? `${pendingAgentChanges} 项待审`
+        : state.agent.status === "validating"
+          ? "Agent 验证中"
+          : attentionThreadCount
+            ? `${attentionThreadCount} 条线程待处理`
+          : state.agent.status === "completed"
+            ? "Agent 已完成"
+            : "Agent 协作";
 
   return (
-    <main className={`document ${styles.document}`}>
+    <main
+      className={`document ${styles.document} ${draftReadOnly ? styles.lockedDocument : ""}`}
+    >
       <DocumentHeader
         action={
-          <button
-            className="square-button square-button--dark"
-            onClick={saveEvent}
-            type="button"
-          >
-            保存事件
-          </button>
+          <div className={styles.headerActions}>
+            <button
+              className={`${styles.agentButton} ${
+                state.agent.status === "running" ||
+                state.agent.status === "review" ||
+                state.agent.status === "validating"
+                  ? styles.agentButtonActive
+                  : ""
+              }`}
+              onClick={() => {
+                setRequestedAgentThreadId(null);
+                setAgentRequestToken((token) => token + 1);
+                setAgentOpen(true);
+              }}
+              type="button"
+            >
+              <span aria-hidden="true">A</span>
+              <b>{agentButtonLabel}</b>
+              <small>
+                {state.agent.status === "running"
+                  ? state.agent.stage
+                  : "GLOBAL DRAFT ↗"}
+              </small>
+            </button>
+            <button
+              className="square-button square-button--dark"
+              disabled={draftReadOnly}
+              onClick={saveEvent}
+              type="button"
+            >
+              保存事件
+            </button>
+          </div>
         }
         eyebrow="ACTIVE DRAFT / EVENT DESK"
         meta={[
@@ -132,7 +326,25 @@ export function WorkbenchPage() {
 
       <CaseSpine current="draft" stale={validationStale} />
 
-      <section className={styles.workspace} aria-label="CaseFile 事件编辑工作台">
+      {draftReadOnly ? (
+        <div className={styles.lockBanner} role="status">
+          <span>READ ONLY</span>
+          <div>
+            <strong>Agent 正在基于 REV.{state.agent.baseRevision} 生成变更集</strong>
+            <small>
+              Draft 已进入只读观察模式；你仍可浏览对象，取消任务后立即恢复编辑。
+            </small>
+          </div>
+          <button onClick={() => setAgentOpen(true)} type="button">
+            查看任务 {state.agent.progress}% ↗
+          </button>
+        </div>
+      ) : null}
+
+      <section
+        aria-label="CaseFile 事件编辑工作台"
+        className={styles.workspace}
+      >
         <aside className={`paper-panel ${styles.objectPanel}`}>
           <PanelHeader
             code="OBJECT REGISTER / READ INDEX"
@@ -360,6 +572,7 @@ export function WorkbenchPage() {
             <label className={styles.wideField}>
               <span>事件标题</span>
               <input
+                disabled={draftReadOnly}
                 onChange={(event) => updateEvent("title", event.target.value)}
                 value={selectedEvent.title}
               />
@@ -370,6 +583,7 @@ export function WorkbenchPage() {
                 <span>真实时间</span>
                 <input
                   aria-label="真实时间"
+                  disabled={draftReadOnly}
                   onChange={(event) => updateEvent("time", event.target.value)}
                   type="time"
                   value={selectedEvent.time}
@@ -378,6 +592,7 @@ export function WorkbenchPage() {
               <label>
                 <span>重要级别</span>
                 <select
+                  disabled={draftReadOnly}
                   onChange={(event) =>
                     updateEvent("importance", event.target.value)
                   }
@@ -393,6 +608,7 @@ export function WorkbenchPage() {
             <label className={styles.wideField}>
               <span>叙事阶段</span>
               <input
+                disabled={draftReadOnly}
                 onChange={(event) => updateEvent("phase", event.target.value)}
                 value={selectedEvent.phase}
               />
@@ -401,6 +617,7 @@ export function WorkbenchPage() {
             <label className={styles.wideField}>
               <span>事件描述</span>
               <textarea
+                disabled={draftReadOnly}
                 onChange={(event) =>
                   updateEvent("description", event.target.value)
                 }
@@ -412,6 +629,7 @@ export function WorkbenchPage() {
             <label className={styles.wideField}>
               <span>发生地点</span>
               <input
+                disabled={draftReadOnly}
                 onChange={(event) => updateEvent("location", event.target.value)}
                 value={selectedEvent.location}
               />
@@ -420,6 +638,7 @@ export function WorkbenchPage() {
             <label className={styles.wideField}>
               <span>参与对象</span>
               <input
+                disabled={draftReadOnly}
                 onChange={(event) =>
                   updateEvent("participants", event.target.value)
                 }
@@ -431,6 +650,7 @@ export function WorkbenchPage() {
               <span>可见范围 / KNOWLEDGE SCOPE</span>
               <select
                 className={selectedIssue ? styles.issueField : undefined}
+                disabled={draftReadOnly}
                 onChange={(event) =>
                   updateEvent("visibility", event.target.value)
                 }
@@ -469,13 +689,26 @@ export function WorkbenchPage() {
                 LAST SAVE
                 <strong>{state.draft.lastSavedAt}</strong>
               </span>
-              <button className="square-button square-button--red" type="submit">
+              <button
+                className="square-button square-button--red"
+                disabled={draftReadOnly}
+                type="submit"
+              >
                 保存 REV.{state.draft.revision}
               </button>
             </footer>
           </form>
         </aside>
       </section>
+
+      <AgentCollaborationDrawer
+        key={`${requestedAgentThreadId ?? "collaboration"}-${agentRequestToken}`}
+        onClose={() => setAgentOpen(false)}
+        onTogglePin={() => setAgentPinned((value) => !value)}
+        open={agentOpen}
+        pinned={agentPinned}
+        requestedThreadId={requestedAgentThreadId}
+      />
     </main>
   );
 }

@@ -70,7 +70,7 @@
 
 .routeRow strong {
   overflow: hidden;
-  font-size: 9px;
+  font-size: var(--font-body-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -79,7 +79,7 @@
   margin-top: 2px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -87,7 +87,7 @@
 .routeRow em {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   font-style: normal;
 }
 
@@ -102,7 +102,7 @@
   place-items: center;
   border: 1px solid var(--rule);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .routeRowActive .routeCode {
@@ -123,7 +123,7 @@
   overflow: hidden;
   color: var(--ink-muted);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--font-caption);
   line-height: 1.6;
 }
 
@@ -166,12 +166,12 @@
   border-top: 1px solid var(--ink);
   border-radius: 0;
   background: var(--paper);
-  font-size: 8px;
+  font-size: var(--font-ui);
 }
 
 .agentTrigger b {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .agentTrigger:hover:not(:disabled) {
@@ -205,7 +205,7 @@
 
 .recentCaseBody strong {
   overflow: hidden;
-  font-size: 8px;
+  font-size: var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -213,13 +213,13 @@
 .recentCaseBody small {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .recentCaseBody > b {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 14px;
+  font-size: var(--font-heading);
 }
 
 .miniOrbit {
@@ -255,14 +255,14 @@
   padding: 0 11px;
   color: var(--ink-muted);
   border-top: 1px solid var(--hairline);
-  font-size: 6px;
+  font-size: var(--font-caption);
   text-decoration: none;
 }
 
 .openRecent b {
   color: var(--ink);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .openRecent:hover,
@@ -409,7 +409,7 @@
   z-index: 2;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.11em;
 }
 
@@ -438,7 +438,7 @@
   margin-bottom: 9px;
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6.5px;
+  font-size: var(--font-caption);
   font-weight: 700;
   letter-spacing: 0.12em;
 }
@@ -461,7 +461,7 @@
   color: var(--ink-muted);
   border: 1px solid var(--hairline);
   background: rgba(250, 250, 245, 0.85);
-  font-size: 7.5px;
+  font-size: var(--font-label);
 }
 
 .recordComparison {
@@ -494,7 +494,7 @@
   color: var(--ink-muted);
   border-bottom: 1px solid var(--hairline);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   letter-spacing: 0.08em;
 }
 
@@ -502,7 +502,7 @@
   margin: 10px 12px 0;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   letter-spacing: 0.08em;
 }
 
@@ -517,7 +517,7 @@
   border-radius: 0;
   outline: none;
   background: transparent;
-  font-size: clamp(12px, 1.05vw, 16px);
+  font-size: clamp(14px, 1.05vw, 16px);
   font-weight: 620;
   line-height: 1.65;
 }
@@ -534,7 +534,7 @@
   color: var(--ink-faint);
   border-top: 1px solid var(--hairline);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
 }
 
 .recordActions {
@@ -549,7 +549,7 @@
   border-radius: 0;
   background: transparent;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .recordActions button:first-child {
@@ -591,7 +591,7 @@
   flex: 1;
   margin: 0;
   padding: 15px 13px 10px;
-  font-size: 10px;
+  font-size: var(--font-body);
   font-weight: 620;
   line-height: 1.65;
 }
@@ -609,12 +609,12 @@
 .candidateNote b {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.08em;
 }
 
 .candidateNote span {
-  font-size: 6.5px;
+  font-size: var(--font-caption);
 }
 
 .suggestionRecord > footer {
@@ -629,7 +629,7 @@
   border-radius: 0;
   background: transparent;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .suggestionRecord > footer button:first-child {
@@ -664,18 +664,18 @@
   border: 1px solid var(--rule);
   border-radius: 50%;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 14px;
+  font-size: var(--font-heading);
 }
 
 .emptyCandidate strong {
   color: var(--ink-muted);
-  font-size: 9px;
+  font-size: var(--font-body-sm);
 }
 
 .emptyCandidate p {
   max-width: 190px;
   margin: 5px auto 0;
-  font-size: 6.5px;
+  font-size: var(--font-caption);
   line-height: 1.5;
 }
 
@@ -688,7 +688,7 @@
   border-top: 1px solid var(--rule);
   background: rgba(244, 244, 239, 0.96);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .documentFooter b {
@@ -756,13 +756,13 @@
 .briefSheetHead span {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   letter-spacing: 0.09em;
 }
 
 .briefSheetHead strong {
   margin-top: 3px;
-  font-size: 11px;
+  font-size: var(--font-heading-sm);
 }
 
 .candidateStamp {
@@ -780,7 +780,7 @@
 .candidateStamp b {
   color: inherit;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .candidateStampApproved {
@@ -830,7 +830,7 @@
   color: white;
   background: var(--ink);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 6px;
+  font-size: var(--font-caption);
   font-style: normal;
 }
 
@@ -840,13 +840,13 @@
 }
 
 .briefFieldHead strong {
-  font-size: 9px;
+  font-size: var(--font-body-sm);
 }
 
 .briefFieldHead small {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.08em;
 }
 
@@ -856,7 +856,7 @@
   border: 1px solid var(--red-line);
   background: var(--red-soft);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5px;
+  font-size: var(--font-micro);
   font-style: normal;
   white-space: nowrap;
 }
@@ -870,7 +870,7 @@
   border-radius: 0;
   outline: none;
   background: transparent;
-  font-size: clamp(10px, 0.86vw, 13px);
+  font-size: clamp(12px, 0.86vw, 14px);
   font-weight: 620;
   line-height: 1.55;
 }
@@ -886,7 +886,7 @@
   color: var(--ink-faint);
   border-top: 1px solid var(--hairline);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
 }
 
 .fieldFoot b {
@@ -924,14 +924,14 @@
 
 .sourceLedger b {
   color: var(--red);
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .sourceLedger small {
   margin-top: 2px;
   overflow: hidden;
   color: var(--ink-faint);
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -958,13 +958,13 @@
 .decisionHead span {
   color: #b8b9b4;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   letter-spacing: 0.1em;
 }
 
 .decisionHead h2 {
   margin: 5px 0 0;
-  font-size: 13px;
+  font-size: var(--font-heading);
 }
 
 .decisionHead > strong {
@@ -1016,20 +1016,20 @@
 }
 
 .decisionList strong {
-  font-size: 7.5px;
+  font-size: var(--font-label);
 }
 
 .decisionList small {
   margin-top: 2px;
   color: var(--ink-faint);
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   line-height: 1.4;
 }
 
 .decisionList label > b {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
 }
 
 .decisionChecked {
@@ -1063,17 +1063,17 @@
 .constraintsSection li > span {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
 }
 
 .constraintsSection li > strong {
-  font-size: 6.5px;
+  font-size: var(--font-caption);
 }
 
 .constraintsSection li > i {
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   font-style: normal;
 }
 
@@ -1093,11 +1093,11 @@
 .questionsSection li b {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
 }
 
 .questionsSection li span {
-  font-size: 6.5px;
+  font-size: var(--font-caption);
   line-height: 1.35;
 }
 
@@ -1114,7 +1114,7 @@
   justify-content: space-between;
   padding: 4px 0;
   border-bottom: 1px solid var(--hairline);
-  font-size: 6px;
+  font-size: var(--font-caption);
 }
 
 .provenanceSummary > div:last-child {
@@ -1128,7 +1128,7 @@
 .provenanceSummary strong {
   color: var(--red);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
 }
 
 .briefActions {
@@ -1148,14 +1148,14 @@
 
 .briefActions > div span {
   color: var(--red);
-  font-size: 7px;
+  font-size: var(--font-label);
 }
 
 .briefActions > div b {
   margin-top: 1px;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 5.5px;
+  font-size: var(--font-micro);
   font-weight: 500;
 }
 
@@ -1171,7 +1171,7 @@
   border-radius: 0;
   background: transparent;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 7px;
+  font-size: var(--font-label);
   text-decoration: none;
 }
 
@@ -1194,7 +1194,7 @@
 }
 
 .briefActions > button b {
-  font-size: 12px;
+  font-size: var(--font-heading-sm);
 }
 
 @media (max-width: 1320px) {

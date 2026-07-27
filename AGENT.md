@@ -23,7 +23,7 @@
 | `AGENTS.md` | coding agent 自动发现入口，只负责要求读取本文。 |
 | `AGENT.md` | 本职责地图和所有代码落位规则的人工维护源。 |
 | `package.json` | monorepo 的前端与跨语言契约统一命令和开发工具依赖；不放后端业务运行依赖。 |
-| `pnpm-workspace.yaml` | pnpm workspace 范围和依赖构建白名单。 |
+| `pnpm-workspace.yaml` | pnpm workspace 范围、依赖构建白名单和跨包兼容性 override。 |
 | `pnpm-lock.yaml` | JavaScript/TypeScript 工具与 workspace 依赖的可复现锁文件。 |
 | `infra/compose/docker-compose.yml` | 仅绑定回环地址的 PostgreSQL 18 开发库与独立 `_test` 测试库。 |
 | `scripts/bootstrap.ps1` | 幂等准备本地 `.env`、两个 PostgreSQL 容器、开发库迁移、28 表/head 验证，以及可选开发用户种子。 |
@@ -98,17 +98,20 @@
 |---|---|
 | `apps/web/package.json`、`next.config.ts`、`tsconfig.json`、`eslint.config.mjs`、`vitest.config.mts` | React/Next.js 前端的运行、类型、Lint、测试和构建配置。 |
 | `apps/web/app/layout.tsx`、`app/globals.css` | App Router 根布局、Prototype Provider 挂载和“数字档案纸”全局设计令牌。 |
-| `apps/web/app/page.tsx`、`app/brief/page.tsx`、`app/workbench/page.tsx`、`app/quality/page.tsx` | 建案、Brief、工作台、质量/编译四个路由壳；只组装对应 Feature Screen。 |
-| `apps/web/components/archive-shell.tsx` | 全站侧栏、模块导航、工具栏、命令面板、规划入口说明和本地重置入口。 |
+| `apps/web/app/page.tsx`、`app/brief/page.tsx`、`app/workbench/page.tsx`、`app/reasoning/page.tsx`、`app/quality/page.tsx` | 建案、Brief、工作台、推理实验室、质量/编译五个路由壳；只组装对应 Feature Screen。 |
+| `apps/web/components/archive-shell.tsx` | 全站侧栏、模块导航、品牌入口、可检索协作线程的命令面板、规划入口说明和本地重置入口。 |
+| `apps/web/public/casefile-brand.png` | 用户确认并按导航栏尺寸优化的 CaseFile 品牌位图；由前端品牌容器居中裁切展示。 |
 | `apps/web/components/prototype-ui.tsx` | Case Spine、文档头、面板头、状态徽记等跨业务设计系统组件。 |
 | `apps/web/features/intake/` | 原始创意、Agent 独立润色候选、来源账本、Brief 编辑和人工批准流程。 |
-| `apps/web/features/workbench/` | CaseFile 对象索引、事件时间线、事件检查器和编辑后验证过期状态。 |
+| `apps/web/features/workbench/` | CaseFile 对象索引、事件时间线、事件检查器，以及绑定 Draft Revision 的 Agent 全局协作抽屉、只读任务锁、结构化变更集审阅和可搜索/收藏/归档的线程索引。 |
+| `apps/web/features/reasoning/` | 推理实验室的整卷生成态、路径总览、React Flow 聚焦画布、候选审阅器和来源回跳交互。 |
 | `apps/web/features/quality/` | ValidationIssue 筛选、确定性证据链、PatchCandidate 人工审阅和显式重新验证。 |
 | `apps/web/features/benchmark/` | Benchmark 配置、运行与结果界面。 |
 | `apps/web/features/simulation/` | 玩家模拟配置、运行进度和报告。 |
 | `apps/web/features/compiler/` | 固定快照编译门禁、目标配置、产物清单和本地构建状态。 |
 | `apps/web/features/tasks/` | 长任务、重试、取消、恢复和用量展示。 |
 | `apps/web/lib/prototype-model.ts` | 仅供本地原型使用的状态模型、样例数据和编译门禁纯函数；正式服务端契约继续来自 `@casefile/contracts`。 |
+| `apps/web/lib/reasoning-prototype.ts` | 推理实验室本地 Fixture、推理路径/节点/边/候选模型与纯查询函数；不承担 React UI。 |
 | `apps/web/lib/` | 后续生成 Client 配置、Query Client、SSE 和格式化器等无 UI 基础设施。 |
 | `apps/web/store/prototype-store.tsx` | `useReducer` + LocalStorage 的原型状态闭环；接入真实 API 后不得复制服务端查询状态。 |
 | `apps/web/tests/` | 原型状态迁移、失败门禁和后续前端组件测试。 |
