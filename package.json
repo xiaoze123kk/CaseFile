@@ -1,0 +1,19 @@
+{
+  "name": "casefile",
+  "private": true,
+  "scripts": {
+    "generate:contracts": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/generate-contracts.ps1",
+    "check:contracts": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-contracts.ps1",
+    "dev:web": "pnpm --filter @casefile/web dev",
+    "build:web": "pnpm --filter @casefile/web build",
+    "check:web": "pnpm --filter @casefile/web check"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "json-schema-to-typescript": "15.0.4",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2"
+  }
+}

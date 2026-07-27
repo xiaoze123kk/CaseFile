@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/editing-contracts.schema.json",
+  "title": "EditingContracts",
+  "description": "Code-generation aggregate for the CaseFile editing loop.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["casefile", "validation_issue", "patch_candidate"],
+  "properties": {
+    "casefile": {"$ref": "casefile/casefile.schema.json"},
+    "validation_issue": {"$ref": "validation/validation-issue.schema.json"},
+    "patch_candidate": {"$ref": "casefile/patch-candidate.schema.json"}
+  }
+}

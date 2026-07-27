@@ -1,0 +1,5 @@
+{
+  "base_fixture": "../../casefiles/restart_loop.casefile.json",
+  "mutation": {"op": "remove", "path": "/title"},
+  "expected_error_path": "/"
+}

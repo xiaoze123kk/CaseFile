@@ -9,6 +9,7 @@
 
 # Dependencies, virtual environments, and generated caches.
 /node_modules/
+/.next/
 /.obsidian/
 /.ruff_cache/
 **/.venv/

@@ -1,0 +1,75 @@
+{
+  "fixture_group": "casefile_core_invariants_v1",
+  "note": "这些场景应保持 JSON Schema 合法，由后续确定性 Validator 或版本服务判定。",
+  "scenarios": [
+    {
+      "fixture_id": "semantic_dangling_reference",
+      "invariant_id": "CF-I-001",
+      "description": "对象引用指向当前版本不存在的 Entity。",
+      "base_casefile": "../../casefiles/restart_loop.casefile.json",
+      "mutation": {"op": "replace", "path": "/events/0/participant_refs/0/object_id", "value": "ent_missing"}
+    },
+    {
+      "fixture_id": "semantic_event_end_before_start",
+      "invariant_id": "CF-I-002",
+      "description": "事件结束时间早于开始时间。",
+      "base_casefile": "../../casefiles/restart_loop.casefile.json",
+      "mutation": {"op": "replace", "path": "/events/0/time/end", "value": "2042-06-01T19:59:00+08:00"}
+    },
+    {
+      "fixture_id": "semantic_patch_touches_hard_lock",
+      "invariant_id": "CF-I-003",
+      "description": "Agent Patch 修改硬锁定 ResolutionSpec 的 accepted_answers。",
+      "patch_fixture": "../../editing/patch_candidate.json",
+      "locked_target_ref": {"object_type": "resolution_spec", "object_id": "res_root_cause"},
+      "locked_path": "/accepted_answers"
+    },
+    {
+      "fixture_id": "semantic_canon_without_approval",
+      "invariant_id": "CF-I-004",
+      "description": "Canon 冻结请求缺少批准记录。",
+      "scenario": {"source_snapshot_id": "snapshot_restart_loop_2", "approval_id": null}
+    },
+    {
+      "fixture_id": "semantic_target_field_pollution",
+      "invariant_id": "CF-I-005",
+      "description": "Target 特有字段被放入已允许的扩展命名空间但参与核心逻辑。",
+      "base_casefile": "../../casefiles/restart_loop.casefile.json",
+      "mutation": {"op": "add", "path": "/extensions/unity.target", "value": {"scene_node_id": "scene-42"}}
+    },
+    {
+      "fixture_id": "semantic_critical_claim_without_support",
+      "invariant_id": "CF-I-006",
+      "description": "关键 Claim 被标记 supported，但没有支持引用。",
+      "base_casefile": "../../casefiles/restart_loop.casefile.json",
+      "mutation": {"op": "replace", "path": "/claims/0/support_refs", "value": []}
+    },
+    {
+      "fixture_id": "semantic_resolution_strategy_missing",
+      "invariant_id": "CF-I-007",
+      "description": "结论模式没有对应的验证策略注册。",
+      "scenario": {"conclusion_mode": "open_interpretation", "registered_strategy": null}
+    },
+    {
+      "fixture_id": "semantic_ai_fact_loses_provenance",
+      "invariant_id": "CF-I-008",
+      "description": "AI 推断在合并时被当作用户确认事实。",
+      "scenario": {"source_status": "ai_inferred", "merged_status": "user_confirmed", "approval_id": null}
+    },
+    {
+      "fixture_id": "semantic_delete_with_inbound_refs",
+      "invariant_id": "CF-I-009",
+      "description": "删除 InformationUnit 前没有处理 Claim 的入向引用。",
+      "scenario": {
+        "deleted_ref": {"object_type": "information_unit", "object_id": "info_restart_log"},
+        "inbound_ref": {"object_type": "claim", "object_id": "claim_backup_trigger"}
+      }
+    },
+    {
+      "fixture_id": "semantic_canon_in_place_update",
+      "invariant_id": "CF-I-010",
+      "description": "相同 CanonVersion ID 的内容哈希发生改变。",
+      "scenario": {"version_id": "cv_restart_loop_1", "old_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "new_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+    }
+  ]
+}
