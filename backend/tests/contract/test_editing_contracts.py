@@ -84,16 +84,12 @@ def validators(
             format_checker=checker,
         ),
         "validation_issue": Draft202012Validator(
-            schemas[
-                "https://casefile.local/schemas/v1/validation/validation-issue.schema.json"
-            ],
+            schemas["https://casefile.local/schemas/v1/validation/validation-issue.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
         "patch_candidate": Draft202012Validator(
-            schemas[
-                "https://casefile.local/schemas/v1/casefile/patch-candidate.schema.json"
-            ],
+            schemas["https://casefile.local/schemas/v1/casefile/patch-candidate.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
@@ -165,7 +161,7 @@ def walk_object_refs(value: Any) -> list[dict[str, str]]:
 def test_all_schema_files_are_valid_draft_2020_12(
     schemas: dict[str, dict[str, Any]],
 ) -> None:
-    assert len(schemas) == 6
+    assert len(schemas) == 8
     for schema in schemas.values():
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         Draft202012Validator.check_schema(schema)
@@ -186,9 +182,7 @@ def test_three_casefiles_validate_and_cover_contract_foundation(
         casefile = load_json(path)
         validators["casefile"].validate(casefile)
         generated = CaseFile.model_validate(casefile)
-        roundtripped = generated.model_dump(
-            mode="json", by_alias=True, exclude_unset=True
-        )
+        roundtripped = generated.model_dump(mode="json", by_alias=True, exclude_unset=True)
         assert json.loads(json.dumps(roundtripped, ensure_ascii=False)) == casefile
 
         for resolution in casefile["resolution_specs"]:
@@ -206,9 +200,7 @@ def test_three_casefiles_validate_and_cover_contract_foundation(
                 )
 
         for object_ref in walk_object_refs(casefile):
-            assert object_ref["object_id"].startswith(
-                OBJECT_PREFIXES[object_ref["object_type"]]
-            )
+            assert object_ref["object_id"].startswith(OBJECT_PREFIXES[object_ref["object_type"]])
 
     assert len(question_types) >= 4
     assert len(conclusion_modes) >= 3
@@ -224,12 +216,10 @@ def test_validation_issue_and_patch_candidate_validate_in_both_python_layers(
 
     validators["validation_issue"].validate(issue)
     validators["patch_candidate"].validate(patch)
-    assert ValidationIssue.model_validate(issue).model_dump(
-        mode="json", exclude_unset=True
-    ) == issue
-    assert PatchCandidate.model_validate(patch).model_dump(
-        mode="json", exclude_unset=True
-    ) == patch
+    assert (
+        ValidationIssue.model_validate(issue).model_dump(mode="json", exclude_unset=True) == issue
+    )
+    assert PatchCandidate.model_validate(patch).model_dump(mode="json", exclude_unset=True) == patch
 
     operation = patch["operations"][0]
     assert operation["target_ref"]["object_id"] == "evt_restart_seven"
@@ -278,8 +268,7 @@ def test_semantic_fixtures_are_classified_but_not_schema_failures(
 def test_import_and_three_way_conflict_fixtures_preserve_provenance_and_stable_refs() -> None:
     import_fixture = load_json(FIXTURE_ROOT / "imports" / "mixed_confirmation.import.json")
     expected_statuses = {
-        fragment["expected_confirmation_status"]
-        for fragment in import_fixture["source_fragments"]
+        fragment["expected_confirmation_status"] for fragment in import_fixture["source_fragments"]
     }
     assert expected_statuses == {"user_confirmed", "ai_inferred"}
 

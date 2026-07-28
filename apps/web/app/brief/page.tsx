@@ -1,5 +1,5 @@
-import { BriefEditor } from "@/features/intake/brief-editor";
+import { BriefWorkspace } from "@/features/workflow/brief-workspace";
 
 export default function BriefPage() {
-  return <BriefEditor />;
+  return <BriefWorkspace />;
 }

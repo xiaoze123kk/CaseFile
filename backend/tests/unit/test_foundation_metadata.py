@@ -1,4 +1,4 @@
-"""Static contracts for the 28-table personal-product database metadata."""
+"""Static contracts for the 37-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -11,8 +11,11 @@ from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
     "audit_events",
+    "brief_versions",
+    "briefs",
     "canon_versions",
     "casefile_constraints",
+    "casefile_contract_refs",
     "casefile_objects",
     "casefile_refs",
     "casefiles",
@@ -34,9 +37,15 @@ EXPECTED_TABLES = {
     "reasoning_edges",
     "reasoning_nodes",
     "reasoning_paths",
+    "relationships",
     "resolution_slots",
     "resolution_specs",
+    "structure_locks",
+    "task_attempts",
+    "task_events",
+    "task_runs",
     "testimonies",
+    "user_provider_settings",
     "users",
 }
 
@@ -56,33 +65,64 @@ DEDICATED_CURRENT_TABLES = {
     "reasoning_edges",
     "reasoning_nodes",
     "reasoning_paths",
+    "relationships",
     "resolution_slots",
     "resolution_specs",
+    "structure_locks",
     "testimonies",
 }
 
 JSONB_ALLOWLIST = {
     ("audit_events", "details_jsonb"),
+    ("brief_versions", "content_jsonb"),
+    ("briefs", "draft_jsonb"),
     ("canon_versions", "content_jsonb"),
     ("casefile_constraints", "rule_jsonb"),
+    ("casefile_contract_refs", "metadata_jsonb"),
     ("casefile_objects", "source_jsonb"),
+    ("casefile_objects", "tags_jsonb"),
     ("casefile_refs", "metadata_jsonb"),
     ("draft_operations", "new_value_jsonb"),
     ("draft_operations", "old_value_jsonb"),
     ("draft_snapshots", "snapshot_jsonb"),
+    ("drafts", "content_notices_jsonb"),
+    ("drafts", "extensions_jsonb"),
+    ("entities", "aliases_jsonb"),
     ("entities", "attributes_jsonb"),
+    ("entities", "capabilities_jsonb"),
+    ("entities", "goals_jsonb"),
+    ("entities", "secrets_jsonb"),
     ("entities", "traits_jsonb"),
     ("events", "end_time_jsonb"),
     ("events", "start_time_jsonb"),
+    ("events", "time_jsonb"),
     ("hypotheses", "exclusion_rule_jsonb"),
+    ("information_units", "acquisition_conditions_jsonb"),
+    ("locations", "access_rules_jsonb"),
     ("locations", "geo_jsonb"),
     ("locations", "movement_rules_jsonb"),
+    ("locations", "visibility_rules_jsonb"),
+    ("narrative_phases", "allowed_action_types_jsonb"),
+    ("narrative_phases", "completion_conditions_jsonb"),
+    ("narrative_phases", "entry_conditions_jsonb"),
     ("narrative_phases", "release_rule_jsonb"),
     ("projects", "profile_jsonb"),
     ("reasoning_edges", "attributes_jsonb"),
     ("reasoning_nodes", "attributes_jsonb"),
     ("resolution_slots", "value_jsonb"),
+    ("resolution_specs", "accepted_answer_texts_jsonb"),
     ("resolution_specs", "conclusion_pattern_jsonb"),
+    ("resolution_specs", "fairness_requirements_jsonb"),
+    ("structure_locks", "field_paths_jsonb"),
+    ("task_attempts", "candidate_jsonb"),
+    ("task_attempts", "error_details_jsonb"),
+    ("task_attempts", "usage_jsonb"),
+    ("task_attempts", "validation_errors_jsonb"),
+    ("task_events", "payload_jsonb"),
+    ("task_runs", "budget_jsonb"),
+    ("task_runs", "error_details_jsonb"),
+    ("task_runs", "usage_jsonb"),
+    ("user_provider_settings", "default_budget_jsonb"),
 }
 
 EXPECTED_UNIQUES = {
@@ -102,10 +142,13 @@ EXPECTED_UNIQUES = {
     "uq_knowledge_entries_state_information",
     "uq_reasoning_nodes_path_key",
     "uq_reasoning_edges_argument",
-    "uq_resolution_specs_draft_id",
     "uq_resolution_slots_spec_key",
     "uq_draft_snapshots_draft_id_snapshot_revision",
     "uq_canon_versions_source_snapshot_id",
+    "uq_briefs_project_id",
+    "uq_task_events_run_sequence_no",
+    "uq_task_runs_project_id_id",
+    "uq_user_provider_settings_user_provider",
 }
 
 EXPECTED_FOREIGN_KEYS = {
@@ -127,6 +170,9 @@ EXPECTED_FOREIGN_KEYS = {
     "fk_reasoning_edges_from_node",
     "fk_reasoning_edges_to_node",
     "fk_casefile_constraints_target_object",
+    "fk_task_events_project_task_run_task_runs",
+    "fk_task_runs_project_brief_version_brief_versions",
+    "fk_task_runs_project_casefile_draft_drafts",
 }
 
 
@@ -139,15 +185,15 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_28_personal_tables() -> None:
+def test_metadata_contains_exactly_the_37_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 28
+    assert len(models.__all__) == 37
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns
     }
-    forbidden_fragments = ("workspace", "membership", "team_role", "public_id")
+    forbidden_fragments = ("workspace", "membership", "team_role")
     assert not any(
         fragment in name
         for fragment in forbidden_fragments
@@ -168,7 +214,7 @@ def test_every_table_uses_bigint_identity_and_every_relation_key_is_bigint() -> 
         for foreign_key in table.foreign_keys:
             assert isinstance(foreign_key.parent.type, sa.BigInteger)
 
-    for table_name in EXPECTED_TABLES - {"users", "projects"}:
+    for table_name in EXPECTED_TABLES - {"users", "projects", "user_provider_settings"}:
         assert "project_id" in Base.metadata.tables[table_name].c
     for table_name in DEDICATED_CURRENT_TABLES:
         assert {"project_id", "casefile_id", "draft_id"} <= set(

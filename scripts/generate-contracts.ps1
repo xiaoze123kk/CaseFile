@@ -8,6 +8,8 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repoRoot "backend"
 $schemaRoot = Join-Path $repoRoot "contracts\schemas"
 $schemaEntry = Join-Path $schemaRoot "editing-contracts.schema.json"
+$runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v1"
+$runtimePythonRoot = Join-Path $backendRoot "src\casefile_contracts"
 $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
@@ -71,14 +73,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "Python contract generation failed."
 }
 
+foreach ($generatedPythonFile in Get-ChildItem -LiteralPath $pythonPackage -Filter "*.py") {
+    $generatedContent = [System.IO.File]::ReadAllText($generatedPythonFile.FullName)
+    Write-GeneratedFile `
+        -Path $generatedPythonFile.FullName `
+        -Content ("# ruff: noqa: E501, I001`n" + $generatedContent)
+}
+
 $publicModule = @'
 # generated from contracts/schemas; DO NOT EDIT BY HAND.
 
+from ._internal import AgentGenerateRequest, AgentGenerateResult, TaskEvent, TaskRun
+from .brief import Schema as Brief
 from .casefile import Schema as CaseFile
 from .patch_candidate import Schema as PatchCandidate
 from .validation_issue import Schema as ValidationIssue
 
-__all__ = ["CaseFile", "PatchCandidate", "ValidationIssue"]
+__all__ = [
+    "AgentGenerateRequest",
+    "AgentGenerateResult",
+    "Brief",
+    "CaseFile",
+    "PatchCandidate",
+    "TaskEvent",
+    "TaskRun",
+    "ValidationIssue",
+]
 '@
 Write-GeneratedFile -Path (Join-Path $pythonPackage "public.py") -Content $publicModule
 
@@ -86,9 +106,14 @@ $initPath = Join-Path $pythonPackage "__init__.py"
 $initContent = [System.IO.File]::ReadAllText($initPath)
 $initContent += @'
 
-from .public import CaseFile, PatchCandidate, ValidationIssue
+from .public import (
+    Brief,
+    CaseFile,
+    PatchCandidate,
+    ValidationIssue,
+)
 
-__all__ += ["CaseFile", "PatchCandidate", "ValidationIssue"]
+__all__ += ["Brief", "CaseFile", "PatchCandidate", "ValidationIssue"]
 '@
 Write-GeneratedFile -Path $initPath -Content $initContent
 Write-GeneratedFile -Path (Join-Path $pythonPackage "py.typed") -Content ""
@@ -109,15 +134,6 @@ packages = ["src/casefile_contracts"]
 '@
 Write-GeneratedFile -Path (Join-Path $pythonRoot "pyproject.toml") -Content $pythonPackageMetadata
 
-$typescriptOutput = Join-Path $typescriptRoot "index.d.ts"
-& pnpm exec json2ts `
-    --cwd $schemaRoot `
-    --input $schemaEntry `
-    --output $typescriptOutput
-if ($LASTEXITCODE -ne 0) {
-    throw "TypeScript contract generation failed."
-}
-
 $typescriptPackageMetadata = @'
 {
   "name": "@casefile/contracts",
@@ -136,5 +152,49 @@ $typescriptPackageMetadata = @'
 }
 '@
 Write-GeneratedFile -Path (Join-Path $typescriptRoot "package.json") -Content $typescriptPackageMetadata
+
+$typescriptOutput = Join-Path $typescriptRoot "index.d.ts"
+& pnpm exec json2ts `
+    --cwd $schemaRoot `
+    --input $schemaEntry `
+    --output $typescriptOutput
+if ($LASTEXITCODE -ne 0) {
+    throw "TypeScript contract generation failed."
+}
+
+if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
+    $runtimeSchemaFullPath = [System.IO.Path]::GetFullPath($runtimeSchemaRoot)
+    $backendSourceFullPath = [System.IO.Path]::GetFullPath(
+        (Join-Path $backendRoot "src\casefile\contracts\schemas")
+    ).TrimEnd('\')
+    if (-not $runtimeSchemaFullPath.StartsWith(
+        $backendSourceFullPath + '\',
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to replace runtime schemas outside the backend contract package."
+    }
+    if (Test-Path -LiteralPath $runtimeSchemaFullPath) {
+        Remove-Item -LiteralPath $runtimeSchemaFullPath -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $runtimeSchemaFullPath -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $schemaRoot "casefile") `
+        -Destination $runtimeSchemaFullPath -Recurse
+    Write-GeneratedFile `
+        -Path (Join-Path $runtimeSchemaFullPath "GENERATED_FROM_ROOT_SCHEMAS.txt") `
+        -Content "Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.`n"
+
+    $runtimePythonFullPath = [System.IO.Path]::GetFullPath($runtimePythonRoot)
+    $backendSourceRoot = [System.IO.Path]::GetFullPath((Join-Path $backendRoot "src")).TrimEnd('\')
+    if (-not $runtimePythonFullPath.StartsWith(
+        $backendSourceRoot + '\',
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to replace runtime Python contracts outside backend/src."
+    }
+    if (Test-Path -LiteralPath $runtimePythonFullPath) {
+        Remove-Item -LiteralPath $runtimePythonFullPath -Recurse -Force
+    }
+    Copy-Item -LiteralPath $pythonPackage -Destination $runtimePythonFullPath -Recurse
+}
 
 Write-Host "Generated Python and TypeScript contracts under $outputFullPath"

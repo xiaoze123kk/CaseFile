@@ -470,7 +470,7 @@ export function WorkbenchPage() {
                   {state.validation.snapshotRevision}
                 </small>
               </div>
-              <Link href="/quality">前往验证 →</Link>
+              <Link href="/demo/quality">前往验证 →</Link>
             </div>
           ) : null}
 
@@ -665,7 +665,7 @@ export function WorkbenchPage() {
             </label>
 
             {selectedIssue ? (
-              <Link className={styles.issueCard} href="/quality">
+              <Link className={styles.issueCard} href="/demo/quality">
                 <span>
                   <b>{selectedIssue.severity}</b>
                   {selectedIssue.ruleId}

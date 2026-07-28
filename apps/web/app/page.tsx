@@ -1,5 +1,5 @@
-import { IntakeHome } from "@/features/intake/intake-home";
+import { IntakeWorkspace } from "@/features/workflow/intake-workspace";
 
 export default function HomePage() {
-  return <IntakeHome />;
+  return <IntakeWorkspace />;
 }

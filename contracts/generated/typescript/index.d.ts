@@ -215,8 +215,13 @@ export type StructureLock = CoreMetadata & {
  */
 export interface EditingContracts {
   casefile: CaseFile;
+  brief: Brief;
   validation_issue: ValidationIssue;
   patch_candidate: PatchCandidate;
+  task_run: TaskRun;
+  task_event: TaskEvent;
+  agent_generate_request: AgentGenerateRequest;
+  agent_generate_result: AgentGenerateResult;
 }
 export interface CaseFile {
   schema_version: "1.0";
@@ -280,6 +285,21 @@ export interface ActorRef {
 export interface Extensions {
   [k: string]: unknown;
 }
+/**
+ * User-reviewed creative intent used as immutable Agent generation input.
+ */
+export interface Brief {
+  source_text: string;
+  one_line_concept: string;
+  core_mystery: string;
+  player_goal: string;
+  gameplay_loop: string;
+  constraints?: string[];
+  open_questions?: string[];
+  project_profile?: {
+    [k: string]: unknown;
+  };
+}
 export interface ValidationIssue {
   schema_version: "1.0";
   issue_id: string;
@@ -324,4 +344,44 @@ export interface PatchOperation {
   expected_revision: number | null;
   old_value: unknown;
   new_value: unknown;
+}
+export interface TaskRun {
+  task_run_id: number;
+  project_id: number;
+  task_type: "brief_to_draft";
+  status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
+  stage: string;
+  model_id: string;
+  input_draft_revision: number;
+  attempt_count: number;
+  usage: {
+    [k: string]: unknown;
+  };
+  result_snapshot_id?: number | null;
+  error_code?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+export interface TaskEvent {
+  event_id: number;
+  task_run_id: number;
+  sequence_no: number;
+  event_type: string;
+  stage: string;
+  payload: {
+    [k: string]: unknown;
+  };
+  occurred_at: string;
+}
+export interface AgentGenerateRequest {
+  project_id: number;
+  brief_version_id: number;
+  expected_draft_revision: number;
+}
+export interface AgentGenerateResult {
+  task_run_id: number;
+  status: "succeeded";
+  snapshot_id: number;
+  draft_revision: number;
+  content_hash: string;
 }

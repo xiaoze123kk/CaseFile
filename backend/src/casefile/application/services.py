@@ -82,6 +82,8 @@ class CaseFileService:
     def get_draft(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
+            if owned.draft.brief_version_id is None:
+                return _draft_view(owned, None)
             return _draft_view(owned, self._document(owned))
 
     def list_entities(self, actor_user_id: int, project_id: int) -> list[dict[str, Any]]:
@@ -90,9 +92,7 @@ class CaseFileService:
             document = self._document(owned)
             return list(document["entities"])
 
-    def get_entity(
-        self, actor_user_id: int, project_id: int, object_id: str
-    ) -> dict[str, Any]:
+    def get_entity(self, actor_user_id: int, project_id: int, object_id: str) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
             self._entity(owned, object_id)
@@ -261,9 +261,7 @@ class CaseFileService:
             owned = self._owned(actor_user_id, project_id)
             return list(self._document(owned)["events"])
 
-    def get_event(
-        self, actor_user_id: int, project_id: int, object_id: str
-    ) -> dict[str, Any]:
+    def get_event(self, actor_user_id: int, project_id: int, object_id: str) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
             self._event(owned, object_id)
@@ -455,9 +453,7 @@ class CaseFileService:
                 for snapshot in self.snapshots.list(owned.draft.id)
             ]
 
-    def get_snapshot(
-        self, actor_user_id: int, project_id: int, snapshot_id: int
-    ) -> dict[str, Any]:
+    def get_snapshot(self, actor_user_id: int, project_id: int, snapshot_id: int) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
             snapshot = self.snapshots.get(owned.draft.id, snapshot_id)
@@ -502,9 +498,7 @@ class CaseFileService:
             self.session.flush()
             return revision
 
-    def _owned(
-        self, actor_user_id: int, project_id: int, *, lock: bool = False
-    ) -> OwnedDraft:
+    def _owned(self, actor_user_id: int, project_id: int, *, lock: bool = False) -> OwnedDraft:
         owned = self.projects.get_owned(actor_user_id, project_id, lock=lock)
         if owned is None:
             raise not_found("Project")
@@ -584,9 +578,7 @@ class CaseFileService:
         self, owned: OwnedDraft, command: EventWrite
     ) -> tuple[int | None, int | None]:
         try:
-            phase_id = self.drafts.resolve_phase_id(
-                owned, command.narrative_phase_object_id
-            )
+            phase_id = self.drafts.resolve_phase_id(owned, command.narrative_phase_object_id)
             location_id = self.drafts.resolve_location_id(owned, command.location_object_id)
         except LookupError as error:
             raise _invalid_reference(str(error.args[0]), "event relation") from error
@@ -622,7 +614,7 @@ def _project_view(owned: OwnedDraft) -> dict[str, Any]:
     }
 
 
-def _draft_view(owned: OwnedDraft, document: dict[str, Any]) -> dict[str, Any]:
+def _draft_view(owned: OwnedDraft, document: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "project_id": owned.project.id,
         "casefile_id": owned.casefile.id,

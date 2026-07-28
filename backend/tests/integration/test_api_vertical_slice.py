@@ -1,4 +1,4 @@
-"""Real-PostgreSQL API acceptance test for the first CaseFile vertical slice."""
+"""Real-PostgreSQL API acceptance test for the Agent generation golden path."""
 
 from __future__ import annotations
 
@@ -10,14 +10,38 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.credentials import generate_master_key
 from casefile.api.app import create_app
+from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
+
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+PROFILE = {
+    "content_type": "interactive_reasoning",
+    "target_audience": "adult_general",
+    "primary_use_case": "idea_to_playtest",
+    "genres": ["mystery"],
+    "target_duration_minutes": 90,
+    "target_participant_count": 4,
+    "difficulty_template": "medium",
+    "collaboration_mode": "single_lead_review",
+}
+BRIEF = {
+    "source_text": "一艘渡轮每天午夜会重新驶回同一座码头。",
+    "one_line_concept": "玩家需要在重复靠岸前找出让渡轮回航的真实原因。",
+    "core_mystery": "是谁修改了航行记录，以及回航是否在保护乘客？",
+    "player_goal": "重建最后一小时的航行事实并决定是否终止回航。",
+    "gameplay_loop": "调查舱室，交换信息，提出假设，验证记录，做出决定。",
+    "constraints": ["真相必须唯一且可由公开线索验证"],
+    "open_questions": ["船长缺失的十二分钟记录在哪里？"],
+    "project_profile": PROFILE,
+}
 
 
 def _database_url() -> str:
@@ -25,7 +49,7 @@ def _database_url() -> str:
     if not value:
         pytest.skip("CASEFILE_TEST_DATABASE_URL is not configured")
     if not (make_url(value).database or "").endswith("_test"):
-        pytest.fail("Refusing API integration test against a non-_test database")
+        pytest.fail("CASEFILE_TEST_DATABASE_URL must point to a disposable *_test database")
     return value
 
 
@@ -37,319 +61,122 @@ def _config(database_url: str) -> Config:
     return config
 
 
-@pytest.fixture(scope="module")
-def api_database() -> Iterator[tuple[str, Engine]]:
+@pytest.fixture
+def api_database() -> Iterator[tuple[str, Engine, int, str]]:
     database_url = _database_url()
     config = _config(database_url)
-    engine = create_engine(database_url)
-    with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+    master_key = generate_master_key()
+    with patch.dict(
+        os.environ,
+        {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
+    ):
         command.downgrade(config, "base")
         command.upgrade(config, "head")
-    try:
-        yield database_url, engine
-    finally:
-        engine.dispose()
-        with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+        engine = create_engine(database_url)
+        try:
+            with engine.begin() as connection:
+                actor_id = int(
+                    connection.execute(
+                        text("INSERT INTO users (display_name) VALUES ('API Owner') RETURNING id")
+                    ).scalar_one()
+                )
+            yield database_url, engine, actor_id, master_key
+        finally:
+            engine.dispose()
             command.downgrade(config, "base")
 
 
-def _create_user(engine: Engine, name: str, *, status: str = "active") -> int:
-    with engine.begin() as connection:
-        return int(
-            connection.execute(
-                text(
-                    "INSERT INTO users (display_name, status) "
-                    "VALUES (:name, :status) RETURNING id"
-                ),
-                {"name": name, "status": status},
-            ).scalar_one()
-        )
+def _identity(actor_id: int) -> dict[str, str]:
+    return {"X-CaseFile-User-Id": str(actor_id)}
 
 
-def _identity(user_id: int, revision: int | None = None) -> dict[str, str]:
-    headers = {"X-CaseFile-User-Id": str(user_id)}
-    if revision is not None:
-        headers["X-CaseFile-Base-Revision"] = str(revision)
-    return headers
-
-
-def _person(name: str) -> dict[str, object]:
-    return {
-        "entity_kind": "person",
-        "name": name,
-        "description": None,
-        "traits": [],
-        "attributes": {},
-        "confidence": 1.0,
-        "person": {"role": "调查员", "background": None},
-    }
-
-
-def _location(name: str) -> dict[str, object]:
-    return {
-        "entity_kind": "location",
-        "name": name,
-        "description": None,
-        "traits": [],
-        "attributes": {},
-        "confidence": 1.0,
-        "location": {"geo": {}, "movement_rules": {}},
-    }
-
-
-def test_project_edit_snapshot_isolation_conflict_and_archive(
-    api_database: tuple[str, Engine],
+def test_settings_brief_generation_sse_and_completion_gate(
+    api_database: tuple[str, Engine, int, str],
 ) -> None:
-    database_url, engine = api_database
-    owner_id = _create_user(engine, "API Owner")
-    other_id = _create_user(engine, "Other User")
-    disabled_id = _create_user(engine, "Disabled User", status="disabled")
+    database_url, engine, actor_id, master_key = api_database
     app = create_app(database_url)
-
-    with TestClient(app) as client:
-        assert client.get("/health/live").json() == {"status": "ok"}
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}), TestClient(app) as client:
         assert client.get("/health/ready").status_code == 200
         assert client.get("/api/v1/projects").status_code == 401
-        assert client.get("/api/v1/projects", headers=_identity(999999)).status_code == 401
-        assert client.get("/api/v1/projects", headers=_identity(disabled_id)).status_code == 401
-        missing_route = client.get("/missing")
-        assert missing_route.status_code == 404
-        assert set(missing_route.json()) == {"code", "message", "details"}
+
+        saved = client.put(
+            "/api/v1/settings/provider",
+            headers=_identity(actor_id),
+            json={
+                "api_key": "sk-test-api-secret",
+                "model_id": "gpt-5.6-sol",
+                "model_is_custom": False,
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["masked_api_key"].endswith("cret")
+        assert "api_key" not in saved.json()
 
         created = client.post(
             "/api/v1/projects",
-            headers=_identity(owner_id),
-            json={"title": "重启事件", "description": None, "profile": {}},
+            headers=_identity(actor_id),
+            json={"title": "午夜回航", "description": None, "profile": PROFILE},
         )
         assert created.status_code == 201
         project_id = created.json()["id"]
-        assert created.json()["draft"]["revision"] == 1
-        updated_project = client.patch(
-            f"/api/v1/projects/{project_id}",
-            headers=_identity(owner_id),
-            json={"title": "重启事件（修订）"},
-        )
-        assert updated_project.status_code == 200
-        assert updated_project.json()["title"] == "重启事件（修订）"
-        listed_projects = client.get("/api/v1/projects", headers=_identity(owner_id))
-        assert [item["id"] for item in listed_projects.json()] == [project_id]
+        empty = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
+        assert empty.status_code == 200
+        assert empty.json()["content"] is None
 
-        missing_base = client.post(
-            f"/api/v1/projects/{project_id}/draft/entities",
-            headers=_identity(owner_id),
-            json=_person("无 revision"),
+        updated = client.put(
+            f"/api/v1/projects/{project_id}/brief",
+            headers=_identity(actor_id),
+            json={"expected_revision": 1, "content": BRIEF},
         )
-        assert missing_base.status_code == 428
-        assert missing_base.json()["code"] == "base_revision_required"
+        assert updated.status_code == 200
+        confirmed = client.post(
+            f"/api/v1/projects/{project_id}/brief/confirm",
+            headers=_identity(actor_id),
+            json={"expected_revision": updated.json()["draft_revision"]},
+        )
+        assert confirmed.status_code == 201
 
-        person = client.post(
-            f"/api/v1/projects/{project_id}/draft/entities",
-            headers=_identity(owner_id, 1),
-            json=_person("调查员"),
+        queued = client.post(
+            f"/api/v1/projects/{project_id}/tasks/generate",
+            headers=_identity(actor_id),
+            json={
+                "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_revision": 1,
+            },
         )
-        assert person.status_code == 201
-        person_id = person.json()["object_id"]
-        assert person.headers["X-CaseFile-Draft-Revision"] == "2"
+        assert queued.status_code == 202
+        task_id = queued.json()["task_run_id"]
 
-        first_location = client.post(
-            f"/api/v1/projects/{project_id}/draft/entities",
-            headers=_identity(owner_id, 2),
-            json=_location("控制室"),
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="api-test-worker"),
+            provider_factory=lambda _task: FakeProvider(),
         )
-        assert first_location.status_code == 201
-        first_location_id = first_location.json()["object_id"]
+        assert worker.run_once() is True
 
-        second_location = client.post(
-            f"/api/v1/projects/{project_id}/draft/entities",
-            headers=_identity(owner_id, 3),
-            json=_location("机房"),
+        task = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{task_id}", headers=_identity(actor_id)
         )
-        assert second_location.status_code == 201
-        second_location_id = second_location.json()["object_id"]
+        assert task.status_code == 200
+        assert task.json()["status"] == "succeeded"
 
-        wrong_type = client.put(
-            f"/api/v1/projects/{project_id}/draft/entities/{first_location_id}/adjacent-locations",
-            headers=_identity(owner_id, 4),
-            json={"object_ids": [person_id]},
+        stream = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{task_id}/stream",
+            headers={**_identity(actor_id), "Last-Event-ID": "1"},
         )
-        assert wrong_type.status_code == 422
-        assert wrong_type.json()["code"] == "invalid_reference"
+        assert stream.status_code == 200
+        assert "id: 1\n" not in stream.text
+        assert "event: task.succeeded" in stream.text
+        assert "sk-test-api-secret" not in stream.text
+        assert "chain_of_thought" not in stream.text
 
-        adjacency = client.put(
-            f"/api/v1/projects/{project_id}/draft/entities/{first_location_id}/adjacent-locations",
-            headers=_identity(owner_id, 4),
-            json={"object_ids": [second_location_id]},
+        invalid_cursor = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{task_id}/stream",
+            headers={**_identity(actor_id), "Last-Event-ID": "bad"},
         )
-        assert adjacency.status_code == 200
-        assert adjacency.json()["location"]["adjacent_location_object_ids"] == [
-            second_location_id
-        ]
+        assert invalid_cursor.status_code == 422
 
-        event_payload = {
-            "title": "系统重启",
-            "summary": None,
-            "start_time": {"minute": 0},
-            "end_time": None,
-            "narrative_order": 1,
-            "narrative_phase_object_id": None,
-            "location_object_id": first_location_id,
-            "visibility": "restricted",
-            "truth_status": "true",
-            "confidence": 1.0,
-        }
-        event = client.post(
-            f"/api/v1/projects/{project_id}/draft/events",
-            headers=_identity(owner_id, 5),
-            json=event_payload,
-        )
-        assert event.status_code == 201
-        event_id = event.json()["object_id"]
-
-        dangling_actor = client.put(
-            f"/api/v1/projects/{project_id}/draft/events/{event_id}/actors",
-            headers=_identity(owner_id, 6),
-            json={"object_ids": ["entity_missing"]},
-        )
-        assert dangling_actor.status_code == 422
-        assert dangling_actor.json()["code"] == "invalid_reference"
-
-        actors = client.put(
-            f"/api/v1/projects/{project_id}/draft/events/{event_id}/actors",
-            headers=_identity(owner_id, 6),
-            json={"object_ids": [person_id]},
-        )
-        assert actors.status_code == 200
-        assert actors.json()["actor_object_ids"] == [person_id]
-        entities = client.get(
-            f"/api/v1/projects/{project_id}/draft/entities", headers=_identity(owner_id)
-        )
-        assert len(entities.json()) == 3
-        events = client.get(
-            f"/api/v1/projects/{project_id}/draft/events", headers=_identity(owner_id)
-        )
-        assert [item["object_id"] for item in events.json()] == [event_id]
-
-        draft = client.get(
-            f"/api/v1/projects/{project_id}/draft", headers=_identity(owner_id)
-        )
-        assert draft.status_code == 200
-        assert draft.json()["revision"] == 7
-        assert draft.json()["content"]["events"][0]["location_object_id"] == first_location_id
-
-        stale = client.put(
-            f"/api/v1/projects/{project_id}/draft/events/{event_id}",
-            headers=_identity(owner_id, 6),
-            json=event_payload,
-        )
-        assert stale.status_code == 409
-        assert stale.json()["code"] == "draft_revision_conflict"
-
-        cross_user = client.get(
-            f"/api/v1/projects/{project_id}", headers=_identity(other_id)
-        )
-        assert cross_user.status_code == 404
-        cross_user_write = client.put(
-            f"/api/v1/projects/{project_id}/draft/events/{event_id}/actors",
-            headers=_identity(other_id, 7),
-            json={"object_ids": []},
-        )
-        assert cross_user_write.status_code == 404
-
-        in_use = client.delete(
-            f"/api/v1/projects/{project_id}/draft/entities/{second_location_id}",
-            headers=_identity(owner_id, 7),
-        )
-        assert in_use.status_code == 409
-        assert in_use.json()["code"] == "object_in_use"
-
-        snapshot = client.post(
-            f"/api/v1/projects/{project_id}/draft/snapshots",
-            headers=_identity(owner_id, 7),
-        )
-        assert snapshot.status_code == 201
-        snapshot_id = snapshot.json()["id"]
-        repeated = client.post(
-            f"/api/v1/projects/{project_id}/draft/snapshots",
-            headers=_identity(owner_id, 7),
-        )
-        assert repeated.status_code == 200
-        assert repeated.json()["id"] == snapshot_id
-        assert repeated.json()["content_hash"] == snapshot.json()["content_hash"]
-
-        fetched = client.get(
-            f"/api/v1/projects/{project_id}/draft/snapshots/{snapshot_id}",
-            headers=_identity(owner_id),
-        )
-        assert fetched.status_code == 200
-        assert fetched.json()["content"] == snapshot.json()["content"]
-        listed_snapshots = client.get(
-            f"/api/v1/projects/{project_id}/draft/snapshots",
-            headers=_identity(owner_id),
-        )
-        assert [item["id"] for item in listed_snapshots.json()] == [snapshot_id]
-
-        deleted_event = client.delete(
-            f"/api/v1/projects/{project_id}/draft/events/{event_id}",
-            headers=_identity(owner_id, 7),
-        )
-        assert deleted_event.status_code == 204
-        assert deleted_event.headers["X-CaseFile-Draft-Revision"] == "8"
-        assert (
-            client.get(
-                f"/api/v1/projects/{project_id}/draft/events/{event_id}",
-                headers=_identity(owner_id),
-            ).status_code
-            == 404
-        )
-        with engine.connect() as connection:
-            soft_deleted = connection.execute(
-                text(
-                    """
-                    SELECT object.deleted_at IS NOT NULL,
-                           event.location_id,
-                           event.narrative_phase_id,
-                           (SELECT count(*) FROM casefile_refs ref
-                             WHERE ref.from_object_id = object.id)
-                      FROM casefile_objects object
-                      JOIN events event ON event.object_registry_id = object.id
-                     WHERE object.object_id = :object_id
-                    """
-                ),
-                {"object_id": event_id},
-            ).one()
-        assert tuple(soft_deleted) == (True, None, None, 0)
-        with pytest.raises(IntegrityError), engine.begin() as connection:
-            connection.execute(
-                text(
-                    """
-                    INSERT INTO casefile_objects (
-                        project_id, casefile_id, draft_id, object_id, object_type,
-                        revision, source_jsonb, confirmation_status
-                    )
-                    SELECT project_id, casefile_id, draft_id, object_id, object_type,
-                           1, '{}'::jsonb, 'user_confirmed'
-                      FROM casefile_objects
-                     WHERE object_id = :object_id
-                    """
-                ),
-                {"object_id": event_id},
-            )
-
-        archived = client.post(
-            f"/api/v1/projects/{project_id}/archive", headers=_identity(owner_id)
-        )
-        assert archived.status_code == 200
-        assert archived.json()["status"] == "archived"
-        rejected = client.put(
-            f"/api/v1/projects/{project_id}/draft/events/{event_id}/actors",
-            headers=_identity(owner_id, 8),
-            json={"object_ids": []},
-        )
-        assert rejected.status_code == 409
-        assert rejected.json()["code"] == "project_archived"
-        rejected_snapshot = client.post(
-            f"/api/v1/projects/{project_id}/draft/snapshots",
-            headers=_identity(owner_id, 8),
-        )
-        assert rejected_snapshot.status_code == 409
-        assert rejected_snapshot.json()["code"] == "project_archived"
+        draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
+        assert draft.json()["revision"] == 2
+        assert draft.json()["content"]["schema_version"] == "1.0"

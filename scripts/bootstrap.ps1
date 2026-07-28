@@ -41,6 +41,37 @@ if (-not $settings.ContainsKey("DATABASE_URL")) {
 if (-not $settings.ContainsKey("CASEFILE_TEST_DATABASE_URL")) {
     throw ".env must define CASEFILE_TEST_DATABASE_URL."
 }
+if (
+    -not $settings.ContainsKey("CASEFILE_MASTER_KEY") -or
+    [string]::IsNullOrWhiteSpace($settings["CASEFILE_MASTER_KEY"])
+) {
+    $generatedMasterKey = & $python -c (
+        "from casefile.agent_runtime.credentials import generate_master_key; " +
+        "print(generate_master_key())"
+    )
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($generatedMasterKey)) {
+        throw "Failed to generate CASEFILE_MASTER_KEY."
+    }
+    $settings["CASEFILE_MASTER_KEY"] = $generatedMasterKey.Trim()
+    Set-Item -Path Env:CASEFILE_MASTER_KEY -Value $settings["CASEFILE_MASTER_KEY"]
+    $masterKeyLine = "CASEFILE_MASTER_KEY=" + $settings["CASEFILE_MASTER_KEY"]
+    $masterKeyReplaced = $false
+    $updatedEnvLines = foreach ($line in Get-Content -LiteralPath $envFile -Encoding utf8) {
+        if ($line -match '^CASEFILE_MASTER_KEY=') {
+            if (-not $masterKeyReplaced) {
+                $masterKeyLine
+                $masterKeyReplaced = $true
+            }
+        } else {
+            $line
+        }
+    }
+    if (-not $masterKeyReplaced) {
+        $updatedEnvLines += $masterKeyLine
+    }
+    Set-Content -LiteralPath $envFile -Encoding utf8 -Value $updatedEnvLines
+    Write-Host "Generated CASEFILE_MASTER_KEY in the local .env file."
+}
 
 $null = Get-Command docker -ErrorAction Stop
 & docker info *> $null
@@ -84,14 +115,16 @@ try {
 import os
 from sqlalchemy import create_engine, text
 
-expected_revision = "20260726131019"
+expected_revision = "20260728084832"
 expected_tables = {
-    "users", "projects", "casefiles", "drafts", "casefile_objects", "casefile_refs",
+    "users", "user_provider_settings", "projects", "casefiles", "drafts", "briefs",
+    "brief_versions", "casefile_objects", "casefile_refs", "casefile_contract_refs",
     "draft_operations", "narrative_phases", "entities", "people", "locations", "events",
     "information_units", "evidence_items", "testimonies", "claims", "knowledge_states",
     "knowledge_state_entries", "hypotheses", "reasoning_paths", "reasoning_nodes",
-    "reasoning_edges", "resolution_specs", "resolution_slots", "casefile_constraints",
-    "draft_snapshots", "canon_versions", "audit_events",
+    "reasoning_edges", "relationships", "resolution_specs", "resolution_slots",
+    "casefile_constraints", "structure_locks", "draft_snapshots", "canon_versions",
+    "audit_events", "task_runs", "task_attempts", "task_events",
 }
 engine = create_engine(os.environ["DATABASE_URL"])
 with engine.connect() as connection:

@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
@@ -21,12 +22,15 @@ from casefile.api.dependencies import (
 from casefile.api.schemas import (
     EntityWriteRequest,
     EventWriteRequest,
+    ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
     ReferenceReplaceRequest,
 )
+from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
+from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
     assert_database_ready,
@@ -56,6 +60,13 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     )
     application.state.engine = engine
     application.state.session_factory = session_factory
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     application.add_exception_handler(ApplicationError, _application_error_handler)
     application.add_exception_handler(RequestValidationError, _validation_error_handler)
     application.add_exception_handler(StarletteHTTPException, _http_error_handler)
@@ -63,6 +74,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     application.add_exception_handler(Exception, _unexpected_error_handler)
     application.include_router(_health_router())
     application.include_router(_api_router())
+    application.include_router(workflow_router())
     return application
 
 
@@ -164,9 +176,7 @@ def _health_router() -> APIRouter:
                 status_code=503,
                 content={"status": "not_ready", "database_revision": revision},
             )
-        return JSONResponse(
-            content={"status": "ready", "database_revision": revision}
-        )
+        return JSONResponse(content={"status": "ready", "database_revision": revision})
 
     return router
 
@@ -217,6 +227,25 @@ def _api_router() -> APIRouter:
     ) -> dict[str, Any]:
         result = CaseFileService(session).get_draft(actor, project_id)
         _set_revision(response, result["revision"])
+        return result
+
+    @router.patch("/projects/{project_id}/draft/objects/{object_id}")
+    def patch_v1_object(
+        project_id: int,
+        object_id: str,
+        payload: ObjectPatchRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result, revision = V1EditingService(session).patch_object(
+            actor,
+            project_id,
+            object_id,
+            expected_revision=payload.expected_revision,
+            changes=payload.changes,
+        )
+        _set_revision(response, revision)
         return result
 
     @router.post("/projects/{project_id}/draft/entities", status_code=201)
@@ -351,9 +380,7 @@ def _api_router() -> APIRouter:
         revision: RevisionDependency,
         session: SessionDependency,
     ) -> Response:
-        new_revision = CaseFileService(session).delete_event(
-            actor, project_id, object_id, revision
-        )
+        new_revision = CaseFileService(session).delete_event(actor, project_id, object_id, revision)
         return Response(
             status_code=204,
             headers={"X-CaseFile-Draft-Revision": str(new_revision)},
@@ -383,9 +410,7 @@ def _api_router() -> APIRouter:
         revision: RevisionDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        result, created = CaseFileService(session).create_snapshot(
-            actor, project_id, revision
-        )
+        result, created = CaseFileService(session).create_snapshot(actor, project_id, revision)
         response.status_code = 201 if created else 200
         _set_revision(response, result["revision"])
         return result

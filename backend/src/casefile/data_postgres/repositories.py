@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -10,6 +11,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, aliased
 
 from casefile.data_postgres.models import (
+    Brief,
     CaseFile,
     CaseFileConstraint,
     CaseFileObject,
@@ -63,9 +65,7 @@ class ProjectRepository:
         self.session = session
 
     def get_active_user(self, user_id: int) -> User | None:
-        return self.session.scalar(
-            select(User).where(User.id == user_id, User.status == "active")
-        )
+        return self.session.scalar(select(User).where(User.id == user_id, User.status == "active"))
 
     def create(
         self,
@@ -87,6 +87,7 @@ class ProjectRepository:
         self.session.flush()
         casefile = CaseFile(
             project_id=project.id,
+            object_id=f"case_{secrets.token_hex(12)}",
             title=title,
             schema_version=schema_version,
             status="draft",
@@ -97,10 +98,24 @@ class ProjectRepository:
             project_id=project.id,
             casefile_id=casefile.id,
             revision=1,
+            version_id=f"draft_{secrets.token_hex(12)}",
+            version_no=1,
+            parent_version_id=None,
             schema_version=schema_version,
             status="active",
+            content_notices_jsonb=[],
+            extensions_jsonb={},
         )
         self.session.add(draft)
+        self.session.add(
+            Brief(
+                project_id=project.id,
+                public_id=f"brief_{secrets.token_hex(12)}",
+                draft_revision=1,
+                draft_jsonb={},
+                current_version_id=None,
+            )
+        )
         self.session.flush()
         return OwnedDraft(project, casefile, draft)
 
@@ -226,13 +241,28 @@ class DraftRepository:
         object_type: str,
         confidence: float | None,
     ) -> CaseFileObject:
+        next_ordinal = int(
+            self.session.scalar(
+                select(func.coalesce(func.max(CaseFileObject.contract_ordinal), 0) + 1).where(
+                    CaseFileObject.draft_id == owned.draft.id,
+                    CaseFileObject.object_type == object_type,
+                )
+            )
+            or 1
+        )
         registry = CaseFileObject(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,
             draft_id=owned.draft.id,
             object_id=object_id,
             object_type=object_type,
+            contract_ordinal=next_ordinal,
             revision=1,
+            description=None,
+            tags_jsonb=[],
+            created_by_type="user",
+            created_by_id=f"user_{owned.project.owner_user_id}",
+            contract_updated_at=datetime.now(UTC).isoformat(),
             source_jsonb={"kind": "user"},
             confidence=confidence,
             confirmation_status="user_confirmed",
@@ -524,9 +554,7 @@ class DraftRepository:
             )
         )
         if target.object_type == "event":
-            event = self.session.scalar(
-                select(Event).where(Event.object_registry_id == target.id)
-            )
+            event = self.session.scalar(select(Event).where(Event.object_registry_id == target.id))
             if event is not None:
                 event.narrative_phase_id = None
                 event.location_id = None

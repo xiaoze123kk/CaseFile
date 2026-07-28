@@ -230,7 +230,7 @@ export function IntakeHome() {
             <Link
               aria-label={`打开${state.project.displayName}工作台`}
               className={styles.openRecent}
-              href="/workbench"
+              href="/demo/workbench"
             >
               <span>继续上次编辑</span>
               <b>打开工作台 ↗</b>
@@ -304,7 +304,7 @@ export function IntakeHome() {
                 <button
                   aria-label="使用当前内容进入 Brief 确认页"
                   disabled={originalLength === 0}
-                  onClick={() => router.push("/brief")}
+                  onClick={() => router.push("/demo/brief")}
                   type="button"
                 >
                   <span>进入 Brief</span>

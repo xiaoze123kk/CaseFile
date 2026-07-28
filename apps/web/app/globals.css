@@ -328,6 +328,23 @@ textarea:focus-visible {
   background: var(--paper-high);
 }
 
+.real-mode-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0 12px;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 11px;
+}
+
+.real-mode-note b {
+  color: #225d43;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
 .user-card:hover .user-avatar {
   background: var(--red);
 }
@@ -477,6 +494,38 @@ textarea:focus-visible {
 .utility-actions button:hover {
   color: var(--red);
   background: var(--paper-high);
+}
+
+.real-utility-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.real-utility-copy b {
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+}
+
+.real-utility-copy span {
+  color: var(--ink-muted);
+  font-size: 11px;
+}
+
+.utility-actions .utility-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 14px;
+  color: white;
+  border-left: 1px solid var(--hairline);
+  background: var(--red);
+  font-size: var(--font-label);
+  text-decoration: none;
+}
+
+.utility-actions .utility-link:hover {
+  background: #7d1f0b;
 }
 
 .document {

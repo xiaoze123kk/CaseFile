@@ -5,12 +5,15 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
+    LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -77,3 +80,65 @@ class Project(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'active'"),
     )
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserProviderSetting(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
+    """One user's encrypted credential and default model settings for a provider."""
+
+    __tablename__ = "user_provider_settings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "provider", name="uq_user_provider_settings_user_provider"),
+        UniqueConstraint("user_id", "id", name="uq_user_provider_settings_user_id_id"),
+        CheckConstraint("provider ~ '^[a-z][a-z0-9_]*$'", name="provider_format"),
+        CheckConstraint("length(btrim(model_id)) > 0", name="model_id_not_blank"),
+        CheckConstraint("key_version >= 1", name="key_version_positive"),
+        CheckConstraint("config_version >= 1", name="config_version_positive"),
+        CheckConstraint("octet_length(secret_nonce) = 12", name="secret_nonce_length"),
+        CheckConstraint("octet_length(secret_ciphertext) > 16", name="ciphertext_not_empty"),
+        CheckConstraint("length(secret_last_four) = 4", name="last_four_length"),
+        CheckConstraint(
+            "credential_status IN ('unverified', 'valid', 'invalid')",
+            name="credential_status_allowed",
+        ),
+        CheckConstraint("jsonb_typeof(default_budget_jsonb) = 'object'", name="budget_is_object"),
+        Index("ix_user_provider_settings_user_id_updated_at", "user_id", "updated_at"),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    model_is_custom: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    )
+    config_version: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=text("1"),
+    )
+    secret_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    secret_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_version: Mapped[int] = mapped_column(
+        BigInteger,
+        nullable=False,
+        server_default=text("1"),
+    )
+    secret_last_four: Mapped[str] = mapped_column(String(4), nullable=False)
+    credential_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'unverified'"),
+    )
+    default_budget_jsonb: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'::jsonb"),
+    )
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    validation_error_code: Mapped[str | None] = mapped_column(String(80))

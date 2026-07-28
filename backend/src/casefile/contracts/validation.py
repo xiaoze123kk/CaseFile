@@ -1,15 +1,34 @@
-"""Load and validate the immutable CaseFile 0.1.0 contract."""
+"""Load and validate the generated runtime mirror of the CaseFile v1 contract."""
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from datetime import datetime
 from functools import lru_cache
 from importlib.resources import files
 from typing import Any, cast
 
 from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
-CASEFILE_SCHEMA_VERSION = "0.1.0"
+CASEFILE_SCHEMA_VERSION = "1.0"
+
+_COLLECTION_TYPES = {
+    "resolution_specs": "resolution_spec",
+    "entities": "entity",
+    "relationships": "relationship",
+    "locations": "location",
+    "events": "event",
+    "information_units": "information_unit",
+    "claims": "claim",
+    "hypotheses": "hypothesis",
+    "reasoning_paths": "reasoning_path",
+    "phases": "phase",
+    "constraints": "constraint",
+    "structure_locks": "structure_lock",
+}
+_EXTERNAL_REFERENCE_TYPES = {"source_fragment"}
 
 
 class ContractValidationError(ValueError):
@@ -22,23 +41,29 @@ class ContractValidationError(ValueError):
 
 @lru_cache(maxsize=1)
 def load_casefile_schema() -> dict[str, Any]:
-    """Load the packaged CaseFile 0.1.0 JSON Schema."""
+    """Load the generated mirror of the root CaseFile v1 entry schema."""
 
-    resource = files("casefile.contracts.schemas").joinpath("casefile-0.1.0.schema.json")
-    return cast(dict[str, Any], json.loads(resource.read_text(encoding="utf-8")))
+    return _load_schema("casefile.schema.json")
+
+
+@lru_cache(maxsize=1)
+def _validator() -> Draft202012Validator:
+    schemas = [_load_schema(name) for name in _schema_names()]
+    resources = [(cast(str, schema["$id"]), Resource.from_contents(schema)) for schema in schemas]
+    registry: Registry[Any] = Registry().with_resources(resources)
+    return Draft202012Validator(load_casefile_schema(), registry=registry)
 
 
 def validate_casefile(document: dict[str, Any]) -> None:
-    """Validate JSON shape first and then all stable-ID relationships."""
+    """Validate v1 JSON shape and deterministic cross-object invariants."""
 
-    validator = Draft202012Validator(load_casefile_schema())
     schema_errors = [
         {
             "code": "schema_invalid",
             "path": _json_pointer(list(error.absolute_path)),
             "message": error.message,
         }
-        for error in sorted(validator.iter_errors(document), key=lambda item: list(item.path))
+        for error in sorted(_validator().iter_errors(document), key=lambda item: list(item.path))
     ]
     if schema_errors:
         raise ContractValidationError(schema_errors)
@@ -50,307 +75,264 @@ def validate_casefile(document: dict[str, Any]) -> None:
 
 def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []
-    registry: dict[str, tuple[str, dict[str, Any]]] = {}
+    registry: dict[str, str] = {document["casefile_id"]: "casefile"}
 
-    collections = {
-        "narrative_phases": "narrative_phase",
-        "entities": "entity",
-        "events": "event",
-        "information_units": "information_unit",
-        "claims": "claim",
-        "hypotheses": "hypothesis",
-        "reasoning_paths": "reasoning_path",
-        "constraints": "constraint",
-        "knowledge_states": "knowledge_state",
-    }
-    for collection_name, object_type in collections.items():
+    for collection_name, object_type in _COLLECTION_TYPES.items():
         for index, item in enumerate(document[collection_name]):
-            object_id = item["object_id"]
+            object_id = item["id"]
             if object_id in registry:
                 errors.append(
                     _error(
                         "duplicate_object_id",
-                        f"/{collection_name}/{index}/object_id",
+                        f"/{collection_name}/{index}/id",
                         f"object_id {object_id!r} is already registered",
                     )
                 )
             else:
-                registry[object_id] = (object_type, item)
+                registry[object_id] = object_type
 
-    resolution = document["resolution_spec"]
-    if resolution is not None:
-        object_id = resolution["object_id"]
-        if object_id in registry:
+    for path, reference in _walk_object_refs(document):
+        expected_type = reference["object_type"]
+        object_id = reference["object_id"]
+        if expected_type in _EXTERNAL_REFERENCE_TYPES:
+            continue
+        actual_type = registry.get(object_id)
+        if actual_type is None:
             errors.append(
                 _error(
-                    "duplicate_object_id",
-                    "/resolution_spec/object_id",
-                    f"object_id {object_id!r} is already registered",
+                    "missing_reference",
+                    path,
+                    f"object_id {object_id!r} does not exist",
                 )
             )
-        else:
-            registry[object_id] = ("resolution_spec", resolution)
-
-    _unique_integer(errors, document["narrative_phases"], "phase_order", "/narrative_phases")
-    _unique_integer(errors, document["events"], "narrative_order", "/events")
-
-    for index, entity in enumerate(document["entities"]):
-        if entity["entity_kind"] == "location":
-            for target_index, target_id in enumerate(
-                entity["location"]["adjacent_location_object_ids"]
-            ):
-                _require_reference(
-                    errors,
-                    registry,
-                    target_id,
-                    f"/entities/{index}/location/adjacent_location_object_ids/{target_index}",
-                    "entity",
-                    subtype=("entity_kind", "location"),
+        elif actual_type != expected_type:
+            errors.append(
+                _error(
+                    "reference_type_mismatch",
+                    path,
+                    f"expected {expected_type}, got {actual_type}",
                 )
-                if target_id == entity["object_id"]:
-                    errors.append(
-                        _error(
-                            "self_reference",
-                            f"/entities/{index}/location/adjacent_location_object_ids/{target_index}",
-                            "a location cannot be adjacent to itself",
-                        )
-                    )
+            )
 
-    for index, event in enumerate(document["events"]):
-        _optional_reference(
+    _unique_integer(errors, document["phases"], "order", "/phases")
+    for location_index, location in enumerate(document["locations"]):
+        _optional_declared_type(
             errors,
-            registry,
-            event["narrative_phase_object_id"],
-            f"/events/{index}/narrative_phase_object_id",
-            "narrative_phase",
+            location["parent_ref"],
+            "location",
+            f"/locations/{location_index}/parent_ref",
         )
-        _optional_reference(
-            errors,
-            registry,
-            event["location_object_id"],
-            f"/events/{index}/location_object_id",
-            "entity",
-            subtype=("entity_kind", "location"),
-        )
-        for actor_index, actor_id in enumerate(event["actor_object_ids"]):
-            _require_reference(
+        for ref_index, reference in enumerate(location["adjacency_refs"]):
+            _require_declared_type(
                 errors,
-                registry,
-                actor_id,
-                f"/events/{index}/actor_object_ids/{actor_index}",
-                "entity",
+                reference,
+                "location",
+                f"/locations/{location_index}/adjacency_refs/{ref_index}",
             )
-
-    for index, unit in enumerate(document["information_units"]):
-        _optional_reference(
-            errors,
-            registry,
-            unit["visible_from_phase_object_id"],
-            f"/information_units/{index}/visible_from_phase_object_id",
-            "narrative_phase",
-        )
-        for field in ("supports_claim_object_ids", "refutes_claim_object_ids"):
-            for target_index, target_id in enumerate(unit[field]):
-                _require_reference(
-                    errors,
-                    registry,
-                    target_id,
-                    f"/information_units/{index}/{field}/{target_index}",
-                    "claim",
-                )
-        if unit["information_kind"] == "evidence":
-            _optional_reference(
-                errors,
-                registry,
-                unit["evidence"]["source_event_object_id"],
-                f"/information_units/{index}/evidence/source_event_object_id",
-                "event",
-            )
-        if unit["information_kind"] == "testimony":
-            _require_reference(
-                errors,
-                registry,
-                unit["testimony"]["speaker_person_object_id"],
-                f"/information_units/{index}/testimony/speaker_person_object_id",
-                "entity",
-                subtype=("entity_kind", "person"),
-            )
-
-    for index, hypothesis in enumerate(document["hypotheses"]):
-        for field, expected in (
-            ("claim_object_ids", "claim"),
-            ("required_information_object_ids", "information_unit"),
-        ):
-            for target_index, target_id in enumerate(hypothesis[field]):
-                _require_reference(
-                    errors,
-                    registry,
-                    target_id,
-                    f"/hypotheses/{index}/{field}/{target_index}",
-                    expected,
-                )
-
-    for path_index, path in enumerate(document["reasoning_paths"]):
-        _unique_integer(errors, path["nodes"], "ordinal", f"/reasoning_paths/{path_index}/nodes")
-        node_keys: set[str] = set()
-        for node_index, node in enumerate(path["nodes"]):
-            node_key = node["node_key"]
-            if node_key in node_keys:
-                errors.append(
-                    _error(
-                        "duplicate_node_key",
-                        f"/reasoning_paths/{path_index}/nodes/{node_index}/node_key",
-                        f"node_key {node_key!r} is duplicated in the path",
-                    )
-                )
-            node_keys.add(node_key)
-            _optional_reference(
-                errors,
-                registry,
-                node["source_object_id"],
-                f"/reasoning_paths/{path_index}/nodes/{node_index}/source_object_id",
-            )
-        for edge_index, edge in enumerate(path["edges"]):
-            for field in ("from_node_key", "to_node_key"):
-                if edge[field] not in node_keys:
-                    errors.append(
-                        _error(
-                            "missing_node_reference",
-                            f"/reasoning_paths/{path_index}/edges/{edge_index}/{field}",
-                            f"node_key {edge[field]!r} does not exist in this path",
-                        )
-                    )
-            if edge["from_node_key"] == edge["to_node_key"]:
+            if reference["object_id"] == location["id"]:
                 errors.append(
                     _error(
                         "self_reference",
-                        f"/reasoning_paths/{path_index}/edges/{edge_index}",
-                        "a reasoning edge cannot point to itself",
+                        f"/locations/{location_index}/adjacency_refs/{ref_index}",
+                        "a location cannot be adjacent to itself",
                     )
                 )
-
-    if resolution is not None:
-        _unique_integer(errors, resolution["slots"], "ordinal", "/resolution_spec/slots")
-        slot_keys: set[str] = set()
-        for index, slot in enumerate(resolution["slots"]):
-            if slot["slot_key"] in slot_keys:
-                errors.append(
-                    _error(
-                        "duplicate_slot_key",
-                        f"/resolution_spec/slots/{index}/slot_key",
-                        f"slot_key {slot['slot_key']!r} is duplicated",
-                    )
-                )
-            slot_keys.add(slot["slot_key"])
-
-    for index, constraint in enumerate(document["constraints"]):
-        _optional_reference(
+        for travel_index, travel_time in enumerate(location["travel_times"]):
+            _require_declared_type(
+                errors,
+                travel_time["to_ref"],
+                "location",
+                f"/locations/{location_index}/travel_times/{travel_index}/to_ref",
+            )
+    for event_index, event in enumerate(document["events"]):
+        _optional_declared_type(
             errors,
-            registry,
-            constraint["target_object_id"],
-            f"/constraints/{index}/target_object_id",
+            event["location_ref"],
+            "location",
+            f"/events/{event_index}/location_ref",
         )
-
-    for state_index, state in enumerate(document["knowledge_states"]):
-        _require_reference(
+        for field in ("participant_refs", "observed_by_refs"):
+            _require_list_type(errors, event[field], "entity", f"/events/{event_index}/{field}")
+        _require_list_type(
             errors,
-            registry,
-            state["entity_object_id"],
-            f"/knowledge_states/{state_index}/entity_object_id",
+            event["narrative_phase_refs"],
+            "phase",
+            f"/events/{event_index}/narrative_phase_refs",
+        )
+        start = datetime.fromisoformat(event["time"]["start"])
+        end_value = event["time"]["end"]
+        if end_value is not None and datetime.fromisoformat(end_value) < start:
+            errors.append(
+                _error(
+                    "invalid_time_range",
+                    f"/events/{event_index}/time/end",
+                    "event end cannot be before start",
+                )
+            )
+    for entity_index, entity in enumerate(document["entities"]):
+        for state_index, state in enumerate(entity["knowledge_states"]):
+            base = f"/entities/{entity_index}/knowledge_states/{state_index}"
+            _require_declared_type(errors, state["phase_ref"], "phase", f"{base}/phase_ref")
+            _require_list_type(
+                errors, state["knows_refs"], "information_unit", f"{base}/knows_refs"
+            )
+            for field in ("believes_refs", "false_belief_refs"):
+                _require_list_type(errors, state[field], "claim", f"{base}/{field}")
+    for relationship_index, relationship in enumerate(document["relationships"]):
+        _require_list_type(
+            errors,
+            relationship["phase_refs"],
+            "phase",
+            f"/relationships/{relationship_index}/phase_refs",
+        )
+    for unit_index, unit in enumerate(document["information_units"]):
+        base = f"/information_units/{unit_index}"
+        _optional_declared_type(
+            errors, unit["source_event_ref"], "event", f"{base}/source_event_ref"
+        )
+        for field in ("supports_claim_refs", "refutes_claim_refs"):
+            _require_list_type(errors, unit[field], "claim", f"{base}/{field}")
+        _require_list_type(
+            errors, unit["availability"]["phase_refs"], "phase", f"{base}/availability/phase_refs"
+        )
+        _require_list_type(
+            errors,
+            unit["availability"]["perspective_refs"],
             "entity",
+            f"{base}/availability/perspective_refs",
         )
-        _require_reference(
+        _require_list_type(
             errors,
-            registry,
-            state["narrative_phase_object_id"],
-            f"/knowledge_states/{state_index}/narrative_phase_object_id",
-            "narrative_phase",
+            unit["availability"]["alternative_path_refs"],
+            "reasoning_path",
+            f"{base}/availability/alternative_path_refs",
         )
-        _unique_integer(
+    for claim_index, claim in enumerate(document["claims"]):
+        base = f"/claims/{claim_index}"
+        for field in ("support_refs", "refute_refs"):
+            _require_list_type(errors, claim[field], "information_unit", f"{base}/{field}")
+        _require_list_type(
+            errors, claim["dependency_claim_refs"], "claim", f"{base}/dependency_claim_refs"
+        )
+    for hypothesis_index, hypothesis in enumerate(document["hypotheses"]):
+        base = f"/hypotheses/{hypothesis_index}"
+        _require_declared_type(
             errors,
-            state["entries"],
-            "ordinal",
-            f"/knowledge_states/{state_index}/entries",
+            hypothesis["target_resolution_ref"],
+            "resolution_spec",
+            f"{base}/target_resolution_ref",
         )
-        for entry_index, entry in enumerate(state["entries"]):
-            _require_reference(
-                errors,
-                registry,
-                entry["information_unit_object_id"],
-                f"/knowledge_states/{state_index}/entries/{entry_index}/information_unit_object_id",
-                "information_unit",
-            )
-            _optional_reference(
-                errors,
-                registry,
-                entry["acquired_from_object_id"],
-                f"/knowledge_states/{state_index}/entries/{entry_index}/acquired_from_object_id",
-            )
-
+        _require_list_type(
+            errors, hypothesis["required_claim_refs"], "claim", f"{base}/required_claim_refs"
+        )
+        _require_list_type(
+            errors,
+            hypothesis["competing_hypothesis_refs"],
+            "hypothesis",
+            f"{base}/competing_hypothesis_refs",
+        )
+    for path_index, reasoning_path in enumerate(document["reasoning_paths"]):
+        _unique_string(
+            errors,
+            reasoning_path["steps"],
+            "step_id",
+            f"/reasoning_paths/{path_index}/steps",
+        )
+    for spec_index, resolution in enumerate(document["resolution_specs"]):
+        _unique_string(
+            errors,
+            resolution["required_slots"],
+            "slot_id",
+            f"/resolution_specs/{spec_index}/required_slots",
+        )
     return errors
 
 
-def _require_reference(
+def _require_list_type(
     errors: list[dict[str, Any]],
-    registry: dict[str, tuple[str, dict[str, Any]]],
-    object_id: str,
+    references: list[dict[str, str]],
+    expected_type: str,
     path: str,
-    expected_type: str | None = None,
-    *,
-    subtype: tuple[str, str] | None = None,
 ) -> None:
-    registered = registry.get(object_id)
-    if registered is None:
-        errors.append(_error("missing_reference", path, f"object_id {object_id!r} does not exist"))
-        return
-    actual_type, target = registered
-    if expected_type is not None and actual_type != expected_type:
+    for index, reference in enumerate(references):
+        _require_declared_type(errors, reference, expected_type, f"{path}/{index}")
+
+
+def _optional_declared_type(
+    errors: list[dict[str, Any]],
+    reference: dict[str, str] | None,
+    expected_type: str,
+    path: str,
+) -> None:
+    if reference is not None:
+        _require_declared_type(errors, reference, expected_type, path)
+
+
+def _require_declared_type(
+    errors: list[dict[str, Any]],
+    reference: dict[str, str],
+    expected_type: str,
+    path: str,
+) -> None:
+    if reference["object_type"] != expected_type:
         errors.append(
             _error(
                 "reference_type_mismatch",
                 path,
-                f"expected {expected_type}, got {actual_type}",
-            )
-        )
-        return
-    if subtype is not None and target.get(subtype[0]) != subtype[1]:
-        errors.append(
-            _error(
-                "reference_type_mismatch",
-                path,
-                f"expected {subtype[0]}={subtype[1]}",
+                f"expected {expected_type}, got {reference['object_type']}",
             )
         )
 
 
-def _optional_reference(
-    errors: list[dict[str, Any]],
-    registry: dict[str, tuple[str, dict[str, Any]]],
-    object_id: str | None,
-    path: str,
-    expected_type: str | None = None,
-    *,
-    subtype: tuple[str, str] | None = None,
-) -> None:
-    if object_id is not None:
-        _require_reference(errors, registry, object_id, path, expected_type, subtype=subtype)
+def _walk_object_refs(value: Any, path: str = "") -> Iterator[tuple[str, dict[str, str]]]:
+    if isinstance(value, dict):
+        if set(value) == {"object_type", "object_id"}:
+            yield path, cast(dict[str, str], value)
+            return
+        for key, item in value.items():
+            escaped = key.replace("~", "~0").replace("/", "~1")
+            yield from _walk_object_refs(item, f"{path}/{escaped}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _walk_object_refs(item, f"{path}/{index}")
 
 
 def _unique_integer(
     errors: list[dict[str, Any]], items: list[dict[str, Any]], field: str, path: str
 ) -> None:
-    seen: set[int] = set()
+    _unique_value(errors, items, field, path, "duplicate_order")
+
+
+def _unique_string(
+    errors: list[dict[str, Any]], items: list[dict[str, Any]], field: str, path: str
+) -> None:
+    _unique_value(errors, items, field, path, "duplicate_key")
+
+
+def _unique_value(
+    errors: list[dict[str, Any]],
+    items: list[dict[str, Any]],
+    field: str,
+    path: str,
+    code: str,
+) -> None:
+    seen: set[Any] = set()
     for index, item in enumerate(items):
         value = item[field]
         if value in seen:
             errors.append(
-                _error(
-                    "duplicate_order",
-                    f"{path}/{index}/{field}",
-                    f"{field} {value} is duplicated",
-                )
+                _error(code, f"{path}/{index}/{field}", f"{field} {value!r} is duplicated")
             )
         seen.add(value)
+
+
+def _schema_names() -> tuple[str, ...]:
+    return ("casefile.schema.json", "common.schema.json", "objects.schema.json")
+
+
+def _load_schema(name: str) -> dict[str, Any]:
+    resource = files("casefile.contracts.schemas").joinpath("v1", "casefile", name)
+    return cast(dict[str, Any], json.loads(resource.read_text(encoding="utf-8")))
 
 
 def _json_pointer(parts: list[Any]) -> str:

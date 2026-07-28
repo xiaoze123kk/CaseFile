@@ -10,26 +10,28 @@ import {
 } from "@/lib/prototype-model";
 import { usePrototype } from "@/store/prototype-store";
 
+import { RealArchiveShell } from "./real-archive-shell";
+
 const modules = [
   {
     no: "01",
     label: "建案中心",
     code: "CASE OPENING",
-    href: "/",
+    href: "/demo",
     status: "可用",
   },
   {
     no: "02",
     label: "CaseFile 工作台",
     code: "DRAFT DESK",
-    href: "/workbench",
+    href: "/demo/workbench",
     status: "可用",
   },
   {
     no: "03",
     label: "推理实验室",
     code: "REASONING LAB",
-    href: "/reasoning",
+    href: "/demo/reasoning",
     status: "可用",
   },
   {
@@ -42,14 +44,14 @@ const modules = [
     no: "05",
     label: "质量中心",
     code: "VALIDATION",
-    href: "/quality",
+    href: "/demo/quality",
     status: "可用",
   },
   {
     no: "06",
     label: "多目标编译器",
     code: "COMPILER",
-    href: "/quality#compiler",
+    href: "/demo/quality#compiler",
     status: "联动",
   },
   {
@@ -62,12 +64,18 @@ const modules = [
 
 function isModuleActive(pathname: string, href?: string) {
   if (!href) return false;
-  if (href === "/") return pathname === "/" || pathname === "/brief";
-  if (href.startsWith("/quality")) return pathname === "/quality";
+  if (href === "/demo") return pathname === "/demo" || pathname === "/demo/brief";
+  if (href.startsWith("/demo/quality")) return pathname === "/demo/quality";
   return pathname.startsWith(href);
 }
 
 export function ArchiveShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  if (!pathname.startsWith("/demo")) return <RealArchiveShell>{children}</RealArchiveShell>;
+  return <PrototypeArchiveShell>{children}</PrototypeArchiveShell>;
+}
+
+function PrototypeArchiveShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { state, reset } = usePrototype();
@@ -112,8 +120,8 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
   function openAgentThread(threadId: string) {
     setCommandOpen(false);
     const hash = `#agent-thread=${encodeURIComponent(threadId)}`;
-    if (pathname === "/workbench") {
-      window.history.replaceState(null, "", `/workbench${hash}`);
+    if (pathname === "/demo/workbench") {
+      window.history.replaceState(null, "", `/demo/workbench${hash}`);
       window.dispatchEvent(
         new CustomEvent("casefile:open-agent-thread", {
           detail: { threadId },
@@ -121,13 +129,13 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
       );
       return;
     }
-    router.push(`/workbench${hash}`);
+    router.push(`/demo/workbench${hash}`);
   }
 
   return (
     <div className="archive-app">
       <aside className="side-rail">
-        <Link className="archive-brand" href="/" aria-label="CaseFile 首页">
+        <Link className="archive-brand" href="/demo" aria-label="CaseFile 演示首页">
           <span className="brand-mark" aria-hidden="true" />
           <span>
             <strong>CaseFile</strong>
@@ -241,6 +249,9 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
             <button onClick={resetPrototype} type="button">
               重置原型
             </button>
+            <Link className="utility-link" href="/">
+              返回真实模式
+            </Link>
           </div>
         </header>
         {children}
@@ -284,27 +295,27 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
                   <span>页面与命令</span>
                   <small>NAVIGATION</small>
                 </header>
-                <Link href="/" onClick={() => setCommandOpen(false)}>
+                <Link href="/demo" onClick={() => setCommandOpen(false)}>
                   <b>01</b>
                   <span>返回建案中心</span>
                   <small>GO /</small>
                 </Link>
-                <Link href="/brief" onClick={() => setCommandOpen(false)}>
+                <Link href="/demo/brief" onClick={() => setCommandOpen(false)}>
                   <b>02</b>
                   <span>审阅 Brief</span>
                   <small>GO /BRIEF</small>
                 </Link>
-                <Link href="/workbench" onClick={() => setCommandOpen(false)}>
+                <Link href="/demo/workbench" onClick={() => setCommandOpen(false)}>
                   <b>03</b>
                   <span>打开事件工作台</span>
                   <small>GO /WORKBENCH</small>
                 </Link>
-                <Link href="/reasoning" onClick={() => setCommandOpen(false)}>
+                <Link href="/demo/reasoning" onClick={() => setCommandOpen(false)}>
                   <b>04</b>
                   <span>进入推理实验室</span>
                   <small>GO /REASONING</small>
                 </Link>
-                <Link href="/quality" onClick={() => setCommandOpen(false)}>
+                <Link href="/demo/quality" onClick={() => setCommandOpen(false)}>
                   <b>05</b>
                   <span>查看质量门禁</span>
                   <small>GO /QUALITY</small>

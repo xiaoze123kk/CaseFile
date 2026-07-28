@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 28-table personal foundation."""
+"""Disposable PostgreSQL verification for the 37-table personal foundation."""
 
 from __future__ import annotations
 
@@ -22,8 +22,11 @@ pytestmark = pytest.mark.postgres
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BUSINESS_TABLES = {
     "audit_events",
+    "brief_versions",
+    "briefs",
     "canon_versions",
     "casefile_constraints",
+    "casefile_contract_refs",
     "casefile_objects",
     "casefile_refs",
     "casefiles",
@@ -45,9 +48,15 @@ BUSINESS_TABLES = {
     "reasoning_edges",
     "reasoning_nodes",
     "reasoning_paths",
+    "relationships",
     "resolution_slots",
     "resolution_specs",
+    "structure_locks",
+    "task_attempts",
+    "task_events",
+    "task_runs",
     "testimonies",
+    "user_provider_settings",
     "users",
 }
 
@@ -147,8 +156,8 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
         connection.execute(
             sa.text(
                 """
-                INSERT INTO casefiles (project_id, title, schema_version)
-                VALUES (:project_id, :title, '2.3') RETURNING id
+                INSERT INTO casefiles (project_id, object_id, title, schema_version)
+                VALUES (:project_id, 'case_test_' || :project_id, :title, '1.0') RETURNING id
                 """
             ),
             {"project_id": project_id, "title": f"CaseFile {label}"},
@@ -158,8 +167,10 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
         connection.execute(
             sa.text(
                 """
-                INSERT INTO drafts (project_id, casefile_id, schema_version)
-                VALUES (:project_id, :casefile_id, '2.3') RETURNING id
+                INSERT INTO drafts (project_id, casefile_id, version_id, schema_version)
+                VALUES (
+                    :project_id, :casefile_id, 'draft_test_' || :project_id, '1.0'
+                ) RETURNING id
                 """
             ),
             {"project_id": project_id, "casefile_id": casefile_id},
@@ -180,10 +191,16 @@ def _insert_object(
                 """
                 INSERT INTO casefile_objects (
                     project_id, casefile_id, draft_id, object_id, object_type,
+                    contract_ordinal, created_by_id, contract_updated_at,
                     confirmation_status
                 ) VALUES (
                     :project_id, :casefile_id, :draft_id, :object_id, :object_type,
-                    'user_confirmed'
+                    (
+                        SELECT COALESCE(MAX(contract_ordinal), 0) + 1
+                          FROM casefile_objects
+                         WHERE draft_id = :draft_id AND object_type = :ordinal_type
+                    ),
+                    'user_test', CURRENT_TIMESTAMP::text, 'user_confirmed'
                 ) RETURNING id
                 """
             ),
@@ -193,6 +210,7 @@ def _insert_object(
                 "draft_id": lineage.draft_id,
                 "object_id": object_id,
                 "object_type": object_type,
+                "ordinal_type": object_type,
             },
         ).scalar_one()
     )
@@ -214,7 +232,7 @@ def _insert_snapshot(
     revision: int,
     content_hash: str,
     content: str = '{"casefile": {}}',
-    schema_version: str = "2.3",
+    schema_version: str = "1.0",
     creator_id: int | None = None,
 ) -> int:
     return int(
@@ -253,7 +271,7 @@ def _insert_canon(
     parent_id: int | None = None,
     content_hash: str = "a" * 64,
     content: str = '{"casefile": {}}',
-    schema_version: str = "2.3",
+    schema_version: str = "1.0",
     confirmer_id: int | None = None,
 ) -> int:
     return int(
@@ -286,7 +304,7 @@ def _insert_canon(
     )
 
 
-def test_database_has_28_identity_tables_without_team_or_payload_columns(
+def test_database_has_37_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -300,7 +318,7 @@ def test_database_has_28_identity_tables_without_team_or_payload_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 28
+    assert len(identity_rows) == 37
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
@@ -312,9 +330,9 @@ def test_database_has_28_identity_tables_without_team_or_payload_columns(
             """
         )
     ).all()
+    column_pairs = set(columns)
     flat_names = {name for row in columns for name in row}
-    assert "payload_jsonb" not in flat_names
-    assert "public_id" not in flat_names
+    assert ("casefile_objects", "payload_jsonb") not in column_pairs
     assert not any("workspace" in name or "membership" in name for name in flat_names)
 
 
@@ -674,21 +692,21 @@ def test_phase_resolution_knowledge_and_reasoning_uniqueness(connection: Connect
     duplicate_spec_object = _insert_object(
         connection, lineage, "resolution_duplicate", "resolution_spec"
     )
-    with _expect_database_error(connection):
-        connection.execute(
-            sa.text(
-                """
-                INSERT INTO resolution_specs (
-                    project_id, casefile_id, draft_id, object_registry_id,
-                    question_type, target_question
-                ) VALUES (
-                    :project_id, :casefile_id, :draft_id, :object_registry_id,
-                    'motive', 'Why?'
-                )
-                """
-            ),
-            _core_values(lineage, duplicate_spec_object),
-        )
+    second_spec_id = connection.execute(
+        sa.text(
+            """
+            INSERT INTO resolution_specs (
+                project_id, casefile_id, draft_id, object_registry_id,
+                question_type, target_question
+            ) VALUES (
+                :project_id, :casefile_id, :draft_id, :object_registry_id,
+                'motive', 'Why?'
+            ) RETURNING id
+            """
+        ),
+        _core_values(lineage, duplicate_spec_object),
+    ).scalar_one()
+    assert second_spec_id != spec_id
     connection.execute(
         sa.text(
             """

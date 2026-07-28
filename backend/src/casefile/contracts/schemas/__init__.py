@@ -1,1 +1,1 @@
-"""Packaged JSON Schema resources."""
+"""Generated runtime mirrors of root JSON Schema resources."""

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/brief/brief.schema.json",
+  "title": "Brief",
+  "description": "User-reviewed creative intent used as immutable Agent generation input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_text",
+    "one_line_concept",
+    "core_mystery",
+    "player_goal",
+    "gameplay_loop"
+  ],
+  "properties": {
+    "source_text": {"type": "string", "minLength": 1},
+    "one_line_concept": {"type": "string", "minLength": 1},
+    "core_mystery": {"type": "string", "minLength": 1},
+    "player_goal": {"type": "string", "minLength": 1},
+    "gameplay_loop": {"type": "string", "minLength": 1},
+    "constraints": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "project_profile": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

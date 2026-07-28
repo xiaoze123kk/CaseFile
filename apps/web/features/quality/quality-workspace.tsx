@@ -236,7 +236,7 @@ export function QualityWorkspace() {
     <main className={`document ${styles.qualityDocument}`}>
       <DocumentHeader
         action={
-          <Link className="square-button" href="/workbench">
+          <Link className="square-button" href="/demo/workbench">
             ← 返回工作台
           </Link>
         }
@@ -450,7 +450,7 @@ export function QualityWorkspace() {
                     ) : (
                       <div className={styles.manualFix}>
                         <p>{selectedIssue.fixHint}</p>
-                        <Link className="square-button" href="/workbench">
+                        <Link className="square-button" href="/demo/workbench">
                           在工作台定位 {selectedIssue.objectId} →
                         </Link>
                       </div>

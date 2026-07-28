@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { WorkbenchPage } from "@/features/workbench/workbench-page";
+import { RealWorkbench } from "@/features/workflow/real-workbench";
 
 export const metadata: Metadata = {
   title: "CaseFile 工作台",
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function WorkbenchRoute() {
-  return <WorkbenchPage />;
+  return <RealWorkbench />;
 }

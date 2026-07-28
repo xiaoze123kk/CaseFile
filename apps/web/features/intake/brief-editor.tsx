@@ -72,7 +72,7 @@ export function BriefEditor() {
   function approveBrief() {
     if (!decisionsComplete) return;
     dispatch({ type: "approve-brief" });
-    router.push("/workbench");
+    router.push("/demo/workbench");
   }
 
   return (

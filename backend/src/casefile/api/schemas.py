@@ -78,12 +78,8 @@ class EventWriteRequest(StrictRequest):
     start_time: dict[str, Any] | None = None
     end_time: dict[str, Any] | None = None
     narrative_order: int = Field(ge=1)
-    narrative_phase_object_id: str | None = Field(
-        default=None, pattern=r"^[a-z][a-z0-9_]{1,127}$"
-    )
-    location_object_id: str | None = Field(
-        default=None, pattern=r"^[a-z][a-z0-9_]{1,127}$"
-    )
+    narrative_phase_object_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{1,127}$")
+    location_object_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]{1,127}$")
     visibility: Literal["public", "restricted", "hidden"] = "restricted"
     truth_status: Literal["true", "false", "uncertain", "disputed"] = "uncertain"
     confidence: float | None = Field(default=None, ge=0, le=1)
@@ -114,3 +110,28 @@ class ReferenceReplaceRequest(StrictRequest):
         if any(pattern.fullmatch(object_id) is None for object_id in self.object_ids):
             raise ValueError("every object_id must use lower snake_case")
         return self
+
+
+class ProviderSettingRequest(StrictRequest):
+    api_key: str = Field(min_length=8, max_length=512)
+    model_id: str = Field(default="gpt-5.6-sol", min_length=1, max_length=160)
+    model_is_custom: bool = False
+
+
+class BriefUpdateRequest(StrictRequest):
+    expected_revision: int = Field(ge=1)
+    content: dict[str, Any]
+
+
+class BriefConfirmRequest(StrictRequest):
+    expected_revision: int = Field(ge=1)
+
+
+class GenerateTaskRequest(StrictRequest):
+    brief_version_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+
+
+class ObjectPatchRequest(StrictRequest):
+    expected_revision: int = Field(ge=1)
+    changes: dict[str, Any] = Field(min_length=1)
