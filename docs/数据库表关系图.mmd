@@ -1,0 +1,73 @@
+flowchart TB
+    subgraph ownership["个人所有权与编辑底座"]
+        direction TB
+        U["users"] -->|"1:N owns"| P["projects"]
+        P -->|"1:1"| CF["casefiles"]
+        CF -->|"1:1 current"| D["drafts"]
+        D -->|"1:N registers"| O["casefile_objects"]
+        O -->|"from / to"| R["casefile_refs\nordered multi-value links"]
+        D -->|"1:N append-only"| OP["draft_operations"]
+        O -->|"0..1 target"| OP
+    end
+
+    subgraph narrative["叙事、实体与信息"]
+        direction TB
+        NP["narrative_phases"]
+        EN["entities"] -->|"1:0..1 person"| PE["people"]
+        EN -->|"1:0..1 location"| LO["locations"]
+        NP -->|"0..N phase"| EV["events"]
+        LO -->|"0..N occurs_at"| EV
+        NP -->|"0..N visible_from"| IU["information_units"]
+        IU -->|"1:0..1 evidence"| EI["evidence_items"]
+        EV -->|"0..N source_event"| EI
+        IU -->|"1:0..1 testimony"| TE["testimonies"]
+        PE -->|"1:N speaker"| TE
+        CL["claims"]
+    end
+
+    subgraph reasoning["假设、推理、结论与约束"]
+        direction TB
+        HY["hypotheses"]
+        RP["reasoning_paths"] -->|"1:N"| RN["reasoning_nodes"]
+        RP -->|"1:N"| RE["reasoning_edges"]
+        RN -->|"from_node / to_node"| RE
+        O -->|"0..N source_object"| RN
+        RS["resolution_specs"] -->|"1:N"| SL["resolution_slots"]
+        CO["casefile_constraints"]
+        O -->|"0..N target_object"| CO
+    end
+
+    subgraph knowledge["阶段化知识状态"]
+        direction TB
+        EN -->|"1:N knower"| KS["knowledge_states"]
+        NP -->|"1:N phase"| KS
+        KS -->|"1:N"| KE["knowledge_state_entries"]
+        IU -->|"1:N information"| KE
+        O -->|"0..N acquired_from"| KE
+    end
+
+    subgraph history["不可变版本与审计"]
+        direction TB
+        D -->|"1:N freezes"| DS["draft_snapshots"]
+        DS -->|"1:0..1 becomes"| CV["canon_versions"]
+        CF -->|"1:N versions"| CV
+        CV -->|"0..1 parent"| CV
+        CF -. "current_canon_version_id" .-> CV
+        D -. "base_canon_version_id" .-> CV
+        P -->|"1:N"| AU["audit_events"]
+        CF -->|"0..N scope"| AU
+        U -->|"creates"| DS
+        U -->|"confirms"| CV
+        U -->|"acts"| AU
+    end
+
+    O -. "object_type = narrative_phase" .-> NP
+    O -. "object_type = entity" .-> EN
+    O -. "object_type = event" .-> EV
+    O -. "object_type = information_unit" .-> IU
+    O -. "object_type = claim" .-> CL
+    O -. "object_type = hypothesis" .-> HY
+    O -. "object_type = reasoning_path" .-> RP
+    O -. "object_type = resolution_spec" .-> RS
+    O -. "object_type = constraint" .-> CO
+    O -. "object_type = knowledge_state" .-> KS
