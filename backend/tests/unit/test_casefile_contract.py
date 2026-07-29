@@ -9,7 +9,12 @@ from typing import Any
 
 import pytest
 from casefile.application.snapshot import casefile_content_hash
-from casefile.contracts import ContractValidationError, load_casefile_schema, validate_casefile
+from casefile.contracts import (
+    ContractValidationError,
+    load_casefile_schema,
+    public_validation_issues,
+    validate_casefile,
+)
 from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -70,3 +75,36 @@ def test_rfc8785_hash_is_stable_across_object_key_order() -> None:
     reordered = json.loads(json.dumps(document, ensure_ascii=False, sort_keys=True))
     assert casefile_content_hash(document) == casefile_content_hash(reordered)
     assert len(casefile_content_hash(document)) == 64
+
+
+def test_public_validation_issues_keep_paths_without_candidate_values() -> None:
+    secret_value = "author-secret-value"
+    issues = public_validation_issues(
+        [
+            {
+                "code": "schema_invalid",
+                "path": "/events/0/time",
+                "message": f"{secret_value!r} is not of type 'object'",
+            },
+            {
+                "code": "missing_reference",
+                "path": "/claims/0/support_refs/0",
+                "message": "object_id 'secret_reference' does not exist",
+            },
+        ]
+    )
+
+    assert issues == [
+        {
+            "code": "schema_invalid",
+            "path": "/events/0/time",
+            "message": "字段类型应为 'object'",
+        },
+        {
+            "code": "missing_reference",
+            "path": "/claims/0/support_refs/0",
+            "message": "引用的对象不存在",
+        },
+    ]
+    assert secret_value not in repr(issues)
+    assert "secret_reference" not in repr(issues)

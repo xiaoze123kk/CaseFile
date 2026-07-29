@@ -3,13 +3,38 @@
   "$id": "https://casefile.local/schemas/v1/task/task.schema.json",
   "title": "TaskContracts",
   "$defs": {
+    "TaskFailureIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "path", "message"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "path": {"type": "string", "maxLength": 512},
+        "message": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    },
+    "TaskFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable", "issues"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 320},
+        "retryable": {"type": "boolean"},
+        "issues": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TaskFailureIssue"}
+        }
+      }
+    },
     "TaskRun": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "task_run_id", "project_id", "task_type", "status", "stage",
         "provider", "model_id", "input_draft_revision", "input_brief_revision",
-        "input_source_record_id", "input_hash", "attempt_count", "usage", "result"
+        "input_source_record_id", "input_hash", "attempt_count", "usage", "result",
+        "failure"
       ],
       "properties": {
         "task_run_id": {"type": "integer", "minimum": 1},
@@ -49,6 +74,12 @@
         },
         "result_snapshot_id": {"type": ["integer", "null"], "minimum": 1},
         "error_code": {"type": ["string", "null"]},
+        "failure": {
+          "oneOf": [
+            {"$ref": "#/$defs/TaskFailure"},
+            {"type": "null"}
+          ]
+        },
         "created_at": {"type": "string", "format": "date-time"},
         "updated_at": {"type": "string", "format": "date-time"}
       }

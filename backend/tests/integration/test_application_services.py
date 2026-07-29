@@ -20,7 +20,7 @@ from casefile.application.services import CaseFileService
 from casefile.application.snapshot import casefile_content_hash
 from casefile.application.v1_editing import V1EditingService
 from casefile.application.workflow_service import WorkflowService
-from casefile.contracts import validate_casefile
+from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
     BriefVersion,
     DraftSnapshot,
@@ -95,6 +95,30 @@ class RichFixtureProvider:
             usage={"requests": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
             tools=ToolMetrics(calls=1, valid_calls=1, successful_calls=1, adopted_results=1),
         )
+
+
+class StructuralFailureProvider(FakeProvider):
+    """Fail deterministically before optionally returning a valid candidate."""
+
+    def __init__(self, failures_before_success: int) -> None:
+        self.failures_before_success = failures_before_success
+        self.calls = 0
+        self.feedback: list[tuple[dict[str, object], ...]] = []
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        self.calls += 1
+        self.feedback.append(request.repair_feedback)
+        if self.calls <= self.failures_before_success:
+            raise ContractValidationError(
+                [
+                    {
+                        "code": "schema_invalid",
+                        "path": "/events/0/time",
+                        "message": "'author-secret-value' is not of type 'object'",
+                    }
+                ]
+            )
+        return super().generate(request)
 
 
 def _test_database_url() -> str:
@@ -292,6 +316,106 @@ def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
         assert b"sk-test-workflow-secret" not in bytes(ciphertext)
         assert snapshot_json == draft["content"]
         assert snapshot_hash == casefile_content_hash(draft["content"])
+
+
+def test_worker_repairs_structural_output_with_actionable_feedback(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    provider = StructuralFailureProvider(failures_before_success=1)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="repair-success-worker"),
+            provider_factory=lambda _task: provider,
+        )
+
+        assert worker.run_once() is True
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            task = workflow.get_task(actor_id, project_id, task_run_id)
+            events = workflow.list_task_events(actor_id, project_id, task_run_id)
+            attempt = session.scalar(
+                select(TaskAttempt).where(TaskAttempt.task_run_id == task_run_id)
+            )
+
+        assert task["status"] == "succeeded"
+        assert task["failure"] is None
+        assert provider.calls == 2
+        assert provider.feedback[0] == ()
+        assert provider.feedback[1][0]["issues"][0]["path"] == "/events/0/time"
+        assert attempt is not None
+        assert attempt.validation_errors_jsonb == [
+            {
+                "repair_no": 0,
+                "issues": [
+                    {
+                        "code": "schema_invalid",
+                        "path": "/events/0/time",
+                        "message": "字段类型应为 'object'",
+                    }
+                ],
+            }
+        ]
+        failed_event = next(
+            event for event in events if event["event_type"] == "validation.failed"
+        )
+        assert failed_event["payload"]["issues"][0]["message"] == "字段类型应为 'object'"
+        assert any(event["event_type"] == "model.repair_started" for event in events)
+        assert "author-secret-value" not in repr(events)
+
+
+def test_worker_exhausts_structural_repairs_without_persisting_candidate(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    provider = StructuralFailureProvider(failures_before_success=99)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="repair-failure-worker"),
+            provider_factory=lambda _task: provider,
+        )
+
+        assert worker.run_once() is True
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            task = workflow.get_task(actor_id, project_id, task_run_id)
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            events = workflow.list_task_events(actor_id, project_id, task_run_id)
+            attempt = session.scalar(
+                select(TaskAttempt).where(TaskAttempt.task_run_id == task_run_id)
+            )
+
+        assert task["status"] == "failed"
+        assert task["error_code"] == "candidate_validation_failed"
+        assert task["failure"] == {
+            "code": "candidate_validation_failed",
+            "message": "模型输出未通过 CaseFile 结构校验，已停止写入 Draft。",
+            "retryable": True,
+            "issues": [
+                {
+                    "code": "schema_invalid",
+                    "path": "/events/0/time",
+                    "message": "字段类型应为 'object'",
+                },
+            ],
+        }
+        assert provider.calls == 3
+        assert attempt is not None
+        assert attempt.candidate_jsonb is None
+        assert len(attempt.validation_errors_jsonb) == 3
+        assert draft["content"] is None
+        assert events[-1]["event_type"] == "task.failed"
+        assert events[-1]["payload"]["failure"] == task["failure"]
+        assert "author-secret-value" not in repr(task)
+        assert "author-secret-value" not in repr(events)
 
 
 def test_source_polish_extract_recovery_and_human_confirmation(

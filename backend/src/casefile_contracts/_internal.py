@@ -577,6 +577,27 @@ class InputSourceRecordId(RootModel[int]):
     root: Annotated[int, Field(ge=1)]
 
 
+class TaskFailureIssue(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    code: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    path: Annotated[str, Field(max_length=512)]
+    message: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class TaskFailure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    code: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    message: Annotated[str, Field(max_length=320, min_length=1)]
+    retryable: bool
+    issues: list[TaskFailureIssue]
+
+
 class TaskRun(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -598,6 +619,7 @@ class TaskRun(BaseModel):
     result: dict[str, Any] | None
     result_snapshot_id: Annotated[int | None, Field(ge=1)] = None
     error_code: str | None = None
+    failure: TaskFailure | None
     created_at: AwareDatetime | None = None
     updated_at: AwareDatetime | None = None
 

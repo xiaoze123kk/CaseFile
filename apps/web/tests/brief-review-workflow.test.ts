@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  eventSummary,
   extractionMatchesBrief,
   normalizeBriefReviewContent,
 } from "@/features/workflow/brief-review-workspace";
@@ -99,6 +100,7 @@ function extractionTask(): TaskView {
     result_snapshot_id: null,
     result: extractResult,
     error_code: null,
+    failure: null,
     created_at: "2026-07-28T08:00:00Z",
     updated_at: "2026-07-28T08:00:01Z",
   };
@@ -117,6 +119,34 @@ function taskEvent(sequenceNo: number): TaskEventView {
 }
 
 describe("Brief review workflow", () => {
+  it("summarizes repair rounds and sanitized field-level failures", () => {
+    const summary = eventSummary({
+      ...taskEvent(3),
+      event_type: "validation.failed",
+      stage: "validating",
+      payload: {
+        repair_no: 1,
+        issue_count: 2,
+        issues: [
+          {
+            code: "missing",
+            path: "/events/0/time",
+            message: "缺少必填字段",
+          },
+          {
+            code: "schema_invalid",
+            path: "/claims/0",
+            message: "字段不符合 CaseFile 结构约束",
+          },
+        ],
+      },
+    });
+
+    expect(summary).toContain("修复轮次：1");
+    expect(summary).toContain("问题：2");
+    expect(summary).toContain("/events/0/time 缺少必填字段（另有 1 项）");
+  });
+
   it("preserves confirmed atomics when the author answer and boundary are unchanged", () => {
     const prepared = prepareBriefForSave(
       brief,

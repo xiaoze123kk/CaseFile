@@ -245,6 +245,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert task.status_code == 200
         assert task.json()["status"] == "succeeded"
+        assert task.json()["failure"] is None
         assert task.json()["result"]["snapshot_id"] == task.json()["result_snapshot_id"]
 
         stream = client.get(

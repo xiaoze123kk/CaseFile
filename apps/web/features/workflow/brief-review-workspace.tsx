@@ -25,6 +25,7 @@ import {
   type ResolutionMode,
   type SourceRecordView,
   type TaskEventView,
+  type TaskFailure,
   type TaskView,
 } from "@/lib/api-client";
 import { useWorkflowSession } from "@/store/workflow-store";
@@ -124,12 +125,30 @@ export function extractionMatchesBrief(
   );
 }
 
-function eventSummary(event: TaskEventView) {
+function eventIssueSummary(payload: Record<string, unknown>) {
+  const issues = Array.isArray(payload.issues) ? payload.issues : [];
+  const first = issues[0];
+  if (!first || typeof first !== "object") return null;
+  const issue = first as Record<string, unknown>;
+  const path = typeof issue.path === "string" && issue.path ? issue.path : "/";
+  const message =
+    typeof issue.message === "string" ? issue.message : "结构校验失败";
+  return `${path} ${message}${issues.length > 1 ? `（另有 ${issues.length - 1} 项）` : ""}`;
+}
+
+export function eventSummary(event: TaskEventView) {
   const payload = event.payload;
+  const failure =
+    payload.failure && typeof payload.failure === "object"
+      ? (payload.failure as Record<string, unknown>)
+      : null;
   const parts = [
     payload.message,
     payload.tool ? `工具：${String(payload.tool)}` : null,
     payload.model_id ? `模型：${String(payload.model_id)}` : null,
+    payload.repair_no !== undefined
+      ? `修复轮次：${String(payload.repair_no)}`
+      : null,
     payload.object_count !== undefined
       ? `对象：${String(payload.object_count)}`
       : null,
@@ -138,12 +157,39 @@ function eventSummary(event: TaskEventView) {
         ? "结构有效"
         : "结构无效"
       : null,
+    payload.issue_count !== undefined
+      ? `问题：${String(payload.issue_count)}`
+      : null,
+    eventIssueSummary(payload),
+    failure?.retryable === true ? "可重试" : null,
     payload.content_hash
       ? `HASH ${String(payload.content_hash).slice(0, 12)}…`
       : null,
     payload.usage ? `用量：${JSON.stringify(payload.usage)}` : null,
   ];
   return parts.filter(Boolean).join(" · ") || "阶段状态已更新";
+}
+
+function TaskFailureDetails({ failure }: { failure: TaskFailure }) {
+  return (
+    <div className={styles.failurePanel} role="alert">
+      <div>
+        <b>生成失败 / {failure.code}</b>
+        <span>{failure.retryable ? "可重新发起" : "需要先处理配置"}</span>
+      </div>
+      <p>{failure.message}</p>
+      {failure.issues.length ? (
+        <ol>
+          {failure.issues.map((issue, index) => (
+            <li key={`${issue.code}-${issue.path}-${index}`}>
+              <code>{issue.path || "/"}</code>
+              <span>{issue.message}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </div>
+  );
 }
 
 function taskAnchorId(taskRunId: number, index: number) {
@@ -1376,8 +1422,16 @@ export function BriefReviewWorkspace() {
             ) : null}
             {extractTask?.status === "failed" ? (
               <p className={styles.panelWarning}>
-                原子拆解失败：{extractTask.error_code ?? "unknown_error"}。原稿仍完整保留，可重试或人工补录。
+                原子拆解失败：
+                {extractTask.failure?.message ??
+                  extractTask.error_code ??
+                  "unknown_error"}
+                。原稿仍完整保留，可重试或人工补录。
               </p>
+            ) : null}
+            {generationTask?.status === "failed" &&
+            generationTask.failure ? (
+              <TaskFailureDetails failure={generationTask.failure} />
             ) : null}
             {!providerQuery.data ? (
               <p className={styles.panelWarning}>

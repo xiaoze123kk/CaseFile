@@ -13,6 +13,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import rfc8785
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -29,8 +35,16 @@ from casefile.agent_runtime import (
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.application.casefile_v1 import write_generated_casefile
-from casefile.application.workflow_service import append_task_event, source_view
-from casefile.contracts import ContractValidationError, validate_casefile
+from casefile.application.workflow_service import (
+    append_task_event,
+    source_view,
+    task_failure_view,
+)
+from casefile.contracts import (
+    ContractValidationError,
+    public_validation_issues,
+    validate_casefile,
+)
 from casefile.data_postgres.models import (
     Brief,
     BriefVersion,
@@ -189,6 +203,7 @@ class Worker:
                     emit=lambda event_type, stage, payload: self._emit(
                         task_run_id, event_type, stage, payload
                     ),
+                    network_retries=_network_retries(task_snapshot),
                 )
                 polish_result = provider.polish(polish_request)
                 candidate = polish_result.candidate.model_dump(mode="json")
@@ -213,6 +228,7 @@ class Worker:
                     emit=lambda event_type, stage, payload: self._emit(
                         task_run_id, event_type, stage, payload
                     ),
+                    network_retries=_network_retries(task_snapshot),
                 )
                 extract_result = provider.extract_anchors(extract_request)
                 candidate = extract_result.candidate.model_dump(mode="json")
@@ -228,7 +244,8 @@ class Worker:
             generation_request = self._load_generation_request(task_snapshot, api_key)
             result: GenerationResult | None = None
             repair_limit = int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
-            feedback: tuple[str, ...] = ()
+            feedback: tuple[dict[str, Any], ...] = ()
+            feedback_history: list[dict[str, Any]] = []
             for repair_no in range(repair_limit + 1):
                 if repair_no:
                     self._emit(
@@ -245,9 +262,24 @@ class Worker:
                     validate_casefile(candidate)
                     break
                 except ContractValidationError as error:
-                    issue = {"repair_no": repair_no, "error": str(error)}
-                    validation_errors.append(issue)
-                    feedback = tuple(item["error"] for item in validation_errors[-3:])
+                    public_issues = public_validation_issues(error.errors)
+                    validation_errors.append(
+                        {"repair_no": repair_no, "issues": public_issues}
+                    )
+                    feedback_history.append(
+                        {"repair_no": repair_no, "issues": error.errors}
+                    )
+                    feedback = tuple(feedback_history[-3:])
+                    self._emit(
+                        task_run_id,
+                        "validation.failed",
+                        "validating",
+                        {
+                            "repair_no": repair_no,
+                            "issue_count": len(error.errors),
+                            "issues": public_issues,
+                        },
+                    )
                     if repair_no >= repair_limit:
                         raise
             if result is None or candidate is None:
@@ -329,6 +361,7 @@ class Worker:
                 emit=lambda event_type, stage, payload: self._emit(
                     task.id, event_type, stage, payload
                 ),
+                network_retries=_network_retries(task),
             )
 
     def _complete_polish(
@@ -557,10 +590,6 @@ class Worker:
         sensitive_values: tuple[str, ...],
     ) -> None:
         error_code = _error_code(error)
-        details = {
-            "exception_type": type(error).__name__,
-            "message": _safe_error_message(error, sensitive_values),
-        }
         with self.session_factory() as session, session.begin():
             task = session.scalar(
                 select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
@@ -576,6 +605,17 @@ class Worker:
                 or attempt.status != "running"
             ):
                 return
+            failure_issues = _failure_validation_issues(validation_errors)
+            public_failure = task_failure_view(
+                error_code,
+                issues=failure_issues,
+                network_retries=_network_retries(task),
+            )
+            details = {
+                "exception_type": type(error).__name__,
+                "message": _safe_error_message(error, sensitive_values),
+                "public_failure": public_failure,
+            }
             now = datetime.now(UTC)
             attempt.status = "failed"
             attempt.candidate_jsonb = candidate
@@ -598,9 +638,14 @@ class Worker:
                 "task.failed",
                 "failed",
                 {
-                    "message": "Agent 任务失败，原始素材与已确认 Brief 未被修改",
+                    "message": (
+                        public_failure["message"]
+                        if public_failure is not None
+                        else "Agent 任务失败，原始素材与已确认 Brief 未被修改"
+                    ),
                     "task_type": task.task_type,
                     "error_code": error_code,
+                    "failure": public_failure,
                 },
             )
 
@@ -625,14 +670,44 @@ class Worker:
 def _error_code(error: Exception) -> str:
     if isinstance(error, ContractValidationError):
         return "candidate_validation_failed"
-    name = type(error).__name__.lower()
-    if "authentication" in name:
+    if isinstance(error, AuthenticationError):
         return "provider_authentication_failed"
-    if "ratelimit" in name:
+    if isinstance(error, RateLimitError):
         return "provider_rate_limited"
-    if "timeout" in name:
+    if isinstance(error, APITimeoutError):
         return "provider_timeout"
+    if isinstance(error, APIConnectionError):
+        return "provider_connection_failed"
     return "generation_failed"
+
+
+def _network_retries(task: TaskRun) -> int:
+    retries = int(task.budget_jsonb.get("network_retries", 2))
+    return max(0, min(retries, 5))
+
+
+def _failure_validation_issues(
+    validation_errors: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for batch in validation_errors:
+        for raw_issue in batch.get("issues", []):
+            if not isinstance(raw_issue, dict):
+                continue
+            issue = {
+                "code": str(raw_issue.get("code", "validation_failed")),
+                "path": str(raw_issue.get("path", "")),
+                "message": str(raw_issue.get("message", "结构校验失败")),
+            }
+            key = (issue["code"], issue["path"], issue["message"])
+            if key in seen:
+                continue
+            seen.add(key)
+            issues.append(issue)
+            if len(issues) == 20:
+                return issues
+    return issues
 
 
 def _required_object(value: dict[str, Any], key: str) -> dict[str, Any]:

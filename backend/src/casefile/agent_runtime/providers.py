@@ -14,7 +14,7 @@ from agents.models.openai_responses import OpenAIResponsesModel
 from casefile_contracts import CaseFile
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
@@ -36,7 +36,7 @@ from casefile.agent_runtime.prompt import (
     polish_input,
 )
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
-from casefile.contracts import validate_casefile
+from casefile.contracts import ContractValidationError, validate_casefile
 
 
 class GenerationProvider(Protocol):
@@ -258,7 +258,10 @@ class OpenAIAgentsProvider:
         return asyncio.run(self._generate(request))
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
-        client = AsyncOpenAI(api_key=request.api_key, max_retries=2)
+        client = AsyncOpenAI(
+            api_key=request.api_key,
+            max_retries=request.network_retries,
+        )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
         return await _run_agent(
             request,
@@ -282,7 +285,10 @@ class OpenAIAgentsProvider:
         output_type: type[BaseModel],
         stage: str,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        client = AsyncOpenAI(api_key=request.api_key, max_retries=2)
+        client = AsyncOpenAI(
+            api_key=request.api_key,
+            max_retries=request.network_retries,
+        )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
         return await _run_auxiliary_agent(
             request,
@@ -387,7 +393,7 @@ class DeepSeekAgentsProvider:
         client = AsyncOpenAI(
             api_key=request.api_key,
             base_url=self.base_url,
-            max_retries=2,
+            max_retries=request.network_retries,
         )
         return OpenAIChatCompletionsModel(
             model=request.model_id,
@@ -487,8 +493,8 @@ async def _run_agent(
             raise ProviderProtocolError("DeepSeek final output must be a JSON string")
         try:
             output = CaseFile.model_validate_json(result.final_output)
-        except ValueError as error:
-            raise ProviderProtocolError("DeepSeek returned invalid CaseFile JSON") from error
+        except ValidationError as error:
+            raise ContractValidationError(_pydantic_validation_issues(error)) from error
     candidate = _remove_absent_descriptions(output.model_dump(mode="json"))
     validate_casefile(candidate)
     candidate_ids = _candidate_object_ids(candidate)
@@ -540,6 +546,40 @@ def _remove_absent_descriptions(value: Any) -> Any:
             if not (key == "description" and item is None)
         }
     return value
+
+
+def _pydantic_validation_issues(error: ValidationError) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    for item in error.errors(
+        include_url=False,
+        include_context=False,
+        include_input=False,
+    ):
+        issue_type = str(item.get("type", "schema_invalid"))
+        code = "candidate_json_invalid" if issue_type == "json_invalid" else issue_type
+        path = _json_pointer(item.get("loc", ()))
+        issues.append(
+            {
+                "code": code,
+                "path": path,
+                "message": str(item.get("msg", "CaseFile schema validation failed")),
+            }
+        )
+    return issues or [
+        {
+            "code": "schema_invalid",
+            "path": "",
+            "message": "CaseFile schema validation failed",
+        }
+    ]
+
+
+def _json_pointer(parts: Any) -> str:
+    escaped = [
+        str(part).replace("~", "~0").replace("/", "~1")
+        for part in parts
+    ]
+    return "" if not escaped else "/" + "/".join(escaped)
 
 
 def _deepseek_model_settings() -> ModelSettings:

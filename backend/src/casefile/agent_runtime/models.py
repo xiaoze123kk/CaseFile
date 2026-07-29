@@ -52,6 +52,7 @@ class BriefPolishRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +64,7 @@ class BriefAnchorExtractRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +81,8 @@ class GenerationRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
-    repair_feedback: tuple[str, ...] = ()
+    network_retries: int = 2
+    repair_feedback: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(slots=True)

@@ -748,6 +748,55 @@
   font-size: var(--font-caption);
 }
 
+.failurePanel {
+  margin: 7px 8px 0;
+  padding: 8px 9px;
+  border: 1px solid var(--red);
+  background: rgba(160, 28, 24, 0.06);
+}
+
+.failurePanel > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.failurePanel b,
+.failurePanel > div span {
+  color: var(--red);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-micro);
+}
+
+.failurePanel p {
+  margin: 5px 0 0;
+  font-size: var(--font-caption);
+}
+
+.failurePanel ol {
+  display: grid;
+  gap: 3px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.failurePanel li {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.55fr) minmax(0, 1fr);
+  gap: 7px;
+  color: var(--ink-muted);
+  font-size: var(--font-micro);
+}
+
+.failurePanel code {
+  overflow: hidden;
+  color: var(--red);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .panelWarning,
 .formError {
   margin: 7px 8px 0;

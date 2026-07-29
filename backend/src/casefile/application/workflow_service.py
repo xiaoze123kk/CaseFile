@@ -37,6 +37,23 @@ DEFAULT_BUDGET: dict[str, Any] = {
     "structural_repair_attempts": 2,
 }
 
+_FAILURE_MESSAGES = {
+    "candidate_validation_failed": "模型输出未通过 CaseFile 结构校验，已停止写入 Draft。",
+    "provider_connection_failed": "无法连接模型服务，网络重试已耗尽。",
+    "provider_timeout": "模型服务响应超时，网络重试已耗尽。",
+    "provider_rate_limited": "模型服务当前限流，请稍后重试。",
+    "provider_authentication_failed": "模型服务认证失败，请检查 API Key 与模型权限。",
+    "generation_failed": "Agent 生成失败，Draft 未被修改。",
+}
+_RETRYABLE_FAILURES = frozenset(
+    {
+        "candidate_validation_failed",
+        "provider_connection_failed",
+        "provider_timeout",
+        "provider_rate_limited",
+    }
+)
+
 
 class WorkflowService:
     """Transactional facade for the user-visible Agent generation workflow."""
@@ -823,9 +840,41 @@ def _task_view(task: TaskRun) -> dict[str, Any]:
         "result_snapshot_id": task.result_snapshot_id,
         "result": task.result_jsonb,
         "error_code": task.error_code,
+        "failure": _task_failure_from_row(task),
         "created_at": _time(task.created_at),
         "updated_at": _time(task.updated_at),
     }
+
+
+def task_failure_view(
+    error_code: str | None,
+    *,
+    issues: list[dict[str, str]] | None = None,
+    network_retries: int | None = None,
+) -> dict[str, Any] | None:
+    if error_code is None:
+        return None
+    message = _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])
+    if (
+        network_retries is not None
+        and error_code in {"provider_connection_failed", "provider_timeout"}
+    ):
+        message = f"{message}（已自动重试 {network_retries} 次）"
+    return {
+        "code": error_code,
+        "message": message,
+        "retryable": error_code in _RETRYABLE_FAILURES,
+        "issues": list(issues or []),
+    }
+
+
+def _task_failure_from_row(task: TaskRun) -> dict[str, Any] | None:
+    stored = task.error_details_jsonb.get("public_failure")
+    if isinstance(stored, dict):
+        return stored
+    if task.status != "failed":
+        return None
+    return task_failure_view(task.error_code)
 
 
 def _event_view(event: TaskEvent) -> dict[str, Any]:
@@ -853,5 +902,6 @@ __all__ = [
     "append_task_event",
     "event_view",
     "source_view",
+    "task_failure_view",
     "task_view",
 ]

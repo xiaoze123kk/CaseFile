@@ -351,8 +351,20 @@ export interface TaskRun {
   } | null;
   result_snapshot_id?: number | null;
   error_code?: string | null;
+  failure: TaskFailure | null;
   created_at?: string;
   updated_at?: string;
+}
+export interface TaskFailure {
+  code: string;
+  message: string;
+  retryable: boolean;
+  issues: TaskFailureIssue[];
+}
+export interface TaskFailureIssue {
+  code: string;
+  path: string;
+  message: string;
 }
 export interface TaskEvent {
   event_id: number;

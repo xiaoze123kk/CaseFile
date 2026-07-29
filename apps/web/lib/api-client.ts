@@ -115,6 +115,19 @@ export interface BriefVersionView {
   content: BriefContent;
 }
 
+export interface TaskFailureIssue {
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface TaskFailure {
+  code: string;
+  message: string;
+  retryable: boolean;
+  issues: TaskFailureIssue[];
+}
+
 export interface TaskView {
   task_run_id: number;
   project_id: number;
@@ -138,6 +151,7 @@ export interface TaskView {
   result_snapshot_id: number | null;
   result: BriefPolishResult | BriefAnchorExtractResult | null;
   error_code: string | null;
+  failure: TaskFailure | null;
   created_at: string | null;
   updated_at: string | null;
 }
