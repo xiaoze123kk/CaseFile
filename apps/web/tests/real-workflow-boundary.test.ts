@@ -38,6 +38,50 @@ describe("real workflow boundary", () => {
     expect(source).not.toContain("@/lib/prototype-model");
   });
 
+  it("keeps the frozen frontend-template demo reachable from the global toolbar", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "components", "archive-shell.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('href="/demo"');
+    expect(source).toContain("前端模板 · 演示模式");
+  });
+
+  it("selects an isolated shell for every demo route", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "components", "app-shell.tsx"),
+      "utf8",
+    );
+    const demoShell = readFileSync(
+      resolve(process.cwd(), "components", "demo-archive-shell.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain('pathname.startsWith("/demo/")');
+    expect(source).toContain("<DemoArchiveShell>");
+    expect(source).toContain("<ArchiveShell>");
+    expect(demoShell).toContain('data-template-commit="960481d"');
+    expect(demoShell).toContain("@/store/prototype-store");
+    expect(demoShell).not.toContain("@/store/workflow-store");
+    expect(demoShell).not.toContain("@/lib/api-client");
+  });
+
+  it.each([
+    ["app/demo/page.tsx", "@/features/intake/intake-home"],
+    ["app/demo/brief/page.tsx", "@/features/intake/brief-editor"],
+    ["app/demo/workbench/page.tsx", "@/features/workbench/workbench-page"],
+    ["app/demo/reasoning/page.tsx", "@/features/reasoning/reasoning-lab"],
+    ["app/demo/quality/page.tsx", "@/features/quality/quality-workspace"],
+  ])("keeps %s on the frozen Prototype template", (fileName, featureImport) => {
+    const source = readFileSync(resolve(process.cwd(), fileName), "utf8");
+
+    expect(source).toContain(featureImport);
+    expect(source).not.toContain("redirect(");
+    expect(source).not.toContain("@/lib/api-client");
+    expect(source).not.toContain("@/store/workflow-store");
+  });
+
   it("keeps TaskRun recovery on the real API and independent from Prototype state", () => {
     const source = readWorkflowSource("task-recovery.ts");
 

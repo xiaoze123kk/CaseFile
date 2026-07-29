@@ -12,20 +12,13 @@ import {
   type ReasoningNode as ReasoningNodeModel,
 } from "@/lib/reasoning-prototype";
 
-import motionStyles from "./reasoning-motion.module.css";
 import styles from "./reasoning-lab.module.css";
-import sourceStyles from "./reasoning-source-preview.module.css";
 
 export interface ReasoningFlowNodeData extends Record<string, unknown> {
   node: ReasoningNodeModel;
-  sequence: number;
   expanded: boolean;
-  activeSourceId?: string;
   onToggleBundle: (id: string) => void;
-  onPreviewSource: (
-    sourceId: string,
-    trigger?: HTMLButtonElement,
-  ) => void;
+  onOpenSource: (sourceId: string) => void;
 }
 
 export type ReasoningFlowNode = Node<
@@ -53,14 +46,7 @@ export function ReasoningCanvasNode({
   data,
   selected,
 }: NodeProps<ReasoningFlowNode>) {
-  const {
-    node,
-    sequence,
-    expanded,
-    activeSourceId,
-    onToggleBundle,
-    onPreviewSource,
-  } = data;
+  const { node, expanded, onToggleBundle, onOpenSource } = data;
   const sources = node.sourceIds
     .map(getReasoningSource)
     .filter((source) => source !== undefined);
@@ -70,16 +56,7 @@ export function ReasoningCanvasNode({
       aria-label={`${kindLabels[node.kind]}：${node.label}，${statusLabels[node.status]}`}
       className={`${styles.graphNode} ${styles[`graphNode_${node.kind.replace("-", "_")}`]} ${
         styles[`graphNode_${node.status}`]
-      } ${motionStyles.graphNode} ${
-        selected
-          ? `${styles.graphNodeSelected} ${motionStyles.graphNodeSelected}`
-          : ""
-      } ${
-        node.kind === "source-bundle" && expanded
-          ? sourceStyles.expandedNode
-          : ""
-      }`}
-      style={{ animationDelay: `${80 + sequence * 70}ms` }}
+      } ${selected ? styles.graphNodeSelected : ""}`}
     >
       <Handle
         className={styles.graphHandle}
@@ -101,56 +78,34 @@ export function ReasoningCanvasNode({
       {node.kind === "source-bundle" ? (
         <div className={`${styles.sourceBundle} nodrag nowheel`}>
           <button
-            aria-controls={`sources-${node.id}`}
             aria-expanded={expanded}
-            className={`${styles.bundleToggle} ${sourceStyles.bundleToggle} ${
-              expanded ? sourceStyles.bundleToggleExpanded : ""
-            }`}
+            className={styles.bundleToggle}
             onClick={(event) => {
               event.stopPropagation();
               onToggleBundle(node.id);
             }}
             type="button"
           >
-            <span>
-              <strong>{expanded ? "来源已展开" : "来源清单"}</strong>
-              <small>
-                {expanded
-                  ? "选择来源，在右侧检查器查看"
-                  : `${sources.length} 个来源对象`}
-              </small>
-            </span>
-            <b>{expanded ? "收起 −" : "展开 +"}</b>
+            <span>{expanded ? "收起来源" : `展开 ${sources.length} 个来源`}</span>
+            <b>{expanded ? "−" : "+"}</b>
           </button>
           {expanded ? (
-            <div
-              className={`${styles.sourceList} ${sourceStyles.sourceList}`}
-              id={`sources-${node.id}`}
-            >
+            <div className={styles.sourceList}>
               {sources.map((source) => (
                 <button
-                  aria-controls="reasoning-source-detail"
-                  aria-label={`快速查看来源：${source.label}`}
-                  aria-pressed={source.id === activeSourceId}
-                  className={`${sourceStyles.sourceButton} ${
-                    source.id === activeSourceId
-                      ? sourceStyles.sourceButtonActive
-                      : ""
-                  }`}
-                  data-source-trigger-key={`canvas:${node.id}:${source.id}`}
+                  disabled={!source.targetEventId}
                   key={source.id}
                   onClick={(event) => {
                     event.stopPropagation();
-                    onPreviewSource(source.id, event.currentTarget);
+                    onOpenSource(source.id);
                   }}
                   type="button"
                 >
                   <span>
                     <b>{source.id}</b>
                     <strong>{source.label}</strong>
-                    <small>{source.meta}</small>
                   </span>
-                  <i>查看 →</i>
+                  <i>{source.targetEventId ? "工作台 ↗" : source.type}</i>
                 </button>
               ))}
             </div>

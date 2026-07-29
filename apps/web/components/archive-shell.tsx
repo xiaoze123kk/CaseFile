@@ -122,6 +122,9 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
             <span>只展示阶段、工具摘要与用量，不展示隐藏思维链</span>
           </div>
           <div className="utility-actions">
+            <Link className="utility-link" href="/demo">
+              前端模板 · 演示模式 ↗
+            </Link>
             <button onClick={() => setSettingsOpen(true)} type="button">模型与 API</button>
           </div>
         </header>

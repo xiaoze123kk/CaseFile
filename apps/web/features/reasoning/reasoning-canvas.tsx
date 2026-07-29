@@ -11,20 +11,20 @@ import {
   type Connection,
   useNodesState,
 } from "@xyflow/react";
-import { useEffect, useMemo } from "react";
-
-import { type ReasoningEdge } from "@/lib/reasoning-prototype";
-import { usePrototype } from "@/store/prototype-store";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo } from "react";
 
 import {
-  getReasoningAutoLayoutUpdates,
-  layoutReasoningPath,
-} from "./reasoning-layout";
+  getReasoningSource,
+  type ReasoningEdge,
+} from "@/lib/reasoning-prototype";
+import { usePrototype } from "@/store/prototype-store";
+
+import { layoutReasoningPath } from "./reasoning-layout";
 import {
   ReasoningCanvasNode,
   type ReasoningFlowNode,
 } from "./reasoning-node";
-import motionStyles from "./reasoning-motion.module.css";
 import styles from "./reasoning-lab.module.css";
 
 const nodeTypes = {
@@ -50,23 +50,14 @@ function edgeDash(edge: ReasoningEdge): string | undefined {
   return undefined;
 }
 
-export function ReasoningCanvas({
-  onClearSourcePreview,
-  onPreviewSource,
-  previewedSourceId,
-}: {
-  onClearSourcePreview: () => void;
-  onPreviewSource: (
-    sourceId: string,
-    trigger?: HTMLButtonElement,
-  ) => void;
-  previewedSourceId?: string;
-}) {
+export function ReasoningCanvas() {
+  const router = useRouter();
   const { state, dispatch } = usePrototype();
   const reasoning = state.reasoning;
   const path = reasoning.paths.find(
     (item) => item.id === reasoning.activePathId,
   );
+
   const pathNodes = useMemo(
     () =>
       reasoning.nodes.filter((node) => node.pathId === reasoning.activePathId),
@@ -78,19 +69,20 @@ export function ReasoningCanvas({
     [reasoning.activePathId, reasoning.edges],
   );
   const layoutPositions = useMemo(
-    () =>
-      layoutReasoningPath(
-        pathNodes,
-        pathEdges,
-        "LR",
-        reasoning.expandedBundleIds,
-      ),
-    [pathEdges, pathNodes, reasoning.expandedBundleIds],
+    () => layoutReasoningPath(pathNodes, pathEdges),
+    [pathEdges, pathNodes],
   );
+
+  const openSource = useCallback((sourceId: string) => {
+    const source = getReasoningSource(sourceId);
+    if (!source?.targetEventId) return;
+    dispatch({ type: "select-event", id: source.targetEventId });
+    router.push(`/workbench#event=${encodeURIComponent(source.targetEventId)}`);
+  }, [dispatch, router]);
 
   const projectedNodes = useMemo<ReasoningFlowNode[]>(
     () =>
-      pathNodes.map((node, index) => ({
+      pathNodes.map((node) => ({
         id: node.id,
         type: "reasoning-node",
         position:
@@ -99,48 +91,17 @@ export function ReasoningCanvas({
         selected: reasoning.selectedNodeId === node.id,
         data: {
           node,
-          sequence: index,
           expanded: reasoning.expandedBundleIds.includes(node.id),
-          activeSourceId: previewedSourceId,
-          onToggleBundle: (id: string) => {
-            const nextExpandedBundleIds = reasoning.expandedBundleIds.includes(
-              id,
-            )
-              ? reasoning.expandedBundleIds.filter(
-                  (bundleId) => bundleId !== id,
-                )
-              : [...reasoning.expandedBundleIds, id];
-            const nextLayoutPositions = layoutReasoningPath(
-              pathNodes,
-              pathEdges,
-              "LR",
-              nextExpandedBundleIds,
-            );
-            const automaticPositionUpdates = getReasoningAutoLayoutUpdates(
-              pathNodes.map((pathNode) => pathNode.id),
-              reasoning.positions,
-              layoutPositions,
-              nextLayoutPositions,
-            );
-            dispatch({ type: "select-reasoning-node", id });
-            if (Object.keys(automaticPositionUpdates).length > 0) {
-              dispatch({
-                type: "set-reasoning-positions",
-                positions: automaticPositionUpdates,
-              });
-            }
-            dispatch({ type: "toggle-reasoning-bundle", id });
-          },
-          onPreviewSource,
+          onToggleBundle: (id: string) =>
+            dispatch({ type: "toggle-reasoning-bundle", id }),
+          onOpenSource: openSource,
         },
       })),
     [
       dispatch,
       layoutPositions,
-      onPreviewSource,
-      pathEdges,
+      openSource,
       pathNodes,
-      previewedSourceId,
       reasoning.expandedBundleIds,
       reasoning.positions,
       reasoning.selectedNodeId,
@@ -157,6 +118,7 @@ export function ReasoningCanvas({
           target: edge.target,
           label: edge.label,
           type: "smoothstep",
+          animated: edge.status === "candidate",
           markerEnd: {
             type: MarkerType.ArrowClosed,
             color,
@@ -189,18 +151,7 @@ export function ReasoningCanvas({
     useNodesState<ReasoningFlowNode>(projectedNodes);
 
   useEffect(() => {
-    setFlowNodes((currentNodes) => {
-      const currentById = new Map(
-        currentNodes.map((node) => [node.id, node]),
-      );
-
-      return projectedNodes.map((node) => {
-        const current = currentById.get(node.id);
-        return current?.measured
-          ? { ...node, measured: current.measured }
-          : node;
-      });
-    });
+    setFlowNodes(projectedNodes);
   }, [projectedNodes, setFlowNodes]);
 
   function handleConnect(connection: Connection) {
@@ -223,12 +174,7 @@ export function ReasoningCanvas({
   function autoLayout() {
     dispatch({
       type: "set-reasoning-positions",
-      positions: layoutReasoningPath(
-        pathNodes,
-        pathEdges,
-        "LR",
-        reasoning.expandedBundleIds,
-      ),
+      positions: layoutReasoningPath(pathNodes, pathEdges),
     });
   }
 
@@ -244,7 +190,7 @@ export function ReasoningCanvas({
   return (
     <section
       aria-label={`${path.title}推理画布`}
-      className={`${styles.canvasPanel} ${motionStyles.canvasPanel}`}
+      className={styles.canvasPanel}
     >
       <div className={styles.canvasToolbar}>
         <div>
@@ -267,7 +213,7 @@ export function ReasoningCanvas({
         </div>
       </div>
 
-      <div className={`${styles.canvasViewport} ${motionStyles.canvasViewport}`}>
+      <div className={styles.canvasViewport}>
         <ReactFlow<ReasoningFlowNode>
           colorMode="light"
           defaultEdgeOptions={{ type: "smoothstep" }}
@@ -281,10 +227,9 @@ export function ReasoningCanvas({
           nodesConnectable={reasoning.status === "ready"}
           nodesDraggable={reasoning.status !== "stale"}
           onConnect={handleConnect}
-          onNodeClick={(_, node) => {
-            onClearSourcePreview();
-            dispatch({ type: "select-reasoning-node", id: node.id });
-          }}
+          onNodeClick={(_, node) =>
+            dispatch({ type: "select-reasoning-node", id: node.id })
+          }
           onNodeDragStop={(_, node) =>
             dispatch({
               type: "set-reasoning-node-position",
@@ -324,7 +269,6 @@ export function ReasoningCanvas({
           />
         </ReactFlow>
       </div>
-
     </section>
   );
 }

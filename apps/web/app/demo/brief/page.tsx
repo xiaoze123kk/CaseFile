@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { BriefEditor } from "@/features/intake/brief-editor";
 
 export default function DemoBriefPage() {
-  redirect("/brief");
+  return <BriefEditor />;
 }

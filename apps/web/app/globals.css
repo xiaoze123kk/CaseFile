@@ -546,6 +546,109 @@ textarea:focus-visible {
   background: #7d1f0b;
 }
 
+.demo-template {
+  min-height: 760px;
+  --ink-muted: #676762;
+  --ink-faint: #8d8d86;
+  --font-micro: 10px;
+  --font-caption: 11px;
+  --font-label: 12px;
+  --font-ui: 13px;
+  --font-body-sm: 14px;
+  --font-body: 15px;
+  --font-heading-sm: 16px;
+  --font-heading: 18px;
+}
+
+.demo-template .side-rail {
+  overflow-y: visible;
+}
+
+.demo-template .start-case {
+  height: 44px;
+  min-height: 44px;
+}
+
+.demo-template .nav-caption {
+  font-size: var(--font-ui);
+  letter-spacing: 0.11em;
+}
+
+.demo-template .nav-caption b {
+  font-size: var(--font-label);
+}
+
+.demo-template .archive-nav {
+  flex: 0 1 auto;
+}
+
+.demo-template .nav-row {
+  min-height: 59px;
+}
+
+.demo-template .nav-no {
+  font-size: var(--font-ui);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.demo-template .nav-label {
+  gap: 0;
+}
+
+.demo-template .nav-label strong {
+  font-size: var(--font-heading-sm);
+  font-weight: 650;
+  letter-spacing: normal;
+  line-height: normal;
+}
+
+.demo-template .nav-label small {
+  margin-top: 2px;
+  font-size: var(--font-label);
+  letter-spacing: 0.08em;
+  line-height: normal;
+}
+
+.demo-template .nav-state {
+  padding: 3px 4px;
+  font-size: var(--font-label);
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: normal;
+}
+
+.demo-template .archive-canvas {
+  grid-template-rows: 64px minmax(0, 1fr);
+}
+
+.demo-template .document-header {
+  min-height: 78px;
+}
+
+.demo-template .case-spine {
+  min-height: 58px;
+}
+
+.demo-template .panel-header {
+  min-height: 44px;
+}
+
+.demo-template .square-button {
+  min-height: 30px;
+}
+
+.demo-template .status-badge {
+  min-height: 19px;
+}
+
+.demo-template input::placeholder,
+.demo-template textarea::placeholder {
+  color: var(--ink-faint);
+  opacity: 0.54;
+  font-weight: 400;
+}
+
 .document {
   display: grid;
   min-width: 0;

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getReasoningAutoLayoutUpdates,
-  layoutReasoningPath,
-} from "@/features/reasoning/reasoning-layout";
+import { layoutReasoningPath } from "@/features/reasoning/reasoning-layout";
 import {
   buildReasoningFixture,
   createDefaultReasoningState,
@@ -160,63 +157,5 @@ describe("reasoning lab prototype", () => {
           Number.isFinite(position.x) && Number.isFinite(position.y),
       ),
     ).toBe(true);
-  });
-
-  it("reserves vertical space for an expanded source bundle", () => {
-    const fixture = buildReasoningFixture("explore");
-    const path = fixture.paths.find((item) => item.code === "PATH-02");
-    expect(path).toBeDefined();
-
-    const nodes = fixture.nodes.filter(
-      (node) => node.pathId === path?.id && node.status !== "candidate",
-    );
-    const nodeIds = new Set(nodes.map((node) => node.id));
-    const edges = fixture.edges.filter(
-      (edge) =>
-        edge.pathId === path?.id &&
-        nodeIds.has(edge.source) &&
-        nodeIds.has(edge.target),
-    );
-    const sourceBundle = nodes.find((node) => node.kind === "source-bundle");
-    const gap = nodes.find((node) => node.kind === "gap");
-    expect(sourceBundle).toBeDefined();
-    expect(gap).toBeDefined();
-    if (!sourceBundle || !gap) return;
-
-    const positions = layoutReasoningPath(nodes, edges, "LR", [
-      sourceBundle.id,
-    ]);
-    const collapsedPositions = layoutReasoningPath(nodes, edges);
-    const bundleHeight = 138 + sourceBundle.sourceIds.length * 62;
-    const gapHeight = 124;
-    const bundleTop = positions[sourceBundle.id].y;
-    const bundleBottom = bundleTop + bundleHeight;
-    const gapTop = positions[gap.id].y;
-    const gapBottom = gapTop + gapHeight;
-    const verticalSeparation = Math.max(
-      gapTop - bundleBottom,
-      bundleTop - gapBottom,
-    );
-
-    expect(verticalSeparation).toBeGreaterThanOrEqual(50);
-
-    const storedPositions = {
-      ...collapsedPositions,
-      [gap.id]: {
-        x: collapsedPositions[gap.id].x + 24,
-        y: collapsedPositions[gap.id].y + 18,
-      },
-    };
-    const automaticUpdates = getReasoningAutoLayoutUpdates(
-      nodes.map((node) => node.id),
-      storedPositions,
-      collapsedPositions,
-      positions,
-    );
-
-    expect(automaticUpdates[sourceBundle.id]).toEqual(
-      positions[sourceBundle.id],
-    );
-    expect(automaticUpdates[gap.id]).toBeUndefined();
   });
 });

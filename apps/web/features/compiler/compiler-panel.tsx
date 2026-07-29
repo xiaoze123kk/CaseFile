@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { PanelHeader, StatusBadge } from "@/components/archive-ui";
+import { PanelHeader, StatusBadge } from "@/components/prototype-ui";
 import { canCompilePrototype, hasBlockingIssue } from "@/lib/prototype-model";
 import { usePrototype } from "@/store/prototype-store";
 
