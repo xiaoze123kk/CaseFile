@@ -1,4 +1,4 @@
-"""Static contracts for the 38-table personal-product database metadata."""
+"""Static contracts for the 42-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -10,6 +10,10 @@ from casefile.data_postgres.base import Base
 from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
+    "agent_messages",
+    "agent_patch_operations",
+    "agent_patch_sets",
+    "agent_threads",
     "audit_events",
     "brief_versions",
     "briefs",
@@ -51,6 +55,9 @@ EXPECTED_TABLES = {
 }
 
 DEDICATED_CURRENT_TABLES = {
+    "agent_patch_operations",
+    "agent_patch_sets",
+    "agent_threads",
     "casefile_constraints",
     "claims",
     "entities",
@@ -74,6 +81,8 @@ DEDICATED_CURRENT_TABLES = {
 }
 
 JSONB_ALLOWLIST = {
+    ("agent_patch_operations", "new_value_jsonb"),
+    ("agent_patch_operations", "old_value_jsonb"),
     ("audit_events", "details_jsonb"),
     ("brief_versions", "content_jsonb"),
     ("briefs", "draft_jsonb"),
@@ -129,6 +138,13 @@ JSONB_ALLOWLIST = {
 }
 
 EXPECTED_UNIQUES = {
+    "uq_agent_messages_project_id_id",
+    "uq_agent_messages_thread_sequence_no",
+    "uq_agent_patch_operations_patch_set_operation_id",
+    "uq_agent_patch_operations_patch_set_ordinal",
+    "uq_agent_patch_sets_project_id_id",
+    "uq_agent_patch_sets_task_run_id",
+    "uq_agent_threads_project_id_id",
     "uq_casefiles_project_id",
     "uq_drafts_project_id_casefile_id",
     "uq_casefile_objects_casefile_id_object_id",
@@ -156,6 +172,14 @@ EXPECTED_UNIQUES = {
 }
 
 EXPECTED_FOREIGN_KEYS = {
+    "fk_agent_messages_project_thread_agent_threads",
+    "fk_agent_patch_operations_project_patch_set_agent_patch_sets",
+    "fk_agent_patch_operations_target_object",
+    "fk_agent_patch_sets_project_casefile_draft_drafts",
+    "fk_agent_patch_sets_project_source_message_agent_messages",
+    "fk_agent_patch_sets_project_task_run_task_runs",
+    "fk_agent_patch_sets_project_thread_agent_threads",
+    "fk_agent_threads_project_casefile_draft_drafts",
     "fk_casefile_objects_project_casefile_draft_drafts",
     "fk_casefile_refs_from_object",
     "fk_casefile_refs_to_object",
@@ -177,9 +201,12 @@ EXPECTED_FOREIGN_KEYS = {
     "fk_source_records_project_generated_task_task_runs",
     "fk_source_records_project_parent_source_records",
     "fk_task_events_project_task_run_task_runs",
+    "fk_task_runs_project_agent_thread_agent_threads",
     "fk_task_runs_project_brief_version_brief_versions",
     "fk_task_runs_project_casefile_draft_drafts",
     "fk_task_runs_project_input_source_source_records",
+    "fk_task_runs_project_input_message_agent_messages",
+    "fk_task_runs_project_output_message_agent_messages",
 }
 
 
@@ -192,10 +219,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_38_personal_tables() -> None:
+def test_metadata_contains_exactly_the_42_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 38
+    assert len(models.__all__) == 42
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

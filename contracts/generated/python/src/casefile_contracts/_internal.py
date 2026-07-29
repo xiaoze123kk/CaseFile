@@ -553,6 +553,7 @@ class TaskType(StrEnum):
     brief_polish = 'brief_polish'
     brief_anchor_extract = 'brief_anchor_extract'
     brief_to_draft = 'brief_to_draft'
+    casefile_chat = 'casefile_chat'
 
 
 class Status2(StrEnum):
@@ -574,6 +575,18 @@ class InputBriefRevision(RootModel[int]):
 
 
 class InputSourceRecordId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class AgentThreadId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class InputMessageId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class OutputMessageId(RootModel[int]):
     root: Annotated[int, Field(ge=1)]
 
 
@@ -613,6 +626,9 @@ class TaskRun(BaseModel):
     input_draft_revision: Annotated[int, Field(ge=1)]
     input_brief_revision: InputBriefRevision | None
     input_source_record_id: InputSourceRecordId | None
+    agent_thread_id: AgentThreadId | None
+    input_message_id: InputMessageId | None
+    output_message_id: OutputMessageId | None
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
     attempt_count: Annotated[int, Field(ge=0)]
     usage: dict[str, Any]

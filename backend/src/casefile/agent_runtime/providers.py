@@ -1,4 +1,4 @@
-"""Fake, OpenAI, and DeepSeek adapters for the three durable Brief tasks."""
+"""Fake, OpenAI, and DeepSeek adapters for durable CaseFile Agent tasks."""
 
 from __future__ import annotations
 
@@ -23,15 +23,20 @@ from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
     BriefPolishResult,
+    CaseFileChatCandidate,
+    CaseFileChatRequest,
+    CaseFileChatResult,
     GenerationRequest,
     GenerationResult,
     ToolMetrics,
 )
 from casefile.agent_runtime.prompt import (
     ANCHOR_EXTRACT_INSTRUCTIONS,
+    CASEFILE_CHAT_INSTRUCTIONS,
     INSTRUCTIONS,
     POLISH_INSTRUCTIONS,
     anchor_extract_input,
+    casefile_chat_input,
     generation_input,
     polish_input,
 )
@@ -49,6 +54,8 @@ class AgentProvider(GenerationProvider, Protocol):
     def extract_anchors(
         self, request: BriefAnchorExtractRequest
     ) -> BriefAnchorExtractResult: ...
+
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
 
 
 class ProviderProtocolError(RuntimeError):
@@ -98,6 +105,25 @@ class FakeProvider:
         usage = _zero_usage()
         request.emit("model.completed", "extracting", {"usage": usage})
         return BriefAnchorExtractResult(candidate=candidate, usage=usage)
+
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        request.emit("model.started", "responding", {"model_id": request.model_id})
+        referenced = [
+            object_id
+            for object_id in _casefile_object_ids(request.casefile)
+            if object_id in request.message
+        ]
+        candidate = CaseFileChatCandidate(
+            answer=(
+                "我已结合当前完整卷宗阅读了这条消息。"
+                "本次没有自动修改工作稿；如需改动，我会先给出可逐项审阅的字段建议。"
+            ),
+            referenced_object_ids=referenced,
+            suggestions=[],
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "responding", {"usage": usage})
+        return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         request.emit("tool.started", "planning", {"tool": "plan_object_ids"})
@@ -252,6 +278,23 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=CASEFILE_CHAT_INSTRUCTIONS,
+                input_text=casefile_chat_input(request),
+                output_type=CaseFileChatCandidate,
+                stage="responding",
+            )
+        )
+        return CaseFileChatResult(
+            candidate=CaseFileChatCandidate.model_validate(candidate),
+            usage=usage,
+        )
+
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
@@ -278,7 +321,7 @@ class OpenAIAgentsProvider:
 
     async def _run_auxiliary(
         self,
-        request: BriefPolishRequest | BriefAnchorExtractRequest,
+        request: BriefPolishRequest | BriefAnchorExtractRequest | CaseFileChatRequest,
         *,
         instructions: str,
         input_text: str,
@@ -349,6 +392,23 @@ class DeepSeekAgentsProvider:
             usage=usage,
         )
 
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=CASEFILE_CHAT_INSTRUCTIONS,
+                input_text=casefile_chat_input(request),
+                output_type=CaseFileChatCandidate,
+                stage="responding",
+            )
+        )
+        return CaseFileChatResult(
+            candidate=CaseFileChatCandidate.model_validate(candidate),
+            usage=usage,
+        )
+
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
@@ -366,7 +426,7 @@ class DeepSeekAgentsProvider:
 
     async def _run_auxiliary(
         self,
-        request: BriefPolishRequest | BriefAnchorExtractRequest,
+        request: BriefPolishRequest | BriefAnchorExtractRequest | CaseFileChatRequest,
         *,
         instructions: str,
         input_text: str,
@@ -388,7 +448,12 @@ class DeepSeekAgentsProvider:
 
     def create_model(
         self,
-        request: GenerationRequest | BriefPolishRequest | BriefAnchorExtractRequest,
+        request: (
+            GenerationRequest
+            | BriefPolishRequest
+            | BriefAnchorExtractRequest
+            | CaseFileChatRequest
+        ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -402,7 +467,7 @@ class DeepSeekAgentsProvider:
 
 
 async def _run_auxiliary_agent(
-    request: BriefPolishRequest | BriefAnchorExtractRequest,
+    request: BriefPolishRequest | BriefAnchorExtractRequest | CaseFileChatRequest,
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
     model_settings: ModelSettings,
@@ -419,7 +484,7 @@ async def _run_auxiliary_agent(
         resolved_instructions += _json_schema_instruction(output_type)
         agent_output_type = str
     agent: Agent[Any] = Agent(
-        name="CaseFile Brief Assistant",
+        name="CaseFile Editorial Assistant",
         instructions=resolved_instructions,
         model=model,
         model_settings=model_settings,
@@ -534,6 +599,28 @@ def _candidate_object_ids(candidate: dict[str, Any]) -> set[str]:
         "structure_locks",
     )
     return {item["id"] for key in keys for item in candidate[key]}
+
+
+def _casefile_object_ids(casefile: dict[str, Any]) -> list[str]:
+    keys = (
+        "resolution_specs",
+        "entities",
+        "relationships",
+        "locations",
+        "events",
+        "information_units",
+        "claims",
+        "hypotheses",
+        "reasoning_paths",
+        "constraints",
+        "structure_locks",
+    )
+    return [
+        str(item["id"])
+        for key in keys
+        for item in casefile.get(key, [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
 
 
 def _remove_absent_descriptions(value: Any) -> Any:

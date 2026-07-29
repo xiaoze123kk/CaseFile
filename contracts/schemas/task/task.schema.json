@@ -33,15 +33,20 @@
       "required": [
         "task_run_id", "project_id", "task_type", "status", "stage",
         "provider", "model_id", "input_draft_revision", "input_brief_revision",
-        "input_source_record_id", "input_hash", "attempt_count", "usage", "result",
-        "failure"
+        "input_source_record_id", "agent_thread_id", "input_message_id",
+        "output_message_id", "input_hash", "attempt_count", "usage", "result", "failure"
       ],
       "properties": {
         "task_run_id": {"type": "integer", "minimum": 1},
         "project_id": {"type": "integer", "minimum": 1},
         "task_type": {
           "type": "string",
-          "enum": ["brief_polish", "brief_anchor_extract", "brief_to_draft"]
+          "enum": [
+            "brief_polish",
+            "brief_anchor_extract",
+            "brief_to_draft",
+            "casefile_chat"
+          ]
         },
         "status": {
           "type": "string",
@@ -58,6 +63,24 @@
           ]
         },
         "input_source_record_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "agent_thread_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_message_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "output_message_id": {
           "oneOf": [
             {"type": "integer", "minimum": 1},
             {"type": "null"}

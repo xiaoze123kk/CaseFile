@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import socket
@@ -28,14 +29,18 @@ from casefile.agent_runtime import (
     BriefAnchorExtractResult,
     BriefPolishRequest,
     BriefPolishResult,
+    CaseFileChatRequest,
+    CaseFileChatResult,
     DeepSeekAgentsProvider,
     GenerationRequest,
     GenerationResult,
     OpenAIAgentsProvider,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.application.casefile_v1 import write_generated_casefile
 from casefile.application.workflow_service import (
+    WorkflowService,
     append_task_event,
     source_view,
     task_failure_view,
@@ -46,6 +51,7 @@ from casefile.contracts import (
     validate_casefile,
 )
 from casefile.data_postgres.models import (
+    AgentMessage,
     Brief,
     BriefVersion,
     SourceRecord,
@@ -239,6 +245,17 @@ class Worker:
                     extract_result,
                 )
                 return
+            if task_snapshot.task_type == "casefile_chat":
+                chat_request = self._load_chat_request(task_snapshot, api_key)
+                chat_result = provider.chat(chat_request)
+                candidate = chat_result.candidate.model_dump(mode="json")
+                usage = chat_result.usage
+                self._complete_chat(
+                    task_run_id,
+                    attempt_id,
+                    chat_result,
+                )
+                return
             if task_snapshot.task_type != "brief_to_draft":
                 raise RuntimeError(f"Unsupported TaskRun type: {task_snapshot.task_type}")
             generation_request = self._load_generation_request(task_snapshot, api_key)
@@ -362,6 +379,75 @@ class Worker:
                     task.id, event_type, stage, payload
                 ),
                 network_retries=_network_retries(task),
+            )
+
+    def _load_chat_request(
+        self,
+        task: TaskRun,
+        api_key: str,
+    ) -> CaseFileChatRequest:
+        frozen_input = task.input_jsonb
+        if _json_hash(frozen_input) != task.input_hash:
+            raise RuntimeError("Frozen CaseFile chat payload does not match its input hash")
+        casefile = _required_object(frozen_input, "casefile")
+        message = _required_string(frozen_input, "message")
+        raw_history = frozen_input.get("history")
+        if not isinstance(raw_history, list):
+            raise RuntimeError("Frozen CaseFile chat payload is missing history")
+        history: list[dict[str, str]] = []
+        for item in raw_history:
+            if not isinstance(item, dict):
+                raise RuntimeError("Frozen CaseFile chat history entry is invalid")
+            role = item.get("role")
+            content = item.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str) or not content:
+                raise RuntimeError("Frozen CaseFile chat history entry is invalid")
+            history.append({"role": role, "content": content})
+        return CaseFileChatRequest(
+            task_run_id=task.id,
+            casefile=casefile,
+            history=tuple(history),
+            message=message,
+            input_hash=task.input_hash,
+            model_id=task.model_id,
+            api_key=api_key,
+            max_turns=int(task.budget_jsonb.get("max_turns", 12)),
+            emit=lambda event_type, stage, payload: self._emit(
+                task.id, event_type, stage, payload
+            ),
+            network_retries=_network_retries(task),
+        )
+
+    def _complete_chat(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: CaseFileChatResult,
+    ) -> None:
+        suggestions: list[dict[str, Any]] = []
+        for suggestion in result.candidate.suggestions:
+            try:
+                value = json.loads(suggestion.value_json)
+            except json.JSONDecodeError as error:
+                raise ProviderProtocolError(
+                    "CaseFile chat suggestion value_json is invalid"
+                ) from error
+            suggestions.append(
+                {
+                    "object_id": suggestion.object_id,
+                    "path": suggestion.path,
+                    "value": value,
+                    "reason": suggestion.reason,
+                }
+            )
+        with self.session_factory() as session:
+            WorkflowService(session).complete_chat_task(
+                task_run_id,
+                attempt_id,
+                answer=result.candidate.answer,
+                referenced_object_ids=result.candidate.referenced_object_ids,
+                suggestions=suggestions,
+                usage=result.usage,
             )
 
     def _complete_polish(
@@ -632,6 +718,15 @@ class Worker:
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
+            if task.task_type == "casefile_chat" and task.output_message_id is not None:
+                output_message = session.get(AgentMessage, task.output_message_id)
+                if output_message is not None and output_message.status == "pending":
+                    output_message.status = "failed"
+                    output_message.content_text = (
+                        public_failure["message"]
+                        if public_failure is not None
+                        else "Agent 本次没有完成回复，请稍后重试。"
+                    )
             append_task_event(
                 session,
                 task,
@@ -641,7 +736,11 @@ class Worker:
                     "message": (
                         public_failure["message"]
                         if public_failure is not None
-                        else "Agent 任务失败，原始素材与已确认 Brief 未被修改"
+                        else (
+                            "Agent 本次没有完成回复，工作稿未被修改"
+                            if task.task_type == "casefile_chat"
+                            else "Agent 任务失败，原始素材与已确认 Brief 未被修改"
+                        )
                     ),
                     "task_type": task.task_type,
                     "error_code": error_code,
@@ -668,7 +767,7 @@ class Worker:
 
 
 def _error_code(error: Exception) -> str:
-    if isinstance(error, ContractValidationError):
+    if isinstance(error, (ContractValidationError, ProviderProtocolError)):
         return "candidate_validation_failed"
     if isinstance(error, AuthenticationError):
         return "provider_authentication_failed"

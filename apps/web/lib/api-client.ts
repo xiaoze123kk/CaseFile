@@ -20,7 +20,8 @@ export type ProviderName = "openai" | "deepseek";
 export type TaskType =
   | "brief_polish"
   | "brief_anchor_extract"
-  | "brief_to_draft";
+  | "brief_to_draft"
+  | "casefile_chat";
 export type ResolutionMode =
   | "author_anchored"
   | "agent_proposed"
@@ -145,6 +146,9 @@ export interface TaskView {
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
+  agent_thread_id: number | null;
+  input_message_id: number | null;
+  output_message_id: number | null;
   input_hash: string;
   attempt_count: number;
   usage: Record<string, unknown>;

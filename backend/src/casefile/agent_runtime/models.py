@@ -1,4 +1,4 @@
-"""Provider-neutral requests and results for the three Brief Agent tasks."""
+"""Provider-neutral requests and results for durable CaseFile Agent tasks."""
 
 from __future__ import annotations
 
@@ -43,6 +43,26 @@ class BriefAnchorExtractCandidate(StrictAgentOutput):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CaseFileChatSuggestionCandidate(StrictAgentOutput):
+    """One reviewable field-level change proposed against the frozen CaseFile."""
+
+    object_id: str = Field(min_length=1)
+    path: str = Field(
+        min_length=2,
+        pattern=r"^/(?:[^/~]|~[01])+(?:/(?:[^/~]|~[01])+)*$",
+    )
+    value_json: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class CaseFileChatCandidate(StrictAgentOutput):
+    """An author-facing answer plus optional changes that still require approval."""
+
+    answer: str = Field(min_length=1)
+    referenced_object_ids: list[str] = Field(default_factory=list)
+    suggestions: list[CaseFileChatSuggestionCandidate] = Field(default_factory=list)
+
+
 @dataclass(frozen=True, slots=True)
 class BriefPolishRequest:
     task_run_id: int
@@ -85,6 +105,20 @@ class GenerationRequest:
     repair_feedback: tuple[dict[str, Any], ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class CaseFileChatRequest:
+    task_run_id: int
+    casefile: dict[str, Any]
+    history: tuple[dict[str, str], ...]
+    message: str
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
 @dataclass(slots=True)
 class ToolMetrics:
     calls: int = 0
@@ -121,6 +155,12 @@ class BriefPolishResult:
 @dataclass(frozen=True, slots=True)
 class BriefAnchorExtractResult:
     candidate: BriefAnchorExtractCandidate
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFileChatResult:
+    candidate: CaseFileChatCandidate
     usage: dict[str, Any]
 
 

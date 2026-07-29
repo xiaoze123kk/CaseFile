@@ -333,7 +333,7 @@ export interface PatchOperation {
 export interface TaskRun {
   task_run_id: number;
   project_id: number;
-  task_type: "brief_polish" | "brief_anchor_extract" | "brief_to_draft";
+  task_type: "brief_polish" | "brief_anchor_extract" | "brief_to_draft" | "casefile_chat";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
   provider: "openai" | "deepseek";
@@ -341,6 +341,9 @@ export interface TaskRun {
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
+  agent_thread_id: number | null;
+  input_message_id: number | null;
+  output_message_id: number | null;
   input_hash: string;
   attempt_count: number;
   usage: {

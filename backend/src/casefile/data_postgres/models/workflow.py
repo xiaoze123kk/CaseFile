@@ -201,9 +201,28 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="fk_task_runs_actor_provider_setting_user_provider_settings",
             ondelete="RESTRICT",
         ),
+        ForeignKeyConstraint(
+            ["project_id", "agent_thread_id"],
+            ["agent_threads.project_id", "agent_threads.id"],
+            name="fk_task_runs_project_agent_thread_agent_threads",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "input_message_id"],
+            ["agent_messages.project_id", "agent_messages.id"],
+            name="fk_task_runs_project_input_message_agent_messages",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "output_message_id"],
+            ["agent_messages.project_id", "agent_messages.id"],
+            name="fk_task_runs_project_output_message_agent_messages",
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint("project_id", "id", name="uq_task_runs_project_id_id"),
         CheckConstraint(
-            "task_type IN ('brief_polish', 'brief_anchor_extract', 'brief_to_draft')",
+            "task_type IN "
+            "('brief_polish', 'brief_anchor_extract', 'brief_to_draft', 'casefile_chat')",
             name="task_type_allowed",
         ),
         CheckConstraint(
@@ -233,17 +252,34 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "task_type = 'brief_polish' "
             "AND brief_version_id IS NULL "
             "AND input_source_record_id IS NOT NULL "
-            "AND input_brief_revision IS NULL"
+            "AND input_brief_revision IS NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
             ") OR ("
             "task_type = 'brief_anchor_extract' "
             "AND brief_version_id IS NULL "
             "AND input_source_record_id IS NULL "
-            "AND input_brief_revision IS NOT NULL"
+            "AND input_brief_revision IS NOT NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
             ") OR ("
             "task_type = 'brief_to_draft' "
             "AND brief_version_id IS NOT NULL "
             "AND input_source_record_id IS NULL "
-            "AND input_brief_revision IS NOT NULL"
+            "AND input_brief_revision IS NOT NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
+            ") OR ("
+            "task_type = 'casefile_chat' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NULL "
+            "AND input_brief_revision IS NULL "
+            "AND agent_thread_id IS NOT NULL "
+            "AND input_message_id IS NOT NULL "
+            "AND output_message_id IS NOT NULL"
             ")",
             name="input_matches_task_type",
         ),
@@ -260,6 +296,15 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "created_at",
         ),
         Index("ix_task_runs_lease_expires_at", "lease_expires_at"),
+        Index(
+            "uq_task_runs_agent_thread_active",
+            "agent_thread_id",
+            unique=True,
+            postgresql_where=text(
+                "agent_thread_id IS NOT NULL "
+                "AND status IN ('queued', 'running', 'cancelling')"
+            ),
+        ),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -268,6 +313,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     brief_version_id: Mapped[int | None] = mapped_column(BigInteger)
     input_source_record_id: Mapped[int | None] = mapped_column(BigInteger)
     input_brief_revision: Mapped[int | None] = mapped_column(Integer)
+    agent_thread_id: Mapped[int | None] = mapped_column(BigInteger)
+    input_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    output_message_id: Mapped[int | None] = mapped_column(BigInteger)
     input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     input_jsonb: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     actor_user_id: Mapped[int] = mapped_column(

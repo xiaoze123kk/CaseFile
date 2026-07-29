@@ -160,6 +160,44 @@ class GenerateTaskRequest(StrictRequest):
     provider: Literal["openai", "deepseek"] = "openai"
 
 
+class AgentThreadCreateRequest(StrictRequest):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+
+
+class AgentThreadUpdateRequest(StrictRequest):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    is_pinned: bool | None = None
+    archived: bool | None = None
+
+    @model_validator(mode="after")
+    def has_change(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("at least one thread field is required")
+        return self
+
+
+class AgentMessageCreateRequest(StrictRequest):
+    content: str = Field(min_length=1, max_length=100_000)
+    provider: Literal["openai", "deepseek"] = "openai"
+
+
+class AgentPatchApplyRequest(StrictRequest):
+    expected_revision: int = Field(ge=1)
+    operation_ids: list[int] | None = None
+
+    @model_validator(mode="after")
+    def unique_operation_ids(self) -> Self:
+        if self.operation_ids is not None and len(set(self.operation_ids)) != len(
+            self.operation_ids
+        ):
+            raise ValueError("operation_ids must be unique")
+        return self
+
+
+class AgentPatchUndoRequest(StrictRequest):
+    expected_revision: int = Field(ge=1)
+
+
 class ObjectPatchRequest(StrictRequest):
     expected_revision: int = Field(ge=1)
     changes: dict[str, Any] = Field(min_length=1)

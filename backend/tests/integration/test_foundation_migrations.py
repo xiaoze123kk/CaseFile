@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 38-table personal foundation."""
+"""Disposable PostgreSQL verification for the 42-table personal foundation."""
 
 from __future__ import annotations
 
@@ -25,6 +25,10 @@ pytestmark = pytest.mark.postgres
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "20260728084832"
 BUSINESS_TABLES = {
+    "agent_messages",
+    "agent_patch_operations",
+    "agent_patch_sets",
+    "agent_threads",
     "audit_events",
     "brief_versions",
     "briefs",
@@ -816,7 +820,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_38_identity_tables_without_team_columns(
+def test_database_has_42_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -830,7 +834,7 @@ def test_database_has_38_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 38
+    assert len(identity_rows) == 42
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(

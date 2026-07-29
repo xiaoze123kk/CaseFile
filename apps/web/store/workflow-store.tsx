@@ -14,7 +14,9 @@ import type { ProviderName, TaskType } from "@/lib/api-client";
 const STORAGE_KEY = "casefile.real.workflow.v2";
 const LEGACY_STORAGE_KEY = "casefile.real.workflow.v1";
 
-export type WorkflowTaskPointers = Record<TaskType, number | null>;
+type BriefTaskType = Exclude<TaskType, "casefile_chat">;
+
+export type WorkflowTaskPointers = Record<BriefTaskType, number | null>;
 
 interface WorkflowSession {
   actorId: number;
@@ -26,7 +28,7 @@ interface WorkflowSession {
 interface WorkflowContextValue extends WorkflowSession {
   ready: boolean;
   setProject: (projectId: number) => void;
-  setTask: (taskType: TaskType, taskRunId: number | null) => void;
+  setTask: (taskType: BriefTaskType, taskRunId: number | null) => void;
   setProvider: (provider: ProviderName) => void;
   clear: () => void;
 }

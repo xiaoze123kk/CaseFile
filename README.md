@@ -33,7 +33,8 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 - `/`：保存原稿 SourceRecord，审阅可编辑的独立 Agent 润色候选，并建立 Core Brief
 - `/brief`：保存后自动拆解作者底牌/创作边界，经人工确认后冻结 Brief，再通过 OpenAI 或 DeepSeek 创建真实 TaskRun，并查看可恢复 SSE 审计轨迹
-- `/workbench`：查看目标无关的 CaseFile v1 11 类对象，并有限编辑实体、地点和事件
+- `/workbench`：在对象树中查看 CaseFile v1 的 11 类对象，在 Agent/事实时间线之间切换，
+  使用右侧类型化编辑器修改业务字段，并通过可恢复的多线程 Agent 对话审阅结构化建议
 
 旧地址 `/demo`、`/demo/brief` 和 `/demo/workbench` 会分别跳转到上述真实页面。
 `/demo/reasoning` 与 `/demo/quality` 暂时保留为未接后端模块的内部 Fixture 实验页，
@@ -54,10 +55,12 @@ pnpm check:web
 - 不可变 SourceRecord、轻量对象注册表、专用内容表和统一多值引用边；不使用通用 `payload_jsonb`
 - Draft 可变编辑态，以及 Snapshot、Canon 与审计的不可变版本链
 
-当前基线恰好 38 张业务表。原稿、Agent 润色提案和作者修订通过不可变
+当前基线恰好 42 张业务表。原稿、Agent 润色提案和作者修订通过不可变
 `source_records` 保留完整来源链；BriefVersion、TaskRun/Attempt/Event 与
-Snapshot/Canon 均保存可恢复、可审计的版本边界。Validator 只覆盖当前确定性门禁；
-Compiler、Target Adapter、Export 和团队协作均未进入本轮。
+Snapshot/Canon 均保存可恢复、可审计的版本边界。`agent_threads` 和
+`agent_messages` 持久化个人多线程对话，`agent_patch_sets` 和
+`agent_patch_operations` 保存基于 Draft revision 的逐项审阅、整批应用与撤销边界。
+Validator 只覆盖当前确定性门禁；Compiler、Target Adapter、Export 和团队共享协作均未进入本轮。
 
 ### 1. 准备环境
 
@@ -73,7 +76,7 @@ python -m venv backend/.venv
 ### 2. 一键初始化 PostgreSQL
 
 推荐使用幂等 bootstrap。它会在缺少 `.env` 时复制公开的本地默认值，启动开发库与
-独立 `_test` 测试库，等待健康，迁移开发库，并验证唯一 Alembic head 和 38 张业务表：
+独立 `_test` 测试库，等待健康，迁移开发库，并验证唯一 Alembic head 和 42 张业务表：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1 -SeedDevUser

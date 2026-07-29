@@ -155,7 +155,8 @@ describe("real workflow boundary", () => {
     expect(source).not.toContain("<small>{module.code}</small>");
     expect(source).toContain('"model.started": "模型开始处理"');
     expect(source).toContain("Agent 润色");
-    expect(source).toContain("版本保护");
+    expect(source).toContain("事实时间线");
+    expect(source).not.toContain("版本保护");
   });
 
   it.each([

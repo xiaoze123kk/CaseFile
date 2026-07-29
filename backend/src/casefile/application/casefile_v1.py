@@ -555,6 +555,14 @@ def _walk_object_refs(
                 yield from _walk_object_refs(child, f"{path}/{index}", parent=parent)
 
 
+def iter_contract_object_refs(
+    value: Any,
+) -> Iterator[tuple[str, int, dict[str, str], dict[str, Any]]]:
+    """Yield normalized ObjectRef edges from one complete v1 object."""
+
+    yield from _walk_object_refs(value)
+
+
 def _project_resolutions(
     session: Session,
     registries: list[CaseFileObject],

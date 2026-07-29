@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,6 +13,11 @@ from alembic import command
 from alembic.config import Config
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
+from casefile.agent_runtime.models import (
+    CaseFileChatCandidate,
+    CaseFileChatRequest,
+    CaseFileChatResult,
+)
 from casefile.api.app import create_app
 from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
@@ -23,6 +29,36 @@ pytestmark = pytest.mark.postgres
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROFILE: dict[str, object] = {}
+
+
+class ApiChatProvider(FakeProvider):
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        resolution = request.casefile["resolution_specs"][0]
+        return CaseFileChatResult(
+            candidate=CaseFileChatCandidate.model_validate(
+                {
+                    "answer": "我已阅读完整卷宗，并提出一条可审阅说明。",
+                    "referenced_object_ids": [resolution["id"]],
+                    "suggestions": [
+                        {
+                            "object_id": resolution["id"],
+                            "path": "/description",
+                            "value_json": json.dumps(
+                                "用于解释午夜回航原因的核心命题。",
+                                ensure_ascii=False,
+                            ),
+                            "reason": "让结论规格更容易被作者理解。",
+                        }
+                    ],
+                }
+            ),
+            usage={
+                "requests": 1,
+                "input_tokens": 5,
+                "output_tokens": 5,
+                "total_tokens": 10,
+            },
+        )
 
 
 def _brief(source_record_id: int) -> dict[str, object]:
@@ -268,3 +304,107 @@ def test_settings_brief_generation_sse_and_completion_gate(
         draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert draft.json()["revision"] == 2
         assert draft.json()["content"]["schema_version"] == "1.0"
+
+        thread_response = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads",
+            headers=_identity(actor_id),
+            json={},
+        )
+        assert thread_response.status_code == 201
+        thread_id = thread_response.json()["thread_id"]
+        queued_chat = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+            json={
+                "content": "请通读整个卷宗并给出一条可审阅建议。",
+                "provider": "deepseek",
+            },
+        )
+        assert queued_chat.status_code == 202
+        chat_task_id = queued_chat.json()["task"]["task_run_id"]
+        chat_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="api-chat-worker"),
+            provider_factory=lambda _task: ApiChatProvider(),
+        )
+        assert chat_worker.run_once() is True
+
+        message_response = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+        )
+        assert message_response.status_code == 200
+        messages = message_response.json()
+        assert [message["role"] for message in messages] == ["user", "assistant"]
+        assert messages[-1]["task"]["task_run_id"] == chat_task_id
+        patch_set = messages[-1]["patch_set"]
+        assert patch_set["status"] == "pending"
+        assert patch_set["operations"][0]["object_type"] == "resolution_spec"
+        assert patch_set["operations"][0]["field_path"] == "/description"
+
+        applied = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                f"{patch_set['patch_set_id']}/apply"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_revision": 2, "operation_ids": None},
+        )
+        assert applied.status_code == 200
+        assert applied.json()["status"] == "applied"
+        assert applied.json()["draft_revision"] == 3
+
+        undone = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                f"{patch_set['patch_set_id']}/undo"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_revision": 3},
+        )
+        assert undone.status_code == 200
+        assert undone.json()["status"] == "undone"
+        assert undone.json()["draft_revision"] == 4
+
+        rejected_chat = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+            json={"content": "再给一条建议，这次我会整批不采用。"},
+        )
+        assert rejected_chat.status_code == 202
+        assert chat_worker.run_once() is True
+        latest_messages = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+        ).json()
+        rejected_patch = latest_messages[-1]["patch_set"]
+        rejected = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                f"{rejected_patch['patch_set_id']}/apply"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_revision": 4, "operation_ids": []},
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "rejected"
+        assert rejected.json()["draft_revision"] == 4
+
+        updated_thread = client.patch(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}",
+            headers=_identity(actor_id),
+            json={
+                "title": "午夜回航审阅",
+                "is_pinned": True,
+                "archived": True,
+            },
+        )
+        assert updated_thread.status_code == 200
+        assert updated_thread.json()["status"] == "archived"
+        assert updated_thread.json()["is_pinned"] is True
+        archived_send = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+            json={"content": "归档线程不能继续发送。"},
+        )
+        assert archived_send.status_code == 409

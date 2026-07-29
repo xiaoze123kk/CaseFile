@@ -8,6 +8,12 @@ from casefile.data_postgres.models.casefile import (
     Draft,
     DraftOperation,
 )
+from casefile.data_postgres.models.collaboration import (
+    AgentMessage,
+    AgentPatchOperation,
+    AgentPatchSet,
+    AgentThread,
+)
 from casefile.data_postgres.models.content import (
     Claim,
     Entity,
@@ -44,6 +50,10 @@ from casefile.data_postgres.models.workflow import (
 )
 
 __all__ = [
+    "AgentMessage",
+    "AgentPatchOperation",
+    "AgentPatchSet",
+    "AgentThread",
     "AuditEvent",
     "Brief",
     "BriefVersion",

@@ -16,6 +16,7 @@ from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefPolishCandidate,
     BriefPolishRequest,
+    CaseFileChatRequest,
     GenerationRequest,
 )
 from casefile.agent_runtime.providers import (
@@ -110,6 +111,36 @@ def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() ->
         "乙触发保护。",
     ]
     assert extract.candidate.creative_constraints[0].suggested_strength == "hard"
+
+
+def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
+    emitted: list[tuple[str, str]] = []
+    result = FakeProvider().chat(
+        CaseFileChatRequest(
+            task_run_id=3,
+            casefile={
+                "entities": [{"id": "ent_1", "name": "Lucy"}],
+                "events": [{"id": "evt_1", "title": "蛋糕被偷吃"}],
+            },
+            history=({"role": "user", "content": "先看完整卷宗。"},),
+            message="请讨论 evt_1，但先不要改稿。",
+            input_hash="c" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=2,
+            emit=lambda event_type, stage, _payload: emitted.append(
+                (event_type, stage)
+            ),
+        )
+    )
+
+    assert result.candidate.referenced_object_ids == ["evt_1"]
+    assert result.candidate.suggestions == []
+    assert "没有自动修改" in result.candidate.answer
+    assert emitted == [
+        ("model.started", "responding"),
+        ("model.completed", "responding"),
+    ]
 
 
 @pytest.mark.parametrize(

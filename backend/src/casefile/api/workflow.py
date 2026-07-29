@@ -12,6 +12,11 @@ from fastapi.responses import StreamingResponse
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.api.schemas import (
+    AgentMessageCreateRequest,
+    AgentPatchApplyRequest,
+    AgentPatchUndoRequest,
+    AgentThreadCreateRequest,
+    AgentThreadUpdateRequest,
     BriefAnchorExtractTaskRequest,
     BriefConfirmRequest,
     BriefPolishTaskRequest,
@@ -109,6 +114,114 @@ def workflow_router() -> APIRouter:
             expected_revision=payload.expected_revision,
         )
 
+    @router.get("/projects/{project_id}/agent/threads")
+    def list_agent_threads(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+        query: str | None = None,
+        include_archived: bool = False,
+    ) -> list[dict[str, Any]]:
+        return WorkflowService(session).list_agent_threads(
+            actor,
+            project_id,
+            query=query,
+            include_archived=include_archived,
+        )
+
+    @router.post("/projects/{project_id}/agent/threads", status_code=201)
+    def create_agent_thread(
+        project_id: int,
+        payload: AgentThreadCreateRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).create_agent_thread(
+            actor,
+            project_id,
+            title=payload.title,
+        )
+
+    @router.patch("/projects/{project_id}/agent/threads/{thread_id}")
+    def update_agent_thread(
+        project_id: int,
+        thread_id: int,
+        payload: AgentThreadUpdateRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).update_agent_thread(
+            actor,
+            project_id,
+            thread_id,
+            changes=payload.model_dump(exclude_unset=True),
+        )
+
+    @router.get("/projects/{project_id}/agent/threads/{thread_id}/messages")
+    def list_agent_messages(
+        project_id: int,
+        thread_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+        after_sequence: int = 0,
+    ) -> list[dict[str, Any]]:
+        return WorkflowService(session).list_agent_messages(
+            actor,
+            project_id,
+            thread_id,
+            after_sequence=after_sequence,
+        )
+
+    @router.post(
+        "/projects/{project_id}/agent/threads/{thread_id}/messages",
+        status_code=202,
+    )
+    def send_agent_message(
+        project_id: int,
+        thread_id: int,
+        payload: AgentMessageCreateRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).send_agent_message(
+            actor,
+            project_id,
+            thread_id,
+            content=payload.content,
+            provider=payload.provider,
+        )
+
+    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply")
+    def apply_agent_patch_set(
+        project_id: int,
+        patch_set_id: int,
+        payload: AgentPatchApplyRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).apply_agent_patch_set(
+            actor,
+            project_id,
+            patch_set_id,
+            expected_revision=payload.expected_revision,
+            operation_ids=payload.operation_ids,
+        )
+
+    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo")
+    def undo_agent_patch_set(
+        project_id: int,
+        patch_set_id: int,
+        payload: AgentPatchUndoRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).undo_agent_patch_set(
+            actor,
+            project_id,
+            patch_set_id,
+            expected_revision=payload.expected_revision,
+        )
+
     @router.post("/projects/{project_id}/tasks/generate", status_code=202)
     def create_generation_task(
         project_id: int,
@@ -164,6 +277,7 @@ def workflow_router() -> APIRouter:
             "brief_polish",
             "brief_anchor_extract",
             "brief_to_draft",
+            "casefile_chat",
         ],
     ) -> dict[str, Any] | None:
         return WorkflowService(session).get_latest_task(
