@@ -4,7 +4,26 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repoRoot "backend"
 $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $generatedRoot = Join-Path $repoRoot "contracts\generated"
+$rootCasefileSchemaRoot = Join-Path $repoRoot "contracts\schemas\casefile"
+$runtimePythonRoot = Join-Path $backendRoot "src\casefile_contracts"
+$runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v1"
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("casefile-contracts-" + [Guid]::NewGuid().ToString("N"))
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+function Get-Sha256Hex {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace("-", "")
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
 
 function Compare-GeneratedTree {
     param(
@@ -17,7 +36,7 @@ function Compare-GeneratedTree {
         Where-Object { $_.Extension -ne ".pyc" -and $_.FullName -notmatch "\\__pycache__\\" } |
         ForEach-Object {
         $relative = $_.FullName.Substring($Expected.Length).TrimStart('\')
-        $expectedFiles[$relative] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+        $expectedFiles[$relative] = Get-Sha256Hex -Path $_.FullName
     }
 
     $actualFiles = @{}
@@ -25,7 +44,7 @@ function Compare-GeneratedTree {
         Where-Object { $_.Extension -ne ".pyc" -and $_.FullName -notmatch "\\__pycache__\\" } |
         ForEach-Object {
         $relative = $_.FullName.Substring($Actual.Length).TrimStart('\')
-        $actualFiles[$relative] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+        $actualFiles[$relative] = Get-Sha256Hex -Path $_.FullName
     }
 
     $allFiles = @($expectedFiles.Keys + $actualFiles.Keys | Sort-Object -Unique)
@@ -62,6 +81,21 @@ try {
     Write-Host "Checking generated contract drift..."
     & (Join-Path $PSScriptRoot "generate-contracts.ps1") -OutputRoot $temporaryRoot
     Compare-GeneratedTree -Expected $generatedRoot -Actual $temporaryRoot
+    Compare-GeneratedTree `
+        -Expected (Join-Path $temporaryRoot "python\src\casefile_contracts") `
+        -Actual $runtimePythonRoot
+
+    $temporaryRuntimeSchemaRoot = Join-Path $temporaryRoot "runtime-schemas"
+    $temporaryRuntimeCasefileRoot = Join-Path $temporaryRuntimeSchemaRoot "casefile"
+    New-Item -ItemType Directory -Path $temporaryRuntimeCasefileRoot -Force | Out-Null
+    Copy-Item -Path (Join-Path $rootCasefileSchemaRoot "*") `
+        -Destination $temporaryRuntimeCasefileRoot
+    [System.IO.File]::WriteAllText(
+        (Join-Path $temporaryRuntimeSchemaRoot "GENERATED_FROM_ROOT_SCHEMAS.txt"),
+        "Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.`n",
+        $utf8NoBom
+    )
+    Compare-GeneratedTree -Expected $temporaryRuntimeSchemaRoot -Actual $runtimeSchemaRoot
 
     Write-Host "Running Python contract tests..."
     & $python -m pytest backend/tests/contract

@@ -38,26 +38,35 @@ from sqlalchemy.orm import sessionmaker
 pytestmark = pytest.mark.postgres
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-PROFILE = {
-    "content_type": "interactive_reasoning",
-    "target_audience": "adult_general",
-    "primary_use_case": "idea_to_playtest",
-    "genres": ["mystery"],
-    "target_duration_minutes": 90,
-    "target_participant_count": 4,
-    "difficulty_template": "medium",
-    "collaboration_mode": "single_lead_review",
-}
-BRIEF = {
-    "source_text": "一艘渡轮每天午夜会重新驶回同一座码头。",
-    "one_line_concept": "玩家需要在重复靠岸前找出让渡轮回航的真实原因。",
-    "core_mystery": "是谁修改了航行记录，以及回航是否在保护乘客？",
-    "player_goal": "重建最后一小时的航行事实并决定是否终止回航。",
-    "gameplay_loop": "调查舱室，交换信息，提出假设，验证记录，做出决定。",
-    "constraints": ["真相必须唯一且可由公开线索验证"],
-    "open_questions": ["船长缺失的十二分钟记录在哪里？"],
-    "project_profile": PROFILE,
-}
+PROFILE: dict[str, object] = {}
+
+
+def _brief(source_record_id: int) -> dict[str, object]:
+    return {
+        "source_record_ids": [source_record_id],
+        "creative_intent": "围绕午夜回航建立目标无关的推理卷宗。",
+        "reasoning_proposition": "是谁修改了航行记录，回航保护机制因何触发？",
+        "resolution_mode": "author_anchored",
+        "author_answer": "大副修改了记录，欠压保护触发了回航。",
+        "author_anchors": [
+            {
+                "anchor_id": "anchor_first_officer",
+                "statement": "大副修改了航行记录。",
+            },
+            {
+                "anchor_id": "anchor_voltage_guard",
+                "statement": "欠压保护触发了回航。",
+            },
+        ],
+        "boundary_text": "必须保持唯一因果答案。",
+        "creative_constraints": [
+            {
+                "constraint_id": "constraint_unique_cause",
+                "statement": "因果答案必须唯一。",
+                "strength": "hard",
+            }
+        ],
+    }
 
 
 class RichFixtureProvider:
@@ -76,7 +85,6 @@ class RichFixtureProvider:
             "brief_id": request.brief_id,
             "version": request.brief_version,
         }
-        candidate["project_profile"] = request.project_profile
         for constraint in candidate["constraints"]:
             for scope_ref in constraint["scope_refs"]:
                 if scope_ref["object_type"] == "casefile":
@@ -153,11 +161,18 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
             model_is_custom=False,
         )
         assert setting["masked_api_key"].endswith("cret")
+        source = workflow.create_source(
+            actor_id,
+            project_id,
+            source_kind="human_original",
+            content_text="一艘渡轮每天午夜会重新驶回同一座码头。",
+            parent_source_record_id=None,
+        )
         updated = workflow.update_brief(
             actor_id,
             project_id,
             expected_revision=1,
-            content=BRIEF,
+            content=_brief(source["source_record_id"]),
         )
         confirmed = workflow.confirm_brief(
             actor_id,
@@ -171,6 +186,62 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
             expected_draft_revision=1,
         )
     return project_id, int(task["task_run_id"])
+
+
+def test_brief_service_enforces_root_schema_conditions(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, _master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        project = CaseFileService(session).create_project(
+            actor_id,
+            ProjectCreate(title="Brief 条件门禁", description=None, profile=PROFILE),
+        )
+    project_id = int(project["id"])
+    with factory() as session:
+        source = WorkflowService(session).create_source(
+            actor_id,
+            project_id,
+            source_kind="human_original",
+            content_text="一份用于验证 Brief 条件语义的原稿。",
+            parent_source_record_id=None,
+        )
+    source_record_id = int(source["source_record_id"])
+    with factory() as session, pytest.raises(ApplicationError) as parented_original:
+        WorkflowService(session).create_source(
+            actor_id,
+            project_id,
+            source_kind="human_original",
+            content_text="原稿不能伪装成另一份来源的子修订。",
+            parent_source_record_id=source_record_id,
+        )
+    assert parented_original.value.code == "source_parent_forbidden"
+
+    anchored_without_answer = _brief(source_record_id)
+    anchored_without_answer["author_answer"] = None
+    open_with_hidden_answer = _brief(source_record_id)
+    open_with_hidden_answer["resolution_mode"] = "open"
+    duplicate_sources = _brief(source_record_id)
+    duplicate_sources["source_record_ids"] = [source_record_id, source_record_id]
+    invalid_cases = (
+        (anchored_without_answer, "brief_author_answer_required"),
+        (open_with_hidden_answer, "brief_resolution_mode_conflict"),
+        (duplicate_sources, "brief_source_record_duplicate"),
+    )
+
+    for content, expected_code in invalid_cases:
+        with factory() as session, pytest.raises(ApplicationError) as invalid:
+            WorkflowService(session).update_brief(
+                actor_id,
+                project_id,
+                expected_revision=1,
+                content=content,
+            )
+        assert invalid.value.code == expected_code
+
+    with factory() as session:
+        assert WorkflowService(session).get_brief(actor_id, project_id)["draft_revision"] == 1
 
 
 def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
@@ -201,7 +272,7 @@ def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
         assert task["result_snapshot_id"] is not None
         assert task["usage"]["tools"]["execution_success_rate"] == 1.0
         assert draft["revision"] == 2
-        assert draft["content"]["title"] == BRIEF["one_line_concept"]
+        assert draft["content"]["title"] == "围绕午夜回航建立目标无关的推理卷宗。"
         assert [event["sequence_no"] for event in events] == list(
             range(1, len(events) + 1)
         )
@@ -221,6 +292,233 @@ def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
         assert b"sk-test-workflow-secret" not in bytes(ciphertext)
         assert snapshot_json == draft["content"]
         assert snapshot_hash == casefile_content_hash(draft["content"])
+
+
+def test_source_polish_extract_recovery_and_human_confirmation(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        project = CaseFileService(session).create_project(
+            actor_id,
+            ProjectCreate(title="来源闭环", description=None, profile={}),
+        )
+    project_id = int(project["id"])
+
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with factory() as session:
+            workflow = WorkflowService(session)
+            workflow.save_provider_setting(
+                actor_id,
+                provider="deepseek",
+                api_key="sk-test-source-workflow-secret",
+                model_id="deepseek-v4-flash",
+                model_is_custom=False,
+            )
+            original = workflow.create_source(
+                actor_id,
+                project_id,
+                source_kind="human_original",
+                content_text="原稿必须完整保留；这句话不能被候选覆盖。",
+                parent_source_record_id=None,
+            )
+            polish_task = workflow.create_polish_task(
+                actor_id,
+                project_id,
+                source_record_id=original["source_record_id"],
+                provider="deepseek",
+            )
+
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="brief-aux-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            polished = workflow.get_task(
+                actor_id,
+                project_id,
+                polish_task["task_run_id"],
+            )
+            latest_polish = workflow.get_latest_task(
+                actor_id,
+                project_id,
+                task_type="brief_polish",
+            )
+            sources = workflow.list_sources(actor_id, project_id)
+
+        assert polished["status"] == "succeeded"
+        assert polished["result"]["input_hash"] == polished["input_hash"]
+        proposal = polished["result"]["proposal_source_record"]
+        assert proposal["source_kind"] == "agent_polish_proposal"
+        assert proposal["parent_source_record_id"] == original["source_record_id"]
+        assert proposal["generated_by_task_run_id"] == polish_task["task_run_id"]
+        assert latest_polish is not None
+        assert latest_polish["task_run_id"] == polish_task["task_run_id"]
+        assert next(
+            item for item in sources if item["source_record_id"] == original["source_record_id"]
+        )["content_text"] == "原稿必须完整保留；这句话不能被候选覆盖。"
+
+        unreviewed = _brief(original["source_record_id"])
+        unreviewed["author_anchors"] = []
+        unreviewed["creative_constraints"] = []
+        with factory() as session:
+            workflow = WorkflowService(session)
+            saved = workflow.update_brief(
+                actor_id,
+                project_id,
+                expected_revision=1,
+                content=unreviewed,
+            )
+            with pytest.raises(ApplicationError) as not_reviewed:
+                workflow.confirm_brief(
+                    actor_id,
+                    project_id,
+                    expected_revision=saved["draft_revision"],
+                )
+        assert not_reviewed.value.code == "brief_author_anchors_required"
+
+        with factory() as session:
+            extract_task = WorkflowService(session).create_anchor_extract_task(
+                actor_id,
+                project_id,
+                expected_brief_revision=saved["draft_revision"],
+                provider="deepseek",
+            )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            extracted = workflow.get_task(
+                actor_id,
+                project_id,
+                extract_task["task_run_id"],
+            )
+            assert extracted["result"]["input_hash"] == extracted["input_hash"]
+            reviewed = dict(unreviewed)
+            reviewed["author_anchors"] = [
+                {
+                    "anchor_id": f"anchor_task_{extract_task['task_run_id']}_{index:02d}",
+                    "statement": item["statement"],
+                }
+                for index, item in enumerate(
+                    extracted["result"]["author_anchors"],
+                    start=1,
+                )
+            ]
+            reviewed["creative_constraints"] = [
+                {
+                    "constraint_id": (
+                        f"constraint_task_{extract_task['task_run_id']}_{index:02d}"
+                    ),
+                    "statement": item["statement"],
+                    "strength": item["suggested_strength"],
+                }
+                for index, item in enumerate(
+                    extracted["result"]["creative_constraints"],
+                    start=1,
+                )
+            ]
+            saved_reviewed = workflow.update_brief(
+                actor_id,
+                project_id,
+                expected_revision=saved["draft_revision"],
+                content=reviewed,
+            )
+            confirmed = workflow.confirm_brief(
+                actor_id,
+                project_id,
+                expected_revision=saved_reviewed["draft_revision"],
+            )
+        assert confirmed["content"]["author_anchors"]
+        assert confirmed["content"]["creative_constraints"]
+
+
+def test_brief_updates_clear_current_version_and_reject_foreign_sources(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        first = CaseFileService(session).create_project(
+            actor_id,
+            ProjectCreate(title="第一卷", description=None, profile={}),
+        )
+    with factory() as session:
+        second = CaseFileService(session).create_project(
+            actor_id,
+            ProjectCreate(title="第二卷", description=None, profile={}),
+        )
+    first_id = int(first["id"])
+    second_id = int(second["id"])
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with factory() as session:
+            workflow = WorkflowService(session)
+            workflow.save_provider_setting(
+                actor_id,
+                api_key="sk-test-version-secret",
+                model_id="gpt-5.6-sol",
+                model_is_custom=False,
+            )
+            first_source = workflow.create_source(
+                actor_id,
+                first_id,
+                source_kind="human_original",
+                content_text="第一卷原稿",
+                parent_source_record_id=None,
+            )
+            foreign_source = workflow.create_source(
+                actor_id,
+                second_id,
+                source_kind="human_original",
+                content_text="第二卷原稿",
+                parent_source_record_id=None,
+            )
+            saved = workflow.update_brief(
+                actor_id,
+                first_id,
+                expected_revision=1,
+                content=_brief(first_source["source_record_id"]),
+            )
+            confirmed = workflow.confirm_brief(
+                actor_id,
+                first_id,
+                expected_revision=saved["draft_revision"],
+            )
+
+        changed = _brief(first_source["source_record_id"])
+        changed["reasoning_proposition"] = "修改后的推理命题。"
+        with factory() as session:
+            workflow = WorkflowService(session)
+            updated = workflow.update_brief(
+                actor_id,
+                first_id,
+                expected_revision=saved["draft_revision"],
+                content=changed,
+            )
+            assert updated["current_version_id"] is None
+            with pytest.raises(ApplicationError) as stale_version:
+                workflow.create_generation_task(
+                    actor_id,
+                    first_id,
+                    brief_version_id=confirmed["brief_version_id"],
+                    expected_draft_revision=1,
+                )
+        assert stale_version.value.code == "brief_version_not_current"
+
+        foreign = _brief(foreign_source["source_record_id"])
+        with factory() as session, pytest.raises(ApplicationError) as wrong_source:
+            WorkflowService(session).update_brief(
+                actor_id,
+                first_id,
+                expected_revision=updated["draft_revision"],
+                content=foreign,
+            )
+        assert wrong_source.value.code == "brief_source_invalid"
 
 
 def test_expired_lease_creates_a_new_attempt(
@@ -252,6 +550,42 @@ def test_expired_lease_creates_a_new_attempt(
             )
         assert [attempt.status for attempt in attempts] == ["failed", "running"]
         assert attempts[0].error_code == "worker_lease_expired"
+
+
+def test_worker_rejects_rotated_provider_configuration(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        with factory() as session:
+            rotated = WorkflowService(session).save_provider_setting(
+                actor_id,
+                api_key="sk-test-rotated-secret",
+                model_id="gpt-5.6-sol",
+                model_is_custom=False,
+            )
+        assert rotated["config_version"] == 2
+
+        provider_called = False
+
+        def provider_factory(_task: TaskRun) -> FakeProvider:
+            nonlocal provider_called
+            provider_called = True
+            return FakeProvider()
+
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="rotated-provider-test"),
+            provider_factory=provider_factory,
+        )
+        assert worker.run_once() is True
+        assert provider_called is False
+        with factory() as session:
+            task = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
+        assert task["status"] == "failed"
+        assert task["error_code"] == "generation_failed"
 
 
 def test_confirmed_brief_and_task_events_are_database_immutable(

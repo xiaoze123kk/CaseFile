@@ -5,17 +5,20 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import StreamingResponse
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.api.schemas import (
+    BriefAnchorExtractTaskRequest,
     BriefConfirmRequest,
+    BriefPolishTaskRequest,
     BriefUpdateRequest,
     GenerateTaskRequest,
     ProviderSettingRequest,
+    SourceRecordCreateRequest,
 )
 from casefile.application.errors import ApplicationError
 from casefile.application.workflow_service import WorkflowService
@@ -28,9 +31,11 @@ def workflow_router() -> APIRouter:
 
     @router.get("/settings/provider")
     def get_provider_setting(
-        actor: ActorDependency, session: SessionDependency
+        actor: ActorDependency,
+        session: SessionDependency,
+        provider: Literal["openai", "deepseek"] = "openai",
     ) -> dict[str, Any] | None:
-        return WorkflowService(session).get_provider_setting(actor)
+        return WorkflowService(session).get_provider_setting(actor, provider)
 
     @router.put("/settings/provider")
     def save_provider_setting(
@@ -40,9 +45,33 @@ def workflow_router() -> APIRouter:
     ) -> dict[str, Any]:
         return WorkflowService(session).save_provider_setting(
             actor,
+            provider=payload.provider,
             api_key=payload.api_key,
             model_id=payload.model_id,
             model_is_custom=payload.model_is_custom,
+        )
+
+    @router.get("/projects/{project_id}/sources")
+    def list_sources(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> list[dict[str, Any]]:
+        return WorkflowService(session).list_sources(actor, project_id)
+
+    @router.post("/projects/{project_id}/sources", status_code=201)
+    def create_source(
+        project_id: int,
+        payload: SourceRecordCreateRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).create_source(
+            actor,
+            project_id,
+            source_kind=payload.source_kind,
+            content_text=payload.content_text,
+            parent_source_record_id=payload.parent_source_record_id,
         )
 
     @router.get("/projects/{project_id}/brief")
@@ -92,6 +121,55 @@ def workflow_router() -> APIRouter:
             project_id,
             brief_version_id=payload.brief_version_id,
             expected_draft_revision=payload.expected_draft_revision,
+            provider=payload.provider,
+        )
+
+    @router.post("/projects/{project_id}/tasks/brief-polish", status_code=202)
+    def create_polish_task(
+        project_id: int,
+        payload: BriefPolishTaskRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).create_polish_task(
+            actor,
+            project_id,
+            source_record_id=payload.source_record_id,
+            provider=payload.provider,
+        )
+
+    @router.post(
+        "/projects/{project_id}/tasks/brief-anchor-extract",
+        status_code=202,
+    )
+    def create_anchor_extract_task(
+        project_id: int,
+        payload: BriefAnchorExtractTaskRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).create_anchor_extract_task(
+            actor,
+            project_id,
+            expected_brief_revision=payload.expected_brief_revision,
+            provider=payload.provider,
+        )
+
+    @router.get("/projects/{project_id}/tasks/latest")
+    def get_latest_task(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+        task_type: Literal[
+            "brief_polish",
+            "brief_anchor_extract",
+            "brief_to_draft",
+        ],
+    ) -> dict[str, Any] | None:
+        return WorkflowService(session).get_latest_task(
+            actor,
+            project_id,
+            task_type=task_type,
         )
 
     @router.get("/projects/{project_id}/tasks/{task_run_id}")

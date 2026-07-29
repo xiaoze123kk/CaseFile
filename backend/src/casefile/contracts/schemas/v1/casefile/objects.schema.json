@@ -11,8 +11,8 @@
         {
           "type": "object",
           "required": [
-            "id", "title", "question_type", "target_question", "conclusion_mode",
-            "required_slots", "accepted_answers", "required_claim_refs", "fairness_requirements"
+            "id", "title", "question_type", "reasoning_question", "conclusion_mode",
+            "required_slots", "accepted_answers", "required_claim_refs"
           ],
           "properties": {
             "id": {"type": "string", "pattern": "^res_[a-z0-9][a-z0-9_]{0,56}$"},
@@ -25,7 +25,7 @@
                 "decision_reasoning"
               ]
             },
-            "target_question": {"type": "string", "minLength": 1},
+            "reasoning_question": {"type": "string", "minLength": 1},
             "conclusion_mode": {
               "type": "string",
               "enum": [
@@ -61,11 +61,7 @@
                 ]
               }
             },
-            "required_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
-            "fairness_requirements": {
-              "type": "array",
-              "items": {"type": "string", "minLength": 1}
-            }
+            "required_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
           }
         }
       ],
@@ -99,9 +95,16 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["phase_ref", "knows_refs", "believes_refs", "false_belief_refs"],
+                "required": [
+                  "as_of_event_ref", "knows_refs", "believes_refs", "false_belief_refs"
+                ],
                 "properties": {
-                  "phase_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                  "as_of_event_ref": {
+                    "oneOf": [
+                      {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                      {"type": "null"}
+                    ]
+                  },
                   "knows_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
                   "believes_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
                   "false_belief_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
@@ -122,7 +125,7 @@
           "type": "object",
           "required": [
             "id", "title", "from_ref", "to_ref", "relationship_type",
-            "direction", "phase_refs", "truth_status", "visibility"
+            "direction", "truth_status", "visibility"
           ],
           "properties": {
             "id": {"type": "string", "pattern": "^rel_[a-z0-9][a-z0-9_]{0,56}$"},
@@ -131,7 +134,6 @@
             "to_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
             "relationship_type": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
             "direction": {"type": "string", "enum": ["directed", "undirected", "bidirectional"]},
-            "phase_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
             "truth_status": {
               "type": "string",
               "enum": ["canon_true", "reported", "disputed", "false_belief", "unknown"]
@@ -191,7 +193,7 @@
           "type": "object",
           "required": [
             "id", "title", "truth_status", "time", "participant_refs", "location_ref",
-            "cause_refs", "effect_refs", "observed_by_refs", "narrative_phase_refs"
+            "cause_refs", "effect_refs", "observed_by_refs"
           ],
           "properties": {
             "id": {"type": "string", "pattern": "^evt_[a-z0-9][a-z0-9_]{0,56}$"},
@@ -219,8 +221,7 @@
             },
             "cause_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
             "effect_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
-            "observed_by_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
-            "narrative_phase_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+            "observed_by_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
           }
         }
       ],
@@ -261,9 +262,10 @@
             "availability": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["phase_refs", "perspective_refs", "acquisition_conditions", "alternative_path_refs"],
+              "required": [
+                "perspective_refs", "acquisition_conditions", "alternative_path_refs"
+              ],
               "properties": {
-                "phase_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
                 "perspective_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
                 "acquisition_conditions": {"type": "array", "items": {"type": "string", "minLength": 1}},
                 "alternative_path_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
@@ -360,27 +362,6 @@
             },
             "required_for_resolution": {"type": "boolean"},
             "alternative_path_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
-          }
-        }
-      ],
-      "unevaluatedProperties": false
-    },
-    "Phase": {
-      "title": "Phase",
-      "type": "object",
-      "allOf": [
-        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
-        {
-          "type": "object",
-          "required": ["id", "title", "order", "entry_conditions", "visible_information_refs", "allowed_action_types", "completion_conditions"],
-          "properties": {
-            "id": {"type": "string", "pattern": "^phase_[a-z0-9][a-z0-9_]{0,54}$"},
-            "title": {"type": "string", "minLength": 1},
-            "order": {"type": "integer", "minimum": 1},
-            "entry_conditions": {"type": "array", "items": {"type": "string", "minLength": 1}},
-            "visible_information_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
-            "allowed_action_types": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}, "uniqueItems": true},
-            "completion_conditions": {"type": "array", "items": {"type": "string", "minLength": 1}}
           }
         }
       ],

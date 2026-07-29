@@ -9,25 +9,39 @@ import {
   useState,
 } from "react";
 
-const STORAGE_KEY = "casefile.real.workflow.v1";
+import type { ProviderName, TaskType } from "@/lib/api-client";
+
+const STORAGE_KEY = "casefile.real.workflow.v2";
+const LEGACY_STORAGE_KEY = "casefile.real.workflow.v1";
+
+export type WorkflowTaskPointers = Record<TaskType, number | null>;
 
 interface WorkflowSession {
   actorId: number;
   projectId: number | null;
-  taskRunId: number | null;
+  taskRunIds: WorkflowTaskPointers;
+  provider: ProviderName;
 }
 
 interface WorkflowContextValue extends WorkflowSession {
   ready: boolean;
   setProject: (projectId: number) => void;
-  setTask: (taskRunId: number | null) => void;
+  setTask: (taskType: TaskType, taskRunId: number | null) => void;
+  setProvider: (provider: ProviderName) => void;
   clear: () => void;
 }
+
+const emptyTaskRunIds: WorkflowTaskPointers = {
+  brief_polish: null,
+  brief_anchor_extract: null,
+  brief_to_draft: null,
+};
 
 const initialSession: WorkflowSession = {
   actorId: 1,
   projectId: null,
-  taskRunId: null,
+  taskRunIds: emptyTaskRunIds,
+  provider: "openai",
 };
 
 const WorkflowContext = createContext<WorkflowContextValue | null>(null);
@@ -38,13 +52,33 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
+      const stored =
+        window.localStorage.getItem(STORAGE_KEY) ??
+        window.localStorage.getItem(LEGACY_STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored) as Partial<WorkflowSession>;
+        const parsed = JSON.parse(stored) as Partial<WorkflowSession> & {
+          taskRunId?: number | null;
+        };
+        const parsedPointers = parsed.taskRunIds;
         setSession({
           actorId: Number.isInteger(parsed.actorId) ? Number(parsed.actorId) : 1,
           projectId: Number.isInteger(parsed.projectId) ? Number(parsed.projectId) : null,
-          taskRunId: Number.isInteger(parsed.taskRunId) ? Number(parsed.taskRunId) : null,
+          taskRunIds: {
+            brief_polish: Number.isInteger(parsedPointers?.brief_polish)
+              ? Number(parsedPointers?.brief_polish)
+              : null,
+            brief_anchor_extract: Number.isInteger(
+              parsedPointers?.brief_anchor_extract,
+            )
+              ? Number(parsedPointers?.brief_anchor_extract)
+              : null,
+            brief_to_draft: Number.isInteger(parsedPointers?.brief_to_draft)
+              ? Number(parsedPointers?.brief_to_draft)
+              : Number.isInteger(parsed.taskRunId)
+                ? Number(parsed.taskRunId)
+                : null,
+          },
+          provider: parsed.provider === "deepseek" ? "deepseek" : "openai",
         });
       }
     } finally {
@@ -61,9 +95,26 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
       ...session,
       ready,
       setProject: (projectId) =>
-        setSession((current) => ({ ...current, projectId, taskRunId: null })),
-      setTask: (taskRunId) => setSession((current) => ({ ...current, taskRunId })),
-      clear: () => setSession(initialSession),
+        setSession((current) => ({
+          ...current,
+          projectId,
+          taskRunIds: { ...emptyTaskRunIds },
+        })),
+      setTask: (taskType, taskRunId) =>
+        setSession((current) => ({
+          ...current,
+          taskRunIds: {
+            ...current.taskRunIds,
+            [taskType]: taskRunId,
+          },
+        })),
+      setProvider: (provider) => setSession((current) => ({ ...current, provider })),
+      clear: () =>
+        setSession((current) => ({
+          ...initialSession,
+          taskRunIds: { ...emptyTaskRunIds },
+          provider: current.provider,
+        })),
     }),
     [ready, session],
   );

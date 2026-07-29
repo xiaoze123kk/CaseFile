@@ -2,35 +2,89 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://casefile.local/schemas/v1/brief/brief.schema.json",
   "title": "Brief",
-  "description": "User-reviewed creative intent used as immutable Agent generation input.",
+  "description": "User-reviewed, target-neutral creative intent used as immutable Agent generation input.",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "source_text",
-    "one_line_concept",
-    "core_mystery",
-    "player_goal",
-    "gameplay_loop"
+    "source_record_ids",
+    "creative_intent",
+    "reasoning_proposition",
+    "resolution_mode",
+    "author_answer",
+    "author_anchors",
+    "boundary_text",
+    "creative_constraints"
   ],
   "properties": {
-    "source_text": {"type": "string", "minLength": 1},
-    "one_line_concept": {"type": "string", "minLength": 1},
-    "core_mystery": {"type": "string", "minLength": 1},
-    "player_goal": {"type": "string", "minLength": 1},
-    "gameplay_loop": {"type": "string", "minLength": 1},
-    "constraints": {
+    "source_record_ids": {
       "type": "array",
-      "items": {"type": "string", "minLength": 1},
+      "items": {"type": "integer", "minimum": 1},
+      "minItems": 1,
       "uniqueItems": true
     },
-    "open_questions": {
-      "type": "array",
-      "items": {"type": "string", "minLength": 1},
-      "uniqueItems": true
+    "creative_intent": {"type": "string", "minLength": 1},
+    "reasoning_proposition": {"type": "string", "minLength": 1},
+    "resolution_mode": {
+      "type": "string",
+      "enum": ["author_anchored", "agent_proposed", "open"]
     },
-    "project_profile": {
-      "type": "object",
-      "additionalProperties": true
+    "author_answer": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "author_anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["anchor_id", "statement"],
+        "properties": {
+          "anchor_id": {
+            "type": "string",
+            "pattern": "^anchor_[a-z0-9][a-z0-9_]{0,55}$"
+          },
+          "statement": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "boundary_text": {
+      "oneOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "null"}
+      ]
+    },
+    "creative_constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["constraint_id", "statement", "strength"],
+        "properties": {
+          "constraint_id": {
+            "type": "string",
+            "pattern": "^constraint_[a-z0-9][a-z0-9_]{0,51}$"
+          },
+          "statement": {"type": "string", "minLength": 1},
+          "strength": {"type": "string", "enum": ["hard", "soft"]}
+        }
+      }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"resolution_mode": {"const": "author_anchored"}},
+        "required": ["resolution_mode"]
+      },
+      "then": {"properties": {"author_answer": {"type": "string", "minLength": 1}}},
+      "else": {
+        "properties": {
+          "author_answer": {"type": "null"},
+          "author_anchors": {"maxItems": 0}
+        }
+      }
+    }
+  ]
 }

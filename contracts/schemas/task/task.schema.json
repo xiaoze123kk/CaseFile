@@ -8,21 +8,45 @@
       "additionalProperties": false,
       "required": [
         "task_run_id", "project_id", "task_type", "status", "stage",
-        "model_id", "input_draft_revision", "attempt_count", "usage"
+        "provider", "model_id", "input_draft_revision", "input_brief_revision",
+        "input_source_record_id", "input_hash", "attempt_count", "usage", "result"
       ],
       "properties": {
         "task_run_id": {"type": "integer", "minimum": 1},
         "project_id": {"type": "integer", "minimum": 1},
-        "task_type": {"const": "brief_to_draft"},
+        "task_type": {
+          "type": "string",
+          "enum": ["brief_polish", "brief_anchor_extract", "brief_to_draft"]
+        },
         "status": {
           "type": "string",
           "enum": ["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
         },
         "stage": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "provider": {"type": "string", "enum": ["openai", "deepseek"]},
         "model_id": {"type": "string", "minLength": 1},
         "input_draft_revision": {"type": "integer", "minimum": 1},
+        "input_brief_revision": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_source_record_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         "attempt_count": {"type": "integer", "minimum": 0},
         "usage": {"type": "object", "additionalProperties": true},
+        "result": {
+          "oneOf": [
+            {"type": "object", "additionalProperties": true},
+            {"type": "null"}
+          ]
+        },
         "result_snapshot_id": {"type": ["integer", "null"], "minimum": 1},
         "error_code": {"type": ["string", "null"]},
         "created_at": {"type": "string", "format": "date-time"},
@@ -46,11 +70,12 @@
     "AgentGenerateRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["project_id", "brief_version_id", "expected_draft_revision"],
+      "required": ["project_id", "brief_version_id", "expected_draft_revision", "provider"],
       "properties": {
         "project_id": {"type": "integer", "minimum": 1},
         "brief_version_id": {"type": "integer", "minimum": 1},
-        "expected_draft_revision": {"type": "integer", "minimum": 1}
+        "expected_draft_revision": {"type": "integer", "minimum": 1},
+        "provider": {"type": "string", "enum": ["openai", "deepseek"]}
       }
     },
     "AgentGenerateResult": {

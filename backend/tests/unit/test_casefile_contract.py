@@ -50,11 +50,11 @@ def test_runtime_rejects_dangling_and_wrong_type_references() -> None:
 
 
 def test_runtime_rejects_deterministic_semantic_invariants() -> None:
-    duplicate_order = _load("restart_loop.casefile.json")
-    second_phase = copy.deepcopy(duplicate_order["phases"][0])
-    second_phase["id"] = "phase_duplicate_order"
-    duplicate_order["phases"].append(second_phase)
-    assert "duplicate_order" in _error_codes(duplicate_order)
+    duplicate_step = _load("restart_loop.casefile.json")
+    duplicate_step["reasoning_paths"][0]["steps"].append(
+        copy.deepcopy(duplicate_step["reasoning_paths"][0]["steps"][0])
+    )
+    assert "duplicate_key" in _error_codes(duplicate_step)
 
     self_adjacent = _load("restart_loop.casefile.json")
     self_adjacent["locations"][0]["adjacency_refs"][0]["object_id"] = "loc_lab"

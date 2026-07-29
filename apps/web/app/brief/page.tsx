@@ -1,5 +1,5 @@
-import { BriefWorkspace } from "@/features/workflow/brief-workspace";
+import { BriefReviewWorkspace } from "@/features/workflow/brief-review-workspace";
 
 export default function BriefPage() {
-  return <BriefWorkspace />;
+  return <BriefReviewWorkspace />;
 }

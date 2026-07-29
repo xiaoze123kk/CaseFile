@@ -55,10 +55,6 @@ class AcceptedAnswers(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
 
-class FairnessRequirement(RootModel[str]):
-    root: Annotated[str, Field(min_length=1)]
-
-
 class Tag(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
@@ -97,7 +93,6 @@ class ObjectType(StrEnum):
     claim = 'claim'
     hypothesis = 'hypothesis'
     reasoning_path = 'reasoning_path'
-    phase = 'phase'
     constraint = 'constraint'
     structure_lock = 'structure_lock'
     source_fragment = 'source_fragment'
@@ -156,12 +151,11 @@ class ResolutionSpec(CoreMetadata):
     id: Annotated[str, Field(pattern='^res_[a-z0-9][a-z0-9_]{0,56}$')]
     title: Annotated[str, Field(min_length=1)]
     question_type: QuestionType
-    target_question: Annotated[str, Field(min_length=1)]
+    reasoning_question: Annotated[str, Field(min_length=1)]
     conclusion_mode: ConclusionMode
     required_slots: list[RequiredSlot]
     accepted_answers: list[AcceptedAnswers | ObjectRef]
     required_claim_refs: list[ObjectRef]
-    fairness_requirements: list[FairnessRequirement]
 
 
 class EntityType(StrEnum):
@@ -199,7 +193,7 @@ class KnowledgeState(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    phase_ref: ObjectRef
+    as_of_event_ref: ObjectRef | None
     knows_refs: list[ObjectRef]
     believes_refs: list[ObjectRef]
     false_belief_refs: list[ObjectRef]
@@ -253,7 +247,6 @@ class Relationship(CoreMetadata):
     to_ref: ObjectRef
     relationship_type: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     direction: Direction
-    phase_refs: list[ObjectRef]
     truth_status: TruthStatus
     visibility: Visibility
 
@@ -322,7 +315,6 @@ class Event(CoreMetadata):
     cause_refs: list[ObjectRef]
     effect_refs: list[ObjectRef]
     observed_by_refs: list[ObjectRef]
-    narrative_phase_refs: list[ObjectRef]
 
 
 class InformationType(StrEnum):
@@ -353,7 +345,6 @@ class Availability(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    phase_refs: list[ObjectRef]
     perspective_refs: list[ObjectRef]
     acquisition_conditions: list[AcquisitionCondition]
     alternative_path_refs: list[ObjectRef]
@@ -500,32 +491,6 @@ class ReasoningPath(CoreMetadata):
     alternative_path_refs: list[ObjectRef]
 
 
-class EntryCondition(RootModel[str]):
-    root: Annotated[str, Field(min_length=1)]
-
-
-class AllowedActionType(RootModel[str]):
-    root: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-
-
-class CompletionCondition(RootModel[str]):
-    root: Annotated[str, Field(min_length=1)]
-
-
-class Phase(CoreMetadata):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    id: Annotated[str, Field(pattern='^phase_[a-z0-9][a-z0-9_]{0,54}$')]
-    title: Annotated[str, Field(min_length=1)]
-    order: Annotated[int, Field(ge=1)]
-    entry_conditions: list[EntryCondition]
-    visible_information_refs: list[ObjectRef]
-    allowed_action_types: list[AllowedActionType]
-    completion_conditions: list[CompletionCondition]
-
-
 class Level(StrEnum):
     hard = 'hard'
     soft = 'soft'
@@ -584,6 +549,12 @@ class PatchOperation(BaseModel):
     new_value: Any
 
 
+class TaskType(StrEnum):
+    brief_polish = 'brief_polish'
+    brief_anchor_extract = 'brief_anchor_extract'
+    brief_to_draft = 'brief_to_draft'
+
+
 class Status2(StrEnum):
     queued = 'queued'
     running = 'running'
@@ -593,6 +564,19 @@ class Status2(StrEnum):
     cancelled = 'cancelled'
 
 
+class Provider(StrEnum):
+    openai = 'openai'
+    deepseek = 'deepseek'
+
+
+class InputBriefRevision(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class InputSourceRecordId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
 class TaskRun(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -600,13 +584,18 @@ class TaskRun(BaseModel):
     )
     task_run_id: Annotated[int, Field(ge=1)]
     project_id: Annotated[int, Field(ge=1)]
-    task_type: Literal['brief_to_draft']
+    task_type: TaskType
     status: Status2
     stage: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    provider: Provider
     model_id: Annotated[str, Field(min_length=1)]
     input_draft_revision: Annotated[int, Field(ge=1)]
+    input_brief_revision: InputBriefRevision | None
+    input_source_record_id: InputSourceRecordId | None
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
     attempt_count: Annotated[int, Field(ge=0)]
     usage: dict[str, Any]
+    result: dict[str, Any] | None
     result_snapshot_id: Annotated[int | None, Field(ge=1)] = None
     error_code: str | None = None
     created_at: AwareDatetime | None = None
@@ -635,6 +624,7 @@ class AgentGenerateRequest(BaseModel):
     project_id: Annotated[int, Field(ge=1)]
     brief_version_id: Annotated[int, Field(ge=1)]
     expected_draft_revision: Annotated[int, Field(ge=1)]
+    provider: Provider
 
 
 class AgentGenerateResult(BaseModel):
@@ -695,37 +685,6 @@ class BriefRef(BaseModel):
     version: Annotated[int, Field(ge=1)]
 
 
-class Genre(RootModel[str]):
-    root: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-
-
-class DifficultyTemplate(StrEnum):
-    easy = 'easy'
-    medium = 'medium'
-    hard = 'hard'
-    custom = 'custom'
-
-
-class CollaborationMode(StrEnum):
-    single_lead_review = 'single_lead_review'
-    solo = 'solo'
-
-
-class ProjectProfile(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    content_type: Literal['interactive_reasoning']
-    target_audience: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-    primary_use_case: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-    genres: list[Genre]
-    target_duration_minutes: Annotated[int, Field(ge=1)]
-    target_participant_count: Annotated[int, Field(ge=1)]
-    difficulty_template: DifficultyTemplate
-    collaboration_mode: CollaborationMode
-
-
 class Severity(StrEnum):
     low = 'low'
     medium = 'medium'
@@ -754,7 +713,6 @@ class Schema(BaseModel):
     status: Status_1
     version: Version
     brief_ref: BriefRef
-    project_profile: ProjectProfile
     resolution_specs: list[ResolutionSpec]
     entities: list[Entity]
     relationships: list[Relationship]
@@ -764,7 +722,6 @@ class Schema(BaseModel):
     claims: list[Claim]
     hypotheses: list[Hypothesis]
     reasoning_paths: list[ReasoningPath]
-    phases: list[Phase]
     constraints: list[Constraint]
     structure_locks: list[StructureLock]
     content_notices: list[ContentNotice]

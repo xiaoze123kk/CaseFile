@@ -113,9 +113,20 @@ class ReferenceReplaceRequest(StrictRequest):
 
 
 class ProviderSettingRequest(StrictRequest):
+    provider: Literal["openai", "deepseek"] = "openai"
     api_key: str = Field(min_length=8, max_length=512)
     model_id: str = Field(default="gpt-5.6-sol", min_length=1, max_length=160)
     model_is_custom: bool = False
+
+    @model_validator(mode="after")
+    def provider_default_model(self) -> Self:
+        if (
+            self.provider == "deepseek"
+            and self.model_id == "gpt-5.6-sol"
+            and not self.model_is_custom
+        ):
+            self.model_id = "deepseek-v4-flash"
+        return self
 
 
 class BriefUpdateRequest(StrictRequest):
@@ -127,9 +138,26 @@ class BriefConfirmRequest(StrictRequest):
     expected_revision: int = Field(ge=1)
 
 
+class SourceRecordCreateRequest(StrictRequest):
+    source_kind: Literal["human_original", "human_revision"]
+    content_text: str = Field(min_length=1)
+    parent_source_record_id: int | None = Field(default=None, ge=1)
+
+
+class BriefPolishTaskRequest(StrictRequest):
+    source_record_id: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "openai"
+
+
+class BriefAnchorExtractTaskRequest(StrictRequest):
+    expected_brief_revision: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "openai"
+
+
 class GenerateTaskRequest(StrictRequest):
     brief_version_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "openai"
 
 
 class ObjectPatchRequest(StrictRequest):

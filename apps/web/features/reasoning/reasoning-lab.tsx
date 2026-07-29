@@ -14,7 +14,7 @@ import {
 import {
   DocumentHeader,
   StatusBadge,
-} from "@/components/prototype-ui";
+} from "@/components/archive-ui";
 import {
   getPendingReasoningChanges,
   getReasoningOverviewMetrics,
@@ -354,7 +354,7 @@ export function ReasoningLab() {
       return;
     }
     dispatch({ type: "select-event", id: source.targetEventId });
-    router.push(`/demo/workbench#event=${encodeURIComponent(source.targetEventId)}`);
+    router.push(`/workbench#event=${encodeURIComponent(source.targetEventId)}`);
   }, [dispatch, router, state.draft.events]);
 
   function openPath(pathId: string) {

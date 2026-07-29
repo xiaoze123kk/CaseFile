@@ -115,16 +115,17 @@ try {
 import os
 from sqlalchemy import create_engine, text
 
-expected_revision = "20260728084832"
+expected_revision = "20260728171649"
 expected_tables = {
     "users", "user_provider_settings", "projects", "casefiles", "drafts", "briefs",
-    "brief_versions", "casefile_objects", "casefile_refs", "casefile_contract_refs",
-    "draft_operations", "narrative_phases", "entities", "people", "locations", "events",
-    "information_units", "evidence_items", "testimonies", "claims", "knowledge_states",
-    "knowledge_state_entries", "hypotheses", "reasoning_paths", "reasoning_nodes",
-    "reasoning_edges", "relationships", "resolution_specs", "resolution_slots",
-    "casefile_constraints", "structure_locks", "draft_snapshots", "canon_versions",
-    "audit_events", "task_runs", "task_attempts", "task_events",
+    "brief_versions", "source_records", "casefile_objects", "casefile_refs",
+    "casefile_contract_refs", "draft_operations", "narrative_phases", "entities",
+    "people", "locations", "events", "information_units", "evidence_items",
+    "testimonies", "claims", "knowledge_states", "knowledge_state_entries",
+    "hypotheses", "reasoning_paths", "reasoning_nodes", "reasoning_edges",
+    "relationships", "resolution_specs", "resolution_slots", "casefile_constraints",
+    "structure_locks", "draft_snapshots", "canon_versions", "audit_events",
+    "task_runs", "task_attempts", "task_events",
 }
 engine = create_engine(os.environ["DATABASE_URL"])
 with engine.connect() as connection:

@@ -29,7 +29,6 @@ from casefile.data_postgres.models import (
     Hypothesis,
     InformationUnit,
     Location,
-    NarrativePhase,
     ReasoningNode,
     ReasoningPath,
     Relationship,
@@ -49,7 +48,6 @@ COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
     ("claims", "claim"),
     ("hypotheses", "hypothesis"),
     ("reasoning_paths", "reasoning_path"),
-    ("phases", "phase"),
     ("constraints", "constraint"),
     ("structure_locks", "structure_lock"),
 )
@@ -218,7 +216,6 @@ def build_casefile_document(session: Session, owned: OwnedDraft) -> dict[str, An
             "parent_version_id": owned.draft.parent_version_id,
         },
         "brief_ref": {"brief_id": brief.public_id, "version": brief_version.version_no},
-        "project_profile": owned.project.profile_jsonb,
         "resolution_specs": _project_resolutions(
             session, registry_by_type["resolution_spec"], refs_by_source
         ),
@@ -236,7 +233,6 @@ def build_casefile_document(session: Session, owned: OwnedDraft) -> dict[str, An
         "reasoning_paths": _project_reasoning_paths(
             session, registry_by_type["reasoning_path"], refs_by_source
         ),
-        "phases": _project_phases(session, registry_by_type["phase"], refs_by_source),
         "constraints": _project_constraints(
             session, registry_by_type["constraint"], refs_by_source
         ),
@@ -262,8 +258,6 @@ def _validate_generation_context(
         failures["casefile_id"] = owned.casefile.object_id
     if candidate["brief_ref"] != expected_brief_ref:
         failures["brief_ref"] = expected_brief_ref
-    if candidate["project_profile"] != owned.project.profile_jsonb:
-        failures["project_profile"] = owned.project.profile_jsonb
     if candidate["status"] != "draft":
         failures["status"] = "draft"
     if failures:
@@ -330,10 +324,10 @@ def _create_content_rows(
             object_registry_id=registry.id,
             title=item["title"],
             question_type=item["question_type"],
-            target_question=item["target_question"],
+            target_question=item["reasoning_question"],
             conclusion_mode=item["conclusion_mode"],
             accepted_answer_texts_jsonb=text_answers,
-            fairness_requirements_jsonb=item["fairness_requirements"],
+            fairness_requirements_jsonb=[],
             conclusion_pattern_jsonb={},
             status="draft",
         )
@@ -480,21 +474,6 @@ def _create_content_rows(
                     attributes_jsonb={},
                 )
             )
-    for item in candidate["phases"]:
-        session.add(
-            NarrativePhase(
-                **lineage,
-                object_registry_id=registries[item["id"]].id,
-                name=item["title"],
-                phase_order=item["order"],
-                description=item.get("description"),
-                release_rule_jsonb={},
-                entry_conditions_jsonb=item["entry_conditions"],
-                allowed_action_types_jsonb=item["allowed_action_types"],
-                completion_conditions_jsonb=item["completion_conditions"],
-                status="active",
-            )
-        )
     for item in candidate["constraints"]:
         session.add(
             CaseFileConstraint(
@@ -606,7 +585,7 @@ def _project_resolutions(
                 "id": registry.object_id,
                 "title": row.title,
                 "question_type": row.question_type,
-                "target_question": row.target_question,
+                "reasoning_question": row.target_question,
                 "conclusion_mode": row.conclusion_mode,
                 "required_slots": [
                     {
@@ -618,7 +597,6 @@ def _project_resolutions(
                 ],
                 "accepted_answers": [accepted[index] for index in sorted(accepted)],
                 "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
-                "fairness_requirements": row.fairness_requirements_jsonb,
             }
         )
     return result
@@ -634,14 +612,21 @@ def _project_entities(
         row = session.scalar(select(Entity).where(Entity.object_registry_id == registry.id))
         if row is None:
             continue
-        state_indices = _path_indices(refs[registry.id], r"^/knowledge_states/(\d+)/phase_ref$")
+        state_indices = _path_indices(
+            refs[registry.id],
+            (
+                r"^/knowledge_states/(\d+)/(?:as_of_event_ref|knows_refs|"
+                r"believes_refs|false_belief_refs)"
+            ),
+        )
         knowledge_states = []
         for index in state_indices:
             prefix = f"/knowledge_states/{index}"
-            phase_ref = _single_ref(refs[registry.id], f"{prefix}/phase_ref")
             knowledge_states.append(
                 {
-                    "phase_ref": phase_ref,
+                    "as_of_event_ref": _optional_ref(
+                        refs[registry.id], f"{prefix}/as_of_event_ref"
+                    ),
                     "knows_refs": _ref_values(refs[registry.id], f"{prefix}/knows_refs"),
                     "believes_refs": _ref_values(refs[registry.id], f"{prefix}/believes_refs"),
                     "false_belief_refs": _ref_values(
@@ -686,7 +671,6 @@ def _project_relationships(
                     "to_ref": _single_ref(refs[registry.id], "/to_ref"),
                     "relationship_type": row.relationship_type,
                     "direction": row.direction,
-                    "phase_refs": _ref_values(refs[registry.id], "/phase_refs"),
                     "truth_status": row.truth_status,
                     "visibility": row.visibility,
                 }
@@ -747,7 +731,6 @@ def _project_events(
                     "cause_refs": _ref_values(refs[registry.id], "/cause_refs"),
                     "effect_refs": _ref_values(refs[registry.id], "/effect_refs"),
                     "observed_by_refs": _ref_values(refs[registry.id], "/observed_by_refs"),
-                    "narrative_phase_refs": _ref_values(refs[registry.id], "/narrative_phase_refs"),
                 }
             )
     return result
@@ -777,7 +760,6 @@ def _project_information_units(
                     "supports_claim_refs": _ref_values(refs[registry.id], "/supports_claim_refs"),
                     "refutes_claim_refs": _ref_values(refs[registry.id], "/refutes_claim_refs"),
                     "availability": {
-                        "phase_refs": _ref_values(refs[registry.id], "/availability/phase_refs"),
                         "perspective_refs": _ref_values(
                             refs[registry.id], "/availability/perspective_refs"
                         ),
@@ -889,34 +871,6 @@ def _project_reasoning_paths(
                 "alternative_path_refs": _ref_values(refs[registry.id], "/alternative_path_refs"),
             }
         )
-    return result
-
-
-def _project_phases(
-    session: Session,
-    registries: list[CaseFileObject],
-    refs: dict[int, list[CaseFileContractRef]],
-) -> list[dict[str, Any]]:
-    result = []
-    for registry in registries:
-        row = session.scalar(
-            select(NarrativePhase).where(NarrativePhase.object_registry_id == registry.id)
-        )
-        if row is not None:
-            result.append(
-                {
-                    **_common(registry, refs),
-                    "id": registry.object_id,
-                    "title": row.name,
-                    "order": row.phase_order,
-                    "entry_conditions": row.entry_conditions_jsonb,
-                    "visible_information_refs": _ref_values(
-                        refs[registry.id], "/visible_information_refs"
-                    ),
-                    "allowed_action_types": row.allowed_action_types_jsonb,
-                    "completion_conditions": row.completion_conditions_jsonb,
-                }
-            )
     return result
 
 

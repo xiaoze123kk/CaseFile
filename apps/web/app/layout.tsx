@@ -14,7 +14,7 @@ export const metadata: Metadata = {
     default: "CaseFile 推理卷宗",
     template: "%s · CaseFile",
   },
-  description: "CaseFile 本地可点击前端原型",
+  description: "CaseFile 本地优先的 AI 推理卷宗工作台",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

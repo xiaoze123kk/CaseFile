@@ -37,6 +37,7 @@ from casefile.data_postgres.models.versioning import AuditEvent, CanonVersion, D
 from casefile.data_postgres.models.workflow import (
     Brief,
     BriefVersion,
+    SourceRecord,
     TaskAttempt,
     TaskEvent,
     TaskRun,
@@ -73,6 +74,7 @@ __all__ = [
     "ReasoningPath",
     "ResolutionSlot",
     "ResolutionSpec",
+    "SourceRecord",
     "StructureLock",
     "Testimony",
     "TaskAttempt",

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { CaseStage } from "@/lib/prototype-model";
+export type CaseStage = "idea" | "brief" | "draft" | "validated" | "compiled";
 
 const stages: Array<{
   id: CaseStage;
@@ -39,6 +39,7 @@ export function CaseSpine({
                 : "未开始";
           return (
             <li
+              aria-current={active ? "step" : undefined}
               className={done ? "is-done" : active ? "is-current" : undefined}
               key={stage.id}
             >

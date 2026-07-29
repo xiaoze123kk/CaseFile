@@ -4,8 +4,8 @@
   --paper-high: #ffffff;
   --paper-mid: #eeeee9;
   --ink: #1a1c19;
-  --ink-muted: #676762;
-  --ink-faint: #8d8d86;
+  --ink-muted: #5d5d58;
+  --ink-faint: #70706a;
   --red: #a92609;
   --red-soft: #fff0ec;
   --red-line: #d9afa6;
@@ -15,14 +15,14 @@
   --canvas-backdrop: #d8d8d2;
   --rule: rgba(26, 28, 25, 0.16);
   --hairline: rgba(26, 28, 25, 0.1);
-  --font-micro: 10px;
-  --font-caption: 11px;
-  --font-label: 12px;
-  --font-ui: 13px;
-  --font-body-sm: 14px;
-  --font-body: 15px;
-  --font-heading-sm: 16px;
-  --font-heading: 18px;
+  --font-micro: clamp(11px, 0.625vw, 12px);
+  --font-caption: clamp(12px, 0.68vw, 13px);
+  --font-label: clamp(13px, 0.73vw, 14px);
+  --font-ui: clamp(14px, 0.78vw, 15px);
+  --font-body-sm: clamp(15px, 0.84vw, 16px);
+  --font-body: clamp(16px, 0.89vw, 17px);
+  --font-heading-sm: clamp(17px, 0.95vw, 19px);
+  --font-heading: clamp(19px, 1.08vw, 22px);
 }
 
 * {
@@ -55,6 +55,13 @@ textarea {
   font: inherit;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+  font-weight: 500;
+}
+
 button,
 a {
   cursor: pointer;
@@ -74,7 +81,7 @@ textarea:focus-visible {
   grid-template-columns: 256px minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
-  min-height: 760px;
+  min-height: 0;
   overflow: hidden;
   border: 1px solid rgba(26, 28, 25, 0.22);
   background: var(--paper);
@@ -85,6 +92,7 @@ textarea:focus-visible {
   z-index: 5;
   display: flex;
   min-height: 0;
+  overflow-y: auto;
   flex-direction: column;
   border-right: 1px solid var(--rule);
   background: rgba(250, 250, 245, 0.98);
@@ -142,7 +150,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
+  min-height: 50px;
   margin: 20px 16px 18px;
   padding: 0 13px;
   border: 1px solid var(--ink);
@@ -187,18 +195,19 @@ textarea:focus-visible {
   padding: 0 20px 10px;
   color: var(--ink-muted);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-ui);
-  letter-spacing: 0.11em;
+  font-size: var(--font-label);
+  letter-spacing: 0.12em;
 }
 
 .nav-caption b {
   color: var(--ink-faint);
-  font-size: var(--font-label);
+  font-size: var(--font-caption);
   font-weight: 500;
 }
 
 .archive-nav {
   display: flex;
+  flex: 0 0 auto;
   min-height: 0;
   flex-direction: column;
 }
@@ -209,7 +218,7 @@ textarea:focus-visible {
   grid-template-columns: 25px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 59px;
+  min-height: 64px;
   padding: 7px 18px;
   color: var(--ink-muted);
   border: 0;
@@ -248,33 +257,42 @@ textarea:focus-visible {
 
 .nav-no {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-ui);
+  font-size: var(--font-label);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .nav-label {
   display: flex;
   flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
 .nav-label strong {
-  font-size: var(--font-heading-sm);
-  font-weight: 650;
+  font-size: var(--font-body);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.18;
 }
 
 .nav-label small {
-  margin-top: 2px;
   color: var(--ink-faint);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-label);
-  letter-spacing: 0.08em;
+  font-size: var(--font-caption);
+  letter-spacing: 0.1em;
+  line-height: 1.35;
 }
 
 .nav-state {
-  padding: 3px 4px;
+  padding: 4px 5px;
   color: var(--ink-faint);
   border: 1px solid var(--rule);
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-label);
+  font-size: var(--font-caption);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  line-height: 1;
 }
 
 .is-active .nav-state {
@@ -335,13 +353,13 @@ textarea:focus-visible {
   padding: 10px 0 12px;
   color: var(--ink-muted);
   border-bottom: 1px solid var(--hairline);
-  font-size: 11px;
+  font-size: var(--font-caption);
 }
 
 .real-mode-note b {
   color: #225d43;
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
+  font-size: var(--font-micro);
   letter-spacing: 0.12em;
 }
 
@@ -413,7 +431,7 @@ textarea:focus-visible {
 
 .archive-canvas {
   display: grid;
-  grid-template-rows: 64px minmax(0, 1fr);
+  grid-template-rows: 72px minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background:
@@ -504,13 +522,13 @@ textarea:focus-visible {
 
 .real-utility-copy b {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
+  font-size: var(--font-caption);
   letter-spacing: 0.09em;
 }
 
 .real-utility-copy span {
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: var(--font-caption);
 }
 
 .utility-actions .utility-link {
@@ -540,7 +558,7 @@ textarea:focus-visible {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  min-height: 78px;
+  min-height: 88px;
   padding: 12px 28px 10px;
   border-bottom: 1px solid var(--ink);
 }
@@ -609,7 +627,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: 230px minmax(0, 1fr);
   align-items: center;
-  min-height: 58px;
+  min-height: 68px;
   padding: 0 28px;
   border-bottom: 1px solid var(--rule);
   background: rgba(250, 250, 245, 0.84);
@@ -692,7 +710,7 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 44px;
+  min-height: 50px;
   padding: 0 12px;
   border-bottom: 1px solid var(--ink);
 }
@@ -724,7 +742,7 @@ textarea:focus-visible {
 }
 
 .square-button {
-  min-height: 30px;
+  min-height: 36px;
   padding: 0 11px;
   border: 1px solid var(--ink);
   border-radius: 0;
@@ -755,7 +773,7 @@ textarea:focus-visible {
 
 .status-badge {
   display: inline-grid;
-  min-height: 19px;
+  min-height: 24px;
   padding: 0 6px;
   place-items: center;
   border: 1px solid var(--rule);

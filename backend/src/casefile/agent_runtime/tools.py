@@ -11,7 +11,7 @@ from agents import RunContextWrapper, Tool, function_tool
 from casefile.agent_runtime.models import GenerationRequest, ToolMetrics
 from casefile.contracts import ContractValidationError, validate_casefile
 
-TOOLSET_VERSION = "casefile-generation-tools-v1"
+TOOLSET_VERSION = "casefile-generation-tools-v2"
 
 _PREFIXES = {
     "resolution_specs": "res",
@@ -23,7 +23,6 @@ _PREFIXES = {
     "claims": "claim",
     "hypotheses": "hyp",
     "reasoning_paths": "path",
-    "phases": "phase",
     "constraints": "con",
     "structure_locks": "lock",
 }
@@ -49,7 +48,6 @@ def plan_object_ids(
     claims: int,
     hypotheses: int,
     reasoning_paths: int,
-    phases: int,
     constraints: int,
     structure_locks: int,
 ) -> str:
@@ -68,7 +66,6 @@ def plan_object_ids(
         "claims": claims,
         "hypotheses": hypotheses,
         "reasoning_paths": reasoning_paths,
-        "phases": phases,
         "constraints": constraints,
         "structure_locks": structure_locks,
     }

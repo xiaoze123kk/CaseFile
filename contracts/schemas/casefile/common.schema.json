@@ -38,7 +38,6 @@
             "claim",
             "hypothesis",
             "reasoning_path",
-            "phase",
             "constraint",
             "structure_lock",
             "source_fragment"
@@ -90,10 +89,6 @@
         {
           "if": {"properties": {"object_type": {"const": "reasoning_path"}}},
           "then": {"properties": {"object_id": {"type": "string", "pattern": "^path_[a-z0-9][a-z0-9_]{0,55}$"}}}
-        },
-        {
-          "if": {"properties": {"object_type": {"const": "phase"}}},
-          "then": {"properties": {"object_id": {"type": "string", "pattern": "^phase_[a-z0-9][a-z0-9_]{0,54}$"}}}
         },
         {
           "if": {"properties": {"object_type": {"const": "constraint"}}},

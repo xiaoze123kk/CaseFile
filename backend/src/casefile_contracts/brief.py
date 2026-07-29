@@ -4,17 +4,52 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from enum import StrEnum
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
-class Constraint(RootModel[str]):
+class SourceRecordId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class ResolutionMode(StrEnum):
+    author_anchored = 'author_anchored'
+    agent_proposed = 'agent_proposed'
+    open = 'open'
+
+
+class AuthorAnswer(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
 
-class OpenQuestion(RootModel[str]):
+class AuthorAnchor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    anchor_id: Annotated[str, Field(pattern='^anchor_[a-z0-9][a-z0-9_]{0,55}$')]
+    statement: Annotated[str, Field(min_length=1)]
+
+
+class BoundaryText(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
+
+
+class Strength(StrEnum):
+    hard = 'hard'
+    soft = 'soft'
+
+
+class CreativeConstraint(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    constraint_id: Annotated[str, Field(pattern='^constraint_[a-z0-9][a-z0-9_]{0,51}$')]
+    statement: Annotated[str, Field(min_length=1)]
+    strength: Strength
 
 
 class Schema(BaseModel):
@@ -22,11 +57,11 @@ class Schema(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    source_text: Annotated[str, Field(min_length=1)]
-    one_line_concept: Annotated[str, Field(min_length=1)]
-    core_mystery: Annotated[str, Field(min_length=1)]
-    player_goal: Annotated[str, Field(min_length=1)]
-    gameplay_loop: Annotated[str, Field(min_length=1)]
-    constraints: list[Constraint] | None = None
-    open_questions: list[OpenQuestion] | None = None
-    project_profile: dict[str, Any] | None = None
+    source_record_ids: Annotated[list[SourceRecordId], Field(min_length=1)]
+    creative_intent: Annotated[str, Field(min_length=1)]
+    reasoning_proposition: Annotated[str, Field(min_length=1)]
+    resolution_mode: ResolutionMode
+    author_answer: AuthorAnswer | None
+    author_anchors: list[AuthorAnchor]
+    boundary_text: BoundaryText | None
+    creative_constraints: list[CreativeConstraint]

@@ -39,6 +39,7 @@ if ($outputFullPath -eq $repoFullPath) {
 
 $pythonRoot = Join-Path $outputFullPath "python"
 $pythonPackage = Join-Path $pythonRoot "src\casefile_contracts"
+$pythonGenerationPackage = Join-Path $pythonRoot "src\casefile_contracts_generated"
 $typescriptRoot = Join-Path $outputFullPath "typescript"
 
 foreach ($target in @($pythonRoot, $typescriptRoot)) {
@@ -51,7 +52,7 @@ foreach ($target in @($pythonRoot, $typescriptRoot)) {
     }
 }
 
-New-Item -ItemType Directory -Path $pythonPackage -Force | Out-Null
+New-Item -ItemType Directory -Path (Split-Path -Parent $pythonPackage) -Force | Out-Null
 New-Item -ItemType Directory -Path $typescriptRoot -Force | Out-Null
 
 $python = if (Test-Path -LiteralPath $venvPython) {
@@ -60,18 +61,34 @@ $python = if (Test-Path -LiteralPath $venvPython) {
     (Get-Command python -ErrorAction Stop).Source
 }
 
-& $python -m datamodel_code_generator `
+$generatorJson = & $python -m datamodel_code_generator `
     --input $schemaEntry `
     --input-file-type jsonschema `
-    --output $pythonPackage `
+    --output $pythonGenerationPackage `
     --output-model-type pydantic_v2.BaseModel `
     --preset standard-py312-20260619 `
+    --ignore-pyproject `
+    --strict-refs `
     --extra-fields forbid `
     --disable-timestamp `
-    --formatters builtin
-if ($LASTEXITCODE -ne 0) {
+    --formatters builtin `
+    --output-format json
+$generatorExitCode = $LASTEXITCODE
+if ($generatorExitCode -ne 0) {
     throw "Python contract generation failed."
 }
+$generatorReport = ($generatorJson -join "`n") | ConvertFrom-Json
+$generatedFiles = @($generatorReport.files)
+if ($generatedFiles.Count -eq 0) {
+    throw "Python contract generation returned no files."
+}
+foreach ($generatedFile in $generatedFiles) {
+    $generatedPath = Join-Path $pythonGenerationPackage $generatedFile.path
+    if (-not (Test-Path -LiteralPath $generatedPath -PathType Leaf)) {
+        throw "Python contract generation did not materialize $($generatedFile.path)."
+    }
+}
+Move-Item -LiteralPath $pythonGenerationPackage -Destination $pythonPackage
 
 foreach ($generatedPythonFile in Get-ChildItem -LiteralPath $pythonPackage -Filter "*.py") {
     $generatedContent = [System.IO.File]::ReadAllText($generatedPythonFile.FullName)

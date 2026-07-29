@@ -12,22 +12,12 @@
     "brief_id": "brief_restart_loop",
     "version": 1
   },
-  "project_profile": {
-    "content_type": "interactive_reasoning",
-    "target_audience": "adult_general",
-    "primary_use_case": "idea_to_playtest",
-    "genres": ["science_fiction", "mystery"],
-    "target_duration_minutes": 60,
-    "target_participant_count": 6,
-    "difficulty_template": "medium",
-    "collaboration_mode": "single_lead_review"
-  },
   "resolution_specs": [
     {
       "id": "res_root_cause",
       "title": "重启根因",
       "question_type": "causal_explanation",
-      "target_question": "实验系统为什么不断重启？",
+      "reasoning_question": "实验系统为什么不断重启？",
       "conclusion_mode": "unique",
       "required_slots": [
         {"slot_id": "slot_root_cause", "value_type": "entity_or_claim_ref", "required": true}
@@ -38,7 +28,6 @@
       "required_claim_refs": [
         {"object_type": "claim", "object_id": "claim_backup_trigger"}
       ],
-      "fairness_requirements": ["第二阶段前必须能取得第七次重启日志"],
       "tags": ["main_resolution"],
       "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
       "confidence": 1.0,
@@ -51,14 +40,13 @@
       "id": "res_shutdown_rule",
       "title": "安全规则组合",
       "question_type": "rule_discovery",
-      "target_question": "哪些安全规则共同触发了备用系统？",
+      "reasoning_question": "哪些安全规则共同触发了备用系统？",
       "conclusion_mode": "finite_multiple",
       "required_slots": [
         {"slot_id": "slot_trigger_rules", "value_type": "text_or_claim_ref", "required": true}
       ],
       "accepted_answers": ["失联与过热同时持续三分钟"],
       "required_claim_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
-      "fairness_requirements": ["规则文本和日志均可被检查"],
       "tags": ["secondary_resolution"],
       "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
       "confidence": 0.82,
@@ -80,7 +68,7 @@
       "capabilities": ["读取系统日志"],
       "knowledge_states": [
         {
-          "phase_ref": {"object_type": "phase", "object_id": "phase_investigation"},
+          "as_of_event_ref": {"object_type": "event", "object_id": "evt_restart_seven"},
           "knows_refs": [{"object_type": "information_unit", "object_id": "info_restart_log"}],
           "believes_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
           "false_belief_refs": []
@@ -121,7 +109,6 @@
       "to_ref": {"object_type": "entity", "object_id": "ent_backup_system"},
       "relationship_type": "maintains",
       "direction": "directed",
-      "phase_refs": [{"object_type": "phase", "object_id": "phase_investigation"}],
       "truth_status": "canon_true",
       "visibility": "public",
       "tags": [],
@@ -182,7 +169,6 @@
       "cause_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
       "effect_refs": [],
       "observed_by_refs": [{"object_type": "entity", "object_id": "ent_researcher"}],
-      "narrative_phase_refs": [{"object_type": "phase", "object_id": "phase_investigation"}],
       "tags": ["timeline"],
       "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
       "confidence": 1.0,
@@ -204,7 +190,6 @@
       "supports_claim_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
       "refutes_claim_refs": [],
       "availability": {
-        "phase_refs": [{"object_type": "phase", "object_id": "phase_investigation"}],
         "perspective_refs": [{"object_type": "entity", "object_id": "ent_researcher"}],
         "acquisition_conditions": ["读取实验室终端"],
         "alternative_path_refs": []
@@ -281,24 +266,6 @@
       "confirmation_status": "ai_inferred",
       "created_by": {"actor_type": "agent", "actor_id": "agent_brief_parser"},
       "updated_at": "2042-06-01T12:02:00Z",
-      "revision": 1
-    }
-  ],
-  "phases": [
-    {
-      "id": "phase_investigation",
-      "title": "调查阶段",
-      "order": 1,
-      "entry_conditions": [],
-      "visible_information_refs": [{"object_type": "information_unit", "object_id": "info_restart_log"}],
-      "allowed_action_types": ["investigate", "discuss", "submit_hypothesis"],
-      "completion_conditions": ["提交重启根因"],
-      "tags": [],
-      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
-      "confidence": 1.0,
-      "confirmation_status": "user_confirmed",
-      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
-      "updated_at": "2042-06-01T12:00:00Z",
       "revision": 1
     }
   ],

@@ -14,6 +14,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -103,6 +104,74 @@ class BriefVersion(BigIntIdentityPrimaryKeyMixin, Base):
     )
 
 
+class SourceRecord(BigIntIdentityPrimaryKeyMixin, Base):
+    """An immutable author or Agent source document in one Project."""
+
+    __tablename__ = "source_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "parent_source_record_id"],
+            ["source_records.project_id", "source_records.id"],
+            name="fk_source_records_project_parent_source_records",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "generated_by_task_run_id"],
+            ["task_runs.project_id", "task_runs.id"],
+            name="fk_source_records_project_generated_task_task_runs",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        UniqueConstraint("project_id", "id", name="uq_source_records_project_id_id"),
+        CheckConstraint(
+            "source_kind IN "
+            "('human_original', 'agent_polish_proposal', 'human_revision')",
+            name="source_kind_allowed",
+        ),
+        CheckConstraint("btrim(content_text) <> ''", name="content_not_blank"),
+        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),
+        CheckConstraint(
+            "("
+            "source_kind = 'human_original' "
+            "AND parent_source_record_id IS NULL "
+            "AND generated_by_task_run_id IS NULL"
+            ") OR ("
+            "source_kind = 'human_revision' "
+            "AND parent_source_record_id IS NOT NULL "
+            "AND generated_by_task_run_id IS NULL"
+            ") OR ("
+            "source_kind = 'agent_polish_proposal' "
+            "AND parent_source_record_id IS NOT NULL "
+            "AND generated_by_task_run_id IS NOT NULL"
+            ")",
+            name="provenance_matches_kind",
+        ),
+        Index("ix_source_records_project_id_created_at", "project_id", "created_at"),
+        Index("ix_source_records_parent_source_record_id", "parent_source_record_id"),
+    )
+
+    project_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("projects.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    content_text: Mapped[str] = mapped_column(Text, nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    parent_source_record_id: Mapped[int | None] = mapped_column(BigInteger)
+    generated_by_task_run_id: Mapped[int | None] = mapped_column(BigInteger)
+    created_by_user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+
 class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     """A durable user intent whose attempts share frozen task configuration."""
 
@@ -121,34 +190,86 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
+            ["project_id", "input_source_record_id"],
+            ["source_records.project_id", "source_records.id"],
+            name="fk_task_runs_project_input_source_source_records",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
             ["actor_user_id", "provider_setting_id"],
             ["user_provider_settings.user_id", "user_provider_settings.id"],
             name="fk_task_runs_actor_provider_setting_user_provider_settings",
             ondelete="RESTRICT",
         ),
         UniqueConstraint("project_id", "id", name="uq_task_runs_project_id_id"),
-        CheckConstraint("task_type ~ '^[a-z][a-z0-9_]*$'", name="task_type_format"),
+        CheckConstraint(
+            "task_type IN ('brief_polish', 'brief_anchor_extract', 'brief_to_draft')",
+            name="task_type_allowed",
+        ),
         CheckConstraint(
             "status IN ('queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled')",
             name="status_allowed",
         ),
         CheckConstraint("input_draft_revision >= 1", name="input_revision_positive"),
+        CheckConstraint(
+            "input_brief_revision IS NULL OR input_brief_revision >= 1",
+            name="input_brief_revision_positive",
+        ),
+        CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="input_hash_format"),
         CheckConstraint("provider_config_version >= 1", name="provider_version_positive"),
         CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
+        CheckConstraint("jsonb_typeof(input_jsonb) = 'object'", name="input_is_object"),
         CheckConstraint("jsonb_typeof(budget_jsonb) = 'object'", name="budget_is_object"),
         CheckConstraint("jsonb_typeof(usage_jsonb) = 'object'", name="usage_is_object"),
         CheckConstraint(
+            "result_jsonb IS NULL OR jsonb_typeof(result_jsonb) = 'object'",
+            name="result_is_object",
+        ),
+        CheckConstraint(
             "jsonb_typeof(error_details_jsonb) = 'object'", name="error_details_is_object"
+        ),
+        CheckConstraint(
+            "("
+            "task_type = 'brief_polish' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NOT NULL "
+            "AND input_brief_revision IS NULL"
+            ") OR ("
+            "task_type = 'brief_anchor_extract' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NULL "
+            "AND input_brief_revision IS NOT NULL"
+            ") OR ("
+            "task_type = 'brief_to_draft' "
+            "AND brief_version_id IS NOT NULL "
+            "AND input_source_record_id IS NULL "
+            "AND input_brief_revision IS NOT NULL"
+            ")",
+            name="input_matches_task_type",
+        ),
+        CheckConstraint(
+            "(task_type = 'brief_to_draft') OR result_snapshot_id IS NULL",
+            name="snapshot_matches_task_type",
         ),
         Index("ix_task_runs_status_created_at", "status", "created_at"),
         Index("ix_task_runs_project_id_updated_at", "project_id", "updated_at"),
+        Index(
+            "ix_task_runs_project_type_created_at",
+            "project_id",
+            "task_type",
+            "created_at",
+        ),
         Index("ix_task_runs_lease_expires_at", "lease_expires_at"),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    brief_version_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    brief_version_id: Mapped[int | None] = mapped_column(BigInteger)
+    input_source_record_id: Mapped[int | None] = mapped_column(BigInteger)
+    input_brief_revision: Mapped[int | None] = mapped_column(Integer)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_jsonb: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     actor_user_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("users.id", ondelete="RESTRICT"),
@@ -194,6 +315,7 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         BigInteger,
         ForeignKey("draft_snapshots.id", ondelete="RESTRICT"),
     )
+    result_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     error_code: Mapped[str | None] = mapped_column(String(80))
     error_details_jsonb: Mapped[dict[str, Any]] = mapped_column(
         JSONB,

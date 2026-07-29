@@ -6,8 +6,8 @@
   "additionalProperties": false,
   "required": [
     "schema_version", "casefile_id", "title", "status", "version", "brief_ref",
-    "project_profile", "resolution_specs", "entities", "relationships", "locations",
-    "events", "information_units", "claims", "hypotheses", "reasoning_paths", "phases",
+    "resolution_specs", "entities", "relationships", "locations",
+    "events", "information_units", "claims", "hypotheses", "reasoning_paths",
     "constraints", "structure_locks", "content_notices", "extensions"
   ],
   "properties": {
@@ -39,25 +39,6 @@
         "version": {"type": "integer", "minimum": 1}
       }
     },
-    "project_profile": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "content_type", "target_audience", "primary_use_case", "genres",
-        "target_duration_minutes", "target_participant_count", "difficulty_template",
-        "collaboration_mode"
-      ],
-      "properties": {
-        "content_type": {"type": "string", "enum": ["interactive_reasoning"]},
-        "target_audience": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "primary_use_case": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "genres": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}, "uniqueItems": true},
-        "target_duration_minutes": {"type": "integer", "minimum": 1},
-        "target_participant_count": {"type": "integer", "minimum": 1},
-        "difficulty_template": {"type": "string", "enum": ["easy", "medium", "hard", "custom"]},
-        "collaboration_mode": {"type": "string", "enum": ["single_lead_review", "solo"]}
-      }
-    },
     "resolution_specs": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/ResolutionSpec"}},
     "entities": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Entity"}},
     "relationships": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Relationship"}},
@@ -67,7 +48,6 @@
     "claims": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Claim"}},
     "hypotheses": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Hypothesis"}},
     "reasoning_paths": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/ReasoningPath"}},
-    "phases": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Phase"}},
     "constraints": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Constraint"}},
     "structure_locks": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/StructureLock"}},
     "content_notices": {

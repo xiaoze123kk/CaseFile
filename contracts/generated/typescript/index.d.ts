@@ -16,7 +16,7 @@ export type ResolutionSpec = CoreMetadata & {
     | "rule_discovery"
     | "relationship_inference"
     | "decision_reasoning";
-  target_question: string;
+  reasoning_question: string;
   conclusion_mode:
     | "unique"
     | "finite_multiple"
@@ -32,7 +32,6 @@ export type ResolutionSpec = CoreMetadata & {
   }[];
   accepted_answers: (string | ObjectRef)[];
   required_claim_refs: ObjectRefList;
-  fairness_requirements: string[];
   [k: string]: unknown;
 };
 export type ObjectRef = {
@@ -49,7 +48,7 @@ export type Entity = CoreMetadata & {
   secrets: string[];
   capabilities: string[];
   knowledge_states: {
-    phase_ref: ObjectRef;
+    as_of_event_ref: ObjectRef | null;
     knows_refs: ObjectRefList;
     believes_refs: ObjectRefList;
     false_belief_refs: ObjectRefList;
@@ -63,7 +62,6 @@ export type Relationship = CoreMetadata & {
   to_ref: ObjectRef;
   relationship_type: string;
   direction: "directed" | "undirected" | "bidirectional";
-  phase_refs: ObjectRefList;
   truth_status: "canon_true" | "reported" | "disputed" | "false_belief" | "unknown";
   visibility: "public" | "private" | "restricted" | "hidden";
   [k: string]: unknown;
@@ -95,7 +93,6 @@ export type Event = CoreMetadata & {
   cause_refs: ObjectRefList;
   effect_refs: ObjectRefList;
   observed_by_refs: ObjectRefList;
-  narrative_phase_refs: ObjectRefList;
   [k: string]: unknown;
 };
 export type InformationUnit = CoreMetadata & {
@@ -110,7 +107,6 @@ export type InformationUnit = CoreMetadata & {
   supports_claim_refs: ObjectRefList;
   refutes_claim_refs: ObjectRefList;
   availability: {
-    phase_refs: ObjectRefList;
     perspective_refs: ObjectRefList;
     acquisition_conditions: string[];
     alternative_path_refs: ObjectRefList;
@@ -177,16 +173,6 @@ export type ReasoningPath = CoreMetadata & {
   alternative_path_refs: ObjectRefList;
   [k: string]: unknown;
 };
-export type Phase = CoreMetadata & {
-  id: string;
-  title: string;
-  order: number;
-  entry_conditions: string[];
-  visible_information_refs: ObjectRefList;
-  allowed_action_types: string[];
-  completion_conditions: string[];
-  [k: string]: unknown;
-};
 export type Constraint = CoreMetadata & {
   id: string;
   title: string;
@@ -208,6 +194,31 @@ export type StructureLock = CoreMetadata & {
   field_paths: [string, ...string[]];
   reason: string;
   [k: string]: unknown;
+};
+/**
+ * User-reviewed, target-neutral creative intent used as immutable Agent generation input.
+ */
+export type Brief = {
+  [k: string]: unknown;
+} & {
+  /**
+   * @minItems 1
+   */
+  source_record_ids: [number, ...number[]];
+  creative_intent: string;
+  reasoning_proposition: string;
+  resolution_mode: "author_anchored" | "agent_proposed" | "open";
+  author_answer: string | null;
+  author_anchors: {
+    anchor_id: string;
+    statement: string;
+  }[];
+  boundary_text: string | null;
+  creative_constraints: {
+    constraint_id: string;
+    statement: string;
+    strength: "hard" | "soft";
+  }[];
 };
 
 /**
@@ -237,16 +248,6 @@ export interface CaseFile {
     brief_id: string;
     version: number;
   };
-  project_profile: {
-    content_type: "interactive_reasoning";
-    target_audience: string;
-    primary_use_case: string;
-    genres: string[];
-    target_duration_minutes: number;
-    target_participant_count: number;
-    difficulty_template: "easy" | "medium" | "hard" | "custom";
-    collaboration_mode: "single_lead_review" | "solo";
-  };
   resolution_specs: ResolutionSpec[];
   entities: Entity[];
   relationships: Relationship[];
@@ -256,7 +257,6 @@ export interface CaseFile {
   claims: Claim[];
   hypotheses: Hypothesis[];
   reasoning_paths: ReasoningPath[];
-  phases: Phase[];
   constraints: Constraint[];
   structure_locks: StructureLock[];
   content_notices: {
@@ -284,21 +284,6 @@ export interface ActorRef {
 }
 export interface Extensions {
   [k: string]: unknown;
-}
-/**
- * User-reviewed creative intent used as immutable Agent generation input.
- */
-export interface Brief {
-  source_text: string;
-  one_line_concept: string;
-  core_mystery: string;
-  player_goal: string;
-  gameplay_loop: string;
-  constraints?: string[];
-  open_questions?: string[];
-  project_profile?: {
-    [k: string]: unknown;
-  };
 }
 export interface ValidationIssue {
   schema_version: "1.0";
@@ -348,15 +333,22 @@ export interface PatchOperation {
 export interface TaskRun {
   task_run_id: number;
   project_id: number;
-  task_type: "brief_to_draft";
+  task_type: "brief_polish" | "brief_anchor_extract" | "brief_to_draft";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
+  provider: "openai" | "deepseek";
   model_id: string;
   input_draft_revision: number;
+  input_brief_revision: number | null;
+  input_source_record_id: number | null;
+  input_hash: string;
   attempt_count: number;
   usage: {
     [k: string]: unknown;
   };
+  result: {
+    [k: string]: unknown;
+  } | null;
   result_snapshot_id?: number | null;
   error_code?: string | null;
   created_at?: string;
@@ -377,6 +369,7 @@ export interface AgentGenerateRequest {
   project_id: number;
   brief_version_id: number;
   expected_draft_revision: number;
+  provider: "openai" | "deepseek";
 }
 export interface AgentGenerateResult {
   task_run_id: number;

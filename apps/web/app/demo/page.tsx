@@ -1,5 +1,5 @@
-import { IntakeHome } from "@/features/intake/intake-home";
+import { redirect } from "next/navigation";
 
 export default function DemoHomePage() {
-  return <IntakeHome />;
+  redirect("/");
 }

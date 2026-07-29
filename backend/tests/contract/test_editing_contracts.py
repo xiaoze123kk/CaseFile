@@ -16,7 +16,7 @@ FIXTURE_ROOT = REPO_ROOT / "fixtures"
 GENERATED_PYTHON_SRC = REPO_ROOT / "contracts" / "generated" / "python" / "src"
 sys.path.insert(0, str(GENERATED_PYTHON_SRC))
 
-from casefile_contracts import CaseFile, PatchCandidate, ValidationIssue  # noqa: E402
+from casefile_contracts import Brief, CaseFile, PatchCandidate, ValidationIssue  # noqa: E402
 
 CORE_COLLECTIONS = {
     "resolution_specs",
@@ -28,7 +28,6 @@ CORE_COLLECTIONS = {
     "claims",
     "hypotheses",
     "reasoning_paths",
-    "phases",
     "constraints",
     "structure_locks",
 }
@@ -44,7 +43,6 @@ OBJECT_PREFIXES = {
     "claim": "claim_",
     "hypothesis": "hyp_",
     "reasoning_path": "path_",
-    "phase": "phase_",
     "constraint": "con_",
     "structure_lock": "lock_",
     "source_fragment": "src_",
@@ -80,6 +78,11 @@ def validators(
     return {
         "casefile": Draft202012Validator(
             schemas["https://casefile.local/schemas/v1/casefile/casefile.schema.json"],
+            registry=registry,
+            format_checker=checker,
+        ),
+        "brief": Draft202012Validator(
+            schemas["https://casefile.local/schemas/v1/brief/brief.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
@@ -225,6 +228,28 @@ def test_validation_issue_and_patch_candidate_validate_in_both_python_layers(
     assert operation["target_ref"]["object_id"] == "evt_restart_seven"
     assert operation["path"] == "/time/start"
     assert "/events/0" not in operation["path"]
+
+
+def test_target_neutral_brief_roundtrips_and_enforces_resolution_mode(
+    validators: dict[str, Draft202012Validator],
+) -> None:
+    fixture = load_json(FIXTURE_ROOT / "benchmark" / "brief_to_draft.json")["brief"]
+    validators["brief"].validate(fixture)
+    generated = Brief.model_validate(fixture)
+    assert generated.model_dump(mode="json", exclude_unset=True) == fixture
+    assert "player_goal" not in fixture
+
+    anchored_without_answer = copy.deepcopy(fixture)
+    anchored_without_answer["author_answer"] = None
+    assert list(validators["brief"].iter_errors(anchored_without_answer))
+
+    open_with_hidden_answer = copy.deepcopy(fixture)
+    open_with_hidden_answer["resolution_mode"] = "open"
+    assert list(validators["brief"].iter_errors(open_with_hidden_answer))
+
+    duplicate_sources = copy.deepcopy(fixture)
+    duplicate_sources["source_record_ids"] = [1, 1]
+    assert list(validators["brief"].iter_errors(duplicate_sources))
 
 
 def test_structural_invalid_fixtures_are_rejected_at_expected_paths(

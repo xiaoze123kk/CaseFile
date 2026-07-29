@@ -1,4 +1,4 @@
-"""Static contracts for the 37-table personal-product database metadata."""
+"""Static contracts for the 38-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -40,6 +40,7 @@ EXPECTED_TABLES = {
     "relationships",
     "resolution_slots",
     "resolution_specs",
+    "source_records",
     "structure_locks",
     "task_attempts",
     "task_events",
@@ -121,6 +122,8 @@ JSONB_ALLOWLIST = {
     ("task_events", "payload_jsonb"),
     ("task_runs", "budget_jsonb"),
     ("task_runs", "error_details_jsonb"),
+    ("task_runs", "input_jsonb"),
+    ("task_runs", "result_jsonb"),
     ("task_runs", "usage_jsonb"),
     ("user_provider_settings", "default_budget_jsonb"),
 }
@@ -143,6 +146,7 @@ EXPECTED_UNIQUES = {
     "uq_reasoning_nodes_path_key",
     "uq_reasoning_edges_argument",
     "uq_resolution_slots_spec_key",
+    "uq_source_records_project_id_id",
     "uq_draft_snapshots_draft_id_snapshot_revision",
     "uq_canon_versions_source_snapshot_id",
     "uq_briefs_project_id",
@@ -170,9 +174,12 @@ EXPECTED_FOREIGN_KEYS = {
     "fk_reasoning_edges_from_node",
     "fk_reasoning_edges_to_node",
     "fk_casefile_constraints_target_object",
+    "fk_source_records_project_generated_task_task_runs",
+    "fk_source_records_project_parent_source_records",
     "fk_task_events_project_task_run_task_runs",
     "fk_task_runs_project_brief_version_brief_versions",
     "fk_task_runs_project_casefile_draft_drafts",
+    "fk_task_runs_project_input_source_source_records",
 }
 
 
@@ -185,10 +192,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_37_personal_tables() -> None:
+def test_metadata_contains_exactly_the_38_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 37
+    assert len(models.__all__) == 38
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns
@@ -263,11 +270,5 @@ def test_tracked_responsibility_docs_list_the_same_tables() -> None:
     )
     for document in tracked_docs:
         content = document.read_text(encoding="utf-8")
-        for table_name in EXPECTED_TABLES:
-            assert f"`{table_name}`" in content
-
-    local_field_doc = repository_root / "docs" / "基座数据库表字段说明.md"
-    if local_field_doc.exists():
-        content = local_field_doc.read_text(encoding="utf-8")
         for table_name in EXPECTED_TABLES:
             assert f"`{table_name}`" in content

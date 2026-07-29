@@ -123,7 +123,6 @@ def _request(
         casefile_id=context["casefile_id"],
         brief_id=brief_ref["brief_id"],
         brief_version=brief_ref["version"],
-        project_profile=context["project_profile"],
         version_id=version["version_id"],
         version_no=version["version_no"],
         parent_version_id=version["parent_version_id"],

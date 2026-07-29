@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "datamodel-code-generator==0.71.0",
   "httpx>=0.28,<1",
   "mypy>=1.13,<2",
   "pytest>=8.3,<10",

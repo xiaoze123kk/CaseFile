@@ -16,15 +16,31 @@ export class ApiError extends Error {
   }
 }
 
+export type ProviderName = "openai" | "deepseek";
+export type TaskType =
+  | "brief_polish"
+  | "brief_anchor_extract"
+  | "brief_to_draft";
+export type ResolutionMode =
+  | "author_anchored"
+  | "agent_proposed"
+  | "open";
+export type ConstraintStrength = "hard" | "soft";
+export type SourceKind =
+  | "human_original"
+  | "agent_polish_proposal"
+  | "human_revision";
+
 export interface ProjectView {
   id: number;
   title: string;
+  description?: string | null;
   profile: Record<string, unknown>;
   draft: { id: number; revision: number; schema_version: string; status: string };
 }
 
 export interface ProviderSettingView {
-  provider: string;
+  provider: ProviderName;
   model_id: string;
   model_is_custom: boolean;
   config_version: number;
@@ -44,14 +60,53 @@ export interface BriefView {
 }
 
 export interface BriefContent {
-  source_text: string;
-  one_line_concept: string;
-  core_mystery: string;
-  player_goal: string;
-  gameplay_loop: string;
-  constraints: string[];
-  open_questions: string[];
-  project_profile: Record<string, unknown>;
+  source_record_ids: number[];
+  creative_intent: string;
+  reasoning_proposition: string;
+  resolution_mode: ResolutionMode;
+  author_answer: string | null;
+  author_anchors: BriefAnchor[];
+  boundary_text: string | null;
+  creative_constraints: CreativeConstraint[];
+}
+
+export interface BriefAnchor {
+  anchor_id: string;
+  statement: string;
+}
+
+export interface CreativeConstraint {
+  constraint_id: string;
+  statement: string;
+  strength: ConstraintStrength;
+}
+
+export interface SourceRecordView {
+  source_record_id: number;
+  source_kind: SourceKind;
+  content_text: string;
+  content_hash: string;
+  parent_source_record_id: number | null;
+  generated_by_task_run_id: number | null;
+  created_at: string;
+}
+
+export interface BriefPolishResult {
+  input_hash: string;
+  polished_text: string;
+  preserved_intent_summary: string;
+  ambiguities: string[];
+  proposal_source_record: SourceRecordView;
+}
+
+export interface BriefAnchorExtractResult {
+  input_hash: string;
+  author_anchors: Array<{ statement: string }>;
+  creative_constraints: Array<{
+    statement: string;
+    suggested_strength: ConstraintStrength;
+  }>;
+  warnings: string[];
 }
 
 export interface BriefVersionView {
@@ -62,14 +117,29 @@ export interface BriefVersionView {
 
 export interface TaskView {
   task_run_id: number;
-  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  project_id: number;
+  task_type: TaskType;
+  status:
+    | "queued"
+    | "running"
+    | "cancelling"
+    | "succeeded"
+    | "failed"
+    | "cancelled";
   stage: string;
+  provider: ProviderName;
   model_id: string;
   input_draft_revision: number;
+  input_brief_revision: number | null;
+  input_source_record_id: number | null;
+  input_hash: string;
   attempt_count: number;
   usage: Record<string, unknown>;
   result_snapshot_id: number | null;
+  result: BriefPolishResult | BriefAnchorExtractResult | null;
   error_code: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface TaskEventView {

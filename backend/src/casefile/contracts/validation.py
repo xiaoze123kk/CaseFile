@@ -24,7 +24,6 @@ _COLLECTION_TYPES = {
     "claims": "claim",
     "hypotheses": "hypothesis",
     "reasoning_paths": "reasoning_path",
-    "phases": "phase",
     "constraints": "constraint",
     "structure_locks": "structure_lock",
 }
@@ -114,7 +113,6 @@ def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
 
-    _unique_integer(errors, document["phases"], "order", "/phases")
     for location_index, location in enumerate(document["locations"]):
         _optional_declared_type(
             errors,
@@ -153,12 +151,6 @@ def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
         )
         for field in ("participant_refs", "observed_by_refs"):
             _require_list_type(errors, event[field], "entity", f"/events/{event_index}/{field}")
-        _require_list_type(
-            errors,
-            event["narrative_phase_refs"],
-            "phase",
-            f"/events/{event_index}/narrative_phase_refs",
-        )
         start = datetime.fromisoformat(event["time"]["start"])
         end_value = event["time"]["end"]
         if end_value is not None and datetime.fromisoformat(end_value) < start:
@@ -172,19 +164,17 @@ def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
     for entity_index, entity in enumerate(document["entities"]):
         for state_index, state in enumerate(entity["knowledge_states"]):
             base = f"/entities/{entity_index}/knowledge_states/{state_index}"
-            _require_declared_type(errors, state["phase_ref"], "phase", f"{base}/phase_ref")
+            _optional_declared_type(
+                errors,
+                state["as_of_event_ref"],
+                "event",
+                f"{base}/as_of_event_ref",
+            )
             _require_list_type(
                 errors, state["knows_refs"], "information_unit", f"{base}/knows_refs"
             )
             for field in ("believes_refs", "false_belief_refs"):
                 _require_list_type(errors, state[field], "claim", f"{base}/{field}")
-    for relationship_index, relationship in enumerate(document["relationships"]):
-        _require_list_type(
-            errors,
-            relationship["phase_refs"],
-            "phase",
-            f"/relationships/{relationship_index}/phase_refs",
-        )
     for unit_index, unit in enumerate(document["information_units"]):
         base = f"/information_units/{unit_index}"
         _optional_declared_type(
@@ -192,9 +182,6 @@ def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
         )
         for field in ("supports_claim_refs", "refutes_claim_refs"):
             _require_list_type(errors, unit[field], "claim", f"{base}/{field}")
-        _require_list_type(
-            errors, unit["availability"]["phase_refs"], "phase", f"{base}/availability/phase_refs"
-        )
         _require_list_type(
             errors,
             unit["availability"]["perspective_refs"],
@@ -295,12 +282,6 @@ def _walk_object_refs(value: Any, path: str = "") -> Iterator[tuple[str, dict[st
     elif isinstance(value, list):
         for index, item in enumerate(value):
             yield from _walk_object_refs(item, f"{path}/{index}")
-
-
-def _unique_integer(
-    errors: list[dict[str, Any]], items: list[dict[str, Any]], field: str, path: str
-) -> None:
-    _unique_value(errors, items, field, path, "duplicate_order")
 
 
 def _unique_string(
