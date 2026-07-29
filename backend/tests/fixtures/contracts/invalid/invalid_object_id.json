@@ -1,0 +1,25 @@
+{
+  "casefile": {"schema_version": "0.1.0", "title": "Invalid object ID"},
+  "narrative_phases": [],
+  "entities": [
+    {
+      "object_id": "INVALID",
+      "entity_kind": "organization",
+      "name": "Invalid registry object",
+      "description": null,
+      "traits": [],
+      "attributes": {},
+      "source": {"kind": "fixture"},
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed"
+    }
+  ],
+  "events": [],
+  "information_units": [],
+  "claims": [],
+  "hypotheses": [],
+  "reasoning_paths": [],
+  "resolution_spec": null,
+  "constraints": [],
+  "knowledge_states": []
+}

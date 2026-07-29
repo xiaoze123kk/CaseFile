@@ -1,0 +1,5 @@
+{
+  "base_fixture": "../../casefiles/restart_loop.casefile.json",
+  "mutation": {"op": "replace", "path": "/status", "value": "published"},
+  "expected_error_path": "/status"
+}

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/casefile/patch-candidate.schema.json",
+  "title": "PatchCandidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "patch_id", "base_version_id", "reason_summary", "issue_refs",
+    "operations", "affected_refs", "expected_resolved_rule_ids", "approval_status",
+    "created_by", "created_at", "extensions"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "patch_id": {"type": "string", "pattern": "^patch_[a-z0-9][a-z0-9_]{0,54}$"},
+    "base_version_id": {"type": "string", "pattern": "^(?:draft|snapshot|cv)_[a-z0-9][a-z0-9_]{0,54}$"},
+    "reason_summary": {"type": "string", "minLength": 1},
+    "issue_refs": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^issue_[a-z0-9][a-z0-9_]{0,54}$"},
+      "uniqueItems": true
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/PatchOperation"}
+    },
+    "affected_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+    "expected_resolved_rule_ids": {
+      "type": "array",
+      "items": {"$ref": "common.schema.json#/$defs/RuleId"},
+      "uniqueItems": true
+    },
+    "approval_status": {"type": "string", "enum": ["pending", "approved", "rejected", "superseded"]},
+    "created_by": {"$ref": "common.schema.json#/$defs/ActorRef"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "extensions": {"$ref": "common.schema.json#/$defs/Extensions"}
+  },
+  "$defs": {
+    "PatchOperation": {
+      "title": "PatchOperation",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation_id", "op", "target_ref", "path", "expected_revision",
+        "old_value", "new_value"
+      ],
+      "properties": {
+        "operation_id": {"type": "string", "pattern": "^op_[a-z0-9][a-z0-9_]{0,57}$"},
+        "op": {"type": "string", "enum": ["add", "remove", "replace"]},
+        "target_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+        "path": {"$ref": "common.schema.json#/$defs/JsonPointer"},
+        "expected_revision": {"type": ["integer", "null"], "minimum": 1},
+        "old_value": true,
+        "new_value": true
+      }
+    }
+  }
+}

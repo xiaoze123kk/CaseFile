@@ -1,0 +1,14 @@
+{
+  "scenario_id": "scenario_three_way_restart_time",
+  "base_casefile_fixture": "../casefiles/restart_loop.casefile.json",
+  "base_version_id": "snapshot_restart_loop_2",
+  "current_version_id": "snapshot_restart_loop_3",
+  "current_change": {
+    "target_ref": {"object_type": "event", "object_id": "evt_restart_seven"},
+    "path": "/time/start",
+    "value": "2042-06-01T19:58:00+08:00",
+    "result_revision": 3
+  },
+  "candidate_fixture": "patch_candidate.json",
+  "expected_result": "three_way_diff_required"
+}

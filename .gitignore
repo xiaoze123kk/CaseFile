@@ -9,6 +9,8 @@
 
 # Dependencies, virtual environments, and generated caches.
 /node_modules/
+**/node_modules/
+**/.next/
 /.obsidian/
 /.ruff_cache/
 **/.venv/
@@ -30,3 +32,4 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+*.tsbuildinfo

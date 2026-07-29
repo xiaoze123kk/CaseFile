@@ -1,0 +1,17 @@
+{
+  "casefile": {"schema_version": "0.1.0", "title": "路径探索案例"},
+  "narrative_phases": [{"object_id": "phase_departure", "name": "出发", "phase_order": 1, "description": null, "release_rule": {}, "status": "active", "source": {}, "confidence": null, "confirmation_status": "user_confirmed"}],
+  "entities": [
+    {"object_id": "entity_traveler", "entity_kind": "person", "name": "旅人", "description": null, "traits": [], "attributes": {}, "person": {"role": null, "background": null}, "source": {}, "confidence": null, "confirmation_status": "user_confirmed"},
+    {"object_id": "entity_crossroads", "entity_kind": "location", "name": "岔路口", "description": null, "traits": [], "attributes": {}, "location": {"geo": {}, "movement_rules": {}, "adjacent_location_object_ids": ["entity_harbor"]}, "source": {}, "confidence": null, "confirmation_status": "user_confirmed"},
+    {"object_id": "entity_harbor", "entity_kind": "location", "name": "港口", "description": null, "traits": [], "attributes": {}, "location": {"geo": {}, "movement_rules": {}, "adjacent_location_object_ids": []}, "source": {}, "confidence": null, "confirmation_status": "user_confirmed"}
+  ],
+  "events": [{"object_id": "event_departure", "title": "离开岔路口", "summary": null, "start_time": null, "end_time": null, "narrative_order": 1, "narrative_phase_object_id": "phase_departure", "location_object_id": "entity_crossroads", "actor_object_ids": ["entity_traveler"], "visibility": "public", "truth_status": "uncertain", "source": {}, "confidence": null, "confirmation_status": "user_confirmed"}],
+  "information_units": [],
+  "claims": [],
+  "hypotheses": [],
+  "reasoning_paths": [],
+  "resolution_spec": null,
+  "constraints": [],
+  "knowledge_states": []
+}

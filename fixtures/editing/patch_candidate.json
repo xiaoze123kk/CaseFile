@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "patch_id": "patch_restart_time",
+  "base_version_id": "snapshot_restart_loop_2",
+  "reason_summary": "依据原始日志修复事件开始时间。",
+  "issue_refs": ["issue_restart_time"],
+  "operations": [
+    {
+      "operation_id": "op_replace_start_time",
+      "op": "replace",
+      "target_ref": {"object_type": "event", "object_id": "evt_restart_seven"},
+      "path": "/time/start",
+      "expected_revision": 2,
+      "old_value": "2042-06-01T20:05:00+08:00",
+      "new_value": "2042-06-01T20:00:00+08:00"
+    }
+  ],
+  "affected_refs": [
+    {"object_type": "event", "object_id": "evt_restart_seven"},
+    {"object_type": "reasoning_path", "object_id": "path_causal_restart"}
+  ],
+  "expected_resolved_rule_ids": ["CF-S1-TIME-001"],
+  "approval_status": "pending",
+  "created_by": {"actor_type": "agent", "actor_id": "agent_patch_generator"},
+  "created_at": "2042-06-01T12:05:00Z",
+  "extensions": {
+    "casefile.fixture": {"purpose": "stable_object_patch"}
+  }
+}

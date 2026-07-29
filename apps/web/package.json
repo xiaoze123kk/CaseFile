@@ -1,0 +1,34 @@
+{
+  "name": "@casefile/web",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@casefile/contracts": "workspace:*",
+    "@dagrejs/dagre": "^3.0.0",
+    "@tanstack/react-query": "^5.101.4",
+    "@xyflow/react": "^12.11.2",
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.4",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.2.12",
+    "jsdom": "^29.1.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

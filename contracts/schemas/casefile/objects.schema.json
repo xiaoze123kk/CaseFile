@@ -1,0 +1,412 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/casefile/objects.schema.json",
+  "title": "CaseFile Core Objects",
+  "$defs": {
+    "ResolutionSpec": {
+      "title": "ResolutionSpec",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "title", "question_type", "reasoning_question", "conclusion_mode",
+            "required_slots", "accepted_answers", "required_claim_refs"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^res_[a-z0-9][a-z0-9_]{0,56}$"},
+            "title": {"type": "string", "minLength": 1},
+            "question_type": {
+              "type": "string",
+              "enum": [
+                "fact_reconstruction", "identity_inference", "causal_explanation",
+                "path_discovery", "rule_discovery", "relationship_inference",
+                "decision_reasoning"
+              ]
+            },
+            "reasoning_question": {"type": "string", "minLength": 1},
+            "conclusion_mode": {
+              "type": "string",
+              "enum": [
+                "unique", "finite_multiple", "optimal", "probabilistic",
+                "open_interpretation", "multiple_endings", "undetermined"
+              ]
+            },
+            "required_slots": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["slot_id", "value_type", "required"],
+                "properties": {
+                  "slot_id": {"type": "string", "pattern": "^slot_[a-z0-9][a-z0-9_]{0,55}$"},
+                  "value_type": {
+                    "type": "string",
+                    "enum": [
+                      "entity_or_claim_ref", "text_or_claim_ref", "object_ref",
+                      "text", "number", "boolean"
+                    ]
+                  },
+                  "required": {"type": "boolean"}
+                }
+              }
+            },
+            "accepted_answers": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {"type": "string", "minLength": 1},
+                  {"$ref": "common.schema.json#/$defs/ObjectRef"}
+                ]
+              }
+            },
+            "required_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Entity": {
+      "title": "Entity",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "entity_type", "name", "aliases", "traits", "goals", "secrets",
+            "capabilities", "knowledge_states"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^ent_[a-z0-9][a-z0-9_]{0,56}$"},
+            "entity_type": {
+              "type": "string",
+              "enum": ["person", "organization", "object", "system", "faction", "rule_actor", "other"]
+            },
+            "name": {"type": "string", "minLength": 1},
+            "aliases": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "traits": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "goals": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "secrets": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "capabilities": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "knowledge_states": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "as_of_event_ref", "knows_refs", "believes_refs", "false_belief_refs"
+                ],
+                "properties": {
+                  "as_of_event_ref": {
+                    "oneOf": [
+                      {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                      {"type": "null"}
+                    ]
+                  },
+                  "knows_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+                  "believes_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+                  "false_belief_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+                }
+              }
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Relationship": {
+      "title": "Relationship",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "title", "from_ref", "to_ref", "relationship_type",
+            "direction", "truth_status", "visibility"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^rel_[a-z0-9][a-z0-9_]{0,56}$"},
+            "title": {"type": "string", "minLength": 1},
+            "from_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+            "to_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+            "relationship_type": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+            "direction": {"type": "string", "enum": ["directed", "undirected", "bidirectional"]},
+            "truth_status": {
+              "type": "string",
+              "enum": ["canon_true", "reported", "disputed", "false_belief", "unknown"]
+            },
+            "visibility": {"type": "string", "enum": ["public", "private", "restricted", "hidden"]}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Location": {
+      "title": "Location",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "name", "parent_ref", "adjacency_refs", "access_rules",
+            "travel_times", "visibility_rules"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^loc_[a-z0-9][a-z0-9_]{0,56}$"},
+            "name": {"type": "string", "minLength": 1},
+            "parent_ref": {
+              "oneOf": [
+                {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                {"type": "null"}
+              ]
+            },
+            "adjacency_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "access_rules": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "travel_times": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["to_ref", "minutes"],
+                "properties": {
+                  "to_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                  "minutes": {"type": "number", "minimum": 0}
+                }
+              }
+            },
+            "visibility_rules": {"type": "array", "items": {"type": "string", "minLength": 1}}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Event": {
+      "title": "Event",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "title", "truth_status", "time", "participant_refs", "location_ref",
+            "cause_refs", "effect_refs", "observed_by_refs"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^evt_[a-z0-9][a-z0-9_]{0,56}$"},
+            "title": {"type": "string", "minLength": 1},
+            "truth_status": {
+              "type": "string",
+              "enum": ["canon_true", "reported", "disputed", "false_belief", "unknown"]
+            },
+            "time": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["start", "end", "precision"],
+              "properties": {
+                "start": {"type": "string", "format": "date-time"},
+                "end": {"type": ["string", "null"], "format": "date-time"},
+                "precision": {"type": "string", "enum": ["second", "minute", "hour", "day", "approximate", "unknown"]}
+              }
+            },
+            "participant_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "location_ref": {
+              "oneOf": [
+                {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                {"type": "null"}
+              ]
+            },
+            "cause_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "effect_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "observed_by_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "InformationUnit": {
+      "title": "InformationUnit",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "information_type", "title", "content", "source_event_ref", "reliability",
+            "truth_status", "supports_claim_refs", "refutes_claim_refs", "availability", "classification"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^info_[a-z0-9][a-z0-9_]{0,55}$"},
+            "information_type": {
+              "type": "string",
+              "enum": ["evidence", "observation", "dialogue", "document", "system_log", "rule", "environment", "feedback", "other"]
+            },
+            "title": {"type": "string", "minLength": 1},
+            "content": {"type": "string", "minLength": 1},
+            "source_event_ref": {
+              "oneOf": [
+                {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                {"type": "null"}
+              ]
+            },
+            "reliability": {"type": "string", "enum": ["high", "medium", "low", "unknown"]},
+            "truth_status": {
+              "type": "string",
+              "enum": ["canon_true", "reported", "disputed", "false_belief", "unknown"]
+            },
+            "supports_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "refutes_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "availability": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "perspective_refs", "acquisition_conditions", "alternative_path_refs"
+              ],
+              "properties": {
+                "perspective_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+                "acquisition_conditions": {"type": "array", "items": {"type": "string", "minLength": 1}},
+                "alternative_path_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+              }
+            },
+            "classification": {
+              "type": "string",
+              "enum": ["key", "supporting", "background", "distractor", "misleading", "incomplete"]
+            }
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Claim": {
+      "title": "Claim",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "title", "statement", "claim_type", "support_refs", "refute_refs",
+            "dependency_claim_refs", "status", "materiality"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^claim_[a-z0-9][a-z0-9_]{0,54}$"},
+            "title": {"type": "string", "minLength": 1},
+            "statement": {"type": "string", "minLength": 1},
+            "claim_type": {"type": "string", "enum": ["fact", "causal", "identity", "relationship", "temporal", "rule", "evaluative", "other"]},
+            "support_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "refute_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "dependency_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "status": {"type": "string", "enum": ["unsupported", "partially_supported", "supported", "refuted", "disputed", "unresolved"]},
+            "materiality": {"type": "string", "enum": ["critical", "major", "minor", "background"]}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Hypothesis": {
+      "title": "Hypothesis",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": [
+            "id", "title", "proposition", "target_resolution_ref", "required_claim_refs",
+            "falsifier_refs", "competing_hypothesis_refs", "status", "score"
+          ],
+          "properties": {
+            "id": {"type": "string", "pattern": "^hyp_[a-z0-9][a-z0-9_]{0,56}$"},
+            "title": {"type": "string", "minLength": 1},
+            "proposition": {"type": "string", "minLength": 1},
+            "target_resolution_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+            "required_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "falsifier_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "competing_hypothesis_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "status": {"type": "string", "enum": ["active", "supported", "eliminated", "accepted", "rejected", "undetermined"]},
+            "score": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "ReasoningPath": {
+      "title": "ReasoningPath",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": ["id", "title", "path_type", "target_ref", "steps", "required_for_resolution", "alternative_path_refs"],
+          "properties": {
+            "id": {"type": "string", "pattern": "^path_[a-z0-9][a-z0-9_]{0,55}$"},
+            "title": {"type": "string", "minLength": 1},
+            "path_type": {"type": "string", "enum": ["exclusion", "causal", "proof", "combination", "relationship", "temporal", "decision", "rule_derivation", "counterfactual"]},
+            "target_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+            "steps": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["step_id", "input_refs", "operation", "output_ref"],
+                "properties": {
+                  "step_id": {"type": "string", "pattern": "^step_[a-z0-9][a-z0-9_]{0,55}$"},
+                  "input_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+                  "operation": {"type": "string", "enum": ["infer", "compare", "eliminate", "combine", "calculate", "verify_rule"]},
+                  "output_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"}
+                }
+              }
+            },
+            "required_for_resolution": {"type": "boolean"},
+            "alternative_path_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "Constraint": {
+      "title": "Constraint",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": ["id", "title", "level", "scope_refs", "statement", "rule_expression", "conflict_refs"],
+          "properties": {
+            "id": {"type": "string", "pattern": "^con_[a-z0-9][a-z0-9_]{0,56}$"},
+            "title": {"type": "string", "minLength": 1},
+            "level": {"type": "string", "enum": ["hard", "soft"]},
+            "scope_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "statement": {"type": "string", "minLength": 1},
+            "rule_expression": {"type": ["string", "null"]},
+            "conflict_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    },
+    "StructureLock": {
+      "title": "StructureLock",
+      "type": "object",
+      "allOf": [
+        {"$ref": "common.schema.json#/$defs/CoreMetadata"},
+        {
+          "type": "object",
+          "required": ["id", "title", "lock_type", "object_ref", "field_paths", "reason"],
+          "properties": {
+            "id": {"type": "string", "pattern": "^lock_[a-z0-9][a-z0-9_]{0,55}$"},
+            "title": {"type": "string", "minLength": 1},
+            "lock_type": {"type": "string", "enum": ["hard", "soft", "open"]},
+            "object_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+            "field_paths": {"type": "array", "items": {"$ref": "common.schema.json#/$defs/JsonPointer"}, "minItems": 1, "uniqueItems": true},
+            "reason": {"type": "string", "minLength": 1}
+          }
+        }
+      ],
+      "unevaluatedProperties": false
+    }
+  }
+}

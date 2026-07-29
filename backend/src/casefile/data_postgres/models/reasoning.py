@@ -58,7 +58,8 @@ class Hypothesis(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
         CheckConstraint(
-            "status IN ('draft', 'active', 'supported', 'refuted', 'discarded')",
+            "status IN ('draft', 'active', 'supported', 'refuted', 'discarded', "
+            "'eliminated', 'accepted', 'rejected', 'undetermined')",
             name="status_allowed",
         ),
         CheckConstraint("score IS NULL OR score BETWEEN 0 AND 1", name="score_range"),
@@ -94,7 +95,9 @@ class ReasoningPath(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("length(btrim(name)) > 0", name="name_not_blank"),
         CheckConstraint(
-            "reasoning_type IN ('deductive', 'inductive', 'abductive', 'mixed')",
+            "reasoning_type IN ('deductive', 'inductive', 'abductive', 'mixed', "
+            "'exclusion', 'causal', 'proof', 'combination', 'relationship', 'temporal', "
+            "'decision', 'rule_derivation', 'counterfactual')",
             name="reasoning_type_allowed",
         ),
         CheckConstraint(
@@ -118,6 +121,9 @@ class ReasoningPath(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         Boolean, nullable=False, server_default=text("false")
     )
     summary: Mapped[str | None] = mapped_column(Text)
+    required_for_resolution: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
 
 
 class ReasoningNode(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
@@ -250,32 +256,54 @@ class ReasoningEdge(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class ResolutionSpec(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
-    """The single dynamic resolution contract for one Draft."""
+    """One v1 dynamic resolution contract for a Draft."""
 
     __tablename__ = "resolution_specs"
     __table_args__ = (
         _draft_fk("fk_resolution_specs_draft"),
         _object_fk("object_registry_id", "fk_resolution_specs_object"),
         UniqueConstraint("object_registry_id", name="uq_resolution_specs_object_registry_id"),
-        UniqueConstraint("draft_id", name="uq_resolution_specs_draft_id"),
         UniqueConstraint(
             "project_id", "casefile_id", "draft_id", "id", name="uq_resolution_specs_lineage_id"
         ),
         CheckConstraint("question_type ~ '^[a-z][a-z0-9_]*$'", name="question_type_format"),
         CheckConstraint("length(btrim(target_question)) > 0", name="target_question_not_blank"),
+        CheckConstraint("title IS NULL OR length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint(
+            "conclusion_mode IS NULL OR conclusion_mode IN ('unique', 'finite_multiple', "
+            "'optimal', 'probabilistic', 'open_interpretation', 'multiple_endings', "
+            "'undetermined')",
+            name="conclusion_mode_allowed",
+        ),
         CheckConstraint(
             "jsonb_typeof(conclusion_pattern_jsonb) = 'object'",
             name="conclusion_pattern_is_object",
         ),
         CheckConstraint("status IN ('draft', 'resolved', 'locked')", name="status_allowed"),
+        CheckConstraint(
+            "jsonb_typeof(accepted_answer_texts_jsonb) = 'object'",
+            name="accepted_answer_texts_is_object",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(fairness_requirements_jsonb) = 'array'",
+            name="fairness_requirements_is_array",
+        ),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200))
     question_type: Mapped[str] = mapped_column(String(40), nullable=False)
     target_question: Mapped[str] = mapped_column(Text, nullable=False)
+    conclusion_mode: Mapped[str | None] = mapped_column(String(32))
+    accepted_answer_texts_jsonb: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    fairness_requirements_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     conclusion_pattern_jsonb: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
@@ -304,6 +332,11 @@ class ResolutionSlot(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("slot_key ~ '^[a-z][a-z0-9_]{1,127}$'", name="slot_key_format"),
         CheckConstraint("length(btrim(label)) > 0", name="label_not_blank"),
         CheckConstraint("ordinal >= 1", name="ordinal_positive"),
+        CheckConstraint(
+            "value_type IS NULL OR value_type IN ('entity_or_claim_ref', "
+            "'text_or_claim_ref', 'object_ref', 'text', 'number', 'boolean')",
+            name="value_type_allowed",
+        ),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -311,6 +344,7 @@ class ResolutionSlot(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     resolution_spec_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     slot_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    value_type: Mapped[str | None] = mapped_column(String(32))
     label: Mapped[str] = mapped_column(String(160), nullable=False)
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -329,6 +363,11 @@ class CaseFileConstraint(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("constraint_kind ~ '^[a-z][a-z0-9_]*$'", name="constraint_kind_format"),
         CheckConstraint("constraint_level IN ('hard', 'soft')", name="constraint_level_allowed"),
         CheckConstraint("jsonb_typeof(rule_jsonb) = 'object'", name="rule_is_object"),
+        CheckConstraint("title IS NULL OR length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint(
+            "statement IS NULL OR length(btrim(statement)) > 0",
+            name="statement_not_blank",
+        ),
         CheckConstraint("status IN ('active', 'inactive')", name="status_allowed"),
         CheckConstraint(
             "conflict_status IN ('none', 'potential', 'confirmed', 'resolved')",
@@ -342,6 +381,9 @@ class CaseFileConstraint(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     target_object_id: Mapped[int | None] = mapped_column(BigInteger)
+    title: Mapped[str | None] = mapped_column(String(200))
+    statement: Mapped[str | None] = mapped_column(Text)
+    rule_expression: Mapped[str | None] = mapped_column(Text)
     constraint_kind: Mapped[str] = mapped_column(String(40), nullable=False)
     constraint_level: Mapped[str] = mapped_column(String(12), nullable=False)
     rule_jsonb: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
@@ -349,3 +391,31 @@ class CaseFileConstraint(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     conflict_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'none'")
     )
+
+
+class StructureLock(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
+    """A v1 field-level structure lock over one CaseFile object."""
+
+    __tablename__ = "structure_locks"
+    __table_args__ = (
+        _draft_fk("fk_structure_locks_draft"),
+        _object_fk("object_registry_id", "fk_structure_locks_object"),
+        UniqueConstraint("object_registry_id", name="uq_structure_locks_object_registry_id"),
+        UniqueConstraint(
+            "project_id", "casefile_id", "draft_id", "id", name="uq_structure_locks_lineage_id"
+        ),
+        CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint("lock_type IN ('hard', 'soft', 'open')", name="lock_type_allowed"),
+        CheckConstraint("jsonb_typeof(field_paths_jsonb) = 'array'", name="field_paths_is_array"),
+        CheckConstraint("length(btrim(reason)) > 0", name="reason_not_blank"),
+        Index("ix_structure_locks_draft_id_type", "draft_id", "lock_type"),
+    )
+
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    lock_type: Mapped[str] = mapped_column(String(12), nullable=False)
+    field_paths_jsonb: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)

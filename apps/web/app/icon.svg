@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <path fill="#a92609" d="M8 6h48v42L32 60 8 48z"/>
+  <path fill="none" stroke="#fafaf5" stroke-width="2" d="M18 17h28M18 45h28"/>
+  <text x="32" y="39" fill="#fff" font-family="Georgia,serif" font-size="20" font-weight="700" text-anchor="middle">CF</text>
+</svg>

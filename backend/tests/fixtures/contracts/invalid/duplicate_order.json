@@ -1,0 +1,46 @@
+{
+  "casefile": {"schema_version": "0.1.0", "title": "Duplicate order"},
+  "narrative_phases": [],
+  "entities": [],
+  "events": [
+    {
+      "object_id": "event_first",
+      "title": "First Event",
+      "summary": null,
+      "start_time": null,
+      "end_time": null,
+      "narrative_order": 1,
+      "narrative_phase_object_id": null,
+      "location_object_id": null,
+      "actor_object_ids": [],
+      "visibility": "restricted",
+      "truth_status": "uncertain",
+      "source": {"kind": "fixture"},
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed"
+    },
+    {
+      "object_id": "event_second",
+      "title": "Second Event",
+      "summary": null,
+      "start_time": null,
+      "end_time": null,
+      "narrative_order": 1,
+      "narrative_phase_object_id": null,
+      "location_object_id": null,
+      "actor_object_ids": [],
+      "visibility": "restricted",
+      "truth_status": "uncertain",
+      "source": {"kind": "fixture"},
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed"
+    }
+  ],
+  "information_units": [],
+  "claims": [],
+  "hypotheses": [],
+  "reasoning_paths": [],
+  "resolution_spec": null,
+  "constraints": [],
+  "knowledge_states": []
+}

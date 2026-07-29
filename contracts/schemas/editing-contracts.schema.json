@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/editing-contracts.schema.json",
+  "title": "EditingContracts",
+  "description": "Code-generation aggregate for the CaseFile editing loop.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "casefile", "brief", "validation_issue", "patch_candidate",
+    "task_run", "task_event", "agent_generate_request", "agent_generate_result"
+  ],
+  "properties": {
+    "casefile": {"$ref": "casefile/casefile.schema.json"},
+    "brief": {"$ref": "brief/brief.schema.json"},
+    "validation_issue": {"$ref": "validation/validation-issue.schema.json"},
+    "patch_candidate": {"$ref": "casefile/patch-candidate.schema.json"},
+    "task_run": {"$ref": "task/task.schema.json#/$defs/TaskRun"},
+    "task_event": {"$ref": "task/task.schema.json#/$defs/TaskEvent"},
+    "agent_generate_request": {"$ref": "task/task.schema.json#/$defs/AgentGenerateRequest"},
+    "agent_generate_result": {"$ref": "task/task.schema.json#/$defs/AgentGenerateResult"}
+  }
+}

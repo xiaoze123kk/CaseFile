@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "contracts/generated/typescript"
+
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+overrides:
+  use-sync-external-store: 1.6.0

@@ -1,0 +1,9 @@
+{
+  "base_fixture": "../../casefiles/restart_loop.casefile.json",
+  "mutations": [
+    {"op": "replace", "path": "/status", "value": "canon"},
+    {"op": "replace", "path": "/version/version_id", "value": "cv_restart_loop_1"},
+    {"op": "add", "path": "/unity_node_id", "value": "scene-42"}
+  ],
+  "expected_error_path": "/"
+}

@@ -1,0 +1,213 @@
+{
+  "main": {
+    "id": "b48f14d06846952c",
+    "type": "split",
+    "children": [
+      {
+        "id": "acca6c31753b4911",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "181cf51ec9d1320f",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "技术栈与第一版MVP-v1 1.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "技术栈与第一版MVP-v1 1"
+            }
+          },
+          {
+            "id": "b7ae572baa23a074",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "CaseFile-PRD-v2.3.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "CaseFile-PRD-v2.3"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8ae9c50a37797a66",
+    "type": "split",
+    "children": [
+      {
+        "id": "9e2a3de276baf0a9",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "e3b9e790d268af2c",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "文件列表"
+            }
+          },
+          {
+            "id": "2ccbfd77f13e6dba",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "搜索"
+            }
+          },
+          {
+            "id": "5cbf74bd34281530",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "书签"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 200
+  },
+  "right": {
+    "id": "933d2b61356f0fde",
+    "type": "split",
+    "children": [
+      {
+        "id": "132cd4cfa722de09",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "170e1de6cd0e2363",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "基座数据库表字段说明.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "基座数据库表字段说明 的反向链接列表"
+            }
+          },
+          {
+            "id": "fbb06a782b903b6e",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "基座数据库表字段说明.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "基座数据库表字段说明 的出链列表"
+            }
+          },
+          {
+            "id": "c78c0b3baa37188a",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "标签"
+            }
+          },
+          {
+            "id": "6b87c8784cc30e94",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "添加笔记属性"
+            }
+          },
+          {
+            "id": "63bbe48be06342f7",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "基座数据库表字段说明.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "基座数据库表字段说明 的大纲"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:打开快速切换": false,
+      "graph:查看关系图谱": false,
+      "canvas:新建白板": false,
+      "daily-notes:打开/创建今天的日记": false,
+      "templates:插入模板": false,
+      "command-palette:打开命令面板": false,
+      "bases:新建数据库": false
+    }
+  },
+  "active": "181cf51ec9d1320f",
+  "lastOpenFiles": [
+    "基座数据库表字段说明.md",
+    "数据库表关系图.svg",
+    "技术选型和tradeoff/数据库表设计决策与Trade-off.md",
+    "技术栈与第一版MVP-v1 1.md",
+    "数据库表关系图.mmd",
+    "CaseFile-PRD-v2.3.md",
+    "CaseFile-PRD-v2.3.pdf",
+    "技术选型和tradeoff/Agent框架选型与Tradeoff.md",
+    "CaseFile-PRD-v2.2.md",
+    "技术选型和tradeoff"
+  ]
+}

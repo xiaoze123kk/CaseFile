@@ -1,7 +1,9 @@
-"""Disposable PostgreSQL verification for the 28-table personal foundation."""
+"""Disposable PostgreSQL verification for the 38-table personal foundation."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -12,6 +14,7 @@ from threading import Barrier
 from unittest.mock import patch
 
 import pytest
+import rfc8785
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
@@ -20,10 +23,14 @@ from sqlalchemy.engine import Connection, Engine, make_url
 pytestmark = pytest.mark.postgres
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
+PREVIOUS_REVISION = "20260728084832"
 BUSINESS_TABLES = {
     "audit_events",
+    "brief_versions",
+    "briefs",
     "canon_versions",
     "casefile_constraints",
+    "casefile_contract_refs",
     "casefile_objects",
     "casefile_refs",
     "casefiles",
@@ -45,9 +52,16 @@ BUSINESS_TABLES = {
     "reasoning_edges",
     "reasoning_nodes",
     "reasoning_paths",
+    "relationships",
     "resolution_slots",
     "resolution_specs",
+    "source_records",
+    "structure_locks",
+    "task_attempts",
+    "task_events",
+    "task_runs",
     "testimonies",
+    "user_provider_settings",
     "users",
 }
 
@@ -58,6 +72,19 @@ class Lineage:
     project_id: int
     casefile_id: int
     draft_id: int
+
+
+@dataclass(frozen=True)
+class MigrationCompatibilityIds:
+    project_id: int
+    brief_id: int
+    brief_version_id: int
+    task_run_id: int
+    task_attempt_id: int
+    snapshot_id: int
+    canon_id: int
+    legacy_casefile: dict[str, object]
+    legacy_brief: dict[str, object]
 
 
 def _test_database_url() -> str:
@@ -87,6 +114,33 @@ def migrated_engine() -> Iterator[Engine]:
     engine = sa.create_engine(database_url, poolclass=sa.pool.NullPool)
     try:
         with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+            command.downgrade(config, "base")
+            assert set(sa.inspect(engine).get_table_names()) <= {"alembic_version"}
+            command.upgrade(config, PREVIOUS_REVISION)
+            compatibility_ids = _seed_legacy_migration_documents(engine)
+            command.upgrade(config, "head")
+            first_forward = _assert_forward_migration_documents(
+                engine,
+                compatibility_ids,
+            )
+            modern_attempt_id, modern_document = _seed_modern_migration_candidate(
+                engine,
+                compatibility_ids,
+            )
+            command.downgrade(config, PREVIOUS_REVISION)
+            _assert_reverse_migration_documents(engine, compatibility_ids)
+            _assert_modern_candidate_downgrade(engine, modern_attempt_id)
+            command.upgrade(config, "head")
+            second_forward = _assert_forward_migration_documents(
+                engine,
+                compatibility_ids,
+            )
+            assert second_forward == first_forward
+            _assert_task_attempt_document(
+                engine,
+                modern_attempt_id,
+                modern_document,
+            )
             command.downgrade(config, "base")
             assert set(sa.inspect(engine).get_table_names()) <= {"alembic_version"}
             command.upgrade(config, "head")
@@ -147,8 +201,8 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
         connection.execute(
             sa.text(
                 """
-                INSERT INTO casefiles (project_id, title, schema_version)
-                VALUES (:project_id, :title, '2.3') RETURNING id
+                INSERT INTO casefiles (project_id, object_id, title, schema_version)
+                VALUES (:project_id, 'case_test_' || :project_id, :title, '1.0') RETURNING id
                 """
             ),
             {"project_id": project_id, "title": f"CaseFile {label}"},
@@ -158,8 +212,10 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
         connection.execute(
             sa.text(
                 """
-                INSERT INTO drafts (project_id, casefile_id, schema_version)
-                VALUES (:project_id, :casefile_id, '2.3') RETURNING id
+                INSERT INTO drafts (project_id, casefile_id, version_id, schema_version)
+                VALUES (
+                    :project_id, :casefile_id, 'draft_test_' || :project_id, '1.0'
+                ) RETURNING id
                 """
             ),
             {"project_id": project_id, "casefile_id": casefile_id},
@@ -180,10 +236,16 @@ def _insert_object(
                 """
                 INSERT INTO casefile_objects (
                     project_id, casefile_id, draft_id, object_id, object_type,
+                    contract_ordinal, created_by_id, contract_updated_at,
                     confirmation_status
                 ) VALUES (
                     :project_id, :casefile_id, :draft_id, :object_id, :object_type,
-                    'user_confirmed'
+                    (
+                        SELECT COALESCE(MAX(contract_ordinal), 0) + 1
+                          FROM casefile_objects
+                         WHERE draft_id = :draft_id AND object_type = :ordinal_type
+                    ),
+                    'user_test', CURRENT_TIMESTAMP::text, 'user_confirmed'
                 ) RETURNING id
                 """
             ),
@@ -193,6 +255,7 @@ def _insert_object(
                 "draft_id": lineage.draft_id,
                 "object_id": object_id,
                 "object_type": object_type,
+                "ordinal_type": object_type,
             },
         ).scalar_one()
     )
@@ -214,7 +277,7 @@ def _insert_snapshot(
     revision: int,
     content_hash: str,
     content: str = '{"casefile": {}}',
-    schema_version: str = "2.3",
+    schema_version: str = "1.0",
     creator_id: int | None = None,
 ) -> int:
     return int(
@@ -253,7 +316,7 @@ def _insert_canon(
     parent_id: int | None = None,
     content_hash: str = "a" * 64,
     content: str = '{"casefile": {}}',
-    schema_version: str = "2.3",
+    schema_version: str = "1.0",
     confirmer_id: int | None = None,
 ) -> int:
     return int(
@@ -286,7 +349,474 @@ def _insert_canon(
     )
 
 
-def test_database_has_28_identity_tables_without_team_or_payload_columns(
+def _legacy_casefile_document() -> dict[str, object]:
+    phase_ref = {"object_type": "phase", "object_id": "phase_investigation"}
+    return {
+        "schema_version": "1.0",
+        "casefile_id": "case_migration_compat",
+        "project_profile": {
+            "content_type": "interactive_reasoning",
+            "target_audience": "adult",
+            "primary_use_case": "mystery",
+            "genres": ["science_fiction"],
+            "target_duration_minutes": 90,
+            "target_participant_count": 4,
+            "difficulty_template": "hard",
+            "collaboration_mode": "solo",
+        },
+        "resolution_specs": [
+            {
+                "id": "res_root_cause",
+                "target_question": "Who triggered the restart?",
+                "fairness_requirements": ["The log must be obtainable."],
+            }
+        ],
+        "entities": [
+            {
+                "id": "ent_researcher",
+                "knowledge_states": [
+                    {
+                        "phase_ref": phase_ref,
+                        "knows_refs": [],
+                        "believes_refs": [],
+                        "false_belief_refs": [],
+                    }
+                ],
+            }
+        ],
+        "relationships": [{"id": "rel_maintains", "phase_refs": [phase_ref]}],
+        "events": [{"id": "evt_restart", "narrative_phase_refs": [phase_ref]}],
+        "information_units": [
+            {
+                "id": "info_restart_log",
+                "availability": {
+                    "phase_refs": [phase_ref],
+                    "perspective_refs": [],
+                    "acquisition_conditions": [],
+                    "alternative_path_refs": [],
+                },
+            }
+        ],
+        "phases": [{"id": "phase_investigation", "title": "Investigation"}],
+        "constraints": [
+            {
+                "id": "con_phase_scope",
+                "scope_refs": [
+                    phase_ref,
+                    {"object_type": "casefile", "object_id": "case_migration_compat"},
+                ],
+            }
+        ],
+        "structure_locks": [
+            {
+                "id": "lock_phase",
+                "object_ref": phase_ref,
+                "field_paths": ["/completion_conditions"],
+            }
+        ],
+        "extensions": {"fixture.compat": {"preserve": True}},
+    }
+
+
+def _legacy_brief_document() -> dict[str, object]:
+    return {
+        "source_text": "The seventh restart came from the backup controller.",
+        "one_line_concept": "A laboratory restart mystery.",
+        "core_mystery": "What caused the seventh restart?",
+        "player_goal": "Identify the controller responsible.",
+        "gameplay_loop": "Inspect logs and name the cause.",
+        "constraints": ["No supernatural explanation."],
+    }
+
+
+def _canonical_hash(document: dict[str, object]) -> str:
+    return hashlib.sha256(rfc8785.dumps(document)).hexdigest()
+
+
+def _seed_legacy_migration_documents(engine: Engine) -> MigrationCompatibilityIds:
+    legacy_casefile = _legacy_casefile_document()
+    legacy_brief = _legacy_brief_document()
+    casefile_text = json.dumps(legacy_casefile, ensure_ascii=False)
+    brief_text = json.dumps(legacy_brief, ensure_ascii=False)
+    with engine.begin() as connection:
+        lineage = _seed_lineage(connection, "migration-compat")
+        provider_setting_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO user_provider_settings (
+                        user_id, provider, model_id, secret_ciphertext,
+                        secret_nonce, secret_last_four, default_budget_jsonb
+                    ) VALUES (
+                        :user_id, 'fake', 'fixture-model', :ciphertext,
+                        :nonce, 'test', '{}'::jsonb
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "user_id": lineage.owner_id,
+                    "ciphertext": b"x" * 17,
+                    "nonce": b"n" * 12,
+                },
+            ).scalar_one()
+        )
+        brief_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO briefs (
+                        project_id, public_id, draft_revision, draft_jsonb
+                    ) VALUES (
+                        :project_id, 'brief_migration_compat', 1, CAST(:brief AS jsonb)
+                    ) RETURNING id
+                    """
+                ),
+                {"project_id": lineage.project_id, "brief": brief_text},
+            ).scalar_one()
+        )
+        brief_version_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO brief_versions (
+                        project_id, brief_id, version_no, content_jsonb,
+                        content_hash, confirmed_by_user_id
+                    ) VALUES (
+                        :project_id, :brief_id, 1, CAST(:brief AS jsonb),
+                        :content_hash, :owner_id
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": lineage.project_id,
+                    "brief_id": brief_id,
+                    "brief": brief_text,
+                    "content_hash": _canonical_hash(legacy_brief),
+                    "owner_id": lineage.owner_id,
+                },
+            ).scalar_one()
+        )
+        connection.execute(
+            sa.text(
+                """
+                UPDATE briefs
+                   SET current_version_id = :version_id
+                 WHERE id = :brief_id
+                """
+            ),
+            {"brief_id": brief_id, "version_id": brief_version_id},
+        )
+
+        snapshot_id = _insert_snapshot(
+            connection,
+            lineage,
+            revision=1,
+            content_hash=_canonical_hash(legacy_casefile),
+            content=casefile_text,
+        )
+        canon_id = _insert_canon(
+            connection,
+            lineage,
+            snapshot_id,
+            content_hash=_canonical_hash(legacy_casefile),
+            content=casefile_text,
+        )
+        task_run_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO task_runs (
+                        project_id, casefile_id, draft_id, brief_version_id,
+                        actor_user_id, provider_setting_id, task_type, status, stage,
+                        input_draft_revision, provider, model_id,
+                        provider_config_version, schema_version, agent_version,
+                        prompt_version, toolset_version, budget_jsonb,
+                        result_snapshot_id
+                    ) VALUES (
+                        :project_id, :casefile_id, :draft_id, :brief_version_id,
+                        :owner_id, :provider_setting_id, 'brief_to_draft',
+                        'succeeded', 'completed', 1, 'fake', 'fixture-model',
+                        1, '1.0', 'agent-test', 'prompt-test', 'toolset-test',
+                        '{}'::jsonb, :snapshot_id
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": lineage.project_id,
+                    "casefile_id": lineage.casefile_id,
+                    "draft_id": lineage.draft_id,
+                    "brief_version_id": brief_version_id,
+                    "owner_id": lineage.owner_id,
+                    "provider_setting_id": provider_setting_id,
+                    "snapshot_id": snapshot_id,
+                },
+            ).scalar_one()
+        )
+        task_attempt_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO task_attempts (
+                        project_id, task_run_id, attempt_no, status, candidate_jsonb
+                    ) VALUES (
+                        :project_id, :task_run_id, 1, 'succeeded',
+                        CAST(:candidate AS jsonb)
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": lineage.project_id,
+                    "task_run_id": task_run_id,
+                    "candidate": casefile_text,
+                },
+            ).scalar_one()
+        )
+    return MigrationCompatibilityIds(
+        project_id=lineage.project_id,
+        brief_id=brief_id,
+        brief_version_id=brief_version_id,
+        task_run_id=task_run_id,
+        task_attempt_id=task_attempt_id,
+        snapshot_id=snapshot_id,
+        canon_id=canon_id,
+        legacy_casefile=legacy_casefile,
+        legacy_brief=legacy_brief,
+    )
+
+
+def _assert_forward_migration_documents(
+    engine: Engine,
+    ids: MigrationCompatibilityIds,
+) -> tuple[dict[str, object], str, dict[str, object]]:
+    with engine.connect() as connection:
+        snapshot_document, snapshot_hash = connection.execute(
+            sa.text(
+                """
+                SELECT snapshot_jsonb, content_hash
+                  FROM draft_snapshots
+                 WHERE id = :snapshot_id
+                """
+            ),
+            {"snapshot_id": ids.snapshot_id},
+        ).one()
+        canon_document, canon_hash = connection.execute(
+            sa.text(
+                """
+                SELECT content_jsonb, content_hash
+                  FROM canon_versions
+                 WHERE id = :canon_id
+                """
+            ),
+            {"canon_id": ids.canon_id},
+        ).one()
+        attempt_document = connection.execute(
+            sa.text("SELECT candidate_jsonb FROM task_attempts WHERE id = :attempt_id"),
+            {"attempt_id": ids.task_attempt_id},
+        ).scalar_one()
+        brief_document, brief_hash = connection.execute(
+            sa.text(
+                """
+                SELECT content_jsonb, content_hash
+                  FROM brief_versions
+                 WHERE id = :brief_version_id
+                """
+            ),
+            {"brief_version_id": ids.brief_version_id},
+        ).one()
+        task_input_hash, task_input = connection.execute(
+            sa.text(
+                """
+                SELECT input_hash, input_jsonb
+                  FROM task_runs
+                 WHERE id = :task_run_id
+                """
+            ),
+            {"task_run_id": ids.task_run_id},
+        ).one()
+        source_text = connection.execute(
+            sa.text(
+                """
+                SELECT content_text
+                  FROM source_records
+                 WHERE project_id = :project_id
+                """
+            ),
+            {"project_id": ids.project_id},
+        ).scalar_one()
+
+    assert "project_profile" not in snapshot_document
+    assert "phases" not in snapshot_document
+    resolution = snapshot_document["resolution_specs"][0]
+    assert resolution["reasoning_question"] == "Who triggered the restart?"
+    assert "target_question" not in resolution
+    assert "fairness_requirements" not in resolution
+    state = snapshot_document["entities"][0]["knowledge_states"][0]
+    assert state["as_of_event_ref"] is None
+    assert "phase_ref" not in state
+    assert "phase_refs" not in snapshot_document["relationships"][0]
+    assert "narrative_phase_refs" not in snapshot_document["events"][0]
+    assert "phase_refs" not in snapshot_document["information_units"][0]["availability"]
+    assert snapshot_document["constraints"][0]["scope_refs"] == [
+        {"object_type": "casefile", "object_id": "case_migration_compat"}
+    ]
+    assert snapshot_document["structure_locks"] == []
+    assert (
+        snapshot_document["extensions"]["casefile.migration_20260728171649"]["kind"]
+        == "legacy"
+    )
+    assert snapshot_hash == _canonical_hash(snapshot_document)
+    assert canon_document == snapshot_document
+    assert canon_hash == snapshot_hash
+    assert attempt_document == snapshot_document
+    assert brief_hash == _canonical_hash(brief_document)
+    assert task_input_hash == brief_hash
+    assert task_input["brief"] == brief_document
+    assert source_text == ids.legacy_brief["source_text"]
+    return snapshot_document, snapshot_hash, brief_document
+
+
+def _assert_reverse_migration_documents(
+    engine: Engine,
+    ids: MigrationCompatibilityIds,
+) -> None:
+    assert "source_records" not in sa.inspect(engine).get_table_names()
+    with engine.connect() as connection:
+        snapshot_document, snapshot_hash = connection.execute(
+            sa.text(
+                """
+                SELECT snapshot_jsonb, content_hash
+                  FROM draft_snapshots
+                 WHERE id = :snapshot_id
+                """
+            ),
+            {"snapshot_id": ids.snapshot_id},
+        ).one()
+        canon_document, canon_hash = connection.execute(
+            sa.text(
+                """
+                SELECT content_jsonb, content_hash
+                  FROM canon_versions
+                 WHERE id = :canon_id
+                """
+            ),
+            {"canon_id": ids.canon_id},
+        ).one()
+        attempt_document = connection.execute(
+            sa.text("SELECT candidate_jsonb FROM task_attempts WHERE id = :attempt_id"),
+            {"attempt_id": ids.task_attempt_id},
+        ).scalar_one()
+        brief_document = connection.execute(
+            sa.text("SELECT content_jsonb FROM brief_versions WHERE id = :brief_version_id"),
+            {"brief_version_id": ids.brief_version_id},
+        ).scalar_one()
+
+    assert snapshot_document == ids.legacy_casefile
+    assert snapshot_hash == _canonical_hash(ids.legacy_casefile)
+    assert canon_document == snapshot_document
+    assert canon_hash == snapshot_hash
+    assert attempt_document == ids.legacy_casefile
+    assert brief_document["source_text"] == ids.legacy_brief["source_text"]
+    assert brief_document["one_line_concept"] == ids.legacy_brief["one_line_concept"]
+    assert brief_document["core_mystery"] == ids.legacy_brief["core_mystery"]
+    assert brief_document["player_goal"] == ids.legacy_brief["core_mystery"]
+
+
+def _modern_casefile_document() -> dict[str, object]:
+    return {
+        "schema_version": "1.0",
+        "casefile_id": "case_modern_migration_compat",
+        "resolution_specs": [
+            {
+                "id": "res_modern",
+                "reasoning_question": "What invariant explains the restart?",
+            }
+        ],
+        "entities": [
+            {
+                "id": "ent_modern",
+                "knowledge_states": [
+                    {
+                        "as_of_event_ref": {
+                            "object_type": "event",
+                            "object_id": "evt_modern",
+                        },
+                        "knows_refs": [],
+                        "believes_refs": [],
+                        "false_belief_refs": [],
+                    }
+                ],
+            }
+        ],
+        "relationships": [],
+        "events": [{"id": "evt_modern"}],
+        "information_units": [],
+        "constraints": [],
+        "structure_locks": [],
+        "extensions": {"fixture.modern": {"preserve": True}},
+    }
+
+
+def _seed_modern_migration_candidate(
+    engine: Engine,
+    ids: MigrationCompatibilityIds,
+) -> tuple[int, dict[str, object]]:
+    document = _modern_casefile_document()
+    with engine.begin() as connection:
+        attempt_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO task_attempts (
+                        project_id, task_run_id, attempt_no, status, candidate_jsonb
+                    ) VALUES (
+                        :project_id, :task_run_id, 2, 'succeeded',
+                        CAST(:candidate AS jsonb)
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": ids.project_id,
+                    "task_run_id": ids.task_run_id,
+                    "candidate": json.dumps(document),
+                },
+            ).scalar_one()
+        )
+    return attempt_id, document
+
+
+def _assert_modern_candidate_downgrade(engine: Engine, attempt_id: int) -> None:
+    with engine.connect() as connection:
+        document = connection.execute(
+            sa.text("SELECT candidate_jsonb FROM task_attempts WHERE id = :attempt_id"),
+            {"attempt_id": attempt_id},
+        ).scalar_one()
+    assert "project_profile" in document
+    assert document["phases"][0]["id"] == "phase_migration_compat"
+    assert document["resolution_specs"][0]["target_question"] == (
+        "What invariant explains the restart?"
+    )
+    assert document["resolution_specs"][0]["fairness_requirements"] == []
+    assert document["entities"][0]["knowledge_states"][0]["phase_ref"] == {
+        "object_type": "phase",
+        "object_id": "phase_migration_compat",
+    }
+    assert document["extensions"]["casefile.migration_20260728171649"]["kind"] == "modern"
+
+
+def _assert_task_attempt_document(
+    engine: Engine,
+    attempt_id: int,
+    expected: dict[str, object],
+) -> None:
+    with engine.connect() as connection:
+        document = connection.execute(
+            sa.text("SELECT candidate_jsonb FROM task_attempts WHERE id = :attempt_id"),
+            {"attempt_id": attempt_id},
+        ).scalar_one()
+    assert document == expected
+
+
+def test_database_has_38_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -300,7 +830,7 @@ def test_database_has_28_identity_tables_without_team_or_payload_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 28
+    assert len(identity_rows) == 38
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
@@ -312,9 +842,9 @@ def test_database_has_28_identity_tables_without_team_or_payload_columns(
             """
         )
     ).all()
+    column_pairs = set(columns)
     flat_names = {name for row in columns for name in row}
-    assert "payload_jsonb" not in flat_names
-    assert "public_id" not in flat_names
+    assert ("casefile_objects", "payload_jsonb") not in column_pairs
     assert not any("workspace" in name or "membership" in name for name in flat_names)
 
 
@@ -674,21 +1204,21 @@ def test_phase_resolution_knowledge_and_reasoning_uniqueness(connection: Connect
     duplicate_spec_object = _insert_object(
         connection, lineage, "resolution_duplicate", "resolution_spec"
     )
-    with _expect_database_error(connection):
-        connection.execute(
-            sa.text(
-                """
-                INSERT INTO resolution_specs (
-                    project_id, casefile_id, draft_id, object_registry_id,
-                    question_type, target_question
-                ) VALUES (
-                    :project_id, :casefile_id, :draft_id, :object_registry_id,
-                    'motive', 'Why?'
-                )
-                """
-            ),
-            _core_values(lineage, duplicate_spec_object),
-        )
+    second_spec_id = connection.execute(
+        sa.text(
+            """
+            INSERT INTO resolution_specs (
+                project_id, casefile_id, draft_id, object_registry_id,
+                question_type, target_question
+            ) VALUES (
+                :project_id, :casefile_id, :draft_id, :object_registry_id,
+                'motive', 'Why?'
+            ) RETURNING id
+            """
+        ),
+        _core_values(lineage, duplicate_spec_object),
+    ).scalar_one()
+    assert second_spec_id != spec_id
     connection.execute(
         sa.text(
             """
@@ -1078,3 +1608,236 @@ def test_concurrent_first_canon_confirmation_commits_once(migrated_engine: Engin
         ]
     assert outcomes.count(True) == 1
     assert outcomes.count(False) == 1
+
+
+def test_source_records_are_immutable_and_project_scoped(connection: Connection) -> None:
+    first = _seed_lineage(connection, "source-first")
+    second = _seed_lineage(connection, "source-second")
+
+    def insert_original(lineage: Lineage, content: str) -> int:
+        return int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO source_records (
+                        project_id, source_kind, content_text, content_hash,
+                        created_by_user_id
+                    ) VALUES (
+                        :project_id, 'human_original', :content, :content_hash,
+                        :owner_id
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": lineage.project_id,
+                    "content": content,
+                    "content_hash": hashlib.sha256(content.encode()).hexdigest(),
+                    "owner_id": lineage.owner_id,
+                },
+            ).scalar_one()
+        )
+
+    first_source_id = insert_original(first, "First immutable source")
+    second_source_id = insert_original(second, "Second immutable source")
+
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO source_records (
+                    project_id, source_kind, content_text, content_hash,
+                    parent_source_record_id, created_by_user_id
+                ) VALUES (
+                    :project_id, 'human_original', 'Invalid parented original',
+                    :content_hash, :parent_id, :owner_id
+                )
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "content_hash": hashlib.sha256(b"Invalid parented original").hexdigest(),
+                "parent_id": first_source_id,
+                "owner_id": first.owner_id,
+            },
+        )
+
+    revision_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO source_records (
+                    project_id, source_kind, content_text, content_hash,
+                    parent_source_record_id, created_by_user_id
+                ) VALUES (
+                    :project_id, 'human_revision', :content, :content_hash,
+                    :parent_id, :owner_id
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "content": "First human revision",
+                "content_hash": hashlib.sha256(b"First human revision").hexdigest(),
+                "parent_id": first_source_id,
+                "owner_id": first.owner_id,
+            },
+        ).scalar_one()
+    )
+    assert revision_id > first_source_id
+
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO source_records (
+                    project_id, source_kind, content_text, content_hash,
+                    parent_source_record_id, created_by_user_id
+                ) VALUES (
+                    :project_id, 'human_revision', 'Cross-project parent',
+                    :content_hash, :parent_id, :owner_id
+                )
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "content_hash": hashlib.sha256(b"Cross-project parent").hexdigest(),
+                "parent_id": second_source_id,
+                "owner_id": first.owner_id,
+            },
+        )
+
+    provider_setting_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO user_provider_settings (
+                    user_id, provider, model_id, secret_ciphertext,
+                    secret_nonce, secret_last_four
+                ) VALUES (
+                    :owner_id, 'fake', 'fixture-model', :ciphertext,
+                    :nonce, 'test'
+                ) RETURNING id
+                """
+            ),
+            {
+                "owner_id": first.owner_id,
+                "ciphertext": b"x" * 17,
+                "nonce": b"n" * 12,
+            },
+        ).scalar_one()
+    )
+
+    task_parameters = {
+        "project_id": first.project_id,
+        "casefile_id": first.casefile_id,
+        "draft_id": first.draft_id,
+        "source_id": first_source_id,
+        "owner_id": first.owner_id,
+        "provider_setting_id": provider_setting_id,
+        "input_hash": hashlib.sha256(b"First immutable source").hexdigest(),
+    }
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO task_runs (
+                    project_id, casefile_id, draft_id, input_source_record_id,
+                    input_hash, input_jsonb, actor_user_id, provider_setting_id,
+                    task_type, input_draft_revision, provider, model_id,
+                    provider_config_version, schema_version, agent_version,
+                    prompt_version, toolset_version, budget_jsonb
+                ) VALUES (
+                    :project_id, :casefile_id, :draft_id, :wrong_source_id,
+                    :input_hash, '{}'::jsonb, :owner_id, :provider_setting_id,
+                    'brief_polish', 1, 'fake', 'fixture-model',
+                    1, '1.0', 'agent-test', 'prompt-test', 'toolset-test',
+                    '{}'::jsonb
+                )
+                """
+            ),
+            {**task_parameters, "wrong_source_id": second_source_id},
+        )
+
+    task_run_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO task_runs (
+                    project_id, casefile_id, draft_id, input_source_record_id,
+                    input_hash, input_jsonb, actor_user_id, provider_setting_id,
+                    task_type, input_draft_revision, provider, model_id,
+                    provider_config_version, schema_version, agent_version,
+                    prompt_version, toolset_version, budget_jsonb
+                ) VALUES (
+                    :project_id, :casefile_id, :draft_id, :source_id,
+                    :input_hash, jsonb_build_object('source_record_id', :source_id),
+                    :owner_id, :provider_setting_id, 'brief_polish', 1,
+                    'fake', 'fixture-model', 1, '1.0', 'agent-test',
+                    'prompt-test', 'toolset-test', '{}'::jsonb
+                ) RETURNING id
+                """
+            ),
+            task_parameters,
+        ).scalar_one()
+    )
+
+    proposal_text = "Agent polish proposal"
+    proposal_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO source_records (
+                    project_id, source_kind, content_text, content_hash,
+                    parent_source_record_id, generated_by_task_run_id,
+                    created_by_user_id
+                ) VALUES (
+                    :project_id, 'agent_polish_proposal', :content, :content_hash,
+                    :parent_id, :task_run_id, :owner_id
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "content": proposal_text,
+                "content_hash": hashlib.sha256(proposal_text.encode()).hexdigest(),
+                "parent_id": first_source_id,
+                "task_run_id": task_run_id,
+                "owner_id": first.owner_id,
+            },
+        ).scalar_one()
+    )
+    assert proposal_id > revision_id
+
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO source_records (
+                    project_id, source_kind, content_text, content_hash,
+                    parent_source_record_id, generated_by_task_run_id,
+                    created_by_user_id
+                ) VALUES (
+                    :project_id, 'agent_polish_proposal', 'Cross-project task',
+                    :content_hash, :parent_id, :task_run_id, :owner_id
+                )
+                """
+            ),
+            {
+                "project_id": second.project_id,
+                "content_hash": hashlib.sha256(b"Cross-project task").hexdigest(),
+                "parent_id": second_source_id,
+                "task_run_id": task_run_id,
+                "owner_id": second.owner_id,
+            },
+        )
+
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text("UPDATE source_records SET content_text = content_text WHERE id = :id"),
+            {"id": first_source_id},
+        )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text("DELETE FROM source_records WHERE id = :id"),
+            {"id": first_source_id},
+        )

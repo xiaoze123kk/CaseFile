@@ -1,0 +1,1 @@
+Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.

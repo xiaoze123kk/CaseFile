@@ -1,0 +1,35 @@
+{
+  "casefile": {"schema_version": "0.1.0", "title": "空间站重启事件"},
+  "narrative_phases": [
+    {"object_id": "phase_investigation", "name": "调查", "phase_order": 1, "description": null, "release_rule": {}, "status": "active", "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"}
+  ],
+  "entities": [
+    {"object_id": "entity_detective", "entity_kind": "person", "name": "调查员", "description": "负责排查故障", "traits": ["谨慎"], "attributes": {}, "person": {"role": "调查员", "background": null}, "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"},
+    {"object_id": "entity_control_room", "entity_kind": "location", "name": "控制室", "description": null, "traits": [], "attributes": {}, "location": {"geo": {}, "movement_rules": {}, "adjacent_location_object_ids": []}, "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"},
+    {"object_id": "entity_station_ai", "entity_kind": "organization", "name": "站控系统", "description": null, "traits": [], "attributes": {}, "source": {"kind": "user"}, "confidence": null, "confirmation_status": "user_confirmed"}
+  ],
+  "events": [
+    {"object_id": "event_restart", "title": "系统重启", "summary": "供电波动触发保护", "start_time": {"minute": 0}, "end_time": null, "narrative_order": 1, "narrative_phase_object_id": "phase_investigation", "location_object_id": "entity_control_room", "actor_object_ids": ["entity_detective"], "visibility": "restricted", "truth_status": "true", "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"}
+  ],
+  "information_units": [
+    {"object_id": "information_power_log", "information_kind": "evidence", "title": "供电日志", "body_text": "重启前电压下降。", "source_credibility": 1.0, "visible_from_phase_object_id": "phase_investigation", "is_misleading": false, "status": "active", "supports_claim_object_ids": ["claim_voltage_drop"], "refutes_claim_object_ids": [], "evidence": {"evidence_kind": "system_log", "source_event_object_id": "event_restart"}, "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"},
+    {"object_id": "information_testimony", "information_kind": "testimony", "title": "调查员陈述", "body_text": "灯光先暗了一次。", "source_credibility": 0.8, "visible_from_phase_object_id": "phase_investigation", "is_misleading": false, "status": "active", "supports_claim_object_ids": [], "refutes_claim_object_ids": [], "testimony": {"speaker_person_object_id": "entity_detective", "quote_text": "灯光先暗了一次。", "audio_asset_ref": null}, "source": {"kind": "user"}, "confidence": 0.8, "confirmation_status": "user_confirmed"},
+    {"object_id": "information_manual", "information_kind": "document", "title": "保护手册", "body_text": "欠压会触发重启。", "source_credibility": 1.0, "visible_from_phase_object_id": null, "is_misleading": false, "status": "active", "supports_claim_object_ids": [], "refutes_claim_object_ids": [], "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"}
+  ],
+  "claims": [
+    {"object_id": "claim_voltage_drop", "statement": "欠压触发了系统重启", "status": "supported", "source": {"kind": "user"}, "confidence": 0.9, "confirmation_status": "user_confirmed"}
+  ],
+  "hypotheses": [
+    {"object_id": "hypothesis_power_fault", "title": "供电故障", "summary": "保护机制响应欠压", "status": "supported", "score": 0.9, "exclusion_rule": {}, "claim_object_ids": ["claim_voltage_drop"], "required_information_object_ids": ["information_power_log"], "source": {"kind": "user"}, "confidence": 0.9, "confirmation_status": "user_confirmed"}
+  ],
+  "reasoning_paths": [
+    {"object_id": "reasoning_power_path", "name": "供电故障链", "reasoning_type": "deductive", "status": "confirmed", "confidence": 0.9, "human_confirmed": true, "summary": null, "nodes": [{"node_key": "node_log", "ordinal": 1, "source_object_id": "information_power_log", "node_type": "evidence", "statement": "日志记录欠压", "attributes": {}}, {"node_key": "node_claim", "ordinal": 2, "source_object_id": "claim_voltage_drop", "node_type": "claim", "statement": "欠压触发重启", "attributes": {}}], "edges": [{"from_node_key": "node_log", "to_node_key": "node_claim", "argument_kind": "supports", "confidence": 0.9, "human_confirmed": true, "attributes": {}}], "source": {"kind": "user"}, "confirmation_status": "user_confirmed"}
+  ],
+  "resolution_spec": {"object_id": "resolution_root_cause", "question_type": "causal_explanation", "target_question": "系统为什么重启？", "conclusion_pattern": {"mode": "unique"}, "status": "resolved", "slots": [{"slot_key": "root_cause", "label": "根因", "is_required": true, "ordinal": 1, "value": "欠压"}], "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"},
+  "constraints": [
+    {"object_id": "constraint_restart_order", "target_object_id": "event_restart", "constraint_kind": "time_order", "constraint_level": "hard", "rule": {"after": "voltage_drop"}, "status": "active", "conflict_status": "none", "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"}
+  ],
+  "knowledge_states": [
+    {"object_id": "knowledge_detective_phase", "entity_object_id": "entity_detective", "narrative_phase_object_id": "phase_investigation", "status": "known", "notes": null, "entries": [{"information_unit_object_id": "information_power_log", "cognition_status": "known", "disclosure_status": "revealed", "acquired_from_object_id": "event_restart", "certainty": 1.0, "ordinal": 1}], "source": {"kind": "user"}, "confidence": 1.0, "confirmation_status": "user_confirmed"}
+  ]
+}

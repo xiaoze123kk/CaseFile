@@ -62,6 +62,18 @@ class NarrativePhase(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "jsonb_typeof(release_rule_jsonb) = 'object'", name="release_rule_is_object"
         ),
+        CheckConstraint(
+            "jsonb_typeof(entry_conditions_jsonb) = 'array'",
+            name="entry_conditions_is_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(allowed_action_types_jsonb) = 'array'",
+            name="allowed_action_types_is_array",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(completion_conditions_jsonb) = 'array'",
+            name="completion_conditions_is_array",
+        ),
         CheckConstraint("status IN ('draft', 'active', 'retired')", name="status_allowed"),
         Index("ix_narrative_phases_draft_id_status", "draft_id", "status"),
     )
@@ -75,6 +87,15 @@ class NarrativePhase(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     release_rule_jsonb: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    entry_conditions_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    allowed_action_types_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    completion_conditions_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'draft'"))
 
@@ -91,7 +112,8 @@ class Entity(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "project_id", "casefile_id", "draft_id", "id", name="uq_entities_lineage_id"
         ),
         CheckConstraint(
-            "entity_kind IN ('person', 'location', 'organization', 'object', 'concept', 'other')",
+            "entity_kind IN ('person', 'organization', 'object', 'system', 'faction', "
+            "'rule_actor', 'location', 'concept', 'other')",
             name="entity_kind_allowed",
         ),
         CheckConstraint("length(btrim(name)) > 0", name="name_not_blank"),
@@ -110,9 +132,63 @@ class Entity(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     traits_jsonb: Mapped[list[Any]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
+    aliases_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    goals_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    secrets_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    capabilities_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     attributes_jsonb: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
+
+
+class Relationship(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
+    """A typed v1 relationship whose endpoints and phases use contract refs."""
+
+    __tablename__ = "relationships"
+    __table_args__ = (
+        _draft_fk("fk_relationships_draft"),
+        _object_fk("object_registry_id", "fk_relationships_object"),
+        UniqueConstraint("object_registry_id", name="uq_relationships_object_registry_id"),
+        UniqueConstraint(
+            "project_id", "casefile_id", "draft_id", "id", name="uq_relationships_lineage_id"
+        ),
+        CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint(
+            "relationship_type ~ '^[a-z][a-z0-9_]*$'",
+            name="relationship_type_format",
+        ),
+        CheckConstraint(
+            "direction IN ('directed', 'undirected', 'bidirectional')",
+            name="direction_allowed",
+        ),
+        CheckConstraint(
+            "truth_status IN ('canon_true', 'reported', 'disputed', 'false_belief', 'unknown')",
+            name="truth_status_allowed",
+        ),
+        CheckConstraint(
+            "visibility IN ('public', 'private', 'restricted', 'hidden')",
+            name="visibility_allowed",
+        ),
+        Index("ix_relationships_draft_id_type", "draft_id", "relationship_type"),
+    )
+
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    relationship_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    direction: Mapped[str] = mapped_column(String(20), nullable=False)
+    truth_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    visibility: Mapped[str] = mapped_column(String(20), nullable=False)
 
 
 class Person(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
@@ -142,11 +218,12 @@ class Person(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
 
 
 class Location(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
-    """The one-to-one location extension of an Entity."""
+    """A formal v1 Location, retaining nullable legacy Entity extension fields."""
 
     __tablename__ = "locations"
     __table_args__ = (
         _draft_fk("fk_locations_draft"),
+        _object_fk("object_registry_id", "fk_locations_object"),
         ForeignKeyConstraint(
             ["project_id", "casefile_id", "draft_id", "entity_id"],
             ["entities.project_id", "entities.casefile_id", "entities.draft_id", "entities.id"],
@@ -154,6 +231,7 @@ class Location(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("entity_id", name="uq_locations_entity_id"),
+        UniqueConstraint("object_registry_id", name="uq_locations_object_registry_id"),
         UniqueConstraint(
             "project_id", "casefile_id", "draft_id", "id", name="uq_locations_lineage_id"
         ),
@@ -161,17 +239,31 @@ class Location(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "jsonb_typeof(movement_rules_jsonb) = 'object'", name="movement_rules_is_object"
         ),
+        CheckConstraint("name IS NULL OR length(btrim(name)) > 0", name="name_not_blank"),
+        CheckConstraint("jsonb_typeof(access_rules_jsonb) = 'array'", name="access_rules_is_array"),
+        CheckConstraint(
+            "jsonb_typeof(visibility_rules_jsonb) = 'array'",
+            name="visibility_rules_is_array",
+        ),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    entity_id: Mapped[int | None] = mapped_column(BigInteger)
+    object_registry_id: Mapped[int | None] = mapped_column(BigInteger)
+    name: Mapped[str | None] = mapped_column(String(200))
     geo_jsonb: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     movement_rules_jsonb: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    access_rules_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    visibility_rules_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
 
 
@@ -219,8 +311,13 @@ class Event(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "visibility IN ('public', 'restricted', 'hidden')", name="visibility_allowed"
         ),
         CheckConstraint(
-            "truth_status IN ('true', 'false', 'uncertain', 'disputed')",
+            "truth_status IN ('true', 'false', 'uncertain', 'canon_true', 'reported', "
+            "'disputed', 'false_belief', 'unknown')",
             name="truth_status_allowed",
+        ),
+        CheckConstraint(
+            "time_jsonb IS NULL OR jsonb_typeof(time_jsonb) = 'object'",
+            name="time_is_object",
         ),
         Index("ix_events_draft_id_narrative_phase_id", "draft_id", "narrative_phase_id"),
         Index("ix_events_draft_id_location_id", "draft_id", "location_id"),
@@ -232,8 +329,9 @@ class Event(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     summary: Mapped[str | None] = mapped_column(Text)
-    start_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    end_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    start_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    end_time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    time_jsonb: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     narrative_order: Mapped[int] = mapped_column(Integer, nullable=False)
     narrative_phase_id: Mapped[int | None] = mapped_column(BigInteger)
     location_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -269,8 +367,8 @@ class InformationUnit(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "project_id", "casefile_id", "draft_id", "id", name="uq_information_units_lineage_id"
         ),
         CheckConstraint(
-            "information_kind IN ('evidence', 'testimony', 'document', 'observation', "
-            "'clue', 'other')",
+            "information_kind IN ('evidence', 'testimony', 'observation', 'dialogue', "
+            "'document', 'system_log', 'rule', 'environment', 'feedback', 'clue', 'other')",
             name="information_kind_allowed",
         ),
         CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
@@ -280,6 +378,24 @@ class InformationUnit(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="source_credibility_range",
         ),
         CheckConstraint("status IN ('draft', 'active', 'retired')", name="status_allowed"),
+        CheckConstraint(
+            "reliability IS NULL OR reliability IN ('high', 'medium', 'low', 'unknown')",
+            name="reliability_allowed",
+        ),
+        CheckConstraint(
+            "truth_status IS NULL OR truth_status IN "
+            "('canon_true', 'reported', 'disputed', 'false_belief', 'unknown')",
+            name="truth_status_allowed",
+        ),
+        CheckConstraint(
+            "classification IS NULL OR classification IN "
+            "('key', 'supporting', 'background', 'distractor', 'misleading', 'incomplete')",
+            name="classification_allowed",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(acquisition_conditions_jsonb) = 'array'",
+            name="acquisition_conditions_is_array",
+        ),
         Index("ix_information_units_draft_id_kind", "draft_id", "information_kind"),
     )
 
@@ -290,6 +406,12 @@ class InformationUnit(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     information_kind: Mapped[str] = mapped_column(String(24), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    reliability: Mapped[str | None] = mapped_column(String(16))
+    truth_status: Mapped[str | None] = mapped_column(String(20))
+    classification: Mapped[str | None] = mapped_column(String(20))
+    acquisition_conditions_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
     source_credibility: Mapped[Decimal | None] = mapped_column(Numeric(5, 4))
     visible_from_phase_id: Mapped[int | None] = mapped_column(BigInteger)
     is_misleading: Mapped[bool] = mapped_column(
@@ -386,8 +508,20 @@ class Claim(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("length(btrim(statement)) > 0", name="statement_not_blank"),
         CheckConstraint(
-            "status IN ('unresolved', 'supported', 'refuted', 'disputed')",
+            "status IN ('unsupported', 'partially_supported', 'supported', 'refuted', "
+            "'disputed', 'unresolved')",
             name="status_allowed",
+        ),
+        CheckConstraint("title IS NULL OR length(btrim(title)) > 0", name="title_not_blank"),
+        CheckConstraint(
+            "claim_type IS NULL OR claim_type IN "
+            "('fact', 'causal', 'identity', 'relationship', 'temporal', 'rule', "
+            "'evaluative', 'other')",
+            name="claim_type_allowed",
+        ),
+        CheckConstraint(
+            "materiality IS NULL OR materiality IN ('critical', 'major', 'minor', 'background')",
+            name="materiality_allowed",
         ),
         Index("ix_claims_draft_id_status", "draft_id", "status"),
     )
@@ -396,7 +530,10 @@ class Claim(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    title: Mapped[str | None] = mapped_column(String(200))
     statement: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_type: Mapped[str | None] = mapped_column(String(20))
+    materiality: Mapped[str | None] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'unresolved'")
     )

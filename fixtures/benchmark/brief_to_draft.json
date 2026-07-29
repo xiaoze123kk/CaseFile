@@ -1,0 +1,43 @@
+{
+  "fixture_id": "brief_to_draft_minimal_v1",
+  "brief": {
+    "source_record_ids": [1],
+    "creative_intent": "围绕一艘每天午夜回到同一码头的渡轮建立可检验的因果卷宗。",
+    "reasoning_proposition": "航行记录为何被修改，强制回航是否确实保护了船上人员？",
+    "resolution_mode": "author_anchored",
+    "author_answer": "大副修改了记录；回航由欠压保护机制触发，避免了推进系统失控。",
+    "author_anchors": [
+      {
+        "anchor_id": "anchor_benchmark_editor",
+        "statement": "大副修改了航行记录。"
+      },
+      {
+        "anchor_id": "anchor_benchmark_voltage",
+        "statement": "欠压保护机制触发了回航并避免推进系统失控。"
+      }
+    ],
+    "boundary_text": "必须保持唯一因果答案；不得把修改记录的人替换成其他角色。",
+    "creative_constraints": [
+      {
+        "constraint_id": "constraint_benchmark_unique",
+        "statement": "因果答案必须唯一。",
+        "strength": "hard"
+      },
+      {
+        "constraint_id": "constraint_benchmark_actor",
+        "statement": "不得把修改记录的人替换成其他角色。",
+        "strength": "hard"
+      }
+    ]
+  },
+  "frozen_context": {
+    "casefile_id": "case_benchmark_ferry",
+    "brief_ref": {"brief_id": "brief_benchmark_ferry", "version": 1},
+    "version": {
+      "version_id": "draft_benchmark_ferry",
+      "version_no": 1,
+      "parent_version_id": null
+    }
+  },
+  "max_turns": 12
+}
