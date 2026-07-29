@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { ApiError, errorMessage } from "@/lib/api-client";
+
 const realWorkflowPages = [
   "intake-workspace.tsx",
   "brief-review-workspace.tsx",
@@ -109,8 +111,60 @@ describe("real workflow boundary", () => {
   it("derives the target-neutral Core collection count from the live index", () => {
     const source = readWorkflowSource("real-workbench.tsx");
 
-    expect(source).toContain("code={`${collections.length} COLLECTIONS`}");
+    expect(source).toContain("code={`${collections.length} 组集合`}");
     expect(source).not.toContain('code="12 COLLECTIONS"');
     expect(source).not.toContain('["phases"');
+  });
+
+  it("keeps the real-mode interface Chinese-first", () => {
+    const source = [
+      readFileSync(resolve(process.cwd(), "components", "archive-shell.tsx"), "utf8"),
+      readFileSync(resolve(process.cwd(), "components", "archive-ui.tsx"), "utf8"),
+      ...[
+        "intake-workspace.tsx",
+        "brief-review-workspace.tsx",
+        "real-workbench.tsx",
+        "settings-dialog.tsx",
+      ].map(readWorkflowSource),
+    ].join("\n");
+    const retiredEnglishLabels = [
+      "07 MODULES",
+      "REAL MODE",
+      "CASE OPENING",
+      "BRIEF REVIEW",
+      "DRAFT DESK",
+      "USER SETTINGS / LOCAL",
+      "CORE BRIEF / TARGET AGNOSTIC",
+      "CREATIVE INTENT",
+      "REASONING PROPOSITION",
+      "RESOLUTION MODE",
+      "AUTHOR ANSWER",
+      "BOUNDARY TEXT",
+      "TASKRUN / POSTGRESQL",
+      "NO PROVIDER",
+      "AGENT RUNNING",
+      "OBJECT / INSPECTOR",
+      "READ ONLY",
+      "REVISION GUARD",
+    ];
+
+    for (const label of retiredEnglishLabels) {
+      expect(source).not.toContain(label);
+    }
+    expect(source).toContain("创作简报审阅");
+    expect(source).not.toContain("<small>{module.code}</small>");
+    expect(source).toContain('"model.started": "模型开始处理"');
+    expect(source).toContain("Agent 润色");
+    expect(source).toContain("版本保护");
+  });
+
+  it.each([
+    ["request_invalid", "提交内容不符合接口要求，请检查后重试。"],
+    ["draft_revision_conflict", "草稿已被更新，请刷新后重新提交。"],
+    ["database_unavailable", "数据库暂时不可用，请稍后重试。"],
+  ])("localizes the stable API error %s", (code, expected) => {
+    const error = new ApiError(400, { code, message: "English fallback", details: {} });
+
+    expect(errorMessage(error)).toBe(expected);
   });
 });

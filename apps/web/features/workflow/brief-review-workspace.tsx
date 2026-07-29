@@ -38,6 +38,79 @@ import {
 
 const terminalTaskStatuses = new Set(["succeeded", "failed", "cancelled"]);
 
+const taskStatusLabels: Record<TaskView["status"], string> = {
+  queued: "排队中",
+  running: "运行中",
+  cancelling: "取消中",
+  succeeded: "已完成",
+  failed: "已失败",
+  cancelled: "已取消",
+};
+
+const taskStageLabels: Record<string, string> = {
+  queued: "等待执行",
+  preparing: "准备输入",
+  polishing: "润色原稿",
+  extracting: "拆解约束",
+  planning: "规划对象",
+  generating: "生成草稿",
+  repairing: "修复结构",
+  validating: "校验结构",
+  completed: "任务完成",
+  failed: "任务失败",
+};
+
+const taskEventLabels: Record<string, string> = {
+  "task.recovered": "任务已恢复",
+  "task.started": "任务已启动",
+  "model.started": "模型开始处理",
+  "model.completed": "模型处理完成",
+  "model.repair_started": "模型开始修复",
+  "tool.started": "工具开始执行",
+  "tool.completed": "工具执行完成",
+  "validation.started": "开始结构校验",
+  "validation.failed": "结构校验未通过",
+  "validation.completed": "结构校验完成",
+  "task.succeeded": "任务执行成功",
+  "task.failed": "任务执行失败",
+};
+
+function taskStatusLabel(status: TaskView["status"] | undefined) {
+  return status ? taskStatusLabels[status] : "尚未创建";
+}
+
+function taskStageLabel(stage: string) {
+  return taskStageLabels[stage] ?? "处理中";
+}
+
+function taskEventLabel(eventType: string) {
+  return taskEventLabels[eventType] ?? "任务状态更新";
+}
+
+function taskToolLabel(tool: unknown) {
+  const toolName = String(tool);
+  const labels: Record<string, string> = {
+    plan_object_ids: "规划对象编号",
+    validate_casefile_candidate: "校验 CaseFile 候选稿",
+  };
+  return labels[toolName] ?? "内部工具";
+}
+
+function validationIssueMessage(message: string) {
+  if (/[\u3400-\u9fff]/u.test(message)) return message;
+  if (/candidate must be a JSON object/iu.test(message)) {
+    return "候选内容必须是 JSON 对象。";
+  }
+  if (/invalid JSON/iu.test(message)) {
+    return "候选内容不是有效的 JSON。";
+  }
+  if (/field required/iu.test(message)) return "缺少必填字段。";
+  if (/extra inputs are not permitted/iu.test(message)) {
+    return "包含契约不允许的字段。";
+  }
+  return "字段内容不符合 CaseFile 契约要求。";
+}
+
 const resolutionModes: Array<{
   value: ResolutionMode;
   label: string;
@@ -132,7 +205,9 @@ function eventIssueSummary(payload: Record<string, unknown>) {
   const issue = first as Record<string, unknown>;
   const path = typeof issue.path === "string" && issue.path ? issue.path : "/";
   const message =
-    typeof issue.message === "string" ? issue.message : "结构校验失败";
+    typeof issue.message === "string"
+      ? validationIssueMessage(issue.message)
+      : "结构校验失败";
   return `${path} ${message}${issues.length > 1 ? `（另有 ${issues.length - 1} 项）` : ""}`;
 }
 
@@ -144,7 +219,7 @@ export function eventSummary(event: TaskEventView) {
       : null;
   const parts = [
     payload.message,
-    payload.tool ? `工具：${String(payload.tool)}` : null,
+    payload.tool ? `工具：${taskToolLabel(payload.tool)}` : null,
     payload.model_id ? `模型：${String(payload.model_id)}` : null,
     payload.repair_no !== undefined
       ? `修复轮次：${String(payload.repair_no)}`
@@ -163,7 +238,7 @@ export function eventSummary(event: TaskEventView) {
     eventIssueSummary(payload),
     failure?.retryable === true ? "可重试" : null,
     payload.content_hash
-      ? `HASH ${String(payload.content_hash).slice(0, 12)}…`
+      ? `哈希 ${String(payload.content_hash).slice(0, 12)}…`
       : null,
     payload.usage ? `用量：${JSON.stringify(payload.usage)}` : null,
   ];
@@ -174,7 +249,7 @@ function TaskFailureDetails({ failure }: { failure: TaskFailure }) {
   return (
     <div className={styles.failurePanel} role="alert">
       <div>
-        <b>生成失败 / {failure.code}</b>
+        <b>生成失败</b>
         <span>{failure.retryable ? "可重新发起" : "需要先处理配置"}</span>
       </div>
       <p>{failure.message}</p>
@@ -183,7 +258,7 @@ function TaskFailureDetails({ failure }: { failure: TaskFailure }) {
           {failure.issues.map((issue, index) => (
             <li key={`${issue.code}-${issue.path}-${index}`}>
               <code>{issue.path || "/"}</code>
-              <span>{issue.message}</span>
+              <span>{validationIssueMessage(issue.message)}</span>
             </li>
           ))}
         </ol>
@@ -411,7 +486,7 @@ export function BriefReviewWorkspace() {
         throw new Error("当前没有可拆解的真实项目。");
       }
       if (!providerQuery.data) {
-        throw new Error("请先配置当前 Agent Provider。");
+        throw new Error("请先配置当前 Agent 模型服务。");
       }
       return apiRequest<TaskView>(
         `/projects/${workflow.projectId}/tasks/brief-anchor-extract`,
@@ -465,7 +540,7 @@ export function BriefReviewWorkspace() {
         !briefQuery.data ||
         !normalizedContent
       ) {
-        throw new Error("Brief 尚未读取完成。");
+        throw new Error("创作简报尚未读取完成。");
       }
       if (!normalizedContent.creative_intent) {
         throw new Error("创作意图不能为空。");
@@ -521,7 +596,7 @@ export function BriefReviewWorkspace() {
         !briefQuery.data ||
         !normalizedContent
       ) {
-        throw new Error("Brief 尚未读取完成。");
+        throw new Error("创作简报尚未读取完成。");
       }
       if (contentDirty || atomicsDirty) {
         throw new Error("请先保存当前审阅修改。");
@@ -567,13 +642,13 @@ export function BriefReviewWorkspace() {
         !briefQuery.data?.current_version_id ||
         !draftQuery.data
       ) {
-        throw new Error("请先冻结当前 Brief，并等待 Draft 状态读取完成。");
+        throw new Error("请先冻结当前创作简报，并等待草稿状态读取完成。");
       }
       if (!providerQuery.data) {
-        throw new Error("请先配置当前 Agent Provider。");
+        throw new Error("请先配置当前 Agent 模型服务。");
       }
       if (draftQuery.data.content) {
-        throw new Error("当前 Draft 已有内容，不能再次执行全量生成。");
+        throw new Error("当前草稿已有内容，不能再次执行全量生成。");
       }
       return apiRequest<TaskView>(
         `/projects/${workflow.projectId}/tasks/generate`,
@@ -714,7 +789,7 @@ export function BriefReviewWorkspace() {
   ) {
     return (
       <main className={styles.centerState}>
-        <p>正在恢复 Brief、来源记录与 TaskRun…</p>
+        <p>正在恢复创作简报、来源记录与任务…</p>
       </main>
     );
   }
@@ -760,7 +835,7 @@ export function BriefReviewWorkspace() {
   if (!content || !normalizedContent) {
     return (
       <main className={styles.centerState}>
-        <p>Brief 尚无可审阅内容，请返回建案中心保存。</p>
+        <p>创作简报尚无可审阅内容，请返回建案中心保存。</p>
         <button
           className={styles.primaryButton}
           onClick={() => router.push("/")}
@@ -784,15 +859,15 @@ export function BriefReviewWorkspace() {
             ← 返回建案
           </button>
         }
-        eyebrow="BRIEF REVIEW / AUTHOR CONTROL"
+        eyebrow="创作简报审阅 · 作者控制"
         meta={[
           {
             label: "项目",
-            value: `PROJECT-${workflow.projectId}`,
+            value: `项目-${workflow.projectId}`,
           },
           {
-            label: "Brief 草稿",
-            value: `REV.${briefQuery.data?.draft_revision ?? "—"}`,
+            label: "简报草稿",
+            value: `版本 ${briefQuery.data?.draft_revision ?? "—"}`,
           },
           {
             label: "冻结状态",
@@ -813,10 +888,10 @@ export function BriefReviewWorkspace() {
             saveMutation.mutate();
           }}
         >
-          <span className={styles.briefWatermark}>BRIEF</span>
+          <span className={styles.briefWatermark}>简报</span>
           <header className={styles.briefSheetHead}>
             <div>
-              <span>CORE BRIEF / TARGET AGNOSTIC</span>
+              <span>创作简报核心 · 目标无关</span>
               <strong>{normalizedContent.reasoning_proposition}</strong>
             </div>
             <div
@@ -824,7 +899,7 @@ export function BriefReviewWorkspace() {
                 frozen ? styles.candidateStampApproved : ""
               }`}
             >
-              <span>{frozen ? "FROZEN" : "CANDIDATE"}</span>
+              <span>{frozen ? "已冻结" : "候选稿"}</span>
               <b>{frozen ? "人工已确认" : dirty ? "待保存" : "待冻结"}</b>
             </div>
           </header>
@@ -835,7 +910,7 @@ export function BriefReviewWorkspace() {
                 <i>01</i>
                 <span>
                   <strong>创作意图</strong>
-                  <small>CREATIVE INTENT</small>
+                  <small>创作意图说明</small>
                 </span>
                 <em>作者原文</em>
               </span>
@@ -857,7 +932,7 @@ export function BriefReviewWorkspace() {
               />
               <span className={styles.fieldFoot}>
                 <span>定义作品要建立什么</span>
-                <b>REQUIRED</b>
+                <b>必填</b>
               </span>
             </label>
 
@@ -866,7 +941,7 @@ export function BriefReviewWorkspace() {
                 <i>02</i>
                 <span>
                   <strong>核心推理命题</strong>
-                  <small>REASONING PROPOSITION</small>
+                  <small>推理命题说明</small>
                 </span>
                 <em>作者原文</em>
               </span>
@@ -888,7 +963,7 @@ export function BriefReviewWorkspace() {
               />
               <span className={styles.fieldFoot}>
                 <span>定义要探索或判断什么</span>
-                <b>REQUIRED</b>
+                <b>必填</b>
               </span>
             </label>
 
@@ -897,7 +972,7 @@ export function BriefReviewWorkspace() {
                 <i>03</i>
                 <span>
                   <strong>结论处理方式</strong>
-                  <small>RESOLUTION MODE</small>
+                  <small>结论处理说明</small>
                 </span>
                 <em>作者决定</em>
               </span>
@@ -934,7 +1009,7 @@ export function BriefReviewWorkspace() {
               </select>
               <span className={styles.fieldFoot}>
                 <span>不预设媒介或最终成品</span>
-                <b>REQUIRED</b>
+                <b>必填</b>
               </span>
             </label>
 
@@ -943,7 +1018,7 @@ export function BriefReviewWorkspace() {
                 <i>04</i>
                 <span>
                   <strong>作者底牌</strong>
-                  <small>AUTHOR ANSWER</small>
+                  <small>作者底牌原文</small>
                 </span>
                 <em>
                   {content.resolution_mode === "author_anchored"
@@ -980,8 +1055,8 @@ export function BriefReviewWorkspace() {
                 <span>修改后原子拆解自动失效</span>
                 <b>
                   {content.resolution_mode === "author_anchored"
-                    ? "AUTHOR LOCK"
-                    : "N/A"}
+                    ? "作者锁定"
+                    : "不适用"}
                 </b>
               </span>
             </label>
@@ -993,7 +1068,7 @@ export function BriefReviewWorkspace() {
                 <i>05</i>
                 <span>
                   <strong>创作边界</strong>
-                  <small>BOUNDARY TEXT</small>
+                  <small>创作边界原文</small>
                 </span>
                 <em>允许硬约束或软偏好</em>
               </span>
@@ -1018,7 +1093,7 @@ export function BriefReviewWorkspace() {
               />
               <span className={styles.fieldFoot}>
                 <span>原文与原子约束同时保留</span>
-                <b>OPTIONAL</b>
+                <b>选填</b>
               </span>
             </label>
 
@@ -1029,7 +1104,7 @@ export function BriefReviewWorkspace() {
               <header className={styles.atomicHead}>
                 <span>
                   <strong>原子底牌</strong>
-                  <small>AUTHOR ANCHORS / ALWAYS HARD</small>
+                  <small>作者锚点 / 固定为硬约束</small>
                 </span>
                 <button onClick={addAnchor} type="button">
                   ＋ 人工新增
@@ -1047,10 +1122,10 @@ export function BriefReviewWorkspace() {
                         data-origin={anchor.origin}
                       >
                         {anchor.origin === "agent"
-                          ? "AGENT"
+                          ? "Agent 拆解"
                           : anchor.origin === "manual"
-                            ? "MANUAL"
-                            : "SAVED"}
+                            ? "人工新增"
+                            : "已保存"}
                       </span>
                       <input
                         aria-label={`底牌原子项 ${anchor.anchor_id}`}
@@ -1069,7 +1144,7 @@ export function BriefReviewWorkspace() {
                         }}
                         value={anchor.statement}
                       />
-                      <b>HARD</b>
+                      <b>硬约束</b>
                       <button
                         aria-label={`删除底牌原子项 ${anchor.anchor_id}`}
                         onClick={() => {
@@ -1096,8 +1171,8 @@ export function BriefReviewWorkspace() {
                 )}
               </div>
               <span className={styles.fieldFoot}>
-                <span>只有保存后的项目才进入 Brief 硬约束</span>
-                <b>{anchorRows.length} ITEMS</b>
+                <span>只有保存后的项目才进入简报硬约束</span>
+                <b>{anchorRows.length} 项</b>
               </span>
             </section>
 
@@ -1108,7 +1183,7 @@ export function BriefReviewWorkspace() {
               <header className={styles.atomicHead}>
                 <span>
                   <strong>原子创作约束</strong>
-                  <small>CREATIVE CONSTRAINTS</small>
+                  <small>逐条确认的创作边界</small>
                 </span>
                 <button onClick={addConstraint} type="button">
                   ＋ 人工新增
@@ -1126,10 +1201,10 @@ export function BriefReviewWorkspace() {
                         data-origin={constraint.origin}
                       >
                         {constraint.origin === "agent"
-                          ? "AGENT"
+                          ? "Agent 拆解"
                           : constraint.origin === "manual"
-                            ? "MANUAL"
-                            : "SAVED"}
+                            ? "人工新增"
+                            : "已保存"}
                       </span>
                       <input
                         aria-label={`创作约束 ${constraint.constraint_id}`}
@@ -1199,18 +1274,18 @@ export function BriefReviewWorkspace() {
               </div>
               <span className={styles.fieldFoot}>
                 <span>强度由作者逐条决定</span>
-                <b>{constraintRows.length} ITEMS</b>
+                <b>{constraintRows.length} 项</b>
               </span>
             </section>
           </div>
 
           <section className={styles.sourceLedger}>
             <PanelHeader
-              code="SOURCE RECORDS / IMMUTABLE"
+              code="来源记录 · 不可变"
               title="来源台账"
               trailing={
                 <StatusBadge tone="neutral">
-                  {sourceRecords.length} RECORDS
+                  {sourceRecords.length} 条记录
                 </StatusBadge>
               }
             />
@@ -1221,16 +1296,18 @@ export function BriefReviewWorkspace() {
               </span>
               <span>
                 <b>{adoptedSources.length}</b>
-                <small>已纳入 Brief 的候选或人工修订</small>
+                <small>已纳入创作简报的候选或人工修订</small>
               </span>
               <span>
                 <b>
                   {extractTask
-                    ? `TASK #${extractTask.task_run_id}`
-                    : "NO TASK"}
+                    ? `任务 #${extractTask.task_run_id}`
+                    : "尚无任务"}
                 </b>
                 <small>
-                  {extractTask?.status ?? "尚未创建原子拆解任务"}
+                  {extractTask
+                    ? taskStatusLabel(extractTask.status)
+                    : "尚未创建原子拆解任务"}
                 </small>
               </span>
             </div>
@@ -1242,7 +1319,7 @@ export function BriefReviewWorkspace() {
                 {dirty
                   ? "当前修改尚未写入 PostgreSQL"
                   : frozen
-                    ? "当前 BriefVersion 已由作者冻结"
+                    ? "当前创作简报版本已由作者冻结"
                     : atomicReviewComplete
                       ? "原子约束已保存，可冻结版本"
                       : "等待拆解与人工审阅"}
@@ -1282,7 +1359,7 @@ export function BriefReviewWorkspace() {
         <aside className={`paper-panel ${styles.generationPanel}`}>
           <header className={styles.generationHead}>
             <div>
-              <span>BRIEF → CORE DRAFT</span>
+              <span>创作简报 → 核心草稿</span>
               <h2>生成与审计控制台</h2>
             </div>
             <StatusBadge
@@ -1295,16 +1372,16 @@ export function BriefReviewWorkspace() {
               }
             >
               {generationRunning
-                ? "AGENT RUNNING"
+                ? "Agent 运行中"
                 : frozen
-                  ? "READY"
-                  : "GATED"}
+                  ? "可以生成"
+                  : "尚未解锁"}
             </StatusBadge>
           </header>
 
           <section className={styles.gateSection}>
             <PanelHeader
-              code="3 AUTHOR GATES"
+              code="3 道作者门禁"
               title="生成门禁"
             />
             <ol className={styles.gateList}>
@@ -1334,7 +1411,7 @@ export function BriefReviewWorkspace() {
               >
                 <b>{frozen ? "✓" : "2"}</b>
                 <span>
-                  <strong>冻结 Brief</strong>
+                  <strong>冻结创作简报</strong>
                   <small>{frozen ? "版本不可变" : "等待作者确认"}</small>
                 </span>
               </li>
@@ -1351,10 +1428,10 @@ export function BriefReviewWorkspace() {
                   {generationTask?.status === "succeeded" ? "✓" : "3"}
                 </b>
                 <span>
-                  <strong>生成 Draft</strong>
+                  <strong>生成草稿</strong>
                   <small>
                     {generationTask
-                      ? generationTask.status
+                      ? taskStatusLabel(generationTask.status)
                       : "尚未启动"}
                   </small>
                 </span>
@@ -1364,13 +1441,15 @@ export function BriefReviewWorkspace() {
 
           <section className={styles.runtimeSection}>
             <PanelHeader
-              code="TASKRUN / POSTGRESQL"
+              code="任务运行 / PostgreSQL"
               title="运行状态"
               trailing={
                 <StatusBadge tone={providerQuery.data ? "dark" : "red"}>
                   {providerQuery.data
-                    ? workflow.provider.toUpperCase()
-                    : "NO PROVIDER"}
+                    ? workflow.provider === "deepseek"
+                      ? "DeepSeek"
+                      : "OpenAI"
+                    : "未配置模型"}
                 </StatusBadge>
               }
             />
@@ -1380,7 +1459,7 @@ export function BriefReviewWorkspace() {
                 <dd>{providerQuery.data?.model_id ?? "尚未配置"}</dd>
               </div>
               <div>
-                <dt>Brief Version</dt>
+                <dt>创作简报版本</dt>
                 <dd>
                   {briefQuery.data?.current_version_id
                     ? `#${briefQuery.data.current_version_id}`
@@ -1391,7 +1470,7 @@ export function BriefReviewWorkspace() {
                 <dt>拆解任务</dt>
                 <dd>
                   {extractTask
-                    ? `#${extractTask.task_run_id} / ${extractTask.status}`
+                    ? `#${extractTask.task_run_id} / ${taskStatusLabel(extractTask.status)}`
                     : "尚无任务"}
                 </dd>
               </div>
@@ -1399,7 +1478,7 @@ export function BriefReviewWorkspace() {
                 <dt>生成任务</dt>
                 <dd>
                   {generationTask
-                    ? `#${generationTask.task_run_id} / ${generationTask.status}`
+                    ? `#${generationTask.task_run_id} / ${taskStatusLabel(generationTask.status)}`
                     : "尚无任务"}
                 </dd>
               </div>
@@ -1417,15 +1496,14 @@ export function BriefReviewWorkspace() {
             ) : null}
             {isExtractResult(extractTask) && !extractionCurrent && !atomicReviewComplete ? (
               <p className={styles.panelWarning}>
-                当前拆解候选对应旧 Brief revision 或输入 Hash，已禁止进入硬约束。
+                当前拆解候选对应旧创作简报版本或输入哈希，已禁止进入硬约束。
               </p>
             ) : null}
             {extractTask?.status === "failed" ? (
               <p className={styles.panelWarning}>
                 原子拆解失败：
                 {extractTask.failure?.message ??
-                  extractTask.error_code ??
-                  "unknown_error"}
+                  "任务未能完成，请稍后重试"}
                 。原稿仍完整保留，可重试或人工补录。
               </p>
             ) : null}
@@ -1435,7 +1513,7 @@ export function BriefReviewWorkspace() {
             ) : null}
             {!providerQuery.data ? (
               <p className={styles.panelWarning}>
-                请从左下角设置中配置当前 Provider，才能运行 Agent。
+                请从左下角设置中配置当前模型服务，才能运行 Agent。
               </p>
             ) : null}
             {displayedError ? (
@@ -1490,29 +1568,29 @@ export function BriefReviewWorkspace() {
                     : generationRunning
                       ? "Agent 正在生成"
                       : draftQuery.data?.content
-                        ? "Draft 已存在"
-                        : "启动 Brief → Draft"}
+                        ? "草稿已存在"
+                        : "启动创作简报 → 草稿"}
                 </span>
-                <b>BRIEF_TO_DRAFT →</b>
+                <b>生成核心草稿 →</b>
               </button>
             </div>
           </section>
 
           <section
             className={styles.auditTrail}
-            aria-label="TaskRun 可恢复审计轨迹"
+            aria-label="任务可恢复审计轨迹"
           >
             <PanelHeader
               code={
                 visibleTask
-                  ? `TASK #${visibleTask.task_run_id}`
-                  : "WAITING"
+                  ? `任务 #${visibleTask.task_run_id}`
+                  : "等待任务"
               }
               title="可恢复审计轨迹"
               trailing={
                 visibleTask ? (
                   <StatusBadge tone="neutral">
-                    {visibleTask.stage}
+                    {taskStageLabel(visibleTask.stage)}
                   </StatusBadge>
                 ) : undefined
               }
@@ -1525,8 +1603,8 @@ export function BriefReviewWorkspace() {
                       {String(event.sequence_no).padStart(2, "0")}
                     </span>
                     <div>
-                      <b>{event.event_type}</b>
-                      <small>{event.stage}</small>
+                      <b>{taskEventLabel(event.event_type)}</b>
+                      <small>{taskStageLabel(event.stage)}</small>
                       <p>{eventSummary(event)}</p>
                     </div>
                   </li>
@@ -1534,7 +1612,7 @@ export function BriefReviewWorkspace() {
               </ol>
             ) : (
               <p className={styles.emptyTrail}>
-                TaskRun 创建后，这里会从不可变事件表回放阶段、工具摘要、Validator 与用量。
+                任务创建后，这里会从不可变事件表回放阶段、工具摘要、校验结果与用量。
               </p>
             )}
             {eventStream.streamError ? (
@@ -1554,17 +1632,17 @@ export function BriefReviewWorkspace() {
 
       <footer className={styles.documentFooter}>
         <span>
-          <b>真实模式：</b>PostgreSQL / TaskRun / SSE
+          <b>真实模式：</b>PostgreSQL / 任务运行 / SSE
         </span>
         <span>
-          Source Records：{sourceRecords.length}
+          来源记录：{sourceRecords.length}
         </span>
         <span>
           {dirty
             ? "修改尚未保存，冻结与生成门禁保持关闭。"
-            : "候选只有经作者保存确认后才进入 Brief。"}
+            : "候选只有经作者保存确认后才进入创作简报。"}
         </span>
-        <span>NO COMPILER / THIS SLICE</span>
+        <span>本阶段不进入编译</span>
       </footer>
 
       {completionVisible && generationTask ? (
@@ -1574,22 +1652,22 @@ export function BriefReviewWorkspace() {
             className={styles.completionDialog}
             role="dialog"
           >
-            <small>TASK SUCCEEDED / CORE DRAFT READY</small>
-            <h2>Brief 已生成真实 Draft</h2>
+            <small>任务成功 · 核心草稿已就绪</small>
+            <h2>创作简报已生成真实草稿</h2>
             <p>
-              TaskRun、规范化数据库投影与 Snapshot 已完成；本轮不进入下游 Compiler。
+              任务运行、规范化数据库投影与快照均已完成；本轮不进入下游编译。
             </p>
             <dl>
               <div>
-                <dt>TaskRun</dt>
+                <dt>任务编号</dt>
                 <dd>#{generationTask.task_run_id}</dd>
               </div>
               <div>
-                <dt>Provider</dt>
+                <dt>模型供应商</dt>
                 <dd>{generationTask.provider}</dd>
               </div>
               <div>
-                <dt>Attempt</dt>
+                <dt>执行次数</dt>
                 <dd>{generationTask.attempt_count}</dd>
               </div>
             </dl>

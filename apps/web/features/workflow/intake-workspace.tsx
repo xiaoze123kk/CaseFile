@@ -51,44 +51,44 @@ const resolutionModes: Array<{
   {
     value: "agent_proposed",
     label: "Agent 提出候选结论",
-    code: "CANDIDATES",
-    detail: "让 Agent 构造可审阅答案，但不直接写成 Canon。",
+    code: "候选结论",
+    detail: "让 Agent 构造可审阅答案，但不直接写成正式版本。",
   },
   {
     value: "author_anchored",
     label: "按作者底牌展开",
-    code: "ANCHORED",
+    code: "作者底牌",
     detail: "底牌作为硬约束，拆解后仍需逐条人工确认。",
   },
   {
     value: "open",
     label: "保持未决",
-    code: "OPEN",
-    detail: "建立事实与问题空间，不要求 Draft 预先收束。",
+    code: "保持未决",
+    detail: "建立事实与问题空间，不要求草稿预先收束。",
   },
 ];
 
 const intakeRoutes = [
   {
-    code: "A",
+    code: "01",
     title: "我有一个想法",
-    detail: "从创作命题建立通用 Brief",
+    detail: "从命题建立创作简报",
     enabled: true,
   },
   {
-    code: "B",
+    code: "02",
     title: "帮我想一个",
     detail: "比较多个创意候选",
     enabled: false,
   },
   {
-    code: "C",
+    code: "03",
     title: "整理已有内容",
     detail: "抽取实体、事件与信息",
     enabled: false,
   },
   {
-    code: "D",
+    code: "04",
     title: "专业模板起稿",
     detail: "从结构化空白卷宗开始",
     enabled: false,
@@ -354,7 +354,7 @@ export function IntakeWorkspace() {
     const trimmed = sourceText.trim();
     if (!trimmed) return null;
     if (workflow.projectId !== null && persistedWorkflowLoading) {
-      throw new Error("正在恢复已有来源与 Brief，请稍后再试。");
+      throw new Error("正在恢复已有来源与创作简报，请稍后再试。");
     }
     if (workflow.projectId !== null && persistedWorkflowError) {
       throw new Error("已有来源尚未恢复成功，请先重新读取。");
@@ -463,7 +463,7 @@ export function IntakeWorkspace() {
       if (!providerQuery.data) throw new Error("请先配置当前 Agent 模型。");
       const projectId = await ensureProject();
       const source = await ensureAuthorSource(projectId);
-      if (!source) throw new Error("原始创意尚未形成可用的 Source Record。");
+      if (!source) throw new Error("原始创意尚未形成可用的来源记录。");
       return apiRequest<TaskView>(
         `/projects/${projectId}/tasks/brief-polish`,
         {
@@ -640,7 +640,7 @@ export function IntakeWorkspace() {
           );
         } catch (error) {
           throw new Error(
-            `Brief 已保存，但自动拆解未能启动：${errorMessage(error)}`,
+            `创作简报已保存，但自动拆解未能启动：${errorMessage(error)}`,
           );
         }
       }
@@ -742,22 +742,22 @@ export function IntakeWorkspace() {
       className={`document ${styles.homeDocument}`}
     >
       <DocumentHeader
-        eyebrow="建案中心 / CASE OPENING"
+        eyebrow="建案中心 · 真实工作流"
         meta={[
           {
             label: "记录编号",
             value: workflow.projectId
-              ? `PROJECT-${workflow.projectId}`
+              ? `项目-${workflow.projectId}`
               : "待分配",
           },
-          { label: "数据位置", value: "POSTGRESQL" },
+          { label: "数据位置", value: "PostgreSQL" },
           {
             label: "保存状态",
             value: saveStatus,
             tone: displayedError ? "critical" : "default",
           },
         ]}
-        title={`CF-NEW : ${documentTitle}`}
+        title={`新卷宗：${documentTitle}`}
       />
 
       <CaseSpine current="idea" />
@@ -772,7 +772,7 @@ export function IntakeWorkspace() {
         <aside className={styles.ledgerColumn}>
           <section className={`paper-panel ${styles.intakeLedger}`}>
             <PanelHeader
-              code="INTAKE / 01"
+              code="建案 / 01"
               title="建案入口"
               trailing={<StatusBadge tone="red">当前路径</StatusBadge>}
             />
@@ -794,7 +794,7 @@ export function IntakeWorkspace() {
               <div className={styles.plannedRoutes}>
                 <div className={styles.plannedCaption}>
                   <span>更多建案方式</span>
-                  <b>PLANNED / 03</b>
+                  <b>规划中 / 03</b>
                 </div>
                 <div className={styles.plannedRouteGrid}>
                   {plannedIntakeRoutes.map((route) => (
@@ -816,7 +816,7 @@ export function IntakeWorkspace() {
 
           <section className={`paper-panel ${styles.processLedger}`}>
             <PanelHeader
-              code="LIVE / WRITE PATH"
+              code="真实写入路径"
               title="真实写入流程"
               trailing={<StatusBadge tone="dark">人工建案</StatusBadge>}
             />
@@ -824,8 +824,8 @@ export function IntakeWorkspace() {
               <li>
                 <b>01</b>
                 <span>
-                  <strong>建立来源与通用 Brief</strong>
-                  <small>原稿进入不可变 Source Record，不再混入 Brief。</small>
+                  <strong>建立来源与通用简报</strong>
+                  <small>原稿进入不可变来源记录，不再混入创作简报。</small>
                 </span>
               </li>
               <li>
@@ -839,7 +839,7 @@ export function IntakeWorkspace() {
                 <b>03</b>
                 <span>
                   <strong>人工审阅原子约束</strong>
-                  <small>逐条确认后才冻结 BriefVersion。</small>
+                  <small>逐条确认后才冻结创作简报版本。</small>
                 </span>
               </li>
             </ol>
@@ -856,7 +856,7 @@ export function IntakeWorkspace() {
           {workflow.projectId ? (
             <section className={`paper-panel ${styles.recentCase}`}>
               <PanelHeader
-                code={`PROJECT-${workflow.projectId}`}
+                code={`项目-${workflow.projectId}`}
                 title="当前真实卷宗"
                 trailing={<StatusBadge tone="red">可恢复</StatusBadge>}
               />
@@ -864,20 +864,20 @@ export function IntakeWorkspace() {
                 <span className={styles.miniOrbit} aria-hidden="true" />
                 <span>
                   <strong>{projectTitle}</strong>
-                  <small>Source 与 Brief 已在 PostgreSQL 建立</small>
+                  <small>来源记录与创作简报已在 PostgreSQL 建立</small>
                 </span>
               </div>
               <div className={styles.resumeActions}>
                 <button onClick={resetIntake} type="button">
                   开始新案
                 </button>
-                <Link href="/brief">继续审阅 Brief ↗</Link>
+                <Link href="/brief">继续审阅创作简报 ↗</Link>
               </div>
             </section>
           ) : (
             <section className={`paper-panel ${styles.recentCase}`}>
               <PanelHeader
-                code="PROJECT / PENDING"
+                code="项目待建立"
                 title="当前真实卷宗"
                 trailing={
                   <StatusBadge tone="neutral">尚未建立</StatusBadge>
@@ -903,33 +903,33 @@ export function IntakeWorkspace() {
             <i className={styles.crosshairOne} />
             <i className={styles.crosshairTwo} />
           </div>
-          <span className={styles.coordinateTop}>LIVE DB / SCHEMA V1</span>
+          <span className={styles.coordinateTop}>实时数据库 · 契约 V1</span>
           <span className={styles.coordinateSide}>
-            SOURCE / BRIEF / CORE DRAFT
+            来源记录 / 创作简报 / 核心草稿
           </span>
 
           <div className={styles.heroCopy}>
-            <span>DOCUMENT PURPOSE / 001</span>
+            <span>卷宗用途 / 001</span>
             <h2>
               把一句念头，
               <br />
               立成一份卷宗。
             </h2>
             <p>
-              Brief 定义创作意图与推理命题；媒介、玩家和成品形态不在这里预设。
+              创作简报定义创作意图与推理命题；媒介、玩家和成品形态不在这里预设。
             </p>
           </div>
 
           <div className={styles.recordComparison}>
             <section className={styles.ideaRecord}>
               <header>
-                <span>原始创意 / AUTHOR SOURCE</span>
+                <span>原始创意 / 作者原稿</span>
                 <StatusBadge tone="dark">人工原稿</StatusBadge>
               </header>
               <label htmlFor="casefile-source-text">
                 原始创意
                 <small>
-                  原稿将成为不可变 Source Record；Agent 润色只生成独立提案。
+                  原稿将成为不可变来源记录；Agent 润色只生成独立提案。
                 </small>
               </label>
               <textarea
@@ -960,10 +960,10 @@ export function IntakeWorkspace() {
                   {workingSource
                     ? "人工确认工作稿"
                     : originalSource
-                      ? "Source Record 已建立"
+                      ? "来源记录已建立"
                       : "人工输入"}
                 </span>
-                <span>写入：SOURCE RECORD</span>
+                <span>写入：来源记录</span>
               </footer>
               <div className={styles.recordActions}>
                 <button
@@ -983,10 +983,10 @@ export function IntakeWorkspace() {
                   }
                   type="button"
                 >
-                  {polishRunning ? "Agent 润色中…" : "A / Agent 润色"}
+                  {polishRunning ? "Agent 润色中…" : "Agent 润色"}
                 </button>
                 <button
-                  aria-label="保存通用 Brief 并进入原子约束审阅"
+                  aria-label="保存通用简报并进入原子约束审阅"
                   disabled={
                     createMutation.isPending || persistedWorkflowLoading
                   }
@@ -995,7 +995,7 @@ export function IntakeWorkspace() {
                   <span>
                     {createMutation.isPending
                       ? "正在保存与预处理…"
-                      : "保存并审阅 Brief"}
+                      : "保存并审阅创作简报"}
                   </span>
                   <b>→</b>
                 </button>
@@ -1004,7 +1004,7 @@ export function IntakeWorkspace() {
 
             <section className={styles.briefStructure}>
               <header>
-                <span>Brief Core / 3 REQUIRED</span>
+                <span>创作简报核心 / 3 项必填</span>
                 <StatusBadge
                   tone={structuredComplete === 3 ? "dark" : "red"}
                 >
@@ -1067,7 +1067,7 @@ export function IntakeWorkspace() {
                     <span className={styles.fieldIndex}>03</span>
                     <span className={styles.fieldCopy}>
                       <b>结论处理方式</b>
-                      <small>决定 Draft 如何面对尚未形成的答案。</small>
+                      <small>决定草稿如何面对尚未形成的答案。</small>
                     </span>
                   </legend>
                   <div className={styles.resolutionOptions}>
@@ -1170,7 +1170,7 @@ export function IntakeWorkspace() {
                 <span>
                   保存后自动拆解底牌与边界；确认前不会写入硬约束。
                 </span>
-                <b>CORE BRIEF / V1</b>
+                <b>创作简报核心 · V1</b>
               </footer>
             </section>
           </div>
@@ -1188,7 +1188,7 @@ export function IntakeWorkspace() {
               <span>
                 {displayedError
                   ? errorMessage(displayedError)
-                  : polishTask?.error_code ??
+                  : polishTask?.failure?.message ??
                     "润色任务未能完成，请稍后重试。"}
               </span>
             </p>
@@ -1209,15 +1209,15 @@ export function IntakeWorkspace() {
         <span>
           <b>真实模式：</b>PostgreSQL 持久化
         </span>
-        <span>Brief Core：3 项必填</span>
+        <span>创作简报核心：3 项必填</span>
         <span className={styles.footerNotice}>
           {workingSource
             ? "Agent 提案已由作者确认，原稿仍完整保留。"
             : workflow.projectId
-              ? "当前卷宗可继续进入 Brief 审阅。"
-              : "SOURCE FIRST / AUTHOR IN CONTROL"}
+              ? "当前卷宗可继续进入创作简报审阅。"
+              : "先保留来源，再由作者确认"}
         </span>
-        <span>CASEFILE / LIVE-V1</span>
+        <span>CaseFile · 实时数据 V1</span>
       </footer>
 
       {polishReviewOpen && polishResult && !polishResultAdopted ? (
@@ -1231,7 +1231,7 @@ export function IntakeWorkspace() {
             <header>
               <div>
                 <span>
-                  AGENT REVISION SLIP / TASK #
+                  Agent 润色校样 · 任务 #
                   {polishTask?.task_run_id ?? "—"}
                 </span>
                 <h2>语义保真润色校样</h2>
@@ -1240,11 +1240,11 @@ export function IntakeWorkspace() {
             </header>
             <div className={styles.polishComparison}>
               <section>
-                <small>AUTHOR SOURCE / 只读</small>
+                <small>作者原稿 / 只读</small>
                 <p>{polishInputSource?.content_text ?? sourceText.trim()}</p>
               </section>
               <label>
-                <small>AGENT CANDIDATE / 可编辑</small>
+                <small>Agent 候选稿 / 可编辑</small>
                 <textarea
                   aria-label="编辑 Agent 润色工作稿"
                   onChange={(event) => setPolishDraft(event.target.value)}

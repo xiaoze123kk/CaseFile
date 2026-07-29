@@ -21,17 +21,17 @@ import { useWorkflowSession } from "@/store/workflow-store";
 import styles from "./real-workbench.module.css";
 
 const collections = [
-  ["resolution_specs", "结论规格", "RSL"],
-  ["entities", "实体 / 人物", "ENT"],
-  ["relationships", "关系", "REL"],
-  ["locations", "地点", "LOC"],
-  ["events", "事件", "EVT"],
-  ["information_units", "信息单元", "INF"],
-  ["claims", "主张", "CLM"],
-  ["hypotheses", "假设", "HYP"],
-  ["reasoning_paths", "推理路径", "RPN"],
-  ["constraints", "约束", "CST"],
-  ["structure_locks", "结构锁", "LCK"],
+  ["resolution_specs", "结论规格", "结论"],
+  ["entities", "实体 / 人物", "实体"],
+  ["relationships", "关系", "关系"],
+  ["locations", "地点", "地点"],
+  ["events", "事件", "事件"],
+  ["information_units", "信息单元", "信息"],
+  ["claims", "主张", "主张"],
+  ["hypotheses", "假设", "假设"],
+  ["reasoning_paths", "推理路径", "路径"],
+  ["constraints", "约束", "约束"],
+  ["structure_locks", "结构锁", "结构"],
 ] as const;
 
 type EditableKind = "entities" | "locations" | "events";
@@ -51,12 +51,26 @@ function isEditableKind(kind: string): kind is EditableKind {
   return kind === "entities" || kind === "locations" || kind === "events";
 }
 
+function editableKindLabel(kind: EditableKind) {
+  return {
+    entities: "实体",
+    locations: "地点",
+    events: "事件",
+  }[kind];
+}
+
 function objectStatus(object: CaseFileObject) {
-  return String(object.confirmation_status ?? "contract");
+  const status = String(object.confirmation_status ?? "contract");
+  const labels: Record<string, string> = {
+    user_confirmed: "作者已确认",
+    ai_inferred: "Agent 推断",
+    contract: "契约对象",
+  };
+  return labels[status] ?? "待确认";
 }
 
 function compactDescription(object: CaseFileObject) {
-  return String(object.description ?? "该对象暂无描述；完整字段仍保留在规范化 Draft 投影中。");
+  return String(object.description ?? "该对象暂无描述；完整字段仍保留在规范化草稿投影中。");
 }
 
 export function RealWorkbench() {
@@ -139,8 +153,8 @@ export function RealWorkbench() {
     return (
       <main aria-busy="true" className={styles.centerState}>
         <span className={styles.loadingMark} aria-hidden="true" />
-        <small>DATABASE / DRAFT PROJECTION</small>
-        <strong>正在读取规范化 Draft 投影…</strong>
+        <small>数据库 / 草稿投影</small>
+        <strong>正在读取规范化草稿投影…</strong>
       </main>
     );
   }
@@ -148,7 +162,7 @@ export function RealWorkbench() {
   if (draftQuery.isError) {
     return (
       <main className={styles.centerState}>
-        <small>READ FAILURE / DRAFT PROJECTION</small>
+        <small>读取失败 / 草稿投影</small>
         <strong role="alert">{errorMessage(draftQuery.error)}</strong>
         <button onClick={() => draftQuery.refetch()} type="button">
           重新读取
@@ -160,10 +174,10 @@ export function RealWorkbench() {
   if (workflow.projectId === null || !draft || !document) {
     return (
       <main className={styles.centerState}>
-        <small>CASEFILE / EMPTY DRAFT</small>
+        <small>CaseFile / 暂无草稿</small>
         <strong>当前没有已生成的 CaseFile。</strong>
         <button onClick={() => router.push("/brief")} type="button">
-          返回 Brief 与生成
+          返回创作简报与生成
         </button>
       </main>
     );
@@ -174,7 +188,7 @@ export function RealWorkbench() {
       <DocumentHeader
         action={
           <button
-            aria-label="刷新数据库中的 Draft 投影"
+            aria-label="刷新数据库中的草稿投影"
             className={styles.refreshButton}
             disabled={draftQuery.isFetching}
             onClick={() => draftQuery.refetch()}
@@ -184,11 +198,11 @@ export function RealWorkbench() {
             {draftQuery.isFetching ? "刷新中" : "刷新投影"}
           </button>
         }
-        eyebrow="CASEFILE 工作台 / LIVE DRAFT DESK"
+        eyebrow="CaseFile 工作台 · 实时草稿"
         meta={[
           { label: "卷宗编号", value: document.casefile_id },
           { label: "对象总数", value: String(totalObjects).padStart(2, "0") },
-          { label: "草稿版本", value: `REV.${draft.revision}` },
+          { label: "草稿版本", value: `版本 ${draft.revision}` },
         ]}
         title={document.title}
       />
@@ -198,9 +212,9 @@ export function RealWorkbench() {
       <div className={styles.workspace}>
         <aside className={`paper-panel ${styles.indexPanel}`}>
           <PanelHeader
-            code={`${collections.length} COLLECTIONS`}
+            code={`${collections.length} 组集合`}
             title="对象索引"
-            trailing={<StatusBadge tone="dark">{totalObjects} OBJECTS</StatusBadge>}
+            trailing={<StatusBadge tone="dark">{totalObjects} 个对象</StatusBadge>}
           />
           <nav className={styles.collectionList} aria-label="CaseFile 对象集合">
             {collections.map(([key, label, code], index) => {
@@ -222,8 +236,8 @@ export function RealWorkbench() {
             })}
           </nav>
           <footer className={styles.indexFooter}>
-            <span>POSTGRESQL / CURRENT STATE</span>
-            <b>LIVE</b>
+            <span>PostgreSQL / 当前状态</span>
+            <b>实时</b>
           </footer>
         </aside>
 
@@ -241,9 +255,9 @@ export function RealWorkbench() {
             <div>
               <i aria-hidden="true" />
               <span>数据库实时投影</span>
-              <small>所有结构均来自当前 Draft，不使用前端 Fixture</small>
+              <small>所有结构均来自当前草稿，不使用前端样例数据</small>
             </div>
-            <span>SCHEMA V{document.schema_version}</span>
+            <span>契约版本 {document.schema_version}</span>
           </div>
 
           {values.length ? (
@@ -283,7 +297,7 @@ export function RealWorkbench() {
                           编辑允许字段 ↗
                         </button>
                       ) : (
-                        <small>VALIDATOR / AGENT OWNED</small>
+                        <small>校验器 / Agent 维护</small>
                       )}
                     </footer>
                   </article>
@@ -301,7 +315,7 @@ export function RealWorkbench() {
 
         <aside className={`paper-panel ${styles.inspectorPanel}`}>
           <PanelHeader
-            code="OBJECT / INSPECTOR"
+            code="对象 / 检查器"
             title="对象检查器"
             trailing={
               <StatusBadge tone={selectedObject ? "dark" : "neutral"}>
@@ -313,7 +327,7 @@ export function RealWorkbench() {
             <div className={styles.inspectorBody}>
               <header>
                 <span>{selectedObject.id}</span>
-                <small>{selected[2]} / CURRENT REVISION</small>
+                <small>{selected[2]} / 当前版本</small>
                 <h2>{objectHeadline(selectedObject)}</h2>
                 <StatusBadge tone="neutral">{objectStatus(selectedObject)}</StatusBadge>
               </header>
@@ -327,8 +341,8 @@ export function RealWorkbench() {
                   <b>{editableKind ? "允许修改名称与描述" : "当前对象保持只读"}</b>
                   <small>
                     {editableKind
-                      ? `保存采用 Draft revision ${draft.revision} 乐观锁`
-                      : "引用、ID 与契约字段由 Validator 和 Agent 流程维护"}
+                      ? `保存采用草稿版本 ${draft.revision} 乐观锁`
+                      : "引用、ID 与契约字段由校验器和 Agent 流程维护"}
                   </small>
                 </div>
               </section>
@@ -343,11 +357,11 @@ export function RealWorkbench() {
                   type="button"
                 >
                   <span>打开有限编辑</span>
-                  <b>PATCH →</b>
+                  <b>打开编辑 →</b>
                 </button>
               ) : (
                 <div className={styles.readOnlyStamp}>
-                  <span>READ ONLY</span>
+                  <span>只读</span>
                   <small>本期不允许直接变更</small>
                 </div>
               )}
@@ -363,10 +377,10 @@ export function RealWorkbench() {
       </div>
 
       <footer className={styles.documentFooter}>
-        <span><b>真实状态：</b>规范化 Draft 已读取</span>
+        <span><b>真实状态：</b>规范化草稿已读取</span>
         <span>数据来源：PostgreSQL</span>
-        <span>EXPECTED REVISION / {draft.revision}</span>
-        <span>CASEFILE / PRODUCTION-V1</span>
+        <span>预期版本 / {draft.revision}</span>
+        <span>CaseFile / 真实数据 V1</span>
       </footer>
 
       {edit ? (
@@ -384,7 +398,7 @@ export function RealWorkbench() {
           >
             <header className={styles.dialogHeader}>
               <div>
-                <small>{edit.kind.toUpperCase()} / {edit.object.id}</small>
+                <small>{editableKindLabel(edit.kind)} / {edit.object.id}</small>
                 <h2 id="real-object-edit-title">有限字段编辑</h2>
               </div>
               <button aria-label="关闭编辑对话框" onClick={() => setEdit(null)} type="button">
@@ -392,9 +406,9 @@ export function RealWorkbench() {
               </button>
             </header>
             <div className={styles.revisionNotice}>
-              <span>REVISION GUARD</span>
-              <b>EXPECTED REV.{draft.revision}</b>
-              <p>ID、引用和未列出的契约字段保持只读；保存成功后 revision 自动 +1。</p>
+              <span>版本保护</span>
+              <b>预期版本 {draft.revision}</b>
+              <p>ID、引用和未列出的契约字段保持只读；保存成功后版本号自动 +1。</p>
             </div>
             <label>
               <span>{edit.kind === "events" ? "标题" : "名称"}</span>

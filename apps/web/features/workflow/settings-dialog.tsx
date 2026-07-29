@@ -23,18 +23,28 @@ const PROVIDERS: Array<{
   {
     id: "openai",
     label: "OpenAI",
-    caption: "Responses API",
+    caption: "响应接口",
     defaultModel: "gpt-5.6-sol",
     models: ["gpt-5.6-sol"],
   },
   {
     id: "deepseek",
     label: "DeepSeek",
-    caption: "Chat Completions",
+    caption: "对话补全接口",
     defaultModel: "deepseek-v4-flash",
     models: ["deepseek-v4-flash", "deepseek-v4-pro"],
   },
 ];
+
+function credentialStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    unverified: "待验证",
+    verified: "已验证",
+    valid: "可用",
+    invalid: "不可用",
+  };
+  return labels[status] ?? "状态待确认";
+}
 
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const workflow = useWorkflowSession();
@@ -104,7 +114,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       >
         <header className={styles.dialogHeader}>
           <div>
-            <small>USER SETTINGS / LOCAL</small>
+            <small>本地用户设置</small>
             <h2 id="settings-title">设置</h2>
           </div>
           <button onClick={closeDialog} type="button">关闭</button>
@@ -128,7 +138,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
                 {settingQuery.isLoading
                   ? "读取中"
                   : settingQuery.data
-                    ? `${provider.label} ${settingQuery.data.masked_api_key} · ${settingQuery.data.credential_status}`
+                    ? `${provider.label} ${settingQuery.data.masked_api_key} · ${credentialStatusLabel(settingQuery.data.credential_status)}`
                     : "尚未配置"}
               </b>
             </div>
@@ -153,16 +163,20 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
               </div>
             </fieldset>
             <label>
-              <span>{provider.label} API Key</span>
+              <span>{provider.label} API 密钥</span>
               <input
                 autoComplete="off"
                 onChange={(event) => setApiKey(event.target.value)}
-                placeholder={settingQuery.data ? "输入新 Key 以替换当前供应商凭据" : "sk-..."}
+                placeholder={
+                  settingQuery.data
+                    ? "输入新的 API 密钥以替换当前凭据"
+                    : "请输入 API 密钥"
+                }
                 required
                 type="password"
                 value={apiKey}
               />
-              <small>Key 只发送到本地后端并以 AES-256-GCM 密文保存；前端不持久化明文。</small>
+              <small>密钥只发送到本地后端并以 AES-256-GCM 密文保存；前端不持久化明文。</small>
             </label>
             <label>
               <span>生成模型</span>

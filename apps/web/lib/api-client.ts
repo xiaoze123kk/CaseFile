@@ -261,5 +261,32 @@ export async function streamTaskEvents(
 }
 
 export function errorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    const localizedMessages: Record<string, string> = {
+      request_invalid: "提交内容不符合接口要求，请检查后重试。",
+      identity_required: "当前请求缺少本地用户身份。",
+      identity_invalid: "当前本地用户身份无效。",
+      base_revision_required: "缺少草稿版本信息，请刷新页面后重试。",
+      base_revision_invalid: "草稿版本信息无效，请刷新页面后重试。",
+      draft_revision_conflict: "草稿已被更新，请刷新后重新提交。",
+      brief_revision_conflict: "创作简报已被更新，请刷新后重新提交。",
+      resource_conflict: "当前修改与已保存的数据冲突，请刷新后重试。",
+      database_unavailable: "数据库暂时不可用，请稍后重试。",
+      database_error: "数据库请求失败，请稍后重试。",
+      internal_error: "请求暂时无法完成，请稍后重试。",
+      not_found: "没有找到请求的数据。",
+      method_not_allowed: "当前操作不受支持。",
+      provider_setting_required: "请先配置当前模型服务。",
+      draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
+      brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
+      brief_extraction_input_empty: "请先填写作者底牌或创作边界。",
+      source_content_blank: "来源原稿不能为空。",
+      brief_invalid: "创作简报内容不完整，请检查后重试。",
+    };
+    const localizedMessage = localizedMessages[error.body.code];
+    if (localizedMessage) return localizedMessage;
+    if (/[\u3400-\u9fff]/u.test(error.body.message)) return error.body.message;
+    return `请求未能完成（错误代码：${error.body.code}）。`;
+  }
   return error instanceof Error ? error.message : "请求未完成，请检查 API 与数据库状态。";
 }

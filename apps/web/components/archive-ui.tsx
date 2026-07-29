@@ -9,7 +9,7 @@ const stages: Array<{
   completeLabel: string;
 }> = [
   { id: "idea", no: "01", label: "创意", completeLabel: "已整理" },
-  { id: "brief", no: "02", label: "Brief", completeLabel: "已确认" },
+  { id: "brief", no: "02", label: "创作简报", completeLabel: "已确认" },
   { id: "draft", no: "03", label: "编辑草稿", completeLabel: "正在编辑" },
   { id: "validated", no: "04", label: "已验证", completeLabel: "报告有效" },
   { id: "compiled", no: "05", label: "已编译", completeLabel: "产物就绪" },
@@ -26,7 +26,7 @@ export function CaseSpine({
 
   return (
     <section className="case-spine" aria-label="卷宗工作流">
-      <span className="spine-caption">卷宗脊线 / CASE SPINE</span>
+      <span className="spine-caption">卷宗流程</span>
       <ol>
         {stages.map((stage, index) => {
           const done = index < currentIndex;
