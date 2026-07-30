@@ -33,13 +33,17 @@ import {
 import { useWorkflowSession } from "@/store/workflow-store";
 
 import styles from "./brief-workspace.module.css";
-import { DraftCandidatePanel } from "./draft-candidate-panel";
+import {
+  DraftCandidatePanel,
+  nextDraftCandidateTaskRunId,
+} from "./draft-candidate-panel";
 import {
   useRecoverableTask,
   useTaskEventStream,
 } from "./task-recovery";
 
 const terminalTaskStatuses = new Set(["succeeded", "failed", "cancelled"]);
+const EMPTY_DRAFT_CANDIDATES: DraftCandidateView[] = [];
 
 const taskStatusLabels: Record<TaskView["status"], string> = {
   queued: "排队中",
@@ -270,6 +274,136 @@ function TaskFailureDetails({ failure }: { failure: TaskFailure }) {
   );
 }
 
+export function TaskAuditDrawer({
+  task,
+  events,
+  streamError,
+  onReconnect,
+}: {
+  task: TaskView | null;
+  events: TaskEventView[];
+  streamError: string | null;
+  onReconnect: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const observedTaskIdRef = useRef<number | null>(null);
+  const autoOpenKeyRef = useRef<string | null>(null);
+  const latestEvent = events[events.length - 1] ?? null;
+  const detailId = "task-audit-detail";
+  const autoOpenKey = streamError
+    ? `stream:${task?.task_run_id ?? "none"}:${streamError}`
+    : task?.status === "failed"
+      ? `failed:${task.task_run_id}`
+      : null;
+
+  useEffect(() => {
+    const taskId = task?.task_run_id ?? null;
+    if (observedTaskIdRef.current !== taskId) {
+      observedTaskIdRef.current = taskId;
+      autoOpenKeyRef.current = autoOpenKey;
+      setExpanded(Boolean(autoOpenKey));
+      return;
+    }
+    if (autoOpenKey && autoOpenKeyRef.current !== autoOpenKey) {
+      autoOpenKeyRef.current = autoOpenKey;
+      setExpanded(true);
+      return;
+    }
+    if (!autoOpenKey) autoOpenKeyRef.current = null;
+  }, [autoOpenKey, task?.task_run_id]);
+
+  const summary = streamError
+    ? `连接中断 · ${streamError}`
+    : latestEvent
+      ? `${taskEventLabel(latestEvent.event_type)} · ${eventSummary(latestEvent)}`
+      : task
+        ? `${taskStatusLabel(task.status)} · ${taskStageLabel(task.stage)}`
+        : "任务创建后，将在这里记录阶段、校验与用量";
+  const status = streamError
+    ? "连接中断"
+    : task
+      ? taskStatusLabel(task.status)
+      : "等待任务";
+  const statusTone =
+    streamError || task?.status === "failed"
+      ? "red"
+      : task && !terminalTaskStatuses.has(task.status)
+        ? "dark"
+        : "neutral";
+
+  return (
+    <section
+      aria-label="任务可恢复审计轨迹"
+      className={`${styles.auditTrail} ${
+        expanded ? styles.auditTrailExpanded : ""
+      }`}
+    >
+      <button
+        aria-controls={detailId}
+        aria-expanded={expanded}
+        className={styles.auditSummaryButton}
+        onClick={() => setExpanded((current) => !current)}
+        type="button"
+      >
+        <span className={styles.auditIdentity}>
+          <small>
+            {task ? `任务 #${task.task_run_id}` : "尚无任务"}
+          </small>
+          <strong>可恢复审计</strong>
+        </span>
+        <span
+          aria-live="polite"
+          className={styles.auditLatestSummary}
+        >
+          {summary}
+        </span>
+        <StatusBadge tone={statusTone}>{status}</StatusBadge>
+        <i aria-hidden="true">↓</i>
+      </button>
+
+      <div
+        aria-hidden={!expanded}
+        className={styles.auditDisclosure}
+        data-expanded={expanded}
+        id={detailId}
+      >
+        <div className={styles.auditDisclosureInner}>
+          <div className={styles.auditTrailBody} role="region">
+            {events.length ? (
+              <ol>
+                {events.map((event) => (
+                  <li key={event.sequence_no}>
+                    <span>
+                      {String(event.sequence_no).padStart(2, "0")}
+                    </span>
+                    <div>
+                      <b>{taskEventLabel(event.event_type)}</b>
+                      <small>{taskStageLabel(event.stage)}</small>
+                      <p>{eventSummary(event)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className={styles.emptyTrail}>
+                任务创建后，这里会从不可变事件表回放阶段、工具摘要、校验结果与用量。
+              </p>
+            )}
+            {streamError ? (
+              <div className={styles.streamError}>
+                <p>{streamError}</p>
+                <button onClick={onReconnect} type="button">
+                  按最后序号重连
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function taskAnchorId(taskRunId: number, index: number) {
   return `anchor_task_${taskRunId}_${String(index + 1).padStart(2, "0")}`;
 }
@@ -319,6 +453,8 @@ export function BriefReviewWorkspace() {
     useState<DraftCandidateAdoption | null>(null);
   const hydratedBriefRevisionRef = useRef<number | null>(null);
   const seededExtractionTaskRef = useRef<number | null>(null);
+  const candidateProjectIdRef = useRef<number | null>(null);
+  const observedCandidateIdsRef = useRef<Set<number>>(new Set());
 
   const briefQuery = useQuery({
     queryKey: ["brief", workflow.actorId, workflow.projectId],
@@ -772,7 +908,47 @@ export function BriefReviewWorkspace() {
   const frozen = Boolean(
     briefQuery.data?.current_version_id && !dirty,
   );
-  const candidates = candidatesQuery.data ?? [];
+  const candidates = candidatesQuery.data ?? EMPTY_DRAFT_CANDIDATES;
+  const generationBlocker = dirty
+    ? "创作简报有未保存修改，保存后才能生成候选。"
+    : !atomicReviewComplete
+      ? "请先确认底牌与创作边界的原子约束。"
+      : !frozen
+        ? "请先确认并冻结当前创作简报。"
+        : !providerQuery.data
+          ? "请先在设置中配置当前模型服务。"
+          : generationMutation.isPending
+            ? "正在创建候选任务，请稍候。"
+            : generationRunning
+              ? `候选任务 #${generationTask?.task_run_id ?? "—"} 正在运行。`
+              : null;
+
+  useEffect(() => {
+    const projectChanged =
+      candidateProjectIdRef.current !== workflow.projectId;
+    const previousIds = projectChanged
+      ? new Set<number>()
+      : observedCandidateIdsRef.current;
+    const nextIds = new Set(
+      candidates.map((candidate) => candidate.task_run_id),
+    );
+    const nextSelection = nextDraftCandidateTaskRunId(
+      candidates,
+      selectedCandidateTaskRunId,
+      previousIds,
+    );
+
+    candidateProjectIdRef.current = workflow.projectId;
+    observedCandidateIdsRef.current = nextIds;
+    if (nextSelection !== selectedCandidateTaskRunId) {
+      setSelectedCandidateTaskRunId(nextSelection);
+    }
+  }, [
+    candidates,
+    selectedCandidateTaskRunId,
+    workflow.projectId,
+  ]);
+
   const displayedError =
     saveMutation.error ??
     extractionMutation.error ??
@@ -1409,7 +1585,7 @@ export function BriefReviewWorkspace() {
           <header className={styles.generationHead}>
             <div>
               <span>创作简报 → 候选草稿 → 当前工作稿</span>
-              <h2>候选生成与采用台</h2>
+              <h2>候选决策台</h2>
             </div>
             <StatusBadge
               tone={
@@ -1428,11 +1604,39 @@ export function BriefReviewWorkspace() {
             </StatusBadge>
           </header>
 
-          <section className={styles.gateSection}>
-            <PanelHeader
-              code="3 道作者门禁"
-              title="生成门禁"
-            />
+          <section
+            aria-label="候选生成控制"
+            className={styles.generationCommand}
+          >
+            <div className={styles.commandMeta}>
+              <span>
+                <small>当前模型</small>
+                <strong>
+                  {providerQuery.data?.model_id ?? "尚未配置"}
+                </strong>
+              </span>
+              <span>
+                <small>冻结版本</small>
+                <strong>
+                  {briefQuery.data?.current_version_id
+                    ? `#${briefQuery.data.current_version_id}`
+                    : "尚未冻结"}
+                </strong>
+              </span>
+              <span>
+                <small>候选任务</small>
+                <strong>
+                  {generationTask
+                    ? `#${generationTask.task_run_id} / ${taskStatusLabel(generationTask.status)}`
+                    : "尚无任务"}
+                </strong>
+              </span>
+            </div>
+
+            <div className={styles.commandFlowHead}>
+              <strong>生成门禁</strong>
+              <span>3 道作者确认</span>
+            </div>
             <ol className={styles.gateList}>
               <li
                 className={
@@ -1490,59 +1694,6 @@ export function BriefReviewWorkspace() {
                 </span>
               </li>
             </ol>
-          </section>
-
-          <section className={styles.runtimeSection}>
-            <PanelHeader
-              code="任务运行 / PostgreSQL"
-              title="运行状态"
-              trailing={
-                <StatusBadge tone={providerQuery.data ? "dark" : "red"}>
-                  {providerQuery.data
-                    ? workflow.provider === "deepseek"
-                      ? "DeepSeek"
-                      : "OpenAI"
-                    : "未配置模型"}
-                </StatusBadge>
-              }
-            />
-            <dl className={styles.generationFacts}>
-              <div>
-                <dt>当前模型</dt>
-                <dd>{providerQuery.data?.model_id ?? "尚未配置"}</dd>
-              </div>
-              <div>
-                <dt>创作简报版本</dt>
-                <dd>
-                  {briefQuery.data?.current_version_id
-                    ? `#${briefQuery.data.current_version_id}`
-                    : "未冻结"}
-                </dd>
-              </div>
-              <div>
-                <dt>拆解任务</dt>
-                <dd>
-                  {extractTask
-                    ? `#${extractTask.task_run_id} / ${taskStatusLabel(extractTask.status)}`
-                    : "尚无任务"}
-                </dd>
-              </div>
-              <div>
-                <dt>候选草稿</dt>
-                <dd>
-                  {candidates.length
-                    ? `${candidates.length} 份 / ${
-                        candidates.filter((candidate) => candidate.is_current)
-                          .length
-                          ? "已有当前工作稿"
-                          : "等待采用"
-                      }`
-                    : generationTask
-                      ? `#${generationTask.task_run_id} / ${taskStatusLabel(generationTask.status)}`
-                      : "尚无候选"}
-                </dd>
-              </div>
-            </dl>
 
             {extractionCurrent && extractionResult?.warnings.length ? (
               <div className={styles.warningList}>
@@ -1570,11 +1721,6 @@ export function BriefReviewWorkspace() {
             {generationTask?.status === "failed" &&
             generationTask.failure ? (
               <TaskFailureDetails failure={generationTask.failure} />
-            ) : null}
-            {!providerQuery.data ? (
-              <p className={styles.panelWarning}>
-                请从左下角设置中配置当前模型服务，才能运行 Agent。
-              </p>
             ) : null}
             {displayedError ? (
               <p className={styles.formError} role="alert">
@@ -1629,9 +1775,28 @@ export function BriefReviewWorkspace() {
                         ? "基于同一 Brief 再生成"
                         : "启动创作简报 → 候选"}
                 </span>
-                <b>{candidates.length ? "新增候选 →" : "生成候选草稿 →"}</b>
+                <b>
+                  {candidates.length ? "+ 新候选" : "生成候选草稿 →"}
+                </b>
               </button>
             </div>
+            {generationBlocker ? (
+              <p
+                aria-live="polite"
+                className={styles.generationBlocker}
+              >
+                <span aria-hidden="true">!</span>
+                {generationBlocker}
+              </p>
+            ) : (
+              <p
+                aria-live="polite"
+                className={styles.generationReady}
+              >
+                <span aria-hidden="true">✓</span>
+                门禁已通过，可生成一份新的独立候选。
+              </p>
+            )}
           </section>
 
           <DraftCandidatePanel
@@ -1643,57 +1808,12 @@ export function BriefReviewWorkspace() {
             selectedTaskRunId={selectedCandidateTaskRunId}
           />
 
-          <section
-            className={styles.auditTrail}
-            aria-label="任务可恢复审计轨迹"
-          >
-            <PanelHeader
-              code={
-                visibleTask
-                  ? `任务 #${visibleTask.task_run_id}`
-                  : "等待任务"
-              }
-              title="可恢复审计轨迹"
-              trailing={
-                visibleTask ? (
-                  <StatusBadge tone="neutral">
-                    {taskStageLabel(visibleTask.stage)}
-                  </StatusBadge>
-                ) : undefined
-              }
-            />
-            {eventStream.events.length ? (
-              <ol>
-                {eventStream.events.map((event) => (
-                  <li key={event.sequence_no}>
-                    <span>
-                      {String(event.sequence_no).padStart(2, "0")}
-                    </span>
-                    <div>
-                      <b>{taskEventLabel(event.event_type)}</b>
-                      <small>{taskStageLabel(event.stage)}</small>
-                      <p>{eventSummary(event)}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className={styles.emptyTrail}>
-                任务创建后，这里会从不可变事件表回放阶段、工具摘要、校验结果与用量。
-              </p>
-            )}
-            {eventStream.streamError ? (
-              <div className={styles.streamError}>
-                <p>{eventStream.streamError}</p>
-                <button
-                  onClick={eventStream.reconnect}
-                  type="button"
-                >
-                  按最后序号重连
-                </button>
-              </div>
-            ) : null}
-          </section>
+          <TaskAuditDrawer
+            events={eventStream.events}
+            onReconnect={eventStream.reconnect}
+            streamError={eventStream.streamError}
+            task={visibleTask}
+          />
         </aside>
       </div>
 

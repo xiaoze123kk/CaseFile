@@ -8,7 +8,7 @@ interface DraftCandidatePanelProps {
   candidates: DraftCandidateView[];
   selectedTaskRunId: number | null;
   adopting: boolean;
-  onSelect: (taskRunId: number) => void;
+  onSelect: (taskRunId: number | null) => void;
   onRequestAdopt: (candidate: DraftCandidateView) => void;
   onOpenWorkbench: () => void;
 }
@@ -40,6 +40,70 @@ function candidateState(candidate: DraftCandidateView) {
   return "待采用";
 }
 
+function candidateSortGroup(candidate: DraftCandidateView) {
+  if (candidate.is_current) return 0;
+  if (candidate.can_adopt) return 1;
+  if (candidate.is_current_brief && candidate.is_adopted) return 2;
+  return 3;
+}
+
+function candidateCompletedAt(candidate: DraftCandidateView) {
+  const timestamp = candidate.completed_at
+    ? new Date(candidate.completed_at).getTime()
+    : Number.NaN;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+export function sortDraftCandidates(candidates: DraftCandidateView[]) {
+  return [...candidates].sort((left, right) => {
+    const groupDifference =
+      candidateSortGroup(left) - candidateSortGroup(right);
+    if (groupDifference !== 0) return groupDifference;
+    const timeDifference =
+      candidateCompletedAt(right) - candidateCompletedAt(left);
+    return timeDifference || right.task_run_id - left.task_run_id;
+  });
+}
+
+export function defaultDraftCandidateTaskRunId(
+  candidates: DraftCandidateView[],
+) {
+  const ordered = sortDraftCandidates(candidates);
+  return (
+    ordered.find((candidate) => candidate.can_adopt)?.task_run_id ??
+    ordered.find((candidate) => candidate.is_current)?.task_run_id ??
+    ordered[0]?.task_run_id ??
+    null
+  );
+}
+
+export function nextDraftCandidateTaskRunId(
+  candidates: DraftCandidateView[],
+  selectedTaskRunId: number | null,
+  observedTaskRunIds: ReadonlySet<number>,
+) {
+  if (!candidates.length) return null;
+  const ordered = sortDraftCandidates(candidates);
+  if (!observedTaskRunIds.size) {
+    return defaultDraftCandidateTaskRunId(ordered);
+  }
+  const newCandidate = ordered.find(
+    (candidate) =>
+      candidate.can_adopt &&
+      !observedTaskRunIds.has(candidate.task_run_id),
+  );
+  if (newCandidate) return newCandidate.task_run_id;
+  if (
+    selectedTaskRunId !== null &&
+    !ordered.some(
+      (candidate) => candidate.task_run_id === selectedTaskRunId,
+    )
+  ) {
+    return defaultDraftCandidateTaskRunId(ordered);
+  }
+  return selectedTaskRunId;
+}
+
 export function DraftCandidatePanel({
   candidates,
   selectedTaskRunId,
@@ -48,12 +112,10 @@ export function DraftCandidatePanel({
   onRequestAdopt,
   onOpenWorkbench,
 }: DraftCandidatePanelProps) {
-  const selected =
-    candidates.find(
-      (candidate) => candidate.task_run_id === selectedTaskRunId,
-    ) ??
-    candidates[0] ??
-    null;
+  const orderedCandidates = sortDraftCandidates(candidates);
+  const pendingCount = candidates.filter(
+    (candidate) => candidate.can_adopt,
+  ).length;
 
   return (
     <section
@@ -62,119 +124,146 @@ export function DraftCandidatePanel({
     >
       <header className={styles.candidateArchiveHead}>
         <div>
-          <span>Draft contact sheet</span>
-          <strong>候选草稿档案</strong>
+          <span>Draft decision file</span>
+          <strong>候选卷签</strong>
         </div>
-        <b>{String(candidates.length).padStart(2, "0")} 份</b>
+        <div className={styles.candidateArchiveTally}>
+          {pendingCount ? <span>{pendingCount} 待采用</span> : null}
+          <b>{String(candidates.length).padStart(2, "0")} 份</b>
+        </div>
       </header>
 
       {candidates.length ? (
-        <div className={styles.candidateArchiveBody}>
-          <ol className={styles.candidateIndex}>
-            {candidates.map((candidate, index) => (
-              <li key={candidate.task_run_id}>
+        <ol className={styles.candidateAccordion}>
+          {orderedCandidates.map((candidate, index) => {
+            const expanded =
+              candidate.task_run_id === selectedTaskRunId;
+            const detailId = `draft-candidate-${candidate.task_run_id}`;
+            return (
+              <li
+                className={
+                  expanded ? styles.candidateAccordionExpanded : undefined
+                }
+                data-state={
+                  candidate.is_current
+                    ? "current"
+                    : candidate.can_adopt
+                      ? "pending"
+                      : candidate.is_current_brief
+                        ? "history"
+                        : "stale"
+                }
+                key={candidate.task_run_id}
+              >
                 <button
-                  aria-pressed={
-                    candidate.task_run_id === selected?.task_run_id
+                  aria-controls={detailId}
+                  aria-expanded={expanded}
+                  className={styles.candidateSummary}
+                  onClick={() =>
+                    onSelect(expanded ? null : candidate.task_run_id)
                   }
-                  className={
-                    candidate.task_run_id === selected?.task_run_id
-                      ? styles.candidateIndexActive
-                      : undefined
-                  }
-                  onClick={() => onSelect(candidate.task_run_id)}
                   type="button"
                 >
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div>
+                  <span className={styles.candidateOrdinal}>
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span className={styles.candidateSummaryCopy}>
                     <strong>{candidate.title}</strong>
                     <small>
-                      {candidate.provider} · {completedTime(candidate.completed_at)}
+                      Brief v{candidate.brief_version_no} ·{" "}
+                      {candidate.model_id} ·{" "}
+                      {completedTime(candidate.completed_at)}
                     </small>
-                  </div>
-                  <em>{candidateState(candidate)}</em>
-                </button>
-              </li>
-            ))}
-          </ol>
-
-          {selected ? (
-            <article className={styles.candidatePreview}>
-              <header>
-                <div>
-                  <small>
-                    候选 #{selected.task_run_id} · Brief v
-                    {selected.brief_version_no}
-                  </small>
-                  <h3>{selected.title}</h3>
-                </div>
-                <span
-                  className={
-                    selected.is_current
-                      ? styles.candidateCurrentStamp
-                      : undefined
-                  }
-                >
-                  {candidateState(selected)}
-                </span>
-              </header>
-
-              <p className={styles.candidateQuestion}>
-                {selected.reasoning_questions[0] ??
-                  "该候选未声明核心推理命题。"}
-              </p>
-
-              <dl className={styles.candidateCounts}>
-                {countLabels.map(([key, label]) => (
-                  <div key={key}>
-                    <dt>{label}</dt>
-                    <dd>{selected.object_counts[key] ?? 0}</dd>
-                  </div>
-                ))}
-              </dl>
-
-              <div className={styles.candidateConstraints}>
-                <small>创作约束摘录</small>
-                {selected.constraint_statements.length ? (
-                  <ul>
-                    {selected.constraint_statements
-                      .slice(0, 2)
-                      .map((statement) => (
-                        <li key={statement}>{statement}</li>
-                      ))}
-                  </ul>
-                ) : (
-                  <p>未设置额外约束。</p>
-                )}
-              </div>
-
-              <footer>
-                <span>
-                  {selected.model_id} · 执行 {selected.attempt_count} 次
-                </span>
-                {selected.is_current ? (
-                  <button onClick={onOpenWorkbench} type="button">
-                    打开当前工作稿 →
-                  </button>
-                ) : selected.can_adopt ? (
-                  <button
-                    disabled={adopting}
-                    onClick={() => onRequestAdopt(selected)}
-                    type="button"
+                  </span>
+                  <em data-state={candidateState(candidate)}>
+                    {candidateState(candidate)}
+                  </em>
+                  <span
+                    aria-hidden="true"
+                    className={styles.candidateChevron}
                   >
-                    {adopting ? "正在采用…" : "采用为当前工作稿 →"}
-                  </button>
-                ) : (
-                  <small>
-                    {selected.is_current_brief
-                      ? "已进入采用历史"
-                      : "Brief 已更新，不可采用"}
-                  </small>
-                )}
-              </footer>
-            </article>
-          ) : null}
-        </div>
+                    ↓
+                  </span>
+                </button>
+
+                <div
+                  aria-hidden={!expanded}
+                  className={styles.candidateDisclosure}
+                  data-expanded={expanded}
+                  id={detailId}
+                  role="region"
+                >
+                  <div className={styles.candidateDisclosureInner}>
+                    {expanded ? (
+                      <article className={styles.candidatePreview}>
+                      <div className={styles.candidateQuestion}>
+                        <small>核心推理命题</small>
+                        <p>
+                          {candidate.reasoning_questions[0] ??
+                            "该候选未声明核心推理命题。"}
+                        </p>
+                      </div>
+
+                      <dl className={styles.candidateCounts}>
+                        {countLabels.map(([key, label]) => (
+                          <div key={key}>
+                            <dt>{label}</dt>
+                            <dd>{candidate.object_counts[key] ?? 0}</dd>
+                          </div>
+                        ))}
+                      </dl>
+
+                      <div className={styles.candidateConstraints}>
+                        <small>创作约束摘录</small>
+                        {candidate.constraint_statements.length ? (
+                          <ul>
+                            {candidate.constraint_statements
+                              .slice(0, 2)
+                              .map((statement) => (
+                                <li key={statement}>{statement}</li>
+                              ))}
+                          </ul>
+                        ) : (
+                          <p>未设置额外约束。</p>
+                        )}
+                      </div>
+
+                      <footer>
+                        <span>
+                          {candidate.provider} · 执行{" "}
+                          {candidate.attempt_count} 次 · 候选 #
+                          {candidate.task_run_id}
+                        </span>
+                        {candidate.is_current ? (
+                          <button onClick={onOpenWorkbench} type="button">
+                            打开当前工作稿 →
+                          </button>
+                        ) : candidate.can_adopt ? (
+                          <button
+                            disabled={adopting}
+                            onClick={() => onRequestAdopt(candidate)}
+                            type="button"
+                          >
+                            {adopting
+                              ? "正在采用…"
+                              : "采用为当前工作稿 →"}
+                          </button>
+                        ) : (
+                          <small>
+                            {candidate.is_current_brief
+                              ? "已进入采用历史"
+                              : "Brief 已更新，不可采用"}
+                          </small>
+                        )}
+                      </footer>
+                      </article>
+                    ) : null}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
       ) : (
         <div className={styles.candidateArchiveEmpty}>
           <b>尚无候选草稿</b>
