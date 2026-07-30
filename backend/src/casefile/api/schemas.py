@@ -160,6 +160,10 @@ class GenerateTaskRequest(StrictRequest):
     provider: Literal["openai", "deepseek"] = "openai"
 
 
+class DraftCandidateAdoptRequest(StrictRequest):
+    expected_draft_revision: int = Field(ge=1)
+
+
 class AgentThreadCreateRequest(StrictRequest):
     title: str | None = Field(default=None, min_length=1, max_length=200)
 

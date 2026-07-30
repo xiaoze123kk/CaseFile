@@ -36,6 +36,7 @@ from casefile.application.agent_collaboration import (
 )
 from casefile.application.agent_collaboration import unique_strings as _unique_strings
 from casefile.application.casefile_v1 import build_casefile_document
+from casefile.application.draft_candidates import DraftCandidateService
 from casefile.application.errors import ApplicationError, not_found
 from casefile.application.v1_editing import EDITABLE_FIELDS, V1EditingService
 from casefile.contracts import CASEFILE_SCHEMA_VERSION
@@ -1060,18 +1061,6 @@ class WorkflowService:
                     status_code=409,
                     details={"current_revision": owned.draft.revision},
                 )
-            object_count = self.session.scalar(
-                select(func.count(CaseFileObject.id)).where(
-                    CaseFileObject.draft_id == owned.draft.id,
-                    CaseFileObject.deleted_at.is_(None),
-                )
-            )
-            if object_count:
-                raise ApplicationError(
-                    "draft_not_empty",
-                    "Full CaseFile generation requires a strictly empty Draft",
-                    status_code=409,
-                )
             brief = self._brief(owned, lock=True)
             version = self.session.scalar(
                 select(BriefVersion).where(
@@ -1104,14 +1093,57 @@ class WorkflowService:
                 input_hash=version.content_hash,
                 input_jsonb={
                     "brief": content,
+                    "casefile_id": owned.casefile.object_id,
                     "brief_public_id": brief.public_id,
                     "brief_version_no": version.version_no,
+                    "version": {
+                        "version_id": owned.draft.version_id,
+                        "version_no": owned.draft.version_no,
+                        "parent_version_id": owned.draft.parent_version_id,
+                    },
                 },
             )
             return self._queue_task(
                 task,
                 message="Brief → Draft 任务已进入队列",
             )
+
+    def list_generation_candidates(
+        self,
+        actor_user_id: int,
+        project_id: int,
+    ) -> list[dict[str, Any]]:
+        return DraftCandidateService(self.session).list_candidates(
+            actor_user_id,
+            project_id,
+        )
+
+    def get_generation_candidate(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        task_run_id: int,
+    ) -> dict[str, Any]:
+        return DraftCandidateService(self.session).get_candidate(
+            actor_user_id,
+            project_id,
+            task_run_id,
+        )
+
+    def adopt_generation_candidate(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        task_run_id: int,
+        *,
+        expected_draft_revision: int,
+    ) -> dict[str, Any]:
+        return DraftCandidateService(self.session).adopt_candidate(
+            actor_user_id,
+            project_id,
+            task_run_id,
+            expected_draft_revision=expected_draft_revision,
+        )
 
     def create_polish_task(
         self,

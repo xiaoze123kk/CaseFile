@@ -20,6 +20,8 @@ import {
   type BriefView,
   type ConstraintStrength,
   type CreativeConstraint,
+  type DraftCandidateAdoption,
+  type DraftCandidateView,
   type DraftView,
   type ProviderSettingView,
   type ResolutionMode,
@@ -31,6 +33,7 @@ import {
 import { useWorkflowSession } from "@/store/workflow-store";
 
 import styles from "./brief-workspace.module.css";
+import { DraftCandidatePanel } from "./draft-candidate-panel";
 import {
   useRecoverableTask,
   useTaskEventStream,
@@ -307,8 +310,13 @@ export function BriefReviewWorkspace() {
   >([]);
   const [contentDirty, setContentDirty] = useState(false);
   const [atomicsDirty, setAtomicsDirty] = useState(false);
-  const [dismissedCompletionTaskId, setDismissedCompletionTaskId] =
+  const [completionTaskId, setCompletionTaskId] = useState<number | null>(null);
+  const [selectedCandidateTaskRunId, setSelectedCandidateTaskRunId] =
     useState<number | null>(null);
+  const [candidateToAdopt, setCandidateToAdopt] =
+    useState<DraftCandidateView | null>(null);
+  const [adoptionNotice, setAdoptionNotice] =
+    useState<DraftCandidateAdoption | null>(null);
   const hydratedBriefRevisionRef = useRef<number | null>(null);
   const seededExtractionTaskRef = useRef<number | null>(null);
 
@@ -335,6 +343,15 @@ export function BriefReviewWorkspace() {
       apiRequest<DraftView>(`/projects/${workflow.projectId}/draft`, {
         actorId: workflow.actorId,
       }),
+    enabled: workflow.ready && workflow.projectId !== null,
+  });
+  const candidatesQuery = useQuery({
+    queryKey: ["draft-candidates", workflow.actorId, workflow.projectId],
+    queryFn: () =>
+      apiRequest<DraftCandidateView[]>(
+        `/projects/${workflow.projectId}/draft-candidates`,
+        { actorId: workflow.actorId },
+      ),
     enabled: workflow.ready && workflow.projectId !== null,
   });
   const providerQuery = useQuery({
@@ -471,7 +488,11 @@ export function BriefReviewWorkspace() {
   useEffect(() => {
     if (generationTask?.status !== "succeeded") return;
     void queryClient.invalidateQueries({
-      queryKey: ["draft", workflow.actorId, workflow.projectId],
+      queryKey: [
+        "draft-candidates",
+        workflow.actorId,
+        workflow.projectId,
+      ],
     });
   }, [
     generationTask?.status,
@@ -647,9 +668,6 @@ export function BriefReviewWorkspace() {
       if (!providerQuery.data) {
         throw new Error("请先配置当前 Agent 模型服务。");
       }
-      if (draftQuery.data.content) {
-        throw new Error("当前草稿已有内容，不能再次执行全量生成。");
-      }
       return apiRequest<TaskView>(
         `/projects/${workflow.projectId}/tasks/generate`,
         {
@@ -664,7 +682,7 @@ export function BriefReviewWorkspace() {
       );
     },
     onSuccess: (task) => {
-      setDismissedCompletionTaskId(null);
+      setCompletionTaskId(task.task_run_id);
       workflow.setTask("brief_to_draft", task.task_run_id);
       queryClient.setQueryData(
         [
@@ -684,6 +702,40 @@ export function BriefReviewWorkspace() {
         ],
         task,
       );
+    },
+  });
+
+  const adoptionMutation = useMutation({
+    mutationFn: (candidate: DraftCandidateView) => {
+      if (workflow.projectId === null || !draftQuery.data) {
+        throw new Error("当前工作稿状态尚未读取完成。");
+      }
+      return apiRequest<DraftCandidateAdoption>(
+        `/projects/${workflow.projectId}/draft-candidates/${candidate.task_run_id}/adopt`,
+        {
+          actorId: workflow.actorId,
+          method: "POST",
+          body: {
+            expected_draft_revision: draftQuery.data.revision,
+          },
+        },
+      );
+    },
+    onSuccess: async (result) => {
+      setCandidateToAdopt(null);
+      setAdoptionNotice(result);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["draft", workflow.actorId, workflow.projectId],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            "draft-candidates",
+            workflow.actorId,
+            workflow.projectId,
+          ],
+        }),
+      ]);
     },
   });
 
@@ -720,23 +772,20 @@ export function BriefReviewWorkspace() {
   const frozen = Boolean(
     briefQuery.data?.current_version_id && !dirty,
   );
-  const duplicateGenerationBlocked = Boolean(
-    generationTask &&
-      draftQuery.data &&
-      generationTask.input_draft_revision === draftQuery.data.revision &&
-      !["failed", "cancelled"].includes(generationTask.status),
-  );
+  const candidates = candidatesQuery.data ?? [];
   const displayedError =
     saveMutation.error ??
     extractionMutation.error ??
     confirmMutation.error ??
     generationMutation.error ??
+    adoptionMutation.error ??
     extractRecovery.error ??
     generationRecovery.error ??
+    candidatesQuery.error ??
     providerQuery.error;
   const completionVisible = Boolean(
     generationTask?.status === "succeeded" &&
-      dismissedCompletionTaskId !== generationTask.task_run_id,
+      completionTaskId === generationTask.task_run_id,
   );
   const sourceRecords = sourceQuery.data ?? [];
   const originalSources = sourceRecords.filter(
@@ -1359,8 +1408,8 @@ export function BriefReviewWorkspace() {
         <aside className={`paper-panel ${styles.generationPanel}`}>
           <header className={styles.generationHead}>
             <div>
-              <span>创作简报 → 核心草稿</span>
-              <h2>生成与审计控制台</h2>
+              <span>创作简报 → 候选草稿 → 当前工作稿</span>
+              <h2>候选生成与采用台</h2>
             </div>
             <StatusBadge
               tone={
@@ -1428,9 +1477,13 @@ export function BriefReviewWorkspace() {
                   {generationTask?.status === "succeeded" ? "✓" : "3"}
                 </b>
                 <span>
-                  <strong>生成草稿</strong>
+                  <strong>生成候选</strong>
                   <small>
-                    {generationTask
+                    {generationRunning
+                      ? taskStatusLabel(generationTask?.status)
+                      : candidates.length
+                        ? `${candidates.length} 份候选`
+                        : generationTask
                       ? taskStatusLabel(generationTask.status)
                       : "尚未启动"}
                   </small>
@@ -1475,11 +1528,18 @@ export function BriefReviewWorkspace() {
                 </dd>
               </div>
               <div>
-                <dt>生成任务</dt>
+                <dt>候选草稿</dt>
                 <dd>
-                  {generationTask
-                    ? `#${generationTask.task_run_id} / ${taskStatusLabel(generationTask.status)}`
-                    : "尚无任务"}
+                  {candidates.length
+                    ? `${candidates.length} 份 / ${
+                        candidates.filter((candidate) => candidate.is_current)
+                          .length
+                          ? "已有当前工作稿"
+                          : "等待采用"
+                      }`
+                    : generationTask
+                      ? `#${generationTask.task_run_id} / ${taskStatusLabel(generationTask.status)}`
+                      : "尚无候选"}
                 </dd>
               </div>
             </dl>
@@ -1555,9 +1615,7 @@ export function BriefReviewWorkspace() {
                   !frozen ||
                   !providerQuery.data ||
                   generationMutation.isPending ||
-                  generationRunning ||
-                  duplicateGenerationBlocked ||
-                  Boolean(draftQuery.data?.content)
+                  generationRunning
                 }
                 onClick={() => generationMutation.mutate()}
                 type="button"
@@ -1567,14 +1625,23 @@ export function BriefReviewWorkspace() {
                     ? "正在入队…"
                     : generationRunning
                       ? "Agent 正在生成"
-                      : draftQuery.data?.content
-                        ? "草稿已存在"
-                        : "启动创作简报 → 草稿"}
+                      : candidates.length
+                        ? "基于同一 Brief 再生成"
+                        : "启动创作简报 → 候选"}
                 </span>
-                <b>生成核心草稿 →</b>
+                <b>{candidates.length ? "新增候选 →" : "生成候选草稿 →"}</b>
               </button>
             </div>
           </section>
+
+          <DraftCandidatePanel
+            adopting={adoptionMutation.isPending}
+            candidates={candidates}
+            onOpenWorkbench={() => router.push("/workbench")}
+            onRequestAdopt={setCandidateToAdopt}
+            onSelect={setSelectedCandidateTaskRunId}
+            selectedTaskRunId={selectedCandidateTaskRunId}
+          />
 
           <section
             className={styles.auditTrail}
@@ -1652,10 +1719,11 @@ export function BriefReviewWorkspace() {
             className={styles.completionDialog}
             role="dialog"
           >
-            <small>任务成功 · 核心草稿已就绪</small>
-            <h2>创作简报已生成真实草稿</h2>
+            <small>任务成功 · 独立候选已归档</small>
+            <h2>候选草稿已生成</h2>
             <p>
-              任务运行、规范化数据库投影与快照均已完成；本轮不进入下游编译。
+              该结果已作为不可变候选保存，当前工作稿没有被修改。你可以继续生成，
+              或在候选档案中查看并采用。
             </p>
             <dl>
               <div>
@@ -1671,17 +1739,109 @@ export function BriefReviewWorkspace() {
                 <dd>{generationTask.attempt_count}</dd>
               </div>
             </dl>
-            <button
-              onClick={() => {
-                setDismissedCompletionTaskId(
-                  generationTask.task_run_id,
-                );
-                router.push("/workbench");
-              }}
-              type="button"
-            >
-              进入 CaseFile 工作台 →
-            </button>
+            <div className={styles.completionActions}>
+              <button
+                onClick={() => {
+                  setCompletionTaskId(null);
+                  setSelectedCandidateTaskRunId(
+                    generationTask.task_run_id,
+                  );
+                }}
+                type="button"
+              >
+                查看本次候选
+              </button>
+              <button
+                disabled={generationMutation.isPending}
+                onClick={() => {
+                  setCompletionTaskId(null);
+                  generationMutation.mutate();
+                }}
+                type="button"
+              >
+                基于同一 Brief 再生成 →
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {candidateToAdopt ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            aria-modal="true"
+            className={styles.completionDialog}
+            role="dialog"
+          >
+            <small>明确采用 · 整卷替换</small>
+            <h2>采用“{candidateToAdopt.title}”？</h2>
+            <p>
+              {draftQuery.data?.content
+                ? "当前工作稿已有内容。采用后会原子替换当前态，并保留旧 Snapshot、Operation 与软删除对象历史。"
+                : "采用后，该候选会成为唯一当前工作稿，并建立首个可恢复 Snapshot。"}
+            </p>
+            <dl>
+              <div>
+                <dt>候选任务</dt>
+                <dd>#{candidateToAdopt.task_run_id}</dd>
+              </div>
+              <div>
+                <dt>Brief 版本</dt>
+                <dd>v{candidateToAdopt.brief_version_no}</dd>
+              </div>
+              <div>
+                <dt>当前内容</dt>
+                <dd>{draftQuery.data?.content ? "将被替换" : "空工作稿"}</dd>
+              </div>
+            </dl>
+            <div className={styles.completionActions}>
+              <button
+                disabled={adoptionMutation.isPending}
+                onClick={() => setCandidateToAdopt(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                disabled={adoptionMutation.isPending}
+                onClick={() => adoptionMutation.mutate(candidateToAdopt)}
+                type="button"
+              >
+                {adoptionMutation.isPending
+                  ? "正在采用…"
+                  : "确认采用为当前工作稿 →"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {adoptionNotice ? (
+        <div className={styles.modalBackdrop} role="presentation">
+          <section
+            aria-modal="true"
+            className={styles.completionDialog}
+            role="dialog"
+          >
+            <small>采用成功 · 当前工作稿已更新</small>
+            <h2>{adoptionNotice.title}</h2>
+            <p>
+              候选已完成规范化投影与 Snapshot 固定，可以进入工作台继续编辑。
+            </p>
+            <div className={styles.completionActions}>
+              <button
+                onClick={() => setAdoptionNotice(null)}
+                type="button"
+              >
+                留在候选档案
+              </button>
+              <button
+                onClick={() => router.push("/workbench")}
+                type="button"
+              >
+                进入 CaseFile 工作台 →
+              </button>
+            </div>
           </section>
         </div>
       ) : null}

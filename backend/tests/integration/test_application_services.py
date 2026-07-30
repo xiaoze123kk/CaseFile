@@ -32,6 +32,7 @@ from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
     BriefVersion,
+    CaseFileObject,
     DraftOperation,
     DraftSnapshot,
     TaskAttempt,
@@ -40,7 +41,7 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy import Engine, create_engine, func, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
@@ -283,6 +284,24 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
     return project_id, int(task["task_run_id"])
 
 
+def _adopt_candidate(
+    engine: Engine,
+    actor_id: int,
+    project_id: int,
+    task_run_id: int,
+    *,
+    expected_revision: int = 1,
+) -> dict[str, object]:
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        return WorkflowService(session).adopt_generation_candidate(
+            actor_id,
+            project_id,
+            task_run_id,
+            expected_draft_revision=expected_revision,
+        )
+
+
 def test_brief_service_enforces_root_schema_conditions(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
@@ -339,7 +358,7 @@ def test_brief_service_enforces_root_schema_conditions(
         assert WorkflowService(session).get_brief(actor_id, project_id)["draft_revision"] == 1
 
 
-def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
+def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
@@ -364,14 +383,32 @@ def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
             )
 
         assert task["status"] == "succeeded", (task, events, error_details)
-        assert task["result_snapshot_id"] is not None
+        assert task["result_snapshot_id"] is None
         assert task["usage"]["tools"]["execution_success_rate"] == 1.0
-        assert draft["revision"] == 2
-        assert draft["content"]["title"] == "围绕午夜回航建立目标无关的推理卷宗。"
+        assert draft["revision"] == 1
+        assert draft["content"] is None
         assert [event["sequence_no"] for event in events] == list(
             range(1, len(events) + 1)
         )
         assert events[-1]["event_type"] == "task.succeeded"
+
+        adopted = _adopt_candidate(
+            engine,
+            actor_id,
+            project_id,
+            task_run_id,
+        )
+        assert adopted["adopted"] is True
+        with factory() as session:
+            workflow = WorkflowService(session)
+            task = workflow.get_task(actor_id, project_id, task_run_id)
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            candidates = workflow.list_generation_candidates(actor_id, project_id)
+        assert task["result_snapshot_id"] is not None
+        assert draft["revision"] == 2
+        assert draft["content"]["title"] == "围绕午夜回航建立目标无关的推理卷宗。"
+        assert candidates[0]["is_current"] is True
+        assert candidates[0]["is_adopted"] is True
 
         with engine.connect() as connection:
             ciphertext = connection.execute(
@@ -387,6 +424,121 @@ def test_fake_worker_writes_exact_roundtrip_snapshot_and_metrics(
         assert b"sk-test-workflow-secret" not in bytes(ciphertext)
         assert snapshot_json == draft["content"]
         assert snapshot_hash == casefile_content_hash(draft["content"])
+
+
+def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces_draft(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, first_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="multi-candidate-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            brief = workflow.get_brief(actor_id, project_id)
+            second = workflow.create_generation_task(
+                actor_id,
+                project_id,
+                brief_version_id=brief["current_version_id"],
+                expected_draft_revision=1,
+            )
+        second_task_id = int(second["task_run_id"])
+        assert worker.run_once() is True
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            candidates = workflow.list_generation_candidates(actor_id, project_id)
+        assert draft["revision"] == 1
+        assert draft["content"] is None
+        assert [item["task_run_id"] for item in candidates] == [
+            second_task_id,
+            first_task_id,
+        ]
+        assert all(item["can_adopt"] for item in candidates)
+
+        _adopt_candidate(
+            engine,
+            actor_id,
+            project_id,
+            second_task_id,
+            expected_revision=1,
+        )
+        with factory() as session:
+            workflow = WorkflowService(session)
+            brief = workflow.get_brief(actor_id, project_id)
+            third = workflow.create_generation_task(
+                actor_id,
+                project_id,
+                brief_version_id=brief["current_version_id"],
+                expected_draft_revision=2,
+            )
+        third_task_id = int(third["task_run_id"])
+        assert worker.run_once() is True
+
+        with factory() as session:
+            unchanged = CaseFileService(session).get_draft(actor_id, project_id)
+        assert unchanged["revision"] == 2
+        second_resolution_id = unchanged["content"]["resolution_specs"][0]["id"]
+
+        _adopt_candidate(
+            engine,
+            actor_id,
+            project_id,
+            third_task_id,
+            expected_revision=2,
+        )
+        with factory() as session:
+            workflow = WorkflowService(session)
+            replaced = CaseFileService(session).get_draft(actor_id, project_id)
+            candidates = workflow.list_generation_candidates(actor_id, project_id)
+            active_count = session.scalar(
+                select(func.count(CaseFileObject.id)).where(
+                    CaseFileObject.project_id == project_id,
+                    CaseFileObject.deleted_at.is_(None),
+                )
+            )
+            archived_count = session.scalar(
+                select(func.count(CaseFileObject.id)).where(
+                    CaseFileObject.project_id == project_id,
+                    CaseFileObject.deleted_at.is_not(None),
+                )
+            )
+            operation_types = list(
+                session.scalars(
+                    select(DraftOperation.operation_type)
+                    .where(DraftOperation.project_id == project_id)
+                    .order_by(DraftOperation.sequence_no)
+                )
+            )
+        assert replaced["revision"] == 3
+        assert replaced["content"]["resolution_specs"][0]["id"] != second_resolution_id
+        assert active_count and active_count > 0
+        assert archived_count and archived_count > 0
+        assert operation_types == [
+            "agent_adopt_brief_candidate",
+            "agent_adopt_brief_candidate",
+        ]
+        assert candidates[0]["task_run_id"] == third_task_id
+        assert candidates[0]["is_current"] is True
+        assert candidates[1]["task_run_id"] == second_task_id
+        assert candidates[1]["is_adopted"] is True
+        assert candidates[2]["task_run_id"] == first_task_id
+        assert candidates[2]["can_adopt"] is True
+
+        with engine.begin() as connection, pytest.raises(DBAPIError):
+            connection.execute(
+                update(TaskAttempt)
+                .where(TaskAttempt.task_run_id == first_task_id)
+                .values(candidate_jsonb={"tampered": True})
+            )
 
 
 def test_worker_repairs_structural_output_with_actionable_feedback(
@@ -814,6 +966,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert worker.run_once() is True
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
 
         with factory() as session:
             service = CaseFileService(session)
@@ -934,7 +1087,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
 ) -> None:
     engine, actor_id, master_key = workflow_database
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, _task_run_id = _prepare_task(engine, actor_id)
+        project_id, task_run_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         worker = Worker(
             factory,
@@ -942,6 +1095,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert worker.run_once() is True
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
 
         with factory() as session:
             content = CaseFileService(session).get_draft(actor_id, project_id)["content"]
@@ -1022,7 +1176,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
     engine, actor_id, master_key = workflow_database
     provider = ChatSuggestionProvider()
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, _generation_task_id = _prepare_task(engine, actor_id)
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         generation_worker = Worker(
             factory,
@@ -1030,6 +1184,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert generation_worker.run_once() is True
+        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
 
         with factory() as session:
             workflow = WorkflowService(session)
@@ -1145,13 +1300,14 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
     engine, actor_id, master_key = workflow_database
     provider = ChatSuggestionProvider()
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, _generation_task_id = _prepare_task(engine, actor_id)
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         Worker(
             factory,
             config=WorkerConfig(worker_id="stale-fixture-worker"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
+        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
 
         with factory() as session:
             workflow = WorkflowService(session)
@@ -1213,13 +1369,14 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
     engine, actor_id, master_key = workflow_database
     provider = ChatSuggestionProvider(invalid_time=True)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, _generation_task_id = _prepare_task(engine, actor_id)
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         Worker(
             factory,
             config=WorkerConfig(worker_id="invalid-fixture-worker"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
+        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
         with factory() as session:
             workflow = WorkflowService(session)
             thread = workflow.create_agent_thread(actor_id, project_id, title=None)
@@ -1281,6 +1438,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert generation_worker.run_once() is True
+        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
 
         with factory() as session:
             generated_task = WorkflowService(session).get_task(

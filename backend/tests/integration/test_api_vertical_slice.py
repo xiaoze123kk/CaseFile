@@ -282,7 +282,33 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert task.status_code == 200
         assert task.json()["status"] == "succeeded"
         assert task.json()["failure"] is None
-        assert task.json()["result"]["snapshot_id"] == task.json()["result_snapshot_id"]
+        assert task.json()["result_snapshot_id"] is None
+        assert task.json()["result"]["title"]
+
+        candidates = client.get(
+            f"/api/v1/projects/{project_id}/draft-candidates",
+            headers=_identity(actor_id),
+        )
+        assert candidates.status_code == 200
+        assert [candidate["task_run_id"] for candidate in candidates.json()] == [task_id]
+        assert candidates.json()[0]["can_adopt"] is True
+        empty_draft = client.get(
+            f"/api/v1/projects/{project_id}/draft",
+            headers=_identity(actor_id),
+        )
+        assert empty_draft.json()["content"] is None
+        adopted = client.post(
+            f"/api/v1/projects/{project_id}/draft-candidates/{task_id}/adopt",
+            headers=_identity(actor_id),
+            json={"expected_draft_revision": 1},
+        )
+        assert adopted.status_code == 200
+        assert adopted.json()["adopted"] is True
+        adopted_task = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{task_id}",
+            headers=_identity(actor_id),
+        )
+        assert adopted_task.json()["result_snapshot_id"] is not None
 
         stream = client.get(
             f"/api/v1/projects/{project_id}/tasks/{task_id}/stream",

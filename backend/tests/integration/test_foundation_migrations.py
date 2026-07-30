@@ -1614,7 +1614,9 @@ def test_concurrent_first_canon_confirmation_commits_once(migrated_engine: Engin
     assert outcomes.count(False) == 1
 
 
-def test_source_records_are_immutable_and_project_scoped(connection: Connection) -> None:
+def test_source_records_and_task_candidates_are_immutable_and_project_scoped(
+    connection: Connection,
+) -> None:
     first = _seed_lineage(connection, "source-first")
     second = _seed_lineage(connection, "source-second")
 
@@ -1811,6 +1813,41 @@ def test_source_records_are_immutable_and_project_scoped(connection: Connection)
         ).scalar_one()
     )
     assert proposal_id > revision_id
+
+    candidate_attempt_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO task_attempts (
+                    project_id, task_run_id, attempt_no, status, candidate_jsonb
+                ) VALUES (
+                    :project_id, :task_run_id, 1, 'succeeded',
+                    '{"candidate": true}'::jsonb
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "task_run_id": task_run_id,
+            },
+        ).scalar_one()
+    )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                UPDATE task_attempts
+                   SET candidate_jsonb = '{"candidate": false}'::jsonb
+                 WHERE id = :attempt_id
+                """
+            ),
+            {"attempt_id": candidate_attempt_id},
+        )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text("DELETE FROM task_attempts WHERE id = :attempt_id"),
+            {"attempt_id": candidate_attempt_id},
+        )
 
     with _expect_database_error(connection):
         connection.execute(

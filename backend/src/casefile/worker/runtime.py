@@ -38,7 +38,10 @@ from casefile.agent_runtime import (
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.providers import ProviderProtocolError
-from casefile.application.casefile_v1 import write_generated_casefile
+from casefile.application.casefile_v1 import (
+    generation_candidate_summary,
+    validate_generation_candidate_context,
+)
 from casefile.application.workflow_service import (
     WorkflowService,
     append_task_event,
@@ -302,7 +305,13 @@ class Worker:
             if result is None or candidate is None:
                 raise RuntimeError("Provider returned no candidate")
             usage = result.usage
-            self._complete(task_run_id, attempt_id, candidate, result, validation_errors)
+            self._complete_generation_candidate(
+                task_run_id,
+                attempt_id,
+                candidate,
+                result,
+                validation_errors,
+            )
         except Exception as error:
             self._fail(
                 task_run_id,
@@ -360,18 +369,22 @@ class Worker:
                 raise RuntimeError("Frozen BriefVersion hash no longer matches TaskRun input")
             if _json_hash(frozen_brief) != task.input_hash:
                 raise RuntimeError("Frozen TaskRun Brief payload does not match its input hash")
+            frozen_version = _required_object(task.input_jsonb, "version")
             return GenerationRequest(
                 task_run_id=task.id,
                 brief=frozen_brief,
-                casefile_id=owned.casefile.object_id,
+                casefile_id=_required_string(task.input_jsonb, "casefile_id"),
                 brief_id=_required_string(task.input_jsonb, "brief_public_id"),
                 brief_version=_required_integer(
                     task.input_jsonb,
                     "brief_version_no",
                 ),
-                version_id=owned.draft.version_id,
-                version_no=owned.draft.version_no,
-                parent_version_id=owned.draft.parent_version_id,
+                version_id=_required_string(frozen_version, "version_id"),
+                version_no=_required_integer(frozen_version, "version_no"),
+                parent_version_id=_optional_string(
+                    frozen_version,
+                    "parent_version_id",
+                ),
                 model_id=task.model_id,
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
@@ -583,7 +596,7 @@ class Worker:
             },
         )
 
-    def _complete(
+    def _complete_generation_candidate(
         self,
         task_run_id: int,
         attempt_id: int,
@@ -613,17 +626,13 @@ class Worker:
             brief = session.get(Brief, brief_version.brief_id)
             if brief is None:
                 raise RuntimeError("Brief disappeared")
-            if owned.draft.revision != task.input_draft_revision:
-                raise RuntimeError("Draft revision changed while generation was running")
-            snapshot = write_generated_casefile(
-                session,
+            validate_generation_candidate_context(
                 owned,
-                candidate=candidate,
+                candidate,
                 brief=brief,
                 brief_version=brief_version,
-                task_run_id=task.id,
-                actor_user_id=task.actor_user_id,
             )
+            summary = generation_candidate_summary(candidate)
             now = datetime.now(UTC)
             attempt.status = "succeeded"
             attempt.candidate_jsonb = candidate
@@ -633,14 +642,8 @@ class Worker:
             task.status = "succeeded"
             task.stage = "completed"
             task.usage_jsonb = attempt.usage_jsonb
-            task.result_snapshot_id = snapshot.id
-            task.result_jsonb = {
-                "task_run_id": task.id,
-                "status": "succeeded",
-                "snapshot_id": snapshot.id,
-                "draft_revision": owned.draft.revision,
-                "content_hash": snapshot.content_hash,
-            }
+            task.result_snapshot_id = None
+            task.result_jsonb = summary
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
@@ -649,7 +652,7 @@ class Worker:
                 task,
                 "validation.completed",
                 "validating",
-                {"valid": True, "content_hash": snapshot.content_hash},
+                {"valid": True, "content_hash": summary["content_hash"]},
             )
             append_task_event(
                 session,
@@ -657,9 +660,8 @@ class Worker:
                 "task.succeeded",
                 "completed",
                 {
-                    "message": "CaseFile 已生成并写入工作稿",
-                    "snapshot_id": snapshot.id,
-                    "draft_revision": owned.draft.revision,
+                    "message": "候选草稿已生成，等待作者采用",
+                    "content_hash": summary["content_hash"],
                     "usage": task.usage_jsonb,
                 },
             )
@@ -820,6 +822,13 @@ def _required_string(value: dict[str, Any], key: str) -> str:
     result = value.get(key)
     if not isinstance(result, str) or not result:
         raise RuntimeError(f"Frozen TaskRun input is missing string field: {key}")
+    return result
+
+
+def _optional_string(value: dict[str, Any], key: str) -> str | None:
+    result = value.get(key)
+    if result is not None and (not isinstance(result, str) or not result):
+        raise RuntimeError(f"Frozen TaskRun input has an invalid string field: {key}")
     return result
 
 

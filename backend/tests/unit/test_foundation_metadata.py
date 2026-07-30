@@ -287,6 +287,15 @@ def test_core_unique_and_foreign_key_constraints_are_present() -> None:
         for table in Base.metadata.tables.values()
         for column in table.c
     )
+    operation_checks = {
+        str(constraint.sqltext)
+        for constraint in Base.metadata.tables["draft_operations"].constraints
+        if isinstance(constraint, sa.CheckConstraint)
+    }
+    assert any(
+        "agent_adopt_brief_candidate" in expression
+        for expression in operation_checks
+    )
 
 
 def test_tracked_responsibility_docs_list_the_same_tables() -> None:

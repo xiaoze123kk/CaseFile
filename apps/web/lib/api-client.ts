@@ -129,6 +129,14 @@ export interface TaskFailure {
   issues: TaskFailureIssue[];
 }
 
+export interface GenerationCandidateSummary {
+  title: string;
+  content_hash: string;
+  object_counts: Record<string, number>;
+  reasoning_questions: string[];
+  constraint_statements: string[];
+}
+
 export interface TaskView {
   task_run_id: number;
   project_id: number;
@@ -153,11 +161,36 @@ export interface TaskView {
   attempt_count: number;
   usage: Record<string, unknown>;
   result_snapshot_id: number | null;
-  result: BriefPolishResult | BriefAnchorExtractResult | null;
+  result:
+    | BriefPolishResult
+    | BriefAnchorExtractResult
+    | GenerationCandidateSummary
+    | null;
   error_code: string | null;
   failure: TaskFailure | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface DraftCandidateView extends GenerationCandidateSummary {
+  task_run_id: number;
+  brief_version_no: number;
+  is_current_brief: boolean;
+  is_current: boolean;
+  is_adopted: boolean;
+  can_adopt: boolean;
+  provider: ProviderName;
+  model_id: string;
+  attempt_count: number;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface DraftCandidateAdoption {
+  task_run_id: number;
+  title: string;
+  content_hash: string;
+  adopted: true;
 }
 
 export interface TaskEventView {

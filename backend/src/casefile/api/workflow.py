@@ -21,6 +21,7 @@ from casefile.api.schemas import (
     BriefConfirmRequest,
     BriefPolishTaskRequest,
     BriefUpdateRequest,
+    DraftCandidateAdoptRequest,
     GenerateTaskRequest,
     ProviderSettingRequest,
     SourceRecordCreateRequest,
@@ -235,6 +236,42 @@ def workflow_router() -> APIRouter:
             brief_version_id=payload.brief_version_id,
             expected_draft_revision=payload.expected_draft_revision,
             provider=payload.provider,
+        )
+
+    @router.get("/projects/{project_id}/draft-candidates")
+    def list_draft_candidates(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> list[dict[str, Any]]:
+        return WorkflowService(session).list_generation_candidates(actor, project_id)
+
+    @router.get("/projects/{project_id}/draft-candidates/{task_run_id}")
+    def get_draft_candidate(
+        project_id: int,
+        task_run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).get_generation_candidate(
+            actor,
+            project_id,
+            task_run_id,
+        )
+
+    @router.post("/projects/{project_id}/draft-candidates/{task_run_id}/adopt")
+    def adopt_draft_candidate(
+        project_id: int,
+        task_run_id: int,
+        payload: DraftCandidateAdoptRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).adopt_generation_candidate(
+            actor,
+            project_id,
+            task_run_id,
+            expected_draft_revision=payload.expected_draft_revision,
         )
 
     @router.post("/projects/{project_id}/tasks/brief-polish", status_code=202)
