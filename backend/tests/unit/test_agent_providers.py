@@ -20,12 +20,14 @@ from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     GenerationRequest,
 )
+from casefile.agent_runtime.prompt import casefile_chat_input
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
     _json_schema_instruction,
     _pydantic_validation_issues,
 )
 from casefile.agent_runtime.tools import GenerationToolContext, validate_casefile_candidate
+from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile
@@ -180,6 +182,10 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
             },
             history=({"role": "user", "content": "先看完整卷宗。"},),
             message="请讨论 evt_1，但先不要改稿。",
+            editable_fields_by_collection={
+                "entities": ("description", "name", "tags"),
+                "events": ("description", "participant_refs", "tags", "title"),
+            },
             input_hash="c" * 64,
             model_id="fake",
             api_key=None,
@@ -197,6 +203,33 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
         ("model.started", "responding"),
         ("model.completed", "responding"),
     ]
+
+
+def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() -> None:
+    capabilities = editable_fields_by_collection()
+    request = CaseFileChatRequest(
+        task_run_id=4,
+        prompt_version="casefile-chat-v1",
+        casefile={"entities": [{"id": "ent_1", "name": "Lucy"}]},
+        history=(),
+        message="请给 Lucy 增加标签。",
+        editable_fields_by_collection=capabilities,
+        input_hash="d" * 64,
+        model_id="fake",
+        api_key=None,
+        max_turns=2,
+        emit=lambda _event_type, _stage, _payload: None,
+    )
+
+    introduction, payload_text = casefile_chat_input(request).split("\n", 1)
+    payload = json.loads(payload_text)
+
+    assert introduction.startswith("请根据以下冻结数据回复作者")
+    assert payload["editable_fields_by_collection"] == {
+        collection: list(fields) for collection, fields in capabilities.items()
+    }
+    assert "tags" in payload["editable_fields_by_collection"]["entities"]
+    assert "revision" not in payload["editable_fields_by_collection"]["entities"]
 
 
 @pytest.mark.parametrize(

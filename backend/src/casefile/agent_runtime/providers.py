@@ -704,9 +704,9 @@ def _json_schema_instruction(output_type: type[BaseModel]) -> str:
         separators=(",", ":"),
     )
     return (
-        "\nThe final response must be exactly one JSON object matching the following JSON Schema. "
-        "Use the exact property names; do not copy provenance input fields into the output; "
-        "do not wrap the object in Markdown or add commentary.\n"
+        "\n最终响应必须是严格匹配以下 JSON Schema 的一个 JSON 对象。"
+        "必须使用准确的属性名；不得把来源追踪输入字段复制到输出；"
+        "不得使用 Markdown 包装，也不得添加任何额外说明。\n"
         + schema
     )
 

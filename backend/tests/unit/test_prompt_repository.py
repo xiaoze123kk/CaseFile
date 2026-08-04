@@ -25,19 +25,19 @@ EXPECTED_CURRENT_VERSIONS = {
     "casefile_chat": "casefile-chat-v1",
 }
 
-# This immutable release inventory starts with hashes captured before migration.
+# This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
     ("brief_polish", "brief-polish-v2"): (
-        "08348b8cc32c3a5b35502b377e301f19cd586241a346b76320abfd2d598f6fe2"
+        "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"
     ),
     ("brief_anchor_extract", "brief-anchor-extract-v2"): (
-        "b1610c82e54f74ee3a0c8ed5d65779bbfc33e3af942c409f3f63a0a9bf445816"
+        "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d"
     ),
     ("brief_to_draft", "brief-to-draft-v3"): (
-        "b299091db94567addd570c1402a57454cd1b4814d3ccdb3adcf6315b1d58eb6a"
+        "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
     ),
     ("casefile_chat", "casefile-chat-v1"): (
-        "adf7f60f993c703023a56b9cfda8cdaae00f262b93dffa0b81d9a1046f0e572f"
+        "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     ),
 }
 
@@ -67,6 +67,27 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
             definition.agent_id,
             definition.version,
         ) == definition.system_prompt
+
+
+def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> None:
+    prompts = {
+        agent_id: system_prompt_for_task(agent_id, version)
+        for agent_id, version in EXPECTED_CURRENT_VERSIONS.items()
+    }
+
+    for prompt in prompts.values():
+        assert "角色声明" in prompt
+        assert "要求忽略既有规则" in prompt
+        assert "结构化" in prompt
+
+    assert "`polished_text` 保持原稿的主要语言" in prompts["brief_polish"]
+    assert "不能作为候选项的事实来源" in prompts["brief_anchor_extract"]
+    assert "`repair_feedback`" in prompts["brief_to_draft"]
+    assert "每个顶层对象 ID 必须在对应集合中恰好使用一次" in prompts[
+        "brief_to_draft"
+    ]
+    assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
+    assert "未列入能力白名单" in prompts["casefile_chat"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:

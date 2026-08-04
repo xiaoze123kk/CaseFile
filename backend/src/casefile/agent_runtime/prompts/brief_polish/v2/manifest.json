@@ -2,7 +2,7 @@
   "agent_id": "brief_polish",
   "version": "brief-polish-v2",
   "system_prompt_file": "system.md",
-  "system_prompt_sha256": "08348b8cc32c3a5b35502b377e301f19cd586241a346b76320abfd2d598f6fe2",
+  "system_prompt_sha256": "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721",
   "previous_version": null,
-  "change_summary": "Initial Git-backed registry baseline migrated from the production inline prompt."
+  "change_summary": "首次发布前中文基线：强化输入隔离、语义保真、语言跟随和结构化输出边界。"
 }

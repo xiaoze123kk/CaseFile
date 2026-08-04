@@ -62,3 +62,22 @@
 - 专用 `_test` PostgreSQL 上的 `test_api_vertical_slice.py` 通过，确认 TaskRun 保存 `casefile-chat-v1` 且 Worker 向 Provider 传递同一明确版本。
 - 构建 `casefile_backend-0.1.0-py3-none-any.whl` 并检查压缩内容，Registry、README、四份 Manifest 和四份 System Prompt 均已打包，无需修改 Hatch 配置。
 - `git diff --check` 未发现本次变更产生的空白错误；输出中的 CRLF 提示来自启动时已有的无关前端工作区文件。
+
+## 首次发布前基线修正
+
+- 经用户明确授权，直接将四个当前版本的 System Prompt 改写为简体中文，不新增版本目录，也不移动 `registry.json` 指针。
+- 本次属于首次正式发布前的基线修正；字段名、工具名、枚举值、JSON Pointer 和其他机器标识符保持契约原文。
+- 同步更新四份 Manifest 的内容哈希与变更摘要，以及单元测试中的固定发布哈希。正式发布后继续执行已发布版本不可修改的规则。
+
+### 中文基线契约优化
+
+- 经用户要求继续直接修正当前首次发布前基线，不新增版本目录或修改 Registry 指针。
+- 四份 System Prompt 均加入输入数据与指令隔离，防止原稿、Brief、CaseFile 或历史消息中的文本覆盖系统规则。
+- `brief_polish` 补充语言跟随、特殊表达保留和三个输出字段的明确语义；`brief_anchor_extract` 补充空值、来源排他、原子化、去重、矛盾保留和强度判定规则。
+- `brief_to_draft` 明确处理 `repair_feedback`、克制补全、事实可追踪、顶层对象 ID 精确采用以及目标中立要求。
+- `casefile_chat` 不再静态误禁 `tags`；Worker 从应用层唯一 `EDITABLE_FIELDS` 白名单生成按集合划分的能力映射，并通过内部 Provider Request 注入模型输入。
+- 动态用户输入包装及 DeepSeek JSON Schema 附加指令同步改为简体中文；HTTP API、数据库、SSE 和 TaskRun 冻结输入保持不变。
+- Prompt Repository 与 Provider 定向测试 25 项通过，全部非 PostgreSQL 测试 44 项通过，全后端 mypy 对 47 个源文件检查通过。
+- 真实 PostgreSQL 聊天闭环用例通过，确认新的内部 Request 仍可完成建议生成、持久化、整批应用和撤销。
+- wheel 重新构建成功，四份 System Prompt 的包内字节哈希均与各自 Manifest 一致；本次范围 `git diff --check` 通过。
+- `scripts/check.ps1 -SkipPostgres` 已执行，但被工作区同时存在的无关 import 排序改动拦截；本次涉及的全部 Python 文件已用同一 Ruff 配置单独检查通过。

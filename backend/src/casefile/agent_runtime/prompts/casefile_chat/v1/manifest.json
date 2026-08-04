@@ -2,7 +2,7 @@
   "agent_id": "casefile_chat",
   "version": "casefile-chat-v1",
   "system_prompt_file": "system.md",
-  "system_prompt_sha256": "adf7f60f993c703023a56b9cfda8cdaae00f262b93dffa0b81d9a1046f0e572f",
+  "system_prompt_sha256": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388",
   "previous_version": null,
-  "change_summary": "Initial Git-backed registry baseline migrated from the production inline prompt."
+  "change_summary": "首次发布前中文基线：强化指令隔离、精确引用和动态可编辑字段能力约束。"
 }

@@ -165,6 +165,15 @@ COLLECTIONS = {
 }
 
 
+def editable_fields_by_collection() -> dict[str, tuple[str, ...]]:
+    """Expose the exact Agent-editable top-level fields by CaseFile collection."""
+
+    return {
+        collection: tuple(sorted(EDITABLE_FIELDS[object_type]))
+        for object_type, collection in COLLECTIONS.items()
+    }
+
+
 class V1EditingService:
     """Apply optimistic, contract-validated Draft changes."""
 
@@ -730,4 +739,9 @@ def iter_editable_fields(object_type: str) -> Iterator[str]:
     yield from sorted(EDITABLE_FIELDS.get(object_type, set()))
 
 
-__all__ = ["EDITABLE_FIELDS", "V1EditingService", "iter_editable_fields"]
+__all__ = [
+    "EDITABLE_FIELDS",
+    "V1EditingService",
+    "editable_fields_by_collection",
+    "iter_editable_fields",
+]

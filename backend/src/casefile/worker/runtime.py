@@ -42,6 +42,9 @@ from casefile.application.casefile_v1 import (
     generation_candidate_summary,
     validate_generation_candidate_context,
 )
+from casefile.application.v1_editing import (
+    editable_fields_by_collection as chat_editable_fields_by_collection,
+)
 from casefile.application.workflow_service import (
     WorkflowService,
     append_task_event,
@@ -339,6 +342,13 @@ class Worker:
                 raise RuntimeError(
                     "Frozen provider setting version no longer matches TaskRun"
                 )
+            if (
+                setting.credential_status == "deleted"
+                or setting.secret_ciphertext is None
+                or setting.secret_nonce is None
+                or setting.key_version is None
+            ):
+                raise RuntimeError("Frozen provider credential has been deleted")
             api_key = decrypt_api_key(
                 setting.secret_ciphertext,
                 setting.secret_nonce,
@@ -425,6 +435,7 @@ class Worker:
             casefile=casefile,
             history=tuple(history),
             message=message,
+            editable_fields_by_collection=chat_editable_fields_by_collection(),
             input_hash=task.input_hash,
             model_id=task.model_id,
             api_key=api_key,

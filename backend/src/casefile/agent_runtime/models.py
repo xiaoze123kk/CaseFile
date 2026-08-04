@@ -115,6 +115,7 @@ class CaseFileChatRequest:
     casefile: dict[str, Any]
     history: tuple[dict[str, str], ...]
     message: str
+    editable_fields_by_collection: dict[str, tuple[str, ...]]
     input_hash: str
     model_id: str
     api_key: str | None
