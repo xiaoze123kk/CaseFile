@@ -40,14 +40,51 @@ describe("real workflow boundary", () => {
     expect(source).not.toContain("@/lib/prototype-model");
   });
 
-  it("keeps the frozen frontend-template demo reachable from the global toolbar", () => {
+  it("keeps the frozen frontend-template demo reachable from the real-mode block", () => {
     const source = readFileSync(
       resolve(process.cwd(), "components", "archive-shell.tsx"),
       "utf8",
     );
 
     expect(source).toContain('href="/demo"');
-    expect(source).toContain("前端模板 · 演示模式");
+    expect(source).toContain("演示模式 ↗");
+    expect(source).toContain('className="real-mode-demo-link"');
+    expect(source).not.toContain("real-utility-bar");
+    expect(source).not.toContain("real-utility-copy");
+    expect(source).not.toContain("模型与 API</button>");
+  });
+
+  it("does not render the retired workflow progress strip on real pages", () => {
+    const realWorkspaces = [
+      "features/workflow/intake-workspace.tsx",
+      "features/workflow/brief-review-workspace.tsx",
+      "features/workflow/real-workbench.tsx",
+    ];
+
+    realWorkspaces.forEach((file) => {
+      const source = readFileSync(resolve(process.cwd(), file), "utf8");
+      expect(source).not.toContain("CaseSpine");
+    });
+
+    const realLayouts = [
+      [
+        "features/workflow/intake-workspace.module.css",
+        "grid-template-rows: 88px minmax(0, 1fr) 44px;",
+      ],
+      [
+        "features/workflow/brief-workspace.module.css",
+        "grid-template-rows: auto minmax(0, 1fr) 42px;",
+      ],
+      [
+        "features/workflow/real-workbench.module.css",
+        "grid-template-rows: 88px minmax(0, 1fr);",
+      ],
+    ] as const;
+
+    realLayouts.forEach(([file, expectedRows]) => {
+      const source = readFileSync(resolve(process.cwd(), file), "utf8");
+      expect(source).toContain(expectedRows);
+    });
   });
 
   it("selects an isolated shell for every demo route", () => {

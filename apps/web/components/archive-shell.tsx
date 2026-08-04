@@ -96,6 +96,9 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
         <div className="rail-footer">
           <div className="real-mode-note">
             <b>真实模式</b>
+            <Link className="real-mode-demo-link" href="/demo">
+              演示模式 ↗
+            </Link>
             <span>PostgreSQL 持久化 · 单 Agent · SSE 审计轨迹</span>
           </div>
           <button
@@ -115,18 +118,6 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
       </aside>
 
       <section className="archive-canvas">
-        <header className="utility-bar">
-          <div className="real-utility-copy">
-            <b>CaseFile · 真实工作流</b>
-            <span>只展示阶段、工具摘要与用量，不展示隐藏思维链</span>
-          </div>
-          <div className="utility-actions">
-            <Link className="utility-link" href="/demo">
-              前端模板 · 演示模式 ↗
-            </Link>
-            <button onClick={() => setSettingsOpen(true)} type="button">模型与 API</button>
-          </div>
-        </header>
         {children}
       </section>
 

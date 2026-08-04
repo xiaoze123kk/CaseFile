@@ -9,7 +9,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
 import {
-  CaseSpine,
   DocumentHeader,
   PanelHeader,
   StatusBadge,
@@ -200,8 +199,6 @@ export function RealWorkbench() {
         ]}
         title={document.title}
       />
-
-      <CaseSpine current="draft" />
 
       <section
         aria-label="CaseFile 卷宗编辑工作台"

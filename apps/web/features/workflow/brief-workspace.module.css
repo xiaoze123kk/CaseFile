@@ -1,5 +1,5 @@
 .document {
-  grid-template-rows: auto auto minmax(0, 1fr) 42px;
+  grid-template-rows: auto minmax(0, 1fr) 42px;
   height: 100%;
   background:
     linear-gradient(rgba(26, 28, 25, 0.025) 1px, transparent 1px),
@@ -1730,7 +1730,7 @@
 
 @media (max-height: 820px) {
   .document {
-    grid-template-rows: auto auto minmax(700px, 1fr) 42px;
+    grid-template-rows: auto minmax(700px, 1fr) 42px;
     overflow-y: auto;
   }
 

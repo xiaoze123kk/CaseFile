@@ -347,9 +347,10 @@ textarea:focus-visible {
 }
 
 .real-mode-note {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 8px;
   padding: 10px 0 12px;
   color: var(--ink-muted);
   border-bottom: 1px solid var(--hairline);
@@ -361,6 +362,26 @@ textarea:focus-visible {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: var(--font-micro);
   letter-spacing: 0.12em;
+}
+
+.real-mode-note > span {
+  grid-column: 1 / -1;
+}
+
+.real-mode-demo-link {
+  padding: 3px 5px;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  background: var(--red-soft);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-micro);
+  letter-spacing: 0.05em;
+  text-decoration: none;
+}
+
+.real-mode-demo-link:hover {
+  color: white;
+  background: var(--red);
 }
 
 .user-card:hover .user-avatar {
@@ -431,7 +452,7 @@ textarea:focus-visible {
 
 .archive-canvas {
   display: grid;
-  grid-template-rows: 72px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   background:
@@ -512,23 +533,6 @@ textarea:focus-visible {
 .utility-actions button:hover {
   color: var(--red);
   background: var(--paper-high);
-}
-
-.real-utility-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.real-utility-copy b {
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-caption);
-  letter-spacing: 0.09em;
-}
-
-.real-utility-copy span {
-  color: var(--ink-muted);
-  font-size: var(--font-caption);
 }
 
 .utility-actions .utility-link {

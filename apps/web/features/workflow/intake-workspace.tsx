@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  CaseSpine,
   DocumentHeader,
   PanelHeader,
   StatusBadge,
@@ -759,8 +758,6 @@ export function IntakeWorkspace() {
         ]}
         title={`新卷宗：${documentTitle}`}
       />
-
-      <CaseSpine current="idea" />
 
       <form
         className={styles.homeGrid}

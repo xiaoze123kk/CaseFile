@@ -35,7 +35,7 @@ type FieldDefinition =
   | {
       key: string;
       label: string;
-      kind: "text" | "textarea" | "list" | "number" | "datetime";
+      kind: "text" | "textarea" | "list" | "tags" | "number" | "datetime";
       hint?: string;
       placeholder?: string;
     }
@@ -532,7 +532,7 @@ const fieldSections: Record<WorkbenchCollectionKey, FieldSection[]> = {
           key: "steps",
           label: "推理步骤",
           kind: "reasoning_steps",
-          hint: "每行填写：推理方式｜输入对象名称（顿号分隔）｜输出对象名称",
+          hint: "每行填写：推理方式：输入对象名称（顿号分隔） → 输出对象名称",
         },
         {
           key: "required_for_resolution",
@@ -616,8 +616,8 @@ const commonMetadataSection: FieldSection = {
     {
       key: "tags",
       label: "标签",
-      kind: "list",
-      hint: "每行一个标签",
+      kind: "tags",
+      hint: "输入后按 Enter 添加，每个标签可单独移除",
     },
   ],
 };
@@ -805,7 +805,7 @@ function structuredFieldText(
         .map((ref) => refLabel(document, ref))
         .filter(Boolean)
         .join("、");
-      return `${optionLabel(reasoningOperations, step.operation)}｜${inputs}｜${
+      return `${optionLabel(reasoningOperations, step.operation)}：${inputs} → ${
         refLabel(document, step.output_ref) || "请选择输出对象"
       }`;
     })
@@ -859,8 +859,14 @@ function parseStructuredField(
     });
   }
   return lines.flatMap((line, index) => {
+    const arrowParts = line.split(/\s*(?:→|->)\s*/);
     const [operationLabel = "推断", inputText = "", outputText = ""] =
-      line.split("｜");
+      arrowParts.length > 1
+        ? [
+            ...(arrowParts.shift() ?? "").split(/[：:]/, 2),
+            arrowParts.join(" → "),
+          ]
+        : line.split("｜");
     const outputRef = refForLabel(document, outputText);
     if (!outputRef) return [];
     return [
@@ -1132,6 +1138,19 @@ function EditorField({
       </label>
     );
   }
+  if (definition.kind === "tags") {
+    const tags = Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
+    return (
+      <TagEditor
+        hint={definition.hint}
+        label={definition.label}
+        onChange={(next) => onChange(definition.key, next)}
+        tags={tags}
+      />
+    );
+  }
   if (definition.kind === "textarea" || definition.kind === "list") {
     return (
       <label className={styles.editorWideField}>
@@ -1206,6 +1225,60 @@ function EditorField({
       />
       {definition.hint ? <small>{definition.hint}</small> : null}
     </label>
+  );
+}
+
+function TagEditor({
+  tags,
+  hint,
+  label,
+  onChange,
+}: {
+  tags: string[];
+  hint?: string;
+  label: string;
+  onChange: (tags: string[]) => void;
+}) {
+  const [input, setInput] = useState("");
+
+  function addInputTag() {
+    const additions = parseListField(input);
+    if (!additions.length) return;
+    onChange([...new Set([...tags, ...additions])]);
+    setInput("");
+  }
+
+  return (
+    <div className={`${styles.editorWideField} ${styles.tagField}`}>
+      <span>{label}</span>
+      <div className={styles.tagEditor}>
+        {tags.map((tag) => (
+          <span className={styles.tagChip} key={tag}>
+            <span>{tag}</span>
+            <button
+              aria-label={`移除标签“${tag}”`}
+              onClick={() => onChange(tags.filter((item) => item !== tag))}
+              type="button"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          aria-label="添加标签"
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === ",") {
+              event.preventDefault();
+              addInputTag();
+            }
+          }}
+          placeholder="添加标签…"
+          value={input}
+        />
+      </div>
+      {hint ? <small>{hint}</small> : null}
+    </div>
   );
 }
 

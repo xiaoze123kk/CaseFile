@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  CaseSpine,
   DocumentHeader,
   PanelHeader,
   StatusBadge,
@@ -1102,8 +1101,6 @@ export function BriefReviewWorkspace() {
         ]}
         title={normalizedContent.creative_intent}
       />
-
-      <CaseSpine current="brief" />
 
       <div className={styles.briefSpread}>
         <form

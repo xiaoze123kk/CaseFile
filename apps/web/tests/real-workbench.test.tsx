@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,6 +8,7 @@ import {
 } from "@/features/workflow/agent-workspace";
 import { FactTimeline } from "@/features/workflow/fact-timeline";
 import { ObjectTree } from "@/features/workflow/object-tree";
+import { ObjectEditor } from "@/features/workflow/object-editor";
 import {
   resolveObjectRef,
   timelineEntries,
@@ -259,6 +260,118 @@ describe("real workbench", () => {
       objectId: "ent_internal_01",
     });
     expect(screen.queryByText("ent_internal_01")).not.toBeInTheDocument();
+  });
+
+  it("edits tags as independent dossier index labels", async () => {
+    const document = caseFileDocument();
+    const entity = {
+      ...document.entities[0],
+      tags: ["family", "sibling", "suspect"],
+    } as unknown as WorkbenchObject;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    const { unmount } = render(
+      <ObjectEditor
+        collection="entities"
+        document={document}
+        draftRevision={2}
+        object={entity}
+        onSave={onSave}
+      />,
+    );
+
+    expect(
+      screen.queryByDisplayValue("family\nsibling\nsuspect"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "移除标签“family”" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "移除标签“sibling”" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "添加标签" }), {
+      target: { value: "witness" },
+    });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "添加标签" }), {
+      key: "Enter",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存对象" }));
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        { tags: ["family", "suspect", "witness"] },
+        2,
+      ),
+    );
+    unmount();
+  });
+
+  it("shows and parses reasoning steps as explicit input to output arrows", async () => {
+    const document = caseFileDocument();
+    const reasoningPath = {
+      id: "reasoning_path_01",
+      object_type: "reasoning_path",
+      title: "航线推断",
+      description: "根据事件推断航线变化。",
+      path_type: "causal",
+      target_ref: null,
+      steps: [
+        {
+          step_id: "step_existing_01",
+          operation: "infer",
+          input_refs: [
+            { object_type: "event", object_id: "evt_early" },
+          ],
+          output_ref: { object_type: "event", object_id: "evt_late" },
+        },
+      ],
+      required_for_resolution: false,
+      alternative_path_refs: [],
+      tags: [],
+    } as unknown as WorkbenchObject;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    const { unmount } = render(
+      <ObjectEditor
+        collection="reasoning_paths"
+        document={document}
+        draftRevision={3}
+        object={reasoningPath}
+        onSave={onSave}
+      />,
+    );
+
+    const steps = screen.getByRole("textbox", { name: /^推理步骤/ });
+    expect(steps).toHaveValue("推断：乘客登船 → 航线发生偏移");
+
+    fireEvent.change(steps, {
+      target: { value: "合并：乘客登船、灯塔熄灭 -> 航线发生偏移" },
+    });
+    fireEvent.submit(steps.closest("form") as HTMLFormElement);
+
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        {
+          steps: [
+            {
+              step_id: "step_existing_01",
+              operation: "combine",
+              input_refs: [
+                { object_type: "event", object_id: "evt_early" },
+                { object_type: "event", object_id: "evt_unknown" },
+              ],
+              output_ref: {
+                object_type: "event",
+                object_id: "evt_late",
+              },
+            },
+          ],
+        },
+        3,
+      ),
+    );
+    unmount();
   });
 
   it("connects factual timeline records to selection and Agent discussion", () => {

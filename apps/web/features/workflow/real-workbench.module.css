@@ -1,5 +1,5 @@
 .workbenchDocument {
-  grid-template-rows: 88px 68px minmax(0, 1fr);
+  grid-template-rows: 88px minmax(0, 1fr);
 }
 .refreshButton {
   display: inline-flex;
@@ -546,18 +546,21 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 11px 9px;
 }
-.editorFieldGrid > label {
+.editorFieldGrid > label,
+.editorFieldGrid > .tagField {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 5px;
 }
-.editorFieldGrid > label > span {
+.editorFieldGrid > label > span,
+.editorFieldGrid > .tagField > span {
   color: var(--ink-muted);
   font-size: var(--font-caption);
   font-weight: 700;
 }
-.editorFieldGrid > label > small {
+.editorFieldGrid > label > small,
+.editorFieldGrid > .tagField > small {
   color: var(--ink-faint);
   font-size: var(--font-micro);
   line-height: 1.4;
@@ -589,6 +592,44 @@
 }
 .editorFieldGrid .editorWideField {
   grid-column: 1 / -1;
+}
+.tagEditor {
+  display: flex;
+  min-height: 32px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.tagChip {
+  display: inline-flex;
+  min-height: 29px;
+  align-items: center;
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: var(--font-caption);
+}
+.tagChip > span {
+  padding: 4px 3px 4px 8px;
+}
+.tagChip button {
+  width: 26px;
+  min-height: 27px;
+  padding: 0;
+  color: var(--ink-faint);
+  border: 0;
+  background: transparent;
+}
+.tagChip button:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+.tagEditor > input {
+  width: 116px;
+  min-height: 29px;
+  padding: 4px 7px;
+  border-style: dashed;
+  background: transparent;
 }
 .editorCheckField {
   grid-column: 1 / -1;
@@ -1833,7 +1874,7 @@
 }
 @media (max-width: 760px) {
   .workbenchDocument {
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
   }
   .workspace {
     display: flex;
@@ -1908,7 +1949,7 @@
 }
 @media (max-height: 820px) and (min-width: 1121px) {
   .workbenchDocument {
-    grid-template-rows: 88px 68px minmax(650px, 1fr);
+    grid-template-rows: 88px minmax(650px, 1fr);
     overflow-y: auto;
   }
 }
