@@ -1,0 +1,8 @@
+{
+  "agent_id": "casefile_chat",
+  "version": "casefile-chat-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "adf7f60f993c703023a56b9cfda8cdaae00f262b93dffa0b81d9a1046f0e572f",
+  "previous_version": null,
+  "change_summary": "Initial Git-backed registry baseline migrated from the production inline prompt."
+}

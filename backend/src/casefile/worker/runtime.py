@@ -204,6 +204,7 @@ class Worker:
                     raise RuntimeError("Frozen SourceRecord payload does not match its input hash")
                 polish_request = BriefPolishRequest(
                     task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
                     source_text=source_text,
                     input_hash=task_snapshot.input_hash,
                     model_id=task_snapshot.model_id,
@@ -229,6 +230,7 @@ class Worker:
                     raise RuntimeError("Frozen Brief payload does not match its input hash")
                 extract_request = BriefAnchorExtractRequest(
                     task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
                     brief=frozen_brief,
                     input_hash=task_snapshot.input_hash,
                     model_id=task_snapshot.model_id,
@@ -372,6 +374,7 @@ class Worker:
             frozen_version = _required_object(task.input_jsonb, "version")
             return GenerationRequest(
                 task_run_id=task.id,
+                prompt_version=task.prompt_version,
                 brief=frozen_brief,
                 casefile_id=_required_string(task.input_jsonb, "casefile_id"),
                 brief_id=_required_string(task.input_jsonb, "brief_public_id"),
@@ -418,6 +421,7 @@ class Worker:
             history.append({"role": role, "content": content})
         return CaseFileChatRequest(
             task_run_id=task.id,
+            prompt_version=task.prompt_version,
             casefile=casefile,
             history=tuple(history),
             message=message,

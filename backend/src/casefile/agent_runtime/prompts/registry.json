@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "agents": {
+    "brief_polish": {
+      "current_version": "brief-polish-v2"
+    },
+    "brief_anchor_extract": {
+      "current_version": "brief-anchor-extract-v2"
+    },
+    "brief_to_draft": {
+      "current_version": "brief-to-draft-v3"
+    },
+    "casefile_chat": {
+      "current_version": "casefile-chat-v1"
+    }
+  }
+}

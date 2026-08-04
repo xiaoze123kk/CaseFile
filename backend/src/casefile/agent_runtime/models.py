@@ -66,6 +66,7 @@ class CaseFileChatCandidate(StrictAgentOutput):
 @dataclass(frozen=True, slots=True)
 class BriefPolishRequest:
     task_run_id: int
+    prompt_version: str
     source_text: str
     input_hash: str
     model_id: str
@@ -78,6 +79,7 @@ class BriefPolishRequest:
 @dataclass(frozen=True, slots=True)
 class BriefAnchorExtractRequest:
     task_run_id: int
+    prompt_version: str
     brief: dict[str, Any]
     input_hash: str
     model_id: str
@@ -90,6 +92,7 @@ class BriefAnchorExtractRequest:
 @dataclass(frozen=True, slots=True)
 class GenerationRequest:
     task_run_id: int
+    prompt_version: str
     brief: dict[str, Any]
     casefile_id: str
     brief_id: str
@@ -108,6 +111,7 @@ class GenerationRequest:
 @dataclass(frozen=True, slots=True)
 class CaseFileChatRequest:
     task_run_id: int
+    prompt_version: str
     casefile: dict[str, Any]
     history: tuple[dict[str, str], ...]
     message: str

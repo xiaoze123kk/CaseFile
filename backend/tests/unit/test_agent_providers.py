@@ -8,6 +8,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
+import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
@@ -40,6 +41,7 @@ from pydantic import ValidationError
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
     return GenerationRequest(
         task_run_id=1,
+        prompt_version="brief-to-draft-v3",
         brief={},
         casefile_id="case_1",
         brief_id="brief_1",
@@ -69,6 +71,57 @@ def test_deepseek_provider_requires_a_key_before_network_access() -> None:
         DeepSeekAgentsProvider().generate(_request(api_key=None))
 
 
+def test_openai_provider_loads_the_prompt_version_frozen_on_the_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded: list[tuple[str, str]] = []
+
+    def fake_system_prompt_for_task(agent_id: str, version: str) -> str:
+        loaded.append((agent_id, version))
+        return "Role: frozen test prompt.\n"
+
+    async def fake_run_auxiliary(
+        *_args: object,
+        **kwargs: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        assert kwargs["instructions"] == "Role: frozen test prompt.\n"
+        return (
+            {
+                "polished_text": "原稿",
+                "preserved_intent_summary": "保留原意。",
+                "ambiguities": [],
+            },
+            {},
+        )
+
+    monkeypatch.setattr(
+        providers_module,
+        "system_prompt_for_task",
+        fake_system_prompt_for_task,
+    )
+    monkeypatch.setattr(
+        OpenAIAgentsProvider,
+        "_run_auxiliary",
+        fake_run_auxiliary,
+    )
+
+    result = OpenAIAgentsProvider().polish(
+        BriefPolishRequest(
+            task_run_id=1,
+            prompt_version="brief-polish-v1",
+            source_text="原稿",
+            input_hash="a" * 64,
+            model_id="gpt-5.6-sol",
+            api_key="sk-test",
+            max_turns=2,
+            emit=lambda _event_type, _stage, _payload: None,
+        )
+    )
+
+    assert result.candidate.polished_text == "原稿"
+    assert loaded == [("brief_polish", "brief-polish-v1")]
+
+
 def test_unstructured_provider_receives_exact_auxiliary_schema() -> None:
     instruction = _json_schema_instruction(BriefPolishCandidate)
 
@@ -83,6 +136,7 @@ def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() ->
     polish = provider.polish(
         BriefPolishRequest(
             task_run_id=1,
+            prompt_version="brief-polish-v2",
             source_text="  原稿事实保持不变。  ",
             input_hash="a" * 64,
             model_id="fake",
@@ -95,6 +149,7 @@ def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() ->
     extract = provider.extract_anchors(
         BriefAnchorExtractRequest(
             task_run_id=2,
+            prompt_version="brief-anchor-extract-v2",
             brief={
                 "author_answer": "甲修改记录。乙触发保护。",
                 "boundary_text": "必须保持唯一答案；可以保留次要歧义。",
@@ -118,6 +173,7 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
     result = FakeProvider().chat(
         CaseFileChatRequest(
             task_run_id=3,
+            prompt_version="casefile-chat-v1",
             casefile={
                 "entities": [{"id": "ent_1", "name": "Lucy"}],
                 "events": [{"id": "evt_1", "title": "蛋糕被偷吃"}],

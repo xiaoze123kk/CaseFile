@@ -77,7 +77,9 @@
 | `backend/src/casefile/benchmark/` | `brief_to_draft` Fixture 运行器与指标汇总；记录结构有效率、修复次数、延迟、工具调用有效率/执行成功率和结果采纳率，不依赖 ORM 或 Web 框架。 |
 | `backend/src/casefile/data_postgres/models/benchmark.py` | Benchmark 持久化模型的预留落位；当前不定义或导出 ORM。 |
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
-| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`、`brief_anchor_extract`、`brief_to_draft`、`casefile_chat` 的结构化结果、工具注册与 Validator 指标；不输出模型内部思维文本。 |
+| `backend/src/casefile/agent_runtime/` | 目标无关的 Prompt 输入渲染、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`、`brief_anchor_extract`、`brief_to_draft`、`casefile_chat` 的结构化结果、工具注册与 Validator 指标；不输出模型内部思维文本。 |
+| `backend/src/casefile/agent_runtime/prompt_repository.py` | 通过包资源严格解析当前或明确历史 System Prompt 版本，校验 Agent/目录/Manifest/UTF-8/LF/SHA-256 一致性并在漂移时失败关闭。 |
+| `backend/src/casefile/agent_runtime/prompts/` | 四个 Agent 功能各自独立、不可变的版本化 System Prompt 唯一 Git 事实源；`registry.json` 只维护当前版本指针，版本目录同时保存 Manifest、原文和发布规则。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的四类 TaskRun 领取、lease/Attempt 恢复、Agent 执行、结果/事件原子持久化；`brief_to_draft` 执行结构修复与 Validator 后把完整结果保存为不可变 Attempt 候选，不直接修改 Draft，`casefile_chat` 完成助手消息并保存可审阅 PatchSet。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
 | `backend/src/casefile/validation/` | 确定性 Schema、引用、时间、知识与发布规则的预留落位。 |
@@ -89,6 +91,7 @@
 | `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 42 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
 | `backend/tests/unit/test_casefile_contract.py` | 验证 v1 CaseFile Schema、自身合法性、三类产品 Fixture、确定性语义错误和规范哈希。 |
 | `backend/tests/unit/test_agent_providers.py` | 验证 OpenAI/DeepSeek Provider 路由、DeepSeek 官方兼容端点和无 Key 网络调用门禁。 |
+| `backend/tests/unit/test_prompt_repository.py` | 验证 Agent 与 System Prompt 一一对应、版本/Manifest/哈希基线、明确历史版本读取及资源漂移失败路径。 |
 | `backend/tests/unit/test_benchmark_runner.py` | 验证 fake `brief_to_draft` Benchmark 与工具调用指标。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证九段升降级、42 表、SourceRecord/Agent 协作/候选不可变/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |

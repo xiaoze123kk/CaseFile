@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "b299091db94567addd570c1402a57454cd1b4814d3ccdb3adcf6315b1d58eb6a",
+  "previous_version": null,
+  "change_summary": "Initial Git-backed registry baseline migrated from the production inline prompt."
+}

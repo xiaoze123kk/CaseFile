@@ -31,15 +31,12 @@ from casefile.agent_runtime.models import (
     ToolMetrics,
 )
 from casefile.agent_runtime.prompt import (
-    ANCHOR_EXTRACT_INSTRUCTIONS,
-    CASEFILE_CHAT_INSTRUCTIONS,
-    INSTRUCTIONS,
-    POLISH_INSTRUCTIONS,
     anchor_extract_input,
     casefile_chat_input,
     generation_input,
     polish_input,
 )
+from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 
@@ -66,6 +63,7 @@ class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
 
     def polish(self, request: BriefPolishRequest) -> BriefPolishResult:
+        system_prompt_for_task("brief_polish", request.prompt_version)
         request.emit("model.started", "polishing", {"model_id": request.model_id})
         candidate = BriefPolishCandidate(
             polished_text=request.source_text.strip(),
@@ -79,6 +77,7 @@ class FakeProvider:
     def extract_anchors(
         self, request: BriefAnchorExtractRequest
     ) -> BriefAnchorExtractResult:
+        system_prompt_for_task("brief_anchor_extract", request.prompt_version)
         request.emit("model.started", "extracting", {"model_id": request.model_id})
         answer = request.brief.get("author_answer")
         boundary = request.brief.get("boundary_text")
@@ -107,6 +106,7 @@ class FakeProvider:
         return BriefAnchorExtractResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        system_prompt_for_task("casefile_chat", request.prompt_version)
         request.emit("model.started", "responding", {"model_id": request.model_id})
         referenced = [
             object_id
@@ -126,6 +126,7 @@ class FakeProvider:
         return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
+        system_prompt_for_task("brief_to_draft", request.prompt_version)
         request.emit("tool.started", "planning", {"tool": "plan_object_ids"})
         resolution_id = f"res_t{request.task_run_id}_01"
         constraints = _brief_constraints(request)
@@ -248,7 +249,10 @@ class OpenAIAgentsProvider:
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=POLISH_INSTRUCTIONS,
+                instructions=system_prompt_for_task(
+                    "brief_polish",
+                    request.prompt_version,
+                ),
                 input_text=polish_input(request.source_text, request.input_hash),
                 output_type=BriefPolishCandidate,
                 stage="polishing",
@@ -267,7 +271,10 @@ class OpenAIAgentsProvider:
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=ANCHOR_EXTRACT_INSTRUCTIONS,
+                instructions=system_prompt_for_task(
+                    "brief_anchor_extract",
+                    request.prompt_version,
+                ),
                 input_text=anchor_extract_input(request.brief, request.input_hash),
                 output_type=BriefAnchorExtractCandidate,
                 stage="extracting",
@@ -284,7 +291,10 @@ class OpenAIAgentsProvider:
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=CASEFILE_CHAT_INSTRUCTIONS,
+                instructions=system_prompt_for_task(
+                    "casefile_chat",
+                    request.prompt_version,
+                ),
                 input_text=casefile_chat_input(request),
                 output_type=CaseFileChatCandidate,
                 stage="responding",
@@ -362,7 +372,10 @@ class DeepSeekAgentsProvider:
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=POLISH_INSTRUCTIONS,
+                instructions=system_prompt_for_task(
+                    "brief_polish",
+                    request.prompt_version,
+                ),
                 input_text=polish_input(request.source_text, request.input_hash),
                 output_type=BriefPolishCandidate,
                 stage="polishing",
@@ -381,7 +394,10 @@ class DeepSeekAgentsProvider:
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=ANCHOR_EXTRACT_INSTRUCTIONS,
+                instructions=system_prompt_for_task(
+                    "brief_anchor_extract",
+                    request.prompt_version,
+                ),
                 input_text=anchor_extract_input(request.brief, request.input_hash),
                 output_type=BriefAnchorExtractCandidate,
                 stage="extracting",
@@ -398,7 +414,10 @@ class DeepSeekAgentsProvider:
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=CASEFILE_CHAT_INSTRUCTIONS,
+                instructions=system_prompt_for_task(
+                    "casefile_chat",
+                    request.prompt_version,
+                ),
                 input_text=casefile_chat_input(request),
                 output_type=CaseFileChatCandidate,
                 stage="responding",
@@ -526,7 +545,7 @@ async def _run_agent(
 ) -> GenerationResult:
     context = GenerationToolContext(request=request)
     output_type: Any = CaseFile if structured_output else str
-    instructions = INSTRUCTIONS
+    instructions = system_prompt_for_task("brief_to_draft", request.prompt_version)
     if not structured_output:
         instructions += _json_schema_instruction(CaseFile)
     agent = Agent[GenerationToolContext](

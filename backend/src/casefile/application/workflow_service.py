@@ -14,7 +14,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from casefile.agent_runtime.credentials import encrypt_api_key
-from casefile.agent_runtime.prompt import AGENT_VERSION, prompt_version_for_task
+from casefile.agent_runtime.prompt import AGENT_VERSION
+from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.agent_collaboration import (
     auto_thread_title as _auto_thread_title,
