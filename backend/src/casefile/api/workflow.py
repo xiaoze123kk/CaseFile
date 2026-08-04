@@ -7,7 +7,7 @@ import time
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
@@ -56,6 +56,15 @@ def workflow_router() -> APIRouter:
             model_id=payload.model_id,
             model_is_custom=payload.model_is_custom,
         )
+
+    @router.delete("/settings/provider", status_code=204)
+    def delete_provider_setting(
+        actor: ActorDependency,
+        session: SessionDependency,
+        provider: Literal["openai", "deepseek"] = "openai",
+    ) -> Response:
+        WorkflowService(session).delete_provider_setting(actor, provider)
+        return Response(status_code=204)
 
     @router.get("/projects/{project_id}/sources")
     def list_sources(

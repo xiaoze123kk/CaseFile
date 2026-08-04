@@ -254,6 +254,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
     };
     throw new ApiError(response.status, await response.json().catch(() => fallback));
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -314,6 +315,7 @@ export function errorMessage(error: unknown) {
       not_found: "没有找到请求的数据。",
       method_not_allowed: "当前操作不受支持。",
       provider_setting_required: "请先配置当前模型服务。",
+      provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
       brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
       brief_extraction_input_empty: "请先填写作者底牌或创作边界。",

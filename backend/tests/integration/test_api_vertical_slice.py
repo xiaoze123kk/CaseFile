@@ -132,6 +132,54 @@ def _identity(actor_id: int) -> dict[str, str]:
     return {"X-CaseFile-User-Id": str(actor_id)}
 
 
+def test_provider_setting_delete_roundtrip(
+    api_database: tuple[str, Engine, int, str],
+) -> None:
+    database_url, _engine, actor_id, master_key = api_database
+    app = create_app(database_url)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}), TestClient(app) as client:
+        saved = client.put(
+            "/api/v1/settings/provider",
+            headers=_identity(actor_id),
+            json={
+                "provider": "deepseek",
+                "api_key": "sk-deepseek-api-secret",
+                "model_id": "deepseek-v4-flash",
+                "model_is_custom": False,
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["masked_api_key"].endswith("cret")
+
+        deleted = client.delete(
+            "/api/v1/settings/provider?provider=deepseek",
+            headers=_identity(actor_id),
+        )
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+        assert (
+            client.get(
+                "/api/v1/settings/provider?provider=deepseek",
+                headers=_identity(actor_id),
+            ).json()
+            is None
+        )
+
+        restored = client.put(
+            "/api/v1/settings/provider",
+            headers=_identity(actor_id),
+            json={
+                "provider": "deepseek",
+                "api_key": "sk-deepseek-api-restored",
+                "model_id": "deepseek-v4-flash",
+                "model_is_custom": False,
+            },
+        )
+        assert restored.status_code == 200
+        assert restored.json()["config_version"] == 3
+        assert restored.json()["masked_api_key"].endswith("ored")
+
+
 def test_settings_brief_generation_sse_and_completion_gate(
     api_database: tuple[str, Engine, int, str],
 ) -> None:

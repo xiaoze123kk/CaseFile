@@ -51,7 +51,7 @@
 | `backend/src/casefile/data_postgres/base.py` | SQLAlchemy Base、约束命名规范、BIGINT Identity 主键和时间戳 Mixin。 |
 | `backend/src/casefile/data_postgres/session.py` | 同步 Engine/Session 工厂、应用支持的唯一数据库 revision 和 API 启动门禁。 |
 | `backend/src/casefile/data_postgres/repositories.py` | 按 Project/Draft/Snapshot 聚合封装所有者过滤、当前态读写、Operation、语义引用和安全软删。 |
-| `backend/src/casefile/data_postgres/models/identity.py` | `users`、单一所有者 `projects` 与用户级密文 `user_provider_settings` ORM。 |
+| `backend/src/casefile/data_postgres/models/identity.py` | `users`、单一所有者 `projects` 与用户级密文 `user_provider_settings` ORM；Provider 密钥删除后保留无密文墓碑行供历史任务引用。 |
 | `backend/src/casefile/data_postgres/models/casefile.py` | `casefiles`、`drafts`、轻量 `casefile_objects` 注册表、旧语义边 `casefile_refs`、v1 `casefile_contract_refs` 和 `draft_operations` ORM。 |
 | `backend/src/casefile/data_postgres/models/collaboration.py` | `agent_threads`、`agent_messages`、`agent_patch_sets`、`agent_patch_operations` ORM；承载个人多线程对话、消息顺序、逐项审阅、整批应用/撤销 revision 和过期状态，不承载团队权限。 |
 | `backend/src/casefile/data_postgres/models/content.py` | 旧 Narrative Phase 兼容存储、Entity/Person、v1 Relationship/Location、Event、Information Unit/Evidence/Testimony、Claim 与 Knowledge State ORM；Phase 不再进入目标无关 v1 契约。 |
@@ -69,7 +69,7 @@
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 v1 CaseFile JSON 与规范化当前态之间执行候选摘要/上下文校验、显式采用的整卷原子替换、完整投影、契约引用映射和规范哈希，并向类型化编辑服务公开稳定的 ObjectRef 遍历；旧物理 Phase/公平性字段不再进入 v1 投影。 |
 | `backend/src/casefile/application/draft_candidates.py` | 同一 BriefVersion 的成功候选列表/详情、当前采用态判定，以及锁定 Draft/Task 后显式采用候选的独立事务服务。 |
 | `backend/src/casefile/application/v1_editing.py` | 11 类 v1 对象的业务字段白名单、单对象整体验证保存、ObjectRef/有序子项同步、revision 冲突检查，以及 Agent 建议整批应用/撤销的一次 revision 事务；旧 `knowledge_states` 本轮只读。 |
-| `backend/src/casefile/application/workflow_service.py` | Provider 设置、不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、四类 TaskRun、同 Brief 多候选查询/显式采用，以及 Agent Thread/Message、建议逐项决策、整批应用/撤销、过期检测、最近任务恢复与 SSE 事件查询的事务边界。 |
+| `backend/src/casefile/application/workflow_service.py` | Provider 设置保存、活动任务门禁与密钥擦除，不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、四类 TaskRun、同 Brief 多候选查询/显式采用，以及 Agent Thread/Message、建议逐项决策、整批应用/撤销、过期检测、最近任务恢复与 SSE 事件查询的事务边界。 |
 | `backend/src/casefile/api/schemas.py` | FastAPI 严格请求 DTO 与应用命令转换，包含候选采用 revision、Thread 创建/更新、Message 发送和 PatchSet 应用/撤销请求。 |
 | `backend/src/casefile/api/dependencies.py` | 请求 Session、本地开发身份头和 Draft base revision 依赖。 |
 | `backend/src/casefile/api/app.py` | 应用工厂、启动数据库门禁、统一错误体、健康检查与 `/api/v1` 路由。 |
@@ -94,9 +94,9 @@
 | `backend/tests/unit/test_prompt_repository.py` | 验证 Agent 与 System Prompt 一一对应、版本/Manifest/哈希基线、明确历史版本读取及资源漂移失败路径。 |
 | `backend/tests/unit/test_benchmark_runner.py` | 验证 fake `brief_to_draft` Benchmark 与工具调用指标。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
-| `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证九段升降级、42 表、SourceRecord/Agent 协作/候选不可变/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |
-| `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、三类 Worker、同 Brief 多候选/显式采用、lease 恢复、不可变历史和 v1 有限编辑闭环。 |
-| `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、Draft 候选查询/采用、SSE 恢复与完成门禁闭环。 |
+| `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证十段升降级、42 表、Provider 密钥擦除、SourceRecord/Agent 协作/候选不可变/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |
+| `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 Provider 密钥删除/重配、SourceRecord、三类 Worker、同 Brief 多候选/显式采用、lease 恢复、不可变历史和 v1 有限编辑闭环。 |
+| `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置保存/删除、原稿/润色候选、Brief 原子确认、三类 TaskRun、Draft 候选查询/采用、SSE 恢复与完成门禁闭环。 |
 
 当前正式业务表恰好为 42 张：
 
@@ -138,6 +138,7 @@
 | `apps/web/store/prototype-store.tsx` | `960481d` 演示模板的隔离 Fixture 状态，承载 `/demo` 下建案、Brief、工作台、推理与质量页；不得被真实路由或 `features/workflow/` 导入。 |
 | `apps/web/store/workflow-store.tsx` | 真实工作流最小会话指针、当前 Provider 选择和前端恢复状态；服务端事实始终由 API 重新读取。 |
 | `apps/web/tests/` | 原型状态迁移、失败门禁、真实/演示状态边界和前端组件测试。 |
+| `apps/web/tests/settings-dialog.test.tsx` | 验证 API 密钥输入显隐、删除二次确认、Provider 定向请求与删除后状态刷新。 |
 | `apps/web/e2e/` | 浏览器用户闭环测试。 |
 
 前端路由壳放 `app/`，业务交互放对应 `features/<domain>/`，通用视觉组件放 `components/`，无 UI 基础设施放 `lib/`。

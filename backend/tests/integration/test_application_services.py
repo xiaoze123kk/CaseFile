@@ -108,6 +108,23 @@ class RichFixtureProvider:
         )
 
 
+class EmptyKnowledgeStateProvider(RichFixtureProvider):
+    """Add a valid knowledge-state slot that deliberately has no ObjectRefs."""
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        result = super().generate(request)
+        result.candidate["entities"][0]["knowledge_states"].append(
+            {
+                "as_of_event_ref": None,
+                "knows_refs": [],
+                "believes_refs": [],
+                "false_belief_refs": [],
+            }
+        )
+        validate_casefile(result.candidate)
+        return result
+
+
 class StructuralFailureProvider(FakeProvider):
     """Fail deterministically before optionally returning a valid candidate."""
 
@@ -302,6 +319,80 @@ def _adopt_candidate(
         )
 
 
+def test_provider_credential_deletion_blocks_active_tasks_and_erases_material(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v3",
+        ):
+            _project_id, task_run_id = _prepare_task(engine, actor_id)
+        with factory() as session, pytest.raises(ApplicationError) as active:
+            WorkflowService(session).delete_provider_setting(actor_id)
+        assert active.value.code == "provider_credential_in_use"
+        assert active.value.details["active_task_count"] == 1
+
+        with factory() as session, session.begin():
+            session.execute(
+                update(TaskRun)
+                .where(TaskRun.id == task_run_id)
+                .values(
+                    status="failed",
+                    stage="failed",
+                    completed_at=func.now(),
+                    error_code="test_task_finished",
+                )
+            )
+
+        with factory() as session:
+            setting_before = session.scalar(
+                select(UserProviderSetting).where(
+                    UserProviderSetting.user_id == actor_id,
+                    UserProviderSetting.provider == "openai",
+                )
+            )
+            assert setting_before is not None
+            setting_id = setting_before.id
+
+        with factory() as session:
+            WorkflowService(session).delete_provider_setting(actor_id)
+
+        with factory() as session:
+            deleted = session.get(UserProviderSetting, setting_id)
+            task = session.get(TaskRun, task_run_id)
+            assert deleted is not None
+            assert deleted.credential_status == "deleted"
+            assert deleted.credential_deleted_at is not None
+            assert deleted.secret_ciphertext is None
+            assert deleted.secret_nonce is None
+            assert deleted.key_version is None
+            assert deleted.secret_last_four is None
+            assert task is not None and task.provider_setting_id == setting_id
+
+        with factory() as session:
+            assert WorkflowService(session).get_provider_setting(actor_id) is None
+
+        with factory() as session:
+            restored = WorkflowService(session).save_provider_setting(
+                actor_id,
+                api_key="sk-test-restored-secret",
+                model_id="gpt-5.6-sol",
+                model_is_custom=False,
+            )
+            assert restored["config_version"] == 3
+            assert restored["masked_api_key"].endswith("cret")
+
+        with factory() as session:
+            restored_row = session.get(UserProviderSetting, setting_id)
+            assert restored_row is not None
+            assert restored_row.credential_status == "unverified"
+            assert restored_row.credential_deleted_at is None
+            assert restored_row.secret_ciphertext is not None
+
+
 def test_brief_service_enforces_root_schema_conditions(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
@@ -424,6 +515,39 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
         assert b"sk-test-workflow-secret" not in bytes(ciphertext)
         assert snapshot_json == draft["content"]
         assert snapshot_hash == casefile_content_hash(draft["content"])
+
+
+def test_adoption_preserves_reference_free_knowledge_state_slots(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="empty-knowledge-state-worker"),
+            provider_factory=lambda _task: EmptyKnowledgeStateProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            candidate = session.scalar(
+                select(TaskAttempt.candidate_jsonb).where(TaskAttempt.task_run_id == task_run_id)
+            )
+        assert isinstance(candidate, dict)
+
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+
+        with factory() as session:
+            content = CaseFileService(session).get_draft(actor_id, project_id)["content"]
+        assert content == candidate
+        assert content["entities"][0]["knowledge_states"][-1] == {
+            "as_of_event_ref": None,
+            "knows_refs": [],
+            "believes_refs": [],
+            "false_belief_refs": [],
+        }
 
 
 def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces_draft(

@@ -97,8 +97,23 @@ class UserProviderSetting(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("octet_length(secret_ciphertext) > 16", name="ciphertext_not_empty"),
         CheckConstraint("length(secret_last_four) = 4", name="last_four_length"),
         CheckConstraint(
-            "credential_status IN ('unverified', 'valid', 'invalid')",
+            "credential_status IN ('unverified', 'valid', 'invalid', 'deleted')",
             name="credential_status_allowed",
+        ),
+        CheckConstraint(
+            "(credential_status = 'deleted' "
+            "AND credential_deleted_at IS NOT NULL "
+            "AND secret_ciphertext IS NULL "
+            "AND secret_nonce IS NULL "
+            "AND key_version IS NULL "
+            "AND secret_last_four IS NULL) "
+            "OR (credential_status <> 'deleted' "
+            "AND credential_deleted_at IS NULL "
+            "AND secret_ciphertext IS NOT NULL "
+            "AND secret_nonce IS NOT NULL "
+            "AND key_version IS NOT NULL "
+            "AND secret_last_four IS NOT NULL)",
+            name="credential_material_consistent",
         ),
         CheckConstraint("jsonb_typeof(default_budget_jsonb) = 'object'", name="budget_is_object"),
         Index("ix_user_provider_settings_user_id_updated_at", "user_id", "updated_at"),
@@ -121,14 +136,13 @@ class UserProviderSetting(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         server_default=text("1"),
     )
-    secret_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    secret_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
-    key_version: Mapped[int] = mapped_column(
+    secret_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
+    secret_nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    key_version: Mapped[int | None] = mapped_column(
         BigInteger,
-        nullable=False,
         server_default=text("1"),
     )
-    secret_last_four: Mapped[str] = mapped_column(String(4), nullable=False)
+    secret_last_four: Mapped[str | None] = mapped_column(String(4))
     credential_status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
@@ -142,3 +156,4 @@ class UserProviderSetting(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     )
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     validation_error_code: Mapped[str | None] = mapped_column(String(80))
+    credential_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -604,6 +604,7 @@
 
 .settingStatus {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
   padding: 12px;
@@ -612,8 +613,117 @@
   font-size: var(--font-label);
 }
 
+.settingStatus > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .settingStatus b {
   font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.deleteCredentialButton {
+  flex: 0 0 auto;
+  padding: 5px 0;
+  color: var(--red);
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.deleteCredentialButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.credentialDanger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 14px;
+  border: 1px solid rgba(171, 38, 13, 0.42);
+  border-left: 4px solid var(--red);
+  background: var(--red-soft);
+}
+
+.credentialDanger p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--font-label);
+  line-height: 1.55;
+}
+
+.credentialDanger > div:last-child {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.dangerButton {
+  min-height: 39px;
+  padding: 0 14px;
+  color: white;
+  border: 1px solid #7e1d0c;
+  border-radius: 0;
+  background: #7e1d0c;
+  font-weight: 700;
+}
+
+.dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settingsForm label > .secretInput {
+  position: relative;
+  display: block;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.secretInput input {
+  padding-right: 48px;
+}
+
+.secretInput button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  width: 43px;
+  height: calc(100% - 2px);
+  padding: 0;
+  color: var(--ink-muted);
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  background: var(--paper);
+  place-items: center;
+}
+
+.secretInput button:focus-visible,
+.deleteCredentialButton:focus-visible,
+.dangerButton:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+.secretInput button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.secretInput svg {
+  width: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .settingsForm .dialogActions {
@@ -815,5 +925,40 @@
 
   .briefGrid {
     grid-template-columns: minmax(540px, 1.1fr) minmax(360px, 0.9fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .modalBackdrop {
+    padding: 12px;
+  }
+
+  .settingsDialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .settingsLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsLayout > nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .providerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .settingStatus,
+  .credentialDanger {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .credentialDanger > div:last-child {
+    width: 100%;
+    justify-content: flex-end;
   }
 }

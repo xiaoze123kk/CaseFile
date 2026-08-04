@@ -1733,6 +1733,66 @@ def test_source_records_and_task_candidates_are_immutable_and_project_scoped(
         ).scalar_one()
     )
 
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                UPDATE user_provider_settings
+                   SET credential_status = 'deleted',
+                       credential_deleted_at = CURRENT_TIMESTAMP
+                 WHERE id = :setting_id
+                """
+            ),
+            {"setting_id": provider_setting_id},
+        )
+
+    connection.execute(
+        sa.text(
+            """
+            UPDATE user_provider_settings
+               SET credential_status = 'deleted',
+                   credential_deleted_at = CURRENT_TIMESTAMP,
+                   secret_ciphertext = NULL,
+                   secret_nonce = NULL,
+                   key_version = NULL,
+                   secret_last_four = NULL
+             WHERE id = :setting_id
+            """
+        ),
+        {"setting_id": provider_setting_id},
+    )
+    deleted_material = connection.execute(
+        sa.text(
+            """
+            SELECT secret_ciphertext, secret_nonce, key_version, secret_last_four
+              FROM user_provider_settings
+             WHERE id = :setting_id
+            """
+        ),
+        {"setting_id": provider_setting_id},
+    ).one()
+    assert deleted_material == (None, None, None, None)
+
+    connection.execute(
+        sa.text(
+            """
+            UPDATE user_provider_settings
+               SET credential_status = 'unverified',
+                   credential_deleted_at = NULL,
+                   secret_ciphertext = :ciphertext,
+                   secret_nonce = :nonce,
+                   key_version = 1,
+                   secret_last_four = 'test'
+             WHERE id = :setting_id
+            """
+        ),
+        {
+            "setting_id": provider_setting_id,
+            "ciphertext": b"x" * 17,
+            "nonce": b"n" * 12,
+        },
+    )
+
     task_parameters = {
         "project_id": first.project_id,
         "casefile_id": first.casefile_id,

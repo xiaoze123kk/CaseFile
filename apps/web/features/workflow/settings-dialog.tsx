@@ -50,8 +50,10 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   const workflow = useWorkflowSession();
   const queryClient = useQueryClient();
   const [apiKey, setApiKey] = useState("");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [modelId, setModelId] = useState("");
   const [customModelMode, setCustomModelMode] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const provider = PROVIDERS.find((item) => item.id === workflow.provider) ?? PROVIDERS[0];
   const settingQuery = useQuery({
     queryKey: ["provider-setting", workflow.actorId, workflow.provider],
@@ -69,6 +71,22 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
     ? modelId
     : modelId || settingQuery.data?.model_id || provider.defaultModel;
 
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiRequest<void>(`/settings/provider?provider=${workflow.provider}`, {
+        actorId: workflow.actorId,
+        method: "DELETE",
+      }),
+    onSuccess: async () => {
+      setApiKey("");
+      setShowApiKey(false);
+      setConfirmDelete(false);
+      await queryClient.invalidateQueries({
+        queryKey: ["provider-setting", workflow.actorId, workflow.provider],
+      });
+    },
+  });
+
   const saveMutation = useMutation({
     mutationFn: () =>
       apiRequest<ProviderSettingView>("/settings/provider", {
@@ -83,6 +101,9 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
       }),
     onSuccess: async () => {
       setApiKey("");
+      setShowApiKey(false);
+      setConfirmDelete(false);
+      deleteMutation.reset();
       await queryClient.invalidateQueries({
         queryKey: ["provider-setting", workflow.actorId, workflow.provider],
       });
@@ -91,8 +112,11 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
 
   function resetLocalForm() {
     setApiKey("");
+    setShowApiKey(false);
     setModelId("");
     setCustomModelMode(false);
+    setConfirmDelete(false);
+    deleteMutation.reset();
     saveMutation.reset();
   }
 
@@ -122,7 +146,7 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
 
         <div className={styles.settingsLayout}>
           <nav aria-label="设置栏目">
-            <button className={styles.activeSetting} type="button">模型与 API</button>
+            <button className={styles.activeSetting} type="button">API 密钥管理</button>
             <span>账户与认证 · 待接入</span>
           </nav>
           <form
@@ -133,15 +157,56 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             }}
           >
             <div className={styles.settingStatus}>
-              <span>当前凭据</span>
-              <b>
-                {settingQuery.isLoading
-                  ? "读取中"
-                  : settingQuery.data
-                    ? `${provider.label} ${settingQuery.data.masked_api_key} · ${credentialStatusLabel(settingQuery.data.credential_status)}`
-                    : "尚未配置"}
-              </b>
+              <div>
+                <span>当前凭据</span>
+                <b>
+                  {settingQuery.isLoading
+                    ? "读取中"
+                    : settingQuery.data
+                      ? `${provider.label} ${settingQuery.data.masked_api_key} · ${credentialStatusLabel(settingQuery.data.credential_status)}`
+                      : "尚未配置"}
+                </b>
+              </div>
+              {settingQuery.data ? (
+                <button
+                  className={styles.deleteCredentialButton}
+                  disabled={deleteMutation.isPending}
+                  onClick={() => {
+                    setConfirmDelete(true);
+                    deleteMutation.reset();
+                  }}
+                  type="button"
+                >
+                  删除密钥
+                </button>
+              ) : null}
             </div>
+            {confirmDelete && settingQuery.data ? (
+              <section aria-label="确认删除 API 密钥" className={styles.credentialDanger}>
+                <div>
+                  <b>确认删除 {provider.label} 密钥？</b>
+                  <p>密文将被清空，历史任务仍会保留；正在执行的任务结束前无法删除。</p>
+                </div>
+                <div>
+                  <button
+                    className={styles.secondaryButton}
+                    disabled={deleteMutation.isPending}
+                    onClick={() => setConfirmDelete(false)}
+                    type="button"
+                  >
+                    继续保留
+                  </button>
+                  <button
+                    className={styles.dangerButton}
+                    disabled={deleteMutation.isPending}
+                    onClick={() => deleteMutation.mutate()}
+                    type="button"
+                  >
+                    {deleteMutation.isPending ? "删除中…" : "确认删除"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
             <fieldset className={styles.providerFieldset}>
               <legend>模型供应商</legend>
               <div className={styles.providerGrid}>
@@ -164,18 +229,35 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             </fieldset>
             <label>
               <span>{provider.label} API 密钥</span>
-              <input
-                autoComplete="off"
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={
-                  settingQuery.data
-                    ? "输入新的 API 密钥以替换当前凭据"
-                    : "请输入 API 密钥"
-                }
-                required
-                type="password"
-                value={apiKey}
-              />
+              <span className={styles.secretInput}>
+                <input
+                  aria-label={`${provider.label} API 密钥`}
+                  autoComplete="off"
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder={
+                    settingQuery.data
+                      ? "输入新的 API 密钥以替换当前凭据"
+                      : "请输入 API 密钥"
+                  }
+                  required
+                  type={showApiKey ? "text" : "password"}
+                  value={apiKey}
+                />
+                <button
+                  aria-label={showApiKey ? "隐藏 API 密钥" : "显示 API 密钥"}
+                  aria-pressed={showApiKey}
+                  disabled={!apiKey}
+                  onClick={() => setShowApiKey((visible) => !visible)}
+                  title={showApiKey ? "隐藏 API 密钥" : "显示 API 密钥"}
+                  type="button"
+                >
+                  <svg aria-hidden="true" viewBox="0 0 24 24">
+                    <path d="M2.8 12s3.4-5.2 9.2-5.2S21.2 12 21.2 12 17.8 17.2 12 17.2 2.8 12 2.8 12Z" />
+                    <circle cx="12" cy="12" r="2.4" />
+                    {showApiKey ? null : <path d="m4 4 16 16" />}
+                  </svg>
+                </button>
+              </span>
               <small>密钥只发送到本地后端并以 AES-256-GCM 密文保存；前端不持久化明文。</small>
             </label>
             <label>
@@ -213,8 +295,14 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             {saveMutation.isError ? (
               <p className={styles.formError}>{errorMessage(saveMutation.error)}</p>
             ) : null}
+            {deleteMutation.isError ? (
+              <p className={styles.formError}>{errorMessage(deleteMutation.error)}</p>
+            ) : null}
             {saveMutation.isSuccess ? (
               <p className={styles.formSuccess}>设置已加密保存，可以开始生成。</p>
+            ) : null}
+            {deleteMutation.isSuccess ? (
+              <p className={styles.formSuccess}>API 密钥已删除，可以随时重新添加。</p>
             ) : null}
             <div className={styles.dialogActions}>
               <button className={styles.secondaryButton} onClick={closeDialog} type="button">取消</button>

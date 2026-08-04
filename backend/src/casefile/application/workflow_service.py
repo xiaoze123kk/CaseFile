@@ -842,7 +842,11 @@ class WorkflowService:
                     UserProviderSetting.provider == provider,
                 )
             )
-            return None if setting is None else _provider_view(setting)
+            return (
+                None
+                if setting is None or setting.credential_status == "deleted"
+                else _provider_view(setting)
+            )
 
     def save_provider_setting(
         self,
@@ -890,8 +894,52 @@ class WorkflowService:
                 setting.credential_status = "unverified"
                 setting.validated_at = None
                 setting.validation_error_code = None
+                setting.credential_deleted_at = None
             self.session.flush()
             return _provider_view(setting)
+
+    def delete_provider_setting(
+        self,
+        actor_user_id: int,
+        provider: str = DEFAULT_PROVIDER,
+    ) -> None:
+        provider = _supported_provider(provider)
+        with self.session.begin():
+            setting = self.session.scalar(
+                select(UserProviderSetting)
+                .where(
+                    UserProviderSetting.user_id == actor_user_id,
+                    UserProviderSetting.provider == provider,
+                )
+                .with_for_update()
+            )
+            if setting is None or setting.credential_status == "deleted":
+                return
+            active_task_count = self.session.scalar(
+                select(func.count())
+                .select_from(TaskRun)
+                .where(
+                    TaskRun.provider_setting_id == setting.id,
+                    TaskRun.status.in_(("queued", "running", "cancelling")),
+                )
+            )
+            if active_task_count:
+                raise ApplicationError(
+                    "provider_credential_in_use",
+                    "The API key is still used by an active task",
+                    status_code=409,
+                    details={"provider": provider, "active_task_count": active_task_count},
+                )
+            setting.config_version += 1
+            setting.secret_ciphertext = None
+            setting.secret_nonce = None
+            setting.key_version = None
+            setting.secret_last_four = None
+            setting.credential_status = "deleted"
+            setting.validated_at = None
+            setting.validation_error_code = None
+            setting.credential_deleted_at = datetime.now(UTC)
+            self.session.flush()
 
     def list_sources(
         self,
@@ -1418,12 +1466,14 @@ class WorkflowService:
         provider: str,
     ) -> UserProviderSetting:
         setting = self.session.scalar(
-            select(UserProviderSetting).where(
+            select(UserProviderSetting)
+            .where(
                 UserProviderSetting.user_id == actor_user_id,
                 UserProviderSetting.provider == provider,
             )
+            .with_for_update()
         )
-        if setting is None:
+        if setting is None or setting.credential_status == "deleted":
             raise ApplicationError(
                 "provider_setting_required",
                 f"Configure a {provider} API key before starting the task",
@@ -1700,6 +1750,8 @@ def _text_hash(value: str) -> str:
 
 
 def _provider_view(setting: UserProviderSetting) -> dict[str, Any]:
+    if setting.secret_last_four is None or setting.credential_status == "deleted":
+        raise RuntimeError("Deleted provider credentials do not have a public view")
     return {
         "provider": setting.provider,
         "model_id": setting.model_id,
