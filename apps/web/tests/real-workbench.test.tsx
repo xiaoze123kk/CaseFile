@@ -9,6 +9,7 @@ import {
 import { FactTimeline } from "@/features/workflow/fact-timeline";
 import { ObjectTree } from "@/features/workflow/object-tree";
 import { ObjectEditor } from "@/features/workflow/object-editor";
+import { resizeWorkbenchPanels } from "@/features/workflow/real-workbench";
 import {
   resolveObjectRef,
   timelineEntries,
@@ -107,6 +108,32 @@ function patchSet(
 }
 
 describe("real workbench", () => {
+  it("resizes either side of the center workspace independently", () => {
+    const widths = { index: 240, inspector: 330 };
+
+    expect(resizeWorkbenchPanels(widths, "index", 80, 1200)).toEqual({
+      index: 320,
+      inspector: 330,
+    });
+    expect(resizeWorkbenchPanels(widths, "inspector", -70, 1200)).toEqual({
+      index: 240,
+      inspector: 400,
+    });
+  });
+
+  it("keeps all three workbench panels above their usable minimum width", () => {
+    const widths = { index: 240, inspector: 330 };
+
+    expect(resizeWorkbenchPanels(widths, "index", 900, 1200)).toEqual({
+      index: 488,
+      inspector: 330,
+    });
+    expect(resizeWorkbenchPanels(widths, "inspector", -900, 1200)).toEqual({
+      index: 240,
+      inspector: 578,
+    });
+  });
+
   it("sorts factual events chronologically and keeps unknown time last", () => {
     const document = caseFileDocument();
     const entries = timelineEntries(

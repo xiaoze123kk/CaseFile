@@ -44,17 +44,22 @@ export function DocumentHeader({
 export function PanelHeader({
   title,
   code,
+  leading,
   trailing,
 }: {
   title: string;
   code: string;
+  leading?: ReactNode;
   trailing?: ReactNode;
 }) {
   return (
     <header className="panel-header">
-      <div>
-        <span>{title}</span>
-        <b>{code}</b>
+      <div className={leading ? "panel-header__leading" : undefined}>
+        {leading}
+        <div>
+          <span>{title}</span>
+          <b>{code}</b>
+        </div>
       </div>
       {trailing}
     </header>

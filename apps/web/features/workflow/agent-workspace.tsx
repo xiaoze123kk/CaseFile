@@ -27,7 +27,6 @@ import {
   executionStageLabel,
   listAgentMessages,
   listAgentThreads,
-  patchAgentThread,
   sendAgentMessage,
   terminalAgentEventTypes,
   threadIsArchived,
@@ -722,9 +721,11 @@ export function AgentWorkspace({
   currentRevision,
   document,
   focusEvent,
+  railOpen,
   onClearFocus,
   onDraftChanged,
   onOpenSelection,
+  onRailOpenChange,
   projectId,
   provider,
 }: {
@@ -732,17 +733,18 @@ export function AgentWorkspace({
   currentRevision: number;
   document: CaseFileDocument;
   focusEvent: WorkbenchObject | null;
+  railOpen: boolean;
   onClearFocus: () => void;
   onDraftChanged: () => void;
   onOpenSelection: (
     selection: WorkbenchSelection,
     preferTimeline?: boolean,
   ) => void;
+  onRailOpenChange: (open: boolean) => void;
   projectId: number;
   provider: ProviderName;
 }) {
   const queryClient = useQueryClient();
-  const [railOpen, setRailOpen] = useState(false);
   const [threadQuery, setThreadQuery] = useState("");
   const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
   const [composer, setComposer] = useState("");
@@ -755,8 +757,6 @@ export function AgentWorkspace({
   const [streamErrorsByThread, setStreamErrorsByThread] = useState<
     Record<number, string>
   >({});
-  const [renaming, setRenaming] = useState(false);
-  const [threadTitle, setThreadTitle] = useState("");
   const messageEndRef = useRef<HTMLDivElement | null>(null);
 
   const threadListQuery = useQuery({
@@ -774,8 +774,6 @@ export function AgentWorkspace({
       threads[0]
     )?.thread_id ??
     null;
-  const selectedThread =
-    threads.find((thread) => thread.thread_id === effectiveThreadId) ?? null;
   const messageListQuery = useQuery({
     queryKey: ["agent-messages", actorId, projectId, effectiveThreadId],
     queryFn: () =>
@@ -889,27 +887,7 @@ export function AgentWorkspace({
         queryKey: ["agent-threads", actorId, projectId],
       });
       setSelectedThreadId(thread.thread_id);
-      setRailOpen(false);
-    },
-  });
-
-  const threadPatchMutation = useMutation({
-    mutationFn: ({
-      threadId,
-      changes,
-    }: {
-      threadId: number;
-      changes: {
-        title?: string;
-        is_pinned?: boolean;
-        archived?: boolean;
-      };
-    }) => patchAgentThread(projectId, actorId, threadId, changes),
-    onSuccess: async (thread) => {
-      await queryClient.invalidateQueries({
-        queryKey: ["agent-threads", actorId, projectId],
-      });
-      if (threadIsArchived(thread)) setSelectedThreadId(null);
+      onRailOpenChange(false);
     },
   });
 
@@ -1021,8 +999,7 @@ export function AgentWorkspace({
           onQueryChange={setThreadQuery}
           onSelect={(threadId) => {
             setSelectedThreadId(threadId);
-            setRenaming(false);
-            setRailOpen(false);
+            onRailOpenChange(false);
           }}
           query={threadQuery}
           selectedThreadId={effectiveThreadId}
@@ -1030,95 +1007,6 @@ export function AgentWorkspace({
         />
       ) : null}
       <section className={styles.conversationDesk}>
-        <header className={styles.conversationHeader}>
-          <button
-            aria-expanded={railOpen}
-            className={styles.threadRailToggle}
-            onClick={() => setRailOpen((value) => !value)}
-            type="button"
-          >
-            <span aria-hidden="true">☷</span>
-            线程
-            {threads.length ? <small>{threads.length}</small> : null}
-          </button>
-          <div className={styles.threadTitle}>
-            {renaming && selectedThread ? (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const title = threadTitle.trim();
-                  if (!title) return;
-                  threadPatchMutation.mutate({
-                    threadId: selectedThread.thread_id,
-                    changes: { title },
-                  });
-                  setRenaming(false);
-                }}
-              >
-                <input
-                  aria-label="线程名称"
-                  autoFocus
-                  onChange={(event) => setThreadTitle(event.target.value)}
-                  value={threadTitle}
-                />
-                <button type="submit">保存</button>
-              </form>
-            ) : (
-              <>
-                <span>完整卷宗上下文</span>
-                <strong>{selectedThread?.title || "新的协作记录"}</strong>
-              </>
-            )}
-          </div>
-          {selectedThread ? (
-            <div className={styles.threadHeaderActions}>
-              <button
-                aria-label="重命名当前线程"
-                onClick={() => {
-                  setThreadTitle(selectedThread.title);
-                  setRenaming(true);
-                }}
-                type="button"
-              >
-                改名
-              </button>
-              <button
-                aria-pressed={threadIsFavorite(selectedThread)}
-                onClick={() =>
-                  threadPatchMutation.mutate({
-                    threadId: selectedThread.thread_id,
-                    changes: {
-                      is_pinned: !threadIsFavorite(selectedThread),
-                    },
-                  })
-                }
-                type="button"
-              >
-                {threadIsFavorite(selectedThread) ? "已收藏" : "收藏"}
-              </button>
-              <button
-                onClick={() =>
-                  threadPatchMutation.mutate({
-                    threadId: selectedThread.thread_id,
-                    changes: { archived: true },
-                  })
-                }
-                type="button"
-              >
-                归档
-              </button>
-            </div>
-          ) : null}
-        </header>
-
-        <div className={styles.contextLedger}>
-          <span aria-hidden="true">◎</span>
-          <div>
-            <strong>每次发送前读取最新 CaseFile</strong>
-            <small>选择对象只改变当前关注点，不会缩小 Agent 的读取范围。</small>
-          </div>
-        </div>
-
         <div className={styles.conversationScroll}>
           {threadListQuery.isError ? (
             <div className={styles.agentUnavailable} role="alert">
@@ -1216,11 +1104,9 @@ export function AgentWorkspace({
               </button>
             </div>
           ) : null}
-          <label htmlFor="agent-workbench-composer">
-            给 Agent 一条指令
-          </label>
           <div>
             <textarea
+              aria-label="给 Agent 一条指令"
               id="agent-workbench-composer"
               onChange={(event) => setComposer(event.target.value)}
               onKeyDown={(event) => {
@@ -1234,21 +1120,24 @@ export function AgentWorkspace({
                 }
               }}
               placeholder="例如：检查时间线里还有哪些无法解释的空白…"
-              rows={3}
+              rows={2}
               value={composer}
             />
             <button
+              aria-label={sendMutation.isPending ? "正在发送消息" : "发送消息"}
+              aria-busy={sendMutation.isPending || undefined}
               disabled={!composer.trim() || sendMutation.isPending}
+              title="发送消息"
               type="submit"
             >
-              {sendMutation.isPending ? "发送中…" : "发送"}
+              <svg aria-hidden="true" viewBox="0 0 16 16">
+                <path d="M8 13V3M4.5 6.5 8 3l3.5 3.5" />
+              </svg>
             </button>
           </div>
           {sendMutation.isError ? (
             <p role="alert">{errorMessage(sendMutation.error)}</p>
-          ) : (
-            <small>Enter 发送 · Shift + Enter 换行 · 修改始终需要人工决定</small>
-          )}
+          ) : null}
         </form>
       </section>
     </div>

@@ -87,6 +87,54 @@ describe("real workflow boundary", () => {
     });
   });
 
+  it("keeps the Agent composer compact without redundant shortcut copy", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "features/workflow/agent-workspace.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("rows={2}");
+    expect(source).not.toContain(
+      "Enter 发送 · Shift + Enter 换行 · 修改始终需要人工决定",
+    );
+    expect(source).toContain('aria-label="给 Agent 一条指令"');
+    expect(source).not.toContain("<label htmlFor=\"agent-workbench-composer\">");
+    expect(source).toContain('<svg aria-hidden="true" viewBox="0 0 16 16">');
+    expect(source).toContain('title="发送消息"');
+  });
+
+  it("keeps Agent collaboration focused on the conversation", () => {
+    const agentSource = readFileSync(
+      resolve(process.cwd(), "features/workflow/agent-workspace.tsx"),
+      "utf8",
+    );
+    const workbenchSource = readFileSync(
+      resolve(process.cwd(), "features/workflow/real-workbench.tsx"),
+      "utf8",
+    );
+
+    expect(agentSource).not.toContain("完整卷宗上下文");
+    expect(agentSource).not.toContain("新的协作记录");
+    expect(agentSource).not.toContain("每次发送前读取最新 CaseFile");
+    expect(agentSource).not.toContain("conversationHeader");
+    expect(workbenchSource).toContain('className={styles.panelThreadToggle}');
+    expect(workbenchSource).toContain("railOpen={agentThreadRailOpen}");
+  });
+
+  it("keeps the three real workbench panels adjustable and persistent", () => {
+    const source = readFileSync(
+      resolve(process.cwd(), "features/workflow/real-workbench.tsx"),
+      "utf8",
+    );
+
+    expect(source.match(/role="separator"/g)).toHaveLength(2);
+    expect(source).toContain("resizeWorkbenchPanels");
+    expect(source).toContain("PANEL_WIDTH_STORAGE_KEY");
+    expect(source).toContain("ResizeObserver");
+    expect(source).toContain("ArrowLeft");
+    expect(source).toContain("ArrowRight");
+  });
+
   it("selects an isolated shell for every demo route", () => {
     const source = readFileSync(
       resolve(process.cwd(), "components", "app-shell.tsx"),

@@ -24,16 +24,72 @@
   opacity: 0.5;
 }
 .workspace {
+  --index-panel-width: 232px;
+  --inspector-panel-width: 342px;
+
   display: grid;
   grid-template-columns:
-    minmax(232px, 2.25fr)
-    minmax(540px, 6.25fr)
-    minmax(342px, 3.5fr);
-  gap: 11px;
+    minmax(180px, var(--index-panel-width))
+    11px
+    minmax(360px, 1fr)
+    11px
+    minmax(260px, var(--inspector-panel-width));
+  gap: 0;
   min-width: 0;
   min-height: 0;
   padding: 13px 18px 16px;
   overflow: hidden;
+}
+.workspaceResizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.panelResizeHandle {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panelResizeHandle::before {
+  position: absolute;
+  inset: 0 5px;
+  content: "";
+  background: var(--rule);
+  transition:
+    inset 120ms ease,
+    background-color 120ms ease;
+}
+.panelResizeHandle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 34px;
+  content: "";
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0 4px,
+    var(--ink-faint) 4px 6px
+  );
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 120ms ease;
+}
+.panelResizeHandle:hover::before,
+.panelResizeHandle:focus-visible::before,
+.panelResizeHandle[data-active="true"]::before {
+  right: 4px;
+  left: 4px;
+  background: var(--red);
+}
+.panelResizeHandle:hover::after,
+.panelResizeHandle:focus-visible::after,
+.panelResizeHandle[data-active="true"]::after {
+  opacity: 0.9;
+}
+.panelResizeHandle:focus-visible {
+  outline: 0;
 }
 .indexPanel,
 .centerPanel,
@@ -567,8 +623,7 @@
 }
 .editorFieldGrid input,
 .editorFieldGrid textarea,
-.editorFieldGrid select,
-.threadTitle input {
+.editorFieldGrid select {
   width: 100%;
   min-height: 38px;
   padding: 8px 9px;
@@ -585,8 +640,7 @@
 }
 .editorFieldGrid input:focus,
 .editorFieldGrid textarea:focus,
-.editorFieldGrid select:focus,
-.threadTitle input:focus {
+.editorFieldGrid select:focus {
   border-color: var(--red);
   outline: 1px solid rgba(169, 38, 9, 0.15);
 }
@@ -950,129 +1004,29 @@
 }
 .conversationDesk {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
 }
-.conversationHeader {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  min-height: 54px;
-  align-items: stretch;
-  border-bottom: 1px solid var(--rule);
-  background: rgba(255, 255, 255, 0.96);
-}
-.threadRailToggle {
+.panelThreadToggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
+  padding: 4px 0;
   color: var(--ink);
   border: 0;
-  border-right: 1px solid var(--rule);
-  border-radius: 0;
-  background: var(--paper-low);
-  font-size: var(--font-caption);
-  font-weight: 700;
-}
-.threadRailToggle:hover,
-.threadRailToggle[aria-expanded="true"] {
-  color: white;
-  background: var(--ink);
-}
-.threadRailToggle small {
-  display: grid;
-  min-width: 19px;
-  height: 19px;
-  place-items: center;
-  color: white;
-  background: var(--red);
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
-}
-.threadTitle {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
-  padding: 7px 11px;
-}
-.threadTitle > span {
-  color: var(--red);
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-}
-.threadTitle > strong {
-  overflow: hidden;
-  margin-top: 2px;
-  font-size: var(--font-label);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.threadTitle form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 5px;
-}
-.threadTitle form button {
-  padding: 0 8px;
-  color: white;
-  border: 1px solid var(--red);
-  border-radius: 0;
-  background: var(--red);
-  font-size: var(--font-micro);
-  font-weight: 700;
-}
-.threadHeaderActions {
-  display: flex;
-  align-items: stretch;
-}
-.threadHeaderActions button {
-  padding: 0 7px;
-  color: var(--ink-faint);
-  border: 0;
-  border-left: 1px solid var(--hairline);
   border-radius: 0;
   background: transparent;
-  font-size: var(--font-micro);
-}
-.threadHeaderActions button:hover,
-.threadHeaderActions button[aria-pressed="true"] {
-  color: var(--red);
-  background: var(--red-soft);
-}
-.contextLedger {
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  padding: 8px 11px;
-  border-bottom: 1px solid var(--hairline);
-  background: rgba(244, 244, 239, 0.94);
-}
-.contextLedger > span {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  color: white;
-  background: var(--ink);
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: var(--font-micro);
-}
-.contextLedger > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-}
-.contextLedger strong {
   font-size: var(--font-caption);
+  font-weight: 700;
 }
-.contextLedger small {
-  margin-top: 2px;
-  color: var(--ink-faint);
-  font-size: var(--font-micro);
+.panelThreadToggle:hover,
+.panelThreadToggle[aria-expanded="true"] {
+  color: var(--red);
+}
+.panelThreadToggle:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 -1px currentColor;
 }
 .conversationScroll {
   min-height: 0;
@@ -1322,25 +1276,19 @@
 }
 .agentComposer {
   position: relative;
-  padding: 9px 11px 8px;
+  padding: 6px 11px 8px;
   border-top: 1px solid var(--ink);
   background: rgba(244, 244, 239, 0.98);
-}
-.agentComposer > label {
-  color: var(--ink-muted);
-  font-size: var(--font-micro);
-  font-weight: 700;
 }
 .agentComposer > div:not(.focusReference) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  margin-top: 5px;
   border: 1px solid var(--ink);
   background: var(--paper-high);
 }
 .agentComposer textarea {
-  min-height: 68px;
-  padding: 9px 10px;
+  min-height: 54px;
+  padding: 7px 9px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1354,22 +1302,36 @@
   outline-offset: -1px;
 }
 .agentComposer > div > button {
-  min-width: 68px;
-  margin: 7px;
-  color: white;
+  display: grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  place-items: center;
+  margin: 5px;
+  padding: 0;
+  color: var(--red);
   border: 1px solid var(--red);
-  border-radius: 0;
-  background: var(--red);
-  font-weight: 700;
+  border-radius: 50%;
+  background: transparent;
+}
+.agentComposer > div > button > svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
 }
 .agentComposer > div > button:disabled {
   cursor: not-allowed;
   opacity: 0.38;
 }
-.agentComposer > small,
 .agentComposer > p {
   display: block;
-  margin: 5px 0 0;
+  margin: 4px 0 0;
   color: var(--ink-faint);
   font-size: var(--font-micro);
 }
@@ -1836,7 +1798,9 @@
 }
 @media (max-width: 1380px) {
   .workspace {
-    grid-template-columns: 220px minmax(480px, 1fr) 320px;
+    --index-panel-width: 220px;
+    --inspector-panel-width: 320px;
+
     padding-right: 11px;
     padding-left: 11px;
   }
@@ -1860,6 +1824,9 @@
     grid-template-columns: 218px minmax(500px, 1fr);
     grid-template-rows: minmax(680px, 1fr) minmax(520px, auto);
     overflow-x: auto;
+  }
+  .panelResizeHandle {
+    display: none;
   }
   .inspectorPanel {
     grid-column: 1 / -1;
@@ -1907,17 +1874,6 @@
     z-index: 10;
     inset: 50px 0 0;
     border-right: 0;
-  }
-  .conversationHeader {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-  .threadHeaderActions {
-    grid-column: 1 / -1;
-    min-height: 34px;
-    border-top: 1px solid var(--hairline);
-  }
-  .threadHeaderActions button {
-    flex: 1;
   }
   .quickDirectives {
     grid-template-columns: 1fr;

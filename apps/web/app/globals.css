@@ -822,9 +822,17 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--ink);
 }
 
-.panel-header > div:first-child {
+.panel-header > div:first-child:not(.panel-header__leading),
+.panel-header__leading > div {
   display: flex;
   flex-direction: column;
+}
+
+.panel-header__leading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
 }
 
 .panel-header span {
