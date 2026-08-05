@@ -6,8 +6,6 @@ import { useDemoPrototype } from "@/features/demo-prototype/demo-prototype-provi
 
 import {
   atomicReviewComplete,
-  extractAuthorAnchors,
-  extractCreativeConstraints,
   resolutionModes,
   reviewFieldBlockers,
   type PrototypeBriefReview,
@@ -35,6 +33,7 @@ export function BriefReviewStage() {
     setReview,
     saveReview,
     freezeReview,
+    reextractReview: reextractFromServer,
   } = useDemoPrototype();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState(
@@ -96,18 +95,15 @@ export function BriefReviewStage() {
     });
   }
 
-  function reextract() {
-    commit({
-      ...review,
-      authorAnchors:
-        review.resolutionMode === "author_anchored"
-          ? extractAuthorAnchors(review.authorAnswer)
-          : [],
-      creativeConstraints: extractCreativeConstraints(review.boundaryText),
-      dirty: true,
-      saved: false,
-    });
-    setNotice("Fixture Agent 已重新拆解；请逐条确认并保存审阅。 ");
+  async function reextract() {
+    setError(null);
+    try {
+      const next = await reextractFromServer();
+      commit(next);
+      setNotice("Agent 已重新拆解；请逐条确认并保存审阅。 ");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "拆解任务未完成。");
+    }
   }
 
   function addAnchor() {
@@ -145,18 +141,22 @@ export function BriefReviewStage() {
     });
   }
 
-  function handleSave() {
+  async function handleSave() {
     const blockers = reviewFieldBlockers(review);
     if (blockers.length) {
       setError(`保存前请补齐：${blockers.join("、")}。`);
       return;
     }
-    saveReview();
     setError(null);
-    setNotice("审阅已保存。原子项完整后即可冻结。 ");
+    try {
+      await saveReview();
+      setNotice("审阅已保存。原子项完整后即可冻结。 ");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "审阅保存失败。");
+    }
   }
 
-  function handleFreeze() {
+  async function handleFreeze() {
     if (review.dirty || !review.saved) {
       setError("请先保存当前审阅修改。 ");
       return;
@@ -165,11 +165,14 @@ export function BriefReviewStage() {
       setError("请先确认底牌与创作边界的原子项。 ");
       return;
     }
-    if (!freezeReview()) {
-      setError("当前简报尚未通过冻结门禁。 ");
-      return;
-    }
     setError(null);
+    try {
+      if (!(await freezeReview())) {
+        setError("当前简报尚未通过冻结门禁。 ");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "冻结未完成。");
+    }
   }
 
   const atomicsComplete = atomicReviewComplete(review);

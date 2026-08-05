@@ -11,13 +11,13 @@ import {
   useRef,
 } from "react";
 
+import type { BriefPolishResult } from "@/lib/api-client";
 import {
   buildPrototypeDraftCandidates,
   type PrototypeDraftCandidate,
 } from "@/features/analyst-workbench/analyst-fixture";
 import {
   canFreezeBriefReview,
-  createBriefReview,
   createEmptyBrief,
   mergeReviewIntoBrief,
   type PrototypeAnswer,
@@ -25,8 +25,43 @@ import {
   type PrototypeBriefReview,
   type PrototypeCandidate,
   type PrototypePolishMode,
+  type PrototypeQuestion,
   type PrototypeStep,
 } from "@/features/intake-prototype/intake-prototype-model";
+
+import {
+  activateDemoCandidate,
+  adoptDemoCandidate,
+  adoptDemoDraftCandidate,
+  answerDemoQuestion,
+  confirmDemoBrief,
+  createDemoCandidate,
+  createDemoProject,
+  DemoIntakeError,
+  type DemoQuestionAnswerInput,
+  fetchDemoBrief,
+  fetchDemoDraftCandidates,
+  fetchDemoIntake,
+  persistDemoSource,
+  resolveConfiguredProvider,
+  saveDemoCandidate,
+  startDemoAnchorExtract,
+  startDemoDraftRun,
+  startDemoPolish,
+  startDemoQuestions,
+  startDemoSynthesize,
+  updateDemoBrief,
+  waitForDemoTask,
+} from "./demo-intake-api";
+import {
+  briefsMatch,
+  currentIntakeCandidate,
+  mapBriefContentToReview,
+  mapBriefToCandidateContent,
+  mapDraftCandidateView,
+  mapIntakeToDemoState,
+  mapReviewToBriefContent,
+} from "./demo-intake-mapping";
 
 export type PrototypeGenerationStatus = "idle" | "generating" | "ready";
 export type PrototypeDraftCandidateStatus = "pending" | "current" | "stale";
@@ -36,6 +71,7 @@ export interface DemoPrototypeState {
   furthestStep: number;
   sourceText: string;
   polishMode: PrototypePolishMode;
+  questions: PrototypeQuestion[];
   answers: Record<string, PrototypeAnswer>;
   brief: PrototypeBrief;
   briefCandidates: PrototypeCandidate[];
@@ -71,6 +107,7 @@ export function createInitialDemoPrototypeState(): DemoPrototypeState {
     furthestStep: 0,
     sourceText: "",
     polishMode: "rewrite",
+    questions: [],
     answers: {},
     brief: createEmptyBrief(""),
     briefCandidates: [],
@@ -168,22 +205,42 @@ export function prototypeDraftCandidateStatus(
   return "stale";
 }
 
+export interface DemoPolishResult {
+  text: string;
+  notes: string[];
+  introducedDetails: string[];
+  parentSourceRecordId: number | null;
+}
+
 interface DemoPrototypeContextValue {
   state: DemoPrototypeState;
   activeCandidate: PrototypeDraftCandidate | null;
   patchState: (patch: Partial<DemoPrototypeState>) => void;
-  beginBriefReview: () => void;
+  beginBriefReview: () => Promise<void>;
   setReview: (review: PrototypeBriefReview) => void;
-  saveReview: () => void;
-  freezeReview: () => boolean;
-  generateCandidates: () => boolean;
+  saveReview: () => Promise<void>;
+  freezeReview: () => Promise<boolean>;
+  generateCandidates: () => Promise<boolean>;
   previewCandidate: (candidateId: string | null) => void;
-  adoptCandidate: (candidateId: string) => boolean;
+  adoptCandidate: (candidateId: string) => Promise<boolean>;
   beginBriefRevision: () => void;
   candidateStatus: (
     candidate: PrototypeDraftCandidate,
   ) => PrototypeDraftCandidateStatus;
   resetPrototype: () => void;
+  submitPolish: (mode: PrototypePolishMode) => Promise<DemoPolishResult>;
+  adoptPolish: (
+    draft: string,
+    parentSourceRecordId: number | null,
+  ) => Promise<void>;
+  continueToQuestions: () => Promise<void>;
+  generateBriefFromAnswers: () => Promise<void>;
+  createManualBrief: () => Promise<void>;
+  saveCandidateAsNew: () => Promise<void>;
+  createDialogueRevision: (instruction: string) => Promise<void>;
+  saveCandidateBookmark: (candidateId: number) => Promise<void>;
+  activateCandidate: (candidateId: number) => Promise<void>;
+  reextractReview: () => Promise<PrototypeBriefReview>;
 }
 
 const DemoPrototypeContext = createContext<DemoPrototypeContextValue | null>(
@@ -196,113 +253,520 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     undefined,
     createInitialDemoPrototypeState,
   );
-  const timersRef = useRef<number[]>([]);
+  const stateRef = useRef(state);
+  const projectIdRef = useRef<number | null>(null);
+  const intakeRef = useRef<Awaited<ReturnType<typeof fetchDemoIntake>> | null>(
+    null,
+  );
+  const briefRef = useRef<Awaited<ReturnType<typeof fetchDemoBrief>> | null>(
+    null,
+  );
 
-  const clearGenerationTimers = useCallback(() => {
-    for (const timer of timersRef.current) window.clearTimeout(timer);
-    timersRef.current = [];
-  }, []);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
-  useEffect(() => clearGenerationTimers, [clearGenerationTimers]);
+  async function ensureProjectAndSource(
+    text: string,
+  ): Promise<Awaited<ReturnType<typeof fetchDemoIntake>>> {
+    const normalized = text.trim();
+    if (!normalized) throw new DemoIntakeError("请先写下最初想法。");
+    let intake = intakeRef.current;
+    if (projectIdRef.current === null) {
+      const project = await createDemoProject(text);
+      projectIdRef.current = project.id;
+      intake = await fetchDemoIntake(project.id);
+      intakeRef.current = intake;
+    } else if (!intake) {
+      intake = await fetchDemoIntake(projectIdRef.current);
+      intakeRef.current = intake;
+    }
+    if (intake.current_source?.content_text !== normalized) {
+      intake = await persistDemoSource(
+        projectIdRef.current,
+        intake.revision,
+        normalized,
+      );
+      intakeRef.current = intake;
+    }
+    return intake;
+  }
+
+  async function resolveProvider() {
+    return resolveConfiguredProvider();
+  }
 
   const patchState = useCallback((patch: Partial<DemoPrototypeState>) => {
     dispatch({ type: "patch", patch });
   }, []);
 
-  const beginBriefReview = useCallback(() => {
+  const submitPolish = useCallback(
+    async (mode: PrototypePolishMode): Promise<DemoPolishResult> => {
+      const current = stateRef.current;
+      const intake = await ensureProjectAndSource(current.sourceText);
+      const provider = await resolveProvider();
+      const sourceRecordId = intake.current_source?.source_record_id;
+      if (!sourceRecordId) throw new DemoIntakeError("起案原文尚未保存。");
+      const task = await startDemoPolish(
+        projectIdRef.current!,
+        sourceRecordId,
+        provider,
+        mode,
+      );
+      const done = await waitForDemoTask(
+        projectIdRef.current!,
+        task.task_run_id,
+      );
+      const result = done.result as BriefPolishResult | null;
+      if (!result) throw new DemoIntakeError("润色任务没有返回结果。");
+      return {
+        text: result.polished_text,
+        notes: [result.preserved_intent_summary, ...result.ambiguities].filter(
+          Boolean,
+        ),
+        introducedDetails: result.introduced_details ?? [],
+        parentSourceRecordId:
+          result.proposal_source_record?.source_record_id ?? null,
+      };
+    },
+    [],
+  );
+
+  const adoptPolish = useCallback(
+    async (draft: string, parentSourceRecordId: number | null) => {
+      const intake = intakeRef.current;
+      if (projectIdRef.current === null || !intake) {
+        throw new DemoIntakeError("当前会话尚未建案。");
+      }
+      intakeRef.current = await persistDemoSource(
+        projectIdRef.current,
+        intake.revision,
+        draft.trim(),
+        parentSourceRecordId,
+      );
+    },
+    [],
+  );
+
+  const continueToQuestions = useCallback(async () => {
+    const current = stateRef.current;
+    let intake = await ensureProjectAndSource(current.sourceText);
+    if (intake.questions.length === 0) {
+      const provider = await resolveProvider();
+      const task = await startDemoQuestions(
+        projectIdRef.current!,
+        intake.revision,
+        provider,
+      );
+      await waitForDemoTask(projectIdRef.current!, task.task_run_id);
+      intake = await fetchDemoIntake(projectIdRef.current!);
+      intakeRef.current = intake;
+    }
+    const mapped = mapIntakeToDemoState(intake);
     dispatch({
-      type: "set_review",
-      review: createBriefReview(state.brief, state.answers),
+      type: "patch",
+      patch: {
+        step: "questions",
+        furthestStep: Math.max(current.furthestStep, 1),
+        questions: mapped.questions,
+        answers: mapped.answers,
+      },
     });
+  }, []);
+
+  const generateBriefFromAnswers = useCallback(async () => {
+    const current = stateRef.current;
+    const provider = await resolveProvider();
+    let intake =
+      intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
+    for (const question of intake.questions) {
+      const answer = current.answers[question.question_key];
+      if (!answer) continue;
+      let input: DemoQuestionAnswerInput;
+      if (answer.pending) {
+        input = { mode: "pending" };
+      } else if (answer.source === "agent_suggestion") {
+        const suggestionIndex = question.suggestions.indexOf(answer.text);
+        input =
+          suggestionIndex >= 0
+            ? { mode: "suggestion", suggestionIndex }
+            : { mode: "answer", text: answer.text };
+      } else {
+        input = { mode: "answer", text: answer.text };
+      }
+      intake = await answerDemoQuestion(
+        projectIdRef.current!,
+        intake.revision,
+        question.question_key,
+        input,
+      );
+      intakeRef.current = intake;
+    }
+    const task = await startDemoSynthesize(
+      projectIdRef.current!,
+      intake.revision,
+      provider,
+    );
+    await waitForDemoTask(projectIdRef.current!, task.task_run_id);
+    intakeRef.current = await fetchDemoIntake(projectIdRef.current!);
+    const mapped = mapIntakeToDemoState(intakeRef.current);
+    dispatch({
+      type: "patch",
+      patch: {
+        step: "confirmation",
+        furthestStep: Math.max(current.furthestStep, 2),
+        ...mapped,
+        brief: mapped.brief ?? current.brief,
+      },
+    });
+  }, []);
+
+  const createManualBrief = useCallback(async () => {
+    const current = stateRef.current;
+    const intake =
+      intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
+    const content = mapBriefToCandidateContent(
+      createEmptyBrief(current.sourceText),
+    );
+    intakeRef.current = await createDemoCandidate(
+      projectIdRef.current!,
+      intake.revision,
+      content,
+    );
+    const mapped = mapIntakeToDemoState(intakeRef.current);
+    dispatch({
+      type: "patch",
+      patch: {
+        step: "confirmation",
+        furthestStep: Math.max(current.furthestStep, 2),
+        ...mapped,
+        brief: mapped.brief ?? current.brief,
+      },
+    });
+  }, []);
+
+  const saveCandidateAsNew = useCallback(async () => {
+    const current = stateRef.current;
+    const intake = intakeRef.current;
+    if (projectIdRef.current === null || !intake) {
+      throw new DemoIntakeError("当前会话尚未建案。");
+    }
+    intakeRef.current = await createDemoCandidate(
+      projectIdRef.current,
+      intake.revision,
+      mapBriefToCandidateContent(current.brief),
+      intake.current_candidate_id,
+    );
+    const mapped = mapIntakeToDemoState(intakeRef.current);
+    dispatch({ type: "patch", patch: { ...mapped, brief: current.brief } });
+  }, []);
+
+  const createDialogueRevision = useCallback(async (instruction: string) => {
+    const current = stateRef.current;
+    const intake = intakeRef.current;
+    if (projectIdRef.current === null || !intake) {
+      throw new DemoIntakeError("当前会话尚未建案。");
+    }
+    if (intake.current_candidate_id === null) {
+      throw new DemoIntakeError("先保存一个候选，再发起对话修改。");
+    }
+    const provider = await resolveProvider();
+    const task = await startDemoSynthesize(
+      projectIdRef.current,
+      intake.revision,
+      provider,
+      intake.current_candidate_id,
+      instruction,
+    );
+    await waitForDemoTask(projectIdRef.current, task.task_run_id);
+    intakeRef.current = await fetchDemoIntake(projectIdRef.current);
+    const mapped = mapIntakeToDemoState(intakeRef.current);
+    dispatch({ type: "patch", patch: { ...mapped, brief: current.brief } });
+  }, []);
+
+  const saveCandidateBookmark = useCallback(async (candidateId: number) => {
+    const intake = intakeRef.current;
+    if (projectIdRef.current === null || !intake) {
+      throw new DemoIntakeError("当前会话尚未建案。");
+    }
+    intakeRef.current = await saveDemoCandidate(
+      projectIdRef.current,
+      intake.revision,
+      candidateId,
+    );
+    const mapped = mapIntakeToDemoState(intakeRef.current);
+    dispatch({
+      type: "patch",
+      patch: { briefCandidates: mapped.briefCandidates },
+    });
+  }, []);
+
+  const activateCandidate = useCallback(async (candidateId: number) => {
+    const intake = intakeRef.current;
+    if (projectIdRef.current === null || !intake) {
+      throw new DemoIntakeError("当前会话尚未建案。");
+    }
+    intakeRef.current = await activateDemoCandidate(
+      projectIdRef.current,
+      intake.revision,
+      candidateId,
+    );
+    const mapped = mapIntakeToDemoState(intakeRef.current);
+    dispatch({
+      type: "patch",
+      patch: {
+        ...mapped,
+        brief: mapped.brief ?? stateRef.current.brief,
+      },
+    });
+  }, []);
+
+  const beginBriefReview = useCallback(async () => {
+    const current = stateRef.current;
+    const projectId = projectIdRef.current;
+    if (projectId === null) {
+      throw new DemoIntakeError("请先完成最初想法与追问。");
+    }
+    let intake = intakeRef.current ?? (await fetchDemoIntake(projectId));
+    const currentCandidate = currentIntakeCandidate(intake);
+    let adoptedBrief: Awaited<ReturnType<typeof fetchDemoBrief>>;
+    if (
+      intake.stage === "brief_review" &&
+      currentCandidate &&
+      briefsMatch(current.brief, currentCandidate.content)
+    ) {
+      // 简报已在服务端确认且内容未变，直接读取，避免重复采用。
+      adoptedBrief = briefRef.current ?? (await fetchDemoBrief(projectId));
+    } else {
+      let candidateId = intake.current_candidate_id;
+      if (
+        candidateId === null ||
+        !currentCandidate ||
+        !briefsMatch(current.brief, currentCandidate.content)
+      ) {
+        intake = await createDemoCandidate(
+          projectId,
+          intake.revision,
+          mapBriefToCandidateContent(current.brief),
+          candidateId,
+        );
+        intakeRef.current = intake;
+        candidateId = intake.current_candidate_id;
+      }
+      if (candidateId === null) {
+        throw new DemoIntakeError("当前还没有可采用的候选简报。");
+      }
+      const adopted = await adoptDemoCandidate(
+        projectId,
+        intake.revision,
+        candidateId,
+        intake.brief.draft_revision,
+      );
+      intakeRef.current = adopted.intake;
+      adoptedBrief = adopted.brief;
+    }
+    briefRef.current = adoptedBrief;
+    const pendingDecisions = current.questions
+      .filter((question) => current.answers[question.key]?.pending)
+      .map((question) => question.prompt);
+    const review = mapBriefContentToReview(
+      adoptedBrief.content,
+      pendingDecisions,
+    );
+    dispatch({ type: "set_review", review });
     dispatch({
       type: "patch",
       patch: {
         step: "review",
-        furthestStep: Math.max(state.furthestStep, 3),
+        furthestStep: Math.max(current.furthestStep, 3),
+        brief: current.brief,
       },
     });
-  }, [state.answers, state.brief, state.furthestStep]);
+  }, []);
 
   const setReview = useCallback((review: PrototypeBriefReview) => {
     dispatch({ type: "set_review", review });
   }, []);
 
-  const saveReview = useCallback(() => {
+  const saveReview = useCallback(async () => {
+    const current = stateRef.current;
+    if (!current.review) return;
+    const projectId = projectIdRef.current;
+    if (projectId === null) throw new DemoIntakeError("当前会话尚未建案。");
+    const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
+    const content = mapReviewToBriefContent(
+      current.review,
+      current.brief,
+      brief.content,
+    );
+    briefRef.current = await updateDemoBrief(
+      projectId,
+      brief.draft_revision,
+      content,
+    );
     dispatch({ type: "save_review" });
   }, []);
 
-  const freezeReview = useCallback(() => {
-    if (!state.review || !canFreezeBriefReview(state.review)) return false;
-    dispatch({ type: "freeze_review" });
-    return true;
-  }, [state.review]);
+  const reextractReview = useCallback(async () => {
+    const current = stateRef.current;
+    if (!current.review) throw new DemoIntakeError("审阅尚未建立。");
+    const projectId = projectIdRef.current;
+    if (projectId === null) throw new DemoIntakeError("当前会话尚未建案。");
+    const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
+    const provider = await resolveProvider();
+    const task = await startDemoAnchorExtract(
+      projectId,
+      brief.draft_revision,
+      provider,
+    );
+    const done = await waitForDemoTask(projectId, task.task_run_id);
+    const result = done.result as
+      | { author_anchors: Array<{ statement: string }>; creative_constraints: Array<{ statement: string; suggested_strength: "hard" | "soft" }> }
+      | null;
+    if (!result) throw new DemoIntakeError("拆解任务没有返回结果。");
+    return {
+      ...current.review,
+      authorAnchors: result.author_anchors.map((anchor, index) => ({
+        id: `anchor-agent-${index + 1}`,
+        statement: anchor.statement,
+        origin: "agent" as const,
+      })),
+      creativeConstraints: result.creative_constraints.map(
+        (constraint, index) => ({
+          id: `constraint-agent-${index + 1}`,
+          statement: constraint.statement,
+          strength: constraint.suggested_strength,
+          origin: "agent" as const,
+        }),
+      ),
+      dirty: true,
+      saved: false,
+    };
+  }, []);
 
-  const generateCandidates = useCallback(() => {
+  const freezeReview = useCallback(async () => {
+    const current = stateRef.current;
+    if (!current.review || !canFreezeBriefReview(current.review)) return false;
+    const projectId = projectIdRef.current;
+    if (projectId === null) return false;
+    const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
+    const version = await confirmDemoBrief(projectId, brief.draft_revision);
+    briefRef.current = await fetchDemoBrief(projectId);
+    dispatch({ type: "freeze_review" });
+    dispatch({
+      type: "patch",
+      patch: {
+        workingBriefVersion: version.version_no,
+        frozenBriefVersion: version.version_no,
+      },
+    });
+    return true;
+  }, []);
+
+  const generateCandidates = useCallback(async () => {
+    const current = stateRef.current;
     if (
-      !state.review ||
-      state.frozenBriefVersion === null ||
-      state.generation.status === "generating" ||
-      state.draftCandidates.some(
-        (candidate) =>
-          candidate.briefVersion === state.frozenBriefVersion,
+      !current.review ||
+      current.frozenBriefVersion === null ||
+      current.generation.status === "generating" ||
+      current.draftCandidates.some(
+        (candidate) => candidate.briefVersion === current.frozenBriefVersion,
       )
     ) {
       return false;
     }
-    clearGenerationTimers();
+    const projectId = projectIdRef.current;
+    if (projectId === null) return false;
     dispatch({ type: "start_generation" });
-    const briefVersion = state.frozenBriefVersion;
-    const review = state.review;
-    timersRef.current = [
-      window.setTimeout(
-        () => dispatch({ type: "advance_generation", stage: 2 }),
-        360,
-      ),
-      window.setTimeout(
-        () => dispatch({ type: "advance_generation", stage: 3 }),
-        720,
-      ),
-      window.setTimeout(() => {
-        const candidates = buildPrototypeDraftCandidates(
-          {
-            creativeIntent: review.creativeIntent,
-            reasoningProposition: review.reasoningProposition,
-            authorAnswer: review.authorAnswer,
-            constraints: review.creativeConstraints
-              .map((constraint) => constraint.statement.trim())
-              .filter(Boolean),
-          },
-          briefVersion,
-        );
-        dispatch({ type: "complete_generation", candidates });
-        timersRef.current = [];
-      }, 1080),
-    ];
-    return true;
-  }, [clearGenerationTimers, state]);
+    try {
+      const provider = await resolveProvider();
+      const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
+      if (!brief.current_version_id) {
+        throw new DemoIntakeError("请先冻结当前创作简报。");
+      }
+      const runs = await Promise.all(
+        [1, 2, 3].map(() =>
+          startDemoDraftRun(
+            projectId,
+            brief.current_version_id!,
+            brief.draft_revision,
+            provider,
+          ),
+        ),
+      );
+      let succeededCount = 0;
+      await Promise.all(
+        runs.map(async (run) => {
+          await waitForDemoTask(projectId, run.task_run_id);
+          succeededCount += 1;
+          dispatch({
+            type: "advance_generation",
+            stage: succeededCount > 1 ? 3 : 2,
+          });
+        }),
+      );
+      const candidates = await fetchDemoDraftCandidates(projectId);
+      const currentOnes = candidates.filter(
+        (candidate) => candidate.is_current_brief,
+      );
+      if (currentOnes.length < runs.length) {
+        throw new DemoIntakeError("候选尚未全部归档，请稍后重试。");
+      }
+      const base = buildPrototypeDraftCandidates(
+        {
+          creativeIntent: current.review.creativeIntent,
+          reasoningProposition: current.review.reasoningProposition,
+          authorAnswer: current.review.authorAnswer,
+          constraints: current.review.creativeConstraints
+            .map((constraint) => constraint.statement.trim())
+            .filter(Boolean),
+        },
+        current.frozenBriefVersion,
+      );
+      const mapped = currentOnes.map((view, index) =>
+        mapDraftCandidateView(view, base[index % base.length]),
+      );
+      dispatch({ type: "complete_generation", candidates: mapped });
+      return true;
+    } catch (error) {
+      dispatch({
+        type: "patch",
+        patch: { generation: { status: "idle", stage: 0 } },
+      });
+      throw error;
+    }
+  }, []);
 
   const previewCandidate = useCallback((candidateId: string | null) => {
     dispatch({ type: "preview_candidate", candidateId });
   }, []);
 
-  const adoptCandidate = useCallback(
-    (candidateId: string) => {
-      const candidate = state.draftCandidates.find(
-        (item) => item.id === candidateId,
-      );
-      if (!candidate || candidate.briefVersion !== state.frozenBriefVersion) {
-        return false;
-      }
+  const adoptCandidate = useCallback(async (candidateId: string) => {
+    const current = stateRef.current;
+    const candidate = current.draftCandidates.find(
+      (item) => item.id === candidateId,
+    );
+    if (!candidate || candidate.briefVersion !== current.frozenBriefVersion) {
+      return false;
+    }
+    const projectId = projectIdRef.current;
+    if (projectId === null) {
+      // 无后端会话（纯 fixture 接力场景）时只在会话内采用。
       dispatch({ type: "adopt_candidate", candidateId });
       return true;
-    },
-    [state.draftCandidates, state.frozenBriefVersion],
-  );
+    }
+    const taskRunId = Number(candidateId.replace(/^draft-/, ""));
+    if (!Number.isInteger(taskRunId)) return false;
+    const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
+    await adoptDemoDraftCandidate(projectId, taskRunId, brief.draft_revision);
+    briefRef.current = await fetchDemoBrief(projectId);
+    dispatch({ type: "adopt_candidate", candidateId });
+    return true;
+  }, []);
 
   const beginBriefRevision = useCallback(() => {
-    clearGenerationTimers();
     dispatch({ type: "begin_revision" });
-  }, [clearGenerationTimers]);
+  }, []);
 
   const candidateStatus = useCallback(
     (candidate: PrototypeDraftCandidate) =>
@@ -311,9 +775,11 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
   );
 
   const resetPrototype = useCallback(() => {
-    clearGenerationTimers();
+    projectIdRef.current = null;
+    intakeRef.current = null;
+    briefRef.current = null;
     dispatch({ type: "reset" });
-  }, [clearGenerationTimers]);
+  }, []);
 
   const activeCandidate = useMemo(() => {
     const activeId = state.previewCandidateId ?? state.adoptedCandidateId;
@@ -338,21 +804,41 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
       beginBriefRevision,
       candidateStatus,
       resetPrototype,
+      submitPolish,
+      adoptPolish,
+      continueToQuestions,
+      generateBriefFromAnswers,
+      createManualBrief,
+      saveCandidateAsNew,
+      createDialogueRevision,
+      saveCandidateBookmark,
+      activateCandidate,
+      reextractReview,
     }),
     [
       activeCandidate,
+      activateCandidate,
       adoptCandidate,
+      adoptPolish,
       beginBriefReview,
       beginBriefRevision,
       candidateStatus,
+      continueToQuestions,
+      createDialogueRevision,
+      createManualBrief,
       freezeReview,
+      generateBriefFromAnswers,
       generateCandidates,
       patchState,
       previewCandidate,
       resetPrototype,
+      reextractReview,
+      saveCandidateAsNew,
+      saveCandidateBookmark,
       saveReview,
       setReview,
       state,
+      submitPolish,
     ],
   );
 
@@ -370,4 +856,3 @@ export function useDemoPrototype() {
   }
   return context;
 }
-

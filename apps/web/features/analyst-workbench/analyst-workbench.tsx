@@ -592,7 +592,7 @@ function AnalystWorkbenchSurface({
   seed: PrototypeWorkbenchSeed;
   activeCandidate: PrototypeDraftCandidate | null;
   activeCandidateStatus: PrototypeDraftCandidateStatus | null;
-  adoptCandidate: (candidateId: string) => boolean;
+  adoptCandidate: (candidateId: string) => Promise<boolean>;
 }) {
   const [view, setView] = useState<WorkbenchView>("timeline");
   const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
@@ -908,7 +908,7 @@ function AnalystWorkbenchSurface({
             <p>
               {activeCandidate.focusLabel} · 简报 V
               {String(activeCandidate.briefVersion).padStart(2, "0")} ·
-              已自动转换完整工作台对象
+              工作台预览为本地样例
             </p>
           </div>
           <div>
@@ -916,9 +916,17 @@ function AnalystWorkbenchSurface({
             {activeCandidateStatus === "pending" ? (
               <button
                 onClick={() => {
-                  if (adoptCandidate(activeCandidate.id)) {
-                    announce("该候选已采用为当前工作稿。");
-                  }
+                  void adoptCandidate(activeCandidate.id)
+                    .then((ok) => {
+                      if (ok) announce("该候选已采用为当前工作稿。");
+                    })
+                    .catch((caught) => {
+                      announce(
+                        caught instanceof Error
+                          ? caught.message
+                          : "采用未完成，请稍后重试。",
+                      );
+                    });
                 }}
                 type="button"
               >

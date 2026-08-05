@@ -12,18 +12,13 @@ import { useDemoPrototype } from "@/features/demo-prototype/demo-prototype-provi
 
 import {
   candidateOriginLabels,
-  cloneBrief,
-  createEmptyBrief,
   fieldSourceLabels,
   intakeRoutes,
   missingHardFields,
-  polishIdea,
   polishModes,
-  prototypeQuestions,
   prototypeSteps,
   resolutionModes,
   sampleIdea,
-  synthesizeBrief,
   type PrototypeAnswer,
   type PrototypeBrief,
   type PrototypeCandidate,
@@ -132,15 +127,20 @@ function FieldShell({
   );
 }
 
-function formatClock(index: number) {
-  return "刚刚 · V" + String(index).padStart(2, "0");
-}
-
 export function IntakeCenterPrototype() {
   const {
     state,
     patchState,
     beginBriefReview,
+    submitPolish,
+    adoptPolish: adoptPolishDraft,
+    continueToQuestions: proceedToQuestions,
+    generateBriefFromAnswers: synthesizeBriefFromServer,
+    createManualBrief,
+    saveCandidateAsNew: saveCandidateToServer,
+    createDialogueRevision: createDialogueRevisionFromServer,
+    saveCandidateBookmark,
+    activateCandidate,
     resetPrototype: resetPrototypeState,
   } = useDemoPrototype();
   const {
@@ -154,14 +154,17 @@ export function IntakeCenterPrototype() {
     currentBriefCandidateId: currentCandidateId,
   } = state;
   const [polishReviewOpen, setPolishReviewOpen] = useState(false);
+  const [polishPending, setPolishPending] = useState(false);
   const [polishDraft, setPolishDraft] = useState("");
   const [polishNotes, setPolishNotes] = useState<string[]>([]);
   const [introducedDetails, setIntroducedDetails] = useState<string[]>([]);
+  const [polishParentSourceRecordId, setPolishParentSourceRecordId] =
+    useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState(
-    "原型状态只保存在演示内存中；刷新页面会重置。",
+    "建案数据写入开发库；刷新页面将开启新会话。",
   );
 
   function resolveState<T>(current: T, next: SetStateAction<T>) {
@@ -172,8 +175,6 @@ export function IntakeCenterPrototype() {
 
   const setStep = (next: SetStateAction<PrototypeStep>) =>
     patchState({ step: resolveState(step, next) });
-  const setFurthestStep = (next: SetStateAction<number>) =>
-    patchState({ furthestStep: resolveState(furthestStep, next) });
   const setSourceText = (next: SetStateAction<string>) =>
     patchState({ sourceText: resolveState(sourceText, next) });
   const setPolishMode = (next: SetStateAction<PrototypePolishMode>) =>
@@ -183,17 +184,11 @@ export function IntakeCenterPrototype() {
   ) => patchState({ answers: resolveState(answers, next) });
   const setBrief = (next: SetStateAction<PrototypeBrief>) =>
     patchState({ brief: resolveState(brief, next) });
-  const setCandidates = (next: SetStateAction<PrototypeCandidate[]>) =>
-    patchState({ briefCandidates: resolveState(candidates, next) });
-  const setCurrentCandidateId = (next: SetStateAction<number | null>) =>
-    patchState({
-      currentBriefCandidateId: resolveState(currentCandidateId, next),
-    });
 
   const stepIndex = prototypeSteps.findIndex((item) => item.id === step);
   const currentCandidate =
     candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
-  const hardQuestionsResolved = prototypeQuestions
+  const hardQuestionsResolved = state.questions
     .filter((question) => question.required)
     .every((question) => {
       const answer = answers[question.key];
@@ -260,37 +255,60 @@ export function IntakeCenterPrototype() {
     announce("示例想法已载入，可以继续编辑。");
   }
 
-  function startPolishReview() {
+  async function startPolishReview() {
     if (!sourceText.trim()) {
       setError("先写下一句最初想法，再生成润色校样。");
       return;
     }
-    const result = polishIdea(sourceText, polishMode);
-    setPolishDraft(result.text);
-    setPolishNotes(result.notes);
-    setIntroducedDetails(result.introducedDetails);
     setPolishReviewOpen(true);
+    setPolishPending(true);
+    setPolishDraft("");
+    setPolishNotes([]);
+    setIntroducedDetails([]);
     setError(null);
-    announce("润色校样已形成，原文仍保持不变。");
+    try {
+      const result = await submitPolish(polishMode);
+      setPolishDraft(result.text);
+      setPolishNotes(result.notes);
+      setIntroducedDetails(result.introducedDetails);
+      setPolishParentSourceRecordId(result.parentSourceRecordId);
+      announce("润色校样已形成，原文仍保持不变。");
+    } catch (caught) {
+      setPolishReviewOpen(false);
+      setError(caught instanceof Error ? caught.message : "润色任务未完成。");
+    } finally {
+      setPolishPending(false);
+    }
   }
 
-  function adoptPolish() {
+  async function adoptPolish() {
     if (!polishDraft.trim()) return;
-    setSourceText(polishDraft.trim());
-    setPolishReviewOpen(false);
     setError(null);
-    announce("已采用润色稿，原始版本仍可在来源记录中追溯。");
+    try {
+      await adoptPolishDraft(
+        polishDraft.trim(),
+        polishParentSourceRecordId,
+      );
+      setSourceText(polishDraft.trim());
+      setPolishReviewOpen(false);
+      announce("已采用润色稿，原始版本仍可在来源记录中追溯。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "采用润色稿失败。");
+    }
   }
 
-  function continueToQuestions() {
+  async function continueToQuestions() {
     if (!sourceText.trim()) {
       setError("请先写下最初想法。");
       return;
     }
-    setStep("questions");
-    setFurthestStep((current) => Math.max(current, 1));
     setError(null);
-    announce("起案原文已记录，进入关键追问。");
+    try {
+      await proceedToQuestions();
+      announce("起案原文已记录，进入关键追问。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "追问任务未完成。");
+    }
   }
 
   function updateAnswer(
@@ -317,48 +335,28 @@ export function IntakeCenterPrototype() {
     announce("这项偏好已放入待决定队列，不会阻止继续。");
   }
 
-  function installBrief(
-    nextBrief: PrototypeBrief,
-    origin: PrototypeCandidate["origin"],
-    label: string,
-  ) {
-    const nextId =
-      candidates.reduce((maximum, candidate) => Math.max(maximum, candidate.id), 0) +
-      1;
-    const nextCandidate: PrototypeCandidate = {
-      id: nextId,
-      label,
-      origin,
-      createdAt: formatClock(nextId),
-      bookmarked: false,
-      brief: cloneBrief(nextBrief),
-    };
-    setBrief(cloneBrief(nextBrief));
-    setCandidates((current) => [nextCandidate, ...current]);
-    setCurrentCandidateId(nextId);
-    return nextId;
-  }
-
-  function generateBrief() {
+  async function generateBrief() {
     if (!hardQuestionsResolved) {
       setError("必须先回答关键问题，才能形成创作简报。");
       return;
     }
-    const nextBrief = synthesizeBrief(sourceText, answers);
-    installBrief(nextBrief, "agent", "方向核验初稿");
-    setStep("confirmation");
-    setFurthestStep(2);
     setError(null);
-    announce("创作简报候选已形成，请逐项校核后采用。");
+    try {
+      await synthesizeBriefFromServer();
+      announce("创作简报候选已形成，请逐项校核后采用。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "创作简报生成未完成。");
+    }
   }
 
-  function continueManually() {
-    const nextBrief = createEmptyBrief(sourceText);
-    installBrief(nextBrief, "manual", "人工简报起点");
-    setStep("confirmation");
-    setFurthestStep(2);
+  async function continueManually() {
     setError(null);
-    announce("已建立人工简报，不包含任何伪造的 Agent 结果。");
+    try {
+      await createManualBrief();
+      announce("已建立人工简报，不包含任何伪造的 Agent 结果。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "人工简报建立失败。");
+    }
   }
 
   function updateBriefField(field: BriefTextField, value: string) {
@@ -403,59 +401,68 @@ export function IntakeCenterPrototype() {
     }));
   }
 
-  function saveCandidate() {
+  async function saveCandidate() {
     if (missingFields.length) {
       setError("保存前请补齐：" + missingFields.join("、") + "。");
       return;
     }
-    installBrief(brief, "manual", "表单修订");
     setError(null);
-    announce("已保存为新的独立候选，旧版本没有被覆盖。");
+    try {
+      await saveCandidateToServer();
+      announce("已保存为新的独立候选，旧版本没有被覆盖。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "候选保存失败。");
+    }
   }
 
-  function createDialogueRevision() {
+  async function createDialogueRevision() {
     const instruction = revisionInstruction.trim();
     if (!instruction) {
       setError("请先写下这一轮要修改的内容。");
       return;
     }
-    const nextBrief = cloneBrief(brief);
-    nextBrief.riskNotes = nextBrief.riskNotes
-      ? nextBrief.riskNotes + "\n本轮修改说明：" + instruction
-      : "本轮修改说明：" + instruction;
-    nextBrief.sources.riskNotes = "agent_suggestion";
-    installBrief(nextBrief, "dialogue", "对话修改候选");
-    setRevisionInstruction("");
     setError(null);
-    announce("已从当前候选形成子版本；原候选仍保留。");
+    try {
+      await createDialogueRevisionFromServer(instruction);
+      setRevisionInstruction("");
+      announce("已从当前候选形成子版本；原候选仍保留。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "对话修改未完成。");
+    }
   }
 
-  function restoreCandidate(candidate: PrototypeCandidate) {
-    setBrief(cloneBrief(candidate.brief));
-    setCurrentCandidateId(candidate.id);
+  async function restoreCandidate(candidate: PrototypeCandidate) {
     setError(null);
-    announce("已恢复" + candidate.label + "。");
+    try {
+      await activateCandidate(candidate.id);
+      announce("已恢复" + candidate.label + "。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "候选恢复失败。");
+    }
   }
 
-  function toggleBookmark(candidateId: number) {
-    setCandidates((current) =>
-      current.map((candidate) =>
-        candidate.id === candidateId
-          ? { ...candidate, bookmarked: !candidate.bookmarked }
-          : candidate,
-      ),
-    );
-    announce("候选保存状态已更新。");
+  async function toggleBookmark(candidateId: number) {
+    setError(null);
+    try {
+      await saveCandidateBookmark(candidateId);
+      announce("候选保存状态已更新。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "候选保存失败。");
+    }
   }
 
-  function enterBriefReview() {
+  async function enterBriefReview() {
     if (missingFields.length) {
       setError("进入审阅前请补齐：" + missingFields.join("、") + "。");
       return;
     }
-    beginBriefReview();
     setError(null);
-    announce("已进入创作简报审阅；保存并冻结后才能生成候选稿。");
+    try {
+      await beginBriefReview();
+      announce("已进入创作简报审阅；保存并冻结后才能生成候选稿。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "进入审阅失败。");
+    }
   }
 
   function resetPrototype() {
@@ -464,10 +471,11 @@ export function IntakeCenterPrototype() {
     setPolishDraft("");
     setPolishNotes([]);
     setIntroducedDetails([]);
+    setPolishParentSourceRecordId(null);
     setHistoryOpen(false);
     setRevisionInstruction("");
     setError(null);
-    announce("原型已恢复到未建案状态。");
+    announce("已恢复未建案状态；后续操作将创建新项目。");
   }
 
   return (
@@ -485,8 +493,8 @@ export function IntakeCenterPrototype() {
           </div>
         </Link>
         <div className={styles.topbarContext}>
-          <span>建案中心原型</span>
-          <b>功能对齐创作模式 · 本地样例状态</b>
+          <span>建案中心</span>
+          <b>连接真实建案流程 · 数据写入开发库</b>
         </div>
         <nav aria-label="原型相关页面" className={styles.topbarLinks}>
           <Link href="/">创作模式</Link>
@@ -714,11 +722,15 @@ export function IntakeCenterPrototype() {
                   <div className={stageStyles.auditStrip}>
                     <section>
                       <b>修改说明</b>
-                      <ul>
-                        {polishNotes.map((note) => (
-                          <li key={note}>{note}</li>
-                        ))}
-                      </ul>
+                      {polishPending ? (
+                        <p>正在生成校样…</p>
+                      ) : (
+                        <ul>
+                          {polishNotes.map((note) => (
+                            <li key={note}>{note}</li>
+                          ))}
+                        </ul>
+                      )}
                     </section>
                     <section data-warning={introducedDetails.length > 0}>
                       <b>新增细节审阅</b>
@@ -806,7 +818,7 @@ export function IntakeCenterPrototype() {
               </section>
 
               <div className={stageStyles.questionStack}>
-                {prototypeQuestions.map((question) => {
+                {state.questions.map((question) => {
                   const answer = answers[question.key];
                   const resolved = Boolean(answer);
                   return (
@@ -932,7 +944,7 @@ export function IntakeCenterPrototype() {
                     <span data-status="ready">可以采用</span>
                   )}
                   <button
-                    disabled={!currentCandidate}
+                    disabled={!currentCandidate || currentCandidate.bookmarked}
                     onClick={() =>
                       currentCandidate && toggleBookmark(currentCandidate.id)
                     }
@@ -1295,18 +1307,20 @@ export function IntakeCenterPrototype() {
             <header>
               <span>待决定</span>
               <b>
-                {answers.experience_scale?.pending ? "1" : "0"}
+                {Object.values(answers).some((answer) => answer.pending)
+                  ? "1"
+                  : "0"}
               </b>
             </header>
-            {answers.experience_scale?.pending ? (
-              <p>案件规模与体验时长将在正式审阅时继续确认。</p>
+            {Object.values(answers).some((answer) => answer.pending) ? (
+              <p>已标记的偏好会在正式审阅时继续确认。</p>
             ) : (
               <p>没有被隐藏的待决定事项。</p>
             )}
           </section>
           <footer>
-            <span aria-hidden="true">LOCAL</span>
-            <p>本页不请求真实 API，也不会把样例内容写入你的项目。</p>
+            <span aria-hidden="true">LIVE</span>
+            <p>建案流程连接真实开发后端；样例内容只在载入示例时使用。</p>
           </footer>
         </aside>
       </div>

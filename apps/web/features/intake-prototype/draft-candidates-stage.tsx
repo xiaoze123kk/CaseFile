@@ -9,7 +9,7 @@ import styles from "./prototype-late-stages.module.css";
 
 const generationStages = [
   "解析冻结简报",
-  "形成三种创作策略",
+  "并行生成三份候选",
   "校验对象与引用",
 ] as const;
 
@@ -33,7 +33,7 @@ export function DraftCandidatesStage() {
     null,
   );
   const [notice, setNotice] = useState(
-    "候选生成时已经转换为完整工作台种子，可以直接预览。",
+    "候选由真实 Agent 生成，预览工作台为本地样例。",
   );
 
   const currentCandidates = useMemo(
@@ -53,10 +53,6 @@ export function DraftCandidatesStage() {
   const generated = currentCandidates.length > 0;
   const generating = state.generation.status === "generating";
   const readyToGenerate = state.frozenBriefVersion !== null;
-  const visibleNotice =
-    generated && notice.startsWith("Fixture Agent")
-      ? "三份候选已生成并完成引用校验，可以预览或显式采用。"
-      : notice;
 
   function openWorkbench(candidateId: string) {
     previewCandidate(candidateId);
@@ -127,7 +123,7 @@ export function DraftCandidatesStage() {
               ) : <p>当前简报没有额外约束。</p>}
             </section>
             <footer>
-              <small>前端 Fixture · 已自动转换工作台数据</small>
+              <small>真实 Agent 生成 · 已完成结构与引用校验</small>
               <div>
                 <button onClick={() => openWorkbench(candidate.id)} type="button">预览工作台</button>
                 <button
@@ -172,7 +168,7 @@ export function DraftCandidatesStage() {
 
       <section className={styles.generationDesk} aria-label="候选生成控制">
         <div className={styles.generationCopy}>
-          <span>本地 Agent 演示</span>
+          <span>真实 Agent 生成</span>
           <strong>
             {generating
               ? "正在形成候选…"
@@ -182,7 +178,7 @@ export function DraftCandidatesStage() {
                   ? "冻结简报已经就绪"
                   : "新版本等待重新审阅与冻结"}
           </strong>
-          <p>不调用真实模型；三份结果由确定性 Fixture 生成，并在生成时完成工作台对象转换。</p>
+          <p>三份结果由真实 Agent 任务生成，并完成结构与引用校验。</p>
         </div>
         <ol className={styles.generationProgress}>
           {generationStages.map((stage, index) => {
@@ -201,7 +197,21 @@ export function DraftCandidatesStage() {
           className={styles.generateButton}
           disabled={generated || generating || !readyToGenerate}
           onClick={() => {
-            if (generateCandidates()) setNotice("Fixture Agent 已开始生成三份候选。 ");
+            void generateCandidates()
+              .then((ok) => {
+                if (ok) {
+                  setNotice("三份候选已生成并完成引用校验，可以预览或显式采用。");
+                } else {
+                  setNotice("当前简报尚未满足生成条件。 ");
+                }
+              })
+              .catch((caught) => {
+                setNotice(
+                  caught instanceof Error
+                    ? caught.message
+                    : "候选生成未完成，请检查模型服务后重试。",
+                );
+              });
           }}
           type="button"
         >
@@ -230,7 +240,7 @@ export function DraftCandidatesStage() {
           </h2>
           <p>
             {readyToGenerate
-              ? "每一张都保留同一份冻结简报，但采用不同的结构、氛围或推理密度。"
+              ? "每一张都基于同一份冻结简报，由独立任务生成。"
               : "当前工作稿继续有效，直到你冻结并采用新版本候选。"}
           </p>
         </section>
@@ -244,7 +254,7 @@ export function DraftCandidatesStage() {
       ) : null}
 
       <footer className={styles.candidatesFooter}>
-        <p aria-live="polite">{visibleNotice}</p>
+        <p aria-live="polite">{notice}</p>
         <button disabled={generating} onClick={beginBriefRevision} type="button">建立简报修订</button>
       </footer>
     </section>
