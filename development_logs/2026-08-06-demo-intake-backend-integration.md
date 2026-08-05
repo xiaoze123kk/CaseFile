@@ -52,6 +52,13 @@
 - 修复：追问与成案（含对话修改）的回退操作内每次尝试前重取最新 intake，用新 revision 发起任务。
 - 回归测试：假后端模拟“任务创建推进 revision + openai 认证失败”，验证回退重试携带新 revision 后成功进入追问页；临时还原修复时该测试确实失败。
 
+## 追加修复：手动候选不满足 Brief Intake 契约
+
+- 现象：demo 保存人工简报/新候选（或带修改进入审阅触发自动保存）时报 `brief_intake_candidate_invalid`（“Candidate does not satisfy the Brief Intake contract”）。
+- 根因：契约要求 `constraints[].constraint_key` 匹配 `^constraint_[a-z0-9_]+$` 且 `category` 为预设枚举；demo 映射把裸 key（`must_keep`/`scope`…）直接当 `constraint_key` 发送，全部命中 pattern 校验失败；反向（服务端 `constraint_X` key 当作 category）也会失败。
+- 修复：`mapBriefToCandidateContent` 统一剥离/补回 `constraint_` 前缀，category 从预设枚举推导（未知类别归入 `other`）；`mapCandidateContentToBrief` 兼容 `constraint_` 前缀匹配预设行，避免服务端预设约束在 demo 编辑器里变成重复的未知行。
+- 验证：真实 API 复现（裸 key → pattern mismatch）→ 修复后含 `constraint_no_magic`/`other` 的手动候选创建成功；新增映射往返回归测试 3 项。
+
 ## 验收状态
 
 - [x] 完成 API 适配层与映射层，五阶段全部走真实后端。

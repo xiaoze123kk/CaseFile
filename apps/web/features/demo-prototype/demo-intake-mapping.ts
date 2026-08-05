@@ -90,7 +90,9 @@ export function mapCandidateContentToBrief(
   const preset = createConstraints();
   const constraints: PrototypeConstraint[] = preset.map((row) => {
     const serverRow = content.constraints.find(
-      (item) => item.constraint_key === row.key,
+      (item) =>
+        item.constraint_key === row.key ||
+        item.constraint_key === `constraint_${row.key}`,
     );
     return {
       ...row,
@@ -204,6 +206,15 @@ export function briefsMatch(
   );
 }
 
+const PRESET_CONSTRAINT_CATEGORIES = new Set([
+  "must_keep",
+  "must_avoid",
+  "scope",
+  "cast",
+  "duration",
+  "content_scale",
+]);
+
 export function mapBriefToCandidateContent(
   brief: PrototypeBrief,
 ): BriefIntakeCandidateContent {
@@ -217,14 +228,20 @@ export function mapBriefToCandidateContent(
     author_answer: brief.authorAnswer || null,
     constraints: brief.constraints
       .filter((constraint) => constraint.statement.trim())
-      .map((constraint) => ({
-        constraint_key: constraint.key,
-        category: constraint.key as BriefIntakeCandidateContent["constraints"][number]["category"],
-        statement: constraint.statement.trim(),
-        strength: constraint.strength,
-        confirmed: true,
-        source: "user_confirmed",
-      })),
+      .map((constraint) => {
+        // 契约要求 constraint_key 带 constraint_ 前缀，category 使用预设枚举。
+        const stripped = constraint.key.replace(/^constraint_/, "");
+        return {
+          constraint_key: `constraint_${stripped}`,
+          category: (
+            PRESET_CONSTRAINT_CATEGORIES.has(stripped) ? stripped : "other"
+          ) as BriefIntakeCandidateContent["constraints"][number]["category"],
+          statement: constraint.statement.trim(),
+          strength: constraint.strength,
+          confirmed: true,
+          source: "user_confirmed",
+        };
+      }),
     pending_decisions: [],
     scope_estimate: brief.scopeEstimate || null,
     risk_notes: splitLines(brief.riskNotes),
