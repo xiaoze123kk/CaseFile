@@ -45,6 +45,13 @@
 - 验证：直接调用 DeepSeek 确认契约可解析；真实任务端到端成功落库 2 个问题（必答的结论处理方式 + 可选的推理目标）。
 - demo 兜底：追问页在问题为空时显示“Agent 判断当前原稿信息已足够，无需追问”，成案按钮保持可用，不假装问过也不卡死流程。
 
+## 追加修复：Provider 回退重试携带过期 intake revision
+
+- 现象：回退场景下（openai 认证失败→deepseek 重试）任务创建报 `brief_intake_revision_conflict`（“Brief Intake revision is stale”）。
+- 根因：`create_questions_task` 与 `create_synthesize_task` 创建任务时会把 `brief_intakes.revision` +1；`runTaskWithProviderFallback` 重试时仍携带第一次尝试前捕获的旧 revision，被 `_expected_revision` 以 409 拒绝。润色（无 revision 入参）、锚点拆解与三份候选（创建任务不推进版本）不受影响。
+- 修复：追问与成案（含对话修改）的回退操作内每次尝试前重取最新 intake，用新 revision 发起任务。
+- 回归测试：假后端模拟“任务创建推进 revision + openai 认证失败”，验证回退重试携带新 revision 后成功进入追问页；临时还原修复时该测试确实失败。
+
 ## 验收状态
 
 - [x] 完成 API 适配层与映射层，五阶段全部走真实后端。

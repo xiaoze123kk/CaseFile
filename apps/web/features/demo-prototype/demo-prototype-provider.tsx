@@ -349,9 +349,11 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     let intake = await ensureProjectAndSource(current.sourceText);
     if (intake.questions.length === 0) {
       await runTaskWithProviderFallback(async (provider) => {
+        // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
+        const fresh = await fetchDemoIntake(projectIdRef.current!);
         const task = await startDemoQuestions(
           projectIdRef.current!,
-          intake.revision,
+          fresh.revision,
           provider,
         );
         return waitForDemoTask(projectIdRef.current!, task.task_run_id);
@@ -399,9 +401,11 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
       intakeRef.current = intake;
     }
     await runTaskWithProviderFallback(async (provider) => {
+      // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
+      const fresh = await fetchDemoIntake(projectIdRef.current!);
       const task = await startDemoSynthesize(
         projectIdRef.current!,
-        intake.revision,
+        fresh.revision,
         provider,
       );
       return waitForDemoTask(projectIdRef.current!, task.task_run_id);
@@ -470,9 +474,11 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     }
     const baseCandidateId = intake.current_candidate_id;
     await runTaskWithProviderFallback(async (provider) => {
+      // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
+      const fresh = await fetchDemoIntake(projectIdRef.current!);
       const task = await startDemoSynthesize(
         projectIdRef.current!,
-        intake.revision,
+        fresh.revision,
         provider,
         baseCandidateId,
         instruction,

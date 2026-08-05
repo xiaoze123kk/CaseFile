@@ -71,6 +71,9 @@ function buildFakeBackend() {
   let draftCandidates: DraftCandidateView[] = [];
   let taskSeq = 100;
   const taskTypes = new Map<number, string>();
+  const taskProviders = new Map<number, string>();
+  let configuredProviders = ["openai"];
+  let failOpenaiAuth = false;
 
   function intakeView(): BriefIntakeView {
     const stage =
@@ -149,11 +152,23 @@ function buildFakeBackend() {
 
   function terminalTask(taskRunId: number): TaskView {
     const taskType = taskTypes.get(taskRunId) ?? "brief_to_draft";
+    const taskProvider = taskProviders.get(taskRunId) ?? "openai";
+    if (
+      failOpenaiAuth &&
+      taskProvider === "openai" &&
+      taskType === "brief_intake_questions"
+    ) {
+      throw new DemoIntakeError(
+        "模型服务认证失败，请检查 API Key 与模型权限。",
+        "provider_authentication_failed",
+      );
+    }
     const common: TaskView = {
       ...baseTask(taskRunId),
       task_type: taskType as TaskView["task_type"],
       status: "succeeded",
       stage: "done",
+      provider: taskProvider as TaskView["provider"],
     };
     if (taskType === "brief_polish") {
       return {
@@ -303,21 +318,56 @@ function buildFakeBackend() {
     };
   }
 
-  function recordTask(taskType: string): TaskView {
+  function recordTask(taskType: string, provider = "openai"): TaskView {
     const taskRunId = ++taskSeq;
     taskTypes.set(taskRunId, taskType);
-    return { ...baseTask(taskRunId), task_type: taskType as TaskView["task_type"] };
+    taskProviders.set(taskRunId, provider);
+    return {
+      ...baseTask(taskRunId),
+      task_type: taskType as TaskView["task_type"],
+      provider: provider as TaskView["provider"],
+    };
+  }
+
+  class DemoIntakeError extends Error {
+    constructor(
+      message: string,
+      readonly failureCode?: string | null,
+    ) {
+      super(message);
+    }
+  }
+
+  function isAuthFailure(error: unknown): boolean {
+    return (
+      error instanceof DemoIntakeError &&
+      error.failureCode === "provider_authentication_failed"
+    );
   }
 
   return {
     DEMO_ACTOR_ID: 1,
-    DemoIntakeError: class DemoIntakeError extends Error {},
-    listConfiguredProviders: async () => ["openai"] as const,
-    isDemoAuthFailure: () => false,
-    runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => ({
-      provider: "openai" as const,
-      result: await operation("openai"),
-    }),
+    DemoIntakeError,
+    setConfiguredProviders: (providers: string[]) => {
+      configuredProviders = providers;
+    },
+    setFailOpenaiAuth: (value: boolean) => {
+      failOpenaiAuth = value;
+    },
+    listConfiguredProviders: async () => configuredProviders,
+    isDemoAuthFailure: isAuthFailure,
+    runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => {
+      let lastError: unknown = null;
+      for (const provider of configuredProviders) {
+        try {
+          return { provider, result: await operation(provider) };
+        } catch (error) {
+          lastError = error;
+          if (!isAuthFailure(error)) throw error;
+        }
+      }
+      throw lastError;
+    },
     createDemoProject: async () => ({
       id: 1,
       title: "测试项目",
@@ -346,8 +396,29 @@ function buildFakeBackend() {
       return intakeView();
     },
     startDemoPolish: async () => recordTask("brief_polish"),
-    startDemoQuestions: async () => recordTask("brief_intake_questions"),
-    startDemoSynthesize: async () => recordTask("brief_intake_synthesize"),
+    startDemoQuestions: async (
+      _projectId: number,
+      expectedRevision: number,
+      provider: string,
+    ) => {
+      // 与后端一致：任务创建校验并推进 intake revision。
+      if (expectedRevision !== revision) {
+        throw new Error("Brief Intake revision is stale");
+      }
+      revision += 1;
+      return recordTask("brief_intake_questions", provider);
+    },
+    startDemoSynthesize: async (
+      _projectId: number,
+      expectedRevision: number,
+      provider: string,
+    ) => {
+      if (expectedRevision !== revision) {
+        throw new Error("Brief Intake revision is stale");
+      }
+      revision += 1;
+      return recordTask("brief_intake_synthesize", provider);
+    },
     startDemoAnchorExtract: async () => recordTask("brief_anchor_extract"),
     startDemoDraftRun: async () => recordTask("brief_to_draft"),
     fetchDemoTask: async (_projectId: number, taskRunId: number) =>
@@ -509,6 +580,8 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   routerPush.mockReset();
+  fake.backend.setConfiguredProviders(["openai"]);
+  fake.backend.setFailOpenaiAuth(false);
 });
 
 describe("intake center prototype", () => {
@@ -625,6 +698,25 @@ describe("intake center prototype", () => {
     expect(
       screen.getByRole("button", { name: /已是当前工作稿/u }),
     ).toBeInTheDocument();
+  });
+
+  it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {
+    fake.backend.setConfiguredProviders(["openai", "deepseek"]);
+    fake.backend.setFailOpenaiAuth(true);
+    renderPrototype();
+
+    fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    // openai 认证失败后回退 deepseek 重试，且重试使用任务创建后推进的最新 revision。
+    expect(
+      screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("玩家最终必须回答哪一个问题？"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
   });
 
   it("keeps the demo on the real intake backend while staying out of the workflow store and browser storage", () => {
