@@ -43,7 +43,7 @@ import {
   fetchDemoDraftCandidates,
   fetchDemoIntake,
   persistDemoSource,
-  resolveConfiguredProvider,
+  runTaskWithProviderFallback,
   saveDemoCandidate,
   startDemoAnchorExtract,
   startDemoDraftRun,
@@ -292,10 +292,6 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     return intake;
   }
 
-  async function resolveProvider() {
-    return resolveConfiguredProvider();
-  }
-
   const patchState = useCallback((patch: Partial<DemoPrototypeState>) => {
     dispatch({ type: "patch", patch });
   }, []);
@@ -304,18 +300,18 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     async (mode: PrototypePolishMode): Promise<DemoPolishResult> => {
       const current = stateRef.current;
       const intake = await ensureProjectAndSource(current.sourceText);
-      const provider = await resolveProvider();
       const sourceRecordId = intake.current_source?.source_record_id;
       if (!sourceRecordId) throw new DemoIntakeError("起案原文尚未保存。");
-      const task = await startDemoPolish(
-        projectIdRef.current!,
-        sourceRecordId,
-        provider,
-        mode,
-      );
-      const done = await waitForDemoTask(
-        projectIdRef.current!,
-        task.task_run_id,
+      const { result: done } = await runTaskWithProviderFallback(
+        async (provider) => {
+          const task = await startDemoPolish(
+            projectIdRef.current!,
+            sourceRecordId,
+            provider,
+            mode,
+          );
+          return waitForDemoTask(projectIdRef.current!, task.task_run_id);
+        },
       );
       const result = done.result as BriefPolishResult | null;
       if (!result) throw new DemoIntakeError("润色任务没有返回结果。");
@@ -352,13 +348,14 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     const current = stateRef.current;
     let intake = await ensureProjectAndSource(current.sourceText);
     if (intake.questions.length === 0) {
-      const provider = await resolveProvider();
-      const task = await startDemoQuestions(
-        projectIdRef.current!,
-        intake.revision,
-        provider,
-      );
-      await waitForDemoTask(projectIdRef.current!, task.task_run_id);
+      await runTaskWithProviderFallback(async (provider) => {
+        const task = await startDemoQuestions(
+          projectIdRef.current!,
+          intake.revision,
+          provider,
+        );
+        return waitForDemoTask(projectIdRef.current!, task.task_run_id);
+      });
       intake = await fetchDemoIntake(projectIdRef.current!);
       intakeRef.current = intake;
     }
@@ -376,7 +373,6 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
 
   const generateBriefFromAnswers = useCallback(async () => {
     const current = stateRef.current;
-    const provider = await resolveProvider();
     let intake =
       intakeRef.current ?? (await ensureProjectAndSource(current.sourceText));
     for (const question of intake.questions) {
@@ -402,12 +398,14 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
       );
       intakeRef.current = intake;
     }
-    const task = await startDemoSynthesize(
-      projectIdRef.current!,
-      intake.revision,
-      provider,
-    );
-    await waitForDemoTask(projectIdRef.current!, task.task_run_id);
+    await runTaskWithProviderFallback(async (provider) => {
+      const task = await startDemoSynthesize(
+        projectIdRef.current!,
+        intake.revision,
+        provider,
+      );
+      return waitForDemoTask(projectIdRef.current!, task.task_run_id);
+    });
     intakeRef.current = await fetchDemoIntake(projectIdRef.current!);
     const mapped = mapIntakeToDemoState(intakeRef.current);
     dispatch({
@@ -470,15 +468,17 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     if (intake.current_candidate_id === null) {
       throw new DemoIntakeError("先保存一个候选，再发起对话修改。");
     }
-    const provider = await resolveProvider();
-    const task = await startDemoSynthesize(
-      projectIdRef.current,
-      intake.revision,
-      provider,
-      intake.current_candidate_id,
-      instruction,
-    );
-    await waitForDemoTask(projectIdRef.current, task.task_run_id);
+    const baseCandidateId = intake.current_candidate_id;
+    await runTaskWithProviderFallback(async (provider) => {
+      const task = await startDemoSynthesize(
+        projectIdRef.current!,
+        intake.revision,
+        provider,
+        baseCandidateId,
+        instruction,
+      );
+      return waitForDemoTask(projectIdRef.current!, task.task_run_id);
+    });
     intakeRef.current = await fetchDemoIntake(projectIdRef.current);
     const mapped = mapIntakeToDemoState(intakeRef.current);
     dispatch({ type: "patch", patch: { ...mapped, brief: current.brief } });
@@ -613,13 +613,16 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     const projectId = projectIdRef.current;
     if (projectId === null) throw new DemoIntakeError("当前会话尚未建案。");
     const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
-    const provider = await resolveProvider();
-    const task = await startDemoAnchorExtract(
-      projectId,
-      brief.draft_revision,
-      provider,
+    const { result: done } = await runTaskWithProviderFallback(
+      async (provider) => {
+        const task = await startDemoAnchorExtract(
+          projectId,
+          brief.draft_revision,
+          provider,
+        );
+        return waitForDemoTask(projectId, task.task_run_id);
+      },
     );
-    const done = await waitForDemoTask(projectId, task.task_run_id);
     const result = done.result as
       | { author_anchors: Array<{ statement: string }>; creative_constraints: Array<{ statement: string; suggested_strength: "hard" | "soft" }> }
       | null;
@@ -679,30 +682,38 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     if (projectId === null) return false;
     dispatch({ type: "start_generation" });
     try {
-      const provider = await resolveProvider();
       const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
       if (!brief.current_version_id) {
         throw new DemoIntakeError("请先冻结当前创作简报。");
       }
-      const runs = await Promise.all(
-        [1, 2, 3].map(() =>
-          startDemoDraftRun(
+      // 第一份运行带 Provider 认证回退，确认可用的模型服务后复用于其余两份。
+      const { provider: workingProvider } = await runTaskWithProviderFallback(
+        async (provider) => {
+          const task = await startDemoDraftRun(
             projectId,
             brief.current_version_id!,
             brief.draft_revision,
             provider,
+          );
+          await waitForDemoTask(projectId, task.task_run_id);
+          dispatch({ type: "advance_generation", stage: 2 });
+          return provider;
+        },
+      );
+      const runs = await Promise.all(
+        [2, 3].map(() =>
+          startDemoDraftRun(
+            projectId,
+            brief.current_version_id!,
+            brief.draft_revision,
+            workingProvider,
           ),
         ),
       );
-      let succeededCount = 0;
       await Promise.all(
         runs.map(async (run) => {
           await waitForDemoTask(projectId, run.task_run_id);
-          succeededCount += 1;
-          dispatch({
-            type: "advance_generation",
-            stage: succeededCount > 1 ? 3 : 2,
-          });
+          dispatch({ type: "advance_generation", stage: 3 });
         }),
       );
       const candidates = await fetchDemoDraftCandidates(projectId);

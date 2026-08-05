@@ -30,10 +30,18 @@
 - 候选强度/取舍说明服务端未提供，demo 展示为客观状态描述（通过校验、待审阅），不伪造 Agent 推荐语。
 - 不引入 SSE/审计轨迹；demo 用任务轮询获取完成状态。
 
+## 追加修复：Provider 认证失败回退
+
+- 现象：demo 会话任务全部以 `provider_authentication_failed` 失败（“模型服务认证失败，请检查 API Key 与模型权限。”），而创作模式任务正常。
+- 根因：保存密钥时后端不校验（`credential_status` 保持 `unverified`），demo 的 Provider 探测按 openai→deepseek 顺序取第一个已配置项；本机 openai 密钥已失效，所有成功任务实际都走 deepseek。
+- 修复：`demo-intake-api` 新增 `listConfiguredProviders`（过滤删除墓碑）、`isDemoAuthFailure`（按任务失败码 `provider_authentication_failed` 识别）与 `runTaskWithProviderFallback`（认证失败时自动改用下一个已配置 Provider 重试，其他错误直接抛出不回退）；六个任务型流程（润色/追问/成案/对话修改/锚点拆解/三份候选）全部接入，候选生成先以带回退的首份运行确定可用 Provider 再复用于其余两份。
+- 测试：新增 `tests/demo-intake-api.test.ts` 覆盖回退成功、非认证错误不回退、无 Provider 提示与错误分类；全套 85 项测试、typecheck 与 ESLint 通过。
+
 ## 验收状态
 
 - [x] 完成 API 适配层与映射层，五阶段全部走真实后端。
 - [x] 完成左下角设置入口与共享 SettingsDialog 复用。
 - [x] 更新隔离与主流程测试，mock API 适配层下全流程通过。
-- [x] 更新 `AGENT.md` 演示约束与组件职责；前端 typecheck、ESLint、81 项测试与生产构建全部通过。
+- [x] 更新 `AGENT.md` 演示约束与组件职责；前端 typecheck、ESLint、85 项测试与生产构建全部通过。
+- [x] Provider 认证失败自动回退到另一个已配置模型服务。
 - [ ] 浏览器闭环：完整建案→冻结→三份候选→采用，刷新重置为新项目（需要本地后端与 worker 运行，留待人工验收）。

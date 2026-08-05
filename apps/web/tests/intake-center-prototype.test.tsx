@@ -312,7 +312,12 @@ function buildFakeBackend() {
   return {
     DEMO_ACTOR_ID: 1,
     DemoIntakeError: class DemoIntakeError extends Error {},
-    resolveConfiguredProvider: async () => "openai" as const,
+    listConfiguredProviders: async () => ["openai"] as const,
+    isDemoAuthFailure: () => false,
+    runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => ({
+      provider: "openai" as const,
+      result: await operation("openai"),
+    }),
     createDemoProject: async () => ({
       id: 1,
       title: "测试项目",

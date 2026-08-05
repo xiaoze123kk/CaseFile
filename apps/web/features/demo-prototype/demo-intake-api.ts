@@ -27,7 +27,14 @@ const TERMINAL_TASK_STATUSES = new Set<TaskView["status"]>([
 const POLL_INTERVAL_MS = 800;
 const MAX_POLLS = 600;
 
-export class DemoIntakeError extends Error {}
+export class DemoIntakeError extends Error {
+  constructor(
+    message: string,
+    readonly failureCode?: string | null,
+  ) {
+    super(message);
+  }
+}
 
 function delay(milliseconds: number) {
   return new Promise<void>((resolve) => {
@@ -35,16 +42,50 @@ function delay(milliseconds: number) {
   });
 }
 
-/** 探测已配置的模型服务；都没有配置时抛出可展示的中文错误。 */
-export async function resolveConfiguredProvider(): Promise<ProviderName> {
+/** 已配置（非删除墓碑）的模型服务列表，按产品默认顺序排列。 */
+export async function listConfiguredProviders(): Promise<ProviderName[]> {
+  const configured: ProviderName[] = [];
   for (const provider of PROVIDER_ORDER) {
     const setting = await apiRequest<ProviderSettingView | null>(
       `/settings/provider?provider=${provider}`,
       { actorId: DEMO_ACTOR_ID },
     );
-    if (setting) return provider;
+    if (setting && setting.credential_status !== "deleted") {
+      configured.push(provider);
+    }
   }
-  throw new DemoIntakeError("请先在左下角设置入口配置模型服务。");
+  return configured;
+}
+
+/** 判断任务失败是否为模型服务认证失败（401）。 */
+export function isDemoAuthFailure(error: unknown): boolean {
+  return (
+    error instanceof DemoIntakeError &&
+    error.failureCode === "provider_authentication_failed"
+  );
+}
+
+/**
+ * 依次用已配置的 Provider 执行同一操作；仅在认证失败时回退到下一个
+ * Provider，其他错误直接抛出。返回实际生效的 Provider 与结果。
+ */
+export async function runTaskWithProviderFallback<T>(
+  operation: (provider: ProviderName) => Promise<T>,
+): Promise<{ provider: ProviderName; result: T }> {
+  const providers = await listConfiguredProviders();
+  if (providers.length === 0) {
+    throw new DemoIntakeError("请先在左下角设置入口配置模型服务。");
+  }
+  let lastError: unknown = null;
+  for (const provider of providers) {
+    try {
+      return { provider, result: await operation(provider) };
+    } catch (error) {
+      lastError = error;
+      if (!isDemoAuthFailure(error)) throw error;
+    }
+  }
+  throw lastError;
 }
 
 function projectTitleFrom(sourceText: string) {
@@ -206,6 +247,7 @@ export async function waitForDemoTask(
       if (task.status !== "succeeded") {
         throw new DemoIntakeError(
           task.failure?.message ?? `任务未完成：${task.status}`,
+          task.failure?.code ?? task.error_code,
         );
       }
       return task;
