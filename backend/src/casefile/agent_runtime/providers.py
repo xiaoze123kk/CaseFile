@@ -11,7 +11,15 @@ from typing import Any, Protocol
 from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import CaseFile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, ValidationError
@@ -20,6 +28,10 @@ from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
+    BriefIntakeQuestionsRequest,
+    BriefIntakeQuestionsResult,
+    BriefIntakeSynthesizeRequest,
+    BriefIntakeSynthesizeResult,
     BriefPolishCandidate,
     BriefPolishRequest,
     BriefPolishResult,
@@ -32,6 +44,8 @@ from casefile.agent_runtime.models import (
 )
 from casefile.agent_runtime.prompt import (
     anchor_extract_input,
+    brief_intake_questions_input,
+    brief_intake_synthesize_input,
     casefile_chat_input,
     generation_input,
     polish_input,
@@ -53,6 +67,14 @@ class AgentProvider(GenerationProvider, Protocol):
     ) -> BriefAnchorExtractResult: ...
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
+
+    def intake_questions(
+        self, request: BriefIntakeQuestionsRequest
+    ) -> BriefIntakeQuestionsResult: ...
+
+    def synthesize_intake(
+        self, request: BriefIntakeSynthesizeRequest
+    ) -> BriefIntakeSynthesizeResult: ...
 
 
 class ProviderProtocolError(RuntimeError):
@@ -104,6 +126,94 @@ class FakeProvider:
         usage = _zero_usage()
         request.emit("model.completed", "extracting", {"usage": usage})
         return BriefAnchorExtractResult(candidate=candidate, usage=usage)
+
+    def intake_questions(
+        self, request: BriefIntakeQuestionsRequest
+    ) -> BriefIntakeQuestionsResult:
+        system_prompt_for_task("brief_intake_questions", request.prompt_version)
+        request.emit("model.started", "questioning", {"model_id": request.model_id})
+        candidate = BriefIntakeQuestionSetContract.model_validate(
+            {
+                "questions": [
+                    {
+                        "question_key": "question_resolution_direction",
+                        "ordinal": 1,
+                        "prompt": "你希望真相由你预先确定，还是由 Agent 提出候选？",
+                        "impact": "这会决定结论模式，以及是否需要作者底牌。",
+                        "required": True,
+                        "suggestions": ["由 Agent 提出候选", "保持开放，不预设唯一结论"],
+                    },
+                    {
+                        "question_key": "question_scope",
+                        "ordinal": 2,
+                        "prompt": "你预计采用多大规模？",
+                        "impact": "这会影响内容骨架和角色数量，但不改变核心解答。",
+                        "required": False,
+                        "suggestions": ["中篇，4 名核心角色"],
+                    },
+                ]
+            }
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "questioning", {"usage": usage})
+        return BriefIntakeQuestionsResult(candidate=candidate, usage=usage)
+
+    def synthesize_intake(
+        self, request: BriefIntakeSynthesizeRequest
+    ) -> BriefIntakeSynthesizeResult:
+        system_prompt_for_task("brief_intake_synthesize", request.prompt_version)
+        request.emit("model.started", "synthesizing", {"model_id": request.model_id})
+        source = request.input_data.get("source")
+        source_text = (
+            str(source.get("content_text", "")).strip()
+            if isinstance(source, dict)
+            else ""
+        )
+        concept = source_text.splitlines()[0][:1000].strip() or "尚待作者补充的创作概念"
+        raw_questions = request.input_data.get("questions")
+        questions = raw_questions if isinstance(raw_questions, list) else []
+        pending = [
+            {
+                "decision_key": str(item.get("question_key", "question_pending")).replace(
+                    "question_", "decision_", 1
+                ),
+                "prompt": str(item.get("prompt", "待决定事项")),
+                "impact": str(item.get("impact", "影响后续内容组织")),
+                "source": "unresolved",
+            }
+            for item in questions
+            if isinstance(item, dict)
+            and not bool(item.get("required"))
+            and item.get("answer_status") in {"unanswered", "pending"}
+        ]
+        candidate = BriefIntakeCandidateContract.model_validate(
+            {
+                "concept": concept,
+                "core_selling_points": ["围绕原始设想建立可验证的推理链。"],
+                "content_outline": ["建立核心谜面", "逐步验证线索", "审阅候选结论"],
+                "reasoning_goal": "解释核心异常如何发生，并形成可由作者审阅的结论。",
+                "resolution_mode": "agent_proposed",
+                "author_answer": None,
+                "constraints": [],
+                "pending_decisions": pending,
+                "scope_estimate": "中篇，4 名核心角色，6 至 8 个主要场景。",
+                "risk_notes": ["需要在正式审阅中确认结论模式与硬约束。"],
+                "field_sources": {
+                    "concept": "user_original",
+                    "core_selling_points": "agent_suggestion",
+                    "content_outline": "agent_suggestion",
+                    "reasoning_goal": "agent_suggestion",
+                    "resolution_mode": "agent_suggestion",
+                    "author_answer": "unresolved",
+                    "constraints": "unresolved",
+                    "scope_estimate": "agent_suggestion",
+                    "risk_notes": "agent_suggestion",
+                },
+            }
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "synthesizing", {"usage": usage})
+        return BriefIntakeSynthesizeResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         system_prompt_for_task("casefile_chat", request.prompt_version)
@@ -285,6 +395,52 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
+    def intake_questions(
+        self, request: BriefIntakeQuestionsRequest
+    ) -> BriefIntakeQuestionsResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task(
+                    "brief_intake_questions", request.prompt_version
+                ),
+                input_text=brief_intake_questions_input(
+                    request.source_text, request.input_hash
+                ),
+                output_type=BriefIntakeQuestionSetContract,
+                stage="questioning",
+            )
+        )
+        return BriefIntakeQuestionsResult(
+            candidate=BriefIntakeQuestionSetContract.model_validate(candidate),
+            usage=usage,
+        )
+
+    def synthesize_intake(
+        self, request: BriefIntakeSynthesizeRequest
+    ) -> BriefIntakeSynthesizeResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task(
+                    "brief_intake_synthesize", request.prompt_version
+                ),
+                input_text=brief_intake_synthesize_input(
+                    request.input_data, request.input_hash
+                ),
+                output_type=BriefIntakeCandidateContract,
+                stage="synthesizing",
+            )
+        )
+        return BriefIntakeSynthesizeResult(
+            candidate=BriefIntakeCandidateContract.model_validate(candidate),
+            usage=usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
@@ -331,7 +487,13 @@ class OpenAIAgentsProvider:
 
     async def _run_auxiliary(
         self,
-        request: BriefPolishRequest | BriefAnchorExtractRequest | CaseFileChatRequest,
+        request: (
+            BriefPolishRequest
+            | BriefAnchorExtractRequest
+            | BriefIntakeQuestionsRequest
+            | BriefIntakeSynthesizeRequest
+            | CaseFileChatRequest
+        ),
         *,
         instructions: str,
         input_text: str,
@@ -408,6 +570,52 @@ class DeepSeekAgentsProvider:
             usage=usage,
         )
 
+    def intake_questions(
+        self, request: BriefIntakeQuestionsRequest
+    ) -> BriefIntakeQuestionsResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task(
+                    "brief_intake_questions", request.prompt_version
+                ),
+                input_text=brief_intake_questions_input(
+                    request.source_text, request.input_hash
+                ),
+                output_type=BriefIntakeQuestionSetContract,
+                stage="questioning",
+            )
+        )
+        return BriefIntakeQuestionsResult(
+            candidate=BriefIntakeQuestionSetContract.model_validate(candidate),
+            usage=usage,
+        )
+
+    def synthesize_intake(
+        self, request: BriefIntakeSynthesizeRequest
+    ) -> BriefIntakeSynthesizeResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task(
+                    "brief_intake_synthesize", request.prompt_version
+                ),
+                input_text=brief_intake_synthesize_input(
+                    request.input_data, request.input_hash
+                ),
+                output_type=BriefIntakeCandidateContract,
+                stage="synthesizing",
+            )
+        )
+        return BriefIntakeSynthesizeResult(
+            candidate=BriefIntakeCandidateContract.model_validate(candidate),
+            usage=usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
@@ -445,7 +653,13 @@ class DeepSeekAgentsProvider:
 
     async def _run_auxiliary(
         self,
-        request: BriefPolishRequest | BriefAnchorExtractRequest | CaseFileChatRequest,
+        request: (
+            BriefPolishRequest
+            | BriefAnchorExtractRequest
+            | BriefIntakeQuestionsRequest
+            | BriefIntakeSynthesizeRequest
+            | CaseFileChatRequest
+        ),
         *,
         instructions: str,
         input_text: str,
@@ -471,6 +685,8 @@ class DeepSeekAgentsProvider:
             GenerationRequest
             | BriefPolishRequest
             | BriefAnchorExtractRequest
+            | BriefIntakeQuestionsRequest
+            | BriefIntakeSynthesizeRequest
             | CaseFileChatRequest
         ),
     ) -> OpenAIChatCompletionsModel:
@@ -486,7 +702,13 @@ class DeepSeekAgentsProvider:
 
 
 async def _run_auxiliary_agent(
-    request: BriefPolishRequest | BriefAnchorExtractRequest | CaseFileChatRequest,
+    request: (
+        BriefPolishRequest
+        | BriefAnchorExtractRequest
+        | BriefIntakeQuestionsRequest
+        | BriefIntakeSynthesizeRequest
+        | CaseFileChatRequest
+    ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
     model_settings: ModelSettings,

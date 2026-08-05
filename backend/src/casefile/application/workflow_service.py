@@ -1285,6 +1285,8 @@ class WorkflowService:
         if task_type not in {
             "brief_polish",
             "brief_anchor_extract",
+            "brief_intake_questions",
+            "brief_intake_synthesize",
             "brief_to_draft",
             "casefile_chat",
         }:
@@ -1505,6 +1507,9 @@ class WorkflowService:
             brief_version_id=brief_version_id,
             input_source_record_id=input_source_record_id,
             input_brief_revision=input_brief_revision,
+            brief_intake_id=None,
+            input_brief_intake_revision=None,
+            base_brief_intake_candidate_id=None,
             agent_thread_id=agent_thread_id,
             input_message_id=input_message_id,
             output_message_id=output_message_id,
@@ -1862,6 +1867,9 @@ def _task_view(task: TaskRun) -> dict[str, Any]:
         "input_draft_revision": task.input_draft_revision,
         "input_brief_revision": task.input_brief_revision,
         "input_source_record_id": task.input_source_record_id,
+        "input_brief_intake_id": task.brief_intake_id,
+        "input_brief_intake_revision": task.input_brief_intake_revision,
+        "base_brief_intake_candidate_id": task.base_brief_intake_candidate_id,
         "agent_thread_id": task.agent_thread_id,
         "input_message_id": task.input_message_id,
         "output_message_id": task.output_message_id,

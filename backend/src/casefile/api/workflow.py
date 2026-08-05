@@ -322,6 +322,8 @@ def workflow_router() -> APIRouter:
         task_type: Literal[
             "brief_polish",
             "brief_anchor_extract",
+            "brief_intake_questions",
+            "brief_intake_synthesize",
             "brief_to_draft",
             "casefile_chat",
         ],

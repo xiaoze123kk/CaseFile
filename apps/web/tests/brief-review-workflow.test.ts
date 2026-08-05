@@ -10,16 +10,14 @@ import {
   selectNewestTask,
 } from "@/features/workflow/task-recovery";
 import {
-  buildAuthorSourceCreateBody,
-  polishCandidateMatchesInput,
-  polishProposalWasAdopted,
-  prepareBriefForSave,
-} from "@/features/workflow/intake-workspace";
+  discardCandidateTarget,
+  missingCandidateHardFields,
+  seedManualCandidate,
+} from "@/features/workflow/intake-model";
 import type {
   BriefAnchorExtractResult,
+  BriefIntakeCandidateView,
   BriefContent,
-  BriefPolishResult,
-  SourceRecordView,
   TaskEventView,
   TaskView,
 } from "@/lib/api-client";
@@ -46,30 +44,6 @@ const brief: BriefContent = {
   ],
 };
 
-const inputSource: SourceRecordView = {
-  source_record_id: 11,
-  source_kind: "human_original",
-  content_text: "渡轮每天午夜回到同一座码头。",
-  content_hash: "a".repeat(64),
-  parent_source_record_id: null,
-  generated_by_task_run_id: null,
-  created_at: "2026-07-28T08:00:00Z",
-};
-
-const polishResult: BriefPolishResult = {
-  input_hash: "a".repeat(64),
-  polished_text: "渡轮每到午夜，都会重新驶回同一座码头。",
-  preserved_intent_summary: "保留循环回航的核心设定。",
-  ambiguities: [],
-  proposal_source_record: {
-    ...inputSource,
-    source_record_id: 12,
-    source_kind: "agent_polish_proposal",
-    parent_source_record_id: 11,
-    generated_by_task_run_id: 21,
-  },
-};
-
 const extractResult: BriefAnchorExtractResult = {
   input_hash: "b".repeat(64),
   author_anchors: [{ statement: "船载 AI 主动改变了航线。" }],
@@ -81,6 +55,32 @@ const extractResult: BriefAnchorExtractResult = {
   ],
   warnings: [],
 };
+
+function intakeCandidate(
+  candidateId: number,
+  overrides: Partial<BriefIntakeCandidateView> = {},
+): BriefIntakeCandidateView {
+  const content = seedManualCandidate("渡轮每到午夜都会驶回同一座码头。");
+  content.reasoning_goal = "查明是谁改变了渡轮的航线。";
+  content.field_sources.reasoning_goal = "user_confirmed";
+  return {
+    candidate_id: candidateId,
+    parent_candidate_id: null,
+    generated_by_task_run_id: null,
+    origin: "manual_edit",
+    basis_input_hash: "a".repeat(64),
+    content_hash: String(candidateId).padStart(64, "0"),
+    content,
+    is_current: false,
+    is_adopted: false,
+    is_saved: false,
+    is_stale: false,
+    can_activate: true,
+    saved_at: null,
+    created_at: "2026-08-04T08:00:00Z",
+    ...overrides,
+  };
+}
 
 function extractionTask(): TaskView {
   return {
@@ -94,6 +94,9 @@ function extractionTask(): TaskView {
     input_draft_revision: 1,
     input_brief_revision: 4,
     input_source_record_id: null,
+    input_brief_intake_id: null,
+    input_brief_intake_revision: null,
+    base_brief_intake_candidate_id: null,
     agent_thread_id: null,
     input_message_id: null,
     output_message_id: null,
@@ -150,117 +153,88 @@ describe("Brief review workflow", () => {
     expect(summary).toContain("/events/0/time 缺少必填字段（另有 1 项）");
   });
 
-  it("preserves confirmed atomics when the author answer and boundary are unchanged", () => {
-    const prepared = prepareBriefForSave(
-      brief,
+  it("seeds a manual candidate from the first non-empty source line", () => {
+    const seeded = seedManualCandidate(
+      "\n  渡轮每到午夜都会驶回同一座码头。  \n第二段补充背景。",
+    );
+
+    expect(seeded.concept).toBe("渡轮每到午夜都会驶回同一座码头。");
+    expect(seeded.field_sources.concept).toBe("user_original");
+    expect(seeded.core_selling_points).toEqual([]);
+    expect(missingCandidateHardFields(seeded)).toEqual(["推理目标"]);
+  });
+
+  it("carries explicitly deferred optional questions into a manual candidate", () => {
+    const seeded = seedManualCandidate("午夜渡轮不断回航。", [
       {
-        ...brief,
-        creative_intent: brief.creative_intent.trim(),
-        reasoning_proposition: brief.reasoning_proposition.trim(),
-        author_answer: brief.author_answer?.trim() ?? null,
-        boundary_text: brief.boundary_text?.trim() ?? null,
+        question_key: "question_timeframe",
+        ordinal: 1,
+        prompt: "故事发生在哪个时代？",
+        impact: "决定调查工具与通讯限制。",
+        required: false,
+        suggestions: [],
+        answer_status: "pending",
+        answer_text: null,
+        answer_source: "unresolved",
       },
-      [11, 12],
-    );
-
-    expect(prepared.extractionInputChanged).toBe(false);
-    expect(prepared.content.author_anchors).toEqual(brief.author_anchors);
-    expect(prepared.content.creative_constraints).toEqual(
-      brief.creative_constraints,
-    );
-  });
-
-  it("invalidates old atomics when either extraction input changes", () => {
-    const prepared = prepareBriefForSave(
       {
-        ...brief,
-        author_answer: "船长主动改变了航线。",
+        question_key: "question_stake",
+        ordinal: 2,
+        prompt: "主角为何追查？",
+        impact: "决定人物动机。",
+        required: true,
+        suggestions: [],
+        answer_status: "user_answered",
+        answer_text: "为了寻找失踪的亲人。",
+        answer_source: "user_confirmed",
       },
-      brief,
-      [11, 12],
+    ]);
+
+    expect(seeded.pending_decisions).toEqual([
+      {
+        decision_key: "decision_timeframe",
+        prompt: "故事发生在哪个时代？",
+        impact: "决定调查工具与通讯限制。",
+        source: "unresolved",
+      },
+    ]);
+  });
+
+  it("blocks only missing concept, reasoning goal, and an anchored author answer", () => {
+    const seeded = seedManualCandidate("");
+
+    expect(missingCandidateHardFields(seeded)).toEqual([
+      "一句话概念",
+      "推理目标",
+    ]);
+
+    seeded.concept = "午夜渡轮不断回航。";
+    seeded.reasoning_goal = "查明谁修改了航线。";
+    seeded.resolution_mode = "author_anchored";
+    expect(missingCandidateHardFields(seeded)).toEqual(["作者底牌"]);
+
+    seeded.author_answer = "船载 AI 主动改写了航行计划。";
+    expect(missingCandidateHardFields(seeded)).toEqual([]);
+  });
+
+  it("discards edits to the saved candidate first and otherwise to the parent", () => {
+    const parent = intakeCandidate(1);
+    const saved = intakeCandidate(2, { is_saved: true });
+    const current = intakeCandidate(3, {
+      parent_candidate_id: parent.candidate_id,
+      is_current: true,
+    });
+
+    expect(discardCandidateTarget([current, saved, parent], current)).toBe(
+      saved,
     );
-
-    expect(prepared.extractionInputChanged).toBe(true);
-    expect(prepared.content.author_anchors).toEqual([]);
-    expect(prepared.content.creative_constraints).toEqual([]);
-  });
-
-  it("accepts a polish candidate only for the exact persisted input source and hash", () => {
-    const taskInput = {
-      input_source_record_id: inputSource.source_record_id,
-      input_hash: polishResult.input_hash,
-    };
-
     expect(
-      polishCandidateMatchesInput(
-        taskInput,
-        polishResult,
-        inputSource,
-        inputSource.content_text,
+      discardCandidateTarget(
+        [current, { ...saved, is_stale: true }, parent],
+        current,
       ),
-    ).toBe(true);
-    expect(
-      polishCandidateMatchesInput(
-        taskInput,
-        polishResult,
-        inputSource,
-        `${inputSource.content_text} 新增内容`,
-      ),
-    ).toBe(false);
-    expect(
-      polishCandidateMatchesInput(
-        { ...taskInput, input_hash: "c".repeat(64) },
-        polishResult,
-        inputSource,
-        inputSource.content_text,
-      ),
-    ).toBe(false);
-  });
-
-  it("keeps the first author source original and records every later adoption as a revision", () => {
-    expect(
-      buildAuthorSourceCreateBody("原始创意", null),
-    ).toEqual({
-      source_kind: "human_original",
-      content_text: "原始创意",
-    });
-    expect(
-      buildAuthorSourceCreateBody(
-        polishResult.polished_text,
-        polishResult.proposal_source_record,
-      ),
-    ).toEqual({
-      source_kind: "human_revision",
-      content_text: polishResult.polished_text,
-      parent_source_record_id:
-        polishResult.proposal_source_record.source_record_id,
-    });
-  });
-
-  it("does not reopen a polish proposal after a durable human revision adopts it", () => {
-    const adoptedRevision: SourceRecordView = {
-      ...polishResult.proposal_source_record,
-      source_record_id: 13,
-      source_kind: "human_revision",
-      content_text: polishResult.polished_text,
-      parent_source_record_id:
-        polishResult.proposal_source_record.source_record_id,
-      generated_by_task_run_id: null,
-    };
-
-    expect(
-      polishProposalWasAdopted(polishResult, [
-        inputSource,
-        polishResult.proposal_source_record,
-        adoptedRevision,
-      ]),
-    ).toBe(true);
-    expect(
-      polishProposalWasAdopted(polishResult, [
-        inputSource,
-        polishResult.proposal_source_record,
-      ]),
-    ).toBe(false);
+    ).toBe(parent);
+    expect(discardCandidateTarget([current], current)).toBeNull();
   });
 
   it("normalizes only author-approved atomics and keeps constraint strength explicit", () => {

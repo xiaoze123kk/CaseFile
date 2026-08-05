@@ -144,6 +144,69 @@ class SourceRecordCreateRequest(StrictRequest):
     parent_source_record_id: int | None = Field(default=None, ge=1)
 
 
+class BriefIntakeSourceUpdateRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+    content_text: str = Field(min_length=1, max_length=100_000)
+    parent_source_record_id: int | None = Field(default=None, ge=1)
+
+
+class BriefIntakeQuestionAnswerRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+    answer_mode: Literal["answer", "suggestion", "pending"]
+    answer_text: str | None = Field(default=None, max_length=20_000)
+    suggestion_index: int | None = Field(default=None, ge=0, le=2)
+
+    @model_validator(mode="after")
+    def answer_payload_matches_mode(self) -> Self:
+        if self.answer_mode == "answer":
+            if self.answer_text is None or not self.answer_text.strip():
+                raise ValueError("answer mode requires non-blank answer_text")
+            if self.suggestion_index is not None:
+                raise ValueError("answer mode does not accept suggestion_index")
+        elif self.answer_mode == "suggestion":
+            if self.suggestion_index is None:
+                raise ValueError("suggestion mode requires suggestion_index")
+            if self.answer_text is not None:
+                raise ValueError("suggestion mode does not accept answer_text")
+        elif self.answer_text is not None or self.suggestion_index is not None:
+            raise ValueError("pending mode does not accept answer content")
+        return self
+
+
+class BriefIntakeCandidateCreateRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+    content: dict[str, Any]
+    parent_candidate_id: int | None = Field(default=None, ge=1)
+    activate: bool = True
+
+
+class BriefIntakeCandidateActionRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+
+
+class BriefIntakeCandidateAdoptRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+    expected_brief_revision: int = Field(ge=1)
+
+
+class BriefIntakeQuestionsTaskRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "openai"
+
+
+class BriefIntakeSynthesizeTaskRequest(StrictRequest):
+    expected_intake_revision: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "openai"
+    base_candidate_id: int | None = Field(default=None, ge=1)
+    instruction: str | None = Field(default=None, min_length=1, max_length=20_000)
+
+    @model_validator(mode="after")
+    def dialogue_revision_has_base(self) -> Self:
+        if self.instruction is not None and self.base_candidate_id is None:
+            raise ValueError("instruction requires base_candidate_id")
+        return self
+
+
 class BriefPolishTaskRequest(StrictRequest):
     source_record_id: int = Field(ge=1)
     provider: Literal["openai", "deepseek"] = "openai"

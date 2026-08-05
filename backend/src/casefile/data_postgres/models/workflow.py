@@ -196,6 +196,24 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         ForeignKeyConstraint(
+            ["project_id", "brief_intake_id"],
+            ["brief_intakes.project_id", "brief_intakes.id"],
+            name="fk_task_runs_project_brief_intake_brief_intakes",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "brief_intake_id", "base_brief_intake_candidate_id"],
+            [
+                "brief_intake_candidates.project_id",
+                "brief_intake_candidates.intake_id",
+                "brief_intake_candidates.id",
+            ],
+            name="fk_task_runs_base_intake_candidate_candidates",
+            ondelete="RESTRICT",
+            use_alter=True,
+        ),
+        ForeignKeyConstraint(
             ["actor_user_id", "provider_setting_id"],
             ["user_provider_settings.user_id", "user_provider_settings.id"],
             name="fk_task_runs_actor_provider_setting_user_provider_settings",
@@ -220,9 +238,13 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("project_id", "id", name="uq_task_runs_project_id_id"),
+        UniqueConstraint(
+            "project_id", "brief_intake_id", "id", name="uq_task_runs_intake_lineage_id"
+        ),
         CheckConstraint(
             "task_type IN "
-            "('brief_polish', 'brief_anchor_extract', 'brief_to_draft', 'casefile_chat')",
+            "('brief_polish', 'brief_anchor_extract', 'brief_intake_questions', "
+            "'brief_intake_synthesize', 'brief_to_draft', 'casefile_chat')",
             name="task_type_allowed",
         ),
         CheckConstraint(
@@ -233,6 +255,10 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "input_brief_revision IS NULL OR input_brief_revision >= 1",
             name="input_brief_revision_positive",
+        ),
+        CheckConstraint(
+            "input_brief_intake_revision IS NULL OR input_brief_intake_revision >= 1",
+            name="input_brief_intake_revision_positive",
         ),
         CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="input_hash_format"),
         CheckConstraint("provider_config_version >= 1", name="provider_version_positive"),
@@ -253,6 +279,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND brief_version_id IS NULL "
             "AND input_source_record_id IS NOT NULL "
             "AND input_brief_revision IS NULL "
+            "AND brief_intake_id IS NULL "
+            "AND input_brief_intake_revision IS NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
             "AND agent_thread_id IS NULL "
             "AND input_message_id IS NULL "
             "AND output_message_id IS NULL"
@@ -261,6 +290,30 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND brief_version_id IS NULL "
             "AND input_source_record_id IS NULL "
             "AND input_brief_revision IS NOT NULL "
+            "AND brief_intake_id IS NULL "
+            "AND input_brief_intake_revision IS NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
+            ") OR ("
+            "task_type = 'brief_intake_questions' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NOT NULL "
+            "AND input_brief_revision IS NULL "
+            "AND brief_intake_id IS NOT NULL "
+            "AND input_brief_intake_revision IS NOT NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
+            ") OR ("
+            "task_type = 'brief_intake_synthesize' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NOT NULL "
+            "AND input_brief_revision IS NULL "
+            "AND brief_intake_id IS NOT NULL "
+            "AND input_brief_intake_revision IS NOT NULL "
             "AND agent_thread_id IS NULL "
             "AND input_message_id IS NULL "
             "AND output_message_id IS NULL"
@@ -269,6 +322,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND brief_version_id IS NOT NULL "
             "AND input_source_record_id IS NULL "
             "AND input_brief_revision IS NOT NULL "
+            "AND brief_intake_id IS NULL "
+            "AND input_brief_intake_revision IS NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
             "AND agent_thread_id IS NULL "
             "AND input_message_id IS NULL "
             "AND output_message_id IS NULL"
@@ -277,6 +333,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND brief_version_id IS NULL "
             "AND input_source_record_id IS NULL "
             "AND input_brief_revision IS NULL "
+            "AND brief_intake_id IS NULL "
+            "AND input_brief_intake_revision IS NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
             "AND agent_thread_id IS NOT NULL "
             "AND input_message_id IS NOT NULL "
             "AND output_message_id IS NOT NULL"
@@ -313,6 +372,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     brief_version_id: Mapped[int | None] = mapped_column(BigInteger)
     input_source_record_id: Mapped[int | None] = mapped_column(BigInteger)
     input_brief_revision: Mapped[int | None] = mapped_column(Integer)
+    brief_intake_id: Mapped[int | None] = mapped_column(BigInteger)
+    input_brief_intake_revision: Mapped[int | None] = mapped_column(Integer)
+    base_brief_intake_candidate_id: Mapped[int | None] = mapped_column(BigInteger)
     agent_thread_id: Mapped[int | None] = mapped_column(BigInteger)
     input_message_id: Mapped[int | None] = mapped_column(BigInteger)
     output_message_id: Mapped[int | None] = mapped_column(BigInteger)

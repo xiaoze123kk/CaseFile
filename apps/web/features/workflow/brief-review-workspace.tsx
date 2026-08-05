@@ -15,6 +15,7 @@ import {
   type BriefAnchor,
   type BriefAnchorExtractResult,
   type BriefContent,
+  type BriefIntakeView,
   type BriefVersionView,
   type BriefView,
   type ConstraintStrength,
@@ -32,6 +33,7 @@ import {
 import { useWorkflowSession } from "@/store/workflow-store";
 
 import styles from "./brief-workspace.module.css";
+import { BriefPendingDecisions } from "./brief-pending-decisions";
 import {
   DraftCandidatePanel,
   nextDraftCandidateTaskRunId,
@@ -346,7 +348,7 @@ export function TaskAuditDrawer({
       >
         <span className={styles.auditIdentity}>
           <small>
-            {task ? `任务 #${task.task_run_id}` : "尚无任务"}
+            {task ? "最近一次生成" : "尚无生成记录"}
           </small>
           <strong>可恢复审计</strong>
         </span>
@@ -461,6 +463,15 @@ export function BriefReviewWorkspace() {
       apiRequest<BriefView>(`/projects/${workflow.projectId}/brief`, {
         actorId: workflow.actorId,
       }),
+    enabled: workflow.ready && workflow.projectId !== null,
+  });
+  const intakeQuery = useQuery({
+    queryKey: ["brief-intake", workflow.actorId, workflow.projectId],
+    queryFn: () =>
+      apiRequest<BriefIntakeView>(
+        `/projects/${workflow.projectId}/brief-intake`,
+        { actorId: workflow.actorId },
+      ),
     enabled: workflow.ready && workflow.projectId !== null,
   });
   const sourceQuery = useQuery({
@@ -919,7 +930,7 @@ export function BriefReviewWorkspace() {
           : generationMutation.isPending
             ? "正在创建候选任务，请稍候。"
             : generationRunning
-              ? `候选任务 #${generationTask?.task_run_id ?? "—"} 正在运行。`
+              ? "候选正在生成，请稍候。"
               : null;
 
   useEffect(() => {
@@ -956,6 +967,7 @@ export function BriefReviewWorkspace() {
     adoptionMutation.error ??
     extractRecovery.error ??
     generationRecovery.error ??
+    intakeQuery.error ??
     candidatesQuery.error ??
     providerQuery.error;
   const completionVisible = Boolean(
@@ -963,6 +975,7 @@ export function BriefReviewWorkspace() {
       completionTaskId === generationTask.task_run_id,
   );
   const sourceRecords = sourceQuery.data ?? [];
+  const pendingDecisions = intakeQuery.data?.pending_decisions ?? [];
   const originalSources = sourceRecords.filter(
     (source) => source.source_kind === "human_original",
   );
@@ -1008,6 +1021,7 @@ export function BriefReviewWorkspace() {
   if (
     !workflow.ready ||
     briefQuery.isLoading ||
+    intakeQuery.isLoading ||
     sourceQuery.isLoading ||
     draftQuery.isLoading
   ) {
@@ -1033,18 +1047,27 @@ export function BriefReviewWorkspace() {
     );
   }
 
-  if (briefQuery.isError || sourceQuery.isError || draftQuery.isError) {
+  if (
+    briefQuery.isError ||
+    intakeQuery.isError ||
+    sourceQuery.isError ||
+    draftQuery.isError
+  ) {
     return (
       <main className={styles.centerState}>
         <p role="alert">
           {errorMessage(
-            briefQuery.error ?? sourceQuery.error ?? draftQuery.error,
+            briefQuery.error ??
+              intakeQuery.error ??
+              sourceQuery.error ??
+              draftQuery.error,
           )}
         </p>
         <button
           className={styles.primaryButton}
           onClick={() => {
             void briefQuery.refetch();
+            void intakeQuery.refetch();
             void sourceQuery.refetch();
             void draftQuery.refetch();
           }}
@@ -1086,12 +1109,12 @@ export function BriefReviewWorkspace() {
         eyebrow="创作简报审阅 · 作者控制"
         meta={[
           {
-            label: "项目",
-            value: `项目-${workflow.projectId}`,
+            label: "建案来源",
+            value: "A · 从想法起案",
           },
           {
             label: "简报草稿",
-            value: `版本 ${briefQuery.data?.draft_revision ?? "—"}`,
+            value: dirty ? "待保存" : frozen ? "已冻结" : "已保存",
           },
           {
             label: "冻结状态",
@@ -1499,6 +1522,8 @@ export function BriefReviewWorkspace() {
                 <b>{constraintRows.length} 项</b>
               </span>
             </section>
+
+            <BriefPendingDecisions decisions={pendingDecisions} />
           </div>
 
           <section className={styles.sourceLedger}>
@@ -1523,14 +1548,10 @@ export function BriefReviewWorkspace() {
               <span>
                 <b>
                   {extractTask
-                    ? `任务 #${extractTask.task_run_id}`
-                    : "尚无任务"}
-                </b>
-                <small>
-                  {extractTask
                     ? taskStatusLabel(extractTask.status)
-                    : "尚未创建原子拆解任务"}
-                </small>
+                    : "未开始"}
+                </b>
+                <small>底牌与边界拆解</small>
               </span>
             </div>
           </section>
@@ -1539,11 +1560,11 @@ export function BriefReviewWorkspace() {
             <div>
               <span>
                 {dirty
-                  ? "当前修改尚未写入 PostgreSQL"
+                  ? "当前修改尚未保存"
                   : frozen
-                    ? "当前创作简报版本已由作者冻结"
+                    ? "当前创作简报已由作者冻结"
                     : atomicReviewComplete
-                      ? "原子约束已保存，可冻结版本"
+                      ? "原子约束已保存，可以冻结简报"
                       : "等待拆解与人工审阅"}
               </span>
               <b>
@@ -1570,9 +1591,9 @@ export function BriefReviewWorkspace() {
               type="button"
             >
               {confirmMutation.isPending
-                ? "冻结中…"
-                : frozen
-                  ? "版本已冻结"
+                  ? "冻结中…"
+                  : frozen
+                  ? "简报已冻结"
                   : "确认并冻结"}
             </button>
           </footer>
@@ -1613,19 +1634,19 @@ export function BriefReviewWorkspace() {
                 </strong>
               </span>
               <span>
-                <small>冻结版本</small>
+                <small>冻结状态</small>
                 <strong>
                   {briefQuery.data?.current_version_id
-                    ? `#${briefQuery.data.current_version_id}`
+                    ? "已确认"
                     : "尚未冻结"}
                 </strong>
               </span>
               <span>
-                <small>候选任务</small>
+                <small>候选生成</small>
                 <strong>
                   {generationTask
-                    ? `#${generationTask.task_run_id} / ${taskStatusLabel(generationTask.status)}`
-                    : "尚无任务"}
+                    ? taskStatusLabel(generationTask.status)
+                    : "尚未开始"}
                 </strong>
               </span>
             </div>
@@ -1769,7 +1790,7 @@ export function BriefReviewWorkspace() {
                     : generationRunning
                       ? "Agent 正在生成"
                       : candidates.length
-                        ? "基于同一 Brief 再生成"
+                        ? "基于同一简报再生成"
                         : "启动创作简报 → 候选"}
                 </span>
                 <b>
@@ -1816,7 +1837,7 @@ export function BriefReviewWorkspace() {
 
       <footer className={styles.documentFooter}>
         <span>
-          <b>真实模式：</b>PostgreSQL / 任务运行 / SSE
+          <b>服务状态：</b>已保存 / 长任务可恢复 / 进度实时同步
         </span>
         <span>
           来源记录：{sourceRecords.length}
@@ -1826,7 +1847,7 @@ export function BriefReviewWorkspace() {
             ? "修改尚未保存，冻结与生成门禁保持关闭。"
             : "候选只有经作者保存确认后才进入创作简报。"}
         </span>
-        <span>本阶段不进入编译</span>
+        <span>完成审阅前不会生成成品</span>
       </footer>
 
       {completionVisible && generationTask ? (
@@ -1836,7 +1857,7 @@ export function BriefReviewWorkspace() {
             className={styles.completionDialog}
             role="dialog"
           >
-            <small>任务成功 · 独立候选已归档</small>
+            <small>生成成功 · 独立候选已归档</small>
             <h2>候选草稿已生成</h2>
             <p>
               该结果已作为不可变候选保存，当前工作稿没有被修改。你可以继续生成，
@@ -1844,8 +1865,8 @@ export function BriefReviewWorkspace() {
             </p>
             <dl>
               <div>
-                <dt>任务编号</dt>
-                <dd>#{generationTask.task_run_id}</dd>
+                <dt>保存方式</dt>
+                <dd>独立候选</dd>
               </div>
               <div>
                 <dt>模型供应商</dt>
@@ -1876,7 +1897,7 @@ export function BriefReviewWorkspace() {
                 }}
                 type="button"
               >
-                基于同一 Brief 再生成 →
+                基于同一简报再生成 →
               </button>
             </div>
           </section>
@@ -1894,17 +1915,13 @@ export function BriefReviewWorkspace() {
             <h2>采用“{candidateToAdopt.title}”？</h2>
             <p>
               {draftQuery.data?.content
-                ? "当前工作稿已有内容。采用后会原子替换当前态，并保留旧 Snapshot、Operation 与软删除对象历史。"
-                : "采用后，该候选会成为唯一当前工作稿，并建立首个可恢复 Snapshot。"}
+                ? "当前工作稿已有内容。采用后会整体替换当前内容，并保留可恢复的旧版本。"
+                : "采用后，该候选会成为当前工作稿，并保留一个可恢复的起点。"}
             </p>
             <dl>
               <div>
-                <dt>候选任务</dt>
-                <dd>#{candidateToAdopt.task_run_id}</dd>
-              </div>
-              <div>
-                <dt>Brief 版本</dt>
-                <dd>v{candidateToAdopt.brief_version_no}</dd>
+                <dt>候选来源</dt>
+                <dd>已归档的生成结果</dd>
               </div>
               <div>
                 <dt>当前内容</dt>
@@ -1943,7 +1960,7 @@ export function BriefReviewWorkspace() {
             <small>采用成功 · 当前工作稿已更新</small>
             <h2>{adoptionNotice.title}</h2>
             <p>
-              候选已完成规范化投影与 Snapshot 固定，可以进入工作台继续编辑。
+              候选内容已完整保存为当前工作稿，并保留可恢复的采用记录。可以进入工作台继续编辑。
             </p>
             <div className={styles.completionActions}>
               <button

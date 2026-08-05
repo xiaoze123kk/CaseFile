@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { SettingsDialog } from "@/features/workflow/settings-dialog";
 import { apiRequest, type ProjectView } from "@/lib/api-client";
@@ -27,6 +27,14 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const workflow = useWorkflowSession();
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    const openSettings = () => setSettingsOpen(true);
+    window.addEventListener("casefile:open-settings", openSettings);
+    return () =>
+      window.removeEventListener("casefile:open-settings", openSettings);
+  }, []);
+
   const projectQuery = useQuery({
     queryKey: ["project", workflow.actorId, workflow.projectId],
     queryFn: () =>
@@ -39,7 +47,7 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
   return (
     <div className="archive-app">
       <aside className="side-rail">
-        <Link className="archive-brand" href="/" aria-label="CaseFile 真实工作区首页">
+        <Link className="archive-brand" href="/" aria-label="CaseFile 首页">
           <span className="brand-mark" aria-hidden="true" />
           <span>
             <strong>CaseFile</strong>
@@ -49,18 +57,18 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
 
         <Link className="start-case" href="/">
           <span>
-            <small>当前真实案件</small>
+            <small>当前案件</small>
             {projectQuery.data?.title ?? (workflow.projectId ? `项目 #${workflow.projectId}` : "尚未建案")}
           </span>
           <b aria-hidden="true">↗</b>
         </Link>
 
         <div className="nav-caption">
-          <span>真实工作流</span>
-          <b>07 个模块</b>
+          <span>创作流程</span>
+          <b>07 个环节</b>
         </div>
 
-        <nav className="archive-nav" aria-label="真实工作流模块">
+        <nav className="archive-nav" aria-label="创作流程">
           {realModules.map((module) => {
             const href = "href" in module ? module.href : undefined;
             const planned = href === undefined;
@@ -95,11 +103,11 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
 
         <div className="rail-footer">
           <div className="real-mode-note">
-            <b>真实模式</b>
+            <b>创作模式</b>
             <Link className="real-mode-demo-link" href="/demo">
               演示模式 ↗
             </Link>
-            <span>PostgreSQL 持久化 · 单 Agent · SSE 审计轨迹</span>
+            <span>自动保存 · 仅你可见</span>
           </div>
           <button
             aria-label="打开设置"
@@ -109,8 +117,8 @@ export function ArchiveShell({ children }: { children: ReactNode }) {
           >
             <span aria-hidden="true" className="user-avatar">本</span>
             <span className="user-summary">
-              <strong>本地用户</strong>
-              <small>认证功能待接入</small>
+              <strong>我的工作区</strong>
+              <small>个人设置</small>
             </span>
             <span aria-hidden="true" className="user-menu-mark">•••</span>
           </button>

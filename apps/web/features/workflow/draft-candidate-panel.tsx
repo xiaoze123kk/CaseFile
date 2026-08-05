@@ -35,7 +35,7 @@ function completedTime(value: string | null) {
 
 function candidateState(candidate: DraftCandidateView) {
   if (candidate.is_current) return "当前工作稿";
-  if (!candidate.is_current_brief) return "旧 Brief";
+  if (!candidate.is_current_brief) return "旧简报";
   if (candidate.is_adopted) return "历史采用";
   return "待采用";
 }
@@ -124,7 +124,7 @@ export function DraftCandidatePanel({
     >
       <header className={styles.candidateArchiveHead}>
         <div>
-          <span>Draft decision file</span>
+          <span>候选决策卷</span>
           <strong>候选卷签</strong>
         </div>
         <div className={styles.candidateArchiveTally}>
@@ -170,7 +170,6 @@ export function DraftCandidatePanel({
                   <span className={styles.candidateSummaryCopy}>
                     <strong>{candidate.title}</strong>
                     <small>
-                      Brief v{candidate.brief_version_no} ·{" "}
                       {candidate.model_id} ·{" "}
                       {completedTime(candidate.completed_at)}
                     </small>
@@ -231,8 +230,7 @@ export function DraftCandidatePanel({
                       <footer>
                         <span>
                           {candidate.provider} · 执行{" "}
-                          {candidate.attempt_count} 次 · 候选 #
-                          {candidate.task_run_id}
+                          {candidate.attempt_count} 次
                         </span>
                         {candidate.is_current ? (
                           <button onClick={onOpenWorkbench} type="button">
@@ -252,7 +250,7 @@ export function DraftCandidatePanel({
                           <small>
                             {candidate.is_current_brief
                               ? "已进入采用历史"
-                              : "Brief 已更新，不可采用"}
+                              : "简报已更新，不可采用"}
                           </small>
                         )}
                       </footer>
@@ -267,7 +265,7 @@ export function DraftCandidatePanel({
       ) : (
         <div className={styles.candidateArchiveEmpty}>
           <b>尚无候选草稿</b>
-          <p>冻结 Brief 后可多次生成；每次结果都会独立保留在这里。</p>
+          <p>冻结简报后可多次生成；每次结果都会独立保留在这里。</p>
         </div>
       )}
     </section>

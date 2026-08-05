@@ -529,6 +529,95 @@ class StructureLock(CoreMetadata):
     reason: Annotated[str, Field(min_length=1)]
 
 
+class BriefIntakeFieldSource(StrEnum):
+    user_original = 'user_original'
+    user_confirmed = 'user_confirmed'
+    agent_suggestion = 'agent_suggestion'
+    unresolved = 'unresolved'
+
+
+class BriefIntakeFieldSources(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    concept: BriefIntakeFieldSource
+    core_selling_points: BriefIntakeFieldSource
+    content_outline: BriefIntakeFieldSource
+    reasoning_goal: BriefIntakeFieldSource
+    resolution_mode: BriefIntakeFieldSource
+    author_answer: BriefIntakeFieldSource
+    constraints: BriefIntakeFieldSource
+    scope_estimate: BriefIntakeFieldSource
+    risk_notes: BriefIntakeFieldSource
+
+
+class Category(StrEnum):
+    must_keep = 'must_keep'
+    must_avoid = 'must_avoid'
+    scope = 'scope'
+    cast = 'cast'
+    duration = 'duration'
+    content_scale = 'content_scale'
+    other = 'other'
+
+
+class Strength(StrEnum):
+    hard = 'hard'
+    soft = 'soft'
+
+
+class BriefIntakeConstraint(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    constraint_key: Annotated[
+        str, Field(pattern='^constraint_[a-z0-9][a-z0-9_]{0,51}$')
+    ]
+    category: Category
+    statement: Annotated[str, Field(max_length=1000, min_length=1)]
+    strength: Strength
+    confirmed: bool
+    source: BriefIntakeFieldSource
+
+
+class BriefIntakePendingDecision(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    decision_key: Annotated[str, Field(pattern='^decision_[a-z0-9][a-z0-9_]{0,53}$')]
+    prompt: Annotated[str, Field(max_length=1000, min_length=1)]
+    impact: Annotated[str, Field(max_length=1000, min_length=1)]
+    source: Literal['unresolved']
+
+
+class Suggestion(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class BriefIntakeQuestion(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    question_key: Annotated[str, Field(pattern='^question_[a-z0-9][a-z0-9_]{0,53}$')]
+    ordinal: Annotated[int, Field(ge=1, le=2)]
+    prompt: Annotated[str, Field(max_length=1000, min_length=1)]
+    impact: Annotated[str, Field(max_length=1000, min_length=1)]
+    required: bool
+    suggestions: Annotated[list[Suggestion], Field(max_length=3)]
+
+
+class BriefIntakeQuestionSet(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    questions: Annotated[list[BriefIntakeQuestion], Field(max_length=2)]
+
+
 class Op(StrEnum):
     add = 'add'
     remove = 'remove'
@@ -552,6 +641,8 @@ class PatchOperation(BaseModel):
 class TaskType(StrEnum):
     brief_polish = 'brief_polish'
     brief_anchor_extract = 'brief_anchor_extract'
+    brief_intake_questions = 'brief_intake_questions'
+    brief_intake_synthesize = 'brief_intake_synthesize'
     brief_to_draft = 'brief_to_draft'
     casefile_chat = 'casefile_chat'
 
@@ -575,6 +666,18 @@ class InputBriefRevision(RootModel[int]):
 
 
 class InputSourceRecordId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class InputBriefIntakeId(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class InputBriefIntakeRevision(RootModel[int]):
+    root: Annotated[int, Field(ge=1)]
+
+
+class BaseBriefIntakeCandidateId(RootModel[int]):
     root: Annotated[int, Field(ge=1)]
 
 
@@ -626,6 +729,9 @@ class TaskRun(BaseModel):
     input_draft_revision: Annotated[int, Field(ge=1)]
     input_brief_revision: InputBriefRevision | None
     input_source_record_id: InputSourceRecordId | None
+    input_brief_intake_id: InputBriefIntakeId | None
+    input_brief_intake_revision: InputBriefIntakeRevision | None
+    base_brief_intake_candidate_id: BaseBriefIntakeCandidateId | None
     agent_thread_id: AgentThreadId | None
     input_message_id: InputMessageId | None
     output_message_id: OutputMessageId | None
@@ -682,14 +788,60 @@ class EditingContracts(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    casefile: Schema
+    casefile: Schema_1
     brief: brief_1.Schema
-    validation_issue: Schema_2
-    patch_candidate: Schema_1
+    brief_intake_candidate: Schema
+    brief_intake_question_set: BriefIntakeQuestionSet
+    validation_issue: Schema_3
+    patch_candidate: Schema_2
     task_run: TaskRun
     task_event: TaskEvent
     agent_generate_request: AgentGenerateRequest
     agent_generate_result: AgentGenerateResult
+
+
+class CoreSellingPoint(RootModel[str]):
+    root: Annotated[str, Field(max_length=500, min_length=1)]
+
+
+class ContentOutlineItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class ResolutionMode(StrEnum):
+    author_anchored = 'author_anchored'
+    agent_proposed = 'agent_proposed'
+    open = 'open'
+
+
+class AuthorAnswer(RootModel[str]):
+    root: Annotated[str, Field(max_length=4000, min_length=1)]
+
+
+class ScopeEstimate(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class RiskNote(RootModel[str]):
+    root: Annotated[str, Field(max_length=500, min_length=1)]
+
+
+class Schema(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    concept: Annotated[str, Field(max_length=1000, min_length=1)]
+    core_selling_points: Annotated[list[CoreSellingPoint], Field(max_length=8)]
+    content_outline: Annotated[list[ContentOutlineItem], Field(max_length=16)]
+    reasoning_goal: Annotated[str, Field(max_length=2000, min_length=1)]
+    resolution_mode: ResolutionMode
+    author_answer: AuthorAnswer | None
+    constraints: Annotated[list[BriefIntakeConstraint], Field(max_length=40)]
+    pending_decisions: Annotated[list[BriefIntakePendingDecision], Field(max_length=20)]
+    scope_estimate: ScopeEstimate | None
+    risk_notes: Annotated[list[RiskNote], Field(max_length=12)]
+    field_sources: BriefIntakeFieldSources
 
 
 class Status_1(StrEnum):
@@ -740,7 +892,7 @@ class ContentNotice(BaseModel):
     description: Annotated[str, Field(min_length=1)]
 
 
-class Schema(BaseModel):
+class Schema_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -780,7 +932,7 @@ class ApprovalStatus(StrEnum):
     superseded = 'superseded'
 
 
-class Schema_1(BaseModel):
+class Schema_2(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -824,7 +976,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_2(BaseModel):
+class Schema_3(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

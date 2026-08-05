@@ -21,6 +21,8 @@ from casefile_contracts import TaskType
 EXPECTED_CURRENT_VERSIONS = {
     "brief_polish": "brief-polish-v2",
     "brief_anchor_extract": "brief-anchor-extract-v2",
+    "brief_intake_questions": "brief-intake-questions-v1",
+    "brief_intake_synthesize": "brief-intake-synthesize-v1",
     "brief_to_draft": "brief-to-draft-v3",
     "casefile_chat": "casefile-chat-v1",
 }
@@ -32,6 +34,12 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_anchor_extract", "brief-anchor-extract-v2"): (
         "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d"
+    ),
+    ("brief_intake_questions", "brief-intake-questions-v1"): (
+        "d1f96b6bfee51b90f4c8de9cad9b8b512e6e0540a8cc2d890060255dc1337a62"
+    ),
+    ("brief_intake_synthesize", "brief-intake-synthesize-v1"): (
+        "c8ed044d334fc937698f5784e68ddd9f1decf2ff561e157560f3fcb4dca1e72c"
     ),
     ("brief_to_draft", "brief-to-draft-v3"): (
         "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
@@ -82,6 +90,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
 
     assert "`polished_text` 保持原稿的主要语言" in prompts["brief_polish"]
     assert "不能作为候选项的事实来源" in prompts["brief_anchor_extract"]
+    assert "最多一项 `required=true`" in prompts["brief_intake_questions"]
+    assert "存在 `base_candidate` 与 `instruction`" in prompts[
+        "brief_intake_synthesize"
+    ]
     assert "`repair_feedback`" in prompts["brief_to_draft"]
     assert "每个顶层对象 ID 必须在对应集合中恰好使用一次" in prompts[
         "brief_to_draft"

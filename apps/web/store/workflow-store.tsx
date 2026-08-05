@@ -11,7 +11,8 @@ import {
 
 import type { ProviderName, TaskType } from "@/lib/api-client";
 
-const STORAGE_KEY = "casefile.real.workflow.v2";
+const STORAGE_KEY = "casefile.real.workflow.v3";
+const PREVIOUS_STORAGE_KEY = "casefile.real.workflow.v2";
 const LEGACY_STORAGE_KEY = "casefile.real.workflow.v1";
 
 type BriefTaskType = Exclude<TaskType, "casefile_chat">;
@@ -36,6 +37,8 @@ interface WorkflowContextValue extends WorkflowSession {
 const emptyTaskRunIds: WorkflowTaskPointers = {
   brief_polish: null,
   brief_anchor_extract: null,
+  brief_intake_questions: null,
+  brief_intake_synthesize: null,
   brief_to_draft: null,
 };
 
@@ -56,6 +59,7 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
     try {
       const stored =
         window.localStorage.getItem(STORAGE_KEY) ??
+        window.localStorage.getItem(PREVIOUS_STORAGE_KEY) ??
         window.localStorage.getItem(LEGACY_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as Partial<WorkflowSession> & {
@@ -73,6 +77,16 @@ export function WorkflowProvider({ children }: { children: ReactNode }) {
               parsedPointers?.brief_anchor_extract,
             )
               ? Number(parsedPointers?.brief_anchor_extract)
+              : null,
+            brief_intake_questions: Number.isInteger(
+              parsedPointers?.brief_intake_questions,
+            )
+              ? Number(parsedPointers?.brief_intake_questions)
+              : null,
+            brief_intake_synthesize: Number.isInteger(
+              parsedPointers?.brief_intake_synthesize,
+            )
+              ? Number(parsedPointers?.brief_intake_synthesize)
               : null,
             brief_to_draft: Number.isInteger(parsedPointers?.brief_to_draft)
               ? Number(parsedPointers?.brief_to_draft)

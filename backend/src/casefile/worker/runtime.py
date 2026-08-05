@@ -27,6 +27,10 @@ from casefile.agent_runtime import (
     AgentProvider,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
+    BriefIntakeQuestionsRequest,
+    BriefIntakeQuestionsResult,
+    BriefIntakeSynthesizeRequest,
+    BriefIntakeSynthesizeResult,
     BriefPolishRequest,
     BriefPolishResult,
     CaseFileChatRequest,
@@ -38,6 +42,7 @@ from casefile.agent_runtime import (
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.providers import ProviderProtocolError
+from casefile.application.brief_intake_service import BriefIntakeService
 from casefile.application.casefile_v1 import (
     generation_candidate_summary,
     validate_generation_candidate_context,
@@ -251,6 +256,61 @@ class Worker:
                     task_run_id,
                     attempt_id,
                     extract_result,
+                )
+                return
+            if task_snapshot.task_type == "brief_intake_questions":
+                if _json_hash(task_snapshot.input_jsonb) != task_snapshot.input_hash:
+                    raise RuntimeError(
+                        "Frozen Brief Intake question payload does not match its input hash"
+                    )
+                frozen_source = _required_object(task_snapshot.input_jsonb, "source")
+                questions_request = BriefIntakeQuestionsRequest(
+                    task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
+                    source_text=_required_string(frozen_source, "content_text"),
+                    input_hash=task_snapshot.input_hash,
+                    model_id=task_snapshot.model_id,
+                    api_key=api_key,
+                    max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
+                    emit=lambda event_type, stage, payload: self._emit(
+                        task_run_id, event_type, stage, payload
+                    ),
+                    network_retries=_network_retries(task_snapshot),
+                )
+                questions_result = provider.intake_questions(questions_request)
+                candidate = questions_result.candidate.model_dump(mode="json")
+                usage = questions_result.usage
+                self._complete_intake_questions(
+                    task_run_id,
+                    attempt_id,
+                    questions_result,
+                )
+                return
+            if task_snapshot.task_type == "brief_intake_synthesize":
+                if _json_hash(task_snapshot.input_jsonb) != task_snapshot.input_hash:
+                    raise RuntimeError(
+                        "Frozen Brief Intake synthesis payload does not match its input hash"
+                    )
+                synthesize_request = BriefIntakeSynthesizeRequest(
+                    task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
+                    input_data=task_snapshot.input_jsonb,
+                    input_hash=task_snapshot.input_hash,
+                    model_id=task_snapshot.model_id,
+                    api_key=api_key,
+                    max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
+                    emit=lambda event_type, stage, payload: self._emit(
+                        task_run_id, event_type, stage, payload
+                    ),
+                    network_retries=_network_retries(task_snapshot),
+                )
+                synthesize_result = provider.synthesize_intake(synthesize_request)
+                candidate = synthesize_result.candidate.model_dump(mode="json")
+                usage = synthesize_result.usage
+                self._complete_intake_synthesize(
+                    task_run_id,
+                    attempt_id,
+                    synthesize_result,
                 )
                 return
             if task_snapshot.task_type == "casefile_chat":
@@ -551,6 +611,35 @@ class Worker:
                 candidate=result_json,
                 usage=result.usage,
                 message="原子拆解候选已生成，等待作者确认",
+            )
+
+    def _complete_intake_questions(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: BriefIntakeQuestionsResult,
+    ) -> None:
+        payload = result.candidate.model_dump(mode="json")
+        with self.session_factory() as session:
+            BriefIntakeService(session).complete_questions_task(
+                task_run_id,
+                attempt_id,
+                questions=list(payload["questions"]),
+                usage=result.usage,
+            )
+
+    def _complete_intake_synthesize(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: BriefIntakeSynthesizeResult,
+    ) -> None:
+        with self.session_factory() as session:
+            BriefIntakeService(session).complete_synthesize_task(
+                task_run_id,
+                attempt_id,
+                content=result.candidate.model_dump(mode="json"),
+                usage=result.usage,
             )
 
     def _locked_completion_rows(

@@ -13,7 +13,15 @@ from ._internal import (
     AgentThreadId,
     Alias,
     Availability,
+    BaseBriefIntakeCandidateId,
+    BriefIntakeConstraint,
+    BriefIntakeFieldSource,
+    BriefIntakeFieldSources,
+    BriefIntakePendingDecision,
+    BriefIntakeQuestion,
+    BriefIntakeQuestionSet,
     Capability,
+    Category,
     Claim,
     ClaimType,
     Classification,
@@ -31,6 +39,8 @@ from ._internal import (
     Hypothesis,
     InformationType,
     InformationUnit,
+    InputBriefIntakeId,
+    InputBriefIntakeRevision,
     InputBriefRevision,
     InputMessageId,
     InputSourceRecordId,
@@ -62,7 +72,9 @@ from ._internal import (
     Status1,
     Status2,
     Step,
+    Strength,
     StructureLock,
+    Suggestion,
     Tag,
     TaskEvent,
     TaskFailure,
@@ -78,13 +90,20 @@ from ._internal import (
     VisibilityRule,
 )
 
-__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "ActorRef", "ActorType", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "Availability", "Capability", "Claim", "ClaimType", "Classification", "ConclusionMode", "ConfirmationStatus", "Constraint", "CoreMetadata", "Direction", "EditingContracts", "Entity", "EntityType", "Event", "Extensions", "Goal", "Hypothesis", "InformationType", "InformationUnit", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "JsonPointer", "KnowledgeState", "Level", "Location", "LockType", "Materiality", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "OutputMessageId", "PatchOperation", "PathType", "Precision", "Provider", "QuestionType", "ReasoningPath", "Relationship", "Reliability", "RequiredSlot", "ResolutionSpec", "RuleId", "Secret", "Status", "Status1", "Status2", "Step", "StructureLock", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "Time", "Trait", "TravelTime", "TruthStatus", "ValueType", "Visibility", "VisibilityRule"]
+__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "ActorRef", "ActorType", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "Capability", "Category", "Claim", "ClaimType", "Classification", "ConclusionMode", "ConfirmationStatus", "Constraint", "CoreMetadata", "Direction", "EditingContracts", "Entity", "EntityType", "Event", "Extensions", "Goal", "Hypothesis", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "JsonPointer", "KnowledgeState", "Level", "Location", "LockType", "Materiality", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "OutputMessageId", "PatchOperation", "PathType", "Precision", "Provider", "QuestionType", "ReasoningPath", "Relationship", "Reliability", "RequiredSlot", "ResolutionSpec", "RuleId", "Secret", "Status", "Status1", "Status2", "Step", "Strength", "StructureLock", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "Time", "Trait", "TravelTime", "TruthStatus", "ValueType", "Visibility", "VisibilityRule"]
 
 from .public import (
     Brief,
+    BriefIntakeCandidate,
     CaseFile,
     PatchCandidate,
     ValidationIssue,
 )
 
-__all__ += ["Brief", "CaseFile", "PatchCandidate", "ValidationIssue"]
+__all__ += [
+    "Brief",
+    "BriefIntakeCandidate",
+    "CaseFile",
+    "PatchCandidate",
+    "ValidationIssue",
+]

@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -61,6 +67,32 @@ class CaseFileChatCandidate(StrictAgentOutput):
     answer: str = Field(min_length=1)
     referenced_object_ids: list[str] = Field(default_factory=list)
     suggestions: list[CaseFileChatSuggestionCandidate] = Field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeQuestionsRequest:
+    task_run_id: int
+    prompt_version: str
+    source_text: str
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeSynthesizeRequest:
+    task_run_id: int
+    prompt_version: str
+    input_data: dict[str, Any]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +198,18 @@ class BriefAnchorExtractResult:
 @dataclass(frozen=True, slots=True)
 class CaseFileChatResult:
     candidate: CaseFileChatCandidate
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeQuestionsResult:
+    candidate: BriefIntakeQuestionSetContract
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeSynthesizeResult:
+    candidate: BriefIntakeCandidateContract
     usage: dict[str, Any]
 
 

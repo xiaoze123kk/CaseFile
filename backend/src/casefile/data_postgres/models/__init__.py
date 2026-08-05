@@ -1,5 +1,10 @@
 """Import all persistence models so Alembic sees the complete metadata."""
 
+from casefile.data_postgres.models.brief_intake import (
+    BriefIntake,
+    BriefIntakeCandidate,
+    BriefIntakeQuestion,
+)
 from casefile.data_postgres.models.casefile import (
     CaseFile,
     CaseFileContractRef,
@@ -56,6 +61,9 @@ __all__ = [
     "AgentThread",
     "AuditEvent",
     "Brief",
+    "BriefIntake",
+    "BriefIntakeCandidate",
+    "BriefIntakeQuestion",
     "BriefVersion",
     "CanonVersion",
     "CaseFile",

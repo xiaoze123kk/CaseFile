@@ -64,6 +64,9 @@ function task(overrides: Partial<TaskView> = {}): TaskView {
     input_draft_revision: 1,
     input_brief_revision: 2,
     input_source_record_id: null,
+    input_brief_intake_id: null,
+    input_brief_intake_revision: null,
+    base_brief_intake_candidate_id: null,
     agent_thread_id: null,
     input_message_id: null,
     output_message_id: null,
@@ -142,7 +145,7 @@ describe("Draft candidate archive", () => {
       />,
     );
 
-    expect(screen.getByText("Brief 已更新，不可采用")).toBeInTheDocument();
+    expect(screen.getByText("简报已更新，不可采用")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "采用为当前工作稿 →" }),
     ).not.toBeInTheDocument();

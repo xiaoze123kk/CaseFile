@@ -100,8 +100,16 @@ foreach ($generatedPythonFile in Get-ChildItem -LiteralPath $pythonPackage -Filt
 $publicModule = @'
 # generated from contracts/schemas; DO NOT EDIT BY HAND.
 
-from ._internal import AgentGenerateRequest, AgentGenerateResult, TaskEvent, TaskRun
+from ._internal import (
+    AgentGenerateRequest,
+    AgentGenerateResult,
+    BriefIntakeQuestion,
+    BriefIntakeQuestionSet,
+    TaskEvent,
+    TaskRun,
+)
 from .brief import Schema as Brief
+from .brief_intake import Schema as BriefIntakeCandidate
 from .casefile import Schema as CaseFile
 from .patch_candidate import Schema as PatchCandidate
 from .validation_issue import Schema as ValidationIssue
@@ -110,6 +118,9 @@ __all__ = [
     "AgentGenerateRequest",
     "AgentGenerateResult",
     "Brief",
+    "BriefIntakeCandidate",
+    "BriefIntakeQuestion",
+    "BriefIntakeQuestionSet",
     "CaseFile",
     "PatchCandidate",
     "TaskEvent",
@@ -125,12 +136,19 @@ $initContent += @'
 
 from .public import (
     Brief,
+    BriefIntakeCandidate,
     CaseFile,
     PatchCandidate,
     ValidationIssue,
 )
 
-__all__ += ["Brief", "CaseFile", "PatchCandidate", "ValidationIssue"]
+__all__ += [
+    "Brief",
+    "BriefIntakeCandidate",
+    "CaseFile",
+    "PatchCandidate",
+    "ValidationIssue",
+]
 '@
 Write-GeneratedFile -Path $initPath -Content $initContent
 Write-GeneratedFile -Path (Join-Path $pythonPackage "py.typed") -Content ""
@@ -173,6 +191,7 @@ Write-GeneratedFile -Path (Join-Path $typescriptRoot "package.json") -Content $t
 $typescriptOutput = Join-Path $typescriptRoot "index.d.ts"
 & pnpm exec json2ts `
     --cwd $schemaRoot `
+    --maxItems -1 `
     --input $schemaEntry `
     --output $typescriptOutput
 if ($LASTEXITCODE -ne 0) {
@@ -194,8 +213,11 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
         Remove-Item -LiteralPath $runtimeSchemaFullPath -Recurse -Force
     }
     New-Item -ItemType Directory -Path $runtimeSchemaFullPath -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $schemaRoot "casefile") `
-        -Destination $runtimeSchemaFullPath -Recurse
+    foreach ($schemaDirectory in @("brief", "brief-intake", "casefile", "task", "validation")) {
+        Copy-Item -LiteralPath (Join-Path $schemaRoot $schemaDirectory) `
+            -Destination $runtimeSchemaFullPath -Recurse
+    }
+    Copy-Item -LiteralPath $schemaEntry -Destination $runtimeSchemaFullPath
     Write-GeneratedFile `
         -Path (Join-Path $runtimeSchemaFullPath "GENERATED_FROM_ROOT_SCHEMAS.txt") `
         -Content "Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.`n"

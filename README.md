@@ -8,7 +8,7 @@ v1 机器契约，以及 SourceRecord、Core Brief、推理对象、引用和 Sn
 ## Web 前端
 
 `apps/web` 是 React 19 + Next.js 16 App Router + TypeScript 实现的本地前端。原稿建案、
-润色候选审阅、Brief 原子确认和工作台只有一套“数字档案纸”产品界面，直接使用
+关键追问、结构化简报候选、Brief 原子确认和工作台只有一套“数字档案纸”产品界面，直接使用
 PostgreSQL、HTTP/SSE、Provider 设置和 Worker；不再同时维护一套 Fixture 页面。
 
 首次运行先安装 workspace 依赖：
@@ -17,7 +17,15 @@ PostgreSQL、HTTP/SSE、Provider 设置和 Worker；不再同时维护一套 Fix
 pnpm install
 ```
 
-启动前端：
+启动完整本地环境（推荐）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start.ps1
+```
+
+脚本会自动启动 Docker Desktop（如果尚未运行）、准备 PostgreSQL、执行迁移，并在后台启动 API、前端与独立 TaskRun Worker；日志写入 `var/dev/`。依赖已准备好时，可使用 `-SkipDependencySync` 跳过依赖同步。
+
+只启动前端：
 
 ```powershell
 pnpm dev:web
@@ -31,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 浏览器访问 `http://127.0.0.1:3000`。核心真实路由为：
 
-- `/`：保存原稿 SourceRecord，审阅可编辑的独立 Agent 润色候选，并建立 Core Brief
+- `/`：通过“最初想法 → 关键追问 → 创作简报确认”保存不可变 SourceRecord、可恢复 Intake 与候选历史；采用后进入正式 Brief 审阅
 - `/brief`：保存后自动拆解作者底牌/创作边界，经人工确认后冻结 Brief，再通过 OpenAI 或 DeepSeek 创建真实 TaskRun，并查看可恢复 SSE 审计轨迹
 - `/workbench`：在对象树中查看 CaseFile v1 的 11 类对象，在 Agent/事实时间线之间切换，
   使用右侧类型化编辑器修改业务字段，并通过可恢复的多线程 Agent 对话审阅结构化建议
@@ -56,8 +64,9 @@ pnpm check:web
 - 同一确认 Brief 可重复生成不可变候选，显式采用后才替换唯一 Draft
 - Draft 可变编辑态，以及 Snapshot、Canon 与审计的不可变版本链
 
-当前基线恰好 42 张业务表。原稿、Agent 润色提案和作者修订通过不可变
-`source_records` 保留完整来源链；BriefVersion 可重复创建 `brief_to_draft`
+当前基线恰好 45 张业务表。原稿、Agent 润色提案和作者修订通过不可变
+`source_records` 保留完整来源链；`brief_intakes`、`brief_intake_questions` 与
+`brief_intake_candidates` 保存乐观并发阶段、追问回答及不可变候选谱系；BriefVersion 可重复创建 `brief_to_draft`
 TaskRun，每个成功 Attempt 保存一份不可变候选，只有作者显式采用才投影到当前 Draft
 并建立 Snapshot。TaskRun/Attempt/Event 与 Snapshot/Canon 均保存可恢复、可审计的
 版本边界。`agent_threads` 和
@@ -79,7 +88,7 @@ python -m venv backend/.venv
 ### 2. 一键初始化 PostgreSQL
 
 推荐使用幂等 bootstrap。它会在缺少 `.env` 时复制公开的本地默认值，启动开发库与
-独立 `_test` 测试库，等待健康，迁移开发库，并验证唯一 Alembic head 和 42 张业务表：
+独立 `_test` 测试库，等待健康，迁移开发库，并验证唯一 Alembic head 和 45 张业务表：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/bootstrap.ps1 -SeedDevUser

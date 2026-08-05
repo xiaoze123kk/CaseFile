@@ -54,6 +54,8 @@ COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
     ("structure_locks", "structure_lock"),
 )
 
+KNOWLEDGE_STATE_COUNT_ATTRIBUTE = "_casefile_v1_knowledge_state_count"
+
 
 def casefile_content_hash(document: dict[str, Any]) -> str:
     """Return the lowercase SHA-256 of RFC 8785 canonical bytes."""
@@ -490,7 +492,12 @@ def _create_content_rows(
                 goals_jsonb=item["goals"],
                 secrets_jsonb=item["secrets"],
                 capabilities_jsonb=item["capabilities"],
-                attributes_jsonb={},
+                # ObjectRef values live in CaseFileContractRef. Retain the
+                # complete nested-list shape here so an all-empty state does
+                # not disappear during a normalized round trip.
+                attributes_jsonb={
+                    KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(item["knowledge_states"])
+                },
             )
         )
     for item in candidate["relationships"]:
@@ -750,13 +757,7 @@ def _project_entities(
         row = session.scalar(select(Entity).where(Entity.object_registry_id == registry.id))
         if row is None:
             continue
-        state_indices = _path_indices(
-            refs[registry.id],
-            (
-                r"^/knowledge_states/(\d+)/(?:as_of_event_ref|knows_refs|"
-                r"believes_refs|false_belief_refs)"
-            ),
-        )
+        state_indices = _knowledge_state_indices(row, refs[registry.id])
         knowledge_states = []
         for index in state_indices:
             prefix = f"/knowledge_states/{index}"
@@ -1125,6 +1126,22 @@ def _path_indices(rows: list[CaseFileContractRef], pattern: str) -> list[int]:
         int(match.group(1)) for row in rows if (match := matcher.match(row.field_path)) is not None
     }
     return sorted(indices)
+
+
+def _knowledge_state_indices(
+    entity: Entity,
+    refs: list[CaseFileContractRef],
+) -> list[int]:
+    state_count = entity.attributes_jsonb.get(KNOWLEDGE_STATE_COUNT_ATTRIBUTE)
+    if isinstance(state_count, int) and not isinstance(state_count, bool) and state_count >= 0:
+        return list(range(state_count))
+    return _path_indices(
+        refs,
+        (
+            r"^/knowledge_states/(\d+)/(?:as_of_event_ref|knows_refs|"
+            r"believes_refs|false_belief_refs)"
+        ),
+    )
 
 
 def _is_object_ref(value: Any) -> bool:

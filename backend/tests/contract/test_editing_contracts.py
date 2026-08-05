@@ -180,7 +180,7 @@ def walk_object_refs(value: Any) -> list[dict[str, str]]:
 def test_all_schema_files_are_valid_draft_2020_12(
     schemas: dict[str, dict[str, Any]],
 ) -> None:
-    assert len(schemas) == 8
+    assert len(schemas) == 9
     for schema in schemas.values():
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         Draft202012Validator.check_schema(schema)
@@ -282,6 +282,9 @@ def test_casefile_chat_task_roundtrips_with_message_lineage(
         "input_draft_revision": 4,
         "input_brief_revision": None,
         "input_source_record_id": None,
+        "input_brief_intake_id": None,
+        "input_brief_intake_revision": None,
+        "base_brief_intake_candidate_id": None,
         "agent_thread_id": 34,
         "input_message_id": 55,
         "output_message_id": 56,

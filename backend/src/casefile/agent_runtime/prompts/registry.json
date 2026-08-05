@@ -7,6 +7,12 @@
     "brief_anchor_extract": {
       "current_version": "brief-anchor-extract-v2"
     },
+    "brief_intake_questions": {
+      "current_version": "brief-intake-questions-v1"
+    },
+    "brief_intake_synthesize": {
+      "current_version": "brief-intake-synthesize-v1"
+    },
     "brief_to_draft": {
       "current_version": "brief-to-draft-v3"
     },

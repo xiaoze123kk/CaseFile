@@ -54,13 +54,20 @@ export function PanelHeader({
 }) {
   return (
     <header className="panel-header">
-      <div className={leading ? "panel-header__leading" : undefined}>
-        {leading}
+      {leading ? (
+        <div className="panel-header__leading">
+          {leading}
+          <div>
+            <span>{title}</span>
+            <b>{code}</b>
+          </div>
+        </div>
+      ) : (
         <div>
           <span>{title}</span>
           <b>{code}</b>
         </div>
-      </div>
+      )}
       {trailing}
     </header>
   );

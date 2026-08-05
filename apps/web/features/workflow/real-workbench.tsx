@@ -450,9 +450,8 @@ export function RealWorkbench() {
       >
         <aside className={`paper-panel ${styles.indexPanel}`}>
           <PanelHeader
-            code={`${collections.length} 组集合`}
+            code={`${collections.length} 组集合 · ${totalObjects} 个对象`}
             title="对象索引"
-            trailing={<StatusBadge tone="dark">{totalObjects} 个对象</StatusBadge>}
           />
           <ObjectTree
             document={document}

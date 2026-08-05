@@ -16,6 +16,8 @@ PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
 SUPPORTED_AGENT_IDS: Final = (
     "brief_polish",
     "brief_anchor_extract",
+    "brief_intake_questions",
+    "brief_intake_synthesize",
     "brief_to_draft",
     "casefile_chat",
 )

@@ -20,6 +20,8 @@ export type ProviderName = "openai" | "deepseek";
 export type TaskType =
   | "brief_polish"
   | "brief_anchor_extract"
+  | "brief_intake_questions"
+  | "brief_intake_synthesize"
   | "brief_to_draft"
   | "casefile_chat";
 export type ResolutionMode =
@@ -69,6 +71,136 @@ export interface BriefContent {
   author_anchors: BriefAnchor[];
   boundary_text: string | null;
   creative_constraints: CreativeConstraint[];
+  core_selling_points?: string[];
+  content_outline?: string[];
+  scope_estimate?: string | null;
+  risk_notes?: string[];
+}
+
+export type BriefIntakeStage =
+  | "idea"
+  | "questions"
+  | "confirmation"
+  | "brief_review";
+export type BriefIntakeFieldSource =
+  | "user_original"
+  | "user_confirmed"
+  | "agent_suggestion"
+  | "unresolved";
+export type BriefIntakeAnswerStatus =
+  | "unanswered"
+  | "user_answered"
+  | "suggestion_accepted"
+  | "pending";
+export type BriefIntakeConstraintCategory =
+  | "must_keep"
+  | "must_avoid"
+  | "scope"
+  | "cast"
+  | "duration"
+  | "content_scale"
+  | "other";
+
+export interface BriefIntakeFieldSources {
+  concept: BriefIntakeFieldSource;
+  core_selling_points: BriefIntakeFieldSource;
+  content_outline: BriefIntakeFieldSource;
+  reasoning_goal: BriefIntakeFieldSource;
+  resolution_mode: BriefIntakeFieldSource;
+  author_answer: BriefIntakeFieldSource;
+  constraints: BriefIntakeFieldSource;
+  scope_estimate: BriefIntakeFieldSource;
+  risk_notes: BriefIntakeFieldSource;
+}
+
+export interface BriefIntakeConstraint {
+  constraint_key: string;
+  category: BriefIntakeConstraintCategory;
+  statement: string;
+  strength: ConstraintStrength;
+  confirmed: boolean;
+  source: BriefIntakeFieldSource;
+}
+
+export interface BriefIntakePendingDecision {
+  decision_key: string;
+  prompt: string;
+  impact: string;
+  source: "unresolved";
+}
+
+export interface BriefIntakeCandidateContent {
+  concept: string;
+  core_selling_points: string[];
+  content_outline: string[];
+  reasoning_goal: string;
+  resolution_mode: ResolutionMode;
+  author_answer: string | null;
+  constraints: BriefIntakeConstraint[];
+  pending_decisions: BriefIntakePendingDecision[];
+  scope_estimate: string | null;
+  risk_notes: string[];
+  field_sources: BriefIntakeFieldSources;
+}
+
+export interface BriefIntakeQuestionView {
+  question_key: string;
+  ordinal: number;
+  prompt: string;
+  impact: string;
+  required: boolean;
+  suggestions: string[];
+  answer_status: BriefIntakeAnswerStatus;
+  answer_text: string | null;
+  answer_source: BriefIntakeFieldSource | null;
+}
+
+export interface BriefIntakeCandidateView {
+  candidate_id: number;
+  parent_candidate_id: number | null;
+  generated_by_task_run_id: number | null;
+  origin:
+    | "agent_synthesis"
+    | "dialogue_revision"
+    | "manual_edit"
+    | "legacy_import";
+  basis_input_hash: string;
+  content_hash: string;
+  content: BriefIntakeCandidateContent;
+  is_current: boolean;
+  is_adopted: boolean;
+  is_saved: boolean;
+  is_stale: boolean;
+  can_activate: boolean;
+  saved_at: string | null;
+  created_at: string | null;
+}
+
+export interface BriefIntakeView {
+  brief_intake_id: number;
+  project_id: number;
+  revision: number;
+  stage: BriefIntakeStage;
+  current_source: SourceRecordView | null;
+  current_questions_task_run_id: number | null;
+  questions: BriefIntakeQuestionView[];
+  hard_questions_resolved: boolean;
+  current_candidate_id: number | null;
+  adopted_candidate_id: number | null;
+  candidates: BriefIntakeCandidateView[];
+  pending_decisions: BriefIntakePendingDecision[];
+  brief: {
+    brief_id: number;
+    draft_revision: number;
+    current_version_id: number | null;
+    has_content: boolean;
+  };
+  updated_at: string | null;
+}
+
+export interface BriefIntakeAdoptionView {
+  intake: BriefIntakeView;
+  brief: BriefView;
 }
 
 export interface BriefAnchor {
@@ -108,6 +240,27 @@ export interface BriefAnchorExtractResult {
     suggested_strength: ConstraintStrength;
   }>;
   warnings: string[];
+}
+
+export interface BriefIntakeQuestionsResult {
+  input_hash: string;
+  questions: Array<{
+    question_key: string;
+    ordinal: number;
+    prompt: string;
+    impact: string;
+    required: boolean;
+    suggestions: string[];
+  }>;
+  stale: boolean;
+}
+
+export interface BriefIntakeSynthesizeResult {
+  input_hash: string;
+  candidate_id: number;
+  content_hash: string;
+  origin: "agent_synthesis" | "dialogue_revision";
+  stale: boolean;
 }
 
 export interface BriefVersionView {
@@ -154,6 +307,9 @@ export interface TaskView {
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
+  input_brief_intake_id: number | null;
+  input_brief_intake_revision: number | null;
+  base_brief_intake_candidate_id: number | null;
   agent_thread_id: number | null;
   input_message_id: number | null;
   output_message_id: number | null;
@@ -164,6 +320,8 @@ export interface TaskView {
   result:
     | BriefPolishResult
     | BriefAnchorExtractResult
+    | BriefIntakeQuestionsResult
+    | BriefIntakeSynthesizeResult
     | GenerationCandidateSummary
     | null;
   error_code: string | null;
