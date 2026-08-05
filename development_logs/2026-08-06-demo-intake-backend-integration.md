@@ -37,6 +37,14 @@
 - 修复：`demo-intake-api` 新增 `listConfiguredProviders`（过滤删除墓碑）、`isDemoAuthFailure`（按任务失败码 `provider_authentication_failed` 识别）与 `runTaskWithProviderFallback`（认证失败时自动改用下一个已配置 Provider 重试，其他错误直接抛出不回退）；六个任务型流程（润色/追问/成案/对话修改/锚点拆解/三份候选）全部接入，候选生成先以带回退的首份运行确定可用 Provider 再复用于其余两份。
 - 测试：新增 `tests/demo-intake-api.test.ts` 覆盖回退成功、非认证错误不回退、无 Provider 提示与错误分类；全套 85 项测试、typecheck 与 ESLint 通过。
 
+## 追加修复：关键追问系统性返回空问题集
+
+- 现象：demo 追问阶段空白——`brief_intake_questions` 任务全部成功但返回 `questions: []`，即使用明显不完整的原稿（“有个案件发生了，我想做成一个推理游戏。”）也返回空；创作模式表现为静默跳过追问。
+- 根因：v1 提示词措辞（“信息已经足够时返回空数组”“不因追求完整而凑足两道问题”）把模型推向空结果；且模型对契约字段名理解不稳（曾把 `question_key` 写成 `question_id`、`prompt` 写成 `question`，顶层多出 `input_hash`，触发 `candidate_validation_failed`）。
+- 修复：新建 `brief_intake_questions/v2`：只要原稿未显式声明结论处理方式/推理目标/规模就必须产出 1–2 个问题，显式列出契约 JSON 字段名（`question_key`/`ordinal`/`prompt`/`impact`/`required`/`suggestions`，顶层只有 `questions`）；registry 指针与测试哈希基线同步更新。
+- 验证：直接调用 DeepSeek 确认契约可解析；真实任务端到端成功落库 2 个问题（必答的结论处理方式 + 可选的推理目标）。
+- demo 兜底：追问页在问题为空时显示“Agent 判断当前原稿信息已足够，无需追问”，成案按钮保持可用，不假装问过也不卡死流程。
+
 ## 验收状态
 
 - [x] 完成 API 适配层与映射层，五阶段全部走真实后端。

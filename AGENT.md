@@ -83,7 +83,7 @@
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
 | `backend/src/casefile/agent_runtime/` | 目标无关的 Prompt 输入渲染、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`（三档强度与新增细节审计）、`brief_anchor_extract`、`brief_intake_questions`、`brief_intake_synthesize`、`brief_to_draft`、`casefile_chat` 的结构化结果、工具注册与 Validator 指标；不输出模型内部思维文本。 |
 | `backend/src/casefile/agent_runtime/prompt_repository.py` | 通过包资源严格解析当前或明确历史 System Prompt 版本，校验 Agent/目录/Manifest/UTF-8/LF/SHA-256 一致性并在漂移时失败关闭。 |
-| `backend/src/casefile/agent_runtime/prompts/` | 六个 Agent 功能各自独立、不可变的版本化 System Prompt 唯一 Git 事实源；`brief_polish/v3` 定义校对、表达优化、叙事增强及新增细节披露，`brief_to_draft/v4` 要求每个顶层对象同时生成非空补充说明；`registry.json` 只维护当前版本指针，版本目录同时保存 Manifest、原文和发布规则。 |
+| `backend/src/casefile/agent_runtime/prompts/` | 六个 Agent 功能各自独立、不可变的版本化 System Prompt 唯一 Git 事实源；`brief_polish/v3` 定义校对、表达优化、叙事增强及新增细节披露，`brief_to_draft/v4` 要求每个顶层对象同时生成非空补充说明，`brief_intake_questions/v2` 要求未显式声明方向性决策（结论处理方式/推理目标/规模）时至少产出一个问题并严格遵循契约字段；`registry.json` 只维护当前版本指针，版本目录同时保存 Manifest、原文和发布规则。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的六类 TaskRun 领取、lease/Attempt 恢复、Agent 执行、结果/事件原子持久化；Intake 过时结果归档但不激活，`brief_to_draft` 执行结构修复与 Validator 后把完整结果保存为不可变 Attempt 候选而不直接修改 Draft，`casefile_chat` 完成助手消息并保存可审阅 PatchSet。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
 | `backend/src/casefile/validation/` | 确定性 Schema、引用、时间、知识与发布规则的预留落位。 |

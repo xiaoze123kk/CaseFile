@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_intake_questions",
+  "version": "brief-intake-questions-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "59a4cab9b080cffbf1bfc6264d07a2121dcb786f8c153f172ebe54f540656305",
+  "previous_version": "brief-intake-questions-v1",
+  "change_summary": "Guarantee one to two direction-changing questions for creative premises unless every directional decision (resolution mode, reasoning goal, scale) is explicitly stated."
+}

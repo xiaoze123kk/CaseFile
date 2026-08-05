@@ -436,6 +436,15 @@
   margin-top: 14px;
 }
 
+.emptyQuestions {
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--ink-faint);
+  color: var(--ink-faint);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
 .questionStack > article {
   display: grid;
   grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.2fr);

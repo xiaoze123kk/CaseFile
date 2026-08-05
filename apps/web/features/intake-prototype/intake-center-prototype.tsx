@@ -818,6 +818,11 @@ export function IntakeCenterPrototype() {
               </section>
 
               <div className={stageStyles.questionStack}>
+                {state.questions.length === 0 ? (
+                  <p className={stageStyles.emptyQuestions}>
+                    Agent 判断当前原稿信息已足够，无需追问；可以直接形成创作简报。
+                  </p>
+                ) : null}
                 {state.questions.map((question) => {
                   const answer = answers[question.key];
                   const resolved = Boolean(answer);
