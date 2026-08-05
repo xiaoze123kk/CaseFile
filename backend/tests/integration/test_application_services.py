@@ -799,6 +799,7 @@ def test_source_polish_extract_recovery_and_human_confirmation(
                 project_id,
                 source_record_id=original["source_record_id"],
                 provider="deepseek",
+                polish_mode="proofread",
             )
 
         worker = Worker(
@@ -824,6 +825,8 @@ def test_source_polish_extract_recovery_and_human_confirmation(
 
         assert polished["status"] == "succeeded"
         assert polished["result"]["input_hash"] == polished["input_hash"]
+        assert polished["result"]["polish_mode"] == "proofread"
+        assert polished["result"]["introduced_details"] == []
         proposal = polished["result"]["proposal_source_record"]
         assert proposal["source_kind"] == "agent_polish_proposal"
         assert proposal["parent_source_record_id"] == original["source_record_id"]

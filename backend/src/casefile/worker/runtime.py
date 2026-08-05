@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import rfc8785
 from openai import (
@@ -39,6 +39,7 @@ from casefile.agent_runtime import (
     GenerationRequest,
     GenerationResult,
     OpenAIAgentsProvider,
+    PolishMode,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.providers import ProviderProtocolError
@@ -210,10 +211,17 @@ class Worker:
                 )
                 if _text_hash(source_text) != task_snapshot.input_hash:
                     raise RuntimeError("Frozen SourceRecord payload does not match its input hash")
+                polish_mode = _required_string(
+                    task_snapshot.input_jsonb,
+                    "polish_mode",
+                )
+                if polish_mode not in {"proofread", "rewrite", "narrative_enhance"}:
+                    raise RuntimeError("Frozen polish mode is invalid")
                 polish_request = BriefPolishRequest(
                     task_run_id=task_snapshot.id,
                     prompt_version=task_snapshot.prompt_version,
                     source_text=source_text,
+                    polish_mode=cast(PolishMode, polish_mode),
                     input_hash=task_snapshot.input_hash,
                     model_id=task_snapshot.model_id,
                     api_key=api_key,
@@ -561,6 +569,9 @@ class Worker:
             )
             if source is None:
                 raise RuntimeError("Polish input SourceRecord disappeared")
+            frozen_mode = _required_string(task.input_jsonb, "polish_mode")
+            if frozen_mode != result.polish_mode:
+                raise RuntimeError("Polish result mode does not match its frozen task input")
             polished_text = result.candidate.polished_text
             proposal = SourceRecord(
                 project_id=task.project_id,
@@ -575,6 +586,7 @@ class Worker:
             session.flush()
             result_json = {
                 "input_hash": task.input_hash,
+                "polish_mode": result.polish_mode,
                 **result.candidate.model_dump(mode="json"),
                 "proposal_source_record": source_view(proposal),
             }

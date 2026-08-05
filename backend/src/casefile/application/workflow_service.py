@@ -1201,8 +1201,15 @@ class WorkflowService:
         *,
         source_record_id: int,
         provider: str = DEFAULT_PROVIDER,
+        polish_mode: str = "rewrite",
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
+        if polish_mode not in {"proofread", "rewrite", "narrative_enhance"}:
+            raise ApplicationError(
+                "unsupported_polish_mode",
+                "Unsupported polish mode",
+                status_code=422,
+            )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             source = self.session.scalar(
@@ -1226,6 +1233,7 @@ class WorkflowService:
                 input_jsonb={
                     "source_record_id": source.id,
                     "source_text": source.content_text,
+                    "polish_mode": polish_mode,
                 },
             )
             return self._queue_task(task, message="Agent 润色候选任务已进入队列")

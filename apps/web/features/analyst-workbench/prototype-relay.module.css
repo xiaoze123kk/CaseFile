@@ -1,0 +1,161 @@
+.prototypeRelay {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 7px 14px 7px 18px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--ink);
+  background:
+    linear-gradient(90deg, var(--primary) 0 4px, transparent 4px),
+    repeating-linear-gradient(0deg, rgba(26, 28, 25, 0.024) 0 1px, transparent 1px 24px),
+    var(--paper);
+}
+
+.prototypeRelay[data-status="current"] {
+  background:
+    linear-gradient(90deg, var(--success) 0 4px, transparent 4px),
+    var(--paper);
+}
+
+.prototypeRelay[data-status="stale"] {
+  background:
+    linear-gradient(90deg, var(--ink-faint) 0 4px, transparent 4px),
+    var(--paper-low);
+}
+
+.prototypeRelay > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.prototypeRelay > div:first-child {
+  flex: 1 1 auto;
+}
+
+.prototypeRelay span {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  color: var(--primary);
+  border: 1px solid rgba(199, 139, 60, 0.42);
+  background: #f8efe2;
+  font: 700 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.prototypeRelay[data-status="current"] span {
+  color: #24754f;
+  border-color: rgba(53, 164, 111, 0.5);
+  background: #edf7f1;
+}
+
+.prototypeRelay[data-status="stale"] span {
+  color: var(--ink-muted);
+  border-color: var(--rule);
+  background: var(--paper-high);
+}
+
+.prototypeRelay strong {
+  overflow: hidden;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prototypeRelay p {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prototypeRelay a,
+.prototypeRelay button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  color: inherit;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper-high);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.prototypeRelay button {
+  color: white;
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.prototypeRelay small {
+  color: var(--ink-faint);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+  white-space: nowrap;
+}
+
+@media (max-width: 1040px) {
+  .prototypeRelay p {
+    display: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .prototypeRelay {
+    min-height: 58px;
+    align-items: stretch;
+    gap: 8px;
+    padding: 7px 9px 7px 13px;
+  }
+
+  .prototypeRelay > div {
+    align-items: flex-start;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .prototypeRelay > div:last-child {
+    flex: 0 0 auto;
+    align-items: stretch;
+  }
+
+  .prototypeRelay span {
+    padding: 2px 5px;
+  }
+
+  .prototypeRelay strong {
+    max-width: 46vw;
+    font-size: 11px;
+  }
+
+  .prototypeRelay small {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .prototypeRelay strong {
+    max-width: 42vw;
+  }
+
+  .prototypeRelay a,
+  .prototypeRelay button {
+    min-height: 27px;
+    padding: 0 7px;
+    font-size: 9px;
+  }
+}

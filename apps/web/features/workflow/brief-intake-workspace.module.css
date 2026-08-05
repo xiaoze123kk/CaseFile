@@ -262,6 +262,11 @@
   width: min(1120px, calc(100% - 32px));
 }
 
+.confirmationSheet {
+  width: min(1120px, calc(100% - 32px));
+  container: intake-sheet / inline-size;
+}
+
 .stepSheetHeader {
   display: flex;
   min-height: 66px;
@@ -732,6 +737,20 @@
   list-style: none;
 }
 
+.constraintsDrawer summary {
+  border-left: 4px solid var(--red);
+  background: linear-gradient(90deg, var(--red-soft), var(--paper-low) 38%);
+}
+
+.constraintsDrawer summary:hover {
+  background: linear-gradient(90deg, rgba(255, 239, 233, 0.96), var(--paper-high) 46%);
+}
+
+.constraintsDrawer summary:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: -2px;
+}
+
 .briefPreview summary::-webkit-details-marker,
 .constraintsDrawer summary::-webkit-details-marker {
   display: none;
@@ -746,6 +765,14 @@
 .constraintsDrawer summary small {
   color: var(--ink-faint);
   font-size: var(--font-micro);
+}
+
+.constraintsDrawer summary small .drawerInstruction {
+  margin-right: 5px;
+  color: var(--red);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .briefPreview > div {
@@ -771,6 +798,22 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.confirmFieldHeading {
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmFieldHeading small {
+  display: inline;
+  margin-left: 6px;
+  color: var(--ink-faint);
+  font-size: var(--font-micro);
+  line-height: 1.35;
 }
 
 .briefPreview section > header b,
@@ -827,22 +870,44 @@
 
 .modeChoices {
   display: grid;
+  min-width: 0;
   gap: 5px;
   margin-top: 7px;
 }
 
 .modeChoices label {
   display: flex;
+  min-width: 0;
   min-height: 30px;
   align-items: center;
   gap: 7px;
   padding: 0 7px;
+  overflow: hidden;
   border: 1px solid var(--hairline);
   background: var(--paper-low);
   font-size: var(--font-caption);
 }
 
+.modeChoices label > span {
+  display: block;
+  flex: 1 1 0;
+  overflow: hidden;
+  min-width: 0;
+  width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modeChoices label > span small {
+  display: inline;
+  margin-left: 6px;
+  color: var(--ink-faint);
+  font-size: var(--font-micro);
+  line-height: 1.35;
+}
+
 .modeChoices input {
+  flex: 0 0 auto;
   accent-color: var(--red);
 }
 
@@ -859,9 +924,26 @@
 }
 
 .constraintsDrawer summary em {
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-height: 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
   color: var(--red);
+  border: 1px solid var(--red-line);
+  background: var(--red-soft);
   font: var(--font-caption) "Cascadia Mono", Consolas, monospace;
   font-style: normal;
+  white-space: nowrap;
+}
+
+.constraintsDrawer:not([open]) summary em::after {
+  content: "展开 ↓";
+}
+
+.constraintsDrawer[open] summary em::after {
+  content: "收起 ↑";
 }
 
 .constraintsDrawer > div:not(.constraintReviewList) {
@@ -930,6 +1012,20 @@
 .editorActions button:last-child {
   color: white;
   background: var(--red);
+}
+
+@container intake-sheet (min-width: 680px) {
+  .candidateEditor {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .candidateEditor .confirmField:nth-child(even) {
+    border-right: 1px solid var(--hairline);
+  }
+
+  .candidateEditor .confirmField:nth-child(3n) {
+    border-right: 0;
+  }
 }
 
 .candidateLead {
@@ -1132,8 +1228,34 @@
 .polishInlineBody {
   display: grid;
   min-height: 0;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   overflow: hidden;
+}
+
+.polishAuditRibbon {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 17px;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--red-line);
+  background: var(--red-soft);
+  font-size: var(--font-caption);
+}
+
+.polishAuditRibbon b {
+  color: var(--red);
+}
+
+.polishAuditRibbon[data-unchanged="true"] {
+  border-bottom-color: var(--hairline);
+  background: rgba(246, 244, 235, 0.84);
+}
+
+.polishAuditRibbon[data-unchanged="true"] b {
+  color: var(--ink);
 }
 
 .polishInlineColumns {
@@ -1207,6 +1329,43 @@
     rgba(255, 248, 245, 0.76);
 }
 
+.polishDraftStack {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.polishDraftStack textarea {
+  min-height: 120px;
+  flex: 1;
+}
+
+.polishDiff {
+  max-height: 112px;
+  overflow: auto;
+  padding: 10px 12px;
+  color: var(--ink);
+  border: 1px solid var(--red-line);
+  border-bottom: 0;
+  background: rgba(255, 252, 248, 0.94);
+  font: var(--font-caption) / 1.8 "Noto Serif SC", "STSong", "SimSun", serif;
+  white-space: pre-wrap;
+}
+
+.polishDiff del {
+  color: #8b554c;
+  background: rgba(151, 62, 44, 0.1);
+  text-decoration-thickness: 1px;
+}
+
+.polishDiff ins {
+  color: #8a210e;
+  background: rgba(191, 69, 36, 0.14);
+  text-decoration: none;
+  box-shadow: inset 0 -1px 0 rgba(138, 33, 14, 0.5);
+}
+
 .polishPane > footer {
   display: flex;
   align-items: center;
@@ -1240,17 +1399,22 @@
 
 .polishNotes {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   margin: 10px 17px 0;
   border: 1px solid var(--rule);
 }
 
 .polishNotes > span {
   padding: 8px 12px;
+  border-right: 1px solid var(--rule);
 }
 
-.polishNotes > span:first-child {
-  border-right: 1px solid var(--rule);
+.polishNotes > span:last-child {
+  border-right: 0;
+}
+
+.polishNotes > span[data-warning="true"] {
+  background: var(--warning-soft);
 }
 
 .polishNotes b {
@@ -1262,6 +1426,68 @@
   margin: 3px 0 0;
   color: var(--ink-muted);
   font-size: var(--font-caption);
+}
+
+.polishModeRail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  background: rgba(247, 245, 238, 0.76);
+}
+
+.polishModeRail legend {
+  display: flex;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  width: 100%;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 16px;
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.polishModeRail label {
+  display: flex;
+  min-width: 0;
+  min-height: 62px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border-left: 1px solid var(--hairline);
+}
+
+.polishModeRail label[data-selected="true"] {
+  color: var(--red);
+  background: var(--red-soft);
+  box-shadow: inset 0 2px 0 var(--red);
+}
+
+.polishModeRail input {
+  accent-color: var(--red);
+}
+
+.polishModeRail span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.polishModeRail b {
+  font-size: var(--font-caption);
+}
+
+.polishModeRail small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: var(--font-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dialogError {
@@ -1374,6 +1600,10 @@
   .constraintReviewList article {
     border-right: 0;
   }
+
+  .candidateEditor .confirmField {
+    border-right: 0;
+  }
 }
 
 @media (max-width: 680px) {
@@ -1460,6 +1690,31 @@
   .polishInlineColumns,
   .polishNotes {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .polishAuditRibbon {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .polishModeRail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .polishModeRail legend,
+  .polishModeRail label {
+    grid-column: 1;
+  }
+
+  .polishModeRail legend {
+    grid-row: auto;
+    min-height: 34px;
+  }
+
+  .polishModeRail label {
+    min-height: 46px;
+    border-top: 1px solid var(--hairline);
+    border-left: 0;
   }
 
   .stepSheet[data-comparing="true"] {

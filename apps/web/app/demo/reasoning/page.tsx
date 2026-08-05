@@ -1,5 +1,5 @@
-import { ReasoningLab } from "@/features/reasoning/reasoning-lab";
+import { redirect } from "next/navigation";
 
-export default function DemoReasoningPage() {
-  return <ReasoningLab />;
+export default function RetiredDemoReasoningPage() {
+  redirect("/demo");
 }

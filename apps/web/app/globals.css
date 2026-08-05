@@ -37,6 +37,13 @@ body {
   margin: 0;
 }
 
+html:has([data-demo-kind="analyst-workbench-v1"]),
+body:has([data-demo-kind="analyst-workbench-v1"]),
+html:has([data-demo-kind="intake-center-v1"]),
+body:has([data-demo-kind="intake-center-v1"]) {
+  min-width: 0;
+}
+
 body {
   overflow: hidden;
   color: var(--ink);

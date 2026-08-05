@@ -1,5 +1,5 @@
-import { QualityWorkspace } from "@/features/quality/quality-workspace";
+import { redirect } from "next/navigation";
 
-export default function DemoQualityPage() {
-  return <QualityWorkspace />;
+export default function RetiredDemoQualityPage() {
+  redirect("/demo");
 }

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "技术栈与第一版MVP-v1 1.md",
+                "file": "CaseFile-PRD-v2.3.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "技术栈与第一版MVP-v1 1"
+              "title": "CaseFile-PRD-v2.3"
             }
           },
           {
@@ -27,15 +27,16 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "CaseFile-PRD-v2.3.md",
+                "file": "架构设计分析报告-v1.md",
                 "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "CaseFile-PRD-v2.3"
+              "title": "架构设计分析报告-v1"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -55,7 +56,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "文件列表"
@@ -92,7 +95,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 259.505859375
   },
   "right": {
     "id": "933d2b61356f0fde",
@@ -197,14 +200,24 @@
       "bases:新建数据库": false
     }
   },
-  "active": "181cf51ec9d1320f",
+  "active": "b7ae572baa23a074",
   "lastOpenFiles": [
+    "CaseFile-PRD-v2.3.md",
+    "design/CaseFile-Phase1-v1.4/03-workbench.png",
+    "design/CaseFile-Phase1-v1.4/02-brief.png",
+    "design/CaseFile-Phase1-v1.4/01-projects.png",
+    "CaseFile-PRD-v2.4.md",
+    "架构设计分析报告-v1.md",
+    "design/CaseFile-Phase1-v1.4/04-patch.png",
+    "Agent后续优化路线图-v1.md",
+    "设计交接/~$seFile-建案中心原型与功能规划-会话交接-2026-08-04.docx",
+    "设计交接/CaseFile-建案中心原型与功能规划-会话交接-2026-08-04.docx",
+    "设计交接",
     "基座数据库表字段说明.md",
+    "技术栈与第一版MVP-v1 1.md",
     "数据库表关系图.svg",
     "技术选型和tradeoff/数据库表设计决策与Trade-off.md",
-    "技术栈与第一版MVP-v1 1.md",
     "数据库表关系图.mmd",
-    "CaseFile-PRD-v2.3.md",
     "CaseFile-PRD-v2.3.pdf",
     "技术选型和tradeoff/Agent框架选型与Tradeoff.md",
     "CaseFile-PRD-v2.2.md",

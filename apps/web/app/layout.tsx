@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { WorkflowProvider } from "@/store/workflow-store";
-import { PrototypeProvider } from "@/store/prototype-store";
 
 import { QueryProvider } from "./providers";
 
@@ -23,9 +22,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body>
         <QueryProvider>
           <WorkflowProvider>
-            <PrototypeProvider>
-              <AppShell>{children}</AppShell>
-            </PrototypeProvider>
+            <AppShell>{children}</AppShell>
           </WorkflowProvider>
         </QueryProvider>
       </body>

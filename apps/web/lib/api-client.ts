@@ -224,11 +224,15 @@ export interface SourceRecordView {
   created_at: string;
 }
 
+export type PolishMode = "proofread" | "rewrite" | "narrative_enhance";
+
 export interface BriefPolishResult {
   input_hash: string;
   polished_text: string;
   preserved_intent_summary: string;
   ambiguities: string[];
+  introduced_details?: string[];
+  polish_mode?: PolishMode;
   proposal_source_record: SourceRecordView;
 }
 

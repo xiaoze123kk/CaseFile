@@ -260,6 +260,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "source_record_id": source["source_record_id"],
                 "provider": "deepseek",
+                "polish_mode": "rewrite",
             },
         )
         assert polish_queued.status_code == 202
@@ -269,6 +270,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
         )
         assert latest_polish.status_code == 200
+        assert latest_polish.json()["result"]["polish_mode"] == "rewrite"
+        assert latest_polish.json()["result"]["introduced_details"] == []
         assert latest_polish.json()["result"]["proposal_source_record"]["source_kind"] == (
             "agent_polish_proposal"
         )

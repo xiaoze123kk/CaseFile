@@ -19,6 +19,7 @@ import {
   discardCandidateTarget,
   missingCandidateHardFields,
   resolutionModeLabels,
+  resolutionModeHints,
   splitLines,
 } from "./intake-model";
 import { IntakeSourceBadge } from "./intake-source-badge";
@@ -73,16 +74,21 @@ function updateFieldSource(
 function CandidateField({
   label,
   source,
+  hint,
   children,
 }: {
   label: string;
   source: Parameters<typeof IntakeSourceBadge>[0]["source"];
+  hint?: string;
   children: ReactNode;
 }) {
   return (
     <section className={styles.confirmField}>
       <header>
-        <b>{label}</b>
+        <div className={styles.confirmFieldHeading}>
+          <b>{label}</b>
+          {hint ? <small>{hint}</small> : null}
+        </div>
         <IntakeSourceBadge source={source} />
       </header>
       {children}
@@ -212,7 +218,10 @@ export function IntakeConfirmationStep({
   }
 
   return (
-    <section className={styles.stepSheet} aria-labelledby="intake-confirm-title">
+    <section
+      className={`${styles.stepSheet} ${styles.confirmationSheet}`}
+      aria-labelledby="intake-confirm-title"
+    >
       <header className={styles.stepSheetHeader}>
         <div>
           <span>STEP 03 / 简报校核</span>
@@ -263,9 +272,11 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="一句话概念 *"
               source={sourceFor(draft, "concept")}
+              hint="概括核心设定与冲突"
             >
               <textarea
                 onChange={(event) => updateTextField("concept", event.target.value)}
+                placeholder="例如：四名玩家在不断重启的空间站中追查事故真相。"
                 rows={2}
                 value={draft.concept}
               />
@@ -273,12 +284,13 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="核心卖点"
               source={sourceFor(draft, "core_selling_points")}
+              hint="列出让人记住的亮点"
             >
               <textarea
                 onChange={(event) =>
                   updateLineField("core_selling_points", event.target.value)
                 }
-                placeholder="每行一项"
+                placeholder="例如：循环重启 / 第五人权限记录 / 保护协议"
                 rows={3}
                 value={draft.core_selling_points.join("\n")}
               />
@@ -286,12 +298,13 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="内容骨架"
               source={sourceFor(draft, "content_outline")}
+              hint="拆成可推进的阶段"
             >
               <textarea
                 onChange={(event) =>
                   updateLineField("content_outline", event.target.value)
                 }
-                placeholder="每行一个阶段"
+                placeholder="例如：发现异常 → 追查权限记录 → 重建时间线 → 做出终止决定"
                 rows={4}
                 value={draft.content_outline.join("\n")}
               />
@@ -299,11 +312,13 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="推理目标 *"
               source={sourceFor(draft, "reasoning_goal")}
+              hint="定义要回答的关键问题"
             >
               <textarea
                 onChange={(event) =>
                   updateTextField("reasoning_goal", event.target.value)
                 }
+                placeholder="例如：在第七次循环结束前找出谁触发了重启。"
                 rows={3}
                 value={draft.reasoning_goal}
               />
@@ -311,6 +326,7 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="结论处理方式"
               source={sourceFor(draft, "resolution_mode")}
+              hint="决定谁来锁定结论"
             >
               <div className={styles.modeChoices}>
                 {(Object.keys(resolutionModeLabels) as ResolutionMode[]).map(
@@ -322,7 +338,10 @@ export function IntakeConfirmationStep({
                         onChange={() => updateResolutionMode(mode)}
                         type="radio"
                       />
-                      <span>{resolutionModeLabels[mode]}</span>
+                      <span>
+                        <b>{resolutionModeLabels[mode]}</b>
+                        <small>{resolutionModeHints[mode]}</small>
+                      </span>
                     </label>
                   ),
                 )}
@@ -332,11 +351,13 @@ export function IntakeConfirmationStep({
               <CandidateField
                 label="作者底牌 *"
                 source={sourceFor(draft, "author_answer")}
+                hint="只有已知答案时填写"
               >
                 <textarea
                   onChange={(event) =>
                     updateTextField("author_answer", event.target.value)
                   }
+                  placeholder="例如：真正触发重启的是维护机器人，而不是玩家。"
                   rows={3}
                   value={draft.author_answer ?? ""}
                 />
@@ -345,11 +366,13 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="预计规模"
               source={sourceFor(draft, "scope_estimate")}
+              hint="估算交付体量"
             >
               <textarea
                 onChange={(event) =>
                   updateTextField("scope_estimate", event.target.value)
                 }
+                placeholder="例如：4 名玩家 / 6 个场景 / 60–90 分钟"
                 rows={2}
                 value={draft.scope_estimate ?? ""}
               />
@@ -357,12 +380,13 @@ export function IntakeConfirmationStep({
             <CandidateField
               label="风险提示"
               source={sourceFor(draft, "risk_notes")}
+              hint="提前标出体验风险"
             >
               <textarea
                 onChange={(event) =>
                   updateLineField("risk_notes", event.target.value)
                 }
-                placeholder="每行一项"
+                placeholder="例如：线索过多，玩家无法复盘。"
                 rows={3}
                 value={draft.risk_notes.join("\n")}
               />
@@ -372,7 +396,10 @@ export function IntakeConfirmationStep({
               <summary>
                 <span>
                   <b>约束抽屉</b>
-                  <small>必须保留、禁止出现、规模、人数、时长与内容尺度</small>
+                  <small>
+                    <span className={styles.drawerInstruction}>点击展开</span>
+                    必须保留、禁止出现、规模、人数、时长与内容尺度
+                  </small>
                 </span>
                 <em>{draft.constraints.length} 项</em>
               </summary>
@@ -393,6 +420,7 @@ export function IntakeConfirmationStep({
                             statement: event.target.value,
                           })
                         }
+                        placeholder={category.example}
                         rows={2}
                         value={constraint?.statement ?? ""}
                       />

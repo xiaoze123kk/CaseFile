@@ -17,6 +17,7 @@ from casefile.agent_runtime.models import (
     CaseFileChatSuggestionCandidate,
     GenerationRequest,
     GenerationResult,
+    PolishMode,
     ToolMetrics,
 )
 from casefile.agent_runtime.providers import (
@@ -47,5 +48,6 @@ __all__ = [
     "GenerationRequest",
     "GenerationResult",
     "OpenAIAgentsProvider",
+    "PolishMode",
     "ToolMetrics",
 ]

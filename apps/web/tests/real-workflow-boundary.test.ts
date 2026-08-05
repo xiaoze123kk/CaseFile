@@ -40,7 +40,7 @@ describe("real workflow boundary", () => {
     expect(source).not.toContain("@/lib/prototype-model");
   });
 
-  it("keeps the frozen frontend-template demo reachable from the real-mode block", () => {
+  it("keeps the analyst-workbench demo reachable from the real-mode block", () => {
     const source = readFileSync(
       resolve(process.cwd(), "components", "archive-shell.tsx"),
       "utf8",
@@ -218,23 +218,134 @@ describe("real workflow boundary", () => {
     expect(source).toContain('pathname.startsWith("/demo/")');
     expect(source).toContain("<DemoArchiveShell>");
     expect(source).toContain("<ArchiveShell>");
-    expect(demoShell).toContain('data-template-commit="960481d"');
-    expect(demoShell).toContain("@/store/prototype-store");
+    expect(demoShell).toContain('"analyst-workbench-v1"');
+    expect(demoShell).toContain('"intake-center-v1"');
+    expect(demoShell).toContain('"graphite-paper-copper"');
+    expect(demoShell).toContain('"digital-dossier"');
+    expect(demoShell).toContain("<DemoPrototypeProvider>");
+    expect(demoShell).not.toContain("@/store/prototype-store");
     expect(demoShell).not.toContain("@/store/workflow-store");
     expect(demoShell).not.toContain("@/lib/api-client");
+    expect(demoShell).not.toContain("localStorage");
+    expect(demoShell).not.toContain("sessionStorage");
+  });
+
+  it("serves the unified analyst workbench from the demo root", () => {
+    const source = readFileSync(resolve(process.cwd(), "app/demo/page.tsx"), "utf8");
+    const workbench = readFileSync(
+      resolve(process.cwd(), "features/analyst-workbench/analyst-workbench.tsx"),
+      "utf8",
+    );
+
+    expect(source).toContain("@/features/analyst-workbench/analyst-workbench");
+    expect(source).not.toContain("redirect(");
+    expect(workbench).not.toContain("@/lib/api-client");
+    expect(workbench).not.toContain("@/store/workflow-store");
+    expect(workbench).not.toContain("localStorage");
+  });
+
+  it("lets the analyst demo reflow below the real-mode desktop minimum width", () => {
+    const globalCss = readFileSync(
+      resolve(process.cwd(), "app/globals.css"),
+      "utf8",
+    );
+    const demoCss = readFileSync(
+      resolve(
+        process.cwd(),
+        "features/analyst-workbench/analyst-workbench.module.css",
+      ),
+      "utf8",
+    );
+
+    expect(globalCss).toContain(
+      'html:has([data-demo-kind="analyst-workbench-v1"])',
+    );
+    expect(globalCss).toContain(
+      'body:has([data-demo-kind="analyst-workbench-v1"])',
+    );
+    expect(demoCss).toContain("@media (max-width: 780px)");
+    expect(demoCss).toContain(
+      '.workbench[data-mobile-region="sources"] .bottomDrawer',
+    );
+  });
+
+  it("keeps the analyst demo on its graphite-paper-copper palette and intake on dossier paper", () => {
+    const demoCss = readFileSync(
+      resolve(
+        process.cwd(),
+        "features/analyst-workbench/analyst-workbench.module.css",
+      ),
+      "utf8",
+    );
+    const workbench = readFileSync(
+      resolve(
+        process.cwd(),
+        "features/analyst-workbench/analyst-workbench.tsx",
+      ),
+      "utf8",
+    );
+
+    [
+      "--chrome: #171a1d;",
+      "--chrome-raised: #202427;",
+      "--primary: #c78b3c;",
+      "--primary-hover: #e0ad65;",
+      "--relation: #8e9694;",
+      "--paper: #f3f1eb;",
+      "--rule: #d6d1c5;",
+      "--ink: #292c2c;",
+      "--success: #35a46f;",
+      "--warning: #d99a3e;",
+      "--issue: #d95c59;",
+    ].forEach((token) => expect(demoCss).toContain(token));
+
+    expect(demoCss).toContain(
+      ".graphEdges line { stroke: var(--relation);",
+    );
+    expect(demoCss).toContain(
+      '.graphEdges g[data-active="true"] line { stroke: var(--primary);',
+    );
+    ["person", "evidence", "event", "location", "hypothesis"].forEach(
+      (kind) => expect(demoCss).toContain(`.graphNode[data-kind="${kind}"]::before`),
+    );
+    expect(demoCss).toContain(
+      '.issueList button[data-status="resolved"] > span:first-child { background: var(--success); }',
+    );
+    expect(demoCss).toContain(
+      '.issueList button[data-status="exception"] > span:first-child { background: var(--warning); }',
+    );
+    expect(workbench).toContain("data-state={selectedStatus}");
+    expect(demoCss).not.toMatch(/--(?:evidence|verdict)/);
+    expect(demoCss).not.toMatch(
+      /#(?:101820|18232d|4c8dff|62b6ff|7fa6c9|73d0c6|147d74|e26349|a63b27|4aa67e)/i,
+    );
+
+    const intakeCss = readFileSync(
+      resolve(
+        process.cwd(),
+        "features/intake-prototype/intake-center-prototype.module.css",
+      ),
+      "utf8",
+    );
+    [
+      "--paper: #fafaf5;",
+      "--paper-low: #f4f4ef;",
+      "--ink: #1a1c19;",
+      "--red: #a92609;",
+    ].forEach((token) => expect(intakeCss).toContain(token));
+    expect(intakeCss).not.toContain("--ice:");
+    expect(intakeCss).not.toContain("--cobalt:");
   });
 
   it.each([
-    ["app/demo/page.tsx", "@/features/intake/intake-home"],
-    ["app/demo/brief/page.tsx", "@/features/intake/brief-editor"],
-    ["app/demo/workbench/page.tsx", "@/features/workbench/workbench-page"],
-    ["app/demo/reasoning/page.tsx", "@/features/reasoning/reasoning-lab"],
-    ["app/demo/quality/page.tsx", "@/features/quality/quality-workspace"],
-  ])("keeps %s on the frozen Prototype template", (fileName, featureImport) => {
+    "app/demo/brief/page.tsx",
+    "app/demo/workbench/page.tsx",
+    "app/demo/reasoning/page.tsx",
+    "app/demo/quality/page.tsx",
+  ])("redirects retired demo page %s to the unified workbench", (fileName) => {
     const source = readFileSync(resolve(process.cwd(), fileName), "utf8");
 
-    expect(source).toContain(featureImport);
-    expect(source).not.toContain("redirect(");
+    expect(source).toContain('redirect("/demo")');
     expect(source).not.toContain("@/lib/api-client");
     expect(source).not.toContain("@/store/workflow-store");
   });
@@ -263,6 +374,7 @@ describe("real workflow boundary", () => {
 
   it("uses the reviewed pencil dossier artwork behind the intake sheet", () => {
     const css = readWorkflowSource("brief-intake-workspace.module.css");
+    const confirmation = readWorkflowSource("intake-confirmation-step.tsx");
     const artwork = readFileSync(
       resolve(process.cwd(), "public", "intake-pencil-dossier.svg"),
       "utf8",
@@ -270,6 +382,13 @@ describe("real workflow boundary", () => {
 
     expect(css).toContain('url("/intake-pencil-dossier.svg")');
     expect(css).toContain("width: min(760px, calc(100% - 120px));");
+    expect(confirmation).toContain("styles.confirmationSheet");
+    expect(css).toMatch(
+      /\.confirmationSheet\s*{[^}]*width:\s*min\(1120px, calc\(100% - 32px\)\);/s,
+    );
+    expect(css).toMatch(
+      /@container intake-sheet \(min-width: 680px\)[\s\S]*grid-template-columns: repeat\(3,/s,
+    );
     expect(artwork).toContain("CASE NOTES");
     expect(artwork).toContain("TOP SECRET");
     expect(artwork).toContain("EVIDENCE");

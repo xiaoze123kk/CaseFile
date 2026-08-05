@@ -11,15 +11,6 @@ from typing import Any, Protocol
 from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, ValidationError
@@ -53,6 +44,15 @@ from casefile.agent_runtime.prompt import (
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -91,10 +91,15 @@ class FakeProvider:
             polished_text=request.source_text.strip(),
             preserved_intent_summary="保留原稿事实、语气与未决含义，未补写新的创作设定。",
             ambiguities=[],
+            introduced_details=[],
         )
         usage = _zero_usage()
         request.emit("model.completed", "polishing", {"usage": usage})
-        return BriefPolishResult(candidate=candidate, usage=usage)
+        return BriefPolishResult(
+            candidate=candidate,
+            usage=usage,
+            polish_mode=request.polish_mode,
+        )
 
     def extract_anchors(
         self, request: BriefAnchorExtractRequest
@@ -285,6 +290,7 @@ class FakeProvider:
                 {
                     "id": resolution_id,
                     "title": "核心推理命题",
+                    "description": "说明本案需要回答的核心问题，以及最终解答应覆盖的因果范围。",
                     "question_type": "causal_explanation",
                     "reasoning_question": request.brief["reasoning_proposition"],
                     "conclusion_mode": _conclusion_mode(resolution_mode),
@@ -316,6 +322,7 @@ class FakeProvider:
                 {
                     "id": constraint_id,
                     "title": f"Brief 约束 {index}",
+                    "description": f"生成与后续编辑均需遵守的创作边界：{item['statement']}",
                     "level": item["level"],
                     "scope_refs": [
                         {
@@ -343,6 +350,7 @@ class FakeProvider:
             },
         }
         validate_casefile(candidate)
+        _validate_generated_descriptions(candidate)
         return GenerationResult(
             candidate=candidate,
             usage=_zero_usage(),
@@ -363,14 +371,21 @@ class OpenAIAgentsProvider:
                     "brief_polish",
                     request.prompt_version,
                 ),
-                input_text=polish_input(request.source_text, request.input_hash),
+                input_text=polish_input(
+                    request.source_text,
+                    request.input_hash,
+                    request.polish_mode,
+                ),
                 output_type=BriefPolishCandidate,
                 stage="polishing",
             )
         )
+        polish_candidate = BriefPolishCandidate.model_validate(candidate)
+        _validate_polish_candidate(polish_candidate, request.polish_mode)
         return BriefPolishResult(
-            candidate=BriefPolishCandidate.model_validate(candidate),
+            candidate=polish_candidate,
             usage=usage,
+            polish_mode=request.polish_mode,
         )
 
     def extract_anchors(
@@ -538,14 +553,21 @@ class DeepSeekAgentsProvider:
                     "brief_polish",
                     request.prompt_version,
                 ),
-                input_text=polish_input(request.source_text, request.input_hash),
+                input_text=polish_input(
+                    request.source_text,
+                    request.input_hash,
+                    request.polish_mode,
+                ),
                 output_type=BriefPolishCandidate,
                 stage="polishing",
             )
         )
+        polish_candidate = BriefPolishCandidate.model_validate(candidate)
+        _validate_polish_candidate(polish_candidate, request.polish_mode)
         return BriefPolishResult(
-            candidate=BriefPolishCandidate.model_validate(candidate),
+            candidate=polish_candidate,
             usage=usage,
+            polish_mode=request.polish_mode,
         )
 
     def extract_anchors(
@@ -803,6 +825,7 @@ async def _run_agent(
             raise ContractValidationError(_pydantic_validation_issues(error)) from error
     candidate = _remove_absent_descriptions(output.model_dump(mode="json"))
     validate_casefile(candidate)
+    _validate_generated_descriptions(candidate)
     candidate_ids = _candidate_object_ids(candidate)
     if context.metrics.planned_object_ids.issubset(candidate_ids):
         context.metrics.adopted_results += 1
@@ -876,6 +899,35 @@ def _remove_absent_descriptions(value: Any) -> Any:
     return value
 
 
+def _validate_generated_descriptions(candidate: dict[str, Any]) -> None:
+    issues: list[dict[str, str]] = []
+    for collection in (
+        "resolution_specs",
+        "entities",
+        "relationships",
+        "locations",
+        "events",
+        "information_units",
+        "claims",
+        "hypotheses",
+        "reasoning_paths",
+        "constraints",
+        "structure_locks",
+    ):
+        for index, item in enumerate(candidate.get(collection, [])):
+            description = item.get("description") if isinstance(item, dict) else None
+            if not isinstance(description, str) or not description.strip():
+                issues.append(
+                    {
+                        "code": "generated_description_missing",
+                        "path": f"/{collection}/{index}/description",
+                        "message": "Agent-generated objects require a non-empty description",
+                    }
+                )
+    if issues:
+        raise ContractValidationError(issues)
+
+
 def _pydantic_validation_issues(error: ValidationError) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     for item in error.errors(
@@ -931,6 +983,16 @@ def _json_schema_instruction(output_type: type[BaseModel]) -> str:
         "不得使用 Markdown 包装，也不得添加任何额外说明。\n"
         + schema
     )
+
+
+def _validate_polish_candidate(
+    candidate: BriefPolishCandidate,
+    polish_mode: str,
+) -> None:
+    if polish_mode != "narrative_enhance" and candidate.introduced_details:
+        raise ProviderProtocolError(
+            "Polish candidate introduced new details outside narrative enhancement mode"
+        )
 
 
 def _usage_json(usage: Any) -> dict[str, Any]:

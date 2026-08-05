@@ -295,6 +295,7 @@ def workflow_router() -> APIRouter:
             project_id,
             source_record_id=payload.source_record_id,
             provider=payload.provider,
+            polish_mode=payload.polish_mode,
         )
 
     @router.post(

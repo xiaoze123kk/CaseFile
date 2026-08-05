@@ -1,9 +1,12 @@
 import { StatusBadge } from "@/components/archive-ui";
 import type {
   BriefPolishResult,
+  PolishMode,
   SourceRecordView,
   TaskView,
 } from "@/lib/api-client";
+
+import { buildTextDiff, polishModes } from "./intake-model";
 
 import styles from "./brief-intake-workspace.module.css";
 
@@ -15,6 +18,7 @@ interface IntakeIdeaStepProps {
   polishTask: TaskView | null;
   polishResult: BriefPolishResult | null;
   polishDraft: string;
+  polishMode: PolishMode;
   polishReviewOpen: boolean;
   polishCandidateStale: boolean;
   closed: boolean;
@@ -25,6 +29,7 @@ interface IntakeIdeaStepProps {
   onOpenPolish: () => void;
   onContinue: () => void;
   onPolishDraftChange: (value: string) => void;
+  onPolishModeChange: (value: PolishMode) => void;
   onClosePolish: () => void;
   onAdoptPolish: () => void;
   onOpenBrief: () => void;
@@ -45,6 +50,7 @@ export function IntakeIdeaStep({
   polishTask,
   polishResult,
   polishDraft,
+  polishMode,
   polishReviewOpen,
   polishCandidateStale,
   closed,
@@ -55,6 +61,7 @@ export function IntakeIdeaStep({
   onOpenPolish,
   onContinue,
   onPolishDraftChange,
+  onPolishModeChange,
   onClosePolish,
   onAdoptPolish,
   onOpenBrief,
@@ -73,6 +80,17 @@ export function IntakeIdeaStep({
       : "生成中";
   const comparisonOriginal =
     savedSource?.content_text ?? sourceText.trim();
+  const agentDiff = buildTextDiff(
+    comparisonOriginal,
+    polishResult?.polished_text ?? "",
+  );
+  const agentMadeNoChanges = Boolean(polishResult && agentDiff.changeCount === 0);
+  const draftMatchesOriginal = polishDraft.trim() === comparisonOriginal.trim();
+  const introducedDetails = polishResult?.introduced_details ?? [];
+  const effectiveMode = polishResult?.polish_mode ?? polishMode;
+  const modeLabel =
+    polishModes.find((mode) => mode.value === effectiveMode)?.label ?? "表达优化";
+  const providerLabel = polishTask?.provider === "deepseek" ? "DeepSeek" : "OpenAI";
 
   return (
     <section
@@ -101,6 +119,24 @@ export function IntakeIdeaStep({
           aria-label="Agent 润色左右对照"
           className={styles.polishInlineBody}
         >
+          {polishResult ? (
+            <div
+              className={styles.polishAuditRibbon}
+              data-unchanged={agentMadeNoChanges}
+              role="status"
+            >
+              <b>
+                {agentMadeNoChanges
+                  ? "Agent 已完成审阅：原文表达清晰，本次未建议文字调整。"
+                  : `${providerLabel} 已审阅 · ${modeLabel} · 修改 ${agentDiff.changeCount} 处`}
+              </b>
+              <span>
+                {agentMadeNoChanges
+                  ? `${providerLabel} 已完成 ${modeLabel}，你仍可在候选区继续编辑。`
+                  : `新增 ${agentDiff.insertedCharacters} 字 · 删除 ${agentDiff.deletedCharacters} 字 · 保留 ${polishResult.ambiguities.length} 项歧义`}
+              </span>
+            </div>
+          ) : null}
           <div className={styles.polishInlineColumns}>
             <section className={styles.polishPane}>
               <header>
@@ -131,12 +167,30 @@ export function IntakeIdeaStep({
                 </small>
               </header>
               {polishResult ? (
-                <textarea
-                  aria-label="编辑 Agent 润色工作稿"
-                  onChange={(event) => onPolishDraftChange(event.target.value)}
-                  rows={10}
-                  value={polishDraft}
-                />
+                <div className={styles.polishDraftStack}>
+                  {!agentMadeNoChanges ? (
+                    <div
+                      aria-label="Agent 修改差异"
+                      className={styles.polishDiff}
+                    >
+                      {agentDiff.segments.map((segment, index) => {
+                        if (segment.type === "delete") {
+                          return <del key={`${segment.type}-${index}`}>{segment.text}</del>;
+                        }
+                        if (segment.type === "insert") {
+                          return <ins key={`${segment.type}-${index}`}>{segment.text}</ins>;
+                        }
+                        return <span key={`${segment.type}-${index}`}>{segment.text}</span>;
+                      })}
+                    </div>
+                  ) : null}
+                  <textarea
+                    aria-label="编辑 Agent 润色工作稿"
+                    onChange={(event) => onPolishDraftChange(event.target.value)}
+                    rows={10}
+                    value={polishDraft}
+                  />
+                </div>
               ) : (
                 <div
                   className={styles.polishPending}
@@ -180,6 +234,16 @@ export function IntakeIdeaStep({
                     : "未标出需要作者补充的歧义。"}
                 </p>
               </span>
+              {effectiveMode === "narrative_enhance" ? (
+                <span data-warning={introducedDetails.length > 0}>
+                  <b>新增细节审阅</b>
+                  <p>
+                    {introducedDetails.length
+                      ? introducedDetails.join("；")
+                      : "本次叙事增强未加入原稿之外的细节。"}
+                  </p>
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -224,6 +288,28 @@ export function IntakeIdeaStep({
           </div>
         </div>
       )}
+
+      {!closed && !comparisonOpen && providerReady ? (
+        <fieldset className={styles.polishModeRail}>
+          <legend>润色强度</legend>
+          {polishModes.map((mode) => (
+            <label data-selected={polishMode === mode.value} key={mode.value}>
+              <input
+                checked={polishMode === mode.value}
+                disabled={busy || polishRunning}
+                name="polish-mode"
+                onChange={() => onPolishModeChange(mode.value)}
+                type="radio"
+                value={mode.value}
+              />
+              <span>
+                <b>{mode.label}</b>
+                <small>{mode.hint}</small>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
 
       {closed ? (
         <div className={styles.closedIntakeNotice} role="status">
@@ -272,7 +358,8 @@ export function IntakeIdeaStep({
                 busy ||
                 !polishResult ||
                 polishCandidateStale ||
-                !polishDraft.trim()
+                !polishDraft.trim() ||
+                draftMatchesOriginal
               }
               onClick={onAdoptPolish}
               type="button"
@@ -280,6 +367,8 @@ export function IntakeIdeaStep({
               <span>
                 {busy
                   ? "正在记录…"
+                  : draftMatchesOriginal
+                    ? "原文无需替换"
                   : polishResult
                     ? "采用润色稿"
                     : comparisonStatus}

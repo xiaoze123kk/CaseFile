@@ -16,6 +16,7 @@ import {
   type BriefPolishResult,
   type BriefView,
   type ProjectView,
+  type PolishMode,
   type ProviderSettingView,
   type TaskView,
 } from "@/lib/api-client";
@@ -116,6 +117,7 @@ export function IntakeWorkspace() {
   const [activeStep, setActiveStep] = useState<IntakeStep>("idea");
   const [sourceText, setSourceText] = useState("");
   const [polishDraft, setPolishDraft] = useState("");
+  const [polishMode, setPolishMode] = useState<PolishMode>("rewrite");
   const [polishReviewOpen, setPolishReviewOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const hydratedSourceRef = useRef<string | null>(null);
@@ -241,9 +243,10 @@ export function IntakeWorkspace() {
     if (!polishReviewOpen || !polishResult || !polishTask) return;
     if (hydratedPolishReviewTaskRef.current === polishTask.task_run_id) return;
     hydratedPolishReviewTaskRef.current = polishTask.task_run_id;
-    const timeoutId = window.setTimeout(() =>
-      setPolishDraft(polishResult.polished_text),
-    );
+    const timeoutId = window.setTimeout(() => {
+      setPolishDraft(polishResult.polished_text);
+      setPolishMode(polishResult.polish_mode ?? "rewrite");
+    });
     return () => window.clearTimeout(timeoutId);
   }, [polishResult, polishReviewOpen, polishTask]);
 
@@ -347,6 +350,7 @@ export function IntakeWorkspace() {
           body: {
             source_record_id: current.intake.current_source?.source_record_id,
             provider: workflow.provider,
+            polish_mode: polishMode,
           },
         },
       );
@@ -683,6 +687,9 @@ export function IntakeWorkspace() {
                 onContinue={() => continueMutation.mutate()}
                 onOpenPolish={() => {
                   if (polishResult) setPolishDraft(polishResult.polished_text);
+                  if (polishResult) {
+                    setPolishMode(polishResult.polish_mode ?? "rewrite");
+                  }
                   setPolishReviewOpen(true);
                 }}
                 onOpenSettings={openSettings}
@@ -693,6 +700,7 @@ export function IntakeWorkspace() {
                   polishMutation.mutate();
                 }}
                 onPolishDraftChange={setPolishDraft}
+                onPolishModeChange={setPolishMode}
                 onSourceChange={(value) => {
                   setActionError(null);
                   setSourceText(value);
@@ -700,6 +708,7 @@ export function IntakeWorkspace() {
                 onStartNewCase={resetIntake}
                 polishCandidateStale={polishCandidateStale}
                 polishDraft={polishDraft}
+                polishMode={polishMode}
                 polishResult={polishResult}
                 polishReviewOpen={polishReviewOpen}
                 polishTask={polishTask}

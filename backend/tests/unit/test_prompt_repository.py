@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt_repository import (
     SUPPORTED_AGENT_IDS,
     PromptRepository,
@@ -19,11 +20,11 @@ from casefile.agent_runtime.prompt_repository import (
 from casefile_contracts import TaskType
 
 EXPECTED_CURRENT_VERSIONS = {
-    "brief_polish": "brief-polish-v2",
+    "brief_polish": "brief-polish-v3",
     "brief_anchor_extract": "brief-anchor-extract-v2",
     "brief_intake_questions": "brief-intake-questions-v1",
     "brief_intake_synthesize": "brief-intake-synthesize-v1",
-    "brief_to_draft": "brief-to-draft-v3",
+    "brief_to_draft": "brief-to-draft-v4",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -31,6 +32,9 @@ EXPECTED_CURRENT_VERSIONS = {
 EXPECTED_RELEASE_HASHES = {
     ("brief_polish", "brief-polish-v2"): (
         "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"
+    ),
+    ("brief_polish", "brief-polish-v3"): (
+        "554f15807e88de2096aca4c6ec06d88fb516a5c285fdd5bde4425fb40712629a"
     ),
     ("brief_anchor_extract", "brief-anchor-extract-v2"): (
         "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d"
@@ -43,6 +47,9 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_to_draft", "brief-to-draft-v3"): (
         "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
+    ),
+    ("brief_to_draft", "brief-to-draft-v4"): (
+        "e8a9385ee762d6c7a36ca8405e0d2e48259fbb37e9acac19fa7d5f95b69e076b"
     ),
     ("casefile_chat", "casefile-chat-v1"): (
         "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
@@ -89,6 +96,8 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         assert "结构化" in prompt
 
     assert "`polished_text` 保持原稿的主要语言" in prompts["brief_polish"]
+    assert "`narrative_enhance`" in prompts["brief_polish"]
+    assert "`introduced_details`" in prompts["brief_polish"]
     assert "不能作为候选项的事实来源" in prompts["brief_anchor_extract"]
     assert "最多一项 `required=true`" in prompts["brief_intake_questions"]
     assert "存在 `base_candidate` 与 `instruction`" in prompts[
@@ -98,6 +107,7 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "每个顶层对象 ID 必须在对应集合中恰好使用一次" in prompts[
         "brief_to_draft"
     ]
+    assert "每个对象都必须同时生成非空 `description`" in prompts["brief_to_draft"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
     assert "未列入能力白名单" in prompts["casefile_chat"]
 

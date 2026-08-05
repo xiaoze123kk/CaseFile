@@ -210,6 +210,7 @@ class BriefIntakeSynthesizeTaskRequest(StrictRequest):
 class BriefPolishTaskRequest(StrictRequest):
     source_record_id: int = Field(ge=1)
     provider: Literal["openai", "deepseek"] = "openai"
+    polish_mode: Literal["proofread", "rewrite", "narrative_enhance"] = "rewrite"
 
 
 class BriefAnchorExtractTaskRequest(StrictRequest):

@@ -1,5 +1,5 @@
-import { WorkbenchPage } from "@/features/workbench/workbench-page";
+import { redirect } from "next/navigation";
 
-export default function DemoWorkbenchPage() {
-  return <WorkbenchPage />;
+export default function RetiredDemoWorkbenchPage() {
+  redirect("/demo");
 }

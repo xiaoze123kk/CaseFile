@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
@@ -30,6 +30,10 @@ class BriefPolishCandidate(StrictAgentOutput):
     polished_text: str = Field(min_length=1)
     preserved_intent_summary: str = Field(min_length=1)
     ambiguities: list[str] = Field(default_factory=list)
+    introduced_details: list[str] = Field(default_factory=list)
+
+
+PolishMode = Literal["proofread", "rewrite", "narrative_enhance"]
 
 
 class ExtractedAnchor(StrictAgentOutput):
@@ -100,6 +104,7 @@ class BriefPolishRequest:
     task_run_id: int
     prompt_version: str
     source_text: str
+    polish_mode: PolishMode
     input_hash: str
     model_id: str
     api_key: str | None
@@ -187,6 +192,7 @@ class GenerationResult:
 class BriefPolishResult:
     candidate: BriefPolishCandidate
     usage: dict[str, Any]
+    polish_mode: PolishMode
 
 
 @dataclass(frozen=True, slots=True)
