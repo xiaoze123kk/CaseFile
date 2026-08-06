@@ -1353,9 +1353,10 @@
   }
 }
 
-/* 画布缩放 */
+/* 画布缩放与工具 */
 .zoomViewport { position: relative; height: 100%; min-height: 0; overflow: auto; }
 .zoomStage { height: 100%; zoom: var(--zoom, 1); }
+.panStage { height: 100%; }
 .sectionTrailing { display: flex; min-width: 0; align-items: center; gap: 12px; }
 .zoomControls { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .zoomControls button {
@@ -1370,6 +1371,28 @@
 }
 .zoomControls button:hover:not(:disabled) { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
 .zoomControls button:disabled { opacity: 0.4; cursor: default; }
+.canvasTools { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.canvasTools button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+.canvasTools button:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
+.canvasTools button[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--primary); }
+.canvasTools svg { width: 14px; height: 14px; }
+.graphHeadingTools { display: flex; align-items: center; gap: 8px; }
+.graphBoard[data-tool="pan"],
+.relationsBoard[data-tool="pan"],
+.reasoningBoard[data-tool="pan"],
+.mapBoard[data-tool="pan"] { cursor: grab; }
+.graphBoard[data-tool="pan"]:active,
+.relationsBoard[data-tool="pan"]:active,
+.reasoningBoard[data-tool="pan"]:active,
+.mapBoard[data-tool="pan"]:active { cursor: grabbing; }
 
 /* 编译中心 */
 .compileView { display: grid; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr); }

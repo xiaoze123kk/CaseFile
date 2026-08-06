@@ -232,6 +232,29 @@ describe("analyst workbench prototype", () => {
     expect(screen.getByText(/已生成 小说 产物/)).toBeInTheDocument();
   });
 
+  it("pans the relation graph canvas with the hand tool", () => {
+    const { container } = renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "平移工具" }));
+    const board = container.querySelector(
+      '[aria-label="事件关系图"]',
+    ) as HTMLElement;
+
+    fireEvent.pointerDown(board, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(board, { clientX: 160, clientY: 140, pointerId: 1 });
+    fireEvent.pointerUp(board, { pointerId: 1 });
+
+    const panStage = board.parentElement as HTMLElement;
+    expect(panStage.style.transform).toBe("translate(60px, 40px)");
+
+    // 平移模式下点击节点不触发对象联动
+    const node = within(board).getByRole("button", { name: /内部接应者/ });
+    expect(node.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(node);
+    expect(node.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("zooms the relation graph canvas with the zoom controls", () => {
     renderWorkbench();
 

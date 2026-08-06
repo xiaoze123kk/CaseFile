@@ -96,7 +96,9 @@ function WorkbenchIcon({
     | "pause"
     | "close"
     | "reset"
-    | "chat";
+    | "chat"
+    | "cursor"
+    | "hand";
   className?: string;
 }) {
   const paths = {
@@ -110,6 +112,8 @@ function WorkbenchIcon({
     close: <path d="m3 3 10 10M13 3 3 13" />,
     reset: <><path d="M3 6a5 5 0 1 1 1 5" /><path d="M3 2v4h4" /></>,
     chat: <><path d="M2.5 4.5h11v6.5h-7L3 14v-3h-.5Z" /><path d="M5.5 7h5M5.5 9h3" /></>,
+    cursor: <path d="m3.5 2.5 9 5.2-4.3 1.2-1.2 4.3Z" />,
+    hand: <><path d="M5.5 8.5V4a1.4 1.4 0 0 1 2.8 0v4M8.3 8V3.4a1.4 1.4 0 0 1 2.8 0V8M11.1 8.5V5.8a1.4 1.4 0 0 1 2.8 0v3.7c0 2.8-2.2 4.5-4.4 4.5S5.8 12 5.2 10L4.5 8.6a1.25 1.25 0 0 1 2.1-1.3L7 8" /></>,
   } as const;
 
   return (
@@ -257,18 +261,36 @@ function RelationshipGraph({
   );
   const boardRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
-    id: string;
+    mode: "node" | "pan";
+    id?: string;
     startX: number;
     startY: number;
+    startPan?: { x: number; y: number };
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+  const [tool, setTool] = useState<CanvasTool>("select");
+  const [pan, setPan] = useState({ x: 0, y: 0 });
 
-  function startDrag(event: ReactPointerEvent<HTMLElement>, objectId: string) {
+  function startNodeDrag(event: ReactPointerEvent<HTMLElement>, objectId: string) {
+    if (tool !== "select") return;
     dragRef.current = {
+      mode: "node",
       id: objectId,
       startX: event.clientX,
       startY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function startPanDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (tool !== "pan") return;
+    dragRef.current = {
+      mode: "pan",
+      startX: event.clientX,
+      startY: event.clientY,
+      startPan: pan,
       moved: false,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -278,18 +300,24 @@ function RelationshipGraph({
     const drag = dragRef.current;
     const board = boardRef.current;
     if (!drag || !board) return;
-    const rect = board.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 6, 94);
-    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 6, 94);
     if (
       !drag.moved &&
       Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4
     ) {
       drag.moved = true;
     }
-    if (drag.moved) {
-      setPositions((previous) => ({ ...previous, [drag.id]: { x, y } }));
+    if (!drag.moved) return;
+    if (drag.mode === "node") {
+      const rect = board.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 6, 94);
+      const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 6, 94);
+      setPositions((previous) => ({ ...previous, [drag.id!]: { x, y } }));
+    } else if (drag.startPan) {
+      setPan({
+        x: clamp(drag.startPan.x + (event.clientX - drag.startX), -600, 600),
+        y: clamp(drag.startPan.y + (event.clientY - drag.startY), -600, 600),
+      });
     }
   }
 
@@ -299,6 +327,7 @@ function RelationshipGraph({
   }
 
   function selectNode(objectId: string) {
+    if (tool !== "select") return;
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
@@ -312,7 +341,9 @@ function RelationshipGraph({
       aria-describedby="relationship-graph-summary"
       aria-label="事件关系图"
       className={compact ? styles.graphBoard : styles.relationsBoard}
+      data-tool={tool}
       onPointerCancel={endDrag}
+      onPointerDown={startPanDrag}
       onPointerMove={moveDrag}
       onPointerUp={endDrag}
       ref={boardRef}
@@ -354,7 +385,7 @@ function RelationshipGraph({
             data-related={related}
             key={object.id}
             onClick={() => selectNode(object.id)}
-            onPointerDown={(event) => startDrag(event, object.id)}
+            onPointerDown={(event) => startNodeDrag(event, object.id)}
             style={style}
             type="button"
           >
@@ -370,6 +401,14 @@ function RelationshipGraph({
       ) : null}
     </div>
   );
+  const panStage = (
+    <div
+      className={styles.panStage}
+      style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+    >
+      {board}
+    </div>
+  );
 
   if (compact) {
     return (
@@ -379,14 +418,22 @@ function RelationshipGraph({
             <span>同步关系图</span>
             <strong>事件、人物与证据</strong>
           </div>
-          <span className={styles.graphLegend}>
-            <i /> 当前关联
-          </span>
+          <div className={styles.graphHeadingTools}>
+            <span className={styles.graphLegend}>
+              <i /> 当前关联
+            </span>
+            <CanvasTools onToolChange={setTool} tool={tool} />
+            <ZoomControls onZoomChange={setZoom} zoom={zoom} />
+          </div>
         </div>
         <p className={styles.srOnly} id="relationship-graph-summary">
           {seed.caseMeta.relationshipSummary}
         </p>
-        {board}
+        <div className={styles.zoomViewport}>
+          <div className={styles.zoomStage} style={{ zoom }}>
+            {panStage}
+          </div>
+        </div>
         <span className={styles.srOnly}>{visibleNodeIds.size} 个可访问节点</span>
       </section>
     );
@@ -401,6 +448,7 @@ function RelationshipGraph({
         </div>
         <div className={styles.sectionTrailing}>
           <small>{visibleNodeIds.size} NODES</small>
+          <CanvasTools onToolChange={setTool} tool={tool} />
           <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </header>
@@ -409,7 +457,7 @@ function RelationshipGraph({
       </p>
       <div className={styles.zoomViewport}>
         <div className={styles.zoomStage} style={{ zoom }}>
-          {board}
+          {panStage}
         </div>
       </div>
       <details className={styles.graphAlternative}>
@@ -481,39 +529,32 @@ function TimelineOverview({
     timelineResizeRef.current = null;
   }
 
-  const [zoom, setZoom] = useState(1);
-
   return (
-    <div className={styles.zoomViewport}>
-      <div className={styles.zoomStage} style={{ zoom }}>
-        <div
-          className={styles.timelineOverview}
-          style={
-            {
-              "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
-            } as CSSProperties
-          }
-        >
-          <div
-            aria-hidden="true"
-            className={styles.timelineResizeHandle}
-            data-testid="timeline-resize-handle"
-            onPointerCancel={endTimelineResize}
-            onPointerDown={startTimelineResize}
-            onPointerMove={moveTimelineResize}
-            onPointerUp={endTimelineResize}
-          />
-          <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
-            <header className={styles.sectionHeader}>
-              <div>
-                <span>事件序列</span>
-                <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
-              </div>
-              <div className={styles.sectionTrailing}>
-                <small>{seed.caseMeta.timelineMeta}</small>
-                <ZoomControls onZoomChange={setZoom} zoom={zoom} />
-              </div>
-            </header>
+    <div
+      className={styles.timelineOverview}
+      style={
+        {
+          "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
+        } as CSSProperties
+      }
+    >
+      <div
+        aria-hidden="true"
+        className={styles.timelineResizeHandle}
+        data-testid="timeline-resize-handle"
+        onPointerCancel={endTimelineResize}
+        onPointerDown={startTimelineResize}
+        onPointerMove={moveTimelineResize}
+        onPointerUp={endTimelineResize}
+      />
+      <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
+        <header className={styles.sectionHeader}>
+          <div>
+            <span>事件序列</span>
+            <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
+          </div>
+          <small>{seed.caseMeta.timelineMeta}</small>
+        </header>
         <ol className={styles.timelineList}>
           {seed.timelineEvents.map((event) => {
             const selected = event.id === selectedEventId;
@@ -549,15 +590,13 @@ function TimelineOverview({
           })}
         </ol>
       </section>
-          <RelationshipGraph
-            compact
-            onSelectObject={onSelectObject}
-            relatedObjectIds={[selectedEvent.id, ...selectedEvent.relatedObjectIds]}
-            seed={seed}
-            selectedObjectId={selectedObjectId}
-          />
-        </div>
-      </div>
+      <RelationshipGraph
+        compact
+        onSelectObject={onSelectObject}
+        relatedObjectIds={[selectedEvent.id, ...selectedEvent.relatedObjectIds]}
+        seed={seed}
+        selectedObjectId={selectedObjectId}
+      />
     </div>
   );
 }
@@ -572,18 +611,66 @@ function MapView({
   onSelectEvent: (id: string) => void;
 }) {
   const [zoom, setZoom] = useState(1);
+  const [tool, setTool] = useState<CanvasTool>("select");
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const panRef = useRef<{
+    startX: number;
+    startY: number;
+    startPan: { x: number; y: number };
+  } | null>(null);
+
+  function startMapPan(event: ReactPointerEvent<HTMLDivElement>) {
+    if (tool !== "pan") return;
+    panRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startPan: pan,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveMapPan(event: ReactPointerEvent<HTMLDivElement>) {
+    const ref = panRef.current;
+    if (!ref) return;
+    setPan({
+      x: clamp(ref.startPan.x + (event.clientX - ref.startX), -600, 600),
+      y: clamp(ref.startPan.y + (event.clientY - ref.startY), -600, 600),
+    });
+  }
+
+  function endMapPan() {
+    panRef.current = null;
+  }
+
+  function selectMarker(eventId: string) {
+    if (tool !== "select") return;
+    onSelectEvent(eventId);
+  }
+
   return (
     <section className={styles.mapView} aria-labelledby="map-heading">
       <header className={styles.sectionHeader}>
         <div><span>空间核对</span><h2 id="map-heading">{seed.caseMeta.mapTitle}</h2></div>
         <div className={styles.sectionTrailing}>
           <small>{seed.caseMeta.mapMeta}</small>
+          <CanvasTools onToolChange={setTool} tool={tool} />
           <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </header>
       <div className={styles.zoomViewport}>
         <div className={styles.zoomStage} style={{ zoom }}>
-          <div className={styles.mapBoard}>
+          <div
+            className={styles.panStage}
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+          >
+          <div
+            className={styles.mapBoard}
+            data-tool={tool}
+            onPointerCancel={endMapPan}
+            onPointerDown={startMapPan}
+            onPointerMove={moveMapPan}
+            onPointerUp={endMapPan}
+          >
             <svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 100 100">
               <path d="M5 18h35v18h18v-12h37M18 5v90M40 18v50h38v27M58 24v28M78 52h17" />
               <path className={styles.mapWater} d="M0 78c18-8 30 8 46 0s29 8 54-2v24H0Z" />
@@ -603,7 +690,7 @@ function MapView({
             aria-pressed={selectedEventId === marker.eventId}
             className={styles.mapMarker}
             key={marker.eventId}
-            onClick={() => onSelectEvent(marker.eventId)}
+            onClick={() => selectMarker(marker.eventId)}
             style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
             type="button"
           >
@@ -611,6 +698,7 @@ function MapView({
             <span>{marker.label}</span>
           </button>
         ))}
+          </div>
           </div>
         </div>
       </div>
@@ -987,6 +1075,37 @@ function EvidenceComparison({
   );
 }
 
+type CanvasTool = "select" | "pan";
+
+function CanvasTools({
+  tool,
+  onToolChange,
+}: {
+  tool: CanvasTool;
+  onToolChange: (tool: CanvasTool) => void;
+}) {
+  return (
+    <div aria-label="画布工具" className={styles.canvasTools}>
+      <button
+        aria-label="选择工具"
+        aria-pressed={tool === "select"}
+        onClick={() => onToolChange("select")}
+        type="button"
+      >
+        <WorkbenchIcon name="cursor" />
+      </button>
+      <button
+        aria-label="平移工具"
+        aria-pressed={tool === "pan"}
+        onClick={() => onToolChange("pan")}
+        type="button"
+      >
+        <WorkbenchIcon name="hand" />
+      </button>
+    </div>
+  );
+}
+
 function ZoomControls({
   zoom,
   onZoomChange,
@@ -1187,23 +1306,41 @@ function ReasoningGraphView({
   );
   const boardRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
-    id: string;
+    mode: "node" | "pan";
+    id?: string;
     startX: number;
     startY: number;
+    startPan?: { x: number; y: number };
     moved: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+  const [tool, setTool] = useState<CanvasTool>("select");
+  const [pan, setPan] = useState({ x: 0, y: 0 });
 
   const evidenceById = useMemo(
     () => new Map(seed.caseObjects.map((object) => [object.id, object])),
     [seed.caseObjects],
   );
 
-  function startDrag(event: ReactPointerEvent<HTMLElement>, id: string) {
+  function startNodeDrag(event: ReactPointerEvent<HTMLElement>, id: string) {
+    if (tool !== "select") return;
     dragRef.current = {
+      mode: "node",
       id,
       startX: event.clientX,
       startY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function startPanDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (tool !== "pan") return;
+    dragRef.current = {
+      mode: "pan",
+      startX: event.clientX,
+      startY: event.clientY,
+      startPan: pan,
       moved: false,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -1213,18 +1350,24 @@ function ReasoningGraphView({
     const drag = dragRef.current;
     const board = boardRef.current;
     if (!drag || !board) return;
-    const rect = board.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 6, 94);
-    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 6, 94);
     if (
       !drag.moved &&
       Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4
     ) {
       drag.moved = true;
     }
-    if (drag.moved) {
-      setPositions((previous) => ({ ...previous, [drag.id]: { x, y } }));
+    if (!drag.moved) return;
+    if (drag.mode === "node") {
+      const rect = board.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 6, 94);
+      const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 6, 94);
+      setPositions((previous) => ({ ...previous, [drag.id!]: { x, y } }));
+    } else if (drag.startPan) {
+      setPan({
+        x: clamp(drag.startPan.x + (event.clientX - drag.startX), -600, 600),
+        y: clamp(drag.startPan.y + (event.clientY - drag.startY), -600, 600),
+      });
     }
   }
 
@@ -1234,6 +1377,7 @@ function ReasoningGraphView({
   }
 
   function selectNode(node: ReasoningCanvasNode) {
+    if (tool !== "select") return;
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
@@ -1254,6 +1398,7 @@ function ReasoningGraphView({
         </div>
         <div className={styles.sectionTrailing}>
           <small>{seed.reasoningPaths.length} PATHS</small>
+          <CanvasTools onToolChange={setTool} tool={tool} />
           <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </header>
@@ -1262,9 +1407,15 @@ function ReasoningGraphView({
           <div className={styles.zoomViewport}>
             <div className={styles.zoomStage} style={{ zoom }}>
               <div
+                className={styles.panStage}
+                style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+              >
+              <div
                 aria-label="推理画布"
                 className={styles.reasoningBoard}
+                data-tool={tool}
                 onPointerCancel={endDrag}
+                onPointerDown={startPanDrag}
                 onPointerMove={moveDrag}
                 onPointerUp={endDrag}
                 ref={boardRef}
@@ -1301,7 +1452,7 @@ function ReasoningGraphView({
                     className={styles.reasoningNode}
                     data-kind="reason"
                     key={node.id}
-                    onPointerDown={(event) => startDrag(event, node.id)}
+                    onPointerDown={(event) => startNodeDrag(event, node.id)}
                     role="img"
                     style={style}
                   >
@@ -1322,7 +1473,7 @@ function ReasoningGraphView({
                   data-outcome={node.outcome}
                   key={node.id}
                   onClick={() => selectNode(node)}
-                  onPointerDown={(event) => startDrag(event, node.id)}
+                  onPointerDown={(event) => startNodeDrag(event, node.id)}
                   style={style}
                   type="button"
                 >
@@ -1338,6 +1489,7 @@ function ReasoningGraphView({
               <span data-kind="contested">竞争</span>
               <span data-kind="eliminated">排除</span>
             </div>
+              </div>
               </div>
             </div>
           </div>
