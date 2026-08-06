@@ -187,6 +187,51 @@ describe("analyst workbench prototype", () => {
     expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
   });
 
+  it("compiles the dossier into novel and script formats with gate gating", () => {
+    renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /编译中心/ }));
+    expect(screen.getByText("同一份卷宗，多种形式")).toBeInTheDocument();
+    // 默认选中小说：章节预览来自事件序列
+    expect(screen.getByText(/第一章 · 码头监控断帧/)).toBeInTheDocument();
+    // 有未解决问题时编译按钮禁用并提示
+    expect(
+      screen.getByRole("button", { name: "先处理验证问题" }),
+    ).toBeDisabled();
+
+    // 切换到剧本
+    fireEvent.click(screen.getByRole("button", { name: /剧本/ }));
+    expect(screen.getByText(/剧本杀手册 · 雾港失联案/)).toBeInTheDocument();
+    expect(screen.getByText(/角色：秦彻、林岚、唐默/)).toBeInTheDocument();
+  });
+
+  it("compiles freely once validation issues are resolved", () => {
+    renderWorkbench(<CandidateSeedHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "载入结构候选" }));
+    fireEvent.click(screen.getByRole("tab", { name: /编译中心/ }));
+
+    // 结构候选仍有两条问题待处理，先解决
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /沈砚提前认出/ })[0],
+    );
+    fireEvent.click(screen.getByRole("button", { name: "请求 Agent 补丁" }));
+    fireEvent.click(screen.getByRole("button", { name: "批准并局部重算" }));
+    fireEvent.click(screen.getByRole("tab", { name: /验证问题/ }));
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /顾遥在两个权限门内同时签名/ })[0],
+    );
+    fireEvent.click(screen.getByRole("button", { name: "标记已知例外" }));
+
+    // 处理问题时主画布被切到证据对照，回到编译中心
+    fireEvent.click(screen.getByRole("tab", { name: /编译中心/ }));
+    const compileButton = screen.getByRole("button", {
+      name: "编译为小说",
+    });
+    expect(compileButton).not.toBeDisabled();
+    fireEvent.click(compileButton);
+    expect(screen.getByText(/已生成 小说 产物/)).toBeInTheDocument();
+  });
+
   it("renders the export preview with the gate checklist", () => {
     renderWorkbench();
 

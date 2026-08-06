@@ -5,6 +5,7 @@ export type WorkbenchView =
   | "map"
   | "dossier"
   | "export"
+  | "compile"
   | "evidence";
 
 export type ReasoningOutcome = "supported" | "contested" | "eliminated";
@@ -205,6 +206,7 @@ export const viewOptions: Array<{
   { id: "map", label: "地图", shortLabel: "图" },
   { id: "dossier", label: "卷宗编辑器", shortLabel: "卷" },
   { id: "export", label: "导出预览", shortLabel: "出" },
+  { id: "compile", label: "编译中心", shortLabel: "编" },
 ];
 
 export const caseObjects: CaseObject[] = [

@@ -1211,6 +1211,9 @@
   .knowledgeSequence > i { width: 1px; height: 14px; justify-self: center; }
   .knowledgeSequence > i::after { top: 8px; right: -2px; transform: rotate(135deg); }
   .audioPlayer { grid-template-columns: 48px minmax(180px, 1fr) 170px 84px; gap: 10px; }
+  .compileTargets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .compileWorkspace { grid-template-columns: 1fr; }
+  .compilePanel { border-left: 0; border-top: 1px solid var(--rule); }
 }
 
 @media (max-width: 780px) {
@@ -1349,6 +1352,55 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 编译中心 */
+.compileView { display: grid; min-height: 100%; grid-template-rows: auto auto minmax(0, 1fr); }
+.compileTargets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--rule); }
+.compileTargets button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 13px;
+  color: var(--ink);
+  text-align: left;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+.compileTargets button:hover { border-color: var(--primary); }
+.compileTargets button[data-selected="true"] { border-color: var(--primary); box-shadow: inset 3px 0 var(--primary); background: var(--paper); }
+.compileTargets button span { color: var(--primary-strong); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5px; letter-spacing: 0.08em; }
+.compileTargets button strong { margin-top: 3px; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; }
+.compileTargets button small { margin-top: 3px; color: var(--ink-muted); font-size: 9px; line-height: 1.5; }
+.compileWorkspace { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr) 240px; }
+.compilePreview { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+.compilePreview header { display: flex; min-height: 46px; align-items: center; justify-content: space-between; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
+.compilePreview header span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
+.compilePreview header strong { font-size: 12px; }
+.compilePreview pre {
+  margin: 0;
+  padding: 22px 26px;
+  overflow: auto;
+  color: var(--ink);
+  font-family: "STSong", "SimSun", serif;
+  font-size: 12.5px;
+  line-height: 1.85;
+  white-space: pre-wrap;
+  background: var(--paper);
+}
+.compileDone { margin: 0; padding: 9px 16px; color: var(--success); border-top: 1px solid var(--rule); background: var(--paper-high); font-size: 10px; }
+.compilePanel { display: flex; min-width: 0; flex-direction: column; gap: 12px; padding: 16px 14px; border-left: 1px solid var(--rule); background: var(--paper-low); overflow-y: auto; }
+.compilePanel > span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
+.compilePanel label { display: flex; flex-direction: column; gap: 5px; color: var(--ink-muted); font-size: 9.5px; }
+.compilePanel input { padding: 8px 9px; color: var(--ink); border: 1px solid var(--rule); background: var(--paper-high); font-size: 10.5px; }
+.compileGate ul { margin: 8px 0 0; padding: 0; border-top: 1px solid var(--rule); list-style: none; }
+.compileGate li { display: flex; min-height: 34px; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--rule); font-size: 10px; }
+.compileGate li b { color: var(--success); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5px; }
+.compileGate li[data-state="blocked"] b { color: var(--issue-strong); }
+.compilePanel > button { min-height: 40px; color: #f5f0e6; border: 0; background: var(--chrome); font-size: 10.5px; font-weight: 650; }
+.compilePanel > button:hover:not(:disabled) { color: var(--chrome); background: var(--primary); }
+.compilePanel > button:disabled { opacity: 0.55; cursor: default; }
+.compilePanel > p { margin: 0; color: var(--issue-strong); font-size: 9.5px; line-height: 1.55; }
 
 /* 卷宗统筹 Agent 对话栏 */
 .agentPanel {

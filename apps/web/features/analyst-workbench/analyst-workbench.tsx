@@ -693,6 +693,210 @@ function ExportView({
   );
 }
 
+type CompileTargetId = "novel" | "script" | "interactive" | "dossier" | "test";
+
+const compileTargets: Array<{
+  id: CompileTargetId;
+  label: string;
+  caption: string;
+  description: string;
+}> = [
+  {
+    id: "novel",
+    label: "小说",
+    caption: "章节叙事",
+    description: "把事件序列编排成可读的章节化叙事。",
+  },
+  {
+    id: "script",
+    label: "剧本",
+    caption: "剧本杀手册",
+    description: "角色、场景、幕次与线索卡，供线下开本。",
+  },
+  {
+    id: "interactive",
+    label: "互动脚本",
+    caption: "任务与对话树",
+    description: "分支对话与任务数据，供互动游戏引擎使用。",
+  },
+  {
+    id: "dossier",
+    label: "作者卷宗",
+    caption: "文档包",
+    description: "面向作者的对象清单、时间线与编辑笔记。",
+  },
+  {
+    id: "test",
+    label: "测试材料",
+    caption: "QA 用例",
+    description: "验证问题与门禁检查，供测试与验收。",
+  },
+];
+
+function composeCompilePreview(
+  targetId: CompileTargetId,
+  seed: PrototypeWorkbenchSeed,
+  unresolvedCount: number,
+): string {
+  const people = seed.caseObjects
+    .filter((object) => object.kind === "person")
+    .map((object) => object.label);
+  const evidence = seed.caseObjects
+    .filter((object) => object.kind === "evidence")
+    .map((object) => object.label);
+  const events = seed.timelineEvents;
+  switch (targetId) {
+    case "novel":
+      return [
+        `《${seed.caseMeta.title}》`,
+        seed.caseMeta.subtitle,
+        "",
+        ...events.map(
+          (event, index) =>
+            `第${"一二三四五六七八九十"[index] ?? index + 1}章 · ${event.label}\n${event.time}，${event.location}。${event.summary}`,
+        ),
+      ].join("\n");
+    case "script":
+      return [
+        `剧本杀手册 · ${seed.caseMeta.title}`,
+        `角色：${people.join("、")}`,
+        `场景：${[...new Set(events.map((event) => event.location))].join("、")}`,
+        "",
+        ...events.map(
+          (event) => `第 ${event.time} 幕 · ${event.label}\n${event.summary}`,
+        ),
+        `线索卡：${evidence.join("、")}`,
+      ].join("\n");
+    case "interactive":
+      return [
+        `互动脚本 · ${seed.caseMeta.title}`,
+        "",
+        ...events.map(
+          (event) => `节点 ${event.id} · ${event.label}\n可停留：${event.summary}`,
+        ),
+        "",
+        ...seed.reasoningPaths.map(
+          (path) =>
+            `分支 · ${path.question}\n→ ${path.conclusion}（${reasoningOutcomeLabels[path.outcome]}）`,
+        ),
+      ].join("\n");
+    case "dossier":
+      return [
+        `作者卷宗 · ${seed.caseMeta.title}`,
+        `修订 ${seed.caseMeta.revision}`,
+        "",
+        `对象 ${seed.caseObjects.length} 个（人物 ${people.length} · 证据 ${evidence.length}）`,
+        `事件 ${events.length} 个 · 推理路径 ${seed.reasoningPaths.length} 条`,
+        `待处理问题 ${unresolvedCount} 个`,
+        "",
+        "编译产物为演示样例，正式版本由 Compiler 生成。",
+      ].join("\n");
+    case "test":
+      return [
+        `测试材料 · ${seed.caseMeta.title}`,
+        "",
+        ...seed.validationIssues.map(
+          (issue) =>
+            `用例 ${issue.id} · ${issue.severity} ${issue.title}\n规则 ${issue.rule} · 依据 ${issue.evidenceIds.join("、")}`,
+        ),
+        "",
+        `门禁：${unresolvedCount > 0 ? `语义验证阻断（${unresolvedCount} 个问题）` : "全部通过"}`,
+      ].join("\n");
+  }
+}
+
+function CompileCenterView({
+  seed,
+  unresolvedCount,
+}: {
+  seed: PrototypeWorkbenchSeed;
+  unresolvedCount: number;
+}) {
+  const [targetId, setTargetId] = useState<CompileTargetId>("novel");
+  const [compiled, setCompiled] = useState(false);
+  const target = compileTargets.find((item) => item.id === targetId) ?? compileTargets[0];
+  const blocked = unresolvedCount > 0;
+
+  return (
+    <section className={styles.compileView} aria-labelledby="compile-heading">
+      <header className={styles.sectionHeader}>
+        <div>
+          <span>编译中心</span>
+          <h2 id="compile-heading">同一份卷宗，多种形式</h2>
+        </div>
+        <small>{compileTargets.length} FORMATS</small>
+      </header>
+      <div className={styles.compileTargets} aria-label="编译目标">
+        {compileTargets.map((item) => (
+          <button
+            aria-pressed={targetId === item.id}
+            data-selected={targetId === item.id}
+            key={item.id}
+            onClick={() => {
+              setTargetId(item.id);
+              setCompiled(false);
+            }}
+            type="button"
+          >
+            <span>{item.caption}</span>
+            <strong>{item.label}</strong>
+            <small>{item.description}</small>
+          </button>
+        ))}
+      </div>
+      <div className={styles.compileWorkspace}>
+        <section aria-label="编译预览" className={styles.compilePreview}>
+          <header>
+            <span>编译预览</span>
+            <strong>
+              {target.label} · {seed.caseMeta.title}
+            </strong>
+          </header>
+          <pre>{composeCompilePreview(targetId, seed, unresolvedCount)}</pre>
+          {compiled ? (
+            <p className={styles.compileDone}>
+              已生成 {target.label} 产物（演示样例，正式版本由 Compiler 生成）。
+            </p>
+          ) : null}
+        </section>
+        <aside className={styles.compilePanel}>
+          <span>编译选项</span>
+          <label>
+            <span>产物标题</span>
+            <input defaultValue={`${seed.caseMeta.title} · ${target.label}`} />
+          </label>
+          <label>
+            <span>来源修订</span>
+            <input defaultValue={seed.caseMeta.revision} />
+          </label>
+          <div className={styles.compileGate}>
+            <span>发布门禁</span>
+            <ul>
+              <li data-state="pass"><span>结构完整性</span><b>通过</b></li>
+              <li data-state="pass"><span>引用可追溯</span><b>通过</b></li>
+              <li data-state={blocked ? "blocked" : "pass"}>
+                <span>语义验证</span>
+                <b>{blocked ? `${unresolvedCount} 个问题` : "通过"}</b>
+              </li>
+            </ul>
+          </div>
+          <button
+            data-primary="true"
+            disabled={blocked}
+            onClick={() => setCompiled(true)}
+            type="button"
+          >
+            {blocked ? "先处理验证问题" : `编译为${target.label}`}
+          </button>
+          {blocked ? (
+            <p>存在未解决验证问题，编译产物可能携带矛盾。</p>
+          ) : null}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
 function EvidenceComparison({
   seed,
   issueId,
@@ -1860,6 +2064,9 @@ function AnalystWorkbenchSurface({
             {view === "map" ? <MapView onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} /> : null}
             {view === "dossier" ? <DossierView seed={seed} selectedEventId={selectedEventId} /> : null}
             {view === "export" ? <ExportView seed={seed} unresolvedCount={unresolvedCount} /> : null}
+            {view === "compile" ? (
+              <CompileCenterView seed={seed} unresolvedCount={unresolvedCount} />
+            ) : null}
             {view === "evidence" ? (
               <EvidenceComparison
                 editing={manualEditing}
