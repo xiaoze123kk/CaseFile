@@ -1174,8 +1174,8 @@
   .exportCover h3 { margin-top: 38px; }
   .knowledgeSequence { padding: 9px; }
   .diffPanel { margin: 0 9px 9px; }
-  .reasoningGrid { padding: 9px; grid-template-columns: 1fr; }
-  .reasoningBody { padding: 10px; }
+  .reasoningBoard { min-height: 320px; }
+  .reasoningLegend { right: 6px; bottom: 6px; }
 
   .inspector { grid-template-rows: 58px 44px minmax(0, 1fr) 58px; }
   .inspectorTabs button { min-height: 44px; }
@@ -1237,129 +1237,105 @@
   }
 }
 
-/* 推理过程图：证据 → 铜脊线推理步骤 → 假设收束 */
-.reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr); }
-.reasoningGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 14px;
-  align-content: start;
-  padding: 18px;
-  overflow: auto;
+/* 推理过程图：铺满主画布的可拖动推理画布 */
+.reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
+.reasoningBoard {
+  position: relative;
+  min-height: 420px;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(199, 139, 60, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(199, 139, 60, 0.045) 1px, transparent 1px),
+    var(--paper);
+  background-size: 22px 22px;
+  touch-action: none;
 }
-.reasoningPath { min-width: 0; border: 1px solid var(--rule); background: var(--paper); }
-.reasoningPath[data-outcome="contested"] { border-color: rgba(217, 154, 62, 0.5); }
-.reasoningPath[data-outcome="eliminated"] { border-color: rgba(217, 92, 89, 0.42); }
-.reasoningPathHeader {
+.reasoningEdges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.reasoningEdges line {
+  stroke: var(--relation);
+  stroke-opacity: 0.6;
+  stroke-width: 0.35;
+  vector-effect: non-scaling-stroke;
+}
+.reasoningEdges g[data-kind="chain"] line { stroke: var(--primary); stroke-opacity: 0.85; }
+.reasoningEdges g[data-kind="supported"] line { stroke: var(--success); }
+.reasoningEdges g[data-kind="contested"] line { stroke: var(--warning); stroke-dasharray: 2.4 1.6; }
+.reasoningEdges g[data-kind="eliminated"] line { stroke: var(--issue); stroke-dasharray: 2.4 1.6; }
+.reasoningNode {
+  position: absolute;
+  left: var(--node-x);
+  top: var(--node-y);
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 13px 14px;
-  border-bottom: 1px solid var(--rule);
-  background: var(--paper-high);
-}
-.reasoningPathHeader > div { display: flex; min-width: 0; flex-direction: column; }
-.reasoningPathHeader span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.09em; }
-.reasoningPathHeader strong { margin-top: 4px; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; line-height: 1.4; }
-.reasoningPathHeader em {
-  flex: none;
-  padding: 3px 8px;
-  color: var(--success);
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 9px;
-  font-style: normal;
-  letter-spacing: 0.06em;
-}
-.reasoningPathHeader em[data-outcome="contested"] { color: var(--warning); }
-.reasoningPathHeader em[data-outcome="eliminated"] { color: var(--issue); }
-.reasoningBody { display: grid; gap: 12px; padding: 14px; }
-.reasoningSteps { position: relative; margin: 0; padding: 0 0 0 22px; list-style: none; }
-.reasoningSteps::before {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 8px;
-  width: 2px;
-  content: "";
-  background: var(--primary);
-  opacity: 0.55;
-}
-.reasoningStep { position: relative; }
-.reasoningStep + .reasoningStep { margin-top: 10px; }
-.reasoningStep > i {
-  position: absolute;
-  top: 16px;
-  left: -18px;
-  width: 8px;
-  height: 8px;
-  background: var(--primary);
-  box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.16);
-  transform: rotate(45deg);
-}
-.reasoningStep > div { padding: 11px 12px; border: 1px solid var(--rule); background: var(--paper-high); }
-.reasoningStep strong { display: block; font-size: 11px; font-weight: 550; line-height: 1.55; }
-.reasoningStep strong b {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 1px 5px;
-  color: var(--primary-strong);
-  border: 1px solid rgba(199, 139, 60, 0.42);
-  font-family: "STSong", "SimSun", serif;
-  font-size: 10px;
-  font-weight: 600;
-}
-.reasoningStep small { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.reasoningStep small button {
-  padding: 2px 7px;
-  color: var(--ink-muted);
+  max-width: 170px;
+  min-width: 96px;
+  align-items: center;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  text-align: center;
   border: 1px solid var(--rule);
-  background: transparent;
-  font-size: 9px;
+  background: var(--paper-high);
+  box-shadow: 0 2px 6px rgba(41, 44, 44, 0.1);
+  transform: translate(-50%, -50%);
 }
-.reasoningStep small button:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
-.reasoningConclusion {
+.reasoningNode::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  content: "";
+  background: var(--relation);
+}
+.reasoningNode small { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; }
+.reasoningNode strong { margin-top: 2px; font-size: 10px; font-weight: 600; line-height: 1.45; }
+.reasoningNode[data-kind="reason"] { min-width: 150px; border-color: rgba(199, 139, 60, 0.4); }
+.reasoningNode[data-kind="reason"]::before { background: var(--primary); }
+.reasoningNode[data-kind="reason"] small { color: var(--primary-strong); font-family: "STSong", "SimSun", serif; font-size: 9px; letter-spacing: 0.14em; }
+.reasoningNode[data-kind="evidence"]::before { background: #bf8037; }
+.reasoningNode[data-kind="hypothesis"]::before { background: #856b82; }
+.reasoningNode[data-kind="hypothesis"][data-outcome="supported"] { border-color: rgba(53, 164, 111, 0.5); }
+.reasoningNode[data-kind="hypothesis"][data-outcome="contested"] { border-color: rgba(217, 154, 62, 0.55); }
+.reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] { border-color: rgba(217, 92, 89, 0.55); }
+.reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] strong { color: var(--issue); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.reasoningNode { cursor: grab; }
+.reasoningNode:active { cursor: grabbing; }
+button.reasoningNode:hover { border-color: var(--primary); box-shadow: 0 4px 10px rgba(41, 44, 44, 0.16); }
+.reasoningLegend {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
   display: flex;
   flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule);
+  background: rgba(251, 250, 246, 0.9);
+}
+.reasoningLegend span {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--rule);
-  background: var(--paper-low);
+  gap: 5px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
 }
-.reasoningConclusion span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
-.reasoningConclusion strong { color: var(--success); font-size: 12px; font-weight: 650; }
-.reasoningConclusion strong[data-outcome="contested"] { color: var(--warning); }
-.reasoningConclusion strong[data-outcome="eliminated"] { color: var(--issue); text-decoration: line-through; text-decoration-thickness: 1.5px; }
-.reasoningConclusion button {
-  margin-left: auto;
-  padding: 4px 8px;
-  color: var(--primary-strong);
-  border: 1px solid rgba(199, 139, 60, 0.42);
-  background: transparent;
-  font-size: 9px;
+.reasoningLegend span::before {
+  width: 16px;
+  height: 0;
+  content: "";
+  border-top: 2px solid var(--relation);
 }
-.reasoningConclusion button:hover { color: #f5f0e6; background: var(--primary); border-color: var(--primary); }
-.reasoningEvidence { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-.reasoningEvidence button {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-  padding: 9px 10px;
-  color: var(--ink);
-  text-align: left;
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-}
-.reasoningEvidence button:hover { border-color: var(--primary); box-shadow: inset 3px 0 var(--primary); }
-.reasoningEvidence button span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; }
-.reasoningEvidence button strong { overflow: hidden; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.reasoningEvidence button small { overflow: hidden; color: var(--ink-muted); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
-.reasoningAlternative { border-top: 1px solid var(--rule); background: var(--paper-high); }
-.reasoningAlternative summary { min-height: 38px; padding: 11px 14px; color: var(--ink-muted); cursor: pointer; font-size: 10px; }
+.reasoningLegend span[data-kind="chain"]::before { border-top-color: var(--primary); }
+.reasoningLegend span[data-kind="supported"]::before { border-top-color: var(--success); }
+.reasoningLegend span[data-kind="contested"]::before,
+.reasoningLegend span[data-kind="eliminated"]::before { border-top-style: dashed; }
+.reasoningLegend span[data-kind="contested"]::before { border-top-color: var(--warning); }
+.reasoningLegend span[data-kind="eliminated"]::before { border-top-color: var(--issue); }
+.reasoningTables { max-height: 150px; overflow: auto; border-top: 1px solid var(--rule); }
+.reasoningAlternative { background: var(--paper-high); }
+.reasoningAlternative summary { min-height: 38px; padding: 9px 14px; color: var(--ink-muted); cursor: pointer; font-size: 10px; }
 .reasoningAlternative summary:hover { color: var(--primary-strong); }
 .reasoningTableWrap { padding: 0 14px 14px; overflow-x: auto; }
 .reasoningTableWrap table { width: 100%; border-collapse: collapse; font-size: 10px; }

@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildPrototypeDraftCandidates,
@@ -118,17 +118,22 @@ describe("analyst workbench prototype", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the reasoning graph with evidence steps, outcome, and table alternative", () => {
+  it("renders the reasoning canvas with evidence steps, outcome, and table alternative", () => {
     renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
     expect(screen.getByText("证据如何收束到假设")).toBeInTheDocument();
-    expect(screen.getByText("推理路径 · RP-01")).toBeInTheDocument();
-    expect(screen.getByText("第五人权限如何进入码头")).toBeInTheDocument();
-    expect(screen.getByText("解释竞争")).toBeInTheDocument();
+    expect(
+      screen.getByText(/推理表 · 第五人权限如何进入码头/),
+    ).toBeInTheDocument();
     expect(screen.getByText("复听")).toBeInTheDocument();
-    expect(screen.getByText("查看推理表与文字摘要")).toBeInTheDocument();
-    expect(screen.getByText(/结论：内部接应者/)).toBeInTheDocument();
+    expect(screen.getAllByText("解释竞争").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "证据：07 号门禁记录" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "结论：内部接应者" }),
+    ).toBeInTheDocument();
   });
 
   it("exposes three competing reasoning paths and links evidence to the object rail", () => {
@@ -136,14 +141,18 @@ describe("analyst workbench prototype", () => {
     fireEvent.click(screen.getByRole("button", { name: "载入推理候选" }));
     fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
 
-    expect(screen.getByText("第七码由谁写入")).toBeInTheDocument();
-    expect(screen.getByText("黎衡能否被完全排除")).toBeInTheDocument();
-    expect(screen.getByText("三份记录是否彼此独立互证")).toBeInTheDocument();
-    expect(screen.getByText("已排除")).toBeInTheDocument();
-    expect(screen.getByText("三份记录彼此独立")).toBeInTheDocument();
+    expect(screen.getByText(/推理表 · 第七码由谁写入/)).toBeInTheDocument();
+    expect(screen.getByText(/推理表 · 黎衡能否被完全排除/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/推理表 · 三份记录是否彼此独立互证/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("已排除").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "结论：三份记录彼此独立" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getAllByRole("button", { name: "⚑ 互证机房运算带" })[0],
+      screen.getAllByRole("button", { name: "证据：互证机房运算带" })[0],
     );
     expect(
       container.querySelector('[data-workbench-seed="brief-1-reasoning"]'),
@@ -153,6 +162,36 @@ describe("analyst workbench prototype", () => {
         (button) => button.getAttribute("aria-pressed") === "true",
       ),
     ).toBe(true);
+  });
+
+  it("drags a reasoning node across the canvas", () => {
+    const { container } = renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
+    const board = container.querySelector(
+      '[aria-label="推理画布"]',
+    ) as HTMLElement;
+    vi.spyOn(board, "getBoundingClientRect").mockReturnValue({
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 500,
+      top: 0,
+      width: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const node = screen.getByRole("button", {
+      name: "证据：07 号门禁记录",
+    });
+
+    fireEvent.pointerDown(node, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(board, { clientX: 250, clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(board, { pointerId: 1 });
+
+    expect(node.style.getPropertyValue("--node-x")).toBe("50%");
+    expect(node.style.getPropertyValue("--node-y")).toBe("50%");
   });
 
   it("switches the complete workbench seed and exposes preview, current, and stale states", () => {
