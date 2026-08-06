@@ -187,6 +187,39 @@ describe("analyst workbench prototype", () => {
     expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
   });
 
+  it("opens the agent dialog and answers a preset instruction from the seed", async () => {
+    renderWorkbench();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "打开卷宗统筹 Agent 对话" }),
+    );
+    expect(
+      screen.getByRole("region", { name: "卷宗统筹 Agent 对话" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/我是卷宗统筹 Agent/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全卷宗体检" }));
+    expect(
+      await screen.findByText(/对“雾港失联案”的体检完成/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/S0 角色提前知道“第五人权限”/)).toBeInTheDocument();
+    expect(screen.getByText(/推理路径 1 条/)).toBeInTheDocument();
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" }),
+      { target: { value: "按发布门禁检查导出就绪度。" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(
+      await screen.findByText(/导出前检查（REV.12）/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭 Agent 对话" }));
+    expect(
+      screen.queryByRole("region", { name: "卷宗统筹 Agent 对话" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("resizes the inspector by dragging the split handle", () => {
     const { container } = renderWorkbench();
 

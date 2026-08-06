@@ -1288,6 +1288,7 @@
 }
 
 @media (max-width: 420px) {
+  .agentPanel { width: 100%; }
   .brandBlock { gap: 8px; padding: 0 9px; }
   .brandMark { width: 32px; height: 32px; border-radius: 8px; background-size: 78px 52px; }
   .brandBlock strong { font-size: 18px; }
@@ -1319,6 +1320,118 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* 卷宗统筹 Agent 对话栏 */
+.agentPanel {
+  position: fixed;
+  z-index: 60;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  width: 380px;
+  grid-template-rows: 58px minmax(0, 1fr) auto auto;
+  color: #e1ddd4;
+  border-left: 1px solid var(--rule-dark);
+  background: var(--chrome-raised);
+  box-shadow: -12px 0 32px rgba(23, 26, 29, 0.35);
+}
+.agentHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--rule-dark);
+}
+.agentHeader > div { display: flex; min-width: 0; flex-direction: column; }
+.agentHeader span { color: #aaa69c; font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.1em; }
+.agentHeader strong { margin-top: 3px; color: #f3f1eb; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; }
+.agentHeader button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: #a8a49b;
+  border: 0;
+  background: transparent;
+}
+.agentHeader button:hover { color: var(--primary-hover); background: var(--chrome-soft); }
+.agentMessages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  overflow-y: auto;
+}
+.agentMessage {
+  max-width: 88%;
+  margin: 0;
+  padding: 9px 11px;
+  font-size: 10.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.agentMessage[data-role="agent"] {
+  align-self: flex-start;
+  color: #e8e4db;
+  border: 1px solid rgba(199, 139, 60, 0.35);
+  background: #2b3032;
+  border-radius: 2px 10px 10px 10px;
+}
+.agentMessage[data-role="user"] {
+  align-self: flex-end;
+  color: var(--ink);
+  background: var(--paper-high);
+  border-radius: 10px 2px 10px 10px;
+}
+.agentThinking {
+  margin: 0;
+  color: var(--primary-hover);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+.agentPrompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 10px;
+}
+.agentPrompts button {
+  padding: 4px 9px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 9px;
+}
+.agentPrompts button:hover { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.5); }
+.agentPrompts button:disabled { opacity: 0.5; cursor: default; }
+.agentInput {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid var(--rule-dark);
+}
+.agentInput input {
+  min-width: 0;
+  flex: 1;
+  padding: 8px 10px;
+  color: #f3f1eb;
+  border: 1px solid var(--rule-dark);
+  background: #202427;
+  font-size: 10.5px;
+}
+.agentInput input::placeholder { color: #777c76; }
+.agentInput input:focus { outline: 2px solid rgba(224, 173, 101, 0.6); outline-offset: -1px; }
+.agentInput button {
+  padding: 0 14px;
+  color: #f5f0e6;
+  border: 0;
+  background: var(--primary);
+  font-size: 10px;
+}
+.agentInput button:hover { background: var(--primary-hover); }
+.agentInput button:disabled { opacity: 0.5; cursor: default; }
 
 /* 推理过程图：铺满主画布的可拖动推理画布 */
 .reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }

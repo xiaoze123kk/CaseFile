@@ -95,7 +95,8 @@ function WorkbenchIcon({
     | "play"
     | "pause"
     | "close"
-    | "reset";
+    | "reset"
+    | "chat";
   className?: string;
 }) {
   const paths = {
@@ -108,6 +109,7 @@ function WorkbenchIcon({
     pause: <><path d="M5 3v10M11 3v10" /></>,
     close: <path d="m3 3 10 10M13 3 3 13" />,
     reset: <><path d="M3 6a5 5 0 1 1 1 5" /><path d="M3 2v4h4" /></>,
+    chat: <><path d="M2.5 4.5h11v6.5h-7L3 14v-3h-.5Z" /><path d="M5.5 7h5M5.5 9h3" /></>,
   } as const;
 
   return (
@@ -1081,6 +1083,201 @@ function ReasoningGraphView({
   );
 }
 
+const agentPromptPresets = [
+  {
+    id: "inspect",
+    label: "全卷宗体检",
+    prompt: "对整个卷宗做一次体检，列出待处理问题与推理收束情况。",
+  },
+  {
+    id: "evidence",
+    label: "证据链摘要",
+    prompt: "汇总当前证据链，说明每份关键证据支撑了哪些推理。",
+  },
+  {
+    id: "compare",
+    label: "候选解释对比",
+    prompt: "对比各推理路径的收束状态，指出仍存在竞争的解释。",
+  },
+  {
+    id: "gate",
+    label: "导出前检查",
+    prompt: "按发布门禁检查导出就绪度。",
+  },
+] as const;
+
+interface AgentMessage {
+  id: string;
+  role: "user" | "agent";
+  text: string;
+}
+
+function composeAgentReply(
+  prompt: string,
+  seed: PrototypeWorkbenchSeed,
+  unresolvedCount: number,
+): string {
+  if (/体检|问题/.test(prompt)) {
+    const issueLines =
+      seed.validationIssues
+        .map((issue) => `· ${issue.severity} ${issue.title}（${issue.rule}）`)
+        .join("\n") || "· 当前没有记录在案的问题";
+    return `对“${seed.caseMeta.title}”的体检完成：\n\n${issueLines}\n\n时间线 ${seed.timelineEvents.length} 个事件，推理路径 ${seed.reasoningPaths.length} 条，当前 ${unresolvedCount} 个问题待人工决定。建议优先处理 S0。`;
+  }
+  if (/证据/.test(prompt)) {
+    const evidenceItems = seed.caseObjects.filter(
+      (object) => object.kind === "evidence",
+    );
+    const lines =
+      evidenceItems
+        .map((item) => {
+          const referenced = seed.reasoningPaths.flatMap((path) =>
+            path.steps.flatMap((step) => step.evidenceIds),
+          ).filter((id) => id === item.id).length;
+          return `· ${item.label}（${item.code}）：被 ${referenced} 处推理引用`;
+        })
+        .join("\n") || "· 卷宗中暂无证据对象";
+    return `证据链摘要：\n\n${lines}\n\n问题依据可到检查器的“引用来源”核对。`;
+  }
+  if (/对比|竞争/.test(prompt)) {
+    const lines =
+      seed.reasoningPaths
+        .map(
+          (path) =>
+            `· ${path.question} → ${reasoningOutcomeLabels[path.outcome]}`,
+        )
+        .join("\n") || "· 卷宗中暂无推理路径";
+    const contested = seed.reasoningPaths.some(
+      (path) => path.outcome === "contested",
+    );
+    return `候选解释对比：\n\n${lines}\n\n${
+      contested
+        ? "仍存在竞争解释，冻结前建议补齐证据。"
+        : "当前解释已收束，可以进入导出门禁。"
+    }`;
+  }
+  if (/导出|门禁/.test(prompt)) {
+    return `导出前检查（${seed.caseMeta.revision}）：\n\n· 结构完整性 — 通过\n· 引用可追溯 — 通过\n· 语义验证 — ${
+      unresolvedCount > 0 ? `阻断（${unresolvedCount} 个问题）` : "通过"
+    }\n· 作者批准 — 待确认\n\n${
+      unresolvedCount > 0
+        ? `先处理检查器中的 ${unresolvedCount} 个问题。`
+        : "门禁通过，可以生成导出包。"
+    }`;
+  }
+  return `已收到：${prompt}\n\n该指令已记入卷宗统筹队列。目前卷宗共有 ${seed.caseObjects.length} 个对象、${seed.timelineEvents.length} 个事件、${unresolvedCount} 个待处理问题；可以使用上方统筹指令获得针对性分析。`;
+}
+
+function AgentPanel({
+  seed,
+  unresolvedCount,
+  onClose,
+}: {
+  seed: PrototypeWorkbenchSeed;
+  unresolvedCount: number;
+  onClose: () => void;
+}) {
+  const [messages, setMessages] = useState<AgentMessage[]>([
+    {
+      id: "AG-0",
+      role: "agent",
+      text: `我是卷宗统筹 Agent，可以围绕“${seed.caseMeta.title}”做全卷宗体检、证据链摘要、候选解释对比与导出前检查。`,
+    },
+  ]);
+  const [draft, setDraft] = useState("");
+  const [thinking, setThinking] = useState(false);
+  const timersRef = useRef<number[]>([]);
+
+  useEffect(
+    () => () => timersRef.current.forEach((timer) => window.clearTimeout(timer)),
+    [],
+  );
+
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
+  function send(prompt: string) {
+    const normalized = prompt.trim();
+    if (!normalized || thinking) return;
+    setMessages((previous) => [
+      ...previous,
+      { id: `US-${previous.length}`, role: "user", text: normalized },
+    ]);
+    setDraft("");
+    setThinking(true);
+    const timer = window.setTimeout(() => {
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: `AG-${previous.length}`,
+          role: "agent",
+          text: composeAgentReply(normalized, seed, unresolvedCount),
+        },
+      ]);
+      setThinking(false);
+    }, 420);
+    timersRef.current.push(timer);
+  }
+
+  return (
+    <section aria-label="卷宗统筹 Agent 对话" className={styles.agentPanel}>
+      <header className={styles.agentHeader}>
+        <div>
+          <span>卷宗统筹</span>
+          <strong>Agent 对话</strong>
+        </div>
+        <button aria-label="关闭 Agent 对话" onClick={onClose} type="button">
+          <WorkbenchIcon name="close" />
+        </button>
+      </header>
+      <div aria-live="polite" className={styles.agentMessages}>
+        {messages.map((message) => (
+          <p className={styles.agentMessage} data-role={message.role} key={message.id}>
+            {message.text}
+          </p>
+        ))}
+        {thinking ? (
+          <p className={styles.agentThinking}>Agent 正在统筹卷宗…</p>
+        ) : null}
+      </div>
+      <div className={styles.agentPrompts} aria-label="统筹指令">
+        {agentPromptPresets.map((preset) => (
+          <button
+            disabled={thinking}
+            key={preset.id}
+            onClick={() => send(preset.prompt)}
+            type="button"
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      <form
+        className={styles.agentInput}
+        onSubmit={(event) => {
+          event.preventDefault();
+          send(draft);
+        }}
+      >
+        <input
+          aria-label="给卷宗统筹 Agent 的指令"
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="布置卷宗任务…"
+          value={draft}
+        />
+        <button disabled={thinking || !draft.trim()} type="submit">
+          发送
+        </button>
+      </form>
+    </section>
+  );
+}
+
 export function AnalystWorkbench() {
   const {
     activeCandidate,
@@ -1152,6 +1349,7 @@ function AnalystWorkbenchSurface({
     startX: number;
     startWidth: number;
   } | null>(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1374,6 +1572,7 @@ function AnalystWorkbenchSurface({
     setManualEditing(false);
     setManualValue(seed.validationIssues[0].patchAfter);
     setAuditEntries([...seed.initialAuditEntries]);
+    setAgentOpen(false);
     announce(`演示数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
   }
 
@@ -1456,6 +1655,14 @@ function AnalystWorkbenchSurface({
         </button>
         <div className={styles.topActions}>
           <button aria-label="打开命令面板" onClick={() => setPaletteOpen(true)} type="button"><WorkbenchIcon name="command" /></button>
+          <button
+            aria-expanded={agentOpen}
+            aria-label="打开卷宗统筹 Agent 对话"
+            onClick={() => setAgentOpen(true)}
+            type="button"
+          >
+            <WorkbenchIcon name="chat" />
+          </button>
           <button aria-label="重置演示数据" onClick={resetDemo} type="button"><WorkbenchIcon name="reset" /></button>
           <Link href="/demo/intake">建案中心</Link>
           <Link href="/">正式模式 ↗</Link>
@@ -1762,6 +1969,14 @@ function AnalystWorkbenchSurface({
         <section><header><span>命令</span><small>{matchingPaletteEntries.length}</small></header>{matchingPaletteEntries.map((item) => <button key={item.id} onClick={() => runPaletteAction(item.action)} type="button"><span className={styles.paletteCommandMark}>⌘</span><span><strong>{item.label}</strong><small>{item.meta}</small></span><i>打开</i></button>)}{matchingPaletteEntries.length === 0 ? <p>没有匹配命令。</p> : null}</section>
         <section><header><span>卷宗对象</span><small>{matchingPaletteObjects.length}</small></header>{matchingPaletteObjects.map((object) => <button key={object.id} onClick={() => runPaletteAction(() => selectObject(object.id))} type="button"><span className={styles.paletteObjectMark}>{objectKindLabels[object.kind].slice(0, 1)}</span><span><strong>{object.label}</strong><small>{object.code}</small></span><i>{object.id}</i></button>)}{matchingPaletteObjects.length === 0 ? <p>没有匹配对象。</p> : null}</section>
       </FocusTrapDialog>
+
+      {agentOpen ? (
+        <AgentPanel
+          onClose={() => setAgentOpen(false)}
+          seed={seed}
+          unresolvedCount={unresolvedCount}
+        />
+      ) : null}
     </div>
   );
 }
