@@ -11,7 +11,11 @@ import {
   useRef,
 } from "react";
 
-import type { BriefPolishResult } from "@/lib/api-client";
+import type {
+  BriefPolishResult,
+  CandidateStrategy,
+  ProviderName,
+} from "@/lib/api-client";
 import {
   buildWorkbenchCandidates,
   type WorkbenchCandidate,
@@ -66,6 +70,40 @@ import {
 
 export type GenerationStatus = "idle" | "generating" | "ready";
 export type WorkbenchCandidateStatus = "pending" | "current" | "stale";
+export type CandidateSlotStrategy = Exclude<CandidateStrategy, "balanced">;
+export type CandidateSlotStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export const CANDIDATE_SLOT_STRATEGIES: readonly CandidateSlotStrategy[] = [
+  "structure_first",
+  "atmosphere_first",
+  "reasoning_first",
+];
+
+const CANDIDATE_STRATEGY_TO_FOCUS = {
+  structure_first: "structure",
+  atmosphere_first: "atmosphere",
+  reasoning_first: "reasoning",
+} as const;
+
+type CandidateSlot = {
+  status: CandidateSlotStatus;
+  taskRunId: number | null;
+  attempt: number;
+  error: string | null;
+};
+
+function createCandidateSlots(): Record<CandidateSlotStrategy, CandidateSlot> {
+  return Object.fromEntries(
+    CANDIDATE_SLOT_STRATEGIES.map((strategy) => [
+      strategy,
+      { status: "pending", taskRunId: null, attempt: 1, error: null },
+    ]),
+  ) as Record<CandidateSlotStrategy, CandidateSlot>;
+}
 
 export interface CaseSessionState {
   step: IntakeStep;
@@ -83,6 +121,7 @@ export interface CaseSessionState {
   generation: {
     status: GenerationStatus;
     stage: number;
+    slots: Record<CandidateSlotStrategy, CandidateSlot>;
   };
   draftCandidates: WorkbenchCandidate[];
   previewCandidateId: string | null;
@@ -94,7 +133,15 @@ type CaseSessionAction =
   | { type: "set_review"; review: BriefReview }
   | { type: "save_review" }
   | { type: "freeze_review" }
-  | { type: "start_generation" }
+  | { type: "start_generation"; strategies: CandidateSlotStrategy[] }
+  | {
+      type: "update_generation_slot";
+      strategy: CandidateSlotStrategy;
+      status: CandidateSlotStatus;
+      taskRunId?: number | null;
+      attempt?: number;
+      error?: string | null;
+    }
   | { type: "advance_generation"; stage: number }
   | { type: "complete_generation"; candidates: WorkbenchCandidate[] }
   | { type: "preview_candidate"; candidateId: string | null }
@@ -116,7 +163,7 @@ export function createInitialCaseSessionState(): CaseSessionState {
     review: null,
     workingBriefVersion: 1,
     frozenBriefVersion: null,
-    generation: { status: "idle", stage: 0 },
+    generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
     draftCandidates: [],
     previewCandidateId: null,
     adoptedCandidateId: null,
@@ -148,20 +195,56 @@ export function caseSessionReducer(
     };
   }
   if (action.type === "start_generation") {
-    return { ...state, generation: { status: "generating", stage: 1 } };
+    const slots = { ...state.generation.slots };
+    for (const strategy of action.strategies) {
+      slots[strategy] = {
+        status: "running",
+        taskRunId: null,
+        attempt: 1,
+        error: null,
+      };
+    }
+    return { ...state, generation: { status: "generating", stage: 1, slots } };
+  }
+  if (action.type === "update_generation_slot") {
+    const previous = state.generation.slots[action.strategy];
+    return {
+      ...state,
+      generation: {
+        ...state.generation,
+        slots: {
+          ...state.generation.slots,
+          [action.strategy]: {
+            status: action.status,
+            taskRunId: action.taskRunId ?? previous.taskRunId,
+            attempt: action.attempt ?? previous.attempt,
+            error: action.error ?? null,
+          },
+        },
+      },
+    };
   }
   if (action.type === "advance_generation") {
     if (state.generation.status !== "generating") return state;
     return {
       ...state,
-      generation: { status: "generating", stage: action.stage },
+      generation: {
+        ...state.generation,
+        status: "generating",
+        stage: action.stage,
+      },
     };
   }
   if (action.type === "complete_generation") {
     return {
       ...state,
-      generation: { status: "ready", stage: 3 },
-      draftCandidates: [...state.draftCandidates, ...action.candidates],
+      generation: { ...state.generation, status: "ready", stage: 3 },
+      draftCandidates: [
+        ...state.draftCandidates.filter(
+          (existing) => !action.candidates.some((candidate) => candidate.id === existing.id),
+        ),
+        ...action.candidates,
+      ],
     };
   }
   if (action.type === "preview_candidate") {
@@ -190,7 +273,7 @@ export function caseSessionReducer(
       workingBriefVersion: state.workingBriefVersion + 1,
       frozenBriefVersion: null,
       review: null,
-      generation: { status: "idle", stage: 0 },
+      generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
       previewCandidateId: null,
     };
   }
@@ -221,7 +304,10 @@ interface CaseSessionContextValue {
   setReview: (review: BriefReview) => void;
   saveReview: () => Promise<void>;
   freezeReview: () => Promise<boolean>;
-  generateCandidates: () => Promise<boolean>;
+  generateCandidates: (
+    strategy?: CandidateSlotStrategy,
+    attempt?: number,
+  ) => Promise<boolean>;
   previewCandidate: (candidateId: string | null) => void;
   adoptCandidate: (candidateId: string) => Promise<boolean>;
   beginBriefRevision: () => void;
@@ -687,63 +773,243 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     return true;
   }, [saveReview]);
 
-  const generateCandidates = useCallback(async () => {
+  const generateCandidates = useCallback(
+    async (
+      requestedStrategy?: CandidateSlotStrategy,
+      requestedAttempt = 1,
+    ) => {
     const current = stateRef.current;
     if (
       !current.review ||
       current.frozenBriefVersion === null ||
-      current.generation.status === "generating" ||
-      current.draftCandidates.some(
-        (candidate) => candidate.briefVersion === current.frozenBriefVersion,
-      )
+      current.generation.status === "generating"
     ) {
       return false;
     }
     const projectId = projectIdRef.current;
     if (projectId === null) return false;
-    dispatch({ type: "start_generation" });
     try {
       const brief = briefRef.current ?? (await fetchBrief(projectId));
       if (!brief.current_version_id) {
         throw new CaseSessionError("请先冻结当前创作简报。");
       }
-      const draft = await fetchCaseDraft(projectId);
-      // 第一份运行带 Provider 认证回退，确认可用的模型服务后复用于其余两份。
-      const { provider: workingProvider } = await runTaskWithProviderFallback(
-        async (provider) => {
-          const task = await startDraftGenerationTask(
-            projectId,
-            brief.current_version_id!,
-            draft.revision,
-            provider,
-          );
-          await waitForTask(projectId, task.task_run_id);
-          dispatch({ type: "advance_generation", stage: 2 });
-          return provider;
-        },
-      );
-      const runs = await Promise.all(
-        [2, 3].map(() =>
-          startDraftGenerationTask(
-            projectId,
-            brief.current_version_id!,
-            draft.revision,
-            workingProvider,
-          ),
-        ),
-      );
-      await Promise.all(
-        runs.map(async (run) => {
-          await waitForTask(projectId, run.task_run_id);
-          dispatch({ type: "advance_generation", stage: 3 });
-        }),
-      );
-      const candidates = await fetchDraftCandidates(projectId);
-      const currentOnes = candidates.filter(
+      const existingCandidates = await fetchDraftCandidates(projectId);
+      const currentOnes = existingCandidates.filter(
         (candidate) => candidate.is_current_brief,
       );
-      if (currentOnes.length < runs.length) {
-        throw new CaseSessionError("候选尚未全部归档，请稍后重试。");
+      const existingStrategies = new Set(
+        currentOnes
+          .map((candidate) => candidate.candidate_strategy)
+          .filter(
+            (strategy): strategy is CandidateSlotStrategy =>
+              strategy !== "balanced",
+          ),
+      );
+      const requestedStrategies = requestedStrategy
+        ? [requestedStrategy]
+        : CANDIDATE_SLOT_STRATEGIES;
+      const missingStrategies = requestedStrategies.filter(
+        (strategy) => !existingStrategies.has(strategy),
+      );
+      for (const strategy of existingStrategies) {
+        dispatch({
+          type: "update_generation_slot",
+          strategy,
+          status: "succeeded",
+        });
+      }
+      const draft = await fetchCaseDraft(projectId);
+      dispatch({ type: "start_generation", strategies: missingStrategies });
+      let workingProvider: ProviderName | null = null;
+
+      if (missingStrategies.length > 0) {
+        // 首个缺失槽位负责 Provider 认证回退；成功后复用于其余槽位。
+        const firstStrategy = missingStrategies.includes("structure_first")
+          ? "structure_first"
+          : missingStrategies[0];
+        const fallbackResult = await runTaskWithProviderFallback(
+          async (provider) => {
+            let taskRunId: number | null = null;
+            try {
+              const task = await startDraftGenerationTask(
+                projectId,
+                brief.current_version_id!,
+                draft.revision,
+                provider,
+                firstStrategy,
+                requestedStrategy === firstStrategy ? requestedAttempt : 1,
+              );
+              taskRunId = task.task_run_id;
+              dispatch({
+                type: "update_generation_slot",
+                strategy: firstStrategy,
+                status: "running",
+                taskRunId,
+                attempt:
+                  requestedStrategy === firstStrategy ? requestedAttempt : 1,
+              });
+              await waitForTask(projectId, task.task_run_id);
+              dispatch({
+                type: "update_generation_slot",
+                strategy: firstStrategy,
+                status: "succeeded",
+              });
+              dispatch({ type: "advance_generation", stage: 2 });
+              return provider;
+            } catch (error) {
+              dispatch({
+                type: "update_generation_slot",
+                strategy: firstStrategy,
+                status: "failed",
+                taskRunId,
+                error: error instanceof Error ? error.message : "生成失败",
+              });
+              throw error;
+            }
+          },
+        );
+        workingProvider = fallbackResult.provider;
+
+        const parallelStrategies = missingStrategies.filter(
+          (strategy) => strategy !== firstStrategy,
+        );
+        await Promise.allSettled(
+          parallelStrategies.map(async (strategy) => {
+            let taskRunId: number | null = null;
+            try {
+              const task = await startDraftGenerationTask(
+                projectId,
+                brief.current_version_id!,
+                draft.revision,
+                workingProvider!,
+                strategy,
+                1,
+              );
+              taskRunId = task.task_run_id;
+              dispatch({
+                type: "update_generation_slot",
+                strategy,
+                status: "running",
+                taskRunId,
+              });
+              await waitForTask(projectId, task.task_run_id);
+              dispatch({
+                type: "update_generation_slot",
+                strategy,
+                status: "succeeded",
+              });
+              dispatch({ type: "advance_generation", stage: 3 });
+            } catch (error) {
+              dispatch({
+                type: "update_generation_slot",
+                strategy,
+                status: "failed",
+                taskRunId,
+                error: error instanceof Error ? error.message : "生成失败",
+              });
+            }
+          }),
+        );
+      }
+
+      const candidates = await fetchDraftCandidates(projectId);
+      let refreshedCurrentOnes = candidates.filter(
+        (candidate) => candidate.is_current_brief,
+      );
+      const rankStrategy = (strategy: CandidateStrategy) =>
+        strategy === "structure_first"
+          ? 0
+          : strategy === "atmosphere_first"
+            ? 1
+            : strategy === "reasoning_first"
+              ? 2
+              : 3;
+      const duplicateRetryStrategies = [
+        ...new Set(
+          [...
+            refreshedCurrentOnes.reduce((groups, candidate) => {
+              if (
+                !missingStrategies.includes(
+                  candidate.candidate_strategy as CandidateSlotStrategy,
+                ) ||
+                candidate.candidate_strategy === "balanced"
+              ) {
+                return groups;
+              }
+              const group = groups.get(candidate.content_hash) ?? [];
+              group.push(candidate);
+              groups.set(candidate.content_hash, group);
+              return groups;
+            }, new Map<string, typeof refreshedCurrentOnes>()).values(),
+          ].flatMap((group) => {
+            if (group.length < 2) return [];
+            return group
+              .sort(
+                (left, right) =>
+                  rankStrategy(left.candidate_strategy) -
+                  rankStrategy(right.candidate_strategy),
+              )
+              .slice(1)
+              .map((candidate) => candidate.candidate_strategy as CandidateSlotStrategy);
+          }),
+        ),
+      ];
+      if (workingProvider && duplicateRetryStrategies.length > 0) {
+        await Promise.allSettled(
+          duplicateRetryStrategies.map(async (strategy) => {
+            let taskRunId: number | null = null;
+            dispatch({
+              type: "update_generation_slot",
+              strategy,
+              status: "running",
+              attempt: 2,
+            });
+            try {
+              const task = await startDraftGenerationTask(
+                projectId,
+                brief.current_version_id!,
+                draft.revision,
+                workingProvider!,
+                strategy,
+                2,
+              );
+              taskRunId = task.task_run_id;
+              dispatch({
+                type: "update_generation_slot",
+                strategy,
+                status: "running",
+                taskRunId,
+                attempt: 2,
+              });
+              await waitForTask(projectId, task.task_run_id);
+              dispatch({
+                type: "update_generation_slot",
+                strategy,
+                status: "succeeded",
+                attempt: 2,
+              });
+            } catch (error) {
+              dispatch({
+                type: "update_generation_slot",
+                strategy,
+                status: "failed",
+                taskRunId,
+                attempt: 2,
+                error: error instanceof Error ? error.message : "生成失败",
+              });
+            }
+          }),
+        );
+        refreshedCurrentOnes = (await fetchDraftCandidates(projectId)).filter(
+          (candidate) => candidate.is_current_brief,
+        );
+      }
+      const duplicateHashCounts = new Map<string, number>();
+      for (const candidate of refreshedCurrentOnes) {
+        duplicateHashCounts.set(
+          candidate.content_hash,
+          (duplicateHashCounts.get(candidate.content_hash) ?? 0) + 1,
+        );
       }
       const base = buildWorkbenchCandidates(
         {
@@ -756,19 +1022,42 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         },
         current.frozenBriefVersion,
       );
-      const mapped = currentOnes.map((view, index) =>
-        mapWorkbenchCandidateView(view, base[index % base.length]),
-      );
+      const mapped = [...refreshedCurrentOnes]
+        .sort(
+          (left, right) =>
+            rankStrategy(left.candidate_strategy) -
+            rankStrategy(right.candidate_strategy),
+        )
+        .map((view) => {
+          const focus =
+            view.candidate_strategy === "balanced"
+              ? "structure"
+              : CANDIDATE_STRATEGY_TO_FOCUS[view.candidate_strategy];
+          return mapWorkbenchCandidateView(
+            view,
+            base.find((candidate) => candidate.focus === focus) ?? base[0],
+            duplicateHashCounts.get(view.content_hash)! > 1
+              ? "与同批候选内容相同，差异不足"
+              : undefined,
+          );
+        });
       dispatch({ type: "complete_generation", candidates: mapped });
-      return true;
+      return CANDIDATE_SLOT_STRATEGIES.every((strategy) =>
+        refreshedCurrentOnes.some(
+          (candidate) => candidate.candidate_strategy === strategy,
+        ),
+      );
     } catch (error) {
+      const generation = stateRef.current.generation;
       dispatch({
         type: "patch",
-        patch: { generation: { status: "idle", stage: 0 } },
+        patch: { generation: { ...generation, status: "idle", stage: 0 } },
       });
       throw error;
     }
-  }, []);
+    },
+    [],
+  );
 
   const previewCandidate = useCallback((candidateId: string | null) => {
     dispatch({ type: "preview_candidate", candidateId });

@@ -8,15 +8,25 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
-import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import ValidationError
+
+import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
+    BriefIntakeSynthesizeRequest,
     BriefPolishCandidate,
     BriefPolishRequest,
+    CandidateStrategy,
     CaseFileChatRequest,
     GenerationRequest,
 )
@@ -28,18 +38,12 @@ from casefile.agent_runtime.providers import (
     _validate_generated_descriptions,
 )
 from casefile.agent_runtime.tools import GenerationToolContext, validate_casefile_candidate
+from casefile.application.casefile_v1 import generation_candidate_summary
 from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -212,6 +216,29 @@ def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() ->
         "乙触发保护。",
     ]
     assert extract.candidate.creative_constraints[0].suggested_strength == "hard"
+
+
+def test_fake_intake_synthesis_emits_named_outline_stages() -> None:
+    result = FakeProvider().synthesize_intake(
+        BriefIntakeSynthesizeRequest(
+            task_run_id=3,
+            prompt_version="brief-intake-synthesize-v2",
+            input_data={
+                "source": {"content_text": "一名档案员发现一段不存在的时间。"},
+                "questions": [],
+            },
+            input_hash="c" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=2,
+            emit=lambda _event_type, _stage, _payload: None,
+        )
+    )
+
+    outline = [item.root for item in result.candidate.content_outline]
+    assert len(outline) == 3
+    assert all("：" in item for item in outline)
+    assert all(not item.startswith("阶段名称") for item in outline)
 
 
 def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
@@ -421,6 +448,45 @@ def test_fake_generation_populates_descriptions_with_the_draft() -> None:
 
     assert generated_objects
     assert all(item["description"].strip() for item in generated_objects)
+
+
+def test_fake_generation_keeps_strategy_candidates_distinct() -> None:
+    request = replace(
+        _request(api_key=None),
+        prompt_version="brief-to-draft-v5",
+        model_id="fake",
+        brief={
+            "creative_intent": "围绕一段失真的时间记录建立推理卷宗",
+            "reasoning_proposition": "三份可靠记录为何共同指向不存在的时间？",
+            "resolution_mode": "open",
+            "author_answer": None,
+            "author_anchors": [],
+            "creative_constraints": [],
+            "source_record_ids": [],
+        },
+    )
+
+    results = [
+        FakeProvider().generate(
+            replace(request, candidate_strategy=strategy),
+        )
+        for strategy in (
+            CandidateStrategy.STRUCTURE_FIRST,
+            CandidateStrategy.ATMOSPHERE_FIRST,
+            CandidateStrategy.REASONING_FIRST,
+        )
+    ]
+
+    assert len({result.candidate["title"] for result in results}) == 3
+    assert len(
+        {
+            generation_candidate["content_hash"]
+            for generation_candidate in (
+                generation_candidate_summary(result.candidate)
+                for result in results
+            )
+        }
+    ) == 3
 
 
 def test_provider_transport_errors_have_stable_failure_codes() -> None:

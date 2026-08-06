@@ -6,6 +6,7 @@ import {
   type BriefIntakeCandidateContent,
   type BriefIntakeView,
   type BriefVersionView,
+  type CandidateStrategy,
   type BriefView,
   type DraftCandidateView,
   type DraftView,
@@ -218,6 +219,8 @@ export async function startDraftGenerationTask(
   briefVersionId: number,
   draftRevision: number,
   provider: ProviderName,
+  candidateStrategy: CandidateStrategy = "balanced",
+  candidateStrategyAttempt = 1,
 ) {
   return apiRequest<TaskView>(`/projects/${projectId}/tasks/generate`, {
     actorId: LOCAL_ACTOR_ID,
@@ -226,6 +229,8 @@ export async function startDraftGenerationTask(
       brief_version_id: briefVersionId,
       expected_draft_revision: draftRevision,
       provider,
+      candidate_strategy: candidateStrategy,
+      candidate_strategy_attempt: candidateStrategyAttempt,
     },
   });
 }

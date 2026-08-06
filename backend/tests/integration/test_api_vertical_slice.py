@@ -11,6 +11,11 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
@@ -20,10 +25,6 @@ from casefile.agent_runtime.models import (
 )
 from casefile.api.app import create_app
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -338,6 +339,18 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert confirmed.status_code == 201
 
+        invalid_strategy = client.post(
+            f"/api/v1/projects/{project_id}/tasks/generate",
+            headers=_identity(actor_id),
+            json={
+                "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_revision": 1,
+                "provider": "deepseek",
+                "candidate_strategy": "not_a_strategy",
+            },
+        )
+        assert invalid_strategy.status_code == 422
+
         queued = client.post(
             f"/api/v1/projects/{project_id}/tasks/generate",
             headers=_identity(actor_id),
@@ -345,6 +358,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 "brief_version_id": confirmed.json()["brief_version_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
+                "candidate_strategy": "structure_first",
             },
         )
         assert queued.status_code == 202
@@ -362,6 +376,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert task.json()["failure"] is None
         assert task.json()["result_snapshot_id"] is None
         assert task.json()["result"]["title"]
+        assert task.json()["result"]["candidate_strategy"] == "structure_first"
+        assert task.json()["result"]["candidate_strategy_version"] == "candidate-strategy-v1"
 
         candidates = client.get(
             f"/api/v1/projects/{project_id}/draft-candidates",
@@ -370,6 +386,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert candidates.status_code == 200
         assert [candidate["task_run_id"] for candidate in candidates.json()] == [task_id]
         assert candidates.json()[0]["can_adopt"] is True
+        assert candidates.json()[0]["candidate_strategy"] == "structure_first"
+        assert candidates.json()[0]["candidate_strategy_label"] == "结构优先"
         empty_draft = client.get(
             f"/api/v1/projects/{project_id}/draft",
             headers=_identity(actor_id),

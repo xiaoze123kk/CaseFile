@@ -313,6 +313,13 @@ function buildFakeBackend() {
       attempt_count: 1,
       created_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
+      candidate_strategy: ([
+        "structure_first",
+        "atmosphere_first",
+        "reasoning_first",
+      ][index % 3]) as DraftCandidateView["candidate_strategy"],
+      candidate_strategy_version: "candidate-strategy-v1",
+      candidate_strategy_label: ["结构优先", "氛围优先", "推理优先"][index % 3],
       title: titles[index % titles.length],
       content_hash: `d${taskRunId}`,
       object_counts: {
@@ -328,6 +335,9 @@ function buildFakeBackend() {
     return {
       ...common,
       result: {
+        candidate_strategy: summary.candidate_strategy,
+        candidate_strategy_version: summary.candidate_strategy_version,
+        candidate_strategy_label: summary.candidate_strategy_label,
         title: summary.title,
         content_hash: summary.content_hash,
         object_counts: summary.object_counts,
@@ -773,11 +783,11 @@ describe("intake center", () => {
     await flush();
 
     expect(
-      screen.getByRole("heading", { name: "让三种创作策略同时摊开。" }),
+      screen.getByRole("heading", { name: "生成三份策略候选，展开比较。" }),
     ).toBeInTheDocument();
     expect(screen.getByText("候选卷尚空")).toBeInTheDocument();
     const generateCandidateActions = screen.getAllByRole("button", {
-      name: /生成三份候选/u,
+      name: /生成三份策略候选/u,
     });
     expect(generateCandidateActions).toHaveLength(2);
     fireEvent.click(generateCandidateActions[1]);

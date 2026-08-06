@@ -372,6 +372,7 @@ export function mapReviewToBriefContent(
 export function mapWorkbenchCandidateView(
   view: DraftCandidateView,
   base: WorkbenchCandidate,
+  differenceNote?: string,
 ): WorkbenchCandidate {
   const totalObjects = Object.values(view.object_counts).reduce(
     (sum, count) => sum + count,
@@ -381,13 +382,21 @@ export function mapWorkbenchCandidateView(
     ...base,
     id: `draft-${view.task_run_id}`,
     briefVersion: view.brief_version_no,
+    candidateStrategy: view.candidate_strategy,
+    focusLabel: view.candidate_strategy_label,
     title: view.title,
-    summary: `共 ${totalObjects} 个对象，已通过结构与引用校验。`,
+    summary: `共 ${totalObjects} 个对象，已通过结构与引用校验。${
+      differenceNote ? ` ${differenceNote}。` : ""
+    }`,
     reasoningQuestion:
       view.reasoning_questions[0] ?? base.reasoningQuestion,
     objectCounts: view.object_counts,
     constraintStatements: view.constraint_statements,
     strengths: ["已完成确定性结构与引用校验", "可作为工作台继续编辑的基础"],
-    tradeoffs: ["采用前需在工作台逐项核对", "后续修订会生成新的简报版本"],
+    tradeoffs: [
+      "采用前需在工作台逐项核对",
+      "后续修订会生成新的简报版本",
+      ...(differenceNote ? [differenceNote] : []),
+    ],
   };
 }

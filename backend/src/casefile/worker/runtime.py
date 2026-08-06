@@ -25,6 +25,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime import (
+    CANDIDATE_STRATEGY_VERSION,
     AgentProvider,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
@@ -34,6 +35,7 @@ from casefile.agent_runtime import (
     BriefIntakeSynthesizeResult,
     BriefPolishRequest,
     BriefPolishResult,
+    CandidateStrategy,
     CaseFileChatRequest,
     CaseFileChatResult,
     DeepSeekAgentsProvider,
@@ -463,6 +465,20 @@ class Worker:
             if _json_hash(frozen_brief) != task.input_hash:
                 raise RuntimeError("Frozen TaskRun Brief payload does not match its input hash")
             frozen_version = _required_object(task.input_jsonb, "version")
+            raw_strategy = task.input_jsonb.get(
+                "candidate_strategy",
+                CandidateStrategy.BALANCED.value,
+            )
+            try:
+                candidate_strategy = CandidateStrategy(raw_strategy)
+            except ValueError as error:
+                raise RuntimeError("Frozen candidate strategy is invalid") from error
+            candidate_strategy_version = task.input_jsonb.get(
+                "candidate_strategy_version",
+                CANDIDATE_STRATEGY_VERSION,
+            )
+            if candidate_strategy_version != CANDIDATE_STRATEGY_VERSION:
+                raise RuntimeError("Frozen candidate strategy version is invalid")
             return GenerationRequest(
                 task_run_id=task.id,
                 prompt_version=task.prompt_version,
@@ -486,6 +502,8 @@ class Worker:
                     task.id, event_type, stage, payload
                 ),
                 network_retries=_network_retries(task),
+                candidate_strategy=candidate_strategy,
+                candidate_strategy_version=candidate_strategy_version,
             )
 
     def _load_chat_request(
@@ -762,6 +780,23 @@ class Worker:
                 brief_version=brief_version,
             )
             summary = generation_candidate_summary(candidate)
+            raw_strategy = task.input_jsonb.get(
+                "candidate_strategy",
+                CandidateStrategy.BALANCED.value,
+            )
+            try:
+                candidate_strategy = CandidateStrategy(raw_strategy)
+            except ValueError as error:
+                raise RuntimeError("Frozen candidate strategy is invalid") from error
+            summary.update(
+                {
+                    "candidate_strategy": candidate_strategy.value,
+                    "candidate_strategy_version": task.input_jsonb.get(
+                        "candidate_strategy_version",
+                        CANDIDATE_STRATEGY_VERSION,
+                    ),
+                }
+            )
             now = datetime.now(UTC)
             attempt.status = "succeeded"
             attempt.candidate_jsonb = candidate

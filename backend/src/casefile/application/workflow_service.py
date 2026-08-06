@@ -8,12 +8,16 @@ from datetime import UTC, datetime
 from typing import Any
 
 import rfc8785
-from casefile_contracts import Brief as BriefContract
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from casefile.agent_runtime.credentials import encrypt_api_key
+from casefile.agent_runtime.models import (
+    CANDIDATE_STRATEGY_LABELS,
+    CANDIDATE_STRATEGY_VERSION,
+    CandidateStrategy,
+)
 from casefile.agent_runtime.prompt import AGENT_VERSION
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
@@ -56,6 +60,7 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile_contracts import Brief as BriefContract
 
 DEFAULT_PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.6-sol"
@@ -1099,8 +1104,25 @@ class WorkflowService:
         brief_version_id: int,
         expected_draft_revision: int,
         provider: str = DEFAULT_PROVIDER,
+        candidate_strategy: str = CandidateStrategy.BALANCED.value,
+        candidate_strategy_attempt: int = 1,
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
+        try:
+            strategy = CandidateStrategy(candidate_strategy)
+        except ValueError as error:
+            raise ApplicationError(
+                "unsupported_candidate_strategy",
+                "Unsupported candidate strategy",
+                status_code=422,
+                details={"candidate_strategy": candidate_strategy},
+            ) from error
+        if candidate_strategy_attempt not in {1, 2}:
+            raise ApplicationError(
+                "candidate_strategy_attempt_invalid",
+                "Candidate strategy retry is limited to one additional attempt",
+                status_code=422,
+            )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             if owned.draft.revision != expected_draft_revision:
@@ -1130,6 +1152,13 @@ class WorkflowService:
             content = _validate_brief(version.content_jsonb)
             self._validate_brief_sources(owned, content)
             _require_confirmed_atomics(content)
+            if strategy != CandidateStrategy.BALANCED:
+                self._ensure_candidate_strategy_available(
+                    owned,
+                    brief_version_id=version.id,
+                    candidate_strategy=strategy,
+                    candidate_strategy_attempt=candidate_strategy_attempt,
+                )
             setting = self._provider_setting(actor_user_id, provider)
             task = self._new_task(
                 owned,
@@ -1145,6 +1174,9 @@ class WorkflowService:
                     "casefile_id": owned.casefile.object_id,
                     "brief_public_id": brief.public_id,
                     "brief_version_no": version.version_no,
+                    "candidate_strategy": strategy.value,
+                    "candidate_strategy_version": CANDIDATE_STRATEGY_VERSION,
+                    "candidate_strategy_attempt": candidate_strategy_attempt,
                     "version": {
                         "version_id": owned.draft.version_id,
                         "version_no": owned.draft.version_no,
@@ -1155,6 +1187,44 @@ class WorkflowService:
             return self._queue_task(
                 task,
                 message="Brief → Draft 任务已进入队列",
+            )
+
+    def _ensure_candidate_strategy_available(
+        self,
+        owned: OwnedDraft,
+        *,
+        brief_version_id: int,
+        candidate_strategy: CandidateStrategy,
+        candidate_strategy_attempt: int,
+    ) -> None:
+        tasks = self.session.scalars(
+            select(TaskRun).where(
+                TaskRun.project_id == owned.project.id,
+                TaskRun.draft_id == owned.draft.id,
+                TaskRun.task_type == "brief_to_draft",
+                TaskRun.brief_version_id == brief_version_id,
+                TaskRun.input_draft_revision == owned.draft.revision,
+                TaskRun.status.in_(("queued", "running", "cancelling", "succeeded")),
+            )
+        )
+        for task in tasks:
+            raw_strategy = task.input_jsonb.get(
+                "candidate_strategy",
+                CandidateStrategy.BALANCED.value,
+            )
+            if raw_strategy != candidate_strategy.value:
+                continue
+            existing_attempt = int(task.input_jsonb.get("candidate_strategy_attempt", 1))
+            if existing_attempt < candidate_strategy_attempt:
+                continue
+            raise ApplicationError(
+                "candidate_strategy_exists",
+                f"{CANDIDATE_STRATEGY_LABELS[candidate_strategy]}候选已存在或正在生成",
+                status_code=409,
+                details={
+                    "candidate_strategy": candidate_strategy.value,
+                    "task_run_id": task.id,
+                },
             )
 
     def list_generation_candidates(

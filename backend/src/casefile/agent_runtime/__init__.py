@@ -1,6 +1,8 @@
 """Single-Agent Brief runtime with swappable model providers."""
 
 from casefile.agent_runtime.models import (
+    CANDIDATE_STRATEGY_LABELS,
+    CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
@@ -11,6 +13,7 @@ from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
     BriefPolishResult,
+    CandidateStrategy,
     CaseFileChatCandidate,
     CaseFileChatRequest,
     CaseFileChatResult,
@@ -39,10 +42,13 @@ __all__ = [
     "BriefPolishCandidate",
     "BriefPolishRequest",
     "BriefPolishResult",
+    "CANDIDATE_STRATEGY_LABELS",
+    "CANDIDATE_STRATEGY_VERSION",
     "CaseFileChatCandidate",
     "CaseFileChatRequest",
     "CaseFileChatResult",
     "CaseFileChatSuggestionCandidate",
+    "CandidateStrategy",
     "DeepSeekAgentsProvider",
     "FakeProvider",
     "GenerationRequest",

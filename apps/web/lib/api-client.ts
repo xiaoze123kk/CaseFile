@@ -287,12 +287,21 @@ export interface TaskFailure {
 }
 
 export interface GenerationCandidateSummary {
+  candidate_strategy: CandidateStrategy;
+  candidate_strategy_version: string;
+  candidate_strategy_label: string;
   title: string;
   content_hash: string;
   object_counts: Record<string, number>;
   reasoning_questions: string[];
   constraint_statements: string[];
 }
+
+export type CandidateStrategy =
+  | "balanced"
+  | "structure_first"
+  | "atmosphere_first"
+  | "reasoning_first";
 
 export interface TaskView {
   task_run_id: number;

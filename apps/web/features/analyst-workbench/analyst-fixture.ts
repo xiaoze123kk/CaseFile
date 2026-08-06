@@ -168,6 +168,11 @@ export type WorkbenchCandidateFocus = "structure" | "atmosphere" | "reasoning";
 export interface WorkbenchCandidate {
   id: string;
   briefVersion: number;
+  candidateStrategy?:
+    | "balanced"
+    | "structure_first"
+    | "atmosphere_first"
+    | "reasoning_first";
   focus: WorkbenchCandidateFocus;
   focusLabel: string;
   title: string;
