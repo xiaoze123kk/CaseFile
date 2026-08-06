@@ -1329,7 +1329,7 @@
   right: 0;
   bottom: 0;
   display: grid;
-  width: 760px;
+  width: 506px;
   max-width: 100vw;
   grid-template-rows: 58px minmax(0, 1fr) auto auto;
   color: #e1ddd4;
