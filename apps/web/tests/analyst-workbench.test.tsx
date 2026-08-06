@@ -187,6 +187,23 @@ describe("analyst workbench prototype", () => {
     expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
   });
 
+  it("renders the dossier editor with object-derived fields", () => {
+    renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /卷宗编辑器/ }));
+    expect(screen.getByText("参与人物")).toBeInTheDocument();
+    expect(screen.getByText("关联证据")).toBeInTheDocument();
+    expect(screen.getByText("候选假设")).toBeInTheDocument();
+    expect(screen.getAllByText("引用来源").length).toBeGreaterThan(0);
+    // 默认事件 EV-1825 的对象推导字段值
+    expect(screen.getByDisplayValue("秦彻、唐默")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue(/07 号门禁记录、海关电台录音 A-13/),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("内部接应者")).toBeInTheDocument();
+    expect(screen.getByText(/引用 02/)).toBeInTheDocument();
+  });
+
   it("opens the agent dialog and answers a preset instruction from the seed", async () => {
     renderWorkbench();
 

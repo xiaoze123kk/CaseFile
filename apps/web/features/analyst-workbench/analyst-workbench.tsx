@@ -602,6 +602,30 @@ function DossierView({
   selectedEventId: string;
 }) {
   const event = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
+  const objectById = new Map(
+    seed.caseObjects.map((object) => [object.id, object]),
+  );
+  const relatedObjects = event.relatedObjectIds
+    .map((id) => objectById.get(id))
+    .filter((object) => object !== undefined);
+  const people = relatedObjects
+    .filter((object) => object.kind === "person")
+    .map((object) => object.label);
+  const locations = relatedObjects
+    .filter((object) => object.kind === "location")
+    .map((object) => object.label);
+  const evidence = relatedObjects
+    .filter((object) => object.kind === "evidence")
+    .map((object) => object.label);
+  const hypotheses = relatedObjects
+    .filter((object) => object.kind === "hypothesis")
+    .map((object) => object.label);
+  const sources = seed.sourceItems.filter(
+    (source) => source.eventId === event.id,
+  );
+  const issues = seed.validationIssues.filter((issue) =>
+    event.issueIds.includes(issue.id),
+  );
   return (
     <section className={styles.dossierView} aria-labelledby="dossier-heading">
       <header className={styles.sectionHeader}>
@@ -613,12 +637,18 @@ function DossierView({
         <div className={styles.sheetFields}>
           <label><span>发生时间</span><input defaultValue={event.time} /></label>
           <label><span>发生地点</span><input defaultValue={event.location} /></label>
-          <label className={styles.sheetWide}><span>事件摘要</span><textarea defaultValue={event.summary} rows={4} /></label>
-          <label className={styles.sheetWide}><span>可见角色</span><input defaultValue={seed.caseMeta.dossierVisibleRoles} /></label>
+          <label className={styles.sheetWide}><span>事件摘要</span><textarea defaultValue={event.summary} rows={5} /></label>
+          <label><span>参与人物</span><input defaultValue={people.join("、")} /></label>
+          <label><span>关联地点</span><input defaultValue={locations.join("、")} /></label>
+          <label><span>关联证据</span><input defaultValue={evidence.join("、")} /></label>
+          <label><span>候选假设</span><input defaultValue={hypotheses.join("、")} /></label>
+          <label className={styles.sheetWide}><span>引用来源</span><input defaultValue={sources.map((source) => source.label).join("、")} /></label>
         </div>
         <aside className={styles.marginNotes}>
-          <span>引用 02</span>
-          <p>门禁记录已校验</p>
+          <span>引用 {String(sources.length).padStart(2, "0")}</span>
+          {issues.map((issue) => (
+            <p key={issue.id}>{issue.severity} · {issue.title}</p>
+          ))}
           <p>知识状态存在冲突</p>
         </aside>
       </div>

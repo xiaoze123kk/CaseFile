@@ -848,16 +848,32 @@
 .mapMarker[aria-pressed="true"] span { color: #f5f0e6; border-color: var(--chrome); background: var(--chrome); }
 .viewNote { margin: 0; padding: 10px 14px; color: var(--ink-muted); border-top: 1px solid var(--rule); background: var(--paper-high); font-size: 10px; line-height: 1.6; }
 
-.dossierSheet { position: relative; display: grid; width: min(780px, calc(100% - 48px)); min-height: 430px; grid-template-columns: 84px minmax(0, 1fr) 150px; align-self: start; justify-self: center; margin: 24px; border: 1px solid rgba(41, 44, 44, 0.28); background: var(--paper-high); box-shadow: 10px 12px 0 rgba(41, 44, 44, 0.07); }
+.dossierSheet {
+  position: relative;
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  grid-template-columns: 84px minmax(0, 1fr) 200px;
+  align-self: stretch;
+  justify-self: stretch;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid rgba(41, 44, 44, 0.28);
+  background: var(--paper-high);
+  box-shadow: none;
+}
 .sheetIndex { display: flex; align-items: center; flex-direction: column; padding-top: 30px; color: var(--primary-strong); border-right: 1px solid var(--rule); font-family: "Cascadia Mono", Consolas, monospace; }
 .sheetIndex span { font-size: 11px; }
 .sheetIndex strong { margin-top: 6px; font-size: 22px; font-weight: 500; writing-mode: vertical-rl; }
-.sheetFields { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 16px; padding: 28px 24px; }
-.sheetFields label { display: flex; flex-direction: column; gap: 6px; color: var(--ink-muted); font-size: 10px; }
+.sheetFields { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 20px 28px; padding: 34px 30px; }
+.sheetFields label { display: flex; flex-direction: column; gap: 8px; color: var(--ink-muted); font-size: 10px; }
 .sheetFields input,
-.sheetFields textarea { width: 100%; padding: 9px 10px; color: var(--ink); border: 0; border-bottom: 1px solid rgba(41, 44, 44, 0.34); border-radius: 0; background: rgba(234, 231, 223, 0.72); font-size: 11px; line-height: 1.6; resize: vertical; }
+.sheetFields textarea { width: 100%; padding: 10px 12px; color: var(--ink); border: 0; border-bottom: 1px solid rgba(41, 44, 44, 0.34); border-radius: 0; background: rgba(234, 231, 223, 0.72); font-size: 11.5px; line-height: 1.6; resize: vertical; }
+.sheetFields input:focus,
+.sheetFields textarea:focus { outline: 2px solid rgba(199, 139, 60, 0.45); outline-offset: 1px; }
 .sheetWide { grid-column: 1 / -1; }
-.marginNotes { padding: 27px 14px; border-left: 1px solid var(--rule); background: rgba(234, 231, 223, 0.72); }
+.marginNotes { padding: 30px 16px; border-left: 1px solid var(--rule); background: rgba(234, 231, 223, 0.72); }
 .marginNotes span { color: var(--issue-strong); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; }
 .marginNotes p { margin: 14px 0 0; padding-top: 9px; color: var(--ink-muted); border-top: 1px solid var(--rule); font-family: "STSong", "SimSun", serif; font-size: 11px; line-height: 1.5; }
 
