@@ -1329,7 +1329,8 @@
   right: 0;
   bottom: 0;
   display: grid;
-  width: 380px;
+  width: 760px;
+  max-width: 100vw;
   grid-template-rows: 58px minmax(0, 1fr) auto auto;
   color: #e1ddd4;
   border-left: 1px solid var(--rule-dark);
