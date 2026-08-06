@@ -59,11 +59,22 @@
 - 修复：`mapBriefToCandidateContent` 统一剥离/补回 `constraint_` 前缀，category 从预设枚举推导（未知类别归入 `other`）；`mapCandidateContentToBrief` 兼容 `constraint_` 前缀匹配预设行，避免服务端预设约束在 demo 编辑器里变成重复的未知行。
 - 验证：真实 API 复现（裸 key → pattern mismatch）→ 修复后含 `constraint_no_magic`/`other` 的手动候选创建成功；新增映射往返回归测试 3 项。
 
+## 追加修复：审阅冻结按钮灰色（无法确认并冻结）
+
+- 现象：进入审阅页后"确认并冻结"按钮始终为灰色，无法冻结。
+- 根因：后端 adopt 投影（`project_candidate_to_brief`）只把候选约束写成 `boundary_text` 文本行（"必须：…/偏好：…"），`creative_constraints` 恒为空数组；demo 的 `mapBriefContentToReview` 只映射服务端原子项，于是"创作边界原文"非空但原子约束为空，`atomicReviewComplete` 门禁失败。且服务端 `confirm_brief` 的 `_require_confirmed_atomics` 同样要求 boundary 非空必须有原子约束，直接冻结会被 422 拒绝。
+- 修复：
+  - `mapBriefContentToReview` 在服务端无原子约束时把边界原文行解析为原子项（去掉 `必须：`/`偏好：` 前缀、推断强度），恢复 fixture 时代"进入审阅即可冻结"的交互；
+  - 写回（`mapReviewToBriefContent`）把前端可读 id（`constraint-agent-N` 等含连字符）规范化为契约格式 `(anchor|constraint)_[a-z0-9_]+`，否则保存/冻结被 `BriefContract` pattern 校验拒绝；
+  - `freezeReview` 冻结前先执行保存，让解析出的原子项落库后再确认冻结。
+- 验证：真实 API 复现——PUT /brief（含 `constraint_agent_N` 原子项）成功、POST /brief/confirm 成功；新增映射测试 2 项（边界行解析 + id 规范化）；全套 92 项测试、typecheck、ESLint 通过。
+
 ## 验收状态
 
 - [x] 完成 API 适配层与映射层，五阶段全部走真实后端。
 - [x] 完成左下角设置入口与共享 SettingsDialog 复用。
 - [x] 更新隔离与主流程测试，mock API 适配层下全流程通过。
-- [x] 更新 `AGENT.md` 演示约束与组件职责；前端 typecheck、ESLint、85 项测试与生产构建全部通过。
+- [x] 更新 `AGENT.md` 演示约束与组件职责；前端 typecheck、ESLint、测试与生产构建全部通过。
 - [x] Provider 认证失败自动回退到另一个已配置模型服务。
+- [x] 审阅页可确认并冻结：边界原文自动解析为原子项，冻结前自动保存。
 - [ ] 浏览器闭环：完整建案→冻结→三份候选→采用，刷新重置为新项目（需要本地后端与 worker 运行，留待人工验收）。

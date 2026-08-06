@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { createEmptyBrief, createConstraints } from "@/features/intake-prototype/intake-prototype-model";
 import {
+  canFreezeBriefReview,
+  createEmptyBrief,
+  createConstraints,
+} from "@/features/intake-prototype/intake-prototype-model";
+import {
+  mapBriefContentToReview,
   mapBriefToCandidateContent,
   mapCandidateContentToBrief,
+  mapReviewToBriefContent,
 } from "@/features/demo-prototype/demo-intake-mapping";
 
 const CONSTRAINT_KEY_PATTERN = /^constraint_[a-z0-9][a-z0-9_]{0,51}$/u;
@@ -113,5 +119,110 @@ describe("demo intake candidate mapping", () => {
 
     expect(content.constraints).toEqual([]);
     expect(createConstraints().length).toBe(6);
+  });
+
+  it("parses boundary text into atomic constraints when the server has none", () => {
+    const content = {
+      source_record_ids: [1],
+      creative_intent: "创作意图",
+      reasoning_proposition: "核心命题",
+      resolution_mode: "agent_proposed" as const,
+      author_answer: null,
+      author_anchors: [],
+      boundary_text: "必须：三份记录互相独立\n偏好：氛围克制\n必须：不使用超自然解释",
+      creative_constraints: [],
+      core_selling_points: ["卖点"],
+      content_outline: ["骨架"],
+      scope_estimate: null,
+      risk_notes: [],
+    };
+
+    const review = mapBriefContentToReview(content, []);
+    expect(review.boundaryText).toBe(content.boundary_text);
+    expect(review.creativeConstraints).toEqual([
+      { id: "constraint-agent-1", statement: "三份记录互相独立", strength: "hard", origin: "agent" },
+      { id: "constraint-agent-2", statement: "氛围克制", strength: "soft", origin: "agent" },
+      { id: "constraint-agent-3", statement: "不使用超自然解释", strength: "hard", origin: "agent" },
+    ]);
+    expect(canFreezeBriefReview(review)).toBe(true);
+  });
+
+  it("prefers server atomic constraints over parsing boundary text", () => {
+    const content = {
+      source_record_ids: [1],
+      creative_intent: "创作意图",
+      reasoning_proposition: "核心命题",
+      resolution_mode: "agent_proposed" as const,
+      author_answer: null,
+      author_anchors: [],
+      boundary_text: "必须：三份记录互相独立",
+      creative_constraints: [
+        {
+          constraint_id: "constraint_1",
+          statement: "Agent 拆解出的原子项",
+          strength: "hard" as const,
+        },
+      ],
+      core_selling_points: [],
+      content_outline: [],
+      scope_estimate: null,
+      risk_notes: [],
+    };
+
+    const review = mapBriefContentToReview(content, []);
+    expect(review.creativeConstraints).toEqual([
+      { id: "constraint_1", statement: "Agent 拆解出的原子项", strength: "hard", origin: "agent" },
+    ]);
+    expect(canFreezeBriefReview(review)).toBe(true);
+  });
+
+  it("normalizes hyphenated atomic ids into contract form on write", () => {
+    const review = mapBriefContentToReview(
+      {
+        source_record_ids: [],
+        creative_intent: "创作意图",
+        reasoning_proposition: "核心命题",
+        resolution_mode: "author_anchored" as const,
+        author_answer: "真凶是档案修复师自己。",
+        author_anchors: [],
+        boundary_text: "必须：三份记录互相独立",
+        creative_constraints: [],
+        core_selling_points: [],
+        content_outline: [],
+        scope_estimate: null,
+        risk_notes: [],
+      },
+      [],
+    );
+    review.authorAnchors = [
+      { id: "anchor-agent-1", statement: "真凶是档案修复师自己。", origin: "agent" },
+      { id: "anchor-manual-2", statement: "封存前必须揭晓。", origin: "manual" },
+    ];
+    review.creativeConstraints = [
+      { id: "constraint-agent-1", statement: "三份记录互相独立", strength: "hard", origin: "agent" },
+      { id: "constraint-manual-2", statement: "氛围克制", strength: "soft", origin: "manual" },
+      { id: "constraint_1", statement: "服务端既有原子项", strength: "hard", origin: "agent" },
+    ];
+
+    const brief = createEmptyBrief("概念");
+    const content = mapReviewToBriefContent(review, brief, {
+      source_record_ids: [],
+    } as never);
+
+    const idPattern = /^(anchor|constraint)_[a-z0-9][a-z0-9_]{0,55}$/u;
+    for (const anchor of content.author_anchors ?? []) {
+      expect(idPattern.test(anchor.anchor_id)).toBe(true);
+    }
+    for (const constraint of content.creative_constraints ?? []) {
+      expect(idPattern.test(constraint.constraint_id)).toBe(true);
+    }
+    const ids = (content.creative_constraints ?? []).map(
+      (item) => item.constraint_id,
+    );
+    expect(ids).toEqual([
+      "constraint_agent_1",
+      "constraint_manual_2",
+      "constraint_1",
+    ]);
   });
 });

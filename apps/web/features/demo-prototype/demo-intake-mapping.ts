@@ -16,6 +16,7 @@ import type {
   PrototypeBriefReview,
   PrototypeCandidate,
   PrototypeConstraint,
+  PrototypeConstraintReview,
   PrototypeQuestion,
 } from "@/features/intake-prototype/intake-prototype-model";
 import {
@@ -82,6 +83,20 @@ function splitLines(value: string): string[] {
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+// 服务端 adopt 投影只产出 boundary_text（"必须：…"/"偏好：…" 行），不产出
+// creative_constraints；这里把边界原文解析为原子约束，恢复 fixture 时代
+// "进入审阅即可冻结" 的交互，原子项内容与审阅页展示的边界原文一致。
+function boundaryLinesToConstraints(
+  boundaryText: string,
+): PrototypeConstraintReview[] {
+  return splitLines(boundaryText).map((line, index) => ({
+    id: `constraint-agent-${index + 1}`,
+    statement: line.replace(/^(必须|偏好)：/u, "").trim(),
+    strength: line.startsWith("偏好：") ? "soft" : "hard",
+    origin: "agent" as const,
+  }));
 }
 
 export function mapCandidateContentToBrief(
@@ -269,7 +284,8 @@ export function mapBriefContentToReview(
     statement: anchor.statement,
     origin: "agent" as const,
   }));
-  const creativeConstraints = (briefContent?.creative_constraints ?? []).map(
+  const boundaryText = briefContent?.boundary_text ?? "";
+  const serverConstraints = (briefContent?.creative_constraints ?? []).map(
     (constraint) => ({
       id: constraint.constraint_id,
       statement: constraint.statement,
@@ -277,18 +293,36 @@ export function mapBriefContentToReview(
       origin: "agent" as const,
     }),
   );
+  const creativeConstraints =
+    serverConstraints.length > 0
+      ? serverConstraints
+      : boundaryLinesToConstraints(boundaryText);
   return {
     creativeIntent: briefContent?.creative_intent ?? "",
     reasoningProposition: briefContent?.reasoning_proposition ?? "",
     resolutionMode: briefContent?.resolution_mode ?? "agent_proposed",
     authorAnswer: briefContent?.author_answer ?? "",
-    boundaryText: briefContent?.boundary_text ?? "",
+    boundaryText,
     authorAnchors,
     creativeConstraints,
     pendingDecisions,
     dirty: false,
     saved: true,
   };
+}
+
+// 契约要求原子 id 匹配 ^(anchor|constraint)_[a-z0-9_]+$（无连字符）；
+// 前端拆解/人工新增使用 anchor-agent-N 一类可读 id，写回前统一规范化。
+function atomicContractId(
+  raw: string,
+  kind: "anchor" | "constraint",
+): string {
+  const body = raw
+    .replace(new RegExp(`^${kind}[-_]`, "u"), "")
+    .replace(/[^a-z0-9_]/gu, "_")
+    .replace(/^_+|_+$/gu, "")
+    .slice(0, 48);
+  return `${kind}_${body || "item"}`;
 }
 
 export function mapReviewToBriefContent(
@@ -313,7 +347,7 @@ export function mapReviewToBriefContent(
     author_anchors: authorAnswer
       ? review.authorAnchors
           .map(({ id, statement }) => ({
-            anchor_id: id,
+            anchor_id: atomicContractId(id, "anchor"),
             statement: statement.trim(),
           }))
           .filter((anchor) => Boolean(anchor.statement))
@@ -322,7 +356,7 @@ export function mapReviewToBriefContent(
     creative_constraints: boundaryText
       ? review.creativeConstraints
           .map(({ id, statement, strength }) => ({
-            constraint_id: id,
+            constraint_id: atomicContractId(id, "constraint"),
             statement: statement.trim(),
             strength,
           }))

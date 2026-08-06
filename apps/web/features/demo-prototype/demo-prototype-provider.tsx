@@ -658,6 +658,9 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
     if (!current.review || !canFreezeBriefReview(current.review)) return false;
     const projectId = projectIdRef.current;
     if (projectId === null) return false;
+    // adopt 投影只产出边界原文、不产出原子约束；冻结前先持久化审阅，
+    // 让服务端拿到原子项并通过 brief_creative_constraints_required 门禁。
+    await saveReview();
     const brief = briefRef.current ?? (await fetchDemoBrief(projectId));
     const version = await confirmDemoBrief(projectId, brief.draft_revision);
     briefRef.current = await fetchDemoBrief(projectId);
@@ -670,7 +673,7 @@ export function DemoPrototypeProvider({ children }: { children: ReactNode }) {
       },
     });
     return true;
-  }, []);
+  }, [saveReview]);
 
   const generateCandidates = useCallback(async () => {
     const current = stateRef.current;
