@@ -47,6 +47,7 @@ import {
   fetchCaseDraft,
   fetchDraftCandidates,
   fetchCaseIntake,
+  isBriefIntakeRevisionConflict,
   persistCaseSource,
   runTaskWithProviderFallback,
   saveBriefCandidate,
@@ -432,17 +433,43 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const startWithFreshIntakeRevision = useCallback(
+    async <T,>(operation: (revision: number) => Promise<T>): Promise<T> => {
+      const projectId = projectIdRef.current;
+      if (projectId === null) {
+        throw new CaseSessionError("当前会话尚未建案。");
+      }
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const fresh = await fetchCaseIntake(projectId);
+        intakeRef.current = fresh;
+        try {
+          return await operation(fresh.revision);
+        } catch (error) {
+          if (!isBriefIntakeRevisionConflict(error)) throw error;
+          if (attempt === 1) {
+            throw new CaseSessionError(
+              "建案内容刚刚发生更新，已同步最新版本，请再试一次。",
+              "brief_intake_revision_conflict",
+            );
+          }
+        }
+      }
+      throw new CaseSessionError("建案版本同步失败，请再试一次。");
+    },
+    [],
+  );
+
   const requestQuestions = useCallback(async (forceGeneration: boolean) => {
     const current = stateRef.current;
     let intake = await ensureProjectAndSource(current.sourceText);
     if (forceGeneration || intake.questions.length === 0) {
       await runTaskWithProviderFallback(async (provider) => {
-        // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
-        const fresh = await fetchCaseIntake(projectIdRef.current!);
-        const task = await startQuestionsTask(
-          projectIdRef.current!,
-          fresh.revision,
-          provider,
+        const task = await startWithFreshIntakeRevision((revision) =>
+          startQuestionsTask(
+            projectIdRef.current!,
+            revision,
+            provider,
+          ),
         );
         return waitForTask(projectIdRef.current!, task.task_run_id);
       });
@@ -459,7 +486,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         answers: mapped.answers,
       },
     });
-  }, []);
+  }, [startWithFreshIntakeRevision]);
 
   const continueToQuestions = useCallback(
     () => requestQuestions(false),
@@ -499,12 +526,12 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       intakeRef.current = intake;
     }
     await runTaskWithProviderFallback(async (provider) => {
-      // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
-      const fresh = await fetchCaseIntake(projectIdRef.current!);
-      const task = await startSynthesizeTask(
-        projectIdRef.current!,
-        fresh.revision,
-        provider,
+      const task = await startWithFreshIntakeRevision((revision) =>
+        startSynthesizeTask(
+          projectIdRef.current!,
+          revision,
+          provider,
+        ),
       );
       return waitForTask(projectIdRef.current!, task.task_run_id);
     });
@@ -519,7 +546,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         brief: mapped.brief ?? current.brief,
       },
     });
-  }, []);
+  }, [startWithFreshIntakeRevision]);
 
   const createManualBrief = useCallback(async () => {
     const current = stateRef.current;

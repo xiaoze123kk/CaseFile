@@ -738,14 +738,7 @@
   box-shadow: 0 7px 18px rgba(197, 43, 13, 0.18);
 }
 
-.backAction {
-  color: var(--ink-muted);
-  border-color: transparent !important;
-  background: transparent !important;
-}
-
-.secondaryAction:hover,
-.backAction:hover {
+.secondaryAction:hover {
   color: var(--red);
   border-color: var(--red-line) !important;
 }

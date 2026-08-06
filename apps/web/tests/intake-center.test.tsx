@@ -76,6 +76,7 @@ function buildFakeBackend() {
   const taskProviders = new Map<number, string>();
   let configuredProviders = ["openai"];
   let failOpenaiAuth = false;
+  let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
   const adoptionDraftRevisions: number[] = [];
 
@@ -376,6 +377,13 @@ function buildFakeBackend() {
     );
   }
 
+  function isRevisionConflict(error: unknown): boolean {
+    return (
+      error instanceof CaseSessionError &&
+      error.failureCode === "brief_intake_revision_conflict"
+    );
+  }
+
   return {
     CaseSessionError,
     setConfiguredProviders: (providers: string[]) => {
@@ -384,10 +392,14 @@ function buildFakeBackend() {
     setFailOpenaiAuth: (value: boolean) => {
       failOpenaiAuth = value;
     },
+    setFailNextQuestionRevision: (value: boolean) => {
+      failNextQuestionRevision = value;
+    },
     getGenerationDraftRevisions: () => generationDraftRevisions,
     getAdoptionDraftRevisions: () => adoptionDraftRevisions,
     listConfiguredProviders: async () => configuredProviders,
     isProviderAuthFailure: isAuthFailure,
+    isBriefIntakeRevisionConflict: isRevisionConflict,
     runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => {
       let lastError: unknown = null;
       for (const provider of configuredProviders) {
@@ -433,6 +445,14 @@ function buildFakeBackend() {
       expectedRevision: number,
       provider: string,
     ) => {
+      if (failNextQuestionRevision) {
+        failNextQuestionRevision = false;
+        revision += 1;
+        throw new CaseSessionError(
+          "Brief Intake revision is stale",
+          "brief_intake_revision_conflict",
+        );
+      }
       // 与后端一致：任务创建校验并推进 intake revision。
       if (expectedRevision !== revision) {
         throw new Error("Brief Intake revision is stale");
@@ -637,6 +657,7 @@ afterEach(() => {
   routerPush.mockReset();
   fake.backend.setConfiguredProviders(["openai"]);
   fake.backend.setFailOpenaiAuth(false);
+  fake.backend.setFailNextQuestionRevision(false);
 });
 
 describe("intake center", () => {
@@ -696,6 +717,10 @@ describe("intake center", () => {
     expect(
       screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
     ).toBeInTheDocument();
+    const returnToOriginal = screen.getByRole("button", {
+      name: "← 返回原稿",
+    });
+    expect(returnToOriginal.closest("header")).not.toBeNull();
     const generateBrief = screen.getByRole("button", {
       name: /形成创作简报/u,
     });
@@ -858,6 +883,25 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("必须回答")).toHaveLength(1);
     expect(screen.getAllByText("可以暂缓")).toHaveLength(3);
+  });
+
+  it("refreshes and retries when the intake revision changes during question creation", async () => {
+    fake.backend.setFailNextQuestionRevision(true);
+    renderIntake();
+
+    fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    expect(
+      screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("玩家最终必须回答哪一个问题？"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Brief Intake revision is stale"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the official intake on the real backend without browser persistence", () => {

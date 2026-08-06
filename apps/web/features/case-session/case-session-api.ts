@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ApiError,
   apiRequest,
   type BriefContent,
   type BriefIntakeCandidateContent,
@@ -64,6 +65,16 @@ export function isProviderAuthFailure(error: unknown): boolean {
   return (
     error instanceof CaseSessionError &&
     error.failureCode === "provider_authentication_failed"
+  );
+}
+
+/** 判断写入是否因 Brief Intake 乐观并发版本过期而被拒绝。 */
+export function isBriefIntakeRevisionConflict(error: unknown): boolean {
+  return (
+    (error instanceof ApiError &&
+      error.body.code === "brief_intake_revision_conflict") ||
+    (error instanceof CaseSessionError &&
+      error.failureCode === "brief_intake_revision_conflict")
   );
 }
 

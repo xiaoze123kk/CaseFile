@@ -2,13 +2,25 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CaseSessionError,
+  isBriefIntakeRevisionConflict,
   isProviderAuthFailure,
   runTaskWithProviderFallback,
 } from "@/features/case-session/case-session-api";
 
-const { apiRequestMock } = vi.hoisted(() => ({ apiRequestMock: vi.fn() }));
+const { apiRequestMock, ApiErrorMock } = vi.hoisted(() => ({
+  apiRequestMock: vi.fn(),
+  ApiErrorMock: class extends Error {
+    constructor(
+      readonly status: number,
+      readonly body: { code: string; message: string },
+    ) {
+      super(body.message);
+    }
+  },
+}));
 
 vi.mock("@/lib/api-client", () => ({
+  ApiError: ApiErrorMock,
   apiRequest: apiRequestMock,
 }));
 
@@ -93,5 +105,24 @@ describe("case session provider fallback", () => {
       isProviderAuthFailure(new CaseSessionError("候选结构校验失败", "candidate_validation_failed")),
     ).toBe(false);
     expect(isProviderAuthFailure(new Error("other"))).toBe(false);
+  });
+
+  it("classifies Brief Intake revision conflicts without matching other errors", () => {
+    expect(
+      isBriefIntakeRevisionConflict(
+        new ApiErrorMock(409, {
+          code: "brief_intake_revision_conflict",
+          message: "Brief Intake revision is stale",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isBriefIntakeRevisionConflict(
+        new ApiErrorMock(409, {
+          code: "resource_conflict",
+          message: "Resource is stale",
+        }),
+      ),
+    ).toBe(false);
   });
 });

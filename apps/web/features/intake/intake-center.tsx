@@ -209,9 +209,12 @@ export function IntakeCenter() {
   const questionsPending = questionGenerationMode !== null;
   const currentCandidate =
     candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
-  const hardQuestionsResolved = state.questions
-    .filter((question) => question.required)
-    .every((question) => {
+  const requiredQuestions = state.questions.filter(
+    (question) => question.required,
+  );
+  const hardQuestionsResolved =
+    requiredQuestions.length > 0 &&
+    requiredQuestions.every((question) => {
       const answer = answers[question.key];
       return Boolean(answer?.text.trim() && !answer.pending);
     });
@@ -890,6 +893,14 @@ export function IntakeCenter() {
                 <div>
                   <small>第 2 步 / 验证方向</small>
                   <h1 id="questions-step-title">只问会改变方向的问题。</h1>
+                  <button
+                    className={stageStyles.headerBackAction}
+                    disabled={questionsPending}
+                    onClick={() => setStep("idea")}
+                    type="button"
+                  >
+                    ← 返回原稿
+                  </button>
                 </div>
                 <p>
                   首轮最多两问，且最多一道硬问题。回答后仍可继续补充可选追问，不会改写已有判断。
@@ -1025,14 +1036,6 @@ export function IntakeCenter() {
               ) : null}
 
               <footer className={stageStyles.stepActions}>
-                <button
-                  className={stageStyles.backAction}
-                  disabled={questionsPending}
-                  onClick={() => setStep("idea")}
-                  type="button"
-                >
-                  ← 返回原稿
-                </button>
                 <div>
                   <button
                     className={stageStyles.secondaryAction}
