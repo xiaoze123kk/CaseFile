@@ -123,8 +123,8 @@
 | `apps/web/app/layout.tsx`、`app/providers.tsx`、`app/globals.css` | App Router 根布局、真实 Workflow Provider、React Query Provider，以及正式模式“数字档案纸”的全局基础样式；演示原型视觉只落在自身 CSS Module。 |
 | `apps/web/app/page.tsx`、`app/brief/page.tsx`、`app/workbench/page.tsx` | 真实原稿建案/Agent 润色审阅、Brief 原子确认/生成和 v1 工作台路由壳。 |
 | `apps/web/app/demo/` | 分析师工作台与建案中心的独立演示路由壳；`/demo/intake` 挂载五阶段建案原型，`/demo` 挂载种子驱动工作台，旧演示子路径只负责重定向到 `/demo`；演示路由不得导入 workflow-store 或使用浏览器存储。 |
-| `apps/web/components/app-shell.tsx`、`components/archive-shell.tsx`、`components/demo-archive-shell.tsx` | 按路由选择真实或演示产品壳；真实壳负责项目、Provider 和工作流导航，演示壳按路径标记两类视觉边界，在共同祖先挂载 `DemoPrototypeProvider` 以支持不刷新的 `/demo/intake` ⇄ `/demo` 数据接力，并在左下角提供模型服务设置入口（复用共享 `SettingsDialog`）。 |
-| `apps/web/components/demo-settings-entry.module.css` | 演示壳左下角模型服务设置按钮的局部样式；与工作台石墨纸/建案中心档案纸视觉保持中性隔离。 |
+| `apps/web/components/app-shell.tsx`、`components/archive-shell.tsx`、`components/demo-archive-shell.tsx` | 按路由选择真实或演示产品壳；真实壳负责项目、Provider 和工作流导航，演示壳按路径标记两类视觉边界，在共同祖先挂载 `DemoPrototypeProvider` 以支持不刷新的 `/demo/intake` ⇄ `/demo` 数据接力，并在左上角 CaseFile 品牌右侧提供模型服务设置入口（复用共享 `SettingsDialog`）。 |
+| `apps/web/components/demo-settings-entry.module.css` | 演示壳左上角、CaseFile 品牌右侧模型服务设置按钮的局部样式；与工作台石墨纸/建案中心档案纸视觉保持中性隔离。 |
 | `apps/web/public/casefile-brand.png` | 用户确认并按导航栏尺寸优化的 CaseFile 品牌位图；由正式壳、`/demo/intake` 和 `/demo` 分析师工作台的品牌容器居中裁切展示。 |
 | `apps/web/public/intake-pencil-dossier.svg` | 正式 A 路径与 `/demo/intake` 共用的低对比铅笔卷宗底纹；复刻评审图中的叠纸、回形针、证据夹、印章与红色线索路径，只承担背景氛围，不承载可交互信息。 |
 | `apps/web/components/archive-ui.tsx` | 无 Store 依赖的 Case Spine、文档头、面板头、状态徽记等全站设计系统组件。 |

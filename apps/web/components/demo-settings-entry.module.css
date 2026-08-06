@@ -1,7 +1,7 @@
 .settingsEntry {
   position: fixed;
-  left: 16px;
-  bottom: 16px;
+  top: 11px;
+  left: 258px;
   z-index: 40;
   display: flex;
   align-items: center;
@@ -15,6 +15,10 @@
   font: inherit;
   cursor: pointer;
   text-align: left;
+}
+
+.settingsEntry[data-demo-surface="intake"] {
+  left: 294px;
 }
 
 .settingsEntry:hover {
@@ -48,4 +52,13 @@
 .settingsEntry small {
   font-size: 11px;
   opacity: 0.66;
+}
+
+@media (max-width: 780px) {
+  .settingsEntry,
+  .settingsEntry[data-demo-surface="intake"] {
+    top: 12px;
+    right: 12px;
+    left: auto;
+  }
 }

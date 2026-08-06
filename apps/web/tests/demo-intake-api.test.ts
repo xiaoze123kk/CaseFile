@@ -80,7 +80,7 @@ describe("demo intake provider fallback", () => {
 
     await expect(
       runTaskWithProviderFallback(async () => "unused"),
-    ).rejects.toThrow("请先在左下角设置入口配置模型服务。");
+    ).rejects.toThrow("请先在左上角设置入口配置模型服务。");
   });
 
   it("classifies only authentication failures as auth failures", () => {

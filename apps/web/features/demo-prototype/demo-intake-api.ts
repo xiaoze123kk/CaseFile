@@ -74,7 +74,7 @@ export async function runTaskWithProviderFallback<T>(
 ): Promise<{ provider: ProviderName; result: T }> {
   const providers = await listConfiguredProviders();
   if (providers.length === 0) {
-    throw new DemoIntakeError("请先在左下角设置入口配置模型服务。");
+    throw new DemoIntakeError("请先在左上角设置入口配置模型服务。");
   }
   let lastError: unknown = null;
   for (const provider of providers) {

@@ -30,6 +30,7 @@ export function DemoArchiveShell({ children }: { children: ReactNode }) {
       <button
         aria-label="打开模型服务设置"
         className={styles.settingsEntry}
+        data-demo-surface={intakeMode ? "intake" : "workbench"}
         onClick={() => setSettingsOpen(true)}
         type="button"
       >

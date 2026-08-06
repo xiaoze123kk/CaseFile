@@ -638,12 +638,47 @@
   scrollbar-width: thin;
 }
 
+/* 主视图采用无边距铺满布局，滚动交给各自的时间线/缩放视口。 */
+.canvasContent[data-view="timeline"],
+.canvasContent[data-view="relations"],
+.canvasContent[data-view="reasoning"],
+.canvasContent[data-view="map"] {
+  padding: 0;
+  overflow: hidden;
+}
+
+.workspaceBody[data-inspector-open="false"] .inspector,
+.workspaceBody[data-inspector-open="false"] .inspectorResizeHandle {
+  display: none;
+}
+
+.inspectorRestore {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  right: 0;
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px 0 7px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  border-right: 0;
+  background: var(--paper-high);
+  box-shadow: 0 4px 12px rgba(41, 44, 44, 0.1);
+  font-size: 9px;
+}
+.inspectorRestore:hover { color: var(--primary-strong); background: var(--paper); }
+.inspectorRestore svg { width: 13px; height: 13px; transform: rotate(90deg); }
+
 .timelineOverview {
   position: relative;
   display: grid;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   grid-template-columns: var(--timeline-width, 340px) minmax(320px, 1fr);
-  gap: 12px;
+  gap: 0;
 }
 
 .timelineResizeHandle {
@@ -684,12 +719,33 @@
   box-shadow: 0 12px 28px rgba(46, 43, 38, 0.06);
 }
 
+.canvasContent[data-view="timeline"] .timelinePanel,
+.canvasContent[data-view="timeline"] .graphPanel,
+.canvasContent[data-view="relations"] .relationsView,
+.canvasContent[data-view="reasoning"] .reasoningView,
+.canvasContent[data-view="map"] .mapView {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.canvasContent[data-view="timeline"] .graphPanel {
+  border-left: 1px solid var(--rule);
+}
+
+.canvasContent[data-view="relations"] .relationsView,
+.canvasContent[data-view="reasoning"] .reasoningView,
+.canvasContent[data-view="map"] .mapView {
+  height: 100%;
+  min-height: 0;
+}
+
 .timelinePanel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 
 .sectionHeader,
 .graphHeading {
   display: flex;
-  min-height: 58px;
+  min-height: 46px;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
@@ -697,13 +753,14 @@
   border-bottom: 1px solid var(--rule);
 }
 
-.sectionHeader > div,
-.graphHeading > div { display: flex; min-width: 0; flex-direction: column; }
+.sectionHeader > div:first-child,
+.graphHeading > div:first-child { display: flex; min-width: 0; flex-direction: column; }
 .sectionHeader span,
 .graphHeading span { color: var(--primary-strong); }
 .sectionHeader h2,
 .graphHeading strong { overflow: hidden; margin: 4px 0 0; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.sectionHeader small { flex: 0 0 auto; color: var(--ink-faint); }
+.sectionHeader small,
+.graphHeading > small { flex: 0 0 auto; color: var(--ink-faint); }
 
 .timelineList {
   position: relative;
@@ -766,6 +823,7 @@
 
 .graphBoard {
   position: relative;
+  height: 100%;
   min-height: 260px;
   overflow: hidden;
   background:
@@ -828,9 +886,14 @@
 .exportView,
 .evidenceCompare { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr); }
 
+.canvasContent[data-view="map"] .mapView {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 .mapBoard {
   position: relative;
-  min-height: 430px;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background: #e6e5df;
 }
@@ -956,7 +1019,19 @@
 .inspectorHeader > div { display: flex; min-width: 0; flex-direction: column; }
 .inspectorHeader span { color: var(--primary-strong); }
 .inspectorHeader strong { overflow: hidden; margin-top: 4px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.inspectorHeader > small { flex: 0 0 auto; color: var(--ink-faint); }
+.inspectorHeaderActions { display: flex !important; align-items: center; flex-direction: row !important; gap: 8px; }
+.inspectorHeaderActions > small { flex: 0 0 auto; color: var(--ink-faint); }
+.inspectorToggle {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: transparent;
+}
+.inspectorToggle:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); background: var(--primary-soft); }
+.inspectorToggle svg { width: 14px; height: 14px; transform: rotate(-90deg); }
 
 .inspectorTabs {
   display: grid;
@@ -1202,7 +1277,8 @@
   .workspaceBody { grid-template-columns: 208px minmax(410px, 1fr) 292px; }
   .brandBlock { padding: 0 13px; }
   .globalSearch { min-width: 190px; }
-  .timelineOverview { grid-template-columns: 1fr; }
+  .canvasContent[data-view="timeline"] { overflow: auto; }
+  .timelineOverview { height: auto; grid-template-columns: 1fr; gap: 9px; }
   .timelineResizeHandle { display: none; }
   .timelinePanel { min-height: 340px; }
   .graphPanel { min-height: 360px; }
@@ -1290,7 +1366,6 @@
   .reasoningBoard { min-height: 320px; }
   .reasoningLegend { right: 6px; bottom: 6px; }
   .relationsBoard { min-height: 320px; }
-  .relationsLegend { right: 6px; bottom: 6px; }
 
   .inspector { grid-template-rows: 58px 44px minmax(0, 1fr) 58px; }
   .inspectorTabs button { min-height: 44px; }
@@ -1328,7 +1403,7 @@
   .topActions a { min-width: 68px; padding: 0 8px; font-size: 9px; }
   .topActions a:last-child { display: none; }
   .viewTabs button { padding: 0 9px; font-size: 10px; }
-  .sectionHeader { min-height: 54px; padding: 0 10px; }
+  .sectionHeader { min-height: 46px; padding: 0 10px; }
   .sectionHeader small { display: none; }
   .graphNode { min-width: 64px; min-height: 40px; }
   .graphNode strong { max-width: 70px; font-size: 9px; }
@@ -1355,8 +1430,27 @@
 
 /* 画布缩放与工具 */
 .zoomViewport { position: relative; height: 100%; min-height: 0; overflow: auto; }
-.zoomStage { height: 100%; zoom: var(--zoom, 1); }
-.panStage { height: 100%; }
+.zoomStage { width: 100%; min-width: 100%; height: 100%; min-height: 100%; zoom: var(--zoom, 1); }
+.panStage { width: 100%; height: 100%; min-height: 100%; }
+.canvasOverlayControls {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  min-width: 78px;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(41, 44, 44, 0.2);
+  background: rgba(251, 250, 246, 0.92);
+  box-shadow: 0 5px 14px rgba(41, 44, 44, 0.12);
+  backdrop-filter: blur(4px);
+}
+.canvasOverlayControls .canvasTools,
+.canvasOverlayControls .zoomControls { align-self: flex-end; }
+.canvasOverlayControls .graphLegend { justify-content: flex-start; padding: 0 2px 2px; }
 .sectionTrailing { display: flex; min-width: 0; align-items: center; gap: 12px; }
 .zoomControls { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
 .zoomControls button {
@@ -1384,7 +1478,6 @@
 .canvasTools button:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
 .canvasTools button[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--primary); }
 .canvasTools svg { width: 14px; height: 14px; }
-.graphHeadingTools { display: flex; align-items: center; gap: 8px; }
 .graphBoard[data-tool="pan"],
 .relationsBoard[data-tool="pan"],
 .reasoningBoard[data-tool="pan"],
@@ -1560,7 +1653,8 @@
 .reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
 .reasoningBoard {
   position: relative;
-  min-height: 420px;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background:
     linear-gradient(rgba(199, 139, 60, 0.045) 1px, transparent 1px),
@@ -1572,7 +1666,8 @@
 .relationsView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
 .relationsBoard {
   position: relative;
-  min-height: 420px;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   background:
     radial-gradient(circle at center, rgba(142, 150, 148, 0.11), transparent 42%),
@@ -1581,30 +1676,6 @@
     var(--paper);
   background-size: auto, 22px 22px, 22px 22px, auto;
   touch-action: none;
-}
-.relationsLegend {
-  position: absolute;
-  right: 10px;
-  bottom: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  color: var(--ink-faint);
-  border: 1px solid var(--rule);
-  background: rgba(251, 250, 246, 0.9);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 8px;
-  letter-spacing: 0.06em;
-}
-.relationsLegend i {
-  display: block;
-  width: 8px;
-  height: 8px;
-  border-radius: 1px;
-  background: var(--primary);
-  box-shadow: 0 0 0 4px rgba(199, 139, 60, 0.12);
-  transform: rotate(45deg);
 }
 .reasoningEdges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .reasoningEdges line {

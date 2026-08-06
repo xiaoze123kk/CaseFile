@@ -394,11 +394,6 @@ function RelationshipGraph({
           </button>
         );
       })}
-      {!compact ? (
-        <span aria-hidden="true" className={styles.relationsLegend}>
-          <i /> 当前关联
-        </span>
-      ) : null}
     </div>
   );
   const panStage = (
@@ -418,13 +413,7 @@ function RelationshipGraph({
             <span>同步关系图</span>
             <strong>事件、人物与证据</strong>
           </div>
-          <div className={styles.graphHeadingTools}>
-            <span className={styles.graphLegend}>
-              <i /> 当前关联
-            </span>
-            <CanvasTools onToolChange={setTool} tool={tool} />
-            <ZoomControls onZoomChange={setZoom} zoom={zoom} />
-          </div>
+          <small>{visibleNodeIds.size} NODES</small>
         </div>
         <p className={styles.srOnly} id="relationship-graph-summary">
           {seed.caseMeta.relationshipSummary}
@@ -432,6 +421,13 @@ function RelationshipGraph({
         <div className={styles.zoomViewport}>
           <div className={styles.zoomStage} style={{ zoom }}>
             {panStage}
+          </div>
+          <div aria-label="画布控制" className={styles.canvasOverlayControls} role="group">
+            <span className={styles.graphLegend}>
+              <i /> 当前关联
+            </span>
+            <CanvasTools onToolChange={setTool} tool={tool} />
+            <ZoomControls onZoomChange={setZoom} zoom={zoom} />
           </div>
         </div>
         <span className={styles.srOnly}>{visibleNodeIds.size} 个可访问节点</span>
@@ -448,8 +444,6 @@ function RelationshipGraph({
         </div>
         <div className={styles.sectionTrailing}>
           <small>{visibleNodeIds.size} NODES</small>
-          <CanvasTools onToolChange={setTool} tool={tool} />
-          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </header>
       <p className={styles.srOnly} id="relationship-graph-summary">
@@ -458,6 +452,13 @@ function RelationshipGraph({
       <div className={styles.zoomViewport}>
         <div className={styles.zoomStage} style={{ zoom }}>
           {panStage}
+        </div>
+        <div aria-label="画布控制" className={styles.canvasOverlayControls} role="group">
+          <span className={styles.graphLegend}>
+            <i /> 当前关联
+          </span>
+          <CanvasTools onToolChange={setTool} tool={tool} />
+          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </div>
       <details className={styles.graphAlternative}>
@@ -653,8 +654,6 @@ function MapView({
         <div><span>空间核对</span><h2 id="map-heading">{seed.caseMeta.mapTitle}</h2></div>
         <div className={styles.sectionTrailing}>
           <small>{seed.caseMeta.mapMeta}</small>
-          <CanvasTools onToolChange={setTool} tool={tool} />
-          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </header>
       <div className={styles.zoomViewport}>
@@ -700,6 +699,10 @@ function MapView({
         ))}
           </div>
           </div>
+        </div>
+        <div aria-label="画布控制" className={styles.canvasOverlayControls} role="group">
+          <CanvasTools onToolChange={setTool} tool={tool} />
+          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </div>
       <p className={styles.viewNote}>{seed.caseMeta.mapNote}</p>
@@ -1398,8 +1401,6 @@ function ReasoningGraphView({
         </div>
         <div className={styles.sectionTrailing}>
           <small>{seed.reasoningPaths.length} PATHS</small>
-          <CanvasTools onToolChange={setTool} tool={tool} />
-          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
         </div>
       </header>
       {layout.nodes.length ? (
@@ -1488,9 +1489,13 @@ function ReasoningGraphView({
               <span data-kind="supported">支持</span>
               <span data-kind="contested">竞争</span>
               <span data-kind="eliminated">排除</span>
+              </div>
+              </div>
+              </div>
             </div>
-              </div>
-              </div>
+            <div aria-label="画布控制" className={styles.canvasOverlayControls} role="group">
+              <CanvasTools onToolChange={setTool} tool={tool} />
+              <ZoomControls onZoomChange={setZoom} zoom={zoom} />
             </div>
           </div>
           <div className={styles.reasoningTables}>
@@ -1800,6 +1805,7 @@ function AnalystWorkbenchSurface({
     startWidth: number;
   } | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState<number | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
   const inspectorResizeRef = useRef<{
     startX: number;
     startWidth: number;
@@ -2185,10 +2191,13 @@ function AnalystWorkbenchSurface({
 
       <div
         className={styles.workspaceBody}
+        data-inspector-open={inspectorOpen}
         style={
           {
             "--rail-width": `${railWidth ?? DEFAULT_RAIL_WIDTH}px`,
-            "--inspector-width": `${inspectorWidth ?? DEFAULT_INSPECTOR_WIDTH}px`,
+            "--inspector-width": inspectorOpen
+              ? `${inspectorWidth ?? DEFAULT_INSPECTOR_WIDTH}px`
+              : "0px",
           } as CSSProperties
         }
       >
@@ -2272,7 +2281,7 @@ function AnalystWorkbenchSurface({
             </div>
             <div className={styles.canvasMeta}><span>同步定位</span><b>{selectedEvent.time} / {selectedEvent.id}</b></div>
           </header>
-          <div className={styles.canvasContent}>
+          <div className={styles.canvasContent} data-view={view}>
             {view === "timeline" ? (
               <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} onSelectObject={selectObject} seed={seed} selectedEventId={selectedEventId} selectedObjectId={selectedObjectId} />
             ) : null}
@@ -2306,7 +2315,21 @@ function AnalystWorkbenchSurface({
         <aside aria-label="上下文检查器" className={styles.inspector}>
           <header className={styles.inspectorHeader}>
             <div><span>上下文检查器</span><strong>{selectedEvent.label}</strong></div>
-            <small>{selectedEvent.id}</small>
+            <div className={styles.inspectorHeaderActions}>
+              <small>{selectedEvent.id}</small>
+              <button
+                aria-label="收起上下文检查器"
+                aria-expanded={inspectorOpen}
+                className={styles.inspectorToggle}
+                onClick={() => {
+                  setInspectorOpen(false);
+                  announce("上下文检查器已收起。主画布已扩展。");
+                }}
+                type="button"
+              >
+                <WorkbenchIcon name="chevron" />
+              </button>
+            </div>
           </header>
           <div className={styles.inspectorTabs} aria-label="检查器内容" role="tablist">
             {inspectorTabs.map((tab) => {
@@ -2394,6 +2417,21 @@ function AnalystWorkbenchSurface({
             <button disabled={validationPhase !== "idle"} onClick={revalidateAll} type="button">重新验证</button>
           </footer>
         </aside>
+        {!inspectorOpen ? (
+          <button
+            aria-label="展开上下文检查器"
+            aria-expanded={inspectorOpen}
+            className={styles.inspectorRestore}
+            onClick={() => {
+              setInspectorOpen(true);
+              announce("上下文检查器已展开。");
+            }}
+            type="button"
+          >
+            <WorkbenchIcon name="chevron" />
+            <span>检查器</span>
+          </button>
+        ) : null}
       </div>
 
       <section aria-label="来源与运行记录抽屉" className={styles.bottomDrawer} data-open={drawerOpen}>

@@ -360,6 +360,28 @@ describe("analyst workbench prototype", () => {
     expect(body.style.getPropertyValue("--inspector-width")).toBe("270px");
   });
 
+  it("collapses and restores the context inspector", () => {
+    const { container } = renderWorkbench();
+    const body = container.querySelector(
+      '[data-inspector-open="true"]',
+    ) as HTMLElement;
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "收起上下文检查器" }),
+    );
+    expect(body).toHaveAttribute("data-inspector-open", "false");
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("0px");
+    expect(
+      screen.getByRole("button", { name: "展开上下文检查器" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "展开上下文检查器" }),
+    );
+    expect(body).toHaveAttribute("data-inspector-open", "true");
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("350px");
+  });
+
   it("resizes the object rail by dragging the split handle", () => {
     const { container } = renderWorkbench();
 
