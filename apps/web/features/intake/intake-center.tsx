@@ -12,6 +12,7 @@ import { useCaseSession } from "@/features/case-session/case-session-provider";
 
 import {
   candidateOriginLabels,
+  conclusionModes,
   fieldSourceLabels,
   intakeRoutes,
   missingHardFields,
@@ -25,6 +26,7 @@ import {
   type IntakeConstraint,
   type FieldSource,
   type IntakePolishMode,
+  type ConclusionMode,
   type ResolutionMode,
   type IntakeStep,
 } from "./intake-model";
@@ -207,9 +209,12 @@ export function IntakeCenter() {
   const questionsPending = questionGenerationMode !== null;
   const currentCandidate =
     candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
-  const hardQuestionsResolved = state.questions
-    .filter((question) => question.required)
-    .every((question) => {
+  const requiredQuestions = state.questions.filter(
+    (question) => question.required,
+  );
+  const hardQuestionsResolved =
+    requiredQuestions.length > 0 &&
+    requiredQuestions.every((question) => {
       const answer = answers[question.key];
       return Boolean(answer?.text.trim() && !answer.pending);
     });
@@ -426,6 +431,17 @@ export function IntakeCenter() {
           value === "author_anchored"
             ? current.sources.authorAnswer
             : "unresolved",
+      },
+    }));
+  }
+
+  function updateConclusionMode(value: ConclusionMode) {
+    setBrief((current) => ({
+      ...current,
+      conclusionMode: value,
+      sources: {
+        ...current.sources,
+        conclusionMode: "user_confirmed",
       },
     }));
   }
@@ -648,7 +664,7 @@ export function IntakeCenter() {
             <section className={stageStyles.stepView} aria-labelledby="idea-step-title">
               <header className={stageStyles.stepHero}>
                 <div>
-                  <small>STEP 01 / CAPTURE THE SIGNAL</small>
+                  <small>第 1 步 / 记录信号</small>
                   <h1 id="idea-step-title">
                     把念头照亮，
                     <br />
@@ -875,8 +891,16 @@ export function IntakeCenter() {
             >
               <header className={stageStyles.stepHero}>
                 <div>
-                  <small>STEP 02 / TEST THE DIRECTION</small>
+                  <small>第 2 步 / 验证方向</small>
                   <h1 id="questions-step-title">只问会改变方向的问题。</h1>
+                  <button
+                    className={stageStyles.headerBackAction}
+                    disabled={questionsPending}
+                    onClick={() => setStep("idea")}
+                    type="button"
+                  >
+                    ← 返回原稿
+                  </button>
                 </div>
                 <p>
                   首轮最多两问，且最多一道硬问题。回答后仍可继续补充可选追问，不会改写已有判断。
@@ -1012,14 +1036,6 @@ export function IntakeCenter() {
               ) : null}
 
               <footer className={stageStyles.stepActions}>
-                <button
-                  className={stageStyles.backAction}
-                  disabled={questionsPending}
-                  onClick={() => setStep("idea")}
-                  type="button"
-                >
-                  ← 返回原稿
-                </button>
                 <div>
                   <button
                     className={stageStyles.secondaryAction}
@@ -1055,7 +1071,7 @@ export function IntakeCenter() {
             >
               <header className={stageStyles.stepHero}>
                 <div>
-                  <small>STEP 03 / BUILD THE BRIEF</small>
+                  <small>第 3 步 / 形成简报</small>
                   <h1 id="confirmation-loading-title">
                     确认整体方向，再交给正式审阅。
                   </h1>
@@ -1087,7 +1103,7 @@ export function IntakeCenter() {
             <section className={stageStyles.stepView} aria-labelledby="confirmation-step-title">
               <header className={stageStyles.stepHero}>
                 <div>
-                  <small>STEP 03 / FREEZE THE BRIEF</small>
+                  <small>第 3 步 / 冻结简报</small>
                   <h1 id="confirmation-step-title">确认整体方向，再交给正式审阅。</h1>
                   <button
                     className={stageStyles.headerBackAction}
@@ -1160,6 +1176,30 @@ export function IntakeCenter() {
                     rows={3}
                     value={brief.reasoningGoal}
                   />
+                </FieldShell>
+                <FieldShell
+                  hint="决定验证器如何判断结论是否成立；每个项目必须明确选择。"
+                  label="结论模式"
+                  required
+                  source={brief.sources.conclusionMode}
+                  wide
+                >
+                  <div className={stageStyles.resolutionChoices}>
+                    {conclusionModes.map((mode) => (
+                      <label key={mode.value}>
+                        <input
+                          checked={brief.conclusionMode === mode.value}
+                          name="intake-conclusion-mode"
+                          onChange={() => updateConclusionMode(mode.value)}
+                          type="radio"
+                        />
+                        <span>
+                          <b>{mode.label}</b>
+                          <small>{mode.hint}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </FieldShell>
                 <FieldShell
                   hint="决定谁来锁定最终答案"
@@ -1260,7 +1300,7 @@ export function IntakeCenter() {
               <details className={stageStyles.constraintDrawer}>
                 <summary>
                   <div>
-                    <span>CONSTRAINT CHANNEL</span>
+                    <span>约束通道</span>
                     <b>约束抽屉</b>
                     <small>必须保留、禁止出现、规模、人数、时长与内容尺度</small>
                   </div>
@@ -1417,7 +1457,7 @@ export function IntakeCenter() {
         <aside aria-label="实时简报映射" className={styles.liveBrief}>
           <header>
             <div>
-              <span>LIVE BRIEF</span>
+              <span>实时简报</span>
               <b>实时简报映射</b>
             </div>
             <em>{completionCount}/5</em>

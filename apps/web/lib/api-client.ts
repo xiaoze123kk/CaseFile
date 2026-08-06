@@ -28,6 +28,14 @@ export type ResolutionMode =
   | "author_anchored"
   | "agent_proposed"
   | "open";
+export type ConclusionMode =
+  | "unique"
+  | "finite_multiple"
+  | "optimal"
+  | "probabilistic"
+  | "open_interpretation"
+  | "multiple_endings"
+  | "undetermined";
 export type ConstraintStrength = "hard" | "soft";
 export type SourceKind =
   | "human_original"
@@ -67,6 +75,7 @@ export interface BriefContent {
   creative_intent: string;
   reasoning_proposition: string;
   resolution_mode: ResolutionMode;
+  conclusion_mode: ConclusionMode;
   author_answer: string | null;
   author_anchors: BriefAnchor[];
   boundary_text: string | null;
@@ -107,6 +116,7 @@ export interface BriefIntakeFieldSources {
   content_outline: BriefIntakeFieldSource;
   reasoning_goal: BriefIntakeFieldSource;
   resolution_mode: BriefIntakeFieldSource;
+  conclusion_mode: BriefIntakeFieldSource;
   author_answer: BriefIntakeFieldSource;
   constraints: BriefIntakeFieldSource;
   scope_estimate: BriefIntakeFieldSource;
@@ -135,6 +145,7 @@ export interface BriefIntakeCandidateContent {
   content_outline: string[];
   reasoning_goal: string;
   resolution_mode: ResolutionMode;
+  conclusion_mode: ConclusionMode;
   author_answer: string | null;
   constraints: BriefIntakeConstraint[];
   pending_decisions: BriefIntakePendingDecision[];
@@ -287,12 +298,21 @@ export interface TaskFailure {
 }
 
 export interface GenerationCandidateSummary {
+  candidate_strategy: CandidateStrategy;
+  candidate_strategy_version: string;
+  candidate_strategy_label: string;
   title: string;
   content_hash: string;
   object_counts: Record<string, number>;
   reasoning_questions: string[];
   constraint_statements: string[];
 }
+
+export type CandidateStrategy =
+  | "balanced"
+  | "structure_first"
+  | "atmosphere_first"
+  | "reasoning_first";
 
 export interface TaskView {
   task_run_id: number;

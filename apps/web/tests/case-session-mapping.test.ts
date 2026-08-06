@@ -51,6 +51,7 @@ describe("case session candidate mapping", () => {
       content_outline: ["骨架"],
       reasoning_goal: "推理目标",
       resolution_mode: "agent_proposed" as const,
+      conclusion_mode: "undetermined" as const,
       author_answer: null,
       constraints: [
         {
@@ -69,6 +70,22 @@ describe("case session candidate mapping", () => {
           confirmed: true,
           source: "agent_suggestion" as const,
         },
+        {
+          constraint_key: "constraint_resolution_author_provided",
+          category: "other" as const,
+          statement: "保留作者已确定的结局",
+          strength: "hard" as const,
+          confirmed: true,
+          source: "agent_suggestion" as const,
+        },
+        {
+          constraint_key: "constraint_scale_mid_length",
+          category: "other" as const,
+          statement: "按中篇体量组织",
+          strength: "soft" as const,
+          confirmed: true,
+          source: "agent_suggestion" as const,
+        },
       ],
       pending_decisions: [],
       scope_estimate: null,
@@ -79,6 +96,7 @@ describe("case session candidate mapping", () => {
         content_outline: "agent_suggestion" as const,
         reasoning_goal: "agent_suggestion" as const,
         resolution_mode: "user_confirmed" as const,
+        conclusion_mode: "agent_suggestion" as const,
         author_answer: "unresolved" as const,
         constraints: "agent_suggestion" as const,
         scope_estimate: "unresolved" as const,
@@ -93,6 +111,16 @@ describe("case session candidate mapping", () => {
       (row) => row.key === "constraint_no_magic",
     );
     expect(unknownNoMagic?.statement).toBe("不使用超自然解释");
+    expect(unknownNoMagic?.label).toBe("其他约束");
+    expect(
+      brief.constraints.find(
+        (row) => row.key === "constraint_resolution_author_provided",
+      )?.label,
+    ).toBe("结论模式：作者提供");
+    expect(
+      brief.constraints.find((row) => row.key === "constraint_scale_mid_length")
+        ?.label,
+    ).toBe("规模：中篇");
 
     const roundTripped = mapBriefToCandidateContent(brief);
     const byKey = new Map(
@@ -127,6 +155,7 @@ describe("case session candidate mapping", () => {
       creative_intent: "创作意图",
       reasoning_proposition: "核心命题",
       resolution_mode: "agent_proposed" as const,
+      conclusion_mode: "undetermined" as const,
       author_answer: null,
       author_anchors: [],
       boundary_text: "必须：三份记录互相独立\n偏好：氛围克制\n必须：不使用超自然解释",
@@ -153,6 +182,7 @@ describe("case session candidate mapping", () => {
       creative_intent: "创作意图",
       reasoning_proposition: "核心命题",
       resolution_mode: "agent_proposed" as const,
+      conclusion_mode: "undetermined" as const,
       author_answer: null,
       author_anchors: [],
       boundary_text: "必须：三份记录互相独立",
@@ -183,6 +213,7 @@ describe("case session candidate mapping", () => {
         creative_intent: "创作意图",
         reasoning_proposition: "核心命题",
         resolution_mode: "author_anchored" as const,
+        conclusion_mode: "unique" as const,
         author_answer: "真凶是档案修复师自己。",
         author_anchors: [],
         boundary_text: "必须：三份记录互相独立",

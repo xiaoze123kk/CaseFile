@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
@@ -11,7 +14,6 @@ from casefile_contracts import (
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
-from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventSink(Protocol):
@@ -34,6 +36,24 @@ class BriefPolishCandidate(StrictAgentOutput):
 
 
 PolishMode = Literal["proofread", "rewrite", "narrative_enhance"]
+
+
+class CandidateStrategy(StrEnum):
+    """Frozen strategy labels for one Brief-to-Draft candidate run."""
+
+    BALANCED = "balanced"
+    STRUCTURE_FIRST = "structure_first"
+    ATMOSPHERE_FIRST = "atmosphere_first"
+    REASONING_FIRST = "reasoning_first"
+
+
+CANDIDATE_STRATEGY_VERSION = "candidate-strategy-v1"
+CANDIDATE_STRATEGY_LABELS: dict[CandidateStrategy, str] = {
+    CandidateStrategy.BALANCED: "常规候选",
+    CandidateStrategy.STRUCTURE_FIRST: "结构优先",
+    CandidateStrategy.ATMOSPHERE_FIRST: "氛围优先",
+    CandidateStrategy.REASONING_FIRST: "推理优先",
+}
 
 
 class ExtractedAnchor(StrictAgentOutput):
@@ -145,6 +165,8 @@ class GenerationRequest:
     emit: EventSink
     network_retries: int = 2
     repair_feedback: tuple[dict[str, Any], ...] = ()
+    candidate_strategy: CandidateStrategy = CandidateStrategy.BALANCED
+    candidate_strategy_version: str = CANDIDATE_STRATEGY_VERSION
 
 
 @dataclass(frozen=True, slots=True)

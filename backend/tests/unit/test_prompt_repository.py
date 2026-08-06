@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt_repository import (
     SUPPORTED_AGENT_IDS,
     PromptRepository,
@@ -22,8 +23,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_polish": "brief-polish-v3",
     "brief_anchor_extract": "brief-anchor-extract-v2",
     "brief_intake_questions": "brief-intake-questions-v3",
-    "brief_intake_synthesize": "brief-intake-synthesize-v1",
-    "brief_to_draft": "brief-to-draft-v4",
+    "brief_intake_synthesize": "brief-intake-synthesize-v2",
+    "brief_to_draft": "brief-to-draft-v5",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -50,11 +51,17 @@ EXPECTED_RELEASE_HASHES = {
     ("brief_intake_synthesize", "brief-intake-synthesize-v1"): (
         "c8ed044d334fc937698f5784e68ddd9f1decf2ff561e157560f3fcb4dca1e72c"
     ),
+    ("brief_intake_synthesize", "brief-intake-synthesize-v2"): (
+        "6d3887dde3223f7f53f78053e5ed13a36069c92b9adfa56013970c6d142017a6"
+    ),
     ("brief_to_draft", "brief-to-draft-v3"): (
         "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
     ),
     ("brief_to_draft", "brief-to-draft-v4"): (
         "e8a9385ee762d6c7a36ca8405e0d2e48259fbb37e9acac19fa7d5f95b69e076b"
+    ),
+    ("brief_to_draft", "brief-to-draft-v5"): (
+        "62b08c5b26255965b73cccbe06ea88192fb3dc8f0eccf1265815a06e1abdb311"
     ),
     ("casefile_chat", "casefile-chat-v1"): (
         "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
@@ -110,7 +117,15 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "存在 `base_candidate` 与 `instruction`" in prompts[
         "brief_intake_synthesize"
     ]
+    assert "`content_outline` 的每一项必须是一个完整字符串" in prompts[
+        "brief_intake_synthesize"
+    ]
+    assert "不得出现没有 `：` 的条目" in prompts["brief_intake_synthesize"]
     assert "`repair_feedback`" in prompts["brief_to_draft"]
+    assert "`structure_first`" in prompts["brief_to_draft"]
+    assert "`atmosphere_first`" in prompts["brief_to_draft"]
+    assert "`reasoning_first`" in prompts["brief_to_draft"]
+    assert "不得声称比较过其他候选" in prompts["brief_to_draft"]
     assert "每个顶层对象 ID 必须在对应集合中恰好使用一次" in prompts[
         "brief_to_draft"
     ]

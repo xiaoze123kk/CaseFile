@@ -138,6 +138,13 @@ class GenerateTaskRequest(StrictRequest):
     brief_version_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
     provider: Literal["openai", "deepseek"] = "openai"
+    candidate_strategy: Literal[
+        "balanced",
+        "structure_first",
+        "atmosphere_first",
+        "reasoning_first",
+    ] = "balanced"
+    candidate_strategy_attempt: int = Field(default=1, ge=1, le=2)
 
 
 class DraftCandidateAdoptRequest(StrictRequest):

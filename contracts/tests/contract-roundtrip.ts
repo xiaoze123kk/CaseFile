@@ -162,6 +162,7 @@ const intakeCandidate: BriefIntakeCandidate = {
   content_outline: ["建立不可能时间", "交叉验证证词"],
   reasoning_goal: "解释可靠记录为何互相冲突。",
   resolution_mode: "open",
+  conclusion_mode: "open_interpretation",
   author_answer: null,
   constraints: [],
   pending_decisions: [
@@ -180,6 +181,7 @@ const intakeCandidate: BriefIntakeCandidate = {
     content_outline: "agent_suggestion",
     reasoning_goal: "user_confirmed",
     resolution_mode: "user_confirmed",
+    conclusion_mode: "user_confirmed",
     author_answer: "unresolved",
     constraints: "unresolved",
     scope_estimate: "agent_suggestion",

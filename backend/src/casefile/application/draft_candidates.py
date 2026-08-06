@@ -8,6 +8,11 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.models import (
+    CANDIDATE_STRATEGY_LABELS,
+    CANDIDATE_STRATEGY_VERSION,
+    CandidateStrategy,
+)
 from casefile.application.casefile_v1 import (
     adopt_generation_candidate as project_generation_candidate,
 )
@@ -265,6 +270,18 @@ class DraftCandidateService:
         if brief_version is None:
             raise not_found("BriefVersion")
         summary = generation_candidate_summary(attempt.candidate_jsonb)
+        raw_strategy = task.input_jsonb.get(
+            "candidate_strategy",
+            CandidateStrategy.BALANCED.value,
+        )
+        try:
+            candidate_strategy = CandidateStrategy(raw_strategy)
+        except ValueError:
+            candidate_strategy = CandidateStrategy.BALANCED
+        candidate_strategy_version = task.input_jsonb.get(
+            "candidate_strategy_version",
+            CANDIDATE_STRATEGY_VERSION,
+        )
         return {
             "task_run_id": task.id,
             "brief_version_no": brief_version.version_no,
@@ -282,6 +299,9 @@ class DraftCandidateService:
             "object_counts": summary["object_counts"],
             "reasoning_questions": summary["reasoning_questions"],
             "constraint_statements": summary["constraint_statements"],
+            "candidate_strategy": candidate_strategy.value,
+            "candidate_strategy_version": candidate_strategy_version,
+            "candidate_strategy_label": CANDIDATE_STRATEGY_LABELS[candidate_strategy],
             "attempt_count": task.attempt_count,
             "created_at": _time(task.created_at),
             "completed_at": _time(task.completed_at),

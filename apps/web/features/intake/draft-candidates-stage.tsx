@@ -9,9 +9,22 @@ import styles from "./intake-late-stages.module.css";
 
 const generationStages = [
   "解析冻结简报",
-  "并行生成三份候选",
+  "生成三份策略候选",
   "校验对象与引用",
 ] as const;
+
+const strategyLabels = {
+  structure_first: "结构优先",
+  atmosphere_first: "氛围优先",
+  reasoning_first: "推理优先",
+} as const;
+
+const slotStatusLabels = {
+  pending: "待生成",
+  running: "生成中",
+  succeeded: "已完成",
+  failed: "失败，可重试",
+} as const;
 
 const statusLabels = {
   pending: "待采用",
@@ -51,7 +64,11 @@ export function DraftCandidatesStage() {
       ),
     [state.draftCandidates, state.frozenBriefVersion],
   );
-  const generated = currentCandidates.length > 0;
+  const generatedStrategyCount = Object.values(state.generation.slots).filter(
+    (slot) => slot.status === "succeeded",
+  ).length;
+  const generated = generatedStrategyCount === 3;
+  const hasCandidates = currentCandidates.length > 0;
   const generating = state.generation.status === "generating";
   const readyToGenerate = state.frozenBriefVersion !== null;
 
@@ -73,9 +90,9 @@ export function DraftCandidatesStage() {
     void generateCandidates()
       .then((ok) => {
         if (ok) {
-          setNotice("三份候选已生成并完成引用校验，可以预览或显式采用。");
+          setNotice("三份策略候选已生成并完成引用校验，可以预览或显式采用。");
         } else {
-          setGenerationError("当前简报尚未满足生成条件。");
+          setNotice("部分策略候选已保留；点击生成按钮只会补齐失败或缺失槽位。");
         }
       })
       .catch((caught) => {
@@ -85,6 +102,16 @@ export function DraftCandidatesStage() {
             : "候选生成未完成，请检查模型服务后重试。",
         );
       });
+  }
+
+  function retryCandidate(strategy: keyof typeof strategyLabels) {
+    setGenerationError(null);
+    const attempt = state.generation.slots[strategy].attempt;
+    void generateCandidates(strategy, attempt).catch((caught) => {
+      setGenerationError(
+        caught instanceof Error ? caught.message : "候选重试未完成，请稍后再试。",
+      );
+    });
   }
 
   function renderCandidate(candidate: (typeof state.draftCandidates)[number], index: number) {
@@ -171,7 +198,7 @@ export function DraftCandidatesStage() {
       <header className={styles.stageHeader}>
         <div>
           <span>创作简报 → 候选草稿 → 当前工作稿</span>
-          <h1 id="candidates-stage-title">让三种创作策略同时摊开。</h1>
+          <h1 id="candidates-stage-title">生成三份策略候选，展开比较。</h1>
         </div>
         <dl>
           <div>
@@ -193,7 +220,7 @@ export function DraftCandidatesStage() {
             {generating
               ? "正在形成候选…"
               : generated
-                ? "三份候选已归档"
+                ? "三份策略候选已归档"
                 : readyToGenerate
                   ? "冻结简报已经就绪"
                   : "新版本等待重新审阅与冻结"}
@@ -213,6 +240,27 @@ export function DraftCandidatesStage() {
             );
           })}
         </ol>
+        <div aria-live="polite">
+          <strong>{generatedStrategyCount}/3 槽位已完成</strong>
+          <ul>
+            {Object.entries(state.generation.slots).map(([strategy, slot]) => (
+              <li key={strategy}>
+                {strategyLabels[strategy as keyof typeof strategyLabels]}：
+                {slotStatusLabels[slot.status]}
+                {slot.status === "failed" && slot.attempt < 2 ? (
+                  <button
+                    onClick={() =>
+                      retryCandidate(strategy as keyof typeof strategyLabels)
+                    }
+                    type="button"
+                  >
+                    重试
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
         <button
           className={styles.generateButton}
           disabled={generated || generating || !readyToGenerate}
@@ -221,10 +269,12 @@ export function DraftCandidatesStage() {
         >
           <span>
             {generating
-              ? "正在生成三份候选…"
+              ? "正在补齐策略候选…"
               : generated
-                ? "三份候选已生成"
-                : "生成三份候选"}
+                ? "三份策略候选已生成"
+                : hasCandidates
+                  ? "补齐失败槽位"
+                  : "生成三份策略候选"}
           </span>
           <b>{generated ? "✓" : "→"}</b>
         </button>
@@ -237,7 +287,7 @@ export function DraftCandidatesStage() {
         </p>
       ) : null}
 
-      {generated ? (
+      {hasCandidates ? (
         <section className={styles.candidateArchive} aria-label="当前简报候选稿">
           <header>
             <div><span>候选决策卷</span><strong>当前简报的三联稿</strong></div>
@@ -252,12 +302,12 @@ export function DraftCandidatesStage() {
           <span>候选卷尚空</span>
           <h2>
             {readyToGenerate
-              ? "点击生成后，三张工作稿会在这里同时展开。"
+                ? "点击生成后，三张策略工作稿会在这里展开。"
               : "先完成新版本审阅；旧候选仍留在下方卷宗。"}
           </h2>
           <p>
             {readyToGenerate
-              ? "每一张都基于同一份冻结简报，由独立任务生成。"
+                ? "每一张都基于同一份冻结简报，由独立任务生成；布局预览为样例，实际内容以后端摘要为准。"
               : "当前工作稿继续有效，直到你冻结并采用新版本候选。"}
           </p>
           {readyToGenerate ? (
@@ -268,7 +318,7 @@ export function DraftCandidatesStage() {
               type="button"
             >
               <span>
-                {generating ? "正在生成三份候选…" : "生成三份候选"}
+                {generating ? "正在补齐策略候选…" : "生成三份策略候选"}
               </span>
               <b aria-hidden="true">→</b>
             </button>

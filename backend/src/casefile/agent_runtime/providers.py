@@ -11,15 +11,6 @@ from typing import Any, Protocol
 from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, ValidationError
@@ -35,6 +26,7 @@ from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
     BriefPolishResult,
+    CandidateStrategy,
     CaseFileChatCandidate,
     CaseFileChatRequest,
     CaseFileChatResult,
@@ -53,6 +45,15 @@ from casefile.agent_runtime.prompt import (
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -215,9 +216,14 @@ class FakeProvider:
             {
                 "concept": concept,
                 "core_selling_points": ["围绕原始设想建立可验证的推理链。"],
-                "content_outline": ["建立核心谜面", "逐步验证线索", "审阅候选结论"],
+                "content_outline": [
+                    "发现谜面：建立原始异常并明确待追查的核心问题。",
+                    "验证线索：沿独立线索逐步核对并排除表面解释。",
+                    "审阅结论：整理候选解释，交给作者确认最终方向。",
+                ],
                 "reasoning_goal": "解释核心异常如何发生，并形成可由作者审阅的结论。",
                 "resolution_mode": "agent_proposed",
+                "conclusion_mode": "undetermined",
                 "author_answer": None,
                 "constraints": [],
                 "pending_decisions": pending,
@@ -229,6 +235,7 @@ class FakeProvider:
                     "content_outline": "agent_suggestion",
                     "reasoning_goal": "agent_suggestion",
                     "resolution_mode": "agent_suggestion",
+                    "conclusion_mode": "agent_suggestion",
                     "author_answer": "unresolved",
                     "constraints": "unresolved",
                     "scope_estimate": "agent_suggestion",
@@ -291,11 +298,26 @@ class FakeProvider:
         )
         now = datetime.now(UTC).isoformat()
         resolution_mode = request.brief["resolution_mode"]
+        conclusion_mode = request.brief["conclusion_mode"]
         author_answer = request.brief["author_answer"]
+        try:
+            candidate_strategy = CandidateStrategy(request.candidate_strategy)
+        except ValueError:
+            candidate_strategy = CandidateStrategy.BALANCED
+        strategy_titles = {
+            CandidateStrategy.STRUCTURE_FIRST: "结构优先",
+            CandidateStrategy.ATMOSPHERE_FIRST: "氛围优先",
+            CandidateStrategy.REASONING_FIRST: "推理优先",
+        }
+        strategy_title = strategy_titles.get(candidate_strategy)
         candidate: dict[str, Any] = {
             "schema_version": "1.0",
             "casefile_id": request.casefile_id,
-            "title": request.brief["creative_intent"],
+            "title": (
+                request.brief["creative_intent"]
+                if strategy_title is None
+                else f'{request.brief["creative_intent"]}｜{strategy_title}'
+            ),
             "status": "draft",
             "version": {
                 "version_id": request.version_id,
@@ -313,7 +335,7 @@ class FakeProvider:
                     "description": "说明本案需要回答的核心问题，以及最终解答应覆盖的因果范围。",
                     "question_type": "causal_explanation",
                     "reasoning_question": request.brief["reasoning_proposition"],
-                    "conclusion_mode": _conclusion_mode(resolution_mode),
+                    "conclusion_mode": conclusion_mode,
                     "required_slots": [
                         {
                             "slot_id": "slot_core_answer",
@@ -1079,14 +1101,6 @@ def _brief_constraints(request: GenerationRequest) -> list[dict[str, str]]:
         for item in request.brief["creative_constraints"]
     )
     return result
-
-
-def _conclusion_mode(resolution_mode: str) -> str:
-    if resolution_mode == "author_anchored":
-        return "unique"
-    if resolution_mode == "open":
-        return "open_interpretation"
-    return "undetermined"
 
 
 __all__ = [

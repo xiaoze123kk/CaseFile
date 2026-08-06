@@ -245,6 +245,8 @@ def workflow_router() -> APIRouter:
             brief_version_id=payload.brief_version_id,
             expected_draft_revision=payload.expected_draft_revision,
             provider=payload.provider,
+            candidate_strategy=payload.candidate_strategy,
+            candidate_strategy_attempt=payload.candidate_strategy_attempt,
         )
 
     @router.get("/projects/{project_id}/draft-candidates")

@@ -208,6 +208,14 @@ export type Brief = {
   creative_intent: string;
   reasoning_proposition: string;
   resolution_mode: "author_anchored" | "agent_proposed" | "open";
+  conclusion_mode:
+    | "unique"
+    | "finite_multiple"
+    | "optimal"
+    | "probabilistic"
+    | "open_interpretation"
+    | "multiple_endings"
+    | "undetermined";
   author_answer: string | null;
   author_anchors: {
     anchor_id: string;
@@ -241,6 +249,14 @@ export type BriefIntakeCandidate = {
   content_outline: string[];
   reasoning_goal: string;
   resolution_mode: "author_anchored" | "agent_proposed" | "open";
+  conclusion_mode:
+    | "unique"
+    | "finite_multiple"
+    | "optimal"
+    | "probabilistic"
+    | "open_interpretation"
+    | "multiple_endings"
+    | "undetermined";
   author_answer: string | null;
   /**
    * @maxItems 40
@@ -344,6 +360,7 @@ export interface BriefIntakeFieldSources {
   content_outline: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
   reasoning_goal: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
   resolution_mode: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  conclusion_mode: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
   author_answer: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
   constraints: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
   scope_estimate: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";

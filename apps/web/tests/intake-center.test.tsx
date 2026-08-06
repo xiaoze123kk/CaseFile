@@ -76,6 +76,7 @@ function buildFakeBackend() {
   const taskProviders = new Map<number, string>();
   let configuredProviders = ["openai"];
   let failOpenaiAuth = false;
+  let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
   const adoptionDraftRevisions: number[] = [];
 
@@ -239,6 +240,7 @@ function buildFakeBackend() {
         reasoning_goal:
           reasoningAnswer || "找出是谁制造了那段不存在的时间，以及这样做的目的。",
         resolution_mode: "agent_proposed",
+        conclusion_mode: "undetermined",
         author_answer: null,
         constraints: [],
         pending_decisions: [],
@@ -250,6 +252,7 @@ function buildFakeBackend() {
           content_outline: "agent_suggestion",
           reasoning_goal: "agent_suggestion",
           resolution_mode: "user_confirmed",
+          conclusion_mode: "agent_suggestion",
           author_answer: "unresolved",
           constraints: "unresolved",
           scope_estimate: "agent_suggestion",
@@ -313,6 +316,13 @@ function buildFakeBackend() {
       attempt_count: 1,
       created_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
+      candidate_strategy: ([
+        "structure_first",
+        "atmosphere_first",
+        "reasoning_first",
+      ][index % 3]) as DraftCandidateView["candidate_strategy"],
+      candidate_strategy_version: "candidate-strategy-v1",
+      candidate_strategy_label: ["结构优先", "氛围优先", "推理优先"][index % 3],
       title: titles[index % titles.length],
       content_hash: `d${taskRunId}`,
       object_counts: {
@@ -328,6 +338,9 @@ function buildFakeBackend() {
     return {
       ...common,
       result: {
+        candidate_strategy: summary.candidate_strategy,
+        candidate_strategy_version: summary.candidate_strategy_version,
+        candidate_strategy_label: summary.candidate_strategy_label,
         title: summary.title,
         content_hash: summary.content_hash,
         object_counts: summary.object_counts,
@@ -364,6 +377,13 @@ function buildFakeBackend() {
     );
   }
 
+  function isRevisionConflict(error: unknown): boolean {
+    return (
+      error instanceof CaseSessionError &&
+      error.failureCode === "brief_intake_revision_conflict"
+    );
+  }
+
   return {
     CaseSessionError,
     setConfiguredProviders: (providers: string[]) => {
@@ -372,10 +392,14 @@ function buildFakeBackend() {
     setFailOpenaiAuth: (value: boolean) => {
       failOpenaiAuth = value;
     },
+    setFailNextQuestionRevision: (value: boolean) => {
+      failNextQuestionRevision = value;
+    },
     getGenerationDraftRevisions: () => generationDraftRevisions,
     getAdoptionDraftRevisions: () => adoptionDraftRevisions,
     listConfiguredProviders: async () => configuredProviders,
     isProviderAuthFailure: isAuthFailure,
+    isBriefIntakeRevisionConflict: isRevisionConflict,
     runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => {
       let lastError: unknown = null;
       for (const provider of configuredProviders) {
@@ -421,6 +445,14 @@ function buildFakeBackend() {
       expectedRevision: number,
       provider: string,
     ) => {
+      if (failNextQuestionRevision) {
+        failNextQuestionRevision = false;
+        revision += 1;
+        throw new CaseSessionError(
+          "Brief Intake revision is stale",
+          "brief_intake_revision_conflict",
+        );
+      }
       // 与后端一致：任务创建校验并推进 intake revision。
       if (expectedRevision !== revision) {
         throw new Error("Brief Intake revision is stale");
@@ -550,6 +582,7 @@ function buildFakeBackend() {
           creative_intent: candidate.content.concept,
           reasoning_proposition: candidate.content.reasoning_goal,
           resolution_mode: candidate.content.resolution_mode,
+          conclusion_mode: candidate.content.conclusion_mode,
           author_answer: candidate.content.author_answer ?? null,
           author_anchors: [],
           boundary_text: null,
@@ -624,6 +657,7 @@ afterEach(() => {
   routerPush.mockReset();
   fake.backend.setConfiguredProviders(["openai"]);
   fake.backend.setFailOpenaiAuth(false);
+  fake.backend.setFailNextQuestionRevision(false);
 });
 
 describe("intake center", () => {
@@ -683,6 +717,10 @@ describe("intake center", () => {
     expect(
       screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
     ).toBeInTheDocument();
+    const returnToOriginal = screen.getByRole("button", {
+      name: "← 返回原稿",
+    });
+    expect(returnToOriginal.closest("header")).not.toBeNull();
     const generateBrief = screen.getByRole("button", {
       name: /形成创作简报/u,
     });
@@ -732,6 +770,16 @@ describe("intake center", () => {
     expect(screen.getByLabelText("阶段 1 描述")).toHaveValue(
       "发现不存在的时间段",
     );
+    fireEvent.click(screen.getByRole("radio", { name: /唯一解/u }));
+    fireEvent.click(
+      screen.getByRole("radio", { name: /信息不足时保持未决/u }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /信息不足时保持未决/u }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: /进入创作简报审阅/u }),
+    ).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /添加一条卖点/u }));
     expect(screen.getAllByLabelText(/核心卖点第 \d+ 项/u)).toHaveLength(4);
     fireEvent.change(screen.getByLabelText("核心卖点第 2 项"), {
@@ -743,12 +791,12 @@ describe("intake center", () => {
     const conceptField = screen.getByLabelText("一句话概念").closest("section");
     const briefFields = Array.from(conceptField?.parentElement?.children ?? []);
     expect(
-      briefFields.slice(0, 2).map((field) =>
+      briefFields.slice(0, 3).map((field) =>
         field.querySelector("header label")?.textContent,
       ),
-    ).toEqual(["一句话概念*", "推理目标*"]);
+    ).toEqual(["一句话概念*", "推理目标*", "结论模式*"]);
     expect(
-      briefFields.slice(0, 2).every((field) =>
+      briefFields.slice(0, 3).every((field) =>
         field.matches('[data-required="true"]') &&
         field.querySelector("header label > em")?.textContent === "*",
       ),
@@ -773,11 +821,11 @@ describe("intake center", () => {
     await flush();
 
     expect(
-      screen.getByRole("heading", { name: "让三种创作策略同时摊开。" }),
+      screen.getByRole("heading", { name: "生成三份策略候选，展开比较。" }),
     ).toBeInTheDocument();
     expect(screen.getByText("候选卷尚空")).toBeInTheDocument();
     const generateCandidateActions = screen.getAllByRole("button", {
-      name: /生成三份候选/u,
+      name: /生成三份策略候选/u,
     });
     expect(generateCandidateActions).toHaveLength(2);
     fireEvent.click(generateCandidateActions[1]);
@@ -835,6 +883,25 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("必须回答")).toHaveLength(1);
     expect(screen.getAllByText("可以暂缓")).toHaveLength(3);
+  });
+
+  it("refreshes and retries when the intake revision changes during question creation", async () => {
+    fake.backend.setFailNextQuestionRevision(true);
+    renderIntake();
+
+    fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    expect(
+      screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("玩家最终必须回答哪一个问题？"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Brief Intake revision is stale"),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the official intake on the real backend without browser persistence", () => {

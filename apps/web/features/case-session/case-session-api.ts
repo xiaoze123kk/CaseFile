@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  ApiError,
   apiRequest,
   type BriefContent,
   type BriefIntakeCandidateContent,
   type BriefIntakeView,
   type BriefVersionView,
+  type CandidateStrategy,
   type BriefView,
   type DraftCandidateView,
   type DraftView,
@@ -63,6 +65,16 @@ export function isProviderAuthFailure(error: unknown): boolean {
   return (
     error instanceof CaseSessionError &&
     error.failureCode === "provider_authentication_failed"
+  );
+}
+
+/** 判断写入是否因 Brief Intake 乐观并发版本过期而被拒绝。 */
+export function isBriefIntakeRevisionConflict(error: unknown): boolean {
+  return (
+    (error instanceof ApiError &&
+      error.body.code === "brief_intake_revision_conflict") ||
+    (error instanceof CaseSessionError &&
+      error.failureCode === "brief_intake_revision_conflict")
   );
 }
 
@@ -218,6 +230,8 @@ export async function startDraftGenerationTask(
   briefVersionId: number,
   draftRevision: number,
   provider: ProviderName,
+  candidateStrategy: CandidateStrategy = "balanced",
+  candidateStrategyAttempt = 1,
 ) {
   return apiRequest<TaskView>(`/projects/${projectId}/tasks/generate`, {
     actorId: LOCAL_ACTOR_ID,
@@ -226,6 +240,8 @@ export async function startDraftGenerationTask(
       brief_version_id: briefVersionId,
       expected_draft_revision: draftRevision,
       provider,
+      candidate_strategy: candidateStrategy,
+      candidate_strategy_attempt: candidateStrategyAttempt,
     },
   });
 }

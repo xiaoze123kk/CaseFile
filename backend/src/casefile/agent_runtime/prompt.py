@@ -11,6 +11,11 @@ AGENT_VERSION = "casefile-single-agent-v2"
 
 
 def generation_input(request: GenerationRequest) -> str:
+    strategy = (
+        request.candidate_strategy.value
+        if hasattr(request.candidate_strategy, "value")
+        else str(request.candidate_strategy)
+    )
     payload: dict[str, Any] = {
         "brief": request.brief,
         "frozen_context": {
@@ -26,6 +31,8 @@ def generation_input(request: GenerationRequest) -> str:
                 "parent_version_id": request.parent_version_id,
             },
             "status": "draft",
+            "candidate_strategy": strategy,
+            "candidate_strategy_version": request.candidate_strategy_version,
         },
     }
     if request.repair_feedback:
