@@ -217,6 +217,7 @@ function RelationshipGraph({
   compact?: boolean;
 }) {
   const graphNodes = seed.graphNodes;
+  const [zoom, setZoom] = useState(1);
   const initialPositions = useMemo(
     () =>
       Object.fromEntries(
@@ -398,12 +399,19 @@ function RelationshipGraph({
           <span>同步关系图</span>
           <h2 id="relations-heading">事件、人物与证据</h2>
         </div>
-        <small>{visibleNodeIds.size} NODES</small>
+        <div className={styles.sectionTrailing}>
+          <small>{visibleNodeIds.size} NODES</small>
+          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
+        </div>
       </header>
       <p className={styles.srOnly} id="relationship-graph-summary">
         {seed.caseMeta.relationshipSummary}
       </p>
-      {board}
+      <div className={styles.zoomViewport}>
+        <div className={styles.zoomStage} style={{ zoom }}>
+          {board}
+        </div>
+      </div>
       <details className={styles.graphAlternative}>
         <summary>查看关系表与文字摘要</summary>
         <div className={styles.graphTableWrap}>
@@ -473,32 +481,39 @@ function TimelineOverview({
     timelineResizeRef.current = null;
   }
 
+  const [zoom, setZoom] = useState(1);
+
   return (
-    <div
-      className={styles.timelineOverview}
-      style={
-        {
-          "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
-        } as CSSProperties
-      }
-    >
-      <div
-        aria-hidden="true"
-        className={styles.timelineResizeHandle}
-        data-testid="timeline-resize-handle"
-        onPointerCancel={endTimelineResize}
-        onPointerDown={startTimelineResize}
-        onPointerMove={moveTimelineResize}
-        onPointerUp={endTimelineResize}
-      />
-      <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
-        <header className={styles.sectionHeader}>
-          <div>
-            <span>事件序列</span>
-            <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
-          </div>
-          <small>{seed.caseMeta.timelineMeta}</small>
-        </header>
+    <div className={styles.zoomViewport}>
+      <div className={styles.zoomStage} style={{ zoom }}>
+        <div
+          className={styles.timelineOverview}
+          style={
+            {
+              "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
+            } as CSSProperties
+          }
+        >
+          <div
+            aria-hidden="true"
+            className={styles.timelineResizeHandle}
+            data-testid="timeline-resize-handle"
+            onPointerCancel={endTimelineResize}
+            onPointerDown={startTimelineResize}
+            onPointerMove={moveTimelineResize}
+            onPointerUp={endTimelineResize}
+          />
+          <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
+            <header className={styles.sectionHeader}>
+              <div>
+                <span>事件序列</span>
+                <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
+              </div>
+              <div className={styles.sectionTrailing}>
+                <small>{seed.caseMeta.timelineMeta}</small>
+                <ZoomControls onZoomChange={setZoom} zoom={zoom} />
+              </div>
+            </header>
         <ol className={styles.timelineList}>
           {seed.timelineEvents.map((event) => {
             const selected = event.id === selectedEventId;
@@ -534,13 +549,15 @@ function TimelineOverview({
           })}
         </ol>
       </section>
-      <RelationshipGraph
-        compact
-        onSelectObject={onSelectObject}
-        relatedObjectIds={[selectedEvent.id, ...selectedEvent.relatedObjectIds]}
-        seed={seed}
-        selectedObjectId={selectedObjectId}
-      />
+          <RelationshipGraph
+            compact
+            onSelectObject={onSelectObject}
+            relatedObjectIds={[selectedEvent.id, ...selectedEvent.relatedObjectIds]}
+            seed={seed}
+            selectedObjectId={selectedObjectId}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -554,18 +571,24 @@ function MapView({
   selectedEventId: string;
   onSelectEvent: (id: string) => void;
 }) {
+  const [zoom, setZoom] = useState(1);
   return (
     <section className={styles.mapView} aria-labelledby="map-heading">
       <header className={styles.sectionHeader}>
         <div><span>空间核对</span><h2 id="map-heading">{seed.caseMeta.mapTitle}</h2></div>
-        <small>{seed.caseMeta.mapMeta}</small>
+        <div className={styles.sectionTrailing}>
+          <small>{seed.caseMeta.mapMeta}</small>
+          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
+        </div>
       </header>
-      <div className={styles.mapBoard}>
-        <svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 100 100">
-          <path d="M5 18h35v18h18v-12h37M18 5v90M40 18v50h38v27M58 24v28M78 52h17" />
-          <path className={styles.mapWater} d="M0 78c18-8 30 8 46 0s29 8 54-2v24H0Z" />
-          <path className={styles.mapRoute} d="M19 63C34 58 39 29 30 25s11 27 24 27 10 18 19 18" />
-        </svg>
+      <div className={styles.zoomViewport}>
+        <div className={styles.zoomStage} style={{ zoom }}>
+          <div className={styles.mapBoard}>
+            <svg aria-hidden="true" preserveAspectRatio="none" viewBox="0 0 100 100">
+              <path d="M5 18h35v18h18v-12h37M18 5v90M40 18v50h38v27M58 24v28M78 52h17" />
+              <path className={styles.mapWater} d="M0 78c18-8 30 8 46 0s29 8 54-2v24H0Z" />
+              <path className={styles.mapRoute} d="M19 63C34 58 39 29 30 25s11 27 24 27 10 18 19 18" />
+            </svg>
         {seed.mapLabels.map((label) => (
           <span
             className={styles.mapLabel}
@@ -588,6 +611,8 @@ function MapView({
             <span>{marker.label}</span>
           </button>
         ))}
+          </div>
+        </div>
       </div>
       <p className={styles.viewNote}>{seed.caseMeta.mapNote}</p>
     </section>
@@ -962,6 +987,42 @@ function EvidenceComparison({
   );
 }
 
+function ZoomControls({
+  zoom,
+  onZoomChange,
+}: {
+  zoom: number;
+  onZoomChange: (zoom: number) => void;
+}) {
+  return (
+    <div aria-label="画布缩放" className={styles.zoomControls}>
+      <button
+        aria-label="缩小"
+        disabled={zoom <= 0.5}
+        onClick={() => onZoomChange(Math.max(0.5, zoom - 0.25))}
+        type="button"
+      >
+        −
+      </button>
+      <button
+        aria-label={`缩放比例 ${Math.round(zoom * 100)}%`}
+        onClick={() => onZoomChange(1)}
+        type="button"
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        aria-label="放大"
+        disabled={zoom >= 2.5}
+        onClick={() => onZoomChange(Math.min(2.5, zoom + 0.25))}
+        type="button"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
 const reasoningOutcomeLabels: Record<ReasoningOutcome, string> = {
   supported: "证据支持",
   contested: "解释竞争",
@@ -1096,6 +1157,7 @@ function ReasoningGraphView({
     () => buildReasoningCanvas(seed.reasoningPaths),
     [seed.reasoningPaths],
   );
+  const [zoom, setZoom] = useState(1);
   // 布局随候选种子变化：渲染期直接调整 state（官方推荐模式），
   // 拖动产生的位置修改只在同一布局内保留。
   const [canvasState, setCanvasState] = useState(() => ({
@@ -1190,17 +1252,22 @@ function ReasoningGraphView({
           <span>推理过程图</span>
           <h2 id="reasoning-heading">证据如何收束到假设</h2>
         </div>
-        <small>{seed.reasoningPaths.length} PATHS</small>
+        <div className={styles.sectionTrailing}>
+          <small>{seed.reasoningPaths.length} PATHS</small>
+          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
+        </div>
       </header>
       {layout.nodes.length ? (
         <>
-          <div
-            aria-label="推理画布"
-            className={styles.reasoningBoard}
-            onPointerCancel={endDrag}
-            onPointerMove={moveDrag}
-            onPointerUp={endDrag}
-            ref={boardRef}
+          <div className={styles.zoomViewport}>
+            <div className={styles.zoomStage} style={{ zoom }}>
+              <div
+                aria-label="推理画布"
+                className={styles.reasoningBoard}
+                onPointerCancel={endDrag}
+                onPointerMove={moveDrag}
+                onPointerUp={endDrag}
+                ref={boardRef}
             role="group"
           >
             <svg
@@ -1270,6 +1337,8 @@ function ReasoningGraphView({
               <span data-kind="supported">支持</span>
               <span data-kind="contested">竞争</span>
               <span data-kind="eliminated">排除</span>
+            </div>
+              </div>
             </div>
           </div>
           <div className={styles.reasoningTables}>

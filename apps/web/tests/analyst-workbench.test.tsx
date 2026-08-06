@@ -232,6 +232,31 @@ describe("analyst workbench prototype", () => {
     expect(screen.getByText(/已生成 小说 产物/)).toBeInTheDocument();
   });
 
+  it("zooms the relation graph canvas with the zoom controls", () => {
+    renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    expect(
+      screen.getByRole("button", { name: "缩放比例 100%" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "放大" }));
+    expect(
+      screen.getByRole("button", { name: "缩放比例 125%" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "缩小" }));
+    expect(
+      screen.getByRole("button", { name: "缩放比例 100%" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "放大" }));
+    fireEvent.click(screen.getByRole("button", { name: "缩放比例 125%" }));
+    expect(
+      screen.getByRole("button", { name: "缩放比例 100%" }),
+    ).toBeInTheDocument();
+  });
+
   it("renders the export preview with the gate checklist", () => {
     renderWorkbench();
 
