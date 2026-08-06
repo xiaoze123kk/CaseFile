@@ -17,7 +17,7 @@ export interface ReasoningStep {
   evidenceIds: string[];
 }
 
-export interface PrototypeReasoningPath {
+export interface ReasoningPath {
   id: string;
   question: string;
   evidenceIds: string[];
@@ -144,7 +144,7 @@ export interface WorkbenchCaseMeta {
   protagonist: string;
 }
 
-export interface PrototypeWorkbenchSeed {
+export interface WorkbenchSeed {
   id: string;
   caseMeta: WorkbenchCaseMeta;
   caseObjects: CaseObject[];
@@ -153,7 +153,7 @@ export interface PrototypeWorkbenchSeed {
   sourceItems: SourceItem[];
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
-  reasoningPaths: PrototypeReasoningPath[];
+  reasoningPaths: ReasoningPath[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   drawer: WorkbenchDrawerCopy;
@@ -163,12 +163,12 @@ export interface PrototypeWorkbenchSeed {
   defaultIssueId: string;
 }
 
-export type PrototypeDraftFocus = "structure" | "atmosphere" | "reasoning";
+export type WorkbenchCandidateFocus = "structure" | "atmosphere" | "reasoning";
 
-export interface PrototypeDraftCandidate {
+export interface WorkbenchCandidate {
   id: string;
   briefVersion: number;
-  focus: PrototypeDraftFocus;
+  focus: WorkbenchCandidateFocus;
   focusLabel: string;
   title: string;
   summary: string;
@@ -177,10 +177,10 @@ export interface PrototypeDraftCandidate {
   constraintStatements: string[];
   strengths: string[];
   tradeoffs: string[];
-  workbenchSeed: PrototypeWorkbenchSeed;
+  workbenchSeed: WorkbenchSeed;
 }
 
-export interface PrototypeCandidateBriefInput {
+export interface CandidateBriefInput {
   creativeIntent: string;
   reasoningProposition: string;
   authorAnswer: string;
@@ -481,7 +481,7 @@ const defaultMapLabels: WorkbenchMapLabel[] = [
   { label: "备用门", x: 70, y: 84 },
 ];
 
-export const defaultWorkbenchSeed: PrototypeWorkbenchSeed = {
+export const defaultWorkbenchSeed: WorkbenchSeed = {
   id: "default-fog-harbor",
   caseMeta: {
     title: "雾港失联案",
@@ -562,7 +562,7 @@ export const defaultWorkbenchSeed: PrototypeWorkbenchSeed = {
 };
 
 interface CandidateBlueprint {
-  focus: PrototypeDraftFocus;
+  focus: WorkbenchCandidateFocus;
   focusLabel: string;
   title: string;
   caseTitle: string;
@@ -608,7 +608,7 @@ interface CandidateBlueprint {
   audioExcerpt: string;
   strengths: string[];
   tradeoffs: string[];
-  reasoningPaths: PrototypeReasoningPath[];
+  reasoningPaths: ReasoningPath[];
 }
 
 const candidateBlueprints: CandidateBlueprint[] = [
@@ -910,9 +910,9 @@ const candidateBlueprints: CandidateBlueprint[] = [
 
 function buildCandidateSeed(
   blueprint: CandidateBlueprint,
-  brief: PrototypeCandidateBriefInput,
+  brief: CandidateBriefInput,
   briefVersion: number,
-): PrototypeWorkbenchSeed {
+): WorkbenchSeed {
   const [eventA, eventB, eventC, eventD] = blueprint.events;
   const objects: CaseObject[] = [
     { id: "PER-001", kind: "person", label: blueprint.protagonist, code: "档案修复师 / 当前视角", meta: "已知 12 条 · 未知 4 条", relatedEventIds: ["EV-1800", "EV-1825"] },
@@ -969,7 +969,7 @@ function buildCandidateSeed(
       mapMeta: blueprint.mapMeta,
       mapNote: blueprint.mapNote,
       relationshipSummary: `以“${eventD.label}”为中心，连接${blueprint.protagonist}、${blueprint.witness}、两份关键记录、${blueprint.restrictedLocation}与“${blueprint.hypothesis}”假设。所有节点均可通过关系表访问。`,
-      exportTitle: "候选调查卷 / 演示包",
+      exportTitle: "候选调查卷 / 开发包",
       exportCode: `CASEFILE / B${briefVersion}-${blueprint.focus.toUpperCase()}`,
       exportSubtitle: `${blueprint.focusLabel}候选 · 前端 Fixture`,
       dossierVisibleRoles: `${blueprint.protagonist}、${blueprint.witness}`,
@@ -1013,10 +1013,10 @@ function buildCandidateSeed(
   };
 }
 
-export function buildPrototypeDraftCandidates(
-  brief: PrototypeCandidateBriefInput,
+export function buildWorkbenchCandidates(
+  brief: CandidateBriefInput,
   briefVersion: number,
-): PrototypeDraftCandidate[] {
+): WorkbenchCandidate[] {
   return candidateBlueprints.map((blueprint) => {
     const seed = buildCandidateSeed(blueprint, brief, briefVersion);
     return {
@@ -1042,7 +1042,7 @@ export function buildPrototypeDraftCandidates(
   });
 }
 
-export function validateWorkbenchSeed(seed: PrototypeWorkbenchSeed) {
+export function validateWorkbenchSeed(seed: WorkbenchSeed) {
   const errors: string[] = [];
   const objectIds = new Set(seed.caseObjects.map((object) => object.id));
   const eventIds = new Set(seed.timelineEvents.map((event) => event.id));
@@ -1080,10 +1080,10 @@ export function validateWorkbenchSeed(seed: PrototypeWorkbenchSeed) {
   return errors;
 }
 
-export function getObject(seed: PrototypeWorkbenchSeed, objectId: string) {
+export function getObject(seed: WorkbenchSeed, objectId: string) {
   return seed.caseObjects.find((item) => item.id === objectId);
 }
 
-export function getEvent(seed: PrototypeWorkbenchSeed, eventId: string) {
+export function getEvent(seed: WorkbenchSeed, eventId: string) {
   return seed.timelineEvents.find((item) => item.id === eventId);
 }

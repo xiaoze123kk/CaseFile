@@ -21,19 +21,20 @@ import {
   type IssueStatus,
   type ObjectKind,
   objectKindLabels,
-  type PrototypeDraftCandidate,
-  type PrototypeReasoningPath,
-  type PrototypeWorkbenchSeed,
+  type WorkbenchCandidate,
+  type ReasoningPath,
+  type WorkbenchSeed,
   type ReasoningOutcome,
   viewOptions,
   type WorkbenchView,
 } from "./analyst-fixture";
 import {
-  type PrototypeDraftCandidateStatus,
-  useDemoPrototype,
-} from "@/features/demo-prototype/demo-prototype-provider";
+  type WorkbenchCandidateStatus,
+  useCaseSession,
+} from "@/features/case-session/case-session-provider";
+import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
-import relayStyles from "./prototype-relay.module.css";
+import relayStyles from "./candidate-relay.module.css";
 
 type MobileRegion = "objects" | "canvas" | "inspector" | "sources";
 type DrawerTab = "audio" | "transcript" | "logs" | "retrieval";
@@ -47,7 +48,7 @@ interface AuditEntry {
   detail: string;
 }
 
-function createIssueStatuses(seed: PrototypeWorkbenchSeed) {
+function createIssueStatuses(seed: WorkbenchSeed) {
   return Object.fromEntries(
     seed.validationIssues.map((issue) => [issue.id, "open"]),
   ) as Record<string, IssueStatus>;
@@ -214,7 +215,7 @@ function RelationshipGraph({
   onSelectObject,
   compact = false,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   selectedObjectId: string;
   relatedObjectIds: string[];
   onSelectObject: (objectId: string) => void;
@@ -493,7 +494,7 @@ function TimelineOverview({
   onSelectEvent,
   onSelectObject,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   selectedEventId: string;
   selectedObjectId: string;
   issueStatuses: Record<string, IssueStatus>;
@@ -607,7 +608,7 @@ function MapView({
   selectedEventId,
   onSelectEvent,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   selectedEventId: string;
   onSelectEvent: (id: string) => void;
 }) {
@@ -714,7 +715,7 @@ function DossierView({
   seed,
   selectedEventId,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   selectedEventId: string;
 }) {
   const event = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
@@ -776,7 +777,7 @@ function ExportView({
   seed,
   unresolvedCount,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   unresolvedCount: number;
 }) {
   const ready = unresolvedCount === 0;
@@ -851,7 +852,7 @@ const compileTargets: Array<{
 
 function composeCompilePreview(
   targetId: CompileTargetId,
-  seed: PrototypeWorkbenchSeed,
+  seed: WorkbenchSeed,
   unresolvedCount: number,
 ): string {
   const people = seed.caseObjects
@@ -905,7 +906,7 @@ function composeCompilePreview(
         `事件 ${events.length} 个 · 推理路径 ${seed.reasoningPaths.length} 条`,
         `待处理问题 ${unresolvedCount} 个`,
         "",
-        "编译产物为演示样例，正式版本由 Compiler 生成。",
+        "编译产物为开发样例，正式版本由 Compiler 生成。",
       ].join("\n");
     case "test":
       return [
@@ -925,7 +926,7 @@ function CompileCenterView({
   seed,
   unresolvedCount,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   unresolvedCount: number;
 }) {
   const [targetId, setTargetId] = useState<CompileTargetId>("novel");
@@ -971,7 +972,7 @@ function CompileCenterView({
           <pre>{composeCompilePreview(targetId, seed, unresolvedCount)}</pre>
           {compiled ? (
             <p className={styles.compileDone}>
-              已生成 {target.label} 产物（演示样例，正式版本由 Compiler 生成）。
+              已生成 {target.label} 产物（开发样例，正式版本由 Compiler 生成）。
             </p>
           ) : null}
         </section>
@@ -1023,7 +1024,7 @@ function EvidenceComparison({
   onStartEditing,
   onSaveManual,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   issueId: string;
   status: IssueStatus;
   manualValue: string;
@@ -1191,7 +1192,7 @@ function clamp(value: number, min: number, max: number) {
 // 所有推理路径合并为一张 100×100 逻辑坐标画布：结论收束在顶部、
 // 推理步骤按路径分列居中、证据共享并铺在底部；边由引用关系生成。
 function buildReasoningCanvas(
-  paths: PrototypeReasoningPath[],
+  paths: ReasoningPath[],
 ): ReasoningCanvasLayout {
   const nodes: ReasoningCanvasNode[] = [];
   const edges: ReasoningCanvasEdge[] = [];
@@ -1272,7 +1273,7 @@ function ReasoningGraphView({
   seed,
   onSelectObject,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   onSelectObject: (objectId: string) => void;
 }) {
   const layout = useMemo(
@@ -1574,7 +1575,7 @@ interface AgentMessage {
 
 function composeAgentReply(
   prompt: string,
-  seed: PrototypeWorkbenchSeed,
+  seed: WorkbenchSeed,
   unresolvedCount: number,
 ): string {
   if (/体检|问题/.test(prompt)) {
@@ -1633,7 +1634,7 @@ function AgentPanel({
   unresolvedCount,
   onClose,
 }: {
-  seed: PrototypeWorkbenchSeed;
+  seed: WorkbenchSeed;
   unresolvedCount: number;
   onClose: () => void;
 }) {
@@ -1743,7 +1744,7 @@ export function AnalystWorkbench() {
     activeCandidate,
     adoptCandidate,
     candidateStatus,
-  } = useDemoPrototype();
+  } = useCaseSession();
   const seed = activeCandidate?.workbenchSeed ?? defaultWorkbenchSeed;
   const activeCandidateStatus = activeCandidate
     ? candidateStatus(activeCandidate)
@@ -1766,9 +1767,9 @@ function AnalystWorkbenchSurface({
   activeCandidateStatus,
   adoptCandidate,
 }: {
-  seed: PrototypeWorkbenchSeed;
-  activeCandidate: PrototypeDraftCandidate | null;
-  activeCandidateStatus: PrototypeDraftCandidateStatus | null;
+  seed: WorkbenchSeed;
+  activeCandidate: WorkbenchCandidate | null;
+  activeCandidateStatus: WorkbenchCandidateStatus | null;
   adoptCandidate: (candidateId: string) => Promise<boolean>;
 }) {
   const [view, setView] = useState<WorkbenchView>("timeline");
@@ -2017,7 +2018,7 @@ function AnalystWorkbenchSurface({
     }, 980);
   }
 
-  function resetDemo() {
+  function resetWorkbench() {
     setView("timeline");
     setSelectedEventId(seed.defaultEventId);
     setSelectedObjectId(seed.defaultObjectId);
@@ -2034,7 +2035,7 @@ function AnalystWorkbenchSurface({
     setManualValue(seed.validationIssues[0].patchAfter);
     setAuditEntries([...seed.initialAuditEntries]);
     setAgentOpen(false);
-    announce(`演示数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
+    announce(`工作台数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
   }
 
   function runPaletteAction(action: () => void) {
@@ -2093,6 +2094,17 @@ function AnalystWorkbenchSurface({
         <div className={styles.brandBlock}>
           <span className={styles.brandMark} aria-hidden="true" />
           <div><strong>CaseFile</strong><small>推理卷宗</small></div>
+          <button
+            aria-label="打开模型服务设置"
+            className={settingsStyles.settingsEntry}
+            data-casefile-surface="workbench"
+            onClick={() => window.dispatchEvent(new Event("casefile:open-settings"))}
+            title="模型服务设置"
+            type="button"
+          >
+            <span aria-hidden="true" className={settingsStyles.settingsDot} />
+            <span className={settingsStyles.settingsLabel}>模型</span>
+          </button>
         </div>
         <div className={styles.caseIdentity}>
           <span>当前卷宗</span>
@@ -2124,16 +2136,15 @@ function AnalystWorkbenchSurface({
           >
             <WorkbenchIcon name="chat" />
           </button>
-          <button aria-label="重置演示数据" onClick={resetDemo} type="button"><WorkbenchIcon name="reset" /></button>
-          <Link href="/demo/intake">建案中心</Link>
-          <Link href="/">正式模式 ↗</Link>
+          <button aria-label="重置工作台数据" onClick={resetWorkbench} type="button"><WorkbenchIcon name="reset" /></button>
+          <Link href="/">建案中心</Link>
         </div>
       </header>
 
       {activeCandidate ? (
         <section
           aria-label="工作稿接力状态"
-          className={relayStyles.prototypeRelay}
+          className={relayStyles.candidateRelay}
           data-status={activeCandidateStatus ?? "pending"}
         >
           <div>
@@ -2152,7 +2163,7 @@ function AnalystWorkbenchSurface({
             </p>
           </div>
           <div>
-            <Link href="/demo/intake">← 返回候选卷</Link>
+            <Link href="/">← 返回候选卷</Link>
             {activeCandidateStatus === "pending" ? (
               <button
                 onClick={() => {

@@ -2,16 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsDialog } from "@/features/workflow/settings-dialog";
+import { SettingsDialog } from "@/features/settings/settings-dialog";
 import type { ProviderSettingView } from "@/lib/api-client";
-
-vi.mock("@/store/workflow-store", () => ({
-  useWorkflowSession: () => ({
-    actorId: 7,
-    provider: "deepseek",
-    setProvider: vi.fn(),
-  }),
-}));
 
 const savedSetting: ProviderSettingView = {
   provider: "deepseek",
@@ -39,7 +31,7 @@ function renderSettings() {
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <SettingsDialog onClose={vi.fn()} open />
+      <SettingsDialog actorId={7} onClose={vi.fn()} open />
     </QueryClientProvider>,
   );
 }
@@ -56,6 +48,7 @@ afterEach(() => {
 describe("API key management", () => {
   it("reveals only the key currently entered by the user", () => {
     renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: /DeepSeek/ }));
     const input = screen.getByLabelText("DeepSeek API 密钥");
     expect(input).toHaveAttribute("type", "password");
 
@@ -79,6 +72,7 @@ describe("API key management", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     renderSettings();
+    fireEvent.click(screen.getByRole("button", { name: /DeepSeek/ }));
 
     await screen.findByText(/••••••••68c1/);
     fireEvent.click(screen.getByRole("button", { name: "删除密钥" }));

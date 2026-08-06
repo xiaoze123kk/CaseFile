@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt_repository import (
     SUPPORTED_AGENT_IDS,
     PromptRepository,

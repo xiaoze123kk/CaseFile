@@ -1,0 +1,881 @@
+.intakeCenter {
+  --paper: #fafaf5;
+  --paper-low: #f4f4ef;
+  --paper-high: #ffffff;
+  --paper-mid: #eeeee9;
+  --ink: #1a1c19;
+  --ink-muted: #5d5d58;
+  --ink-faint: #70706a;
+  --red: #a92609;
+  --red-soft: #fff0ec;
+  --red-line: #d9afa6;
+  --rule: #c9c9c1;
+  --hairline: #e1e1da;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 100svh;
+  overflow: auto;
+  color: var(--ink);
+  background-color: rgba(250, 250, 245, 0.76);
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.035) 1px, transparent 1px),
+    url("/intake-pencil-dossier.svg");
+  background-position: 0 0, 0 0, center;
+  background-repeat: repeat, repeat, no-repeat;
+  background-size: 18px 18px, 18px 18px, cover;
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.intakeCenter *,
+.intakeCenter *::before,
+.intakeCenter *::after {
+  box-sizing: border-box;
+}
+
+.intakeCenter button,
+.intakeCenter textarea,
+.intakeCenter input,
+.intakeCenter select {
+  border-radius: 0;
+  font: inherit;
+}
+
+.intakeCenter button,
+.intakeCenter a,
+.intakeCenter summary {
+  color: inherit;
+}
+
+.intakeCenter a {
+  text-decoration: none;
+}
+
+.intakeCenter button:not(:disabled),
+.intakeCenter summary,
+.intakeCenter label:has(input) {
+  cursor: pointer;
+}
+
+.intakeCenter button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.intakeCenter :focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+.topbar {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: grid;
+  min-height: 74px;
+  grid-template-columns: 286px minmax(180px, 1fr) auto;
+  color: var(--ink);
+  border-bottom: 1px solid var(--ink);
+  background: rgba(250, 250, 245, 0.97);
+  backdrop-filter: blur(10px);
+}
+
+.brandCell,
+.topbarContext,
+.topbarLinks {
+  min-width: 0;
+  border-right: 1px solid var(--rule);
+}
+
+.brandCell {
+  position: relative;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+  border-right: 0;
+}
+
+.brandMark {
+  display: grid;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid rgba(26, 28, 25, 0.42);
+  border-radius: 11px;
+  background-color: #8d250e;
+  background-image: url("/casefile-brand.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 122px 81px;
+  box-shadow:
+    0 6px 14px rgba(89, 31, 14, 0.22),
+    inset 0 0 0 1px rgba(255, 247, 219, 0.14);
+}
+
+.brand > div,
+.topbarContext {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.brand strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 27px;
+  line-height: 0.95;
+  letter-spacing: 0.01em;
+}
+
+.brand small,
+.topbarContext span,
+.topbarLinks,
+.pulseTrack,
+.routeDock header span,
+.stepHero small,
+.liveBrief header span,
+.routeNote span,
+.sourceCapsule > span,
+.constraintDrawer summary span,
+.liveNotice span {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.brand small,
+.topbarContext span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.brand small {
+  margin-top: 7px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  letter-spacing: 0.22em;
+  text-transform: none;
+}
+
+.topbarContext {
+  gap: 3px;
+  padding: 9px 16px;
+}
+
+.topbarContext b {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbarLinks {
+  display: flex;
+  align-items: stretch;
+  border-right: 0;
+  font-size: 10px;
+}
+
+.topbarLinks a,
+.topbarLinks button {
+  display: grid;
+  min-width: 102px;
+  place-items: center;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--rule);
+  background: transparent;
+}
+
+.topbarLinks a:hover,
+.topbarLinks button:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.pulseTrack {
+  position: sticky;
+  z-index: 25;
+  top: 74px;
+  display: grid;
+  min-height: 68px;
+  grid-template-columns: 190px minmax(0, 1fr) 96px;
+  border-bottom: 1px solid var(--ink);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.pulseIdentity,
+.pulseStatus {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 9px 16px;
+}
+
+.pulseIdentity {
+  border-right: 1px solid var(--rule);
+}
+
+.pulseIdentity span,
+.pulseStatus small {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.pulseIdentity b,
+.pulseStatus span {
+  margin-top: 3px;
+  font: 700 13px "Cascadia Mono", Consolas, monospace;
+}
+
+.pulseTrack ol {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  list-style: none;
+}
+
+.pulseTrack li {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--hairline);
+}
+
+.pulseTrack li button {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 67px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+}
+
+.pulseTrack li button > span {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  font-size: 10px;
+}
+
+.pulseTrack li button > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pulseTrack li small {
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.pulseTrack li b {
+  overflow: hidden;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulseTrack li[data-active="true"] {
+  background: linear-gradient(90deg, var(--red) 0 3px, transparent 3px), var(--red-soft);
+}
+
+.pulseTrack li[data-active="true"] button > span {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.pulseTrack li[data-complete="true"] button > span {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.stepCheck {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  color: var(--red);
+}
+
+.stepCheck svg,
+.captureHeading svg,
+.polishControl svg,
+.comparisonPanel svg,
+.revisionStudio svg,
+.primaryAction svg,
+.secondaryAction svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.activeScan {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--red);
+}
+
+.pulseStatus {
+  align-items: flex-end;
+  border-left: 1px solid var(--rule);
+  text-align: right;
+}
+
+.workspace {
+  display: grid;
+  min-width: 0;
+  min-height: calc(100svh - 131px);
+  grid-template-columns: 190px minmax(0, 1fr) 246px;
+  gap: 12px;
+  padding: 12px;
+}
+
+.routeDock,
+.focusPlane,
+.liveBrief {
+  min-width: 0;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.routeDock {
+  position: sticky;
+  top: 142px;
+  align-self: start;
+}
+
+.routeDock > header,
+.liveBrief > header {
+  display: flex;
+  min-height: 48px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper-low);
+}
+
+.routeDock header span,
+.liveBrief header span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.routeDock header b,
+.liveBrief header b {
+  margin-top: 2px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+}
+
+.routeList {
+  display: grid;
+}
+
+.routeList button {
+  display: grid;
+  min-height: 86px;
+  grid-template-columns: 25px minmax(0, 1fr);
+  gap: 6px 8px;
+  align-content: center;
+  padding: 9px;
+  text-align: left;
+  border: 0;
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+}
+
+.routeList button > span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid currentcolor;
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.routeList button > div {
+  display: grid;
+  gap: 3px;
+}
+
+.routeList button b {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+}
+
+.routeList button small,
+.routeList button em {
+  color: var(--ink-faint);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.routeList button em {
+  grid-column: 2;
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.routeList button[data-available="true"] {
+  color: var(--ink);
+  background: linear-gradient(90deg, var(--red) 0 3px, transparent 3px), var(--red-soft);
+}
+
+.routeList button[data-available="true"] > span {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.routeList button[data-available="true"] em {
+  color: var(--red);
+}
+
+.routeNote {
+  margin: 10px;
+  padding: 9px 10px;
+  border-left: 2px solid var(--red);
+  background: var(--paper-low);
+}
+
+.routeNote span {
+  color: var(--red);
+  font-size: 9px;
+}
+
+.routeNote p {
+  margin: 5px 0 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.focusPlane {
+  min-height: 760px;
+  overflow: hidden;
+  background:
+    linear-gradient(90deg, transparent 0 42px, rgba(169, 38, 9, 0.18) 42px 43px, transparent 43px),
+    repeating-linear-gradient(0deg, rgba(26, 28, 25, 0.025) 0 1px, transparent 1px 29px),
+    var(--paper);
+}
+
+.liveBrief {
+  position: sticky;
+  top: 142px;
+  align-self: start;
+}
+
+.liveBrief > header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.liveBrief > header > div {
+  display: grid;
+}
+
+.liveBrief > header em {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: white;
+  background: var(--red);
+  font: normal 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.signalMeter {
+  display: grid;
+  height: 6px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 0;
+  background: var(--paper-mid);
+}
+
+.signalMeter i {
+  background: var(--hairline);
+}
+
+.signalMeter i[data-ready="true"] {
+  background: var(--red);
+}
+
+.signalRows {
+  display: grid;
+}
+
+.signalRows section {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.signalRows i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--rule);
+}
+
+.signalRows section[data-ready="true"] i {
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.signalRows span,
+.signalRows b {
+  font-size: 10px;
+}
+
+.signalRows b {
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.liveExtract,
+.pendingQueue {
+  margin: 10px;
+  padding: 10px;
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.liveExtract header,
+.pendingQueue header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-faint);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.liveExtract p,
+.pendingQueue p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.pendingQueue b {
+  color: var(--red);
+}
+
+.liveBrief > footer {
+  display: flex;
+  gap: 8px;
+  padding: 9px 10px;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--rule);
+  font-size: 9px;
+}
+
+.liveBrief > footer > span {
+  color: var(--red);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.liveBrief > footer p {
+  margin: 0;
+}
+
+.liveNotice {
+  position: fixed;
+  z-index: 40;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  max-width: min(420px, calc(100vw - 28px));
+  gap: 9px;
+  padding: 8px 11px;
+  color: white;
+  border-left: 3px solid var(--red);
+  background: var(--ink);
+  box-shadow: 3px 4px 0 rgba(169, 38, 9, 0.28);
+  font-size: 10px;
+}
+
+.liveNotice span {
+  color: #efb9ad;
+  font-size: 8px;
+}
+
+@media (max-width: 1180px) {
+  .workspace {
+    grid-template-columns: 168px minmax(0, 1fr) 220px;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .stepView {
+    padding-right: 18px;
+    padding-left: 54px;
+  }
+
+  .stepHero {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .questionStack > article {
+    grid-template-columns: 1fr;
+  }
+
+  .questionStack article > header {
+    border-right: 0;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .revisionStudio {
+    grid-template-columns: 1fr auto;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 920px) {
+  .topbar {
+    grid-template-columns: 190px minmax(0, 1fr) auto;
+  }
+
+  .topbarLinks a:first-child,
+  .topbarContext span,
+  .routeDock {
+    display: none;
+  }
+
+  .pulseTrack {
+    grid-template-columns: 132px minmax(0, 1fr) 78px;
+  }
+
+  .pulseTrack ol {
+    overflow-x: auto;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 210px;
+  }
+}
+
+@media (max-width: 700px) {
+  .intakeCenter {
+    height: auto;
+    min-height: 100svh;
+  }
+
+  .topbar {
+    position: relative;
+    grid-template-columns: 1fr auto;
+  }
+
+  .brandCell {
+    border-right: 0;
+  }
+
+  .topbarContext,
+  .topbarLinks a,
+  .topbarLinks button:not(:last-child) {
+    display: none;
+  }
+
+  .topbarLinks button:last-child {
+    min-width: 88px;
+  }
+
+  .pulseTrack {
+    position: relative;
+    top: auto;
+    grid-template-columns: minmax(0, 1fr) 66px;
+  }
+
+  .pulseIdentity {
+    display: none;
+  }
+
+  .pulseTrack ol {
+    overflow-x: visible;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .pulseTrack li button {
+    min-height: 61px;
+    grid-template-columns: 1fr;
+    place-items: center;
+    gap: 3px;
+    padding: 5px 2px;
+    text-align: center;
+  }
+
+  .pulseTrack li button > span {
+    width: 23px;
+    height: 23px;
+  }
+
+  .pulseTrack li button > div {
+    display: block;
+  }
+
+  .pulseTrack li button > div b,
+  .stepCheck {
+    display: none;
+  }
+
+  .workspace {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .focusPlane,
+  .liveBrief {
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .focusPlane {
+    min-height: 0;
+    background:
+      linear-gradient(90deg, transparent 0 25px, rgba(169, 38, 9, 0.18) 25px 26px, transparent 26px),
+      var(--paper);
+  }
+
+  .stepView {
+    padding: 0 14px 20px 38px;
+  }
+
+  .stepHero {
+    min-height: 112px;
+    padding-top: 18px;
+  }
+
+  .stepHero h1 {
+    font-size: 25px;
+  }
+
+  .ideaCapture {
+    padding-right: 12px;
+    padding-left: 34px;
+  }
+
+  .ideaCapture::before {
+    left: 24px;
+  }
+
+  .captureHeading {
+    align-items: flex-start;
+    padding: 10px 0;
+  }
+
+  .polishModes,
+  .comparisonLanes,
+  .auditStrip,
+  .briefEditor,
+  .resolutionChoices,
+  .constraintGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .polishModes label,
+  .comparisonLanes > section,
+  .auditStrip section,
+  .resolutionChoices label,
+  .constraintGrid > label {
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .fieldShell[data-wide="true"] {
+    grid-column: auto;
+  }
+
+  .stepActions,
+  .stepActions > div,
+  .comparisonActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .stepActions button,
+  .comparisonActions button {
+    width: 100%;
+  }
+
+  .revisionStudio {
+    grid-template-columns: 1fr;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: auto;
+  }
+
+  .candidateHistory article {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .candidateHistory article button {
+    grid-column: 2 / -1;
+  }
+
+.liveBrief {
+    position: relative;
+    top: auto;
+    margin-bottom: 52px;
+  }
+
+  .liveNotice {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intakeCenter *,
+  .intakeCenter *::before,
+  .intakeCenter *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

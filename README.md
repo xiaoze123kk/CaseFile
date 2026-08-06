@@ -7,9 +7,10 @@ v1 机器契约，以及 SourceRecord、Core Brief、推理对象、引用和 Sn
 
 ## Web 前端
 
-`apps/web` 是 React 19 + Next.js 16 App Router + TypeScript 实现的本地前端。原稿建案、
-关键追问、结构化简报候选、Brief 原子确认和工作台只有一套“数字档案纸”产品界面，直接使用
-PostgreSQL、HTTP/SSE、Provider 设置和 Worker；不再同时维护一套 Fixture 页面。
+`apps/web` 是 React 19 + Next.js 16 App Router + TypeScript 实现的本地前端，正式开发基线只有
+建案中心与分析师工作台两个页面。建案、Agent 任务、Brief 审阅、候选生成和显式采用直接使用
+PostgreSQL、HTTP/SSE、Provider 设置与 Worker；分析师工作台当前仍使用确定性 Fixture，等待后续
+逐区接入真实 CaseFile 与 Agent 能力。
 
 首次运行先安装 workspace 依赖：
 
@@ -37,16 +38,13 @@ pnpm dev:web
 powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 ```
 
-浏览器访问 `http://127.0.0.1:3000`。核心真实路由为：
+浏览器访问 `http://127.0.0.1:3000`。正式路由为：
 
-- `/`：通过“最初想法 → 关键追问 → 创作简报确认”保存不可变 SourceRecord、可恢复 Intake 与候选历史；采用后进入正式 Brief 审阅
-- `/brief`：保存后自动拆解作者底牌/创作边界，经人工确认后冻结 Brief，再通过 OpenAI 或 DeepSeek 创建真实 TaskRun，并查看可恢复 SSE 审计轨迹
-- `/workbench`：在对象树中查看 CaseFile v1 的 11 类对象，在 Agent/事实时间线之间切换，
-  使用右侧类型化编辑器修改业务字段，并通过可恢复的多线程 Agent 对话审阅结构化建议
+- `/`：五阶段建案中心，完成最初想法、关键追问、简报生成、Brief 审阅/冻结和三份候选的比较与显式采用
+- `/workbench`：分析师工作台；画布、对象和交互继续使用确定性 Fixture，但候选接力与采用动作保持真实后端边界
 
-旧地址 `/demo`、`/demo/brief` 和 `/demo/workbench` 会分别跳转到上述真实页面。
-`/demo/reasoning` 与 `/demo/quality` 暂时保留为未接后端模块的内部 Fixture 实验页，
-其本地动作不代表真实后端已经实现。
+旧地址仅提供非永久兼容跳转：`/demo/intake`、`/brief` 跳转到 `/`；`/demo`、
+`/demo/*`、`/reasoning`、`/quality` 跳转到 `/workbench`。正式页面和内部导航不再产生 `/demo` URL。
 
 执行前端完整检查：
 

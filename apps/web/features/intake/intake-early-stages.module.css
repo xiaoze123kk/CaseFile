@@ -1,0 +1,993 @@
+.stepView {
+  min-width: 0;
+  padding: 0 26px 24px 62px;
+}
+
+.stepHero {
+  display: grid;
+  min-height: 126px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+  align-items: end;
+  gap: 28px;
+  padding: 24px 0 18px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.stepHero small {
+  color: var(--red);
+  font-size: 9px;
+}
+
+.stepHero h1 {
+  margin: 7px 0 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: clamp(25px, 2.2vw, 38px);
+  font-weight: 560;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.stepHero p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.ideaCapture,
+.polishControl,
+.comparisonPanel,
+.sourceCapsule,
+.questionStack > article,
+.confirmationToolbar,
+.fieldShell,
+.constraintDrawer,
+.revisionStudio,
+.candidateHistory {
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.ideaCapture {
+  position: relative;
+  margin-top: 18px;
+  padding: 0 18px 14px 54px;
+  box-shadow: 4px 5px 0 rgba(26, 28, 25, 0.07);
+}
+
+.ideaCapture::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 40px;
+  width: 1px;
+  content: "";
+  background: var(--red-line);
+}
+
+.captureHeading,
+.polishControl > header,
+.comparisonPanel > header,
+.questionStack article > header,
+.confirmationToolbar,
+.fieldShell > header,
+.revisionStudio > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.captureHeading {
+  min-height: 60px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.captureHeading > span,
+.polishControl > header > div > span,
+.comparisonPanel > header > div > span,
+.revisionStudio > div > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  background: var(--red-soft);
+}
+
+.captureHeading > div,
+.polishControl header > div > div,
+.comparisonPanel header > div > div,
+.revisionStudio > div > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.captureHeading b,
+.polishControl b,
+.comparisonPanel h2,
+.revisionStudio b {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.captureHeading small,
+.polishControl small,
+.revisionStudio small {
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.sourceBadge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px 6px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.sourceBadge i {
+  width: 5px;
+  height: 5px;
+  background: var(--ink-faint);
+}
+
+.sourceBadge[data-source="user_original"] i {
+  background: var(--ink);
+}
+
+.sourceBadge[data-source="agent_suggestion"] {
+  color: var(--red);
+  border-color: var(--red-line);
+  background: var(--red-soft);
+}
+
+.sourceBadge[data-source="agent_suggestion"] i {
+  background: var(--red);
+}
+
+.ideaCapture > textarea,
+.comparisonLanes textarea,
+.answerComposer textarea,
+.fieldShell textarea,
+.revisionStudio textarea,
+.constraintGrid textarea {
+  width: 100%;
+  resize: vertical;
+  color: var(--ink);
+  border: 0;
+  background: transparent;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  line-height: 1.75;
+}
+
+.ideaCapture > textarea {
+  min-height: 210px;
+  padding: 18px 8px;
+  font-size: clamp(16px, 1.2vw, 20px);
+}
+
+.ideaCapture textarea::placeholder,
+.intakeCenter textarea::placeholder,
+.intakeCenter input::placeholder {
+  color: #9a9a92;
+}
+
+.ideaCapture > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--hairline);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.ideaCapture > footer div {
+  display: flex;
+  gap: 7px;
+}
+
+.ideaCapture > footer button,
+.suggestionList button,
+.answerComposer footer button,
+.candidateHistory > button,
+.candidateHistory article button,
+.constraintDrawer summary,
+.confirmationToolbar button {
+  padding: 5px 8px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+  font-size: 10px;
+}
+
+.ideaCapture > footer button:hover,
+.suggestionList button:hover,
+.answerComposer footer button:hover,
+.candidateHistory article button:hover,
+.confirmationToolbar button:hover {
+  color: var(--red);
+  border-color: var(--red-line);
+}
+
+.polishControl {
+  margin-top: 14px;
+}
+
+.polishControl > header {
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper-low);
+}
+
+.polishControl > header > div,
+.comparisonPanel > header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.polishControl em,
+.comparisonPanel > header em {
+  color: var(--red);
+  font: normal 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.polishModes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.polishModes label {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--hairline);
+}
+
+.polishModes label:last-child {
+  border-right: 0;
+}
+
+.polishModes input {
+  position: absolute;
+  opacity: 0;
+}
+
+.polishModes span {
+  display: grid;
+  min-height: 74px;
+  align-content: center;
+  gap: 4px;
+  padding: 10px 14px;
+}
+
+.polishModes input:checked + span {
+  color: var(--red);
+  box-shadow: inset 0 -3px var(--red);
+  background: var(--red-soft);
+}
+
+.comparisonPanel {
+  margin-top: 18px;
+  box-shadow: 4px 5px 0 rgba(26, 28, 25, 0.07);
+}
+
+.comparisonPanel > header {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.comparisonPanel h2 {
+  margin: 3px 0 0;
+  font-size: 18px;
+}
+
+.comparisonPanel header small {
+  color: var(--ink-faint);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.comparisonLanes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.comparisonLanes > section {
+  min-width: 0;
+  padding: 12px 14px;
+  border-right: 1px solid var(--rule);
+}
+
+.comparisonLanes > section:last-child {
+  border-right: 0;
+  background: rgba(255, 240, 236, 0.32);
+}
+
+.comparisonLanes header {
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+}
+
+.comparisonLanes textarea {
+  min-height: 210px;
+  padding: 12px 0;
+  font-size: 15px;
+}
+
+.auditStrip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.auditStrip section {
+  padding: 11px 14px;
+  border-right: 1px solid var(--rule);
+}
+
+.auditStrip section:last-child {
+  border-right: 0;
+}
+
+.auditStrip b {
+  font-size: 11px;
+}
+
+.auditStrip ul,
+.auditStrip p {
+  margin: 6px 0 0;
+  padding-left: 17px;
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.auditStrip section[data-warning="true"] {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.comparisonActions,
+.stepActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.comparisonActions {
+  padding: 12px 14px;
+}
+
+.comparisonActions button,
+.stepActions button,
+.revisionStudio > button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid var(--ink);
+  background: var(--paper-high);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.comparisonActions button:last-child,
+.primaryAction {
+  color: white !important;
+  border-color: var(--red) !important;
+  background: var(--red) !important;
+}
+
+.sourceCapsule {
+  display: grid;
+  margin-top: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--red);
+}
+
+.sourceCapsule > span {
+  color: var(--red);
+  font-size: 9px;
+}
+
+.sourceCapsule p {
+  grid-column: 1;
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.sourceCapsule .sourceBadge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.questionStack {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.emptyQuestions {
+  margin: 14px 0 0;
+  padding: 14px 16px;
+  border: 1px dashed var(--ink-faint);
+  color: var(--ink-faint);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.questionStack > article {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.questionStack article > header {
+  align-items: start;
+  padding: 18px;
+  border-right: 1px solid var(--ink);
+  background: var(--paper-low);
+}
+
+.questionStack article > header > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.questionStack article[data-resolved="true"] > header > span {
+  background: var(--red);
+}
+
+.questionStack h2 {
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 17px;
+  line-height: 1.45;
+}
+
+.questionStack header p {
+  margin: 7px 0 0;
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.questionStack header em {
+  margin-left: auto;
+  color: var(--red);
+  font: normal 9px "Cascadia Mono", Consolas, monospace;
+  white-space: nowrap;
+}
+
+.answerComposer {
+  min-width: 0;
+  padding: 14px;
+}
+
+.answerComposer > label,
+.suggestionList > span {
+  color: var(--ink-faint);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.answerComposer textarea {
+  min-height: 72px;
+  margin-top: 7px;
+  padding: 9px 10px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.suggestionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.suggestionList > span {
+  width: 100%;
+}
+
+.answerComposer footer {
+  display: flex;
+  min-height: 34px;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.stepActions {
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ink);
+}
+
+.stepActions > div {
+  display: flex;
+  gap: 8px;
+}
+
+.backAction {
+  color: var(--ink-muted);
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.secondaryAction:hover,
+.backAction:hover {
+  color: var(--red);
+  border-color: var(--red-line) !important;
+}
+
+.inlineError {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  border-left: 3px solid var(--red);
+  background: var(--red-soft);
+  font-size: 11px;
+}
+
+.confirmationToolbar {
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-bottom-color: var(--ink);
+  background: var(--paper-low);
+}
+
+.confirmationToolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.confirmationToolbar > div:first-child {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 8px;
+}
+
+.confirmationToolbar span,
+.confirmationToolbar small {
+  color: var(--ink-faint);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.confirmationToolbar b {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.confirmationToolbar small {
+  grid-column: 2;
+}
+
+.confirmationToolbar span[data-status="ready"] {
+  color: var(--ink);
+}
+
+.confirmationToolbar span[data-status="missing"] {
+  color: var(--red);
+}
+
+.briefEditor {
+  display: grid;
+  margin-top: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.fieldShell {
+  min-width: 0;
+}
+
+.fieldShell[data-wide="true"] {
+  grid-column: 1 / -1;
+}
+
+.fieldShell > header {
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper-low);
+}
+
+.fieldShell > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.fieldShell label {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-weight: 700;
+}
+
+.fieldShell small {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.fieldShell textarea {
+  min-height: 86px;
+  padding: 10px;
+  font-size: 13px;
+}
+
+.resolutionChoices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.resolutionChoices label {
+  position: relative;
+  border-right: 1px solid var(--hairline);
+}
+
+.resolutionChoices label:last-child {
+  border-right: 0;
+}
+
+.resolutionChoices input {
+  position: absolute;
+  opacity: 0;
+}
+
+.resolutionChoices span {
+  display: grid;
+  min-height: 75px;
+  align-content: center;
+  gap: 3px;
+  padding: 10px;
+}
+
+.resolutionChoices input:checked + span {
+  color: var(--red);
+  background: var(--red-soft);
+  box-shadow: inset 0 -3px var(--red);
+}
+
+.constraintDrawer {
+  margin-top: 12px;
+}
+
+.constraintDrawer summary {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  list-style: none;
+  background: var(--paper-low);
+}
+
+.constraintDrawer[open] summary {
+  border-bottom-color: var(--ink);
+}
+
+.constraintDrawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.constraintDrawer summary > div {
+  display: grid;
+  gap: 1px;
+}
+
+.constraintDrawer summary span {
+  color: var(--red);
+  font-size: 8px;
+}
+
+.constraintDrawer summary small,
+.constraintDrawer summary em {
+  color: var(--ink-faint);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.constraintGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.constraintGrid > label {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border-right: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.constraintGrid label > span {
+  display: grid;
+}
+
+.constraintGrid textarea,
+.constraintGrid select {
+  padding: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.constraintGrid select {
+  color: var(--ink-muted);
+  font: 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.revisionStudio {
+  display: grid;
+  margin-top: 12px;
+  grid-template-columns: minmax(170px, 0.42fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  background: var(--paper-low);
+}
+
+.revisionStudio textarea {
+  min-height: 68px;
+  padding: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.revisionStudio > button {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.candidateHistory {
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.candidateHistory > button {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  border: 0;
+  background: var(--paper-low);
+}
+
+.candidateHistory > button span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.candidateHistory > button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentcolor;
+}
+
+.candidateHistory > button b {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateHistory > button em {
+  color: var(--ink-faint);
+  font-style: normal;
+}
+
+.candidateHistory > div {
+  display: grid;
+}
+
+.candidateHistory article {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px;
+  border-top: 1px solid var(--hairline);
+}
+
+.candidateHistory article[data-current="true"] {
+  background: var(--red-soft);
+}
+
+.candidateHistory article > span,
+.candidateHistory article > em {
+  color: var(--red);
+  font: normal 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateHistory article > div {
+  display: grid;
+}
+
+.candidateHistory article small,
+.candidateHistory article p {
+  margin: 2px 0 0;
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.captureHeading svg,
+.polishControl svg,
+.comparisonPanel svg,
+.revisionStudio svg,
+.primaryAction svg,
+.secondaryAction svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+@media (max-width: 1180px) {
+  .stepView {
+    padding-right: 18px;
+    padding-left: 54px;
+  }
+
+  .stepHero {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .questionStack > article {
+    grid-template-columns: 1fr;
+  }
+
+  .questionStack article > header {
+    border-right: 0;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .revisionStudio {
+    grid-template-columns: 1fr auto;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .stepView {
+    padding: 0 14px 20px 38px;
+  }
+
+  .stepHero {
+    min-height: 112px;
+    padding-top: 18px;
+  }
+
+  .stepHero h1 {
+    font-size: 25px;
+  }
+
+  .ideaCapture {
+    padding-right: 12px;
+    padding-left: 34px;
+  }
+
+  .ideaCapture::before {
+    left: 24px;
+  }
+
+  .captureHeading {
+    align-items: flex-start;
+    padding: 10px 0;
+  }
+
+  .polishModes,
+  .comparisonLanes,
+  .auditStrip,
+  .briefEditor,
+  .resolutionChoices,
+  .constraintGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .polishModes label,
+  .comparisonLanes > section,
+  .auditStrip section,
+  .resolutionChoices label,
+  .constraintGrid > label {
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .fieldShell[data-wide="true"] {
+    grid-column: auto;
+  }
+
+  .stepActions,
+  .stepActions > div,
+  .comparisonActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .stepActions button,
+  .comparisonActions button {
+    width: 100%;
+  }
+
+  .revisionStudio {
+    grid-template-columns: 1fr;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: auto;
+  }
+
+  .candidateHistory article {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .candidateHistory article button {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stepView *,
+  .stepView *::before,
+  .stepView *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+

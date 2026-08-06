@@ -11,6 +11,15 @@ from typing import Any, Protocol
 from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, ValidationError
@@ -44,15 +53,6 @@ from casefile.agent_runtime.prompt import (
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 
 
 class GenerationProvider(Protocol):

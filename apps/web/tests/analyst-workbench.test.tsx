@@ -9,21 +9,21 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-  buildPrototypeDraftCandidates,
+  buildWorkbenchCandidates,
 } from "@/features/analyst-workbench/analyst-fixture";
 import { AnalystWorkbench } from "@/features/analyst-workbench/analyst-workbench";
 import {
-  DemoPrototypeProvider,
-  useDemoPrototype,
-} from "@/features/demo-prototype/demo-prototype-provider";
+  CaseSessionProvider,
+  useCaseSession,
+} from "@/features/case-session/case-session-provider";
 
 afterEach(cleanup);
 
 function renderWorkbench(children = <AnalystWorkbench />) {
-  return render(<DemoPrototypeProvider>{children}</DemoPrototypeProvider>);
+  return render(<CaseSessionProvider>{children}</CaseSessionProvider>);
 }
 
-const generatedCandidates = buildPrototypeDraftCandidates(
+const generatedCandidates = buildWorkbenchCandidates(
   {
     creativeIntent: "一名档案修复师追查三份共同失真的记录。",
     reasoningProposition: "三份可靠记录为何共同证明不存在的时间？",
@@ -34,7 +34,7 @@ const generatedCandidates = buildPrototypeDraftCandidates(
 );
 
 function CandidateSeedHarness() {
-  const { patchState, previewCandidate } = useDemoPrototype();
+  const { patchState, previewCandidate } = useCaseSession();
 
   function loadCandidate(index: number, frozenBriefVersion = 1) {
     patchState({
@@ -60,7 +60,7 @@ function CandidateSeedHarness() {
   );
 }
 
-describe("analyst workbench prototype", () => {
+describe("analyst workbench", () => {
   it("moves from an S0 issue to evidence comparison and explicit patch approval", () => {
     renderWorkbench();
 

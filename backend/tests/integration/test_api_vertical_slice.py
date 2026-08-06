@@ -228,6 +228,32 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert created.status_code == 201
         project_id = created.json()["id"]
+        removed_draft_routes = (
+            ("POST", f"/api/v1/projects/{project_id}/draft/entities"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/entities"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/entities/entity_removed"),
+            ("PUT", f"/api/v1/projects/{project_id}/draft/entities/entity_removed"),
+            ("DELETE", f"/api/v1/projects/{project_id}/draft/entities/entity_removed"),
+            (
+                "PUT",
+                f"/api/v1/projects/{project_id}/draft/entities/entity_removed/adjacent-locations",
+            ),
+            ("POST", f"/api/v1/projects/{project_id}/draft/events"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/events"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/events/event_removed"),
+            ("PUT", f"/api/v1/projects/{project_id}/draft/events/event_removed"),
+            ("DELETE", f"/api/v1/projects/{project_id}/draft/events/event_removed"),
+            ("PUT", f"/api/v1/projects/{project_id}/draft/events/event_removed/actors"),
+        )
+        for method, path in removed_draft_routes:
+            response = client.request(
+                method,
+                path,
+                headers=_identity(actor_id),
+                json={} if method in {"POST", "PUT"} else None,
+            )
+            assert response.status_code == 404, (method, path, response.text)
+
         empty = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert empty.status_code == 200
         assert empty.json()["content"] is None
