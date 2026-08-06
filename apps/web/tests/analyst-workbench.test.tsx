@@ -187,6 +187,23 @@ describe("analyst workbench prototype", () => {
     expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
   });
 
+  it("resizes the inspector by dragging the split handle", () => {
+    const { container } = renderWorkbench();
+
+    const handle = container.querySelector(
+      '[data-testid="inspector-resize-handle"]',
+    ) as HTMLElement;
+    const body = handle.parentElement as HTMLElement;
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("350px");
+
+    // 检查器在右侧：向右拖 80px → 宽度减小
+    fireEvent.pointerDown(handle, { clientX: 200, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 280, pointerId: 1 });
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("270px");
+  });
+
   it("resizes the object rail by dragging the split handle", () => {
     const { container } = renderWorkbench();
 

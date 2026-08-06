@@ -304,7 +304,7 @@
   min-width: 0;
   min-height: 0;
   grid-row: 3;
-  grid-template-columns: var(--rail-width, 254px) minmax(480px, 1fr) 350px;
+  grid-template-columns: var(--rail-width, 254px) minmax(480px, 1fr) var(--inspector-width, 350px);
   overflow: hidden;
 }
 
@@ -337,6 +337,31 @@
 }
 .railResizeHandle:hover::before,
 .railResizeHandle:active::before {
+  background: rgba(199, 139, 60, 0.55);
+}
+
+.inspectorResizeHandle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  left: calc(100% - var(--inspector-width, 350px) - 3px);
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.inspectorResizeHandle::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  content: "";
+  background: transparent;
+}
+.inspectorResizeHandle:hover::before,
+.inspectorResizeHandle:active::before {
   background: rgba(199, 139, 60, 0.55);
 }
 
@@ -1191,7 +1216,8 @@
   .mobileRegionNav button[aria-pressed="true"] { color: var(--primary-hover); box-shadow: inset 0 -2px var(--primary); }
 
   .workspaceBody { display: block; min-height: 0; overflow: hidden; }
-  .railResizeHandle { display: none; }
+  .railResizeHandle,
+  .inspectorResizeHandle { display: none; }
   .objectRail,
   .canvas,
   .inspector { display: none; height: 100%; border: 0; }

@@ -734,6 +734,7 @@ const reasoningOutcomeLabels: Record<ReasoningOutcome, string> = {
 
 const DEFAULT_RAIL_WIDTH = 254;
 const DEFAULT_TIMELINE_WIDTH = 340;
+const DEFAULT_INSPECTOR_WIDTH = 350;
 
 interface ReasoningPoint {
   x: number;
@@ -1146,6 +1147,11 @@ function AnalystWorkbenchSurface({
     startX: number;
     startWidth: number;
   } | null>(null);
+  const [inspectorWidth, setInspectorWidth] = useState<number | null>(null);
+  const inspectorResizeRef = useRef<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1169,6 +1175,29 @@ function AnalystWorkbenchSurface({
 
   function endRailResize() {
     railResizeRef.current = null;
+  }
+
+  function startInspectorResize(event: ReactPointerEvent<HTMLDivElement>) {
+    inspectorResizeRef.current = {
+      startX: event.clientX,
+      startWidth: inspectorWidth ?? DEFAULT_INSPECTOR_WIDTH,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveInspectorResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const resize = inspectorResizeRef.current;
+    if (!resize) return;
+    const width = clamp(
+      resize.startWidth + resize.startX - event.clientX,
+      250,
+      520,
+    );
+    setInspectorWidth(width);
+  }
+
+  function endInspectorResize() {
+    inspectorResizeRef.current = null;
   }
 
   const selectedEvent =
@@ -1494,7 +1523,12 @@ function AnalystWorkbenchSurface({
 
       <div
         className={styles.workspaceBody}
-        style={{ "--rail-width": `${railWidth ?? DEFAULT_RAIL_WIDTH}px` } as CSSProperties}
+        style={
+          {
+            "--rail-width": `${railWidth ?? DEFAULT_RAIL_WIDTH}px`,
+            "--inspector-width": `${inspectorWidth ?? DEFAULT_INSPECTOR_WIDTH}px`,
+          } as CSSProperties
+        }
       >
         <div
           aria-hidden="true"
@@ -1504,6 +1538,15 @@ function AnalystWorkbenchSurface({
           onPointerDown={startRailResize}
           onPointerMove={moveRailResize}
           onPointerUp={endRailResize}
+        />
+        <div
+          aria-hidden="true"
+          className={styles.inspectorResizeHandle}
+          data-testid="inspector-resize-handle"
+          onPointerCancel={endInspectorResize}
+          onPointerDown={startInspectorResize}
+          onPointerMove={moveInspectorResize}
+          onPointerUp={endInspectorResize}
         />
         <aside aria-label="项目与对象导航" className={styles.objectRail}>
           <section className={styles.projectTree}>
