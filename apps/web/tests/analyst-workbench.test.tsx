@@ -187,6 +187,19 @@ describe("analyst workbench prototype", () => {
     expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
   });
 
+  it("renders the export preview with the gate checklist", () => {
+    renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /导出预览/ }));
+    expect(screen.getByText("发布门禁")).toBeInTheDocument();
+    expect(screen.getByText("结构完整性")).toBeInTheDocument();
+    expect(screen.getByText("语义验证")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "生成导出包" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/先处理右侧检查器中的 S0\/S1 问题/)).toBeInTheDocument();
+  });
+
   it("renders the dossier editor with object-derived fields", () => {
     renderWorkbench();
 
