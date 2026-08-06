@@ -30,6 +30,11 @@
 
 | 路径 | 职责 |
 |---|---|
+| `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts` | 分析师工作台页面编排、跨面板共享状态、候选工作稿切换与本地工作台数据模型。 |
+| `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、地图、卷宗编辑、导出预览与编译中心等独立主画布视图。 |
+| `apps/web/features/analyst-workbench/workbench-relationship-graph.tsx`、`workbench-reasoning-graph.tsx` | 关系图与推理图的布局、拖拽、平移、缩放和无障碍替代视图。 |
+| `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 工作台内卷宗统筹 Agent 对话、预设指令和本地响应编排。 |
+| `apps/web/features/analyst-workbench/workbench-canvas-controls.tsx`、`workbench-icon.tsx`、`workbench-geometry.ts`、`workbench-presenters.ts` | 工作台内部复用的画布控件、图标、几何边界和展示标签；不承载跨功能业务状态。 |
 | `apps/web/features/workflow/` | 原稿建案、独立润色候选审阅、Brief 原子拆解/人工确认、Brief → Draft 和工作台的唯一产品实现，以及设置弹窗、SSE 可恢复安全审计轨迹、完成门禁、目标无关对象展示与有限编辑；直接接真实 API/Workflow Store。 |
 | `apps/web/features/workflow/task-recovery.ts` | 三类真实 TaskRun 共用的最近任务/本地指针恢复、轮询、事件积压合并和按游标重连 SSE。 |
 | `apps/web/features/reasoning/` | 推理实验室的整卷生成态、与真实进度绑定的因果点火动效、路径总览、React Flow 静态因果画布、候选审阅器，以及实验室内来源快速查看与显式工作台定位交互。 |
