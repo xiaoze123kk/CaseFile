@@ -687,6 +687,8 @@ const reasoningOutcomeLabels: Record<ReasoningOutcome, string> = {
   eliminated: "已排除",
 };
 
+const DEFAULT_RAIL_WIDTH = 254;
+
 interface ReasoningPoint {
   x: number;
   y: number;
@@ -1093,11 +1095,35 @@ function AnalystWorkbenchSurface({
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([
     ...seed.initialAuditEntries,
   ]);
+  const [railWidth, setRailWidth] = useState<number | null>(null);
+  const railResizeRef = useRef<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
+
+  function startRailResize(event: ReactPointerEvent<HTMLDivElement>) {
+    railResizeRef.current = {
+      startX: event.clientX,
+      startWidth: railWidth ?? DEFAULT_RAIL_WIDTH,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveRailResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const resize = railResizeRef.current;
+    if (!resize) return;
+    const width = clamp(resize.startWidth + (event.clientX - resize.startX), 170, 460);
+    setRailWidth(width);
+  }
+
+  function endRailResize() {
+    railResizeRef.current = null;
+  }
 
   const selectedEvent =
     getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
@@ -1420,7 +1446,19 @@ function AnalystWorkbenchSurface({
         ))}
       </nav>
 
-      <div className={styles.workspaceBody}>
+      <div
+        className={styles.workspaceBody}
+        style={{ "--rail-width": `${railWidth ?? DEFAULT_RAIL_WIDTH}px` } as CSSProperties}
+      >
+        <div
+          aria-hidden="true"
+          className={styles.railResizeHandle}
+          data-testid="rail-resize-handle"
+          onPointerCancel={endRailResize}
+          onPointerDown={startRailResize}
+          onPointerMove={moveRailResize}
+          onPointerUp={endRailResize}
+        />
         <aside aria-label="项目与对象导航" className={styles.objectRail}>
           <section className={styles.projectTree}>
             <div className={styles.railEyebrow}><span>项目树</span><b>01 / 03</b></div>

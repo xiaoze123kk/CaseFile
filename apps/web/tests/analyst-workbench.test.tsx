@@ -171,6 +171,22 @@ describe("analyst workbench prototype", () => {
     ).toBe(true);
   });
 
+  it("resizes the object rail by dragging the split handle", () => {
+    const { container } = renderWorkbench();
+
+    const handle = container.querySelector(
+      '[data-testid="rail-resize-handle"]',
+    ) as HTMLElement;
+    const body = handle.parentElement as HTMLElement;
+    expect(body.style.getPropertyValue("--rail-width")).toBe("254px");
+
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 220, pointerId: 1 });
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+
+    expect(body.style.getPropertyValue("--rail-width")).toBe("374px");
+  });
+
   it("drags a relation graph node across the canvas", () => {
     const { container } = renderWorkbench();
 
