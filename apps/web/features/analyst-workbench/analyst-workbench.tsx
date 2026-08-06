@@ -442,8 +442,53 @@ function TimelineOverview({
   onSelectObject: (objectId: string) => void;
 }) {
   const selectedEvent = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
+  const [timelineWidth, setTimelineWidth] = useState<number | null>(null);
+  const timelineResizeRef = useRef<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  function startTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
+    timelineResizeRef.current = {
+      startX: event.clientX,
+      startWidth: timelineWidth ?? DEFAULT_TIMELINE_WIDTH,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const resize = timelineResizeRef.current;
+    if (!resize) return;
+    const width = clamp(
+      resize.startWidth + (event.clientX - resize.startX),
+      240,
+      560,
+    );
+    setTimelineWidth(width);
+  }
+
+  function endTimelineResize() {
+    timelineResizeRef.current = null;
+  }
+
   return (
-    <div className={styles.timelineOverview}>
+    <div
+      className={styles.timelineOverview}
+      style={
+        {
+          "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
+        } as CSSProperties
+      }
+    >
+      <div
+        aria-hidden="true"
+        className={styles.timelineResizeHandle}
+        data-testid="timeline-resize-handle"
+        onPointerCancel={endTimelineResize}
+        onPointerDown={startTimelineResize}
+        onPointerMove={moveTimelineResize}
+        onPointerUp={endTimelineResize}
+      />
       <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
         <header className={styles.sectionHeader}>
           <div>
@@ -688,6 +733,7 @@ const reasoningOutcomeLabels: Record<ReasoningOutcome, string> = {
 };
 
 const DEFAULT_RAIL_WIDTH = 254;
+const DEFAULT_TIMELINE_WIDTH = 340;
 
 interface ReasoningPoint {
   x: number;

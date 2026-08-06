@@ -171,6 +171,22 @@ describe("analyst workbench prototype", () => {
     ).toBe(true);
   });
 
+  it("resizes the timeline panel by dragging the split handle", () => {
+    const { container } = renderWorkbench();
+
+    const handle = container.querySelector(
+      '[data-testid="timeline-resize-handle"]',
+    ) as HTMLElement;
+    const overview = handle.parentElement as HTMLElement;
+    expect(overview.style.getPropertyValue("--timeline-width")).toBe("340px");
+
+    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 180, pointerId: 1 });
+    fireEvent.pointerUp(handle, { pointerId: 1 });
+
+    expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
+  });
+
   it("resizes the object rail by dragging the split handle", () => {
     const { container } = renderWorkbench();
 

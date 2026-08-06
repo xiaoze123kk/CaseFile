@@ -614,10 +614,36 @@
 }
 
 .timelineOverview {
+  position: relative;
   display: grid;
   min-height: 100%;
-  grid-template-columns: minmax(285px, 0.82fr) minmax(320px, 1.18fr);
+  grid-template-columns: var(--timeline-width, 340px) minmax(320px, 1fr);
   gap: 12px;
+}
+
+.timelineResizeHandle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--timeline-width, 340px) + 3px);
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.timelineResizeHandle::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  content: "";
+  background: transparent;
+}
+.timelineResizeHandle:hover::before,
+.timelineResizeHandle:active::before {
+  background: rgba(199, 139, 60, 0.55);
 }
 
 .timelinePanel,
@@ -1123,6 +1149,7 @@
   .brandBlock { padding: 0 13px; }
   .globalSearch { min-width: 190px; }
   .timelineOverview { grid-template-columns: 1fr; }
+  .timelineResizeHandle { display: none; }
   .timelinePanel { min-height: 340px; }
   .graphPanel { min-height: 360px; }
   .issueList { grid-template-columns: 1fr; }
