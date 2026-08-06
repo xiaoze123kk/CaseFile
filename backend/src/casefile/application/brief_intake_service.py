@@ -350,12 +350,15 @@ class BriefIntakeService:
             source = self._require_source(intake)
             self._require_no_active_task(intake, "brief_intake_questions")
             setting = self._provider_setting(actor_user_id, provider)
+            existing_questions = self._question_inputs(intake)
             frozen_input = {
                 "source": {
                     "source_record_id": source.id,
                     "content_text": source.content_text,
                     "content_hash": source.content_hash,
-                }
+                },
+                "mode": "additional" if existing_questions else "initial",
+                "existing_questions": existing_questions,
             }
             task = self._new_task(
                 owned,
@@ -474,7 +477,23 @@ class BriefIntakeService:
                 or source.content_hash != frozen_source.get("content_hash")
             )
             if not stale:
+                existing_questions = self._current_questions(intake)
+                existing_keys = {
+                    question.question_key for question in existing_questions
+                }
+                is_additional = task.input_jsonb.get("mode") == "additional"
                 for question in normalized:
+                    if is_additional:
+                        question["required"] = False
+                    base_key = question["question_key"]
+                    unique_key = base_key
+                    suffix = 2
+                    while unique_key in existing_keys:
+                        suffix_text = f"_{suffix}"
+                        unique_key = f"{base_key[: 64 - len(suffix_text)]}{suffix_text}"
+                        suffix += 1
+                    question["question_key"] = unique_key
+                    existing_keys.add(unique_key)
                     self.session.add(
                         BriefIntakeQuestion(
                             project_id=task.project_id,
@@ -491,7 +510,9 @@ class BriefIntakeService:
                             answer_source=None,
                         )
                     )
-                intake.stage = "confirmation" if not normalized else "questions"
+                intake.stage = (
+                    "questions" if existing_questions or normalized else "confirmation"
+                )
                 intake.revision += 1
             result = {
                 "input_hash": task.input_hash,
@@ -661,7 +682,10 @@ class BriefIntakeService:
             "stage": intake.stage,
             "current_source": None if source is None else source_view(source),
             "current_questions_task_run_id": intake.current_questions_task_run_id,
-            "questions": [_question_view(question) for question in questions],
+            "questions": [
+                _question_view(question, ordinal=index)
+                for index, question in enumerate(questions, start=1)
+            ],
             "hard_questions_resolved": hard_questions_resolved,
             "current_candidate_id": intake.current_candidate_id,
             "adopted_candidate_id": intake.adopted_candidate_id,
@@ -714,30 +738,44 @@ class BriefIntakeService:
         ]
 
     def _current_questions(self, intake: BriefIntake) -> list[BriefIntakeQuestion]:
-        if intake.current_questions_task_run_id is None:
+        source = self._current_source(intake)
+        if source is None:
             return []
         return list(
             self.session.scalars(
                 select(BriefIntakeQuestion)
+                .join(
+                    TaskRun,
+                    TaskRun.id == BriefIntakeQuestion.generated_by_task_run_id,
+                )
                 .where(
                     BriefIntakeQuestion.intake_id == intake.id,
-                    BriefIntakeQuestion.generated_by_task_run_id
-                    == intake.current_questions_task_run_id,
+                    TaskRun.input_source_record_id == source.id,
                 )
-                .order_by(BriefIntakeQuestion.ordinal)
+                .order_by(
+                    BriefIntakeQuestion.generated_by_task_run_id,
+                    BriefIntakeQuestion.ordinal,
+                )
             )
         )
 
     def _current_question(
         self, intake: BriefIntake, question_key: str, *, lock: bool
     ) -> BriefIntakeQuestion:
-        if intake.current_questions_task_run_id is None:
+        source = self._current_source(intake)
+        if source is None:
             raise not_found("BriefIntakeQuestion")
-        statement = select(BriefIntakeQuestion).where(
-            BriefIntakeQuestion.intake_id == intake.id,
-            BriefIntakeQuestion.generated_by_task_run_id
-            == intake.current_questions_task_run_id,
-            BriefIntakeQuestion.question_key == question_key,
+        statement = (
+            select(BriefIntakeQuestion)
+            .join(
+                TaskRun,
+                TaskRun.id == BriefIntakeQuestion.generated_by_task_run_id,
+            )
+            .where(
+                BriefIntakeQuestion.intake_id == intake.id,
+                TaskRun.input_source_record_id == source.id,
+                BriefIntakeQuestion.question_key == question_key,
+            )
         )
         if lock:
             statement = statement.with_for_update()
@@ -1214,10 +1252,12 @@ def _candidate_view(
     }
 
 
-def _question_view(question: BriefIntakeQuestion) -> dict[str, Any]:
+def _question_view(
+    question: BriefIntakeQuestion, *, ordinal: int | None = None
+) -> dict[str, Any]:
     return {
         "question_key": question.question_key,
-        "ordinal": question.ordinal,
+        "ordinal": question.ordinal if ordinal is None else ordinal,
         "prompt": question.prompt,
         "impact": question.impact,
         "required": question.is_required,

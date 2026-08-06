@@ -1,23 +1,23 @@
 .intakeCenter {
-  --paper: #fafaf5;
-  --paper-low: #f4f4ef;
+  --paper: #fcfbf8;
+  --paper-low: #f7f4ee;
   --paper-high: #ffffff;
   --paper-mid: #eeeee9;
   --ink: #1a1c19;
   --ink-muted: #5d5d58;
   --ink-faint: #70706a;
-  --red: #a92609;
+  --red: #c52b0d;
   --red-soft: #fff0ec;
   --red-line: #d9afa6;
-  --rule: #c9c9c1;
-  --hairline: #e1e1da;
+  --rule: #ded8cf;
+  --hairline: #ece7df;
   position: relative;
   width: 100%;
   min-width: 0;
   height: 100svh;
   overflow: auto;
   color: var(--ink);
-  background-color: rgba(250, 250, 245, 0.76);
+  background-color: rgba(250, 248, 243, 0.88);
   background-image:
     linear-gradient(rgba(26, 28, 25, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(26, 28, 25, 0.035) 1px, transparent 1px),
@@ -75,11 +75,12 @@
   z-index: 30;
   top: 0;
   display: grid;
-  min-height: 74px;
-  grid-template-columns: 286px minmax(180px, 1fr) auto;
+  height: 80px;
+  min-height: 80px;
+  grid-template-columns: 332px minmax(220px, 1fr) auto;
   color: var(--ink);
-  border-bottom: 1px solid var(--ink);
-  background: rgba(250, 250, 245, 0.97);
+  border-bottom: 1px solid var(--rule);
+  background: rgba(253, 251, 247, 0.97);
   backdrop-filter: blur(10px);
 }
 
@@ -92,20 +93,22 @@
 
 .brandCell {
   position: relative;
+  border-right: 0;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 8px 20px;
+  height: 80px;
+  padding: 10px 28px;
   border-right: 0;
 }
 
 .brandMark {
   display: grid;
-  width: 50px;
-  height: 50px;
+  width: 56px;
+  height: 56px;
   flex: 0 0 auto;
   overflow: hidden;
   place-items: center;
@@ -131,7 +134,7 @@
 
 .brand strong {
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 27px;
+  font-size: 30px;
   line-height: 0.95;
   letter-spacing: 0.01em;
 }
@@ -140,13 +143,11 @@
 .topbarContext span,
 .topbarLinks,
 .pulseTrack,
-.routeDock header span,
 .stepHero small,
 .liveBrief header span,
 .routeNote span,
 .sourceCapsule > span,
-.constraintDrawer summary span,
-.liveNotice span {
+.constraintDrawer summary span {
   font-family: "Cascadia Mono", Consolas, monospace;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -159,41 +160,72 @@
 }
 
 .brand small {
-  margin-top: 7px;
+  margin-top: 6px;
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 14px;
-  letter-spacing: 0.22em;
+  font-size: 13px;
+  letter-spacing: 0.14em;
   text-transform: none;
 }
 
+.brandSection {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 13px;
+  color: var(--red);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .topbarContext {
-  gap: 3px;
-  padding: 9px 16px;
+  position: relative;
+  justify-content: center;
+  padding: 10px 24px;
+  border-right: 0;
+}
+
+.topbarContext::before {
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: 0;
+  width: 1px;
+  content: "";
+  background: var(--rule);
 }
 
 .topbarContext b {
   overflow: hidden;
-  font-size: 12px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .topbarLinks {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  gap: 6px;
+  padding-right: 18px;
   border-right: 0;
   font-size: 10px;
 }
 
 .topbarLinks a,
 .topbarLinks button {
-  display: grid;
-  min-width: 102px;
-  place-items: center;
-  padding: 0 12px;
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 14px;
   border: 0;
-  border-left: 1px solid var(--rule);
   background: transparent;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .topbarLinks a:hover,
@@ -202,14 +234,52 @@
   background: var(--red-soft);
 }
 
+.analyticsIcon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  font: 700 20px/1 sans-serif;
+}
+
+.resetIcon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  font: 700 21px/1 Arial, sans-serif;
+}
+
+.topbarLinks .accountButton {
+  gap: 8px;
+  padding: 0 0 0 5px;
+}
+
+.accountButton > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: white;
+  border-radius: 50%;
+  background: #b9a186;
+  font: 14px "Cascadia Mono", Consolas, monospace;
+}
+
+.accountButton > i {
+  color: var(--ink);
+  font-style: normal;
+}
+
 .pulseTrack {
   position: sticky;
   z-index: 25;
-  top: 74px;
+  top: 80px;
   display: grid;
-  min-height: 68px;
-  grid-template-columns: 190px minmax(0, 1fr) 96px;
-  border-bottom: 1px solid var(--ink);
+  height: 90px;
+  min-height: 90px;
+  grid-template-columns: 240px minmax(0, 1fr) 150px;
+  border-bottom: 1px solid var(--rule);
   background: rgba(255, 255, 255, 0.96);
 }
 
@@ -218,11 +288,35 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 9px 16px;
+  padding: 12px 22px;
 }
 
 .pulseIdentity {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
   border-right: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.pulseIdentity > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pulseIdentity > i {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--red);
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: white;
+  font: normal 13px/1 sans-serif;
 }
 
 .pulseIdentity span,
@@ -231,10 +325,20 @@
   font-size: 9px;
 }
 
-.pulseIdentity b,
 .pulseStatus span {
   margin-top: 3px;
   font: 700 13px "Cascadia Mono", Consolas, monospace;
+}
+
+.pulseIdentity b {
+  overflow: hidden;
+  margin-top: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .pulseTrack ol {
@@ -256,11 +360,11 @@
   display: grid;
   width: 100%;
   height: 100%;
-  min-height: 67px;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  min-height: 89px;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: 12px;
+  padding: 10px 28px;
   text-align: left;
   border: 0;
   background: transparent;
@@ -268,8 +372,9 @@
 
 .pulseTrack li button > span {
   display: grid;
-  width: 27px;
-  height: 27px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   place-items: center;
   color: var(--ink-faint);
   border: 1px solid var(--rule);
@@ -284,19 +389,19 @@
 
 .pulseTrack li small {
   color: var(--ink-faint);
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .pulseTrack li b {
   overflow: hidden;
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 12px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pulseTrack li[data-active="true"] {
-  background: linear-gradient(90deg, var(--red) 0 3px, transparent 3px), var(--red-soft);
+  background: linear-gradient(0deg, var(--red) 0 3px, transparent 3px), #fffdf9;
 }
 
 .pulseTrack li[data-active="true"] button > span {
@@ -349,74 +454,82 @@
   text-align: right;
 }
 
+.pulseStatus span {
+  font-size: 16px;
+}
+
 .workspace {
   display: grid;
   min-width: 0;
-  min-height: calc(100svh - 131px);
-  grid-template-columns: 190px minmax(0, 1fr) 246px;
-  gap: 12px;
-  padding: 12px;
+  min-height: calc(100svh - 170px);
+  grid-template-columns: 264px minmax(0, 1fr) 314px;
+  gap: 0;
+  padding: 0;
 }
 
 .routeDock,
 .focusPlane,
 .liveBrief {
   min-width: 0;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 20px rgba(58, 43, 31, 0.035);
 }
 
 .routeDock {
   position: sticky;
-  top: 142px;
+  top: 186px;
+  margin: 16px 24px 20px 20px;
+  overflow: hidden;
   align-self: start;
 }
 
-.routeDock > header,
 .liveBrief > header {
   display: flex;
-  min-height: 48px;
+  min-height: 64px;
   flex-direction: column;
   justify-content: center;
-  padding: 8px 11px;
-  border-bottom: 1px solid var(--ink);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
   background: var(--paper-low);
 }
 
-.routeDock header span,
 .liveBrief header span {
   color: var(--ink-faint);
   font-size: 9px;
 }
 
-.routeDock header b,
 .liveBrief header b {
   margin-top: 2px;
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .routeList {
   display: grid;
+  gap: 8px;
+  padding: 8px;
 }
 
 .routeList button {
   display: grid;
-  min-height: 86px;
-  grid-template-columns: 25px minmax(0, 1fr);
-  gap: 6px 8px;
+  min-height: 96px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 7px 10px;
   align-content: center;
-  padding: 9px;
+  padding: 12px;
   text-align: left;
-  border: 0;
-  border-bottom: 1px solid var(--hairline);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
   background: transparent;
 }
 
 .routeList button > span {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
+  border-radius: 3px;
   place-items: center;
   border: 1px solid currentcolor;
   font: 700 10px "Cascadia Mono", Consolas, monospace;
@@ -429,13 +542,13 @@
 
 .routeList button b {
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .routeList button small,
 .routeList button em {
   color: var(--ink-faint);
-  font-size: 10px;
+  font-size: 11px;
   font-style: normal;
   line-height: 1.35;
 }
@@ -447,7 +560,9 @@
 
 .routeList button[data-available="true"] {
   color: var(--ink);
-  background: linear-gradient(90deg, var(--red) 0 3px, transparent 3px), var(--red-soft);
+  border-color: var(--red);
+  box-shadow: inset 3px 0 var(--red);
+  background: #fffaf7;
 }
 
 .routeList button[data-available="true"] > span {
@@ -461,8 +576,10 @@
 }
 
 .routeNote {
-  margin: 10px;
-  padding: 9px 10px;
+  margin: 8px;
+  min-height: 118px;
+  padding: 12px 13px;
+  border-radius: 6px;
   border-left: 2px solid var(--red);
   background: var(--paper-low);
 }
@@ -476,23 +593,45 @@
   margin: 5px 0 0;
   color: var(--ink-muted);
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
 .focusPlane {
-  min-height: 760px;
+  position: relative;
+  min-height: calc(100svh - 202px);
+  margin: 16px 0;
   overflow: hidden;
   background:
-    linear-gradient(90deg, transparent 0 42px, rgba(169, 38, 9, 0.18) 42px 43px, transparent 43px),
-    repeating-linear-gradient(0deg, rgba(26, 28, 25, 0.025) 0 1px, transparent 1px 29px),
     var(--paper);
+}
+
+.focusPlane::after {
+  position: absolute;
+  z-index: 0;
+  top: 14px;
+  right: -34px;
+  width: 110px;
+  height: 110px;
+  content: "";
+  opacity: 0.45;
+  background:
+    radial-gradient(circle, transparent 0 10px, rgba(197, 43, 13, 0.16) 10px 11px, transparent 11px 22px, rgba(197, 43, 13, 0.12) 22px 23px, transparent 23px 34px, rgba(197, 43, 13, 0.1) 34px 35px, transparent 35px),
+    linear-gradient(90deg, transparent 49.5%, rgba(197, 43, 13, 0.12) 50%, transparent 50.5%),
+    linear-gradient(transparent 49.5%, rgba(197, 43, 13, 0.12) 50%, transparent 50.5%);
+}
+
+.focusPlane > * {
+  position: relative;
+  z-index: 1;
 }
 
 .liveBrief {
   position: sticky;
-  top: 142px;
+  top: 186px;
+  margin: 16px 8px 20px 16px;
   align-self: start;
+  overflow: hidden;
 }
 
 .liveBrief > header {
@@ -508,8 +647,9 @@
 
 .liveBrief > header em {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
   place-items: center;
   color: white;
   background: var(--red);
@@ -539,11 +679,11 @@
 
 .signalRows section {
   display: grid;
-  min-height: 42px;
+  min-height: 50px;
   grid-template-columns: 7px minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
-  padding: 7px 10px;
+  padding: 9px 13px;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -560,7 +700,7 @@
 
 .signalRows span,
 .signalRows b {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .signalRows b {
@@ -570,8 +710,9 @@
 
 .liveExtract,
 .pendingQueue {
-  margin: 10px;
-  padding: 10px;
+  margin: 12px;
+  padding: 13px;
+  border-radius: 5px;
   border: 1px solid var(--rule);
   background: var(--paper-low);
 }
@@ -590,7 +731,7 @@
   margin: 8px 0 0;
   color: var(--ink-muted);
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.65;
 }
 
@@ -598,50 +739,23 @@
   color: var(--red);
 }
 
-.liveBrief > footer {
-  display: flex;
-  gap: 8px;
-  padding: 9px 10px;
-  color: var(--ink-faint);
-  border-top: 1px solid var(--rule);
-  font-size: 9px;
-}
-
-.liveBrief > footer > span {
-  color: var(--red);
-  font: 9px "Cascadia Mono", Consolas, monospace;
-}
-
-.liveBrief > footer p {
-  margin: 0;
-}
-
-.liveNotice {
-  position: fixed;
-  z-index: 40;
-  right: 14px;
-  bottom: 14px;
-  display: flex;
-  max-width: min(420px, calc(100vw - 28px));
-  gap: 9px;
-  padding: 8px 11px;
-  color: white;
-  border-left: 3px solid var(--red);
-  background: var(--ink);
-  box-shadow: 3px 4px 0 rgba(169, 38, 9, 0.28);
-  font-size: 10px;
-}
-
-.liveNotice span {
-  color: #efb9ad;
-  font-size: 8px;
+.intakeCenter .primaryAction:disabled {
+  opacity: 1;
 }
 
 @media (max-width: 1180px) {
+  .topbar {
+    grid-template-columns: 286px minmax(180px, 1fr) auto;
+  }
+
+  .pulseTrack {
+    grid-template-columns: 190px minmax(0, 1fr) 96px;
+  }
+
   .workspace {
-    grid-template-columns: 168px minmax(0, 1fr) 220px;
-    gap: 8px;
-    padding: 8px;
+    grid-template-columns: 184px minmax(0, 1fr) 230px;
+    gap: 10px;
+    padding: 10px;
   }
 
   .stepView {
@@ -711,6 +825,31 @@
     border-right: 0;
   }
 
+  .brand {
+    gap: 11px;
+    padding: 9px 16px;
+  }
+
+  .brandMark {
+    width: 50px;
+    height: 50px;
+  }
+
+  .brand strong {
+    font-size: 27px;
+  }
+
+  .brand small {
+    margin-top: 5px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .brandSection {
+    display: none;
+  }
+
   .topbarContext,
   .topbarLinks a,
   .topbarLinks button:not(:last-child) {
@@ -767,6 +906,7 @@
 
   .focusPlane,
   .liveBrief {
+    border-radius: 0;
     border-right: 0;
     border-left: 0;
   }
@@ -855,18 +995,12 @@
     grid-column: 2 / -1;
   }
 
-.liveBrief {
+  .liveBrief {
     position: relative;
     top: auto;
     margin-bottom: 52px;
   }
 
-  .liveNotice {
-    right: 8px;
-    bottom: 8px;
-    left: 8px;
-    max-width: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

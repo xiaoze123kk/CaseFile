@@ -35,6 +35,7 @@ export function DraftCandidatesStage() {
   const [notice, setNotice] = useState(
     "候选由真实 Agent 生成，预览工作台为本地样例。",
   );
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const currentCandidates = useMemo(
     () =>
@@ -65,6 +66,25 @@ export function DraftCandidatesStage() {
       return;
     }
     setNotice("候选已采用为当前工作稿；工作台默认打开这一版。 ");
+  }
+
+  function startCandidateGeneration() {
+    setGenerationError(null);
+    void generateCandidates()
+      .then((ok) => {
+        if (ok) {
+          setNotice("三份候选已生成并完成引用校验，可以预览或显式采用。");
+        } else {
+          setGenerationError("当前简报尚未满足生成条件。");
+        }
+      })
+      .catch((caught) => {
+        setGenerationError(
+          caught instanceof Error
+            ? caught.message
+            : "候选生成未完成，请检查模型服务后重试。",
+        );
+      });
   }
 
   function renderCandidate(candidate: (typeof state.draftCandidates)[number], index: number) {
@@ -196,29 +216,26 @@ export function DraftCandidatesStage() {
         <button
           className={styles.generateButton}
           disabled={generated || generating || !readyToGenerate}
-          onClick={() => {
-            void generateCandidates()
-              .then((ok) => {
-                if (ok) {
-                  setNotice("三份候选已生成并完成引用校验，可以预览或显式采用。");
-                } else {
-                  setNotice("当前简报尚未满足生成条件。 ");
-                }
-              })
-              .catch((caught) => {
-                setNotice(
-                  caught instanceof Error
-                    ? caught.message
-                    : "候选生成未完成，请检查模型服务后重试。",
-                );
-              });
-          }}
+          onClick={startCandidateGeneration}
           type="button"
         >
-          <span>{generating ? "生成中…" : generated ? "三份候选已生成" : "生成三份候选"}</span>
+          <span>
+            {generating
+              ? "正在生成三份候选…"
+              : generated
+                ? "三份候选已生成"
+                : "生成三份候选"}
+          </span>
           <b>{generated ? "✓" : "→"}</b>
         </button>
       </section>
+
+      {generationError ? (
+        <p className={styles.generationError} role="alert">
+          <b>生成未完成</b>
+          <span>{generationError}</span>
+        </p>
+      ) : null}
 
       {generated ? (
         <section className={styles.candidateArchive} aria-label="当前简报候选稿">
@@ -231,7 +248,7 @@ export function DraftCandidatesStage() {
           </div>
         </section>
       ) : (
-        <section className={styles.candidateEmpty}>
+        <section aria-busy={generating} className={styles.candidateEmpty}>
           <span>候选卷尚空</span>
           <h2>
             {readyToGenerate
@@ -243,6 +260,19 @@ export function DraftCandidatesStage() {
               ? "每一张都基于同一份冻结简报，由独立任务生成。"
               : "当前工作稿继续有效，直到你冻结并采用新版本候选。"}
           </p>
+          {readyToGenerate ? (
+            <button
+              className={styles.emptyGenerateButton}
+              disabled={generating}
+              onClick={startCandidateGeneration}
+              type="button"
+            >
+              <span>
+                {generating ? "正在生成三份候选…" : "生成三份候选"}
+              </span>
+              <b aria-hidden="true">→</b>
+            </button>
+          ) : null}
         </section>
       )}
 

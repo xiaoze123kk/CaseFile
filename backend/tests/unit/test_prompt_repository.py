@@ -21,7 +21,7 @@ from casefile_contracts import TaskType
 EXPECTED_CURRENT_VERSIONS = {
     "brief_polish": "brief-polish-v3",
     "brief_anchor_extract": "brief-anchor-extract-v2",
-    "brief_intake_questions": "brief-intake-questions-v2",
+    "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v1",
     "brief_to_draft": "brief-to-draft-v4",
     "casefile_chat": "casefile-chat-v1",
@@ -43,6 +43,9 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_intake_questions", "brief-intake-questions-v2"): (
         "59a4cab9b080cffbf1bfc6264d07a2121dcb786f8c153f172ebe54f540656305"
+    ),
+    ("brief_intake_questions", "brief-intake-questions-v3"): (
+        "357cb699b2258d929be6e152582965985e0d0937317e94255a07d6faa9c8d066"
     ),
     ("brief_intake_synthesize", "brief-intake-synthesize-v1"): (
         "c8ed044d334fc937698f5784e68ddd9f1decf2ff561e157560f3fcb4dca1e72c"
@@ -102,6 +105,8 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "`introduced_details`" in prompts["brief_polish"]
     assert "不能作为候选项的事实来源" in prompts["brief_anchor_extract"]
     assert "最多一项 `required=true`" in prompts["brief_intake_questions"]
+    assert "`mode=additional`" in prompts["brief_intake_questions"]
+    assert "不得重新增加必答门槛" in prompts["brief_intake_questions"]
     assert "存在 `base_candidate` 与 `instruction`" in prompts[
         "brief_intake_synthesize"
     ]

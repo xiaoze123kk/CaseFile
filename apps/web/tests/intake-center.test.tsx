@@ -17,6 +17,7 @@ import type {
   BriefIntakeView,
   BriefView,
   DraftCandidateView,
+  DraftView,
   TaskView,
 } from "@/lib/api-client";
 
@@ -68,12 +69,15 @@ function buildFakeBackend() {
   let briefVersionId: number | null = null;
   let versionNo = 0;
   let briefContent: BriefContent | null = null;
+  const caseDraftRevision = 17;
   let draftCandidates: DraftCandidateView[] = [];
   let taskSeq = 100;
   const taskTypes = new Map<number, string>();
   const taskProviders = new Map<number, string>();
   let configuredProviders = ["openai"];
   let failOpenaiAuth = false;
+  const generationDraftRevisions: number[] = [];
+  const adoptionDraftRevisions: number[] = [];
 
   function intakeView(): BriefIntakeView {
     const stage =
@@ -194,12 +198,27 @@ function buildFakeBackend() {
       };
     }
     if (taskType === "brief_intake_questions") {
-      currentQuestions = questions.map((question) => ({ ...question }));
+      const additional = currentQuestions.length > 0;
+      const batchNumber = Math.floor(currentQuestions.length / 2) + 1;
+      const nextQuestions = questions.map((question, index) => ({
+        ...question,
+        question_key: additional
+          ? `${question.question_key}_${batchNumber}`
+          : question.question_key,
+        ordinal: currentQuestions.length + index + 1,
+        prompt: additional
+          ? index === 0
+            ? "还需要多少组相互矛盾的记录，才能支撑核心推理？"
+            : "次要证人应该各自承担线索，还是合并为更少角色？"
+          : question.prompt,
+        required: additional ? false : question.required,
+      }));
+      currentQuestions = [...currentQuestions, ...nextQuestions];
       return {
         ...common,
         result: {
           input_hash: "h",
-          questions: currentQuestions,
+          questions: nextQuestions,
           stale: false,
         },
       };
@@ -353,6 +372,8 @@ function buildFakeBackend() {
     setFailOpenaiAuth: (value: boolean) => {
       failOpenaiAuth = value;
     },
+    getGenerationDraftRevisions: () => generationDraftRevisions,
+    getAdoptionDraftRevisions: () => adoptionDraftRevisions,
     listConfiguredProviders: async () => configuredProviders,
     isProviderAuthFailure: isAuthFailure,
     runTaskWithProviderFallback: async (operation: (provider: string) => Promise<unknown>) => {
@@ -419,7 +440,24 @@ function buildFakeBackend() {
       return recordTask("brief_intake_synthesize", provider);
     },
     startAnchorExtractTask: async () => recordTask("brief_anchor_extract"),
-    startDraftGenerationTask: async () => recordTask("brief_to_draft"),
+    fetchCaseDraft: async (): Promise<DraftView> => ({
+      project_id: 1,
+      revision: caseDraftRevision,
+      schema_version: "v1",
+      status: "open",
+      content: null,
+    }),
+    startDraftGenerationTask: async (
+      _projectId: number,
+      _briefVersionId: number,
+      expectedDraftRevision: number,
+    ) => {
+      generationDraftRevisions.push(expectedDraftRevision);
+      if (expectedDraftRevision !== caseDraftRevision) {
+        throw new Error("CaseFile Draft revision is stale");
+      }
+      return recordTask("brief_to_draft");
+    },
     fetchTask: async (_projectId: number, taskRunId: number) =>
       terminalTask(taskRunId),
     waitForTask: async (_projectId: number, taskRunId: number) =>
@@ -548,7 +586,12 @@ function buildFakeBackend() {
     adoptDraftCandidate: async (
       _projectId: number,
       taskRunId: number,
+      expectedDraftRevision: number,
     ) => {
+      adoptionDraftRevisions.push(expectedDraftRevision);
+      if (expectedDraftRevision !== caseDraftRevision) {
+        throw new Error("CaseFile Draft revision is stale");
+      }
       draftCandidates = draftCandidates.map((candidate) =>
         candidate.task_run_id === taskRunId
           ? { ...candidate, is_adopted: true, is_current: true }
@@ -627,6 +670,14 @@ describe("intake center", () => {
     fireEvent.click(screen.getByRole("button", { name: /采用这版校样/u }));
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+
+    expect(
+      screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Agent 正在思考" }),
+    ).toBeInTheDocument();
+
     await flush();
 
     expect(
@@ -645,7 +696,6 @@ describe("intake center", () => {
     fireEvent.click(screen.getByRole("button", { name: "稍后决定" }));
     expect(generateBrief).toBeEnabled();
     fireEvent.click(generateBrief);
-    await flush();
 
     expect(
       screen.getByRole("heading", {
@@ -653,11 +703,56 @@ describe("intake center", () => {
       }),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("status", { name: "Agent 正在整理创作简报" }),
+    ).toBeInTheDocument();
+
+    await flush();
+
+    expect(
+      screen.getByRole("heading", {
+        name: "确认整体方向，再交给正式审阅。",
+      }),
+    ).toBeInTheDocument();
+    const returnToQuestions = screen.getByRole("button", {
+      name: "← 返回追问",
+    });
+    expect(returnToQuestions).toBeInTheDocument();
+    expect(returnToQuestions.closest("header")).not.toBeNull();
+    expect(
       (screen.getByLabelText("一句话概念") as HTMLTextAreaElement).value,
     ).toContain("档案修复师");
     expect(screen.getByLabelText("推理目标")).toHaveValue(
       "找出是谁伪造了那段不存在的时间。",
     );
+    expect(screen.getAllByLabelText(/核心卖点第 \d+ 项/u)).toHaveLength(3);
+    expect(screen.getByLabelText("核心卖点第 1 项")).toHaveValue(
+      "相互印证却共同失真的档案",
+    );
+    expect(screen.getAllByLabelText(/阶段 \d+ 名称/u)).toHaveLength(4);
+    expect(screen.getByLabelText("阶段 1 描述")).toHaveValue(
+      "发现不存在的时间段",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /添加一条卖点/u }));
+    expect(screen.getAllByLabelText(/核心卖点第 \d+ 项/u)).toHaveLength(4);
+    fireEvent.change(screen.getByLabelText("核心卖点第 2 项"), {
+      target: { value: "记忆改写留下可交叉验证的痕迹" },
+    });
+    expect(screen.getByLabelText("核心卖点第 2 项")).toHaveValue(
+      "记忆改写留下可交叉验证的痕迹",
+    );
+    const conceptField = screen.getByLabelText("一句话概念").closest("section");
+    const briefFields = Array.from(conceptField?.parentElement?.children ?? []);
+    expect(
+      briefFields.slice(0, 2).map((field) =>
+        field.querySelector("header label")?.textContent,
+      ),
+    ).toEqual(["一句话概念*", "推理目标*"]);
+    expect(
+      briefFields.slice(0, 2).every((field) =>
+        field.matches('[data-required="true"]') &&
+        field.querySelector("header label > em")?.textContent === "*",
+      ),
+    ).toBe(true);
     expect(screen.getByText("约束抽屉")).toBeInTheDocument();
 
     fireEvent.click(
@@ -680,8 +775,17 @@ describe("intake center", () => {
     expect(
       screen.getByRole("heading", { name: "让三种创作策略同时摊开。" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /生成三份候选/u }));
+    expect(screen.getByText("候选卷尚空")).toBeInTheDocument();
+    const generateCandidateActions = screen.getAllByRole("button", {
+      name: /生成三份候选/u,
+    });
+    expect(generateCandidateActions).toHaveLength(2);
+    fireEvent.click(generateCandidateActions[1]);
     await flush();
+
+    expect(fake.backend.getGenerationDraftRevisions().slice(-3)).toEqual([
+      17, 17, 17,
+    ]);
 
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /封存室夜班稿/u })).toBeInTheDocument();
@@ -694,6 +798,7 @@ describe("intake center", () => {
       screen.getByRole("button", { name: /采用为当前工作稿/u }),
     );
     await flush();
+    expect(fake.backend.getAdoptionDraftRevisions().at(-1)).toBe(17);
     expect(
       screen.getByRole("button", { name: /已是当前工作稿/u }),
     ).toBeInTheDocument();
@@ -716,6 +821,20 @@ describe("intake center", () => {
       screen.getByText("玩家最终必须回答哪一个问题？"),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "再生成一些问题" }),
+    );
+    expect(
+      screen.getByRole("status", { name: "Agent 正在继续研查" }),
+    ).toBeInTheDocument();
+    await flush();
+
+    expect(
+      screen.getByText("还需要多少组相互矛盾的记录，才能支撑核心推理？"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("必须回答")).toHaveLength(1);
+    expect(screen.getAllByText("可以暂缓")).toHaveLength(3);
   });
 
   it("keeps the official intake on the real backend without browser persistence", () => {

@@ -403,6 +403,83 @@ def test_brief_intake_recovers_questions_candidates_and_adopts_to_brief(
             )
 
 
+def test_brief_intake_appends_optional_question_batches(
+    intake_database: tuple[str, Engine, int, int, str],
+) -> None:
+    database_url, engine, actor_id, _stranger_id, master_key = intake_database
+    app = create_app(database_url)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}), TestClient(app) as client:
+        setting = client.put(
+            "/api/v1/settings/provider",
+            headers=_identity(actor_id),
+            json={
+                "api_key": "sk-intake-additional-test",
+                "model_id": "gpt-5.6-sol",
+                "model_is_custom": False,
+            },
+        )
+        assert setting.status_code == 200
+        project = client.post(
+            "/api/v1/projects",
+            headers=_identity(actor_id),
+            json={"title": "追加追问", "description": None, "profile": {}},
+        )
+        project_id = project.json()["id"]
+        source = client.put(
+            f"/api/v1/projects/{project_id}/brief-intake/source",
+            headers=_identity(actor_id),
+            json={
+                "expected_intake_revision": 1,
+                "content_text": "三份独立档案都记录了同一段不存在的时间。",
+            },
+        )
+        assert source.status_code == 200
+
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="brief-intake-additional-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+
+        initial = client.post(
+            f"/api/v1/projects/{project_id}/tasks/brief-intake-questions",
+            headers=_identity(actor_id),
+            json={"expected_intake_revision": 2, "provider": "openai"},
+        )
+        assert initial.status_code == 202
+        assert worker.run_once() is True
+        first_batch = client.get(
+            f"/api/v1/projects/{project_id}/brief-intake",
+            headers=_identity(actor_id),
+        ).json()
+        assert len(first_batch["questions"]) == 2
+
+        additional = client.post(
+            f"/api/v1/projects/{project_id}/tasks/brief-intake-questions",
+            headers=_identity(actor_id),
+            json={"expected_intake_revision": 4, "provider": "openai"},
+        )
+        assert additional.status_code == 202
+        assert worker.run_once() is True
+        combined = client.get(
+            f"/api/v1/projects/{project_id}/brief-intake",
+            headers=_identity(actor_id),
+        ).json()
+
+        assert combined["revision"] == 6
+        assert len(combined["questions"]) == 4
+        assert [question["ordinal"] for question in combined["questions"]] == [1, 2, 3, 4]
+        assert len({question["question_key"] for question in combined["questions"]}) == 4
+        assert sum(1 for question in combined["questions"] if question["required"]) == 1
+        assert [question["prompt"] for question in combined["questions"][:2]] == [
+            question["prompt"] for question in first_batch["questions"]
+        ]
+        assert all(
+            not question["required"] for question in combined["questions"][2:]
+        )
+
+
 def test_brief_intake_archives_stale_tasks_and_allows_manual_recovery(
     intake_database: tuple[str, Engine, int, int, str],
 ) -> None:

@@ -40,6 +40,7 @@ import {
   CaseSessionError,
   type QuestionAnswerInput,
   fetchBrief,
+  fetchCaseDraft,
   fetchDraftCandidates,
   fetchCaseIntake,
   persistCaseSource,
@@ -234,6 +235,7 @@ interface CaseSessionContextValue {
     parentSourceRecordId: number | null,
   ) => Promise<void>;
   continueToQuestions: () => Promise<void>;
+  generateMoreQuestions: () => Promise<void>;
   generateBriefFromAnswers: () => Promise<void>;
   createManualBrief: () => Promise<void>;
   saveCandidateAsNew: () => Promise<void>;
@@ -344,10 +346,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const continueToQuestions = useCallback(async () => {
+  const requestQuestions = useCallback(async (forceGeneration: boolean) => {
     const current = stateRef.current;
     let intake = await ensureProjectAndSource(current.sourceText);
-    if (intake.questions.length === 0) {
+    if (forceGeneration || intake.questions.length === 0) {
       await runTaskWithProviderFallback(async (provider) => {
         // 任务创建会推进 intake revision，回退重试前必须重取最新版本。
         const fresh = await fetchCaseIntake(projectIdRef.current!);
@@ -372,6 +374,16 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       },
     });
   }, []);
+
+  const continueToQuestions = useCallback(
+    () => requestQuestions(false),
+    [requestQuestions],
+  );
+
+  const generateMoreQuestions = useCallback(
+    () => requestQuestions(true),
+    [requestQuestions],
+  );
 
   const generateBriefFromAnswers = useCallback(async () => {
     const current = stateRef.current;
@@ -695,13 +707,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       if (!brief.current_version_id) {
         throw new CaseSessionError("请先冻结当前创作简报。");
       }
+      const draft = await fetchCaseDraft(projectId);
       // 第一份运行带 Provider 认证回退，确认可用的模型服务后复用于其余两份。
       const { provider: workingProvider } = await runTaskWithProviderFallback(
         async (provider) => {
           const task = await startDraftGenerationTask(
             projectId,
             brief.current_version_id!,
-            brief.draft_revision,
+            draft.revision,
             provider,
           );
           await waitForTask(projectId, task.task_run_id);
@@ -714,7 +727,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           startDraftGenerationTask(
             projectId,
             brief.current_version_id!,
-            brief.draft_revision,
+            draft.revision,
             workingProvider,
           ),
         ),
@@ -777,8 +790,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     }
     const taskRunId = Number(candidateId.replace(/^draft-/, ""));
     if (!Number.isInteger(taskRunId)) return false;
-    const brief = briefRef.current ?? (await fetchBrief(projectId));
-    await adoptDraftCandidate(projectId, taskRunId, brief.draft_revision);
+    const draft = await fetchCaseDraft(projectId);
+    await adoptDraftCandidate(projectId, taskRunId, draft.revision);
     briefRef.current = await fetchBrief(projectId);
     dispatch({ type: "adopt_candidate", candidateId });
     return true;
@@ -827,6 +840,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       submitPolish,
       adoptPolish,
       continueToQuestions,
+      generateMoreQuestions,
       generateBriefFromAnswers,
       createManualBrief,
       saveCandidateAsNew,
@@ -849,6 +863,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       freezeReview,
       generateBriefFromAnswers,
       generateCandidates,
+      generateMoreQuestions,
       patchState,
       previewCandidate,
       resetSession,

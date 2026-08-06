@@ -9,7 +9,6 @@ import {
 } from "react";
 
 import { useCaseSession } from "@/features/case-session/case-session-provider";
-import settingsStyles from "@/components/settings-entry.module.css";
 
 import {
   candidateOriginLabels,
@@ -31,6 +30,10 @@ import {
 } from "./intake-model";
 import { BriefReviewStage } from "./brief-review-stage";
 import { DraftCandidatesStage } from "./draft-candidates-stage";
+import {
+  OutlineStagesEditor,
+  SellingPointsEditor,
+} from "./structured-list-editor";
 import stageStyles from "./intake-early-stages.module.css";
 import styles from "./intake-center.module.css";
 
@@ -105,20 +108,29 @@ function FieldShell({
   label,
   hint,
   source,
+  required = false,
   wide = false,
   children,
 }: {
   label: string;
   hint: string;
   source: FieldSource;
+  required?: boolean;
   wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className={stageStyles.fieldShell} data-wide={wide}>
+    <section
+      className={stageStyles.fieldShell}
+      data-required={required || undefined}
+      data-wide={wide}
+    >
       <header>
         <div>
-          <label>{label}</label>
+          <label>
+            {label}
+            {required ? <em aria-hidden="true">*</em> : null}
+          </label>
           <small>{hint}</small>
         </div>
         <SourceBadge source={source} />
@@ -136,6 +148,7 @@ export function IntakeCenter() {
     submitPolish,
     adoptPolish: adoptPolishDraft,
     continueToQuestions: proceedToQuestions,
+    generateMoreQuestions: requestMoreQuestions,
     generateBriefFromAnswers: synthesizeBriefFromServer,
     createManualBrief,
     saveCandidateAsNew: saveCandidateToServer,
@@ -156,6 +169,10 @@ export function IntakeCenter() {
   } = state;
   const [polishReviewOpen, setPolishReviewOpen] = useState(false);
   const [polishPending, setPolishPending] = useState(false);
+  const [questionGenerationMode, setQuestionGenerationMode] = useState<
+    "initial" | "additional" | null
+  >(null);
+  const [briefGenerationPending, setBriefGenerationPending] = useState(false);
   const [polishDraft, setPolishDraft] = useState("");
   const [polishNotes, setPolishNotes] = useState<string[]>([]);
   const [introducedDetails, setIntroducedDetails] = useState<string[]>([]);
@@ -164,7 +181,7 @@ export function IntakeCenter() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState(
+  const [, setNotice] = useState(
     "建案数据写入开发库；刷新页面将开启新会话。",
   );
 
@@ -187,6 +204,7 @@ export function IntakeCenter() {
     patchState({ brief: resolveState(brief, next) });
 
   const stepIndex = intakeSteps.findIndex((item) => item.id === step);
+  const questionsPending = questionGenerationMode !== null;
   const currentCandidate =
     candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
   const hardQuestionsResolved = state.questions
@@ -304,11 +322,30 @@ export function IntakeCenter() {
       return;
     }
     setError(null);
+    setQuestionGenerationMode("initial");
+    setStep("questions");
     try {
       await proceedToQuestions();
       announce("起案原文已记录，进入关键追问。");
     } catch (caught) {
+      setStep("idea");
       setError(caught instanceof Error ? caught.message : "追问任务未完成。");
+    } finally {
+      setQuestionGenerationMode(null);
+    }
+  }
+
+  async function generateMoreQuestions() {
+    if (questionsPending) return;
+    setError(null);
+    setQuestionGenerationMode("additional");
+    try {
+      await requestMoreQuestions();
+      announce("已补充新的追问；已有问题和回答保持不变。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "补充追问任务未完成。");
+    } finally {
+      setQuestionGenerationMode(null);
     }
   }
 
@@ -342,11 +379,16 @@ export function IntakeCenter() {
       return;
     }
     setError(null);
+    setBriefGenerationPending(true);
+    setStep("confirmation");
     try {
       await synthesizeBriefFromServer();
       announce("创作简报候选已形成，请逐项校核后采用。");
     } catch (caught) {
+      setStep("questions");
       setError(caught instanceof Error ? caught.message : "创作简报生成未完成。");
+    } finally {
+      setBriefGenerationPending(false);
     }
   }
 
@@ -469,6 +511,8 @@ export function IntakeCenter() {
   function resetSession() {
     resetSessionState();
     setPolishReviewOpen(false);
+    setQuestionGenerationMode(null);
+    setBriefGenerationPending(false);
     setPolishDraft("");
     setPolishNotes([]);
     setIntroducedDetails([]);
@@ -491,37 +535,41 @@ export function IntakeCenter() {
             <span aria-hidden="true" className={styles.brandMark} />
             <div>
               <strong>CaseFile</strong>
-              <small>推理卷宗</small>
+              <small>推理 · 洞察 · 行动</small>
             </div>
+            <span className={styles.brandSection}>建案中心</span>
           </Link>
+        </div>
+        <div aria-hidden="true" className={styles.topbarContext} />
+        <nav aria-label="产品页面" className={styles.topbarLinks}>
+          <Link href="/workbench">
+            <span aria-hidden="true" className={styles.analyticsIcon}>⌁</span>
+            分析师工作台
+          </Link>
+          <button aria-label="重置会话" onClick={resetSession} type="button">
+            <span aria-hidden="true" className={styles.resetIcon}>↻</span>
+            重置会话
+          </button>
           <button
             aria-label="打开模型服务设置"
-            className={settingsStyles.settingsEntry}
-            data-casefile-surface="intake"
+            className={styles.accountButton}
             onClick={() => window.dispatchEvent(new Event("casefile:open-settings"))}
             title="模型服务设置"
             type="button"
           >
-            <span aria-hidden="true" className={settingsStyles.settingsDot} />
-            <span className={settingsStyles.settingsLabel}>模型</span>
-          </button>
-        </div>
-        <div className={styles.topbarContext}>
-          <span>建案中心</span>
-          <b>连接真实建案流程 · 数据写入开发库</b>
-        </div>
-        <nav aria-label="产品页面" className={styles.topbarLinks}>
-          <Link href="/workbench">分析师工作台</Link>
-          <button onClick={resetSession} type="button">
-            重置会话
+            <span>A</span>
+            <i aria-hidden="true">⌄</i>
           </button>
         </nav>
       </header>
 
       <nav aria-label="建案进度" className={styles.pulseTrack}>
         <div className={styles.pulseIdentity}>
-          <span>CASE SIGNAL</span>
-          <b>A 路径</b>
+          <div>
+            <span>选择起点</span>
+            <b>四条建案路径</b>
+          </div>
+          <i aria-hidden="true">＋</i>
         </div>
         <ol>
           {intakeSteps.map((item, index) => (
@@ -560,16 +608,12 @@ export function IntakeCenter() {
         </ol>
         <div className={styles.pulseStatus}>
           <span>{String(completionCount).padStart(2, "0")} / 05</span>
-          <small>建案信号</small>
+          <small>流程编号</small>
         </div>
       </nav>
 
       <div className={styles.workspace}>
         <aside aria-label="建案入口" className={styles.routeDock}>
-          <header>
-            <span>选择起点</span>
-            <b>四条建案路径</b>
-          </header>
           <div className={styles.routeList}>
             {intakeRoutes.map((route) => {
               const available = route.state === "available";
@@ -627,7 +671,13 @@ export function IntakeCenter() {
                         <b>最初想法</b>
                         <small>你的输入会作为不可替换的原始来源</small>
                       </div>
-                      <SourceBadge source="user_original" />
+                      <button
+                        className={stageStyles.exampleAction}
+                        onClick={loadExample}
+                        type="button"
+                      >
+                        示例范文
+                      </button>
                     </div>
                     <textarea
                       aria-label="写下最初想法"
@@ -636,13 +686,18 @@ export function IntakeCenter() {
                         setError(null);
                       }}
                       placeholder="例如：一名档案员发现三份可靠记录，都指向一段不存在的时间……"
+                      maxLength={2000}
                       rows={8}
                       value={sourceText}
                     />
                     <footer>
                       <div>
-                        <button onClick={loadExample} type="button">
-                          载入示例
+                        <button
+                          aria-label="载入示例"
+                          onClick={loadExample}
+                          type="button"
+                        >
+                          输入示例
                         </button>
                         <button
                           disabled={!sourceText}
@@ -652,7 +707,7 @@ export function IntakeCenter() {
                           清空
                         </button>
                       </div>
-                      <span>{sourceText.length} 字 · 自动保留原文</span>
+                      <span>{sourceText.length} / 2000</span>
                     </footer>
                   </section>
 
@@ -667,7 +722,13 @@ export function IntakeCenter() {
                           <small>先生成独立校样，再由你逐字审阅是否采用。</small>
                         </div>
                       </div>
-                      <em>不会覆盖原文</em>
+                      <button
+                        className={stageStyles.polishTrigger}
+                        onClick={startPolishReview}
+                        type="button"
+                      >
+                        生成润色校样
+                      </button>
                     </header>
                     <div className={stageStyles.polishModes}>
                       {polishModes.map((mode) => (
@@ -679,6 +740,13 @@ export function IntakeCenter() {
                             type="radio"
                           />
                           <span>
+                            <i aria-hidden="true" className={stageStyles.modeIcon}>
+                              {mode.value === "proofread"
+                                ? "✦"
+                                : mode.value === "rewrite"
+                                  ? "⌁"
+                                  : "▣"}
+                            </i>
                             <b>{mode.label}</b>
                             <small>{mode.hint}</small>
                           </span>
@@ -788,15 +856,6 @@ export function IntakeCenter() {
 
               <footer className={stageStyles.stepActions}>
                 <button
-                  className={stageStyles.secondaryAction}
-                  disabled={polishReviewOpen}
-                  onClick={startPolishReview}
-                  type="button"
-                >
-                  <Glyph name="spark" />
-                  生成润色校样
-                </button>
-                <button
                   className={stageStyles.primaryAction}
                   disabled={polishReviewOpen || !sourceText.trim()}
                   onClick={continueToQuestions}
@@ -820,7 +879,7 @@ export function IntakeCenter() {
                   <h1 id="questions-step-title">只问会改变方向的问题。</h1>
                 </div>
                 <p>
-                  最多两问，且最多一道硬问题。可以暂缓的偏好会进入待决定队列，不会假装已经确认。
+                  首轮最多两问，且最多一道硬问题。回答后仍可继续补充可选追问，不会改写已有判断。
                 </p>
               </header>
 
@@ -831,7 +890,35 @@ export function IntakeCenter() {
               </section>
 
               <div className={stageStyles.questionStack}>
-                {state.questions.length === 0 ? (
+                {questionsPending ? (
+                  <div
+                    aria-label={
+                      questionGenerationMode === "additional"
+                        ? "Agent 正在继续研查"
+                        : "Agent 正在思考"
+                    }
+                    aria-live="polite"
+                    className={stageStyles.agentThinking}
+                    role="status"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={stageStyles.agentThinkingMark}
+                    />
+                    <div>
+                      <strong>
+                        {questionGenerationMode === "additional"
+                          ? "Agent 正在继续研查"
+                          : "Agent 正在思考"}
+                      </strong>
+                      <p>
+                        {questionGenerationMode === "additional"
+                          ? "正在避开已问内容，补充新的方向问题……"
+                          : "正在从起案原文中提炼会改变方向的关键问题……"}
+                      </p>
+                    </div>
+                  </div>
+                ) : state.questions.length === 0 && !error ? (
                   <p className={stageStyles.emptyQuestions}>
                     Agent 判断当前原稿信息已足够，无需追问；可以直接形成创作简报。
                   </p>
@@ -899,6 +986,23 @@ export function IntakeCenter() {
                     </article>
                   );
                 })}
+                {state.questions.length > 0 ? (
+                  <section className={stageStyles.moreQuestions}>
+                    <div>
+                      <span>还想继续深挖？</span>
+                      <p>保留现有问题和回答，再补充最多两道不重复的可选问题。</p>
+                    </div>
+                    <button
+                      disabled={questionsPending}
+                      onClick={generateMoreQuestions}
+                      type="button"
+                    >
+                      {questionGenerationMode === "additional"
+                        ? "正在补充问题…"
+                        : "再生成一些问题"}
+                    </button>
+                  </section>
+                ) : null}
               </div>
 
               {error ? (
@@ -910,6 +1014,7 @@ export function IntakeCenter() {
               <footer className={stageStyles.stepActions}>
                 <button
                   className={stageStyles.backAction}
+                  disabled={questionsPending}
                   onClick={() => setStep("idea")}
                   type="button"
                 >
@@ -918,6 +1023,7 @@ export function IntakeCenter() {
                 <div>
                   <button
                     className={stageStyles.secondaryAction}
+                    disabled={questionsPending}
                     onClick={continueManually}
                     type="button"
                   >
@@ -925,7 +1031,11 @@ export function IntakeCenter() {
                   </button>
                   <button
                     className={stageStyles.primaryAction}
-                    disabled={!hardQuestionsResolved}
+                    disabled={
+                      questionsPending ||
+                      state.questions.length === 0 ||
+                      !hardQuestionsResolved
+                    }
                     onClick={generateBrief}
                     type="button"
                   >
@@ -937,12 +1047,55 @@ export function IntakeCenter() {
             </section>
           ) : null}
 
-          {step === "confirmation" ? (
+          {step === "confirmation" && briefGenerationPending ? (
+            <section
+              aria-busy="true"
+              aria-labelledby="confirmation-loading-title"
+              className={stageStyles.stepView}
+            >
+              <header className={stageStyles.stepHero}>
+                <div>
+                  <small>STEP 03 / BUILD THE BRIEF</small>
+                  <h1 id="confirmation-loading-title">
+                    确认整体方向，再交给正式审阅。
+                  </h1>
+                </div>
+                <p>
+                  页面已经准备好。Agent 正在把原稿与已确认回答整理成可逐项审阅的创作简报。
+                </p>
+              </header>
+
+              <div
+                aria-label="Agent 正在整理创作简报"
+                aria-live="polite"
+                className={stageStyles.agentThinking}
+                role="status"
+              >
+                <span
+                  aria-hidden="true"
+                  className={stageStyles.agentThinkingMark}
+                />
+                <div>
+                  <strong>Agent 正在整理创作简报</strong>
+                  <p>正在归纳概念、内容骨架、推理目标和创作边界……</p>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {step === "confirmation" && !briefGenerationPending ? (
             <section className={stageStyles.stepView} aria-labelledby="confirmation-step-title">
               <header className={stageStyles.stepHero}>
                 <div>
                   <small>STEP 03 / FREEZE THE BRIEF</small>
                   <h1 id="confirmation-step-title">确认整体方向，再交给正式审阅。</h1>
+                  <button
+                    className={stageStyles.headerBackAction}
+                    onClick={() => setStep("questions")}
+                    type="button"
+                  >
+                    ← 返回追问
+                  </button>
                 </div>
                 <p>
                   每个字段都保留来源。表单修改和对话修改会产生新候选，不覆盖旧版本。
@@ -976,7 +1129,8 @@ export function IntakeCenter() {
               <div className={stageStyles.briefEditor}>
                 <FieldShell
                   hint="概括核心设定与冲突"
-                  label="一句话概念 *"
+                  label="一句话概念"
+                  required
                   source={brief.sources.concept}
                   wide
                 >
@@ -991,38 +1145,9 @@ export function IntakeCenter() {
                   />
                 </FieldShell>
                 <FieldShell
-                  hint="列出让人记住的亮点，每行一项"
-                  label="核心卖点"
-                  source={brief.sources.sellingPoints}
-                >
-                  <textarea
-                    aria-label="核心卖点"
-                    onChange={(event) =>
-                      updateBriefField("sellingPoints", event.target.value)
-                    }
-                    placeholder="例如：循环重启 / 第五人权限记录 / 保护协议"
-                    rows={5}
-                    value={brief.sellingPoints}
-                  />
-                </FieldShell>
-                <FieldShell
-                  hint="拆成可以推进和验证的阶段"
-                  label="内容骨架"
-                  source={brief.sources.outline}
-                >
-                  <textarea
-                    aria-label="内容骨架"
-                    onChange={(event) =>
-                      updateBriefField("outline", event.target.value)
-                    }
-                    placeholder="例如：发现异常 → 追查记录 → 重建时间线 → 决定真相"
-                    rows={5}
-                    value={brief.outline}
-                  />
-                </FieldShell>
-                <FieldShell
                   hint="定义玩家最终必须回答的问题"
-                  label="推理目标 *"
+                  label="推理目标"
+                  required
                   source={brief.sources.reasoningGoal}
                   wide
                 >
@@ -1062,7 +1187,8 @@ export function IntakeCenter() {
                 {brief.resolutionMode === "author_anchored" ? (
                   <FieldShell
                     hint="只有已经知道答案时填写"
-                    label="作者底牌 *"
+                    label="作者底牌"
+                    required
                     source={brief.sources.authorAnswer}
                     wide
                   >
@@ -1077,6 +1203,28 @@ export function IntakeCenter() {
                     />
                   </FieldShell>
                 ) : null}
+                <FieldShell
+                  hint="逐条编辑独立亮点，支持拖动排序"
+                  label="核心卖点"
+                  source={brief.sources.sellingPoints}
+                  wide
+                >
+                  <SellingPointsEditor
+                    onChange={(value) => updateBriefField("sellingPoints", value)}
+                    value={brief.sellingPoints}
+                  />
+                </FieldShell>
+                <FieldShell
+                  hint="按阶段拆解推进与验证过程"
+                  label="内容骨架"
+                  source={brief.sources.outline}
+                  wide
+                >
+                  <OutlineStagesEditor
+                    onChange={(value) => updateBriefField("outline", value)}
+                    value={brief.outline}
+                  />
+                </FieldShell>
                 <FieldShell
                   hint="估算角色、场景与体验时长"
                   label="预计规模"
@@ -1238,13 +1386,6 @@ export function IntakeCenter() {
               ) : null}
 
               <footer className={stageStyles.stepActions}>
-                <button
-                  className={stageStyles.backAction}
-                  onClick={() => setStep("questions")}
-                  type="button"
-                >
-                  ← 返回追问
-                </button>
                 <div>
                   <button
                     className={stageStyles.secondaryAction}
@@ -1336,17 +1477,9 @@ export function IntakeCenter() {
               <p>没有被隐藏的待决定事项。</p>
             )}
           </section>
-          <footer>
-            <span aria-hidden="true">LIVE</span>
-            <p>建案流程连接真实开发后端；样例内容只在载入示例时使用。</p>
-          </footer>
         </aside>
       </div>
 
-      <div aria-atomic="true" aria-live="polite" className={styles.liveNotice} role="status">
-        <span>SIGNAL</span>
-        {notice}
-      </div>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import re
 import socket
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -272,10 +273,22 @@ class Worker:
                         "Frozen Brief Intake question payload does not match its input hash"
                     )
                 frozen_source = _required_object(task_snapshot.input_jsonb, "source")
+                mode = task_snapshot.input_jsonb.get("mode", "initial")
+                if mode not in ("initial", "additional"):
+                    raise RuntimeError("Frozen Brief Intake question mode is invalid")
+                existing_questions = task_snapshot.input_jsonb.get(
+                    "existing_questions", []
+                )
+                if not isinstance(existing_questions, list):
+                    raise RuntimeError(
+                        "Frozen Brief Intake existing questions must be an array"
+                    )
                 questions_request = BriefIntakeQuestionsRequest(
                     task_run_id=task_snapshot.id,
                     prompt_version=task_snapshot.prompt_version,
                     source_text=_required_string(frozen_source, "content_text"),
+                    existing_questions=deepcopy(existing_questions),
+                    mode=mode,
                     input_hash=task_snapshot.input_hash,
                     model_id=task_snapshot.model_id,
                     api_key=api_key,

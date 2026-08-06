@@ -8,6 +8,7 @@ import {
   type BriefVersionView,
   type BriefView,
   type DraftCandidateView,
+  type DraftView,
   type PolishMode,
   type ProjectView,
   type ProviderName,
@@ -389,6 +390,13 @@ export async function fetchDraftCandidates(projectId: number) {
     `/projects/${projectId}/draft-candidates`,
     { actorId: LOCAL_ACTOR_ID },
   );
+}
+
+/** 读取 CaseFile 当前工作稿，供需要 Draft revision 的写入门禁使用。 */
+export async function fetchCaseDraft(projectId: number) {
+  return apiRequest<DraftView>(`/projects/${projectId}/draft`, {
+    actorId: LOCAL_ACTOR_ID,
+  });
 }
 
 export async function adoptDraftCandidate(

@@ -81,7 +81,7 @@
 | `backend/src/casefile/benchmark/` | `brief_to_draft` Fixture 运行器与指标汇总；记录结构有效率、修复次数、延迟、工具调用有效率/执行成功率和结果采纳率，不依赖 ORM 或 Web 框架。 |
 | `backend/src/casefile/agent_runtime/` | 目标无关的 Prompt 输入渲染、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`（三档强度与新增细节审计）、`brief_anchor_extract`、`brief_intake_questions`、`brief_intake_synthesize`、`brief_to_draft`、`casefile_chat` 的结构化结果、工具注册与 Validator 指标；不输出模型内部思维文本。 |
 | `backend/src/casefile/agent_runtime/prompt_repository.py` | 通过包资源严格解析当前或明确历史 System Prompt 版本，校验 Agent/目录/Manifest/UTF-8/LF/SHA-256 一致性并在漂移时失败关闭。 |
-| `backend/src/casefile/agent_runtime/prompts/` | 六个 Agent 功能各自独立、不可变的版本化 System Prompt 唯一 Git 事实源；`brief_polish/v3` 定义校对、表达优化、叙事增强及新增细节披露，`brief_to_draft/v4` 要求每个顶层对象同时生成非空补充说明，`brief_intake_questions/v2` 要求未显式声明方向性决策（结论处理方式/推理目标/规模）时至少产出一个问题并严格遵循契约字段；`registry.json` 只维护当前版本指针，版本目录同时保存 Manifest、原文和发布规则。 |
+| `backend/src/casefile/agent_runtime/prompts/` | 六个 Agent 功能各自独立、不可变的版本化 System Prompt 唯一 Git 事实源；`brief_polish/v3` 定义校对、表达优化、叙事增强及新增细节披露，`brief_to_draft/v4` 要求每个顶层对象同时生成非空补充说明，`brief_intake_questions/v3` 区分初次与追加追问：初次覆盖未声明的方向性决策，追加批次保留已有问答、避免重复且不得新增必答门槛；`registry.json` 只维护当前版本指针，版本目录同时保存 Manifest、原文和发布规则。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的六类 TaskRun 领取、lease/Attempt 恢复、Agent 执行、结果/事件原子持久化；Intake 过时结果归档但不激活，`brief_to_draft` 执行结构修复与 Validator 后把完整结果保存为不可变 Attempt 候选而不直接修改 Draft，`casefile_chat` 完成助手消息并保存可审阅 PatchSet。 |
 | `backend/tests/contract/` | 根目录跨语言契约和编辑闭环 Fixture 的契约测试。 |
 | `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 45 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
@@ -120,7 +120,7 @@
 | `apps/web/features/case-session/case-session-provider.tsx` | 两页共享的 reducer/Context 与真实后端会话协调；保存建案步骤、Brief 审阅、候选生成、预览与显式采用状态，Provider 重挂载恢复空白初态，不使用浏览器存储。 |
 | `apps/web/features/case-session/case-session-api.ts` | 会话建项目/来源、Intake/Brief/候选 TaskRun、轮询、候选采用和 Provider 认证回退的真实 `/api/v1` 适配层；内部复用 `lib/api-client`。 |
 | `apps/web/features/case-session/case-session-mapping.ts` | 服务端 Brief Intake、Brief、Draft 候选 DTO 与建案/工作台展示模型之间的纯函数映射；不请求 API。 |
-| `apps/web/features/intake/` | `/` 五阶段建案编排、Brief 原子审阅/冻结、三份候选决策和数字档案纸视觉；数据流经 `CaseSessionProvider`，页面组件不直接持久化服务端事实。 |
+| `apps/web/features/intake/` | `/` 五阶段建案编排、创作简报结构化条目编辑、Brief 原子审阅/冻结、三份候选决策和数字档案纸视觉；数据流经 `CaseSessionProvider`，页面组件不直接持久化服务端事实。 |
 | `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-workbench.module.css`、`candidate-relay.module.css`、`analyst-fixture.ts` | `/workbench` 的石墨纸＋档案铜交互和确定性 fixture；对象、事件、关系、推理、卷宗、Agent 对话、编译预览等尚未接真实后端，候选接力与采用使用共享会话真实边界。 |
 | `apps/web/features/settings/` | 与会话 Store 解耦的 Provider 设置弹窗；自行管理 OpenAI/DeepSeek 标签，使用本地 actor 1，保留密钥保存、切换、删除和认证失败回退。 |
 | `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、工作流 DTO 和统一错误消息。 |

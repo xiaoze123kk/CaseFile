@@ -1,37 +1,61 @@
 .stepView {
   min-width: 0;
-  padding: 0 26px 24px 62px;
+  padding: 0 39px 24px;
 }
 
 .stepHero {
   display: grid;
-  min-height: 126px;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.42fr);
+  min-height: 154px;
+  grid-template-columns: minmax(0, 1.43fr) minmax(310px, 0.95fr);
   align-items: end;
-  gap: 28px;
-  padding: 24px 0 18px;
-  border-bottom: 1px solid var(--ink);
+  gap: 32px;
+  padding: 18px 2px 14px;
+  border-bottom: 0;
 }
 
 .stepHero small {
   color: var(--red);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .stepHero h1 {
-  margin: 7px 0 0;
+  margin: 10px 0 0;
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: clamp(25px, 2.2vw, 38px);
+  font-size: clamp(38px, 2.7vw, 48px);
   font-weight: 560;
-  line-height: 1.2;
+  line-height: 1.16;
   letter-spacing: -0.025em;
+}
+
+.headerBackAction {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 0 2px;
+  color: var(--ink-muted);
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.headerBackAction:hover {
+  color: var(--red);
+  border-bottom-color: var(--red-line);
+}
+
+.headerBackAction:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
 }
 
 .stepHero p {
   margin: 0;
   color: var(--ink-muted);
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.75;
 }
 
@@ -46,24 +70,20 @@
 .revisionStudio,
 .candidateHistory {
   border: 1px solid var(--rule);
+  border-radius: 7px;
   background: rgba(255, 255, 255, 0.72);
 }
 
 .ideaCapture {
   position: relative;
-  margin-top: 18px;
-  padding: 0 18px 14px 54px;
-  box-shadow: 4px 5px 0 rgba(26, 28, 25, 0.07);
+  margin-top: 0;
+  height: 314px;
+  padding: 0 12px 12px;
+  box-shadow: 0 7px 18px rgba(52, 39, 27, 0.045);
 }
 
 .ideaCapture::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 40px;
-  width: 1px;
-  content: "";
-  background: var(--red-line);
+  display: none;
 }
 
 .captureHeading,
@@ -80,8 +100,8 @@
 }
 
 .captureHeading {
-  min-height: 60px;
-  border-bottom: 1px solid var(--ink);
+  min-height: 72px;
+  border-bottom: 0;
 }
 
 .captureHeading > span,
@@ -89,8 +109,9 @@
 .comparisonPanel > header > div > span,
 .revisionStudio > div > span {
   display: grid;
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
   flex: 0 0 auto;
   place-items: center;
   color: var(--red);
@@ -112,13 +133,14 @@
 .comparisonPanel h2,
 .revisionStudio b {
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 15px;
 }
 
 .captureHeading small,
 .polishControl small,
 .revisionStudio small {
   color: var(--ink-faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .sourceBadge {
@@ -134,6 +156,18 @@
   font: 9px "Cascadia Mono", Consolas, monospace;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.exampleAction,
+.polishTrigger {
+  margin-left: auto;
+  padding: 8px 12px;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  border-radius: 4px;
+  background: #fffaf7;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .sourceBadge i {
@@ -172,9 +206,13 @@
 }
 
 .ideaCapture > textarea {
-  min-height: 210px;
-  padding: 18px 8px;
-  font-size: clamp(16px, 1.2vw, 20px);
+  height: 174px;
+  min-height: 174px;
+  padding: 14px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
 }
 
 .ideaCapture textarea::placeholder,
@@ -188,7 +226,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 10px;
+  min-height: 52px;
+  padding-top: 8px;
+  border-top: 0;
   color: var(--ink-faint);
   border-top: 1px solid var(--hairline);
   font: 9px "Cascadia Mono", Consolas, monospace;
@@ -206,11 +246,12 @@
 .candidateHistory article button,
 .constraintDrawer summary,
 .confirmationToolbar button {
-  padding: 5px 8px;
+  padding: 7px 10px;
+  border-radius: 4px;
   color: var(--ink-muted);
   border: 1px solid var(--rule);
   background: var(--paper-high);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .ideaCapture > footer button:hover,
@@ -224,11 +265,14 @@
 
 .polishControl {
   margin-top: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 22px rgba(52, 39, 27, 0.04);
 }
 
 .polishControl > header {
   justify-content: space-between;
-  padding: 12px 14px;
+  min-height: 64px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--hairline);
   background: var(--paper-low);
 }
@@ -250,12 +294,14 @@
 .polishModes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 3px 10px 16px;
 }
 
 .polishModes label {
   position: relative;
   min-width: 0;
-  border-right: 1px solid var(--hairline);
+  border-right: 0;
 }
 
 .polishModes label:last-child {
@@ -269,16 +315,39 @@
 
 .polishModes span {
   display: grid;
-  min-height: 74px;
+  min-height: 82px;
+  grid-template-columns: 38px minmax(0, 1fr);
   align-content: center;
-  gap: 4px;
-  padding: 10px 14px;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: white;
 }
 
 .polishModes input:checked + span {
   color: var(--red);
-  box-shadow: inset 0 -3px var(--red);
-  background: var(--red-soft);
+  border-color: var(--red);
+  box-shadow: none;
+  background: #fffaf7;
+}
+
+.polishModes span b,
+.polishModes span small {
+  grid-column: 2;
+}
+
+.modeIcon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  grid-row: 1 / span 2;
+  place-items: center;
+  color: var(--ink);
+  border-radius: 5px;
+  background: var(--paper-low);
+  font-style: normal;
+  font-size: 16px;
 }
 
 .comparisonPanel {
@@ -384,14 +453,15 @@
 .stepActions button,
 .revisionStudio > button {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 42px;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 0 13px;
+  padding: 0 16px;
+  border-radius: 4px;
   border: 1px solid var(--ink);
   background: var(--paper-high);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -443,6 +513,118 @@
   color: var(--ink-faint);
   font-size: 13px;
   line-height: 1.7;
+}
+
+.agentThinking {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 0;
+  padding: 18px 16px;
+  border: 1px solid var(--red-line);
+  background: var(--red-soft);
+}
+
+.agentThinkingMark {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--red);
+  color: var(--red);
+  animation: agentThinkingPulse 1.8s ease-in-out infinite;
+}
+
+.agentThinkingMark::before,
+.agentThinkingMark::after {
+  position: absolute;
+  display: block;
+  width: 5px;
+  height: 5px;
+  content: "";
+  background: var(--red);
+}
+
+.agentThinkingMark::before {
+  top: -3px;
+  left: -3px;
+}
+
+.agentThinkingMark::after {
+  right: -3px;
+  bottom: -3px;
+}
+
+.agentThinking strong {
+  display: block;
+  color: var(--ink);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.agentThinking p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+@keyframes agentThinkingPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(197, 43, 13, 0.08);
+    transform: translateY(0);
+  }
+
+  50% {
+    box-shadow: 0 0 0 7px rgba(197, 43, 13, 0);
+    transform: translateY(-1px);
+  }
+}
+
+.moreQuestions {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px dashed var(--rule);
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.moreQuestions span {
+  color: var(--ink);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.moreQuestions p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.moreQuestions button {
+  min-height: 38px;
+  flex: 0 0 auto;
+  padding: 0 14px;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  border-radius: 4px;
+  background: #fffaf7;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.moreQuestions button:hover:not(:disabled) {
+  color: white;
+  background: var(--red);
 }
 
 .questionStack > article {
@@ -534,15 +716,26 @@
 }
 
 .stepActions {
-  justify-content: space-between;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--ink);
+  position: fixed;
+  z-index: 35;
+  right: 40px;
+  bottom: 20px;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
 }
 
 .stepActions > div {
   display: flex;
   gap: 8px;
+}
+
+.stepActions .primaryAction {
+  min-height: 46px;
+  min-width: 156px;
+  padding: 0 24px;
+  box-shadow: 0 7px 18px rgba(197, 43, 13, 0.18);
 }
 
 .backAction {
@@ -642,6 +835,12 @@
   font-weight: 700;
 }
 
+.fieldShell > header label > em {
+  margin-left: 3px;
+  color: var(--red);
+  font-style: normal;
+}
+
 .fieldShell small {
   color: var(--ink-faint);
   font-size: 9px;
@@ -651,6 +850,129 @@
   min-height: 86px;
   padding: 10px;
   font-size: 13px;
+}
+
+.structuredEditor {
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.structuredRows {
+  display: grid;
+  gap: 6px;
+}
+
+.structuredRow {
+  display: grid;
+  min-width: 0;
+  min-height: 42px;
+  grid-template-columns: 16px 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  background: white;
+}
+
+.structuredRow:focus-within {
+  border-color: var(--red-line);
+  box-shadow: inset 2px 0 var(--red);
+}
+
+.dragHandle {
+  color: var(--ink-faint);
+  cursor: grab;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.structuredRow > b {
+  color: var(--red);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.structuredRow input {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 7px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+.structuredRow input:focus {
+  border-bottom-color: var(--red-line);
+  outline: 0;
+}
+
+.stageInputs {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(82px, 0.34fr) minmax(170px, 1fr);
+  gap: 7px;
+}
+
+.stageInputs input:first-child {
+  color: var(--ink);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-weight: 700;
+}
+
+.structuredRowActions {
+  display: flex;
+  gap: 2px;
+  opacity: 0.42;
+  transition: opacity 140ms ease;
+}
+
+.structuredRow:hover .structuredRowActions,
+.structuredRow:focus-within .structuredRowActions {
+  opacity: 1;
+}
+
+.structuredRowActions button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  color: var(--ink-muted);
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 12px;
+}
+
+.structuredRowActions button:hover:not(:disabled) {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.addStructuredItem {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 7px;
+  color: var(--ink-muted);
+  border: 1px dashed var(--rule);
+  border-radius: 4px;
+  background: var(--paper-low);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.addStructuredItem:hover:not(:disabled) {
+  color: var(--red);
+  border-color: var(--red-line);
+  background: var(--red-soft);
 }
 
 .resolutionChoices {
@@ -857,6 +1179,23 @@
   font-size: 9px;
 }
 
+@media (max-width: 1280px) {
+  .stepHero {
+    min-height: 188px;
+    grid-template-columns: 1fr;
+    align-content: center;
+    gap: 12px;
+  }
+
+  .stepHero h1 {
+    max-width: 680px;
+  }
+
+  .stepHero p {
+    max-width: 620px;
+  }
+}
+
 .captureHeading svg,
 .polishControl svg,
 .comparisonPanel svg,
@@ -915,7 +1254,17 @@
     font-size: 25px;
   }
 
+  .moreQuestions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .moreQuestions button {
+    width: 100%;
+  }
+
   .ideaCapture {
+    height: auto;
     padding-right: 12px;
     padding-left: 34px;
   }
@@ -925,8 +1274,26 @@
   }
 
   .captureHeading {
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
     padding: 10px 0;
+  }
+
+  .captureHeading .sourceBadge {
+    grid-column: 2;
+    margin-left: 0;
+  }
+
+  .captureHeading .exampleAction {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-left: 0;
+  }
+
+  .ideaCapture > textarea {
+    min-height: 200px;
+    font-size: 16px;
   }
 
   .polishModes,
@@ -956,6 +1323,13 @@
   .comparisonActions {
     align-items: stretch;
     flex-direction: column-reverse;
+  }
+
+  .stepActions {
+    position: static;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline);
   }
 
   .stepActions button,
@@ -990,4 +1364,3 @@
     animation-iteration-count: 1 !important;
   }
 }
-

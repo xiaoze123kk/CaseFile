@@ -78,6 +78,8 @@ class BriefIntakeQuestionsRequest:
     task_run_id: int
     prompt_version: str
     source_text: str
+    existing_questions: list[dict[str, Any]]
+    mode: Literal["initial", "additional"]
     input_hash: str
     model_id: str
     api_key: str | None

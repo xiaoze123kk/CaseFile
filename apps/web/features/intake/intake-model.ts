@@ -113,10 +113,10 @@ export const intakeSteps: Array<{
   shortLabel: string;
 }> = [
   { id: "idea", no: "01", label: "最初想法", shortLabel: "输入" },
-  { id: "questions", no: "02", label: "关键追问", shortLabel: "核验" },
-  { id: "confirmation", no: "03", label: "创作简报成案", shortLabel: "成案" },
-  { id: "review", no: "04", label: "创作简报审阅", shortLabel: "冻结" },
-  { id: "candidates", no: "05", label: "候选工作稿", shortLabel: "决策" },
+  { id: "questions", no: "02", label: "关键追问", shortLabel: "研查" },
+  { id: "confirmation", no: "03", label: "创作简报草案", shortLabel: "成案" },
+  { id: "review", no: "04", label: "创作简报审阅", shortLabel: "活化" },
+  { id: "candidates", no: "05", label: "触达工作格", shortLabel: "决策" },
 ];
 
 export const intakeRoutes = [

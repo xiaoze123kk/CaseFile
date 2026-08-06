@@ -137,27 +137,47 @@ class FakeProvider:
     ) -> BriefIntakeQuestionsResult:
         system_prompt_for_task("brief_intake_questions", request.prompt_version)
         request.emit("model.started", "questioning", {"model_id": request.model_id})
+        questions = (
+            [
+                {
+                    "question_key": "question_evidence_density",
+                    "ordinal": 1,
+                    "prompt": "你希望读者需要交叉核对多少组彼此矛盾的记录？",
+                    "impact": "这会影响线索密度与阅读负担，但不会改变已经确认的核心方向。",
+                    "required": False,
+                    "suggestions": ["保持精炼，只设置两组关键矛盾", "增加到四组，形成层层互证"],
+                },
+                {
+                    "question_key": "question_supporting_cast",
+                    "ordinal": 2,
+                    "prompt": "次要证人需要各自承担独立线索，还是合并为更少角色？",
+                    "impact": "这会影响角色规模和信息分配。",
+                    "required": False,
+                    "suggestions": ["合并角色，保持紧凑", "保留独立证人，强化多视角"],
+                },
+            ]
+            if request.mode == "additional"
+            else [
+                {
+                    "question_key": "question_resolution_direction",
+                    "ordinal": 1,
+                    "prompt": "你希望真相由你预先确定，还是由 Agent 提出候选？",
+                    "impact": "这会决定结论模式，以及是否需要作者底牌。",
+                    "required": True,
+                    "suggestions": ["由 Agent 提出候选", "保持开放，不预设唯一结论"],
+                },
+                {
+                    "question_key": "question_scope",
+                    "ordinal": 2,
+                    "prompt": "你预计采用多大规模？",
+                    "impact": "这会影响内容骨架和角色数量，但不改变核心解答。",
+                    "required": False,
+                    "suggestions": ["中篇，4 名核心角色"],
+                },
+            ]
+        )
         candidate = BriefIntakeQuestionSetContract.model_validate(
-            {
-                "questions": [
-                    {
-                        "question_key": "question_resolution_direction",
-                        "ordinal": 1,
-                        "prompt": "你希望真相由你预先确定，还是由 Agent 提出候选？",
-                        "impact": "这会决定结论模式，以及是否需要作者底牌。",
-                        "required": True,
-                        "suggestions": ["由 Agent 提出候选", "保持开放，不预设唯一结论"],
-                    },
-                    {
-                        "question_key": "question_scope",
-                        "ordinal": 2,
-                        "prompt": "你预计采用多大规模？",
-                        "impact": "这会影响内容骨架和角色数量，但不改变核心解答。",
-                        "required": False,
-                        "suggestions": ["中篇，4 名核心角色"],
-                    },
-                ]
-            }
+            {"questions": questions}
         )
         usage = _zero_usage()
         request.emit("model.completed", "questioning", {"usage": usage})
@@ -422,7 +442,10 @@ class OpenAIAgentsProvider:
                     "brief_intake_questions", request.prompt_version
                 ),
                 input_text=brief_intake_questions_input(
-                    request.source_text, request.input_hash
+                    request.source_text,
+                    request.input_hash,
+                    existing_questions=request.existing_questions,
+                    mode=request.mode,
                 ),
                 output_type=BriefIntakeQuestionSetContract,
                 stage="questioning",
@@ -604,7 +627,10 @@ class DeepSeekAgentsProvider:
                     "brief_intake_questions", request.prompt_version
                 ),
                 input_text=brief_intake_questions_input(
-                    request.source_text, request.input_hash
+                    request.source_text,
+                    request.input_hash,
+                    existing_questions=request.existing_questions,
+                    mode=request.mode,
                 ),
                 output_type=BriefIntakeQuestionSetContract,
                 stage="questioning",
