@@ -10,6 +10,7 @@
     "creative_intent",
     "reasoning_proposition",
     "resolution_mode",
+    "conclusion_mode",
     "author_answer",
     "author_anchors",
     "boundary_text",
@@ -27,6 +28,13 @@
     "resolution_mode": {
       "type": "string",
       "enum": ["author_anchored", "agent_proposed", "open"]
+    },
+    "conclusion_mode": {
+      "type": "string",
+      "enum": [
+        "unique", "finite_multiple", "optimal", "probabilistic",
+        "open_interpretation", "multiple_endings", "undetermined"
+      ]
     },
     "author_answer": {
       "oneOf": [

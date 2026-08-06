@@ -11,6 +11,7 @@
     "content_outline",
     "reasoning_goal",
     "resolution_mode",
+    "conclusion_mode",
     "author_answer",
     "constraints",
     "pending_decisions",
@@ -34,6 +35,13 @@
     "resolution_mode": {
       "type": "string",
       "enum": ["author_anchored", "agent_proposed", "open"]
+    },
+    "conclusion_mode": {
+      "type": "string",
+      "enum": [
+        "unique", "finite_multiple", "optimal", "probabilistic",
+        "open_interpretation", "multiple_endings", "undetermined"
+      ]
     },
     "author_answer": {
       "oneOf": [
@@ -83,6 +91,7 @@
         "content_outline",
         "reasoning_goal",
         "resolution_mode",
+        "conclusion_mode",
         "author_answer",
         "constraints",
         "scope_estimate",
@@ -94,6 +103,7 @@
         "content_outline": {"$ref": "#/$defs/BriefIntakeFieldSource"},
         "reasoning_goal": {"$ref": "#/$defs/BriefIntakeFieldSource"},
         "resolution_mode": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "conclusion_mode": {"$ref": "#/$defs/BriefIntakeFieldSource"},
         "author_answer": {"$ref": "#/$defs/BriefIntakeFieldSource"},
         "constraints": {"$ref": "#/$defs/BriefIntakeFieldSource"},
         "scope_estimate": {"$ref": "#/$defs/BriefIntakeFieldSource"},

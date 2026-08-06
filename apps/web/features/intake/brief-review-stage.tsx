@@ -6,9 +6,11 @@ import { useCaseSession } from "@/features/case-session/case-session-provider";
 
 import {
   atomicReviewComplete,
+  conclusionModes,
   resolutionModes,
   reviewFieldBlockers,
   type BriefReview,
+  type ConclusionMode,
   type ConstraintStrength,
   type ResolutionMode,
 } from "./intake-model";
@@ -90,6 +92,15 @@ export function BriefReviewStage() {
         value === "author_anchored" ? review.authorAnswer : "",
       authorAnchors:
         value === "author_anchored" ? review.authorAnchors : [],
+      dirty: true,
+      saved: false,
+    });
+  }
+
+  function updateConclusionMode(value: ConclusionMode) {
+    commit({
+      ...review,
+      conclusionMode: value,
       dirty: true,
       saved: false,
     });
@@ -243,7 +254,21 @@ export function BriefReviewStage() {
               />
             </label>
             <label>
-              <span><b>03</b><strong>结论处理方式</strong><em>作者决定</em></span>
+              <span><b>03</b><strong>结论模式*</strong><em>作者决定</em></span>
+              <select
+                aria-label="审阅结论模式"
+                onChange={(event) =>
+                  updateConclusionMode(event.target.value as ConclusionMode)
+                }
+                value={review.conclusionMode}
+              >
+                {conclusionModes.map((mode) => (
+                  <option key={mode.value} value={mode.value}>{mode.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span><b>04</b><strong>结论处理方式</strong><em>作者决定</em></span>
               <select
                 aria-label="审阅结论处理方式"
                 onChange={(event) =>
@@ -257,7 +282,7 @@ export function BriefReviewStage() {
               </select>
             </label>
             <label>
-              <span><b>04</b><strong>作者底牌原文</strong><em>硬约束来源</em></span>
+              <span><b>05</b><strong>作者底牌原文</strong><em>硬约束来源</em></span>
               <textarea
                 aria-label="审阅作者底牌原文"
                 disabled={review.resolutionMode !== "author_anchored"}
@@ -268,7 +293,7 @@ export function BriefReviewStage() {
               />
             </label>
             <label className={styles.wideField}>
-              <span><b>05</b><strong>创作边界原文</strong><em>硬约束或软偏好</em></span>
+              <span><b>06</b><strong>创作边界原文</strong><em>硬约束或软偏好</em></span>
               <textarea
                 aria-label="审阅创作边界原文"
                 onChange={(event) => updateText("boundaryText", event.target.value)}

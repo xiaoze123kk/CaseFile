@@ -223,6 +223,7 @@ class FakeProvider:
                 ],
                 "reasoning_goal": "解释核心异常如何发生，并形成可由作者审阅的结论。",
                 "resolution_mode": "agent_proposed",
+                "conclusion_mode": "undetermined",
                 "author_answer": None,
                 "constraints": [],
                 "pending_decisions": pending,
@@ -234,6 +235,7 @@ class FakeProvider:
                     "content_outline": "agent_suggestion",
                     "reasoning_goal": "agent_suggestion",
                     "resolution_mode": "agent_suggestion",
+                    "conclusion_mode": "agent_suggestion",
                     "author_answer": "unresolved",
                     "constraints": "unresolved",
                     "scope_estimate": "agent_suggestion",
@@ -296,6 +298,7 @@ class FakeProvider:
         )
         now = datetime.now(UTC).isoformat()
         resolution_mode = request.brief["resolution_mode"]
+        conclusion_mode = request.brief["conclusion_mode"]
         author_answer = request.brief["author_answer"]
         try:
             candidate_strategy = CandidateStrategy(request.candidate_strategy)
@@ -332,7 +335,7 @@ class FakeProvider:
                     "description": "说明本案需要回答的核心问题，以及最终解答应覆盖的因果范围。",
                     "question_type": "causal_explanation",
                     "reasoning_question": request.brief["reasoning_proposition"],
-                    "conclusion_mode": _conclusion_mode(resolution_mode),
+                    "conclusion_mode": conclusion_mode,
                     "required_slots": [
                         {
                             "slot_id": "slot_core_answer",
@@ -1098,14 +1101,6 @@ def _brief_constraints(request: GenerationRequest) -> list[dict[str, str]]:
         for item in request.brief["creative_constraints"]
     )
     return result
-
-
-def _conclusion_mode(resolution_mode: str) -> str:
-    if resolution_mode == "author_anchored":
-        return "unique"
-    if resolution_mode == "open":
-        return "open_interpretation"
-    return "undetermined"
 
 
 __all__ = [

@@ -15,6 +15,15 @@ export type ResolutionMode =
   | "agent_proposed"
   | "open";
 
+export type ConclusionMode =
+  | "unique"
+  | "finite_multiple"
+  | "optimal"
+  | "probabilistic"
+  | "open_interpretation"
+  | "multiple_endings"
+  | "undetermined";
+
 export type FieldSource =
   | "user_original"
   | "user_confirmed"
@@ -53,6 +62,7 @@ export interface IntakeBrief {
   outline: string;
   reasoningGoal: string;
   resolutionMode: ResolutionMode;
+  conclusionMode: ConclusionMode;
   authorAnswer: string;
   scopeEstimate: string;
   riskNotes: string;
@@ -63,6 +73,7 @@ export interface IntakeBrief {
     outline: FieldSource;
     reasoningGoal: FieldSource;
     resolutionMode: FieldSource;
+    conclusionMode: FieldSource;
     authorAnswer: FieldSource;
     scopeEstimate: FieldSource;
     riskNotes: FieldSource;
@@ -97,6 +108,7 @@ export interface BriefReview {
   creativeIntent: string;
   reasoningProposition: string;
   resolutionMode: ResolutionMode;
+  conclusionMode: ConclusionMode;
   authorAnswer: string;
   boundaryText: string;
   authorAnchors: AnchorReview[];
@@ -215,6 +227,48 @@ export const resolutionModes: Array<{
   },
 ];
 
+export const conclusionModes: Array<{
+  value: ConclusionMode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "unique",
+    label: "唯一解",
+    hint: "需要证明信息充分、公平，且不存在同样成立的第二种解释。",
+  },
+  {
+    value: "finite_multiple",
+    label: "有限多解",
+    hint: "列出可成立的解，以及每个解成立所需的条件。",
+  },
+  {
+    value: "optimal",
+    label: "最优方案",
+    hint: "比较可行方案，并说明选定方案为何更优。",
+  },
+  {
+    value: "probabilistic",
+    label: "概率排序",
+    hint: "按证据支持度排列结论，不伪装成确定答案。",
+  },
+  {
+    value: "open_interpretation",
+    label: "开放解释",
+    hint: "允许多种解释，但每种解释都必须有可追溯依据。",
+  },
+  {
+    value: "multiple_endings",
+    label: "多结局",
+    hint: "保留多个结局，并明确各自触发条件。",
+  },
+  {
+    value: "undetermined",
+    label: "信息不足时保持未决",
+    hint: "当前证据不足时保持未决，不强行制造唯一答案。",
+  },
+];
+
 export const fieldSourceLabels: Record<FieldSource, string> = {
   user_original: "你的原文",
   user_confirmed: "由你确认",
@@ -292,6 +346,7 @@ export function createEmptyBrief(sourceText: string): IntakeBrief {
     outline: "",
     reasoningGoal: "",
     resolutionMode: "agent_proposed",
+    conclusionMode: "undetermined",
     authorAnswer: "",
     scopeEstimate: "",
     riskNotes: "",
@@ -302,6 +357,7 @@ export function createEmptyBrief(sourceText: string): IntakeBrief {
       outline: "unresolved",
       reasoningGoal: "unresolved",
       resolutionMode: "user_confirmed",
+      conclusionMode: "unresolved",
       authorAnswer: "unresolved",
       scopeEstimate: "unresolved",
       riskNotes: "unresolved",
@@ -326,6 +382,7 @@ export function synthesizeBrief(
     reasoningGoal:
       reasoningAnswer || "找出是谁制造了那段不存在的时间，以及这样做的目的。",
     resolutionMode: "agent_proposed",
+    conclusionMode: "undetermined",
     authorAnswer: "",
     scopeEstimate: scaleAnswer || "4 名核心角色 / 7 个场景 / 90 分钟",
     riskNotes: "需要避免让记忆改写成为无法验证的万能解释。",
@@ -336,6 +393,7 @@ export function synthesizeBrief(
       outline: "agent_suggestion",
       reasoningGoal: reasoningAnswer ? "user_confirmed" : "agent_suggestion",
       resolutionMode: "user_confirmed",
+      conclusionMode: "agent_suggestion",
       authorAnswer: "unresolved",
       scopeEstimate: scaleAnswer ? "user_confirmed" : "agent_suggestion",
       riskNotes: "agent_suggestion",
@@ -440,6 +498,7 @@ export function createBriefReview(
     creativeIntent: brief.concept,
     reasoningProposition: brief.reasoningGoal,
     resolutionMode: brief.resolutionMode,
+    conclusionMode: brief.conclusionMode,
     authorAnswer:
       brief.resolutionMode === "author_anchored" ? brief.authorAnswer : "",
     boundaryText,
@@ -504,6 +563,7 @@ export function mergeReviewIntoBrief(
     concept: review.creativeIntent,
     reasoningGoal: review.reasoningProposition,
     resolutionMode: review.resolutionMode,
+    conclusionMode: review.conclusionMode,
     authorAnswer:
       review.resolutionMode === "author_anchored"
         ? review.authorAnswer
@@ -535,6 +595,7 @@ export function missingHardFields(brief: IntakeBrief): string[] {
   const missing: string[] = [];
   if (!brief.concept.trim()) missing.push("一句话概念");
   if (!brief.reasoningGoal.trim()) missing.push("推理目标");
+  if (brief.sources.conclusionMode !== "user_confirmed") missing.push("结论模式");
   if (brief.resolutionMode === "author_anchored" && !brief.authorAnswer.trim()) {
     missing.push("作者底牌");
   }

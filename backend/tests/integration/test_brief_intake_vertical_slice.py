@@ -89,6 +89,7 @@ def _manual_candidate(concept: str) -> dict[str, object]:
         "content_outline": ["建立时间矛盾", "交叉验证来源", "揭示记录改写"],
         "reasoning_goal": "解释同一事件为何在三份记录中拥有不同发生时间。",
         "resolution_mode": "agent_proposed",
+        "conclusion_mode": "undetermined",
         "author_answer": None,
         "constraints": [
             {
@@ -116,6 +117,7 @@ def _manual_candidate(concept: str) -> dict[str, object]:
             "content_outline": "agent_suggestion",
             "reasoning_goal": "user_confirmed",
             "resolution_mode": "user_confirmed",
+            "conclusion_mode": "user_confirmed",
             "author_answer": "unresolved",
             "constraints": "user_confirmed",
             "scope_estimate": "agent_suggestion",
@@ -689,6 +691,7 @@ def test_brief_intake_initializes_legacy_projects_once_and_keeps_review_closed(
                     "creative_intent": "恢复旧流程中的正式简报草稿。",
                     "reasoning_proposition": "验证旧项目不会被 Intake 回写。",
                     "resolution_mode": "open",
+                    "conclusion_mode": "open_interpretation",
                     "author_answer": None,
                     "author_anchors": [],
                     "boundary_text": None,
