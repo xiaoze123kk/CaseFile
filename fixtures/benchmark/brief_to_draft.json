@@ -5,6 +5,7 @@
     "creative_intent": "围绕一艘每天午夜回到同一码头的渡轮建立可检验的因果卷宗。",
     "reasoning_proposition": "航行记录为何被修改，强制回航是否确实保护了船上人员？",
     "resolution_mode": "author_anchored",
+    "conclusion_mode": "unique",
     "author_answer": "大副修改了记录；回航由欠压保护机制触发，避免了推进系统失控。",
     "author_anchors": [
       {

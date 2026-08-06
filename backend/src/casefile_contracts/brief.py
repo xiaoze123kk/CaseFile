@@ -20,6 +20,16 @@ class ResolutionMode(StrEnum):
     open = 'open'
 
 
+class ConclusionMode(StrEnum):
+    unique = 'unique'
+    finite_multiple = 'finite_multiple'
+    optimal = 'optimal'
+    probabilistic = 'probabilistic'
+    open_interpretation = 'open_interpretation'
+    multiple_endings = 'multiple_endings'
+    undetermined = 'undetermined'
+
+
 class AuthorAnswer(RootModel[str]):
     root: Annotated[str, Field(min_length=1)]
 
@@ -89,6 +99,7 @@ class Schema(BaseModel):
     creative_intent: Annotated[str, Field(min_length=1)]
     reasoning_proposition: Annotated[str, Field(min_length=1)]
     resolution_mode: ResolutionMode
+    conclusion_mode: ConclusionMode
     author_answer: AuthorAnswer | None
     author_anchors: list[AuthorAnchor]
     boundary_text: BoundaryText | None

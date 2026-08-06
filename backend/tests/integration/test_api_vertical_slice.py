@@ -68,6 +68,7 @@ def _brief(source_record_id: int) -> dict[str, object]:
         "creative_intent": "围绕午夜回航建立目标无关的推理卷宗。",
         "reasoning_proposition": "是谁修改了航行记录，回航保护机制因何触发？",
         "resolution_mode": "author_anchored",
+        "conclusion_mode": "unique",
         "author_answer": "大副修改了记录，欠压保护触发了回航。",
         "author_anchors": [
             {

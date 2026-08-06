@@ -393,6 +393,7 @@ def test_fake_generation_populates_descriptions_with_the_draft() -> None:
             "creative_intent": "家庭日常中的小悬念",
             "reasoning_proposition": "弟弟为何偷吃蛋糕？",
             "resolution_mode": "open",
+            "conclusion_mode": "open_interpretation",
             "author_answer": None,
             "author_anchors": [{"statement": "弟弟偷吃了蛋糕。"}],
             "creative_constraints": [],

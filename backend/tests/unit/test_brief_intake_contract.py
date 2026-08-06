@@ -34,6 +34,7 @@ def _candidate(**overrides: object) -> dict[str, object]:
         "content_outline": ["建立不可能时间", "交叉验证证词", "揭示记录被改写"],
         "reasoning_goal": "解释同一事件为何在三份可靠记录中拥有不同发生时间。",
         "resolution_mode": "author_anchored",
+        "conclusion_mode": "unique",
         "author_answer": "档案员本人曾为了保护证人改写主记录。",
         "constraints": [
             {
@@ -61,6 +62,7 @@ def _candidate(**overrides: object) -> dict[str, object]:
             "content_outline": "agent_suggestion",
             "reasoning_goal": "user_confirmed",
             "resolution_mode": "user_confirmed",
+            "conclusion_mode": "user_confirmed",
             "author_answer": "user_confirmed",
             "constraints": "user_confirmed",
             "scope_estimate": "agent_suggestion",
@@ -141,6 +143,7 @@ def test_brief_optional_projection_fields_and_intake_task_shape() -> None:
             "creative_intent": "不可存在的时间记录",
             "reasoning_proposition": "谁改写了记录，为什么？",
             "resolution_mode": "open",
+            "conclusion_mode": "open_interpretation",
             "author_answer": None,
             "author_anchors": [],
             "boundary_text": None,

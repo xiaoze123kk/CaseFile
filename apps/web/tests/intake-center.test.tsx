@@ -239,6 +239,7 @@ function buildFakeBackend() {
         reasoning_goal:
           reasoningAnswer || "找出是谁制造了那段不存在的时间，以及这样做的目的。",
         resolution_mode: "agent_proposed",
+        conclusion_mode: "undetermined",
         author_answer: null,
         constraints: [],
         pending_decisions: [],
@@ -250,6 +251,7 @@ function buildFakeBackend() {
           content_outline: "agent_suggestion",
           reasoning_goal: "agent_suggestion",
           resolution_mode: "user_confirmed",
+          conclusion_mode: "agent_suggestion",
           author_answer: "unresolved",
           constraints: "unresolved",
           scope_estimate: "agent_suggestion",
@@ -550,6 +552,7 @@ function buildFakeBackend() {
           creative_intent: candidate.content.concept,
           reasoning_proposition: candidate.content.reasoning_goal,
           resolution_mode: candidate.content.resolution_mode,
+          conclusion_mode: candidate.content.conclusion_mode,
           author_answer: candidate.content.author_answer ?? null,
           author_anchors: [],
           boundary_text: null,
@@ -732,6 +735,16 @@ describe("intake center", () => {
     expect(screen.getByLabelText("阶段 1 描述")).toHaveValue(
       "发现不存在的时间段",
     );
+    fireEvent.click(screen.getByRole("radio", { name: /唯一解/u }));
+    fireEvent.click(
+      screen.getByRole("radio", { name: /信息不足时保持未决/u }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /信息不足时保持未决/u }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: /进入创作简报审阅/u }),
+    ).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /添加一条卖点/u }));
     expect(screen.getAllByLabelText(/核心卖点第 \d+ 项/u)).toHaveLength(4);
     fireEvent.change(screen.getByLabelText("核心卖点第 2 项"), {
@@ -743,12 +756,12 @@ describe("intake center", () => {
     const conceptField = screen.getByLabelText("一句话概念").closest("section");
     const briefFields = Array.from(conceptField?.parentElement?.children ?? []);
     expect(
-      briefFields.slice(0, 2).map((field) =>
+      briefFields.slice(0, 3).map((field) =>
         field.querySelector("header label")?.textContent,
       ),
-    ).toEqual(["一句话概念*", "推理目标*"]);
+    ).toEqual(["一句话概念*", "推理目标*", "结论模式*"]);
     expect(
-      briefFields.slice(0, 2).every((field) =>
+      briefFields.slice(0, 3).every((field) =>
         field.matches('[data-required="true"]') &&
         field.querySelector("header label > em")?.textContent === "*",
       ),

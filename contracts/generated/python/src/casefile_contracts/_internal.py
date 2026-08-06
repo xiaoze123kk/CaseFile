@@ -546,6 +546,7 @@ class BriefIntakeFieldSources(BaseModel):
     content_outline: BriefIntakeFieldSource
     reasoning_goal: BriefIntakeFieldSource
     resolution_mode: BriefIntakeFieldSource
+    conclusion_mode: BriefIntakeFieldSource
     author_answer: BriefIntakeFieldSource
     constraints: BriefIntakeFieldSource
     scope_estimate: BriefIntakeFieldSource
@@ -814,6 +815,16 @@ class ResolutionMode(StrEnum):
     open = 'open'
 
 
+class ConclusionMode_1(StrEnum):
+    unique = 'unique'
+    finite_multiple = 'finite_multiple'
+    optimal = 'optimal'
+    probabilistic = 'probabilistic'
+    open_interpretation = 'open_interpretation'
+    multiple_endings = 'multiple_endings'
+    undetermined = 'undetermined'
+
+
 class AuthorAnswer(RootModel[str]):
     root: Annotated[str, Field(max_length=4000, min_length=1)]
 
@@ -836,6 +847,7 @@ class Schema(BaseModel):
     content_outline: Annotated[list[ContentOutlineItem], Field(max_length=16)]
     reasoning_goal: Annotated[str, Field(max_length=2000, min_length=1)]
     resolution_mode: ResolutionMode
+    conclusion_mode: ConclusionMode_1
     author_answer: AuthorAnswer | None
     constraints: Annotated[list[BriefIntakeConstraint], Field(max_length=40)]
     pending_decisions: Annotated[list[BriefIntakePendingDecision], Field(max_length=20)]

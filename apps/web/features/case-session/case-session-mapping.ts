@@ -31,7 +31,25 @@ const CONSTRAINT_LABELS: Record<string, { label: string; hint: string }> = {
   cast: { label: "人数", hint: "核心角色与可控配角数量" },
   duration: { label: "时长", hint: "体验、阅读或游玩时长" },
   content_scale: { label: "内容尺度", hint: "强度、年龄或敏感内容边界" },
+  resolution_author_provided: {
+    label: "结论模式：作者提供",
+    hint: "作品需要保留作者已经确定的结局与动机。",
+  },
+  scale_mid_length: {
+    label: "规模：中篇",
+    hint: "故事按中篇体量组织，包含多次改版痕迹调查与人物对话。",
+  },
 };
+
+function constraintLabel(key: string) {
+  const normalizedKey = key.replace(/^constraint_/, "");
+  return (
+    CONSTRAINT_LABELS[normalizedKey] ?? {
+      label: "其他约束",
+      hint: "由 Agent 或作者补充的创作边界。",
+    }
+  );
+}
 
 function sourceFromServer(
   source: BriefIntakeCandidateContent["field_sources"][keyof BriefIntakeCandidateContent["field_sources"]],
@@ -117,12 +135,11 @@ export function mapCandidateContentToBrief(
   });
   for (const serverRow of content.constraints) {
     if (!constraints.some((row) => row.key === serverRow.constraint_key)) {
+      const display = constraintLabel(serverRow.constraint_key);
       constraints.push({
         key: serverRow.constraint_key,
-        label:
-          CONSTRAINT_LABELS[serverRow.constraint_key]?.label ??
-          serverRow.constraint_key,
-        hint: CONSTRAINT_LABELS[serverRow.constraint_key]?.hint ?? "",
+        label: display.label,
+        hint: display.hint,
         placeholder: "",
         statement: serverRow.statement,
         strength: serverRow.strength,
@@ -136,6 +153,7 @@ export function mapCandidateContentToBrief(
     outline: content.content_outline.join("\n"),
     reasoningGoal: content.reasoning_goal,
     resolutionMode: content.resolution_mode,
+    conclusionMode: content.conclusion_mode,
     authorAnswer: content.author_answer ?? "",
     scopeEstimate: content.scope_estimate ?? "",
     riskNotes: content.risk_notes.join("\n"),
@@ -146,6 +164,7 @@ export function mapCandidateContentToBrief(
       outline: sourceFromServer(sources.content_outline),
       reasoningGoal: sourceFromServer(sources.reasoning_goal),
       resolutionMode: sourceFromServer(sources.resolution_mode),
+      conclusionMode: sourceFromServer(sources.conclusion_mode),
       authorAnswer: sourceFromServer(sources.author_answer),
       scopeEstimate: sourceFromServer(sources.scope_estimate),
       riskNotes: sourceFromServer(sources.risk_notes),
@@ -209,6 +228,7 @@ export function briefsMatch(
     brief.outline === content.content_outline.join("\n") &&
     brief.reasoningGoal === content.reasoning_goal &&
     brief.resolutionMode === content.resolution_mode &&
+    brief.conclusionMode === content.conclusion_mode &&
     brief.authorAnswer === (content.author_answer ?? "") &&
     brief.scopeEstimate === (content.scope_estimate ?? "") &&
     brief.riskNotes === content.risk_notes.join("\n") &&
@@ -240,6 +260,7 @@ export function mapBriefToCandidateContent(
     content_outline: splitLines(brief.outline),
     reasoning_goal: brief.reasoningGoal,
     resolution_mode: brief.resolutionMode,
+    conclusion_mode: brief.conclusionMode,
     author_answer: brief.authorAnswer || null,
     constraints: brief.constraints
       .filter((constraint) => constraint.statement.trim())
@@ -266,6 +287,7 @@ export function mapBriefToCandidateContent(
       content_outline: sources.outline,
       reasoning_goal: sources.reasoningGoal,
       resolution_mode: sources.resolutionMode,
+      conclusion_mode: sources.conclusionMode,
       author_answer: sources.authorAnswer,
       constraints: "user_confirmed",
       scope_estimate: sources.scopeEstimate,
@@ -301,6 +323,7 @@ export function mapBriefContentToReview(
     creativeIntent: briefContent?.creative_intent ?? "",
     reasoningProposition: briefContent?.reasoning_proposition ?? "",
     resolutionMode: briefContent?.resolution_mode ?? "agent_proposed",
+    conclusionMode: briefContent?.conclusion_mode ?? "undetermined",
     authorAnswer: briefContent?.author_answer ?? "",
     boundaryText,
     authorAnchors,
@@ -343,6 +366,7 @@ export function mapReviewToBriefContent(
     creative_intent: review.creativeIntent.trim(),
     reasoning_proposition: review.reasoningProposition.trim(),
     resolution_mode: review.resolutionMode,
+    conclusion_mode: review.conclusionMode,
     author_answer: authorAnswer,
     author_anchors: authorAnswer
       ? review.authorAnchors

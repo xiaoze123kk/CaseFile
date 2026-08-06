@@ -1204,6 +1204,7 @@ def project_candidate_to_brief(
         "creative_intent": candidate["concept"],
         "reasoning_proposition": candidate["reasoning_goal"],
         "resolution_mode": candidate["resolution_mode"],
+        "conclusion_mode": candidate["conclusion_mode"],
         "author_answer": candidate["author_answer"],
         "author_anchors": [],
         "boundary_text": boundary_text,
