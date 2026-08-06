@@ -1,0 +1,50 @@
+{
+  "fixture_id": "brief_to_draft_relationship_v1",
+  "brief": {
+    "source_record_ids": [
+      1
+    ],
+    "creative_intent": "围绕一个百年家族企业中的继承权争夺，建立以关系推理为核心的卷宗。家族中有三代人共计 9 名成员，表面上是一家和谐的茶业集团，但实际上隐藏着一份秘密协议、一段被掩盖的过继关系和一笔流向不明的信托基金。玩家需要从遗嘱、书信和财务记录中揭示真实的家族关系网络。",
+    "reasoning_proposition": "家族成员之间存在哪些隐藏关系，秘密协议和信托基金的真正受益人是谁？",
+    "resolution_mode": "author_anchored",
+    "author_answer": "逝去的老董事长在四十年前秘密将私生子过继给了无子女的弟弟；信托基金的真正受益人是这位私生子的女儿（现任财务总监，但身份记录为远房侄女）；表面上最活跃的继承人其实在十年前已被秘密协议排除在外。",
+    "author_anchors": [
+      {
+        "anchor_id": "anchor_benchmark_rel_adoption",
+        "statement": "老董事长四十年前将私生子秘密过继给了无子女的弟弟。"
+      },
+      {
+        "anchor_id": "anchor_benchmark_rel_trust",
+        "statement": "信托基金的真正受益人是私生子的女儿，现任财务总监。"
+      }
+    ],
+    "boundary_text": "必须保持隐藏关系的唯一性；家族成员的身份和血缘关系不得替换；利益链的每层关系必须有可追溯的文件证据。",
+    "creative_constraints": [
+      {
+        "constraint_id": "constraint_benchmark_rel_bloodline",
+        "statement": "血缘关系不可改变，隐藏的过继关系必须唯一。",
+        "strength": "hard"
+      },
+      {
+        "constraint_id": "constraint_benchmark_rel_paper",
+        "statement": "每层隐藏关系必须有对应的遗嘱、书信或财务记录作为证据。",
+        "strength": "hard"
+      }
+    ]
+  },
+  "frozen_context": {
+    "casefile_id": "case_benchmark_relationship",
+    "brief_ref": {
+      "brief_id": "brief_benchmark_relationship",
+      "version": 1
+    },
+    "version": {
+      "version_id": "draft_benchmark_relationship",
+      "version_no": 1,
+      "parent_version_id": null
+    }
+  },
+  "max_turns": 15,
+  "expected_prompt_version": "brief-to-draft-v3",
+  "expected_schema_version": "1.0"
+}
