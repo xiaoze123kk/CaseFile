@@ -214,96 +214,213 @@ function RelationshipGraph({
   onSelectObject: (objectId: string) => void;
   compact?: boolean;
 }) {
-  const visibleNodeIds = new Set(seed.graphNodes.map((node) => node.objectId));
-  const nodeById = new Map(
-    seed.graphNodes.map((node) => [node.objectId, node]),
+  const graphNodes = seed.graphNodes;
+  const initialPositions = useMemo(
+    () =>
+      Object.fromEntries(
+        graphNodes.map((node) => [
+          node.objectId,
+          { x: node.x, y: node.y },
+        ]),
+      ),
+    [graphNodes],
   );
+  // 布局随候选种子变化：渲染期直接调整 state，拖动位置只在同一布局内保留。
+  const [canvasState, setCanvasState] = useState(() => ({
+    graphNodes,
+    positions: initialPositions,
+  }));
+  if (canvasState.graphNodes !== graphNodes) {
+    setCanvasState({ graphNodes, positions: initialPositions });
+  }
+  const positions = canvasState.positions;
+  const setPositions = useMemo(
+    () =>
+      (
+        updater:
+          | Record<string, ReasoningPoint>
+          | ((
+              previous: Record<string, ReasoningPoint>,
+            ) => Record<string, ReasoningPoint>),
+      ) =>
+        setCanvasState((previous) => ({
+          ...previous,
+          positions:
+            typeof updater === "function"
+              ? updater(previous.positions)
+              : updater,
+        })),
+    [],
+  );
+  const boardRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
 
-  return (
-    <section className={styles.graphPanel} data-compact={compact}>
-      <div className={styles.graphHeading}>
-        <div>
-          <span>同步关系图</span>
-          <strong>事件、人物与证据</strong>
-        </div>
-        <span className={styles.graphLegend}>
+  function startDrag(event: ReactPointerEvent<HTMLElement>, objectId: string) {
+    dragRef.current = {
+      id: objectId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    const board = boardRef.current;
+    if (!drag || !board) return;
+    const rect = board.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 6, 94);
+    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 6, 94);
+    if (
+      !drag.moved &&
+      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4
+    ) {
+      drag.moved = true;
+    }
+    if (drag.moved) {
+      setPositions((previous) => ({ ...previous, [drag.id]: { x, y } }));
+    }
+  }
+
+  function endDrag() {
+    if (dragRef.current?.moved) suppressClickRef.current = true;
+    dragRef.current = null;
+  }
+
+  function selectNode(objectId: string) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onSelectObject(objectId);
+  }
+
+  const visibleNodeIds = new Set(graphNodes.map((node) => node.objectId));
+  const board = (
+    <div
+      aria-describedby="relationship-graph-summary"
+      aria-label="事件关系图"
+      className={compact ? styles.graphBoard : styles.relationsBoard}
+      onPointerCancel={endDrag}
+      onPointerMove={moveDrag}
+      onPointerUp={endDrag}
+      ref={boardRef}
+      role="group"
+    >
+      <svg aria-hidden="true" className={styles.graphEdges} preserveAspectRatio="none" viewBox="0 0 100 100">
+        {seed.graphEdges.map((edge) => {
+          const from = positions[edge.from];
+          const to = positions[edge.to];
+          if (!from || !to) return null;
+          const active = relatedObjectIds.includes(edge.from) || relatedObjectIds.includes(edge.to);
+          return (
+            <g data-active={active} key={`${edge.from}-${edge.to}`}>
+              <line x1={from.x} x2={to.x} y1={from.y} y2={to.y} />
+              {!compact ? (
+                <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 1.5}>
+                  {edge.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
+      {graphNodes.map((node) => {
+        const object = getObject(seed, node.objectId);
+        const position = positions[node.objectId];
+        if (!object || !position) return null;
+        const selected = object.id === selectedObjectId;
+        const related = relatedObjectIds.includes(object.id);
+        const style = {
+          "--node-x": `${position.x}%`,
+          "--node-y": `${position.y}%`,
+        } as CSSProperties;
+        return (
+          <button
+            aria-pressed={selected}
+            className={styles.graphNode}
+            data-kind={object.kind}
+            data-related={related}
+            key={object.id}
+            onClick={() => selectNode(object.id)}
+            onPointerDown={(event) => startDrag(event, object.id)}
+            style={style}
+            type="button"
+          >
+            <small>{objectKindLabels[object.kind]}</small>
+            <strong>{object.label}</strong>
+          </button>
+        );
+      })}
+      {!compact ? (
+        <span aria-hidden="true" className={styles.relationsLegend}>
           <i /> 当前关联
         </span>
-      </div>
+      ) : null}
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <section className={styles.graphPanel} data-compact="true">
+        <div className={styles.graphHeading}>
+          <div>
+            <span>同步关系图</span>
+            <strong>事件、人物与证据</strong>
+          </div>
+          <span className={styles.graphLegend}>
+            <i /> 当前关联
+          </span>
+        </div>
+        <p className={styles.srOnly} id="relationship-graph-summary">
+          {seed.caseMeta.relationshipSummary}
+        </p>
+        {board}
+        <span className={styles.srOnly}>{visibleNodeIds.size} 个可访问节点</span>
+      </section>
+    );
+  }
+
+  return (
+    <section className={styles.relationsView} aria-labelledby="relations-heading">
+      <header className={styles.sectionHeader}>
+        <div>
+          <span>同步关系图</span>
+          <h2 id="relations-heading">事件、人物与证据</h2>
+        </div>
+        <small>{visibleNodeIds.size} NODES</small>
+      </header>
       <p className={styles.srOnly} id="relationship-graph-summary">
         {seed.caseMeta.relationshipSummary}
       </p>
-      <div
-        aria-describedby="relationship-graph-summary"
-        aria-label="事件关系图"
-        className={styles.graphBoard}
-        role="group"
-      >
-        <svg aria-hidden="true" className={styles.graphEdges} preserveAspectRatio="none" viewBox="0 0 100 100">
-          {seed.graphEdges.map((edge) => {
-            const from = nodeById.get(edge.from);
-            const to = nodeById.get(edge.to);
-            if (!from || !to) return null;
-            const active = relatedObjectIds.includes(edge.from) || relatedObjectIds.includes(edge.to);
-            return (
-              <g data-active={active} key={`${edge.from}-${edge.to}`}>
-                <line x1={from.x} x2={to.x} y1={from.y} y2={to.y} />
-                {!compact ? (
-                  <text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 1.5}>
-                    {edge.label}
-                  </text>
-                ) : null}
-              </g>
-            );
-          })}
-        </svg>
-        {seed.graphNodes.map((node) => {
-          const object = getObject(seed, node.objectId);
-          if (!object) return null;
-          const selected = object.id === selectedObjectId;
-          const related = relatedObjectIds.includes(object.id);
-          const style = {
-            "--node-x": `${node.x}%`,
-            "--node-y": `${node.y}%`,
-          } as CSSProperties;
-          return (
-            <button
-              aria-pressed={selected}
-              className={styles.graphNode}
-              data-kind={object.kind}
-              data-related={related}
-              key={object.id}
-              onClick={() => onSelectObject(object.id)}
-              style={style}
-              type="button"
-            >
-              <small>{objectKindLabels[object.kind]}</small>
-              <strong>{object.label}</strong>
-            </button>
-          );
-        })}
-      </div>
-      {!compact ? (
-        <details className={styles.graphAlternative}>
-          <summary>查看关系表与文字摘要</summary>
-          <div className={styles.graphTableWrap}>
-            <table>
-              <thead>
-                <tr><th>来源</th><th>关系</th><th>目标</th></tr>
-              </thead>
-              <tbody>
-                {seed.graphEdges.map((edge) => (
-                  <tr key={`table-${edge.from}-${edge.to}`}>
-                    <td>{getObject(seed, edge.from)?.label}</td>
-                    <td>{edge.label}</td>
-                    <td>{getObject(seed, edge.to)?.label}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      ) : null}
+      {board}
+      <details className={styles.graphAlternative}>
+        <summary>查看关系表与文字摘要</summary>
+        <div className={styles.graphTableWrap}>
+          <table>
+            <thead>
+              <tr><th>来源</th><th>关系</th><th>目标</th></tr>
+            </thead>
+            <tbody>
+              {seed.graphEdges.map((edge) => (
+                <tr key={`table-${edge.from}-${edge.to}`}>
+                  <td>{getObject(seed, edge.from)?.label}</td>
+                  <td>{edge.label}</td>
+                  <td>{getObject(seed, edge.to)?.label}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
       <span className={styles.srOnly}>{visibleNodeIds.size} 个可访问节点</span>
     </section>
   );

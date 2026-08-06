@@ -722,6 +722,8 @@
   transform: translate(-50%, -50%);
 }
 
+.graphNode { cursor: grab; }
+.graphNode:active { cursor: grabbing; }
 .graphNode:hover { border-color: var(--primary); transform: translate(-50%, -50%) translateY(-2px); }
 .graphNode[data-related="true"] { border-color: var(--relation); }
 .graphNode[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--chrome-soft); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.15), 0 8px 18px rgba(41, 44, 44, 0.17); }
@@ -1176,6 +1178,8 @@
   .diffPanel { margin: 0 9px 9px; }
   .reasoningBoard { min-height: 320px; }
   .reasoningLegend { right: 6px; bottom: 6px; }
+  .relationsBoard { min-height: 320px; }
+  .relationsLegend { right: 6px; bottom: 6px; }
 
   .inspector { grid-template-rows: 58px 44px minmax(0, 1fr) 58px; }
   .inspectorTabs button { min-height: 44px; }
@@ -1249,6 +1253,43 @@
     var(--paper);
   background-size: 22px 22px;
   touch-action: none;
+}
+.relationsView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
+.relationsBoard {
+  position: relative;
+  min-height: 420px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at center, rgba(142, 150, 148, 0.11), transparent 42%),
+    linear-gradient(rgba(41, 44, 44, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41, 44, 44, 0.035) 1px, transparent 1px),
+    var(--paper);
+  background-size: auto, 22px 22px, 22px 22px, auto;
+  touch-action: none;
+}
+.relationsLegend {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  background: rgba(251, 250, 246, 0.9);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+.relationsLegend i {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  background: var(--primary);
+  box-shadow: 0 0 0 4px rgba(199, 139, 60, 0.12);
+  transform: rotate(45deg);
 }
 .reasoningEdges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .reasoningEdges line {

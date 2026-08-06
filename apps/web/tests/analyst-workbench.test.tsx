@@ -1,4 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -162,6 +169,36 @@ describe("analyst workbench prototype", () => {
         (button) => button.getAttribute("aria-pressed") === "true",
       ),
     ).toBe(true);
+  });
+
+  it("drags a relation graph node across the canvas", () => {
+    const { container } = renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    const board = container.querySelector(
+      '[aria-label="事件关系图"]',
+    ) as HTMLElement;
+    vi.spyOn(board, "getBoundingClientRect").mockReturnValue({
+      bottom: 400,
+      height: 400,
+      left: 0,
+      right: 500,
+      top: 0,
+      width: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const node = within(board).getByRole("button", {
+      name: /内部接应者/,
+    });
+
+    fireEvent.pointerDown(node, { clientX: 100, clientY: 100, pointerId: 1 });
+    fireEvent.pointerMove(board, { clientX: 250, clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(board, { pointerId: 1 });
+
+    expect(node.style.getPropertyValue("--node-x")).toBe("50%");
+    expect(node.style.getPropertyValue("--node-y")).toBe("50%");
   });
 
   it("drags a reasoning node across the canvas", () => {
