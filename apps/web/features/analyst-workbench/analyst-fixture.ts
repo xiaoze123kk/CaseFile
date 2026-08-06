@@ -1,10 +1,30 @@
 export type WorkbenchView =
   | "timeline"
   | "relations"
+  | "reasoning"
   | "map"
   | "dossier"
   | "export"
   | "evidence";
+
+export type ReasoningOutcome = "supported" | "contested" | "eliminated";
+
+export interface ReasoningStep {
+  id: string;
+  verb: string;
+  claim: string;
+  evidenceIds: string[];
+}
+
+export interface PrototypeReasoningPath {
+  id: string;
+  question: string;
+  evidenceIds: string[];
+  steps: ReasoningStep[];
+  conclusion: string;
+  outcome: ReasoningOutcome;
+  hypothesisId: string;
+}
 
 export type InspectorTab = "issues" | "sources" | "patch" | "audit";
 
@@ -132,6 +152,7 @@ export interface PrototypeWorkbenchSeed {
   sourceItems: SourceItem[];
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
+  reasoningPaths: PrototypeReasoningPath[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   drawer: WorkbenchDrawerCopy;
@@ -180,6 +201,7 @@ export const viewOptions: Array<{
 }> = [
   { id: "timeline", label: "时间线", shortLabel: "时" },
   { id: "relations", label: "关系图", shortLabel: "关" },
+  { id: "reasoning", label: "推理图", shortLabel: "推" },
   { id: "map", label: "地图", shortLabel: "图" },
   { id: "dossier", label: "卷宗编辑器", shortLabel: "卷" },
   { id: "export", label: "导出预览", shortLabel: "出" },
@@ -485,6 +507,36 @@ export const defaultWorkbenchSeed: PrototypeWorkbenchSeed = {
   sourceItems,
   graphNodes,
   graphEdges,
+  reasoningPaths: [
+    {
+      id: "RP-01",
+      question: "第五人权限如何进入码头",
+      evidenceIds: ["EVD-071", "EVD-113"],
+      steps: [
+        {
+          id: "RS-01",
+          verb: "比对",
+          claim: "门禁覆盖签名属于内部 R4 权限，未出现在公开名录",
+          evidenceIds: ["EVD-071"],
+        },
+        {
+          id: "RS-02",
+          verb: "复听",
+          claim: "录音 02:18 首次给出覆盖码内部代号",
+          evidenceIds: ["EVD-113"],
+        },
+        {
+          id: "RS-03",
+          verb: "核验",
+          claim: "秦彻 22:31 前尚不知此代号，知识状态存在冲突",
+          evidenceIds: ["EVD-071", "EVD-113"],
+        },
+      ],
+      conclusion: "内部接应者",
+      outcome: "contested",
+      hypothesisId: "HYP-002",
+    },
+  ],
   mapMarkers: defaultMapMarkers,
   mapLabels: defaultMapLabels,
   drawer: {
@@ -554,7 +606,7 @@ interface CandidateBlueprint {
   audioExcerpt: string;
   strengths: string[];
   tradeoffs: string[];
-  reasoningPathCount: number;
+  reasoningPaths: PrototypeReasoningPath[];
 }
 
 const candidateBlueprints: CandidateBlueprint[] = [
@@ -605,7 +657,36 @@ const candidateBlueprints: CandidateBlueprint[] = [
     audioExcerpt: "那枚指纹只会在共享校准层里出现。",
     strengths: ["事件因果最清楚", "每条证据都有进入时间"],
     tradeoffs: ["场景气氛较克制", "人物关系留白较多"],
-    reasoningPathCount: 1,
+    reasoningPaths: [
+      {
+        id: "RP-01",
+        question: "共享校准层是否真实存在",
+        evidenceIds: ["EVD-071", "EVD-113", "EVD-209"],
+        steps: [
+          {
+            id: "RS-01",
+            verb: "比对",
+            claim: "三卷独立档案共享同一枚修订指纹",
+            evidenceIds: ["EVD-071", "EVD-113"],
+          },
+          {
+            id: "RS-02",
+            verb: "溯源",
+            claim: "该指纹只存在于内部校准层",
+            evidenceIds: ["EVD-209"],
+          },
+          {
+            id: "RS-03",
+            verb: "锚定",
+            claim: "指纹进入时间晚于事件文本声称",
+            evidenceIds: ["EVD-113"],
+          },
+        ],
+        conclusion: "共享校准层",
+        outcome: "supported",
+        hypothesisId: "HYP-002",
+      },
+    ],
   },
   {
     focus: "atmosphere",
@@ -654,7 +735,58 @@ const candidateBlueprints: CandidateBlueprint[] = [
     audioExcerpt: "停机前有四组呼吸，最后一组伴随翻页声。",
     strengths: ["场景记忆点强", "来源形式更丰富"],
     tradeoffs: ["时间线需要更仔细阅读", "真相解释更含蓄"],
-    reasoningPathCount: 2,
+    reasoningPaths: [
+      {
+        id: "RP-01",
+        question: "封存纸为何留有手掌余温",
+        evidenceIds: ["EVD-113", "EVD-209"],
+        steps: [
+          {
+            id: "RS-01",
+            verb: "读取",
+            claim: "纸温记录显示纸页在最近十分钟被触碰",
+            evidenceIds: ["EVD-113"],
+          },
+          {
+            id: "RS-02",
+            verb: "对照",
+            claim: "抄录本显示该时段无人值守",
+            evidenceIds: ["EVD-209"],
+          },
+          {
+            id: "RS-03",
+            verb: "推断",
+            claim: "有人活动却被集体遗忘，记忆存在诱导",
+            evidenceIds: ["EVD-113", "EVD-209"],
+          },
+        ],
+        conclusion: "回声记忆诱导",
+        outcome: "supported",
+        hypothesisId: "HYP-002",
+      },
+      {
+        id: "RP-02",
+        question: "空白七分钟是否真实存在",
+        evidenceIds: ["EVD-209"],
+        steps: [
+          {
+            id: "RS-04",
+            verb: "检验",
+            claim: "抄录本签名墨迹早于标注时间约二十分钟",
+            evidenceIds: ["EVD-209"],
+          },
+          {
+            id: "RS-05",
+            verb: "质疑",
+            claim: "记录可能预先写下，而非共同经历",
+            evidenceIds: ["EVD-209"],
+          },
+        ],
+        conclusion: "空白时段为事后伪造",
+        outcome: "contested",
+        hypothesisId: "HYP-002",
+      },
+    ],
   },
   {
     focus: "reasoning",
@@ -703,7 +835,74 @@ const candidateBlueprints: CandidateBlueprint[] = [
     audioExcerpt: "三份记录没有互相作证，它们都在引用第四条索引。",
     strengths: ["竞争假设最完整", "验证问题密度最高"],
     tradeoffs: ["认知负荷最高", "需要更多图谱对照"],
-    reasoningPathCount: 3,
+    reasoningPaths: [
+      {
+        id: "RP-01",
+        question: "第七码由谁写入",
+        evidenceIds: ["EVD-071", "EVD-113"],
+        steps: [
+          {
+            id: "RS-01",
+            verb: "调取",
+            claim: "运算带调用时间早于索引卡登记",
+            evidenceIds: ["EVD-113"],
+          },
+          {
+            id: "RS-02",
+            verb: "检验",
+            claim: "索引卡压力痕显示 20:40 已制成",
+            evidenceIds: ["EVD-071"],
+          },
+        ],
+        conclusion: "隐藏的第四索引",
+        outcome: "supported",
+        hypothesisId: "HYP-002",
+      },
+      {
+        id: "RP-02",
+        question: "黎衡能否被完全排除",
+        evidenceIds: ["EVD-071", "EVD-113", "EVD-209"],
+        steps: [
+          {
+            id: "RS-03",
+            verb: "核验",
+            claim: "黎衡签章有效，但知识记录从未出现第七码",
+            evidenceIds: ["EVD-113", "EVD-071"],
+          },
+          {
+            id: "RS-04",
+            verb: "对照",
+            claim: "底片显示签章被母索引复用",
+            evidenceIds: ["EVD-209"],
+          },
+        ],
+        conclusion: "两条竞争解释并存",
+        outcome: "contested",
+        hypothesisId: "HYP-002",
+      },
+      {
+        id: "RP-03",
+        question: "三份记录是否彼此独立互证",
+        evidenceIds: ["EVD-209"],
+        steps: [
+          {
+            id: "RS-05",
+            verb: "比对",
+            claim: "三方签章共同引用同一母索引",
+            evidenceIds: ["EVD-209"],
+          },
+          {
+            id: "RS-06",
+            verb: "排除",
+            claim: "闭环并非三份独立来源的交叉证明",
+            evidenceIds: ["EVD-209"],
+          },
+        ],
+        conclusion: "三份记录彼此独立",
+        outcome: "eliminated",
+        hypothesisId: "HYP-002",
+      },
+    ],
   },
 ];
 
@@ -781,6 +980,7 @@ function buildCandidateSeed(
     sourceItems: sources,
     graphNodes: candidateGraphNodes,
     graphEdges: candidateGraphEdges,
+    reasoningPaths: blueprint.reasoningPaths,
     mapMarkers: events.map((event, index) => ({ eventId: event.id, label: event.label, x: [19, 54, 30, 73][index], y: [63, 52, 25, 70][index] })),
     mapLabels: [
       { label: blueprint.mainLocation, x: 8, y: 11 },
@@ -830,7 +1030,7 @@ export function buildPrototypeDraftCandidates(
         entities: seed.caseObjects.filter((object) => object.kind === "person" || object.kind === "location").length,
         events: seed.timelineEvents.length,
         information_units: seed.caseObjects.filter((object) => object.kind === "evidence").length,
-        reasoning_paths: blueprint.reasoningPathCount,
+        reasoning_paths: blueprint.reasoningPaths.length,
       },
       constraintStatements: brief.constraints,
       strengths: blueprint.strengths,
@@ -865,6 +1065,12 @@ export function validateWorkbenchSeed(seed: PrototypeWorkbenchSeed) {
   }
   for (const edge of seed.graphEdges) {
     if (!objectIds.has(edge.from) || !objectIds.has(edge.to)) errors.push(`关系 ${edge.from} → ${edge.to} 存在未知端点`);
+  }
+  for (const path of seed.reasoningPaths) {
+    for (const evidenceId of [...path.evidenceIds, ...path.steps.flatMap((step) => step.evidenceIds)]) {
+      if (!objectIds.has(evidenceId)) errors.push(`推理 ${path.id} 引用未知证据 ${evidenceId}`);
+    }
+    if (!objectIds.has(path.hypothesisId)) errors.push(`推理 ${path.id} 引用未知假设 ${path.hypothesisId}`);
   }
   if (!eventIds.has(seed.defaultEventId)) errors.push("默认事件不存在");
   if (!objectIds.has(seed.defaultObjectId)) errors.push("默认对象不存在");

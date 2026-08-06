@@ -21,7 +21,9 @@ import {
   type ObjectKind,
   objectKindLabels,
   type PrototypeDraftCandidate,
+  type PrototypeReasoningPath,
   type PrototypeWorkbenchSeed,
+  type ReasoningOutcome,
   viewOptions,
   type WorkbenchView,
 } from "./analyst-fixture";
@@ -561,6 +563,177 @@ function EvidenceComparison({
   );
 }
 
+const reasoningOutcomeLabels: Record<ReasoningOutcome, string> = {
+  supported: "证据支持",
+  contested: "解释竞争",
+  eliminated: "已排除",
+};
+
+function ReasoningPathPanel({
+  path,
+  seed,
+  onSelectObject,
+}: {
+  path: PrototypeReasoningPath;
+  seed: PrototypeWorkbenchSeed;
+  onSelectObject: (objectId: string) => void;
+}) {
+  const evidenceById = new Map(
+    seed.caseObjects.map((object) => [object.id, object]),
+  );
+  const conclusionObject = getObject(seed, path.hypothesisId);
+  const summaryId = `reasoning-summary-${path.id}`;
+  const summary = path.steps
+    .map((step) => `${step.verb}：${step.claim}`)
+    .join("；");
+  return (
+    <article
+      className={styles.reasoningPath}
+      data-outcome={path.outcome}
+      key={path.id}
+    >
+      <header className={styles.reasoningPathHeader}>
+        <div>
+          <span>推理路径 · {path.id}</span>
+          <strong>{path.question}</strong>
+        </div>
+        <em data-outcome={path.outcome}>
+          {reasoningOutcomeLabels[path.outcome]}
+        </em>
+      </header>
+      <p className={styles.srOnly} id={summaryId}>
+        {summary}。结论：{path.conclusion}。
+      </p>
+      <div
+        aria-describedby={summaryId}
+        className={styles.reasoningBody}
+        role="group"
+      >
+        <ol className={styles.reasoningSteps}>
+          {path.steps.map((step) => (
+            <li className={styles.reasoningStep} key={step.id}>
+              <i aria-hidden="true" />
+              <div>
+                <strong>
+                  <b>{step.verb}</b>
+                  {step.claim}
+                </strong>
+                <small>
+                  {step.evidenceIds.map((id) => {
+                    const item = evidenceById.get(id);
+                    if (!item) return null;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => onSelectObject(item.id)}
+                        type="button"
+                      >
+                        ⚑ {item.label}
+                      </button>
+                    );
+                  })}
+                </small>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <footer className={styles.reasoningConclusion}>
+          <span>结论</span>
+          <strong data-outcome={path.outcome}>{path.conclusion}</strong>
+          {conclusionObject ? (
+            <button
+              onClick={() => onSelectObject(conclusionObject.id)}
+              type="button"
+            >
+              定位{objectKindLabels[conclusionObject.kind]}“{conclusionObject.label}”
+            </button>
+          ) : null}
+        </footer>
+        <div className={styles.reasoningEvidence}>
+          {path.evidenceIds.map((id) => {
+            const item = evidenceById.get(id);
+            if (!item) return null;
+            return (
+              <button
+                data-kind={item.kind}
+                key={item.id}
+                onClick={() => onSelectObject(item.id)}
+                type="button"
+              >
+                <span>{objectKindLabels[item.kind]}</span>
+                <strong>{item.label}</strong>
+                <small>{item.code}</small>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <details className={styles.reasoningAlternative}>
+        <summary>查看推理表与文字摘要</summary>
+        <div className={styles.reasoningTableWrap}>
+          <table>
+            <thead>
+              <tr>
+                <th>依据</th>
+                <th>推理</th>
+                <th>结论</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  {path.evidenceIds
+                    .map((id) => evidenceById.get(id)?.label)
+                    .filter(Boolean)
+                    .join("、")}
+                </td>
+                <td>{summary}</td>
+                <td>
+                  {path.conclusion}（{reasoningOutcomeLabels[path.outcome]}）
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </article>
+  );
+}
+
+function ReasoningGraphView({
+  seed,
+  onSelectObject,
+}: {
+  seed: PrototypeWorkbenchSeed;
+  onSelectObject: (objectId: string) => void;
+}) {
+  return (
+    <section className={styles.reasoningView} aria-labelledby="reasoning-heading">
+      <header className={styles.sectionHeader}>
+        <div>
+          <span>推理过程图</span>
+          <h2 id="reasoning-heading">证据如何收束到假设</h2>
+        </div>
+        <small>{seed.reasoningPaths.length} PATHS</small>
+      </header>
+      {seed.reasoningPaths.length ? (
+        <div className={styles.reasoningGrid}>
+          {seed.reasoningPaths.map((path) => (
+            <ReasoningPathPanel
+              key={path.id}
+              onSelectObject={onSelectObject}
+              path={path}
+              seed={seed}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className={styles.viewNote}>候选没有可展示的推理路径。</p>
+      )}
+    </section>
+  );
+}
+
 export function AnalystWorkbench() {
   const {
     activeCandidate,
@@ -1018,6 +1191,9 @@ function AnalystWorkbenchSurface({
             ) : null}
             {view === "relations" ? (
               <RelationshipGraph onSelectObject={selectObject} relatedObjectIds={relatedObjectIds} seed={seed} selectedObjectId={selectedObjectId} />
+            ) : null}
+            {view === "reasoning" ? (
+              <ReasoningGraphView onSelectObject={selectObject} seed={seed} />
             ) : null}
             {view === "map" ? <MapView onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} /> : null}
             {view === "dossier" ? <DossierView seed={seed} selectedEventId={selectedEventId} /> : null}

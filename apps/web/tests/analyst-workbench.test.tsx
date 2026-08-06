@@ -118,6 +118,43 @@ describe("analyst workbench prototype", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the reasoning graph with evidence steps, outcome, and table alternative", () => {
+    renderWorkbench();
+
+    fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
+    expect(screen.getByText("证据如何收束到假设")).toBeInTheDocument();
+    expect(screen.getByText("推理路径 · RP-01")).toBeInTheDocument();
+    expect(screen.getByText("第五人权限如何进入码头")).toBeInTheDocument();
+    expect(screen.getByText("解释竞争")).toBeInTheDocument();
+    expect(screen.getByText("复听")).toBeInTheDocument();
+    expect(screen.getByText("查看推理表与文字摘要")).toBeInTheDocument();
+    expect(screen.getByText(/结论：内部接应者/)).toBeInTheDocument();
+  });
+
+  it("exposes three competing reasoning paths and links evidence to the object rail", () => {
+    const { container } = renderWorkbench(<CandidateSeedHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "载入推理候选" }));
+    fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
+
+    expect(screen.getByText("第七码由谁写入")).toBeInTheDocument();
+    expect(screen.getByText("黎衡能否被完全排除")).toBeInTheDocument();
+    expect(screen.getByText("三份记录是否彼此独立互证")).toBeInTheDocument();
+    expect(screen.getByText("已排除")).toBeInTheDocument();
+    expect(screen.getByText("三份记录彼此独立")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "⚑ 互证机房运算带" })[0],
+    );
+    expect(
+      container.querySelector('[data-workbench-seed="brief-1-reasoning"]'),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole("button", { name: /互证机房运算带/ }).some(
+        (button) => button.getAttribute("aria-pressed") === "true",
+      ),
+    ).toBe(true);
+  });
+
   it("switches the complete workbench seed and exposes preview, current, and stale states", () => {
     const { container } = renderWorkbench(<CandidateSeedHarness />);
 
