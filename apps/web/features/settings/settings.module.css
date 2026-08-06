@@ -1,0 +1,366 @@
+.modalBackdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  padding: 30px;
+  place-items: center;
+  background: rgba(19, 20, 18, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.settingsDialog {
+  width: min(760px, calc(100vw - 60px));
+  max-height: calc(100vh - 60px);
+  overflow: auto;
+  border: 1px solid var(--ink);
+  background: var(--paper-high);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.settingsDialog small {
+  color: var(--red);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: var(--font-caption);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 17px 20px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.dialogHeader h2 {
+  margin: 3px 0 0;
+}
+
+.dialogHeader button {
+  border: 0;
+  background: transparent;
+}
+
+.settingsLayout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  min-height: 440px;
+}
+
+.settingsLayout > nav {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 18px 14px;
+  border-right: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.settingsLayout > nav button,
+.settingsLayout > nav span {
+  padding: 9px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: var(--font-label);
+}
+
+.settingsLayout > nav span {
+  color: var(--ink-faint);
+}
+
+.activeSetting {
+  color: white !important;
+  background: var(--ink) !important;
+}
+
+.settingsForm {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+}
+
+.settingsForm > label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settingsForm label > span {
+  font-size: var(--font-ui);
+  font-weight: 700;
+}
+
+.settingsForm label small {
+  color: var(--ink-muted);
+  font-size: var(--font-label);
+  letter-spacing: normal;
+}
+
+.settingsForm input,
+.settingsForm select {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(26, 28, 25, 0.28);
+  border-radius: 0;
+  background: var(--paper-high);
+}
+
+.settingsForm input:focus,
+.settingsForm select:focus {
+  border-color: var(--red);
+}
+
+.settingStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  background: var(--paper);
+  font-size: var(--font-label);
+}
+
+.settingStatus > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingStatus b {
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.deleteCredentialButton {
+  flex: 0 0 auto;
+  padding: 5px 0;
+  color: var(--red);
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  font-size: var(--font-label);
+  font-weight: 700;
+}
+
+.deleteCredentialButton:disabled,
+.dangerButton:disabled,
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.credentialDanger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 14px;
+  border: 1px solid rgba(171, 38, 13, 0.42);
+  border-left: 4px solid var(--red);
+  background: var(--red-soft);
+}
+
+.credentialDanger p {
+  margin: 4px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--font-label);
+  line-height: 1.55;
+}
+
+.credentialDanger > div:last-child {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.providerFieldset {
+  padding: 0;
+  border: 0;
+}
+
+.providerFieldset legend {
+  margin-bottom: 8px;
+  font-size: var(--font-ui);
+  font-weight: 700;
+}
+
+.providerGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.providerGrid button {
+  position: relative;
+  display: flex;
+  min-height: 76px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 11px 13px;
+  overflow: hidden;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  text-align: left;
+}
+
+.providerGrid button::after {
+  position: absolute;
+  width: 5px;
+  background: transparent;
+  content: "";
+  inset: 0 auto 0 0;
+}
+
+.providerGrid button b {
+  color: var(--ink);
+  font-size: var(--font-ui);
+}
+
+.providerGrid button small {
+  font-size: var(--font-micro);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.providerGrid .providerActive {
+  border-color: var(--ink);
+  background: var(--paper-high);
+}
+
+.providerGrid .providerActive::after {
+  background: var(--red);
+}
+
+.secretInput {
+  position: relative;
+  display: block;
+}
+
+.secretInput input {
+  padding-right: 48px;
+}
+
+.secretInput button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  width: 43px;
+  height: calc(100% - 2px);
+  padding: 0;
+  color: var(--ink-muted);
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  background: var(--paper);
+  place-items: center;
+}
+
+.secretInput button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.secretInput svg {
+  width: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  min-height: 39px;
+  padding: 0 17px;
+  border-radius: 0;
+  font-weight: 700;
+}
+
+.primaryButton {
+  color: white;
+  border: 1px solid var(--red);
+  background: var(--red);
+}
+
+.secondaryButton {
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  background: transparent;
+}
+
+.dangerButton {
+  color: white;
+  border: 1px solid #7e1d0c;
+  background: #7e1d0c;
+}
+
+.formError,
+.formSuccess {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.formError {
+  color: #7e1d0c;
+  border-left: 2px solid var(--red);
+  background: var(--red-soft);
+}
+
+.formSuccess {
+  color: #225d43;
+  border-left: 2px solid #36785a;
+  background: #edf7f0;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: auto;
+}
+
+@media (max-width: 720px) {
+  .modalBackdrop {
+    padding: 12px;
+  }
+
+  .settingsDialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .settingsLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .settingsLayout > nav {
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .providerGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .settingStatus,
+  .credentialDanger {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .credentialDanger > div:last-child {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

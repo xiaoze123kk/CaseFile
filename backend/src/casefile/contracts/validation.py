@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from datetime import datetime
 from functools import lru_cache
@@ -28,6 +29,22 @@ _COLLECTION_TYPES = {
     "structure_locks": "structure_lock",
 }
 _EXTERNAL_REFERENCE_TYPES = {"source_fragment"}
+_PUBLIC_ISSUE_LIMIT = 20
+_PUBLIC_MESSAGE_LIMIT = 240
+_REQUIRED_PROPERTY = re.compile(r"^'([^']+)' is a required property$")
+_UNEXPECTED_PROPERTIES = re.compile(
+    r"^Additional properties are not allowed \((.+) (?:was|were) unexpected\)$"
+)
+_WRONG_TYPE = re.compile(r"^.+ is not of type (.+)$")
+
+_PUBLIC_INTEGRITY_MESSAGES = {
+    "duplicate_object_id": "对象 ID 重复",
+    "missing_reference": "引用的对象不存在",
+    "reference_type_mismatch": "引用类型不匹配",
+    "self_reference": "对象不能引用自身",
+    "invalid_time_range": "结束时间不能早于开始时间",
+    "duplicate_key": "同一集合中存在重复键",
+}
 
 
 class ContractValidationError(ValueError):
@@ -70,6 +87,58 @@ def validate_casefile(document: dict[str, Any]) -> None:
     integrity_errors = _validate_integrity(document)
     if integrity_errors:
         raise ContractValidationError(integrity_errors)
+
+
+def public_validation_issues(
+    errors: list[dict[str, Any]],
+    *,
+    limit: int = _PUBLIC_ISSUE_LIMIT,
+) -> list[dict[str, str]]:
+    """Return bounded field-level issues without persisting candidate values."""
+
+    issues: list[dict[str, str]] = []
+    for error in errors[: max(0, limit)]:
+        raw_code = str(error.get("code", "validation_failed"))
+        code = (
+            raw_code
+            if re.fullmatch(r"[a-z][a-z0-9_]{0,79}", raw_code)
+            else "validation_failed"
+        )
+        raw_path = str(error.get("path", ""))
+        path = raw_path[:512] if raw_path.startswith("/") or not raw_path else ""
+        message = _public_validation_message(code, str(error.get("message", "")))
+        issues.append({"code": code, "path": path, "message": message})
+    return issues
+
+
+def _public_validation_message(code: str, message: str) -> str:
+    if code in _PUBLIC_INTEGRITY_MESSAGES:
+        return _PUBLIC_INTEGRITY_MESSAGES[code]
+    if code == "candidate_json_invalid":
+        return "模型返回的 JSON 无法解析"
+    if code == "missing":
+        return "缺少必填字段"
+    if code == "extra_forbidden":
+        return "包含契约未允许的字段"
+
+    required = _REQUIRED_PROPERTY.fullmatch(message)
+    if required:
+        return f"缺少必填字段 {required.group(1)}"[:_PUBLIC_MESSAGE_LIMIT]
+    unexpected = _UNEXPECTED_PROPERTIES.fullmatch(message)
+    if unexpected:
+        return f"包含契约未允许的字段 {unexpected.group(1)}"[:_PUBLIC_MESSAGE_LIMIT]
+    wrong_type = _WRONG_TYPE.fullmatch(message)
+    if wrong_type:
+        return f"字段类型应为 {wrong_type.group(1)}"[:_PUBLIC_MESSAGE_LIMIT]
+    if " is not one of " in message or " should be " in message:
+        return "字段值不在契约允许范围内"
+    if " does not match " in message or "String should match pattern" in message:
+        return "字段格式不符合契约要求"
+    if "too short" in message or "at least" in message:
+        return "字段长度或数量低于契约下限"
+    if "too long" in message or "at most" in message:
+        return "字段长度或数量超过契约上限"
+    return "字段不符合 CaseFile 结构约束"
 
 
 def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:

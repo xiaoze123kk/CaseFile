@@ -219,6 +219,43 @@ export type Brief = {
     statement: string;
     strength: "hard" | "soft";
   }[];
+  core_selling_points?: string[] | null;
+  content_outline?: string[] | null;
+  scope_estimate?: string | null;
+  risk_notes?: string[] | null;
+};
+/**
+ * Immutable, reviewable candidate produced during the pre-Brief intake workflow.
+ */
+export type BriefIntakeCandidate = {
+  [k: string]: unknown;
+} & {
+  concept: string;
+  /**
+   * @maxItems 8
+   */
+  core_selling_points: string[];
+  /**
+   * @maxItems 16
+   */
+  content_outline: string[];
+  reasoning_goal: string;
+  resolution_mode: "author_anchored" | "agent_proposed" | "open";
+  author_answer: string | null;
+  /**
+   * @maxItems 40
+   */
+  constraints: BriefIntakeConstraint[];
+  /**
+   * @maxItems 20
+   */
+  pending_decisions: BriefIntakePendingDecision[];
+  scope_estimate: string | null;
+  /**
+   * @maxItems 12
+   */
+  risk_notes: string[];
+  field_sources: BriefIntakeFieldSources;
 };
 
 /**
@@ -227,6 +264,8 @@ export type Brief = {
 export interface EditingContracts {
   casefile: CaseFile;
   brief: Brief;
+  brief_intake_candidate: BriefIntakeCandidate;
+  brief_intake_question_set: BriefIntakeQuestionSet;
   validation_issue: ValidationIssue;
   patch_candidate: PatchCandidate;
   task_run: TaskRun;
@@ -285,6 +324,48 @@ export interface ActorRef {
 export interface Extensions {
   [k: string]: unknown;
 }
+export interface BriefIntakeConstraint {
+  constraint_key: string;
+  category: "must_keep" | "must_avoid" | "scope" | "cast" | "duration" | "content_scale" | "other";
+  statement: string;
+  strength: "hard" | "soft";
+  confirmed: boolean;
+  source: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+}
+export interface BriefIntakePendingDecision {
+  decision_key: string;
+  prompt: string;
+  impact: string;
+  source: "unresolved";
+}
+export interface BriefIntakeFieldSources {
+  concept: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  core_selling_points: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  content_outline: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  reasoning_goal: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  resolution_mode: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  author_answer: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  constraints: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  scope_estimate: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+  risk_notes: "user_original" | "user_confirmed" | "agent_suggestion" | "unresolved";
+}
+export interface BriefIntakeQuestionSet {
+  /**
+   * @maxItems 2
+   */
+  questions: BriefIntakeQuestion[];
+}
+export interface BriefIntakeQuestion {
+  question_key: string;
+  ordinal: number;
+  prompt: string;
+  impact: string;
+  required: boolean;
+  /**
+   * @maxItems 3
+   */
+  suggestions: string[];
+}
 export interface ValidationIssue {
   schema_version: "1.0";
   issue_id: string;
@@ -333,7 +414,13 @@ export interface PatchOperation {
 export interface TaskRun {
   task_run_id: number;
   project_id: number;
-  task_type: "brief_polish" | "brief_anchor_extract" | "brief_to_draft";
+  task_type:
+    | "brief_polish"
+    | "brief_anchor_extract"
+    | "brief_intake_questions"
+    | "brief_intake_synthesize"
+    | "brief_to_draft"
+    | "casefile_chat";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
   provider: "openai" | "deepseek";
@@ -341,6 +428,12 @@ export interface TaskRun {
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
+  input_brief_intake_id: number | null;
+  input_brief_intake_revision: number | null;
+  base_brief_intake_candidate_id: number | null;
+  agent_thread_id: number | null;
+  input_message_id: number | null;
+  output_message_id: number | null;
   input_hash: string;
   attempt_count: number;
   usage: {
@@ -351,8 +444,20 @@ export interface TaskRun {
   } | null;
   result_snapshot_id?: number | null;
   error_code?: string | null;
+  failure: TaskFailure | null;
   created_at?: string;
   updated_at?: string;
+}
+export interface TaskFailure {
+  code: string;
+  message: string;
+  retryable: boolean;
+  issues: TaskFailureIssue[];
+}
+export interface TaskFailureIssue {
+  code: string;
+  path: string;
+  message: string;
 }
 export interface TaskEvent {
   event_id: number;

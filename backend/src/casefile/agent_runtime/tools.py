@@ -9,7 +9,11 @@ from typing import Any
 from agents import RunContextWrapper, Tool, function_tool
 
 from casefile.agent_runtime.models import GenerationRequest, ToolMetrics
-from casefile.contracts import ContractValidationError, validate_casefile
+from casefile.contracts import (
+    ContractValidationError,
+    public_validation_issues,
+    validate_casefile,
+)
 
 TOOLSET_VERSION = "casefile-generation-tools-v2"
 
@@ -113,15 +117,47 @@ def validate_casefile_candidate(
     try:
         candidate: Any = json.loads(candidate_json)
         if not isinstance(candidate, dict):
-            raise ValueError("candidate must be a JSON object")
+            errors = [
+                {
+                    "code": "candidate_json_invalid",
+                    "path": "",
+                    "message": "candidate must be a JSON object",
+                }
+            ]
+            raise ContractValidationError(errors)
         validate_casefile(candidate)
-    except (json.JSONDecodeError, ValueError, ContractValidationError) as error:
+    except json.JSONDecodeError as error:
+        errors = [
+            {
+                "code": "candidate_json_invalid",
+                "path": "",
+                "message": f"invalid JSON at line {error.lineno}, column {error.colno}",
+            }
+        ]
         context.request.emit(
             "tool.completed",
             "validating",
-            {"tool": "validate_casefile_candidate", "valid": False},
+            {
+                "tool": "validate_casefile_candidate",
+                "valid": False,
+                "issue_count": len(errors),
+                "issues": public_validation_issues(errors),
+            },
         )
-        return json.dumps({"valid": False, "error": str(error)}, ensure_ascii=False)
+        return json.dumps({"valid": False, "issues": errors}, ensure_ascii=False)
+    except ContractValidationError as error:
+        errors = error.errors
+        context.request.emit(
+            "tool.completed",
+            "validating",
+            {
+                "tool": "validate_casefile_candidate",
+                "valid": False,
+                "issue_count": len(errors),
+                "issues": public_validation_issues(errors),
+            },
+        )
+        return json.dumps({"valid": False, "issues": errors}, ensure_ascii=False)
     context.metrics.successful_calls += 1
     context.request.emit(
         "tool.completed",

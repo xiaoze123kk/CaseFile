@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,6 +13,11 @@ from alembic import command
 from alembic.config import Config
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
+from casefile.agent_runtime.models import (
+    CaseFileChatCandidate,
+    CaseFileChatRequest,
+    CaseFileChatResult,
+)
 from casefile.api.app import create_app
 from casefile.worker.runtime import Worker, WorkerConfig
 from fastapi.testclient import TestClient
@@ -23,6 +29,37 @@ pytestmark = pytest.mark.postgres
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROFILE: dict[str, object] = {}
+
+
+class ApiChatProvider(FakeProvider):
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        assert request.prompt_version == "casefile-chat-v1"
+        resolution = request.casefile["resolution_specs"][0]
+        return CaseFileChatResult(
+            candidate=CaseFileChatCandidate.model_validate(
+                {
+                    "answer": "我已阅读完整卷宗，并提出一条可审阅说明。",
+                    "referenced_object_ids": [resolution["id"]],
+                    "suggestions": [
+                        {
+                            "object_id": resolution["id"],
+                            "path": "/description",
+                            "value_json": json.dumps(
+                                "用于解释午夜回航原因的核心命题。",
+                                ensure_ascii=False,
+                            ),
+                            "reason": "让结论规格更容易被作者理解。",
+                        }
+                    ],
+                }
+            ),
+            usage={
+                "requests": 1,
+                "input_tokens": 5,
+                "output_tokens": 5,
+                "total_tokens": 10,
+            },
+        )
 
 
 def _brief(source_record_id: int) -> dict[str, object]:
@@ -95,6 +132,54 @@ def _identity(actor_id: int) -> dict[str, str]:
     return {"X-CaseFile-User-Id": str(actor_id)}
 
 
+def test_provider_setting_delete_roundtrip(
+    api_database: tuple[str, Engine, int, str],
+) -> None:
+    database_url, _engine, actor_id, master_key = api_database
+    app = create_app(database_url)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}), TestClient(app) as client:
+        saved = client.put(
+            "/api/v1/settings/provider",
+            headers=_identity(actor_id),
+            json={
+                "provider": "deepseek",
+                "api_key": "sk-deepseek-api-secret",
+                "model_id": "deepseek-v4-flash",
+                "model_is_custom": False,
+            },
+        )
+        assert saved.status_code == 200
+        assert saved.json()["masked_api_key"].endswith("cret")
+
+        deleted = client.delete(
+            "/api/v1/settings/provider?provider=deepseek",
+            headers=_identity(actor_id),
+        )
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+        assert (
+            client.get(
+                "/api/v1/settings/provider?provider=deepseek",
+                headers=_identity(actor_id),
+            ).json()
+            is None
+        )
+
+        restored = client.put(
+            "/api/v1/settings/provider",
+            headers=_identity(actor_id),
+            json={
+                "provider": "deepseek",
+                "api_key": "sk-deepseek-api-restored",
+                "model_id": "deepseek-v4-flash",
+                "model_is_custom": False,
+            },
+        )
+        assert restored.status_code == 200
+        assert restored.json()["config_version"] == 3
+        assert restored.json()["masked_api_key"].endswith("ored")
+
+
 def test_settings_brief_generation_sse_and_completion_gate(
     api_database: tuple[str, Engine, int, str],
 ) -> None:
@@ -143,6 +228,32 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert created.status_code == 201
         project_id = created.json()["id"]
+        removed_draft_routes = (
+            ("POST", f"/api/v1/projects/{project_id}/draft/entities"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/entities"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/entities/entity_removed"),
+            ("PUT", f"/api/v1/projects/{project_id}/draft/entities/entity_removed"),
+            ("DELETE", f"/api/v1/projects/{project_id}/draft/entities/entity_removed"),
+            (
+                "PUT",
+                f"/api/v1/projects/{project_id}/draft/entities/entity_removed/adjacent-locations",
+            ),
+            ("POST", f"/api/v1/projects/{project_id}/draft/events"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/events"),
+            ("GET", f"/api/v1/projects/{project_id}/draft/events/event_removed"),
+            ("PUT", f"/api/v1/projects/{project_id}/draft/events/event_removed"),
+            ("DELETE", f"/api/v1/projects/{project_id}/draft/events/event_removed"),
+            ("PUT", f"/api/v1/projects/{project_id}/draft/events/event_removed/actors"),
+        )
+        for method, path in removed_draft_routes:
+            response = client.request(
+                method,
+                path,
+                headers=_identity(actor_id),
+                json={} if method in {"POST", "PUT"} else None,
+            )
+            assert response.status_code == 404, (method, path, response.text)
+
         empty = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert empty.status_code == 200
         assert empty.json()["content"] is None
@@ -175,6 +286,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "source_record_id": source["source_record_id"],
                 "provider": "deepseek",
+                "polish_mode": "rewrite",
             },
         )
         assert polish_queued.status_code == 202
@@ -184,6 +296,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
         )
         assert latest_polish.status_code == 200
+        assert latest_polish.json()["result"]["polish_mode"] == "rewrite"
+        assert latest_polish.json()["result"]["introduced_details"] == []
         assert latest_polish.json()["result"]["proposal_source_record"]["source_kind"] == (
             "agent_polish_proposal"
         )
@@ -245,7 +359,34 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert task.status_code == 200
         assert task.json()["status"] == "succeeded"
-        assert task.json()["result"]["snapshot_id"] == task.json()["result_snapshot_id"]
+        assert task.json()["failure"] is None
+        assert task.json()["result_snapshot_id"] is None
+        assert task.json()["result"]["title"]
+
+        candidates = client.get(
+            f"/api/v1/projects/{project_id}/draft-candidates",
+            headers=_identity(actor_id),
+        )
+        assert candidates.status_code == 200
+        assert [candidate["task_run_id"] for candidate in candidates.json()] == [task_id]
+        assert candidates.json()[0]["can_adopt"] is True
+        empty_draft = client.get(
+            f"/api/v1/projects/{project_id}/draft",
+            headers=_identity(actor_id),
+        )
+        assert empty_draft.json()["content"] is None
+        adopted = client.post(
+            f"/api/v1/projects/{project_id}/draft-candidates/{task_id}/adopt",
+            headers=_identity(actor_id),
+            json={"expected_draft_revision": 1},
+        )
+        assert adopted.status_code == 200
+        assert adopted.json()["adopted"] is True
+        adopted_task = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{task_id}",
+            headers=_identity(actor_id),
+        )
+        assert adopted_task.json()["result_snapshot_id"] is not None
 
         stream = client.get(
             f"/api/v1/projects/{project_id}/tasks/{task_id}/stream",
@@ -267,3 +408,113 @@ def test_settings_brief_generation_sse_and_completion_gate(
         draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert draft.json()["revision"] == 2
         assert draft.json()["content"]["schema_version"] == "1.0"
+
+        thread_response = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads",
+            headers=_identity(actor_id),
+            json={},
+        )
+        assert thread_response.status_code == 201
+        thread_id = thread_response.json()["thread_id"]
+        queued_chat = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+            json={
+                "content": "请通读整个卷宗并给出一条可审阅建议。",
+                "provider": "deepseek",
+            },
+        )
+        assert queued_chat.status_code == 202
+        chat_task_id = queued_chat.json()["task"]["task_run_id"]
+        with engine.connect() as connection:
+            stored_prompt_version = connection.scalar(
+                text("SELECT prompt_version FROM task_runs WHERE id = :task_run_id"),
+                {"task_run_id": chat_task_id},
+            )
+        assert stored_prompt_version == "casefile-chat-v1"
+        chat_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="api-chat-worker"),
+            provider_factory=lambda _task: ApiChatProvider(),
+        )
+        assert chat_worker.run_once() is True
+
+        message_response = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+        )
+        assert message_response.status_code == 200
+        messages = message_response.json()
+        assert [message["role"] for message in messages] == ["user", "assistant"]
+        assert messages[-1]["task"]["task_run_id"] == chat_task_id
+        patch_set = messages[-1]["patch_set"]
+        assert patch_set["status"] == "pending"
+        assert patch_set["operations"][0]["object_type"] == "resolution_spec"
+        assert patch_set["operations"][0]["field_path"] == "/description"
+
+        applied = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                f"{patch_set['patch_set_id']}/apply"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_revision": 2, "operation_ids": None},
+        )
+        assert applied.status_code == 200
+        assert applied.json()["status"] == "applied"
+        assert applied.json()["draft_revision"] == 3
+
+        undone = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                f"{patch_set['patch_set_id']}/undo"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_revision": 3},
+        )
+        assert undone.status_code == 200
+        assert undone.json()["status"] == "undone"
+        assert undone.json()["draft_revision"] == 4
+
+        rejected_chat = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+            json={"content": "再给一条建议，这次我会整批不采用。"},
+        )
+        assert rejected_chat.status_code == 202
+        assert chat_worker.run_once() is True
+        latest_messages = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+        ).json()
+        rejected_patch = latest_messages[-1]["patch_set"]
+        rejected = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                f"{rejected_patch['patch_set_id']}/apply"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_revision": 4, "operation_ids": []},
+        )
+        assert rejected.status_code == 200
+        assert rejected.json()["status"] == "rejected"
+        assert rejected.json()["draft_revision"] == 4
+
+        updated_thread = client.patch(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}",
+            headers=_identity(actor_id),
+            json={
+                "title": "午夜回航审阅",
+                "is_pinned": True,
+                "archived": True,
+            },
+        )
+        assert updated_thread.status_code == 200
+        assert updated_thread.json()["status"] == "archived"
+        assert updated_thread.json()["is_pinned"] is True
+        archived_send = client.post(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+            headers=_identity(actor_id),
+            json={"content": "归档线程不能继续发送。"},
+        )
+        assert archived_send.status_code == 409

@@ -4,7 +4,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repoRoot "backend"
 $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $generatedRoot = Join-Path $repoRoot "contracts\generated"
-$rootCasefileSchemaRoot = Join-Path $repoRoot "contracts\schemas\casefile"
+$rootSchemaRoot = Join-Path $repoRoot "contracts\schemas"
 $runtimePythonRoot = Join-Path $backendRoot "src\casefile_contracts"
 $runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v1"
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("casefile-contracts-" + [Guid]::NewGuid().ToString("N"))
@@ -86,10 +86,13 @@ try {
         -Actual $runtimePythonRoot
 
     $temporaryRuntimeSchemaRoot = Join-Path $temporaryRoot "runtime-schemas"
-    $temporaryRuntimeCasefileRoot = Join-Path $temporaryRuntimeSchemaRoot "casefile"
-    New-Item -ItemType Directory -Path $temporaryRuntimeCasefileRoot -Force | Out-Null
-    Copy-Item -Path (Join-Path $rootCasefileSchemaRoot "*") `
-        -Destination $temporaryRuntimeCasefileRoot
+    New-Item -ItemType Directory -Path $temporaryRuntimeSchemaRoot -Force | Out-Null
+    foreach ($schemaDirectory in @("brief", "brief-intake", "casefile", "task", "validation")) {
+        Copy-Item -LiteralPath (Join-Path $rootSchemaRoot $schemaDirectory) `
+            -Destination $temporaryRuntimeSchemaRoot -Recurse
+    }
+    Copy-Item -LiteralPath (Join-Path $rootSchemaRoot "editing-contracts.schema.json") `
+        -Destination $temporaryRuntimeSchemaRoot
     [System.IO.File]::WriteAllText(
         (Join-Path $temporaryRuntimeSchemaRoot "GENERATED_FROM_ROOT_SCHEMAS.txt"),
         "Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.`n",

@@ -6,11 +6,12 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 import rfc8785
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from casefile.application.errors import ApplicationError
@@ -21,6 +22,7 @@ from casefile.data_postgres.models import (
     CaseFileConstraint,
     CaseFileContractRef,
     CaseFileObject,
+    CaseFileRef,
     Claim,
     DraftOperation,
     DraftSnapshot,
@@ -52,6 +54,8 @@ COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
     ("structure_locks", "structure_lock"),
 )
 
+KNOWLEDGE_STATE_COUNT_ATTRIBUTE = "_casefile_v1_knowledge_state_count"
+
 
 def casefile_content_hash(document: dict[str, Any]) -> str:
     """Return the lowercase SHA-256 of RFC 8785 canonical bytes."""
@@ -59,7 +63,40 @@ def casefile_content_hash(document: dict[str, Any]) -> str:
     return hashlib.sha256(rfc8785.dumps(document)).hexdigest()
 
 
-def write_generated_casefile(
+def generation_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Return the stable, user-facing summary persisted on a generation TaskRun."""
+
+    validate_casefile(candidate)
+    return {
+        "title": candidate["title"],
+        "content_hash": casefile_content_hash(candidate),
+        "object_counts": {
+            collection: len(candidate[collection])
+            for collection, _object_type in COLLECTION_TYPES
+        },
+        "reasoning_questions": [
+            item["reasoning_question"] for item in candidate["resolution_specs"]
+        ],
+        "constraint_statements": [
+            item["statement"] for item in candidate["constraints"]
+        ],
+    }
+
+
+def validate_generation_candidate_context(
+    owned: OwnedDraft,
+    candidate: dict[str, Any],
+    *,
+    brief: Brief,
+    brief_version: BriefVersion,
+) -> None:
+    """Validate one candidate against its CaseFile, Brief, and Draft version context."""
+
+    validate_casefile(candidate)
+    _validate_generation_context(owned, candidate, brief, brief_version)
+
+
+def adopt_generation_candidate(
     session: Session,
     owned: OwnedDraft,
     *,
@@ -68,23 +105,107 @@ def write_generated_casefile(
     brief_version: BriefVersion,
     task_run_id: int,
     actor_user_id: int,
+    expected_draft_revision: int,
 ) -> DraftSnapshot:
-    """Atomically replace a strictly empty Draft with one validated v1 candidate."""
+    """Atomically replace the current mutable Draft with one validated candidate."""
 
-    validate_casefile(candidate)
-    _validate_generation_context(owned, candidate, brief, brief_version)
-    active_count = session.scalar(
-        select(func.count(CaseFileObject.id)).where(
-            CaseFileObject.draft_id == owned.draft.id,
-            CaseFileObject.deleted_at.is_(None),
-        )
+    validate_generation_candidate_context(
+        owned,
+        candidate,
+        brief=brief,
+        brief_version=brief_version,
     )
-    if active_count:
+    if owned.draft.revision != expected_draft_revision:
         raise ApplicationError(
-            "draft_not_empty",
-            "Full CaseFile generation requires a strictly empty Draft",
+            "draft_revision_conflict",
+            "Draft revision is stale",
+            status_code=409,
+            details={"current_revision": owned.draft.revision},
+        )
+    if owned.project.status == "archived" or owned.casefile.status == "archived":
+        raise ApplicationError(
+            "project_archived",
+            "Archived projects cannot be modified",
             status_code=409,
         )
+    if owned.draft.status != "active":
+        raise ApplicationError(
+            "draft_locked",
+            "Locked Drafts cannot be modified",
+            status_code=409,
+        )
+
+    incoming_ids = {
+        item["id"]
+        for collection, _object_type in COLLECTION_TYPES
+        for item in candidate[collection]
+    }
+    used_ids = set(
+        session.scalars(
+            select(CaseFileObject.object_id).where(
+                CaseFileObject.casefile_id == owned.casefile.id,
+                CaseFileObject.object_id.in_(incoming_ids),
+            )
+        )
+    )
+    if used_ids:
+        raise ApplicationError(
+            "candidate_object_ids_used",
+            "This candidate has already been adopted or reuses historical object IDs",
+            status_code=409,
+            details={"object_ids": sorted(used_ids)},
+        )
+
+    active_objects = list(
+        session.scalars(
+            select(CaseFileObject)
+            .where(
+                CaseFileObject.draft_id == owned.draft.id,
+                CaseFileObject.deleted_at.is_(None),
+            )
+            .order_by(CaseFileObject.object_type, CaseFileObject.contract_ordinal)
+            .with_for_update()
+        )
+    )
+    old_content_hash = None
+    if active_objects:
+        old_content_hash = casefile_content_hash(build_casefile_document(session, owned))
+
+    if active_objects:
+        all_ordinals = session.execute(
+            select(CaseFileObject.object_type, func.max(CaseFileObject.contract_ordinal))
+            .where(CaseFileObject.draft_id == owned.draft.id)
+            .group_by(CaseFileObject.object_type)
+        ).all()
+        next_archive_ordinal = {
+            object_type: int(max_ordinal) + 1
+            for object_type, max_ordinal in all_ordinals
+        }
+        now = datetime.now(UTC)
+        active_ids: list[int] = []
+        for registry in active_objects:
+            archive_ordinal = next_archive_ordinal[registry.object_type]
+            next_archive_ordinal[registry.object_type] = archive_ordinal + 1
+            registry.contract_ordinal = archive_ordinal
+            registry.deleted_at = now
+            registry.revision += 1
+            active_ids.append(registry.id)
+        session.execute(
+            delete(CaseFileContractRef).where(
+                CaseFileContractRef.draft_id == owned.draft.id,
+                CaseFileContractRef.from_object_id.in_(active_ids),
+            )
+        )
+        session.execute(
+            delete(CaseFileRef).where(
+                CaseFileRef.draft_id == owned.draft.id,
+                or_(
+                    CaseFileRef.from_object_id.in_(active_ids),
+                    CaseFileRef.to_object_id.in_(active_ids),
+                ),
+            )
+        )
+        session.flush()
 
     registry_by_object_id = _create_registries(session, owned, candidate)
     _create_content_rows(session, owned, candidate, registry_by_object_id)
@@ -120,9 +241,13 @@ def write_generated_casefile(
             casefile_object_id=None,
             sequence_no=sequence_no,
             operation_group_no=sequence_no,
-            operation_type="agent_generate_from_brief",
+            operation_type="agent_adopt_brief_candidate",
             field_path="",
-            old_value_jsonb=None,
+            old_value_jsonb=(
+                None
+                if old_content_hash is None
+                else {"content_hash": old_content_hash}
+            ),
             new_value_jsonb={
                 "brief_version_id": brief_version.id,
                 "content_hash": content_hash,
@@ -130,9 +255,9 @@ def write_generated_casefile(
             },
             base_revision=base_revision,
             result_revision=base_revision + 1,
-            actor_kind="agent",
-            actor_user_id=None,
-            actor_ref=f"task_run:{task_run_id}",
+            actor_kind="user",
+            actor_user_id=actor_user_id,
+            actor_ref=None,
         )
     )
     session.flush()
@@ -253,11 +378,18 @@ def _validate_generation_context(
     brief_version: BriefVersion,
 ) -> None:
     expected_brief_ref = {"brief_id": brief.public_id, "version": brief_version.version_no}
+    expected_version = {
+        "version_id": owned.draft.version_id,
+        "version_no": owned.draft.version_no,
+        "parent_version_id": owned.draft.parent_version_id,
+    }
     failures: dict[str, Any] = {}
     if candidate["casefile_id"] != owned.casefile.object_id:
         failures["casefile_id"] = owned.casefile.object_id
     if candidate["brief_ref"] != expected_brief_ref:
         failures["brief_ref"] = expected_brief_ref
+    if candidate["version"] != expected_version:
+        failures["version"] = expected_version
     if candidate["status"] != "draft":
         failures["status"] = "draft"
     if failures:
@@ -360,7 +492,12 @@ def _create_content_rows(
                 goals_jsonb=item["goals"],
                 secrets_jsonb=item["secrets"],
                 capabilities_jsonb=item["capabilities"],
-                attributes_jsonb={},
+                # ObjectRef values live in CaseFileContractRef. Retain the
+                # complete nested-list shape here so an all-empty state does
+                # not disappear during a normalized round trip.
+                attributes_jsonb={
+                    KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(item["knowledge_states"])
+                },
             )
         )
     for item in candidate["relationships"]:
@@ -555,6 +692,14 @@ def _walk_object_refs(
                 yield from _walk_object_refs(child, f"{path}/{index}", parent=parent)
 
 
+def iter_contract_object_refs(
+    value: Any,
+) -> Iterator[tuple[str, int, dict[str, str], dict[str, Any]]]:
+    """Yield normalized ObjectRef edges from one complete v1 object."""
+
+    yield from _walk_object_refs(value)
+
+
 def _project_resolutions(
     session: Session,
     registries: list[CaseFileObject],
@@ -612,13 +757,7 @@ def _project_entities(
         row = session.scalar(select(Entity).where(Entity.object_registry_id == registry.id))
         if row is None:
             continue
-        state_indices = _path_indices(
-            refs[registry.id],
-            (
-                r"^/knowledge_states/(\d+)/(?:as_of_event_ref|knows_refs|"
-                r"believes_refs|false_belief_refs)"
-            ),
-        )
+        state_indices = _knowledge_state_indices(row, refs[registry.id])
         knowledge_states = []
         for index in state_indices:
             prefix = f"/knowledge_states/{index}"
@@ -987,6 +1126,22 @@ def _path_indices(rows: list[CaseFileContractRef], pattern: str) -> list[int]:
         int(match.group(1)) for row in rows if (match := matcher.match(row.field_path)) is not None
     }
     return sorted(indices)
+
+
+def _knowledge_state_indices(
+    entity: Entity,
+    refs: list[CaseFileContractRef],
+) -> list[int]:
+    state_count = entity.attributes_jsonb.get(KNOWLEDGE_STATE_COUNT_ATTRIBUTE)
+    if isinstance(state_count, int) and not isinstance(state_count, bool) and state_count >= 0:
+        return list(range(state_count))
+    return _path_indices(
+        refs,
+        (
+            r"^/knowledge_states/(\d+)/(?:as_of_event_ref|knows_refs|"
+            r"believes_refs|false_belief_refs)"
+        ),
+    )
 
 
 def _is_object_ref(value: Any) -> bool:

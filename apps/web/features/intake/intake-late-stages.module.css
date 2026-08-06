@@ -1,0 +1,976 @@
+.reviewStage,
+.candidatesStage {
+  min-width: 0;
+  min-height: 100%;
+  color: var(--ink);
+  font-family: "Noto Serif SC", "STSong", "SimSun", serif;
+}
+
+.stageHeader {
+  display: flex;
+  min-height: 108px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--ink);
+  background: rgba(250, 250, 245, 0.9);
+}
+
+.stageHeader > div > span,
+.stageHeader dt,
+.sheetHeader small,
+.reviewLedger > header span,
+.reviewLedger section > span,
+.generationCopy > span,
+.candidateArchive > header span,
+.candidateDetail section > span,
+.candidateComparison span,
+.constraintExcerpt > span,
+.candidateEmpty > span,
+.paperIndex span {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.stageHeader h1 {
+  max-width: 760px;
+  margin: 7px 0 0;
+  font-size: clamp(25px, 2.3vw, 38px);
+  font-weight: 560;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+}
+
+.stageHeader dl {
+  display: flex;
+  margin: 0;
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+
+.stageHeader dl div {
+  min-width: 120px;
+  padding: 9px 12px;
+  border-right: 1px solid var(--rule);
+}
+
+.stageHeader dd {
+  margin: 4px 0 0;
+  font: 700 var(--font-caption) "Cascadia Mono", Consolas, monospace;
+}
+
+.reviewSpread {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  padding: 18px;
+}
+
+.reviewSheet {
+  position: relative;
+  min-width: 0;
+  padding: 0 22px 18px 68px;
+  border: 1px solid var(--rule);
+  background:
+    linear-gradient(90deg, transparent 0 41px, var(--red-line) 41px 42px, transparent 42px),
+    repeating-linear-gradient(0deg, rgba(26, 28, 25, 0.026) 0 1px, transparent 1px 29px),
+    var(--paper-high);
+  box-shadow: 5px 6px 0 rgba(26, 28, 25, 0.08);
+}
+
+.reviewSheet::before,
+.candidateCard::before {
+  position: absolute;
+  top: 18px;
+  left: 17px;
+  width: 13px;
+  height: 13px;
+  content: "";
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--paper-low);
+  box-shadow: 0 38px 0 -1px var(--paper-low), 0 38px 0 0 var(--rule), 0 76px 0 -1px var(--paper-low), 0 76px 0 0 var(--rule);
+}
+
+.paperIndex {
+  position: absolute;
+  top: 132px;
+  left: 8px;
+  display: flex;
+  width: 26px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--red);
+  writing-mode: vertical-rl;
+}
+
+.paperIndex b {
+  font: 700 18px "Cascadia Mono", Consolas, monospace;
+}
+
+.sheetHeader {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.sheetHeader > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.sheetHeader strong {
+  overflow: hidden;
+  font-size: var(--font-heading-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheetHeader > span {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  background: var(--red-soft);
+  font: 700 var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.sheetHeader > span[data-state="ready"] {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--paper-low);
+}
+
+.reviewFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.reviewFields label {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  border-top: 1px solid var(--rule);
+  border-left: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.reviewFields label > span {
+  display: grid;
+  min-height: 42px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.reviewFields label > span b,
+.reviewFields label > span em {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+  font-style: normal;
+}
+
+.reviewFields label > span strong {
+  font-size: var(--font-caption);
+}
+
+.reviewFields textarea,
+.reviewFields select {
+  width: 100%;
+  min-height: 92px;
+  padding: 12px;
+  resize: vertical;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: var(--font-body-sm) / 1.7 "Noto Serif SC", "STSong", "SimSun", serif;
+}
+
+.reviewFields select {
+  min-height: 48px;
+  align-self: start;
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+}
+
+.reviewFields textarea:disabled {
+  color: var(--ink-faint);
+  background: var(--paper-low);
+}
+
+.wideField {
+  grid-column: 1 / -1;
+}
+
+.atomicSection {
+  margin-top: 16px;
+  border: 1px solid var(--rule);
+  background: rgba(250, 250, 245, 0.74);
+}
+
+.atomicSection > header {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--ink);
+  background: var(--paper-low);
+}
+
+.atomicSection > header div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.atomicSection > header span {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.atomicSection > header strong {
+  font-size: var(--font-ui);
+}
+
+.atomicSection button,
+.reviewActions button,
+.backToBrief,
+.generateButton,
+.candidateDetail button,
+.candidatesFooter button,
+.emptyReview button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  background: var(--paper-high);
+  font: 700 var(--font-caption) "Microsoft YaHei UI", "PingFang SC", sans-serif;
+}
+
+.atomicRows {
+  display: grid;
+}
+
+.atomicRows > div {
+  display: grid;
+  min-height: 44px;
+  grid-template-columns: 82px minmax(0, 1fr) 92px 34px;
+  align-items: center;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.atomicRows > div:last-child {
+  border-bottom: 0;
+}
+
+.atomicRows small {
+  padding-left: 10px;
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.atomicRows small[data-origin="agent"] {
+  color: var(--red);
+}
+
+.atomicRows input,
+.atomicRows select {
+  min-width: 0;
+  min-height: 43px;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  border-radius: 0;
+  background: var(--paper-high);
+}
+
+.atomicRows b {
+  padding: 0 9px;
+  font: 700 var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.atomicRows button {
+  min-height: 43px;
+  padding: 0;
+  color: var(--ink-faint);
+  border-width: 0 0 0 1px;
+}
+
+.atomicEmpty {
+  margin: 0;
+  padding: 16px 12px;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+}
+
+.reviewActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ink);
+}
+
+.reviewActions > div {
+  display: flex;
+  gap: 8px;
+}
+
+.reviewActions button[data-primary="true"],
+.candidateDetail button[data-primary="true"] {
+  color: white;
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.reviewActions button:disabled,
+.candidateDetail button:disabled,
+.generateButton:disabled,
+.candidatesFooter button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.formError {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  color: var(--red);
+  border-left: 3px solid var(--red);
+  background: var(--red-soft);
+  font-size: var(--font-caption);
+}
+
+.reviewLedger {
+  align-self: start;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+
+.reviewLedger > header {
+  display: grid;
+  gap: 3px;
+  padding: 14px;
+  color: white;
+  background: var(--surface-dark);
+}
+
+.reviewLedger > header span {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.reviewLedger ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reviewLedger ol li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.reviewLedger ol li > b {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--red);
+  border: 1px solid var(--red-line);
+  font: 700 var(--font-caption) "Cascadia Mono", Consolas, monospace;
+}
+
+.reviewLedger ol li[data-complete="true"] > b {
+  color: white;
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.reviewLedger ol span {
+  display: grid;
+  gap: 2px;
+}
+
+.reviewLedger ol small {
+  color: var(--ink-faint);
+  font-size: var(--font-micro);
+}
+
+.reviewLedger section {
+  padding: 13px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.reviewLedger section p,
+.reviewLedger section ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+  line-height: 1.55;
+}
+
+.reviewLedger section dl,
+.reviewLedger section dd {
+  margin: 0;
+}
+
+.reviewLedger section dl div {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.reviewLedger section dt {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.reviewLedger section dd {
+  max-height: 72px;
+  margin-top: 4px;
+  overflow: hidden;
+  font-size: var(--font-caption);
+  white-space: pre-line;
+}
+
+.ledgerNotice {
+  margin: 0;
+  padding: 12px;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-low);
+  font-size: var(--font-caption);
+}
+
+.backToBrief {
+  width: calc(100% - 24px);
+  margin: 12px;
+}
+
+.emptyReview,
+.candidateEmpty {
+  display: grid;
+  min-height: 300px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+  border: 1px dashed var(--rule);
+  background: var(--paper-high);
+}
+
+.emptyReview h1,
+.candidateEmpty h2,
+.candidateEmpty p {
+  max-width: 620px;
+  margin: 0;
+}
+
+.candidateEmpty p {
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+}
+
+.generationDesk {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(360px, 1.4fr) 190px;
+  align-items: stretch;
+  margin: 18px;
+  border: 1px solid var(--ink);
+  background: var(--paper-high);
+}
+
+.generationCopy {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 15px 18px;
+  border-right: 1px solid var(--ink);
+}
+
+.generationCopy strong {
+  font-size: var(--font-heading-sm);
+}
+
+.generationCopy p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+  line-height: 1.45;
+}
+
+.generationProgress {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.generationProgress::before {
+  position: absolute;
+  top: 31px;
+  right: 16.66%;
+  left: 16.66%;
+  height: 1px;
+  content: "";
+  background: var(--red-line);
+}
+
+.generationProgress li {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 12px 8px;
+  color: var(--ink-faint);
+  text-align: center;
+  font-size: var(--font-caption);
+}
+
+.generationProgress li b {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--red-line);
+  background: var(--paper-high);
+  font: 700 var(--font-caption) "Cascadia Mono", Consolas, monospace;
+}
+
+.generationProgress li[data-active="true"] {
+  color: var(--red);
+}
+
+.generationProgress li[data-active="true"] b {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+  animation: proofPulse 720ms ease-in-out infinite alternate;
+}
+
+.generationProgress li[data-complete="true"] {
+  color: var(--ink);
+}
+
+.generationProgress li[data-complete="true"] b {
+  color: white;
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.generateButton {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  padding: 14px 18px;
+  color: white;
+  border-width: 0 0 0 1px;
+  background: var(--ink);
+  font-size: var(--font-ui);
+}
+
+.generateButton span,
+.generateButton b {
+  display: block;
+}
+
+.generateButton span {
+  color: #fff;
+  font: 700 var(--font-ui) "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  line-height: 1.3;
+  opacity: 1;
+  white-space: nowrap;
+}
+
+.generateButton b {
+  margin-top: 0;
+  color: var(--red-line);
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.emptyGenerateButton {
+  display: inline-flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 8px;
+  padding: 0 24px;
+  color: white;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  font: 700 var(--font-ui) "Microsoft YaHei UI", "PingFang SC", sans-serif;
+}
+
+.generationError {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: -8px 18px 18px;
+  padding: 10px 12px;
+  color: var(--ink);
+  border-left: 3px solid var(--red);
+  background: color-mix(in srgb, var(--red) 7%, var(--paper-high));
+  font-size: var(--font-caption);
+}
+
+.generationError b {
+  flex: 0 0 auto;
+  color: var(--red);
+}
+
+.generationError span {
+  line-height: 1.55;
+}
+
+.candidatesStage .emptyGenerateButton,
+.candidatesStage .generateButton {
+  color: white;
+}
+
+.emptyGenerateButton span {
+  color: white;
+}
+
+.emptyGenerateButton b {
+  color: var(--red-line);
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.emptyGenerateButton:hover:not(:disabled) {
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.emptyGenerateButton:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+
+.emptyGenerateButton:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.candidateArchive {
+  margin: 0 18px 18px;
+  border-top: 1px solid var(--ink);
+}
+
+.candidateArchive > header {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+}
+
+.candidateArchive > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.candidateArchive > header > b {
+  font: 700 var(--font-heading-sm) "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateFan {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 14px;
+  perspective: 1100px;
+}
+
+.candidateCard {
+  position: relative;
+  min-width: 0;
+  padding-left: 38px;
+  border: 1px solid var(--rule);
+  background:
+    linear-gradient(90deg, transparent 0 29px, var(--red-line) 29px 30px, transparent 30px),
+    repeating-linear-gradient(0deg, rgba(26, 28, 25, 0.024) 0 1px, transparent 1px 27px),
+    var(--paper-high);
+  box-shadow: 4px 5px 0 rgba(26, 28, 25, 0.08);
+  animation: candidateFanIn 520ms cubic-bezier(0.22, 0.8, 0.24, 1) both;
+  animation-delay: calc(var(--candidate-order) * 90ms);
+}
+
+.candidateCard[data-focus="atmosphere"] {
+  transform-origin: top center;
+}
+
+.candidateCard[data-status="current"] {
+  border-color: var(--ink);
+  box-shadow: inset 0 3px var(--ink), 4px 5px 0 rgba(26, 28, 25, 0.08);
+}
+
+.candidateCard[data-status="stale"] {
+  opacity: 0.74;
+}
+
+.candidateSummary {
+  display: grid;
+  width: 100%;
+  min-height: 174px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-content: start;
+  gap: 10px;
+  padding: 15px 14px 14px 4px;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.candidateSummary > span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  font: 700 var(--font-caption) "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateSummary > div {
+  min-width: 0;
+}
+
+.candidateSummary small {
+  color: var(--red);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateSummary strong {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--font-heading-sm);
+}
+
+.candidateSummary p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+  line-height: 1.55;
+}
+
+.candidateSummary em {
+  grid-column: 2;
+  justify-self: start;
+  padding: 3px 7px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+  font-style: normal;
+}
+
+.candidateDetail {
+  padding: 0 14px 14px 4px;
+  border-top: 1px solid var(--ink);
+}
+
+.candidateDetail > section,
+.candidateComparison section {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.candidateDetail section p,
+.candidateDetail section ul,
+.candidateComparison ul {
+  margin: 7px 0 0;
+  padding-left: 18px;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+  line-height: 1.5;
+}
+
+.candidateDetail > section > p {
+  padding-left: 0;
+}
+
+.candidateDetail dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  border-bottom: 1px solid var(--ink);
+}
+
+.candidateDetail dl div {
+  padding: 9px 5px;
+  text-align: center;
+  border-right: 1px solid var(--hairline);
+}
+
+.candidateDetail dt {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateDetail dd {
+  margin: 3px 0 0;
+  font: 700 var(--font-ui) "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateComparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.candidateDetail footer {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.candidateDetail footer > small {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+}
+
+.candidateDetail footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.oldCandidates {
+  margin: 0 18px 18px;
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.oldCandidates summary {
+  padding: 11px 14px;
+  cursor: pointer;
+  font-size: var(--font-caption);
+}
+
+.oldCandidates summary b {
+  margin-left: 8px;
+  color: var(--red);
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.oldCandidates > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--rule);
+}
+
+.candidatesFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 18px 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ink);
+}
+
+.candidatesFooter p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+}
+
+@keyframes proofPulse {
+  from { box-shadow: 0 0 0 0 rgba(169, 38, 9, 0.08); }
+  to { box-shadow: 0 0 0 6px rgba(169, 38, 9, 0.14); }
+}
+
+@keyframes candidateFanIn {
+  from { opacity: 0; transform: translateY(18px) rotate(calc((var(--candidate-order) - 1) * 1.4deg)); }
+  to { opacity: 1; transform: translateY(0) rotate(0); }
+}
+
+@media (max-width: 1460px) {
+  .generationDesk {
+    grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 1.2fr);
+  }
+
+  .generateButton {
+    min-height: 58px;
+    grid-column: 1 / -1;
+    flex-direction: row;
+    border-width: 1px 0 0;
+  }
+}
+
+@media (max-width: 1120px) {
+  .reviewSpread { grid-template-columns: minmax(0, 1fr) 242px; }
+  .generationDesk { grid-template-columns: minmax(220px, 0.9fr) minmax(320px, 1.2fr); }
+  .generateButton { min-height: 62px; grid-column: 1 / -1; border-width: 1px 0 0; }
+  .candidateFan,
+  .oldCandidates > div { grid-template-columns: 1fr; }
+  .candidateSummary { min-height: 132px; }
+}
+
+@media (max-width: 780px) {
+  .stageHeader {
+    min-height: auto;
+    align-items: stretch;
+    flex-direction: column;
+    padding: 18px 16px;
+  }
+  .stageHeader dl { width: 100%; }
+  .stageHeader dl div { min-width: 0; flex: 1; }
+  .reviewSpread { grid-template-columns: 1fr; padding: 10px; }
+  .reviewSheet { padding: 0 12px 14px 48px; }
+  .reviewFields { grid-template-columns: 1fr; }
+  .wideField { grid-column: auto; }
+  .atomicRows > div { grid-template-columns: 68px minmax(0, 1fr) 34px; }
+  .atomicRows > div > b,
+  .atomicRows > div > select { grid-column: 2; }
+  .atomicRows > div > button { grid-column: 3; grid-row: 1 / span 2; }
+  .reviewActions,
+  .candidatesFooter { align-items: stretch; flex-direction: column; }
+  .reviewActions > div { display: grid; }
+  .generationDesk { grid-template-columns: 1fr; margin: 10px; }
+  .generationCopy { border-right: 0; border-bottom: 1px solid var(--ink); }
+  .generationProgress { min-height: 88px; }
+  .candidateArchive,
+  .oldCandidates,
+  .candidatesFooter { margin-right: 10px; margin-left: 10px; }
+  .candidateDetail footer > div { display: grid; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generationProgress li[data-active="true"] b,
+  .candidateCard {
+    animation: none;
+  }
+}

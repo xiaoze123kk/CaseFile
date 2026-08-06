@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 
-import { RealWorkbench } from "@/features/workflow/real-workbench";
+import { AnalystWorkbench } from "@/features/analyst-workbench/analyst-workbench";
 
 export const metadata: Metadata = {
   title: "CaseFile 工作台",
-  description: "编辑卷宗事件、引用与角色可见范围。",
+  description: "核对卷宗对象、时间线、证据关系、推理路径和候选工作稿。",
 };
 
 export default function WorkbenchRoute() {
-  return <RealWorkbench />;
+  return <AnalystWorkbench />;
 }

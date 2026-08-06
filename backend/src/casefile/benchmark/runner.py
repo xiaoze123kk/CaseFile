@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from casefile.agent_runtime import FakeProvider, GenerationRequest, OpenAIAgentsProvider
+from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.providers import GenerationProvider
 from casefile.application.snapshot import casefile_content_hash
 from casefile.contracts import validate_casefile
@@ -119,6 +120,7 @@ def _request(
     brief_ref = context["brief_ref"]
     return GenerationRequest(
         task_run_id=task_run_id,
+        prompt_version=prompt_version_for_task("brief_to_draft"),
         brief=fixture["brief"],
         casefile_id=context["casefile_id"],
         brief_id=brief_ref["brief_id"],

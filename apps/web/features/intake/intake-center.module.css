@@ -1,0 +1,1015 @@
+.intakeCenter {
+  --paper: #fcfbf8;
+  --paper-low: #f7f4ee;
+  --paper-high: #ffffff;
+  --paper-mid: #eeeee9;
+  --ink: #1a1c19;
+  --ink-muted: #5d5d58;
+  --ink-faint: #70706a;
+  --red: #c52b0d;
+  --red-soft: #fff0ec;
+  --red-line: #d9afa6;
+  --rule: #ded8cf;
+  --hairline: #ece7df;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  height: 100svh;
+  overflow: auto;
+  color: var(--ink);
+  background-color: rgba(250, 248, 243, 0.88);
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.035) 1px, transparent 1px),
+    url("/intake-pencil-dossier.svg");
+  background-position: 0 0, 0 0, center;
+  background-repeat: repeat, repeat, no-repeat;
+  background-size: 18px 18px, 18px 18px, cover;
+  font-family: "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.intakeCenter *,
+.intakeCenter *::before,
+.intakeCenter *::after {
+  box-sizing: border-box;
+}
+
+.intakeCenter button,
+.intakeCenter textarea,
+.intakeCenter input,
+.intakeCenter select {
+  border-radius: 0;
+  font: inherit;
+}
+
+.intakeCenter button,
+.intakeCenter a,
+.intakeCenter summary {
+  color: inherit;
+}
+
+.intakeCenter a {
+  text-decoration: none;
+}
+
+.intakeCenter button:not(:disabled),
+.intakeCenter summary,
+.intakeCenter label:has(input) {
+  cursor: pointer;
+}
+
+.intakeCenter button:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.intakeCenter :focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 2px;
+}
+
+.topbar {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  display: grid;
+  height: 80px;
+  min-height: 80px;
+  grid-template-columns: 332px minmax(220px, 1fr) auto;
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+  background: rgba(253, 251, 247, 0.97);
+  backdrop-filter: blur(10px);
+}
+
+.brandCell,
+.topbarContext,
+.topbarLinks {
+  min-width: 0;
+  border-right: 1px solid var(--rule);
+}
+
+.brandCell {
+  position: relative;
+  border-right: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 80px;
+  padding: 10px 28px;
+  border-right: 0;
+}
+
+.brandMark {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid rgba(26, 28, 25, 0.42);
+  border-radius: 11px;
+  background-color: #8d250e;
+  background-image: url("/casefile-brand.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 122px 81px;
+  box-shadow:
+    0 6px 14px rgba(89, 31, 14, 0.22),
+    inset 0 0 0 1px rgba(255, 247, 219, 0.14);
+}
+
+.brand > div,
+.topbarContext {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.brand strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 30px;
+  line-height: 0.95;
+  letter-spacing: 0.01em;
+}
+
+.brand small,
+.topbarContext span,
+.topbarLinks,
+.pulseTrack,
+.stepHero small,
+.liveBrief header span,
+.routeNote span,
+.sourceCapsule > span,
+.constraintDrawer summary span {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.brand small,
+.topbarContext span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.brand small {
+  margin-top: 6px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: none;
+}
+
+.brandSection {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin-top: 13px;
+  color: var(--red);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.topbarContext {
+  position: relative;
+  justify-content: center;
+  padding: 10px 24px;
+  border-right: 0;
+}
+
+.topbarContext::before {
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: 0;
+  width: 1px;
+  content: "";
+  background: var(--rule);
+}
+
+.topbarContext b {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbarLinks {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 18px;
+  border-right: 0;
+  font-size: 10px;
+}
+
+.topbarLinks a,
+.topbarLinks button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.topbarLinks a:hover,
+.topbarLinks button:hover {
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.analyticsIcon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  font: 700 20px/1 sans-serif;
+}
+
+.resetIcon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  font: 700 21px/1 Arial, sans-serif;
+}
+
+.topbarLinks .accountButton {
+  gap: 8px;
+  padding: 0 0 0 5px;
+}
+
+.accountButton > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: white;
+  border-radius: 50%;
+  background: #b9a186;
+  font: 14px "Cascadia Mono", Consolas, monospace;
+}
+
+.accountButton > i {
+  color: var(--ink);
+  font-style: normal;
+}
+
+.pulseTrack {
+  position: sticky;
+  z-index: 25;
+  top: 80px;
+  display: grid;
+  height: 90px;
+  min-height: 90px;
+  grid-template-columns: 240px minmax(0, 1fr) 150px;
+  border-bottom: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.pulseIdentity,
+.pulseStatus {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 22px;
+}
+
+.pulseIdentity {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-right: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.pulseIdentity > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pulseIdentity > i {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--red);
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: white;
+  font: normal 13px/1 sans-serif;
+}
+
+.pulseIdentity span,
+.pulseStatus small {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.pulseStatus span {
+  margin-top: 3px;
+  font: 700 13px "Cascadia Mono", Consolas, monospace;
+}
+
+.pulseIdentity b {
+  overflow: hidden;
+  margin-top: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.pulseTrack ol {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  list-style: none;
+}
+
+.pulseTrack li {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--hairline);
+}
+
+.pulseTrack li button {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 89px;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 28px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+}
+
+.pulseTrack li button > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  place-items: center;
+  color: var(--ink-faint);
+  border: 1px solid var(--rule);
+  font-size: 10px;
+}
+
+.pulseTrack li button > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.pulseTrack li small {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.pulseTrack li b {
+  overflow: hidden;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pulseTrack li[data-active="true"] {
+  background: linear-gradient(0deg, var(--red) 0 3px, transparent 3px), #fffdf9;
+}
+
+.pulseTrack li[data-active="true"] button > span {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.pulseTrack li[data-complete="true"] button > span {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.stepCheck {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  color: var(--red);
+}
+
+.stepCheck svg,
+.captureHeading svg,
+.polishControl svg,
+.comparisonPanel svg,
+.revisionStudio svg,
+.primaryAction svg,
+.secondaryAction svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+}
+
+.activeScan {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--red);
+}
+
+.pulseStatus {
+  align-items: flex-end;
+  border-left: 1px solid var(--rule);
+  text-align: right;
+}
+
+.pulseStatus span {
+  font-size: 16px;
+}
+
+.workspace {
+  display: grid;
+  min-width: 0;
+  min-height: calc(100svh - 170px);
+  grid-template-columns: 264px minmax(0, 1fr) 314px;
+  gap: 0;
+  padding: 0;
+}
+
+.routeDock,
+.focusPlane,
+.liveBrief {
+  min-width: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 6px 20px rgba(58, 43, 31, 0.035);
+}
+
+.routeDock {
+  position: sticky;
+  top: 186px;
+  margin: 16px 24px 20px 20px;
+  overflow: hidden;
+  align-self: start;
+}
+
+.liveBrief > header {
+  display: flex;
+  min-height: 64px;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper-low);
+}
+
+.liveBrief header span {
+  color: var(--ink-faint);
+  font-size: 9px;
+}
+
+.liveBrief header b {
+  margin-top: 2px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+}
+
+.routeList {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.routeList button {
+  display: grid;
+  min-height: 96px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 7px 10px;
+  align-content: center;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: transparent;
+}
+
+.routeList button > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  border-radius: 3px;
+  place-items: center;
+  border: 1px solid currentcolor;
+  font: 700 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.routeList button > div {
+  display: grid;
+  gap: 3px;
+}
+
+.routeList button b {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+}
+
+.routeList button small,
+.routeList button em {
+  color: var(--ink-faint);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.routeList button em {
+  grid-column: 2;
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.routeList button[data-available="true"] {
+  color: var(--ink);
+  border-color: var(--red);
+  box-shadow: inset 3px 0 var(--red);
+  background: #fffaf7;
+}
+
+.routeList button[data-available="true"] > span {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.routeList button[data-available="true"] em {
+  color: var(--red);
+}
+
+.routeNote {
+  margin: 8px;
+  min-height: 118px;
+  padding: 12px 13px;
+  border-radius: 6px;
+  border-left: 2px solid var(--red);
+  background: var(--paper-low);
+}
+
+.routeNote span {
+  color: var(--red);
+  font-size: 9px;
+}
+
+.routeNote p {
+  margin: 5px 0 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.focusPlane {
+  position: relative;
+  min-height: calc(100svh - 202px);
+  margin: 16px 0;
+  overflow: hidden;
+  background:
+    var(--paper);
+}
+
+.focusPlane::after {
+  position: absolute;
+  z-index: 0;
+  top: 14px;
+  right: -34px;
+  width: 110px;
+  height: 110px;
+  content: "";
+  opacity: 0.45;
+  background:
+    radial-gradient(circle, transparent 0 10px, rgba(197, 43, 13, 0.16) 10px 11px, transparent 11px 22px, rgba(197, 43, 13, 0.12) 22px 23px, transparent 23px 34px, rgba(197, 43, 13, 0.1) 34px 35px, transparent 35px),
+    linear-gradient(90deg, transparent 49.5%, rgba(197, 43, 13, 0.12) 50%, transparent 50.5%),
+    linear-gradient(transparent 49.5%, rgba(197, 43, 13, 0.12) 50%, transparent 50.5%);
+}
+
+.focusPlane > * {
+  position: relative;
+  z-index: 1;
+}
+
+.liveBrief {
+  position: sticky;
+  top: 186px;
+  margin: 16px 8px 20px 16px;
+  align-self: start;
+  overflow: hidden;
+}
+
+.liveBrief > header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.liveBrief > header > div {
+  display: grid;
+}
+
+.liveBrief > header em {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  border-radius: 4px;
+  place-items: center;
+  color: white;
+  background: var(--red);
+  font: normal 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.signalMeter {
+  display: grid;
+  height: 6px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 0;
+  background: var(--paper-mid);
+}
+
+.signalMeter i {
+  background: var(--hairline);
+}
+
+.signalMeter i[data-ready="true"] {
+  background: var(--red);
+}
+
+.signalRows {
+  display: grid;
+}
+
+.signalRows section {
+  display: grid;
+  min-height: 50px;
+  grid-template-columns: 7px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.signalRows i {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--rule);
+}
+
+.signalRows section[data-ready="true"] i {
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.signalRows span,
+.signalRows b {
+  font-size: 11px;
+}
+
+.signalRows b {
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.liveExtract,
+.pendingQueue {
+  margin: 12px;
+  padding: 13px;
+  border-radius: 5px;
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+}
+
+.liveExtract header,
+.pendingQueue header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-faint);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.liveExtract p,
+.pendingQueue p {
+  margin: 8px 0 0;
+  color: var(--ink-muted);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.pendingQueue b {
+  color: var(--red);
+}
+
+.intakeCenter .primaryAction:disabled {
+  opacity: 1;
+}
+
+@media (max-width: 1180px) {
+  .topbar {
+    grid-template-columns: 286px minmax(180px, 1fr) auto;
+  }
+
+  .pulseTrack {
+    grid-template-columns: 190px minmax(0, 1fr) 96px;
+  }
+
+  .workspace {
+    grid-template-columns: 184px minmax(0, 1fr) 230px;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .stepView {
+    padding-right: 18px;
+    padding-left: 54px;
+  }
+
+  .stepHero {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .questionStack > article {
+    grid-template-columns: 1fr;
+  }
+
+  .questionStack article > header {
+    border-right: 0;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .revisionStudio {
+    grid-template-columns: 1fr auto;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 920px) {
+  .topbar {
+    grid-template-columns: 190px minmax(0, 1fr) auto;
+  }
+
+  .topbarLinks a:first-child,
+  .topbarContext span,
+  .routeDock {
+    display: none;
+  }
+
+  .pulseTrack {
+    grid-template-columns: 132px minmax(0, 1fr) 78px;
+  }
+
+  .pulseTrack ol {
+    overflow-x: auto;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) 210px;
+  }
+}
+
+@media (max-width: 700px) {
+  .intakeCenter {
+    height: auto;
+    min-height: 100svh;
+  }
+
+  .topbar {
+    position: relative;
+    grid-template-columns: 1fr auto;
+  }
+
+  .brandCell {
+    border-right: 0;
+  }
+
+  .brand {
+    gap: 11px;
+    padding: 9px 16px;
+  }
+
+  .brandMark {
+    width: 50px;
+    height: 50px;
+  }
+
+  .brand strong {
+    font-size: 27px;
+  }
+
+  .brand small {
+    margin-top: 5px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .brandSection {
+    display: none;
+  }
+
+  .topbarContext,
+  .topbarLinks a,
+  .topbarLinks button:not(:last-child) {
+    display: none;
+  }
+
+  .topbarLinks button:last-child {
+    min-width: 88px;
+  }
+
+  .pulseTrack {
+    position: relative;
+    top: auto;
+    grid-template-columns: minmax(0, 1fr) 66px;
+  }
+
+  .pulseIdentity {
+    display: none;
+  }
+
+  .pulseTrack ol {
+    overflow-x: visible;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .pulseTrack li button {
+    min-height: 61px;
+    grid-template-columns: 1fr;
+    place-items: center;
+    gap: 3px;
+    padding: 5px 2px;
+    text-align: center;
+  }
+
+  .pulseTrack li button > span {
+    width: 23px;
+    height: 23px;
+  }
+
+  .pulseTrack li button > div {
+    display: block;
+  }
+
+  .pulseTrack li button > div b,
+  .stepCheck {
+    display: none;
+  }
+
+  .workspace {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .focusPlane,
+  .liveBrief {
+    border-radius: 0;
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .focusPlane {
+    min-height: 0;
+    background:
+      linear-gradient(90deg, transparent 0 25px, rgba(169, 38, 9, 0.18) 25px 26px, transparent 26px),
+      var(--paper);
+  }
+
+  .stepView {
+    padding: 0 14px 20px 38px;
+  }
+
+  .stepHero {
+    min-height: 112px;
+    padding-top: 18px;
+  }
+
+  .stepHero h1 {
+    font-size: 25px;
+  }
+
+  .ideaCapture {
+    padding-right: 12px;
+    padding-left: 34px;
+  }
+
+  .ideaCapture::before {
+    left: 24px;
+  }
+
+  .captureHeading {
+    align-items: flex-start;
+    padding: 10px 0;
+  }
+
+  .polishModes,
+  .comparisonLanes,
+  .auditStrip,
+  .briefEditor,
+  .resolutionChoices,
+  .constraintGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .polishModes label,
+  .comparisonLanes > section,
+  .auditStrip section,
+  .resolutionChoices label,
+  .constraintGrid > label {
+    border-right: 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .fieldShell[data-wide="true"] {
+    grid-column: auto;
+  }
+
+  .stepActions,
+  .stepActions > div,
+  .comparisonActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .stepActions button,
+  .comparisonActions button {
+    width: 100%;
+  }
+
+  .revisionStudio {
+    grid-template-columns: 1fr;
+  }
+
+  .revisionStudio > div:first-child {
+    grid-column: auto;
+  }
+
+  .candidateHistory article {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .candidateHistory article button {
+    grid-column: 2 / -1;
+  }
+
+  .liveBrief {
+    position: relative;
+    top: auto;
+    margin-bottom: 52px;
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intakeCenter *,
+  .intakeCenter *::before,
+  .intakeCenter *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

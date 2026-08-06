@@ -20,7 +20,10 @@ export type ProviderName = "openai" | "deepseek";
 export type TaskType =
   | "brief_polish"
   | "brief_anchor_extract"
-  | "brief_to_draft";
+  | "brief_intake_questions"
+  | "brief_intake_synthesize"
+  | "brief_to_draft"
+  | "casefile_chat";
 export type ResolutionMode =
   | "author_anchored"
   | "agent_proposed"
@@ -68,6 +71,136 @@ export interface BriefContent {
   author_anchors: BriefAnchor[];
   boundary_text: string | null;
   creative_constraints: CreativeConstraint[];
+  core_selling_points?: string[];
+  content_outline?: string[];
+  scope_estimate?: string | null;
+  risk_notes?: string[];
+}
+
+export type BriefIntakeStage =
+  | "idea"
+  | "questions"
+  | "confirmation"
+  | "brief_review";
+export type BriefIntakeFieldSource =
+  | "user_original"
+  | "user_confirmed"
+  | "agent_suggestion"
+  | "unresolved";
+export type BriefIntakeAnswerStatus =
+  | "unanswered"
+  | "user_answered"
+  | "suggestion_accepted"
+  | "pending";
+export type BriefIntakeConstraintCategory =
+  | "must_keep"
+  | "must_avoid"
+  | "scope"
+  | "cast"
+  | "duration"
+  | "content_scale"
+  | "other";
+
+export interface BriefIntakeFieldSources {
+  concept: BriefIntakeFieldSource;
+  core_selling_points: BriefIntakeFieldSource;
+  content_outline: BriefIntakeFieldSource;
+  reasoning_goal: BriefIntakeFieldSource;
+  resolution_mode: BriefIntakeFieldSource;
+  author_answer: BriefIntakeFieldSource;
+  constraints: BriefIntakeFieldSource;
+  scope_estimate: BriefIntakeFieldSource;
+  risk_notes: BriefIntakeFieldSource;
+}
+
+export interface BriefIntakeConstraint {
+  constraint_key: string;
+  category: BriefIntakeConstraintCategory;
+  statement: string;
+  strength: ConstraintStrength;
+  confirmed: boolean;
+  source: BriefIntakeFieldSource;
+}
+
+export interface BriefIntakePendingDecision {
+  decision_key: string;
+  prompt: string;
+  impact: string;
+  source: "unresolved";
+}
+
+export interface BriefIntakeCandidateContent {
+  concept: string;
+  core_selling_points: string[];
+  content_outline: string[];
+  reasoning_goal: string;
+  resolution_mode: ResolutionMode;
+  author_answer: string | null;
+  constraints: BriefIntakeConstraint[];
+  pending_decisions: BriefIntakePendingDecision[];
+  scope_estimate: string | null;
+  risk_notes: string[];
+  field_sources: BriefIntakeFieldSources;
+}
+
+export interface BriefIntakeQuestionView {
+  question_key: string;
+  ordinal: number;
+  prompt: string;
+  impact: string;
+  required: boolean;
+  suggestions: string[];
+  answer_status: BriefIntakeAnswerStatus;
+  answer_text: string | null;
+  answer_source: BriefIntakeFieldSource | null;
+}
+
+export interface BriefIntakeCandidateView {
+  candidate_id: number;
+  parent_candidate_id: number | null;
+  generated_by_task_run_id: number | null;
+  origin:
+    | "agent_synthesis"
+    | "dialogue_revision"
+    | "manual_edit"
+    | "legacy_import";
+  basis_input_hash: string;
+  content_hash: string;
+  content: BriefIntakeCandidateContent;
+  is_current: boolean;
+  is_adopted: boolean;
+  is_saved: boolean;
+  is_stale: boolean;
+  can_activate: boolean;
+  saved_at: string | null;
+  created_at: string | null;
+}
+
+export interface BriefIntakeView {
+  brief_intake_id: number;
+  project_id: number;
+  revision: number;
+  stage: BriefIntakeStage;
+  current_source: SourceRecordView | null;
+  current_questions_task_run_id: number | null;
+  questions: BriefIntakeQuestionView[];
+  hard_questions_resolved: boolean;
+  current_candidate_id: number | null;
+  adopted_candidate_id: number | null;
+  candidates: BriefIntakeCandidateView[];
+  pending_decisions: BriefIntakePendingDecision[];
+  brief: {
+    brief_id: number;
+    draft_revision: number;
+    current_version_id: number | null;
+    has_content: boolean;
+  };
+  updated_at: string | null;
+}
+
+export interface BriefIntakeAdoptionView {
+  intake: BriefIntakeView;
+  brief: BriefView;
 }
 
 export interface BriefAnchor {
@@ -91,11 +224,15 @@ export interface SourceRecordView {
   created_at: string;
 }
 
+export type PolishMode = "proofread" | "rewrite" | "narrative_enhance";
+
 export interface BriefPolishResult {
   input_hash: string;
   polished_text: string;
   preserved_intent_summary: string;
   ambiguities: string[];
+  introduced_details?: string[];
+  polish_mode?: PolishMode;
   proposal_source_record: SourceRecordView;
 }
 
@@ -109,10 +246,52 @@ export interface BriefAnchorExtractResult {
   warnings: string[];
 }
 
+export interface BriefIntakeQuestionsResult {
+  input_hash: string;
+  questions: Array<{
+    question_key: string;
+    ordinal: number;
+    prompt: string;
+    impact: string;
+    required: boolean;
+    suggestions: string[];
+  }>;
+  stale: boolean;
+}
+
+export interface BriefIntakeSynthesizeResult {
+  input_hash: string;
+  candidate_id: number;
+  content_hash: string;
+  origin: "agent_synthesis" | "dialogue_revision";
+  stale: boolean;
+}
+
 export interface BriefVersionView {
   brief_version_id: number;
   version_no: number;
   content: BriefContent;
+}
+
+export interface TaskFailureIssue {
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface TaskFailure {
+  code: string;
+  message: string;
+  retryable: boolean;
+  issues: TaskFailureIssue[];
+}
+
+export interface GenerationCandidateSummary {
+  title: string;
+  content_hash: string;
+  object_counts: Record<string, number>;
+  reasoning_questions: string[];
+  constraint_statements: string[];
 }
 
 export interface TaskView {
@@ -132,14 +311,48 @@ export interface TaskView {
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
+  input_brief_intake_id: number | null;
+  input_brief_intake_revision: number | null;
+  base_brief_intake_candidate_id: number | null;
+  agent_thread_id: number | null;
+  input_message_id: number | null;
+  output_message_id: number | null;
   input_hash: string;
   attempt_count: number;
   usage: Record<string, unknown>;
   result_snapshot_id: number | null;
-  result: BriefPolishResult | BriefAnchorExtractResult | null;
+  result:
+    | BriefPolishResult
+    | BriefAnchorExtractResult
+    | BriefIntakeQuestionsResult
+    | BriefIntakeSynthesizeResult
+    | GenerationCandidateSummary
+    | null;
   error_code: string | null;
+  failure: TaskFailure | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface DraftCandidateView extends GenerationCandidateSummary {
+  task_run_id: number;
+  brief_version_no: number;
+  is_current_brief: boolean;
+  is_current: boolean;
+  is_adopted: boolean;
+  can_adopt: boolean;
+  provider: ProviderName;
+  model_id: string;
+  attempt_count: number;
+  created_at: string | null;
+  completed_at: string | null;
+}
+
+export interface DraftCandidateAdoption {
+  task_run_id: number;
+  title: string;
+  content_hash: string;
+  adopted: true;
 }
 
 export interface TaskEventView {
@@ -203,6 +416,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions): Prom
     };
     throw new ApiError(response.status, await response.json().catch(() => fallback));
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -247,5 +461,33 @@ export async function streamTaskEvents(
 }
 
 export function errorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    const localizedMessages: Record<string, string> = {
+      request_invalid: "提交内容不符合接口要求，请检查后重试。",
+      identity_required: "当前请求缺少本地用户身份。",
+      identity_invalid: "当前本地用户身份无效。",
+      base_revision_required: "缺少草稿版本信息，请刷新页面后重试。",
+      base_revision_invalid: "草稿版本信息无效，请刷新页面后重试。",
+      draft_revision_conflict: "草稿已被更新，请刷新后重新提交。",
+      brief_revision_conflict: "创作简报已被更新，请刷新后重新提交。",
+      resource_conflict: "当前修改与已保存的数据冲突，请刷新后重试。",
+      database_unavailable: "数据库暂时不可用，请稍后重试。",
+      database_error: "数据库请求失败，请稍后重试。",
+      internal_error: "请求暂时无法完成，请稍后重试。",
+      not_found: "没有找到请求的数据。",
+      method_not_allowed: "当前操作不受支持。",
+      provider_setting_required: "请先配置当前模型服务。",
+      provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
+      draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
+      brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
+      brief_extraction_input_empty: "请先填写作者底牌或创作边界。",
+      source_content_blank: "来源原稿不能为空。",
+      brief_invalid: "创作简报内容不完整，请检查后重试。",
+    };
+    const localizedMessage = localizedMessages[error.body.code];
+    if (localizedMessage) return localizedMessage;
+    if (/[\u3400-\u9fff]/u.test(error.body.message)) return error.body.message;
+    return `请求未能完成（错误代码：${error.body.code}）。`;
+  }
   return error instanceof Error ? error.message : "请求未完成，请检查 API 与数据库状态。";
 }

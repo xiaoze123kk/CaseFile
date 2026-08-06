@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_intake_questions",
+  "version": "brief-intake-questions-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "d1f96b6bfee51b90f4c8de9cad9b8b512e6e0540a8cc2d890060255dc1337a62",
+  "previous_version": null,
+  "change_summary": "Initial production prompt for zero-to-two direction-changing intake questions."
+}

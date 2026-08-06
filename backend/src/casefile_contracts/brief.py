@@ -52,6 +52,34 @@ class CreativeConstraint(BaseModel):
     strength: Strength
 
 
+class CoreSellingPoint(RootModel[str]):
+    root: Annotated[str, Field(max_length=500, min_length=1)]
+
+
+class CoreSellingPoints(RootModel[list[CoreSellingPoint]]):
+    root: Annotated[list[CoreSellingPoint], Field(max_length=8)]
+
+
+class ContentOutlineItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class ContentOutline(RootModel[list[ContentOutlineItem]]):
+    root: Annotated[list[ContentOutlineItem], Field(max_length=16)]
+
+
+class ScopeEstimate(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class RiskNote(RootModel[str]):
+    root: Annotated[str, Field(max_length=500, min_length=1)]
+
+
+class RiskNotes(RootModel[list[RiskNote]]):
+    root: Annotated[list[RiskNote], Field(max_length=12)]
+
+
 class Schema(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -65,3 +93,7 @@ class Schema(BaseModel):
     author_anchors: list[AuthorAnchor]
     boundary_text: BoundaryText | None
     creative_constraints: list[CreativeConstraint]
+    core_selling_points: CoreSellingPoints | None = None
+    content_outline: ContentOutline | None = None
+    scope_estimate: ScopeEstimate | None = None
+    risk_notes: RiskNotes | None = None

@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 38-table personal foundation."""
+"""Disposable PostgreSQL verification for the 45-table personal foundation."""
 
 from __future__ import annotations
 
@@ -25,9 +25,16 @@ pytestmark = pytest.mark.postgres
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "20260728084832"
 BUSINESS_TABLES = {
+    "agent_messages",
+    "agent_patch_operations",
+    "agent_patch_sets",
+    "agent_threads",
     "audit_events",
     "brief_versions",
     "briefs",
+    "brief_intake_candidates",
+    "brief_intake_questions",
+    "brief_intakes",
     "canon_versions",
     "casefile_constraints",
     "casefile_contract_refs",
@@ -816,7 +823,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_38_identity_tables_without_team_columns(
+def test_database_has_45_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -830,7 +837,7 @@ def test_database_has_38_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 38
+    assert len(identity_rows) == 45
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
@@ -1610,7 +1617,9 @@ def test_concurrent_first_canon_confirmation_commits_once(migrated_engine: Engin
     assert outcomes.count(False) == 1
 
 
-def test_source_records_are_immutable_and_project_scoped(connection: Connection) -> None:
+def test_source_records_and_task_candidates_are_immutable_and_project_scoped(
+    connection: Connection,
+) -> None:
     first = _seed_lineage(connection, "source-first")
     second = _seed_lineage(connection, "source-second")
 
@@ -1727,6 +1736,66 @@ def test_source_records_are_immutable_and_project_scoped(connection: Connection)
         ).scalar_one()
     )
 
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                UPDATE user_provider_settings
+                   SET credential_status = 'deleted',
+                       credential_deleted_at = CURRENT_TIMESTAMP
+                 WHERE id = :setting_id
+                """
+            ),
+            {"setting_id": provider_setting_id},
+        )
+
+    connection.execute(
+        sa.text(
+            """
+            UPDATE user_provider_settings
+               SET credential_status = 'deleted',
+                   credential_deleted_at = CURRENT_TIMESTAMP,
+                   secret_ciphertext = NULL,
+                   secret_nonce = NULL,
+                   key_version = NULL,
+                   secret_last_four = NULL
+             WHERE id = :setting_id
+            """
+        ),
+        {"setting_id": provider_setting_id},
+    )
+    deleted_material = connection.execute(
+        sa.text(
+            """
+            SELECT secret_ciphertext, secret_nonce, key_version, secret_last_four
+              FROM user_provider_settings
+             WHERE id = :setting_id
+            """
+        ),
+        {"setting_id": provider_setting_id},
+    ).one()
+    assert deleted_material == (None, None, None, None)
+
+    connection.execute(
+        sa.text(
+            """
+            UPDATE user_provider_settings
+               SET credential_status = 'unverified',
+                   credential_deleted_at = NULL,
+                   secret_ciphertext = :ciphertext,
+                   secret_nonce = :nonce,
+                   key_version = 1,
+                   secret_last_four = 'test'
+             WHERE id = :setting_id
+            """
+        ),
+        {
+            "setting_id": provider_setting_id,
+            "ciphertext": b"x" * 17,
+            "nonce": b"n" * 12,
+        },
+    )
+
     task_parameters = {
         "project_id": first.project_id,
         "casefile_id": first.casefile_id,
@@ -1807,6 +1876,41 @@ def test_source_records_are_immutable_and_project_scoped(connection: Connection)
         ).scalar_one()
     )
     assert proposal_id > revision_id
+
+    candidate_attempt_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO task_attempts (
+                    project_id, task_run_id, attempt_no, status, candidate_jsonb
+                ) VALUES (
+                    :project_id, :task_run_id, 1, 'succeeded',
+                    '{"candidate": true}'::jsonb
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "task_run_id": task_run_id,
+            },
+        ).scalar_one()
+    )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text(
+                """
+                UPDATE task_attempts
+                   SET candidate_jsonb = '{"candidate": false}'::jsonb
+                 WHERE id = :attempt_id
+                """
+            ),
+            {"attempt_id": candidate_attempt_id},
+        )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text("DELETE FROM task_attempts WHERE id = :attempt_id"),
+            {"attempt_id": candidate_attempt_id},
+        )
 
     with _expect_database_error(connection):
         connection.execute(

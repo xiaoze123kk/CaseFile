@@ -1,10 +1,16 @@
-"""Provider-neutral requests and results for the three Brief Agent tasks."""
+"""Provider-neutral requests and results for durable CaseFile Agent tasks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -24,6 +30,10 @@ class BriefPolishCandidate(StrictAgentOutput):
     polished_text: str = Field(min_length=1)
     preserved_intent_summary: str = Field(min_length=1)
     ambiguities: list[str] = Field(default_factory=list)
+    introduced_details: list[str] = Field(default_factory=list)
+
+
+PolishMode = Literal["proofread", "rewrite", "narrative_enhance"]
 
 
 class ExtractedAnchor(StrictAgentOutput):
@@ -43,31 +53,85 @@ class BriefAnchorExtractCandidate(StrictAgentOutput):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CaseFileChatSuggestionCandidate(StrictAgentOutput):
+    """One reviewable field-level change proposed against the frozen CaseFile."""
+
+    object_id: str = Field(min_length=1)
+    path: str = Field(
+        min_length=2,
+        pattern=r"^/(?:[^/~]|~[01])+(?:/(?:[^/~]|~[01])+)*$",
+    )
+    value_json: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class CaseFileChatCandidate(StrictAgentOutput):
+    """An author-facing answer plus optional changes that still require approval."""
+
+    answer: str = Field(min_length=1)
+    referenced_object_ids: list[str] = Field(default_factory=list)
+    suggestions: list[CaseFileChatSuggestionCandidate] = Field(default_factory=list)
+
+
 @dataclass(frozen=True, slots=True)
-class BriefPolishRequest:
+class BriefIntakeQuestionsRequest:
     task_run_id: int
+    prompt_version: str
     source_text: str
+    existing_questions: list[dict[str, Any]]
+    mode: Literal["initial", "additional"]
     input_hash: str
     model_id: str
     api_key: str | None
     max_turns: int
     emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeSynthesizeRequest:
+    task_run_id: int
+    prompt_version: str
+    input_data: dict[str, Any]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class BriefPolishRequest:
+    task_run_id: int
+    prompt_version: str
+    source_text: str
+    polish_mode: PolishMode
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
 class BriefAnchorExtractRequest:
     task_run_id: int
+    prompt_version: str
     brief: dict[str, Any]
     input_hash: str
     model_id: str
     api_key: str | None
     max_turns: int
     emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
 class GenerationRequest:
     task_run_id: int
+    prompt_version: str
     brief: dict[str, Any]
     casefile_id: str
     brief_id: str
@@ -79,7 +143,24 @@ class GenerationRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
-    repair_feedback: tuple[str, ...] = ()
+    network_retries: int = 2
+    repair_feedback: tuple[dict[str, Any], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFileChatRequest:
+    task_run_id: int
+    prompt_version: str
+    casefile: dict[str, Any]
+    history: tuple[dict[str, str], ...]
+    message: str
+    editable_fields_by_collection: dict[str, tuple[str, ...]]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(slots=True)
@@ -113,11 +194,30 @@ class GenerationResult:
 class BriefPolishResult:
     candidate: BriefPolishCandidate
     usage: dict[str, Any]
+    polish_mode: PolishMode
 
 
 @dataclass(frozen=True, slots=True)
 class BriefAnchorExtractResult:
     candidate: BriefAnchorExtractCandidate
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFileChatResult:
+    candidate: CaseFileChatCandidate
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeQuestionsResult:
+    candidate: BriefIntakeQuestionSetContract
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeSynthesizeResult:
+    candidate: BriefIntakeCandidateContract
     usage: dict[str, Any]
 
 

@@ -16,7 +16,13 @@ FIXTURE_ROOT = REPO_ROOT / "fixtures"
 GENERATED_PYTHON_SRC = REPO_ROOT / "contracts" / "generated" / "python" / "src"
 sys.path.insert(0, str(GENERATED_PYTHON_SRC))
 
-from casefile_contracts import Brief, CaseFile, PatchCandidate, ValidationIssue  # noqa: E402
+from casefile_contracts import (  # noqa: E402
+    Brief,
+    CaseFile,
+    PatchCandidate,
+    TaskRun,
+    ValidationIssue,
+)
 
 CORE_COLLECTIONS = {
     "resolution_specs",
@@ -96,6 +102,16 @@ def validators(
             registry=registry,
             format_checker=checker,
         ),
+        "task": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v1/task/task.schema.json"
+                    "#/$defs/TaskRun"
+                )
+            },
+            registry=registry,
+            format_checker=checker,
+        ),
     }
 
 
@@ -164,7 +180,7 @@ def walk_object_refs(value: Any) -> list[dict[str, str]]:
 def test_all_schema_files_are_valid_draft_2020_12(
     schemas: dict[str, dict[str, Any]],
 ) -> None:
-    assert len(schemas) == 8
+    assert len(schemas) == 9
     for schema in schemas.values():
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         Draft202012Validator.check_schema(schema)
@@ -250,6 +266,48 @@ def test_target_neutral_brief_roundtrips_and_enforces_resolution_mode(
     duplicate_sources = copy.deepcopy(fixture)
     duplicate_sources["source_record_ids"] = [1, 1]
     assert list(validators["brief"].iter_errors(duplicate_sources))
+
+
+def test_casefile_chat_task_roundtrips_with_message_lineage(
+    validators: dict[str, Draft202012Validator],
+) -> None:
+    task = {
+        "task_run_id": 21,
+        "project_id": 8,
+        "task_type": "casefile_chat",
+        "status": "succeeded",
+        "stage": "completed",
+        "provider": "deepseek",
+        "model_id": "deepseek-chat",
+        "input_draft_revision": 4,
+        "input_brief_revision": None,
+        "input_source_record_id": None,
+        "input_brief_intake_id": None,
+        "input_brief_intake_revision": None,
+        "base_brief_intake_candidate_id": None,
+        "agent_thread_id": 34,
+        "input_message_id": 55,
+        "output_message_id": 56,
+        "input_hash": "a" * 64,
+        "attempt_count": 1,
+        "usage": {"total_tokens": 120},
+        "result": {
+            "answer": "已结合完整卷宗给出建议。",
+            "referenced_object_ids": ["evt_restart"],
+            "patch_set_id": 13,
+            "stale": False,
+        },
+        "failure": None,
+    }
+
+    validators["task"].validate(task)
+    assert (
+        TaskRun.model_validate(task).model_dump(mode="json", exclude_unset=True) == task
+    )
+
+    missing_lineage = copy.deepcopy(task)
+    del missing_lineage["agent_thread_id"]
+    assert list(validators["task"].iter_errors(missing_lineage))
 
 
 def test_structural_invalid_fixtures_are_rejected_at_expected_paths(
