@@ -81,6 +81,8 @@ function buildFakeBackend() {
   let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
   const adoptionDraftRevisions: number[] = [];
+  let failNextDraftAdoption = false;
+  let draftAdoptionGate: Promise<void> | null = null;
   let projects: ProjectView[] = [
     {
       id: 1,
@@ -446,6 +448,12 @@ function buildFakeBackend() {
     setFailNextQuestionRevision: (value: boolean) => {
       failNextQuestionRevision = value;
     },
+    setFailNextDraftAdoption: (value: boolean) => {
+      failNextDraftAdoption = value;
+    },
+    setDraftAdoptionGate: (gate: Promise<void> | null) => {
+      draftAdoptionGate = gate;
+    },
     getGenerationDraftRevisions: () => generationDraftRevisions,
     getAdoptionDraftRevisions: () => adoptionDraftRevisions,
     listConfiguredProviders: async () => configuredProviders,
@@ -589,8 +597,29 @@ function buildFakeBackend() {
     },
     fetchTask: async (_projectId: number, taskRunId: number) =>
       terminalTask(taskRunId),
-    waitForTask: async (_projectId: number, taskRunId: number) =>
-      terminalTask(taskRunId),
+    waitForTask: async (
+      _projectId: number,
+      taskRunId: number,
+      onTick?: (task: TaskView) => void,
+    ) => {
+      const taskType = (taskTypes.get(taskRunId) ?? "brief_to_draft") as TaskView["task_type"];
+      for (const stage of ["planning", "generating", "validating"] as const) {
+        onTick?.({
+          ...baseTask(taskRunId),
+          task_type: taskType,
+          status: "running",
+          stage,
+        });
+        await Promise.resolve();
+      }
+      onTick?.({
+        ...baseTask(taskRunId),
+        task_type: taskType,
+        status: "succeeded",
+        stage: "completed",
+      });
+      return terminalTask(taskRunId);
+    },
     answerQuestion: async (
       _projectId: number,
       _intakeRevision: number,
@@ -719,6 +748,15 @@ function buildFakeBackend() {
       expectedDraftRevision: number,
     ) => {
       adoptionDraftRevisions.push(expectedDraftRevision);
+      const gate = draftAdoptionGate;
+      if (gate) {
+        draftAdoptionGate = null;
+        await gate;
+      }
+      if (failNextDraftAdoption) {
+        failNextDraftAdoption = false;
+        throw new Error("候选采用服务暂不可用。");
+      }
       if (expectedDraftRevision !== caseDraftRevision) {
         throw new Error("CaseFile Draft revision is stale");
       }
@@ -761,6 +799,8 @@ afterEach(() => {
   fake.backend.setConfiguredProviders(["openai"]);
   fake.backend.setFailOpenaiAuth(false);
   fake.backend.setFailNextQuestionRevision(false);
+  fake.backend.setFailNextDraftAdoption(false);
+  fake.backend.setDraftAdoptionGate(null);
   fake.backend.resetProjects();
 });
 
@@ -938,22 +978,69 @@ describe("intake center", () => {
     expect(fake.backend.getGenerationDraftRevisions().slice(-3)).toEqual([
       17, 17, 17,
     ]);
+    expect(
+      screen.getByRole("progressbar", { name: "候选生成进度" }),
+    ).toHaveAttribute("aria-valuenow", "3");
+    expect(
+      screen.getByText("三份候选已完成结构与引用校验"),
+    ).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /封存室夜班稿/u })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /第七码互证稿/u })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /缺页校准稿/u }));
-    fireEvent.click(screen.getByRole("button", { name: "预览工作台" }));
-    expect(routerPush).toHaveBeenCalledWith("/workbench");
+    expect(
+      screen.queryByRole("button", { name: "预览工作台" }),
+    ).not.toBeInTheDocument();
+
+    fake.backend.setFailNextDraftAdoption(true);
     fireEvent.click(
       screen.getByRole("button", { name: /采用为当前工作稿/u }),
     );
     await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "候选采用服务暂不可用。 当前候选未被修改，可以重试。",
+    );
+    expect(routerPush).not.toHaveBeenCalled();
+
+    let releaseAdoption = () => {};
+    fake.backend.setDraftAdoptionGate(
+      new Promise<void>((resolve) => {
+        releaseAdoption = resolve;
+      }),
+    );
+    const adoptionCountBeforeRetry =
+      fake.backend.getAdoptionDraftRevisions().length;
+    fireEvent.click(
+      screen.getByRole("button", { name: /采用为当前工作稿/u }),
+    );
+    await flush();
+
+    const adopting = screen.getByRole("button", { name: "正在采用…" });
+    expect(adopting).toBeDisabled();
+    fireEvent.click(adopting);
+    expect(fake.backend.getAdoptionDraftRevisions()).toHaveLength(
+      adoptionCountBeforeRetry + 1,
+    );
+
+    await act(async () => {
+      releaseAdoption();
+    });
+    await flush();
+
     expect(fake.backend.getAdoptionDraftRevisions().at(-1)).toBe(17);
+    expect(routerPush).toHaveBeenCalledTimes(1);
+    expect(routerPush).toHaveBeenLastCalledWith("/workbench?project=1");
     expect(
-      screen.getByRole("button", { name: /已是当前工作稿/u }),
+      screen.getByRole("button", { name: /打开分析师工作台/u }),
     ).toBeInTheDocument();
+
+    routerPush.mockClear();
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开分析师工作台/u }),
+    );
+    expect(routerPush).toHaveBeenCalledWith("/workbench?project=1");
   });
 
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {

@@ -583,6 +583,120 @@
   background: var(--ink);
 }
 
+.generationSlots {
+  min-width: 0;
+  padding: 13px 14px 11px;
+  border-left: 1px solid var(--rule);
+  background: rgba(244, 241, 234, 0.44);
+}
+
+.generationMeterHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.generationMeterHeader strong {
+  font: 700 20px/1 "Cascadia Mono", Consolas, monospace;
+}
+
+.generationMeterHeader span,
+.generationCurrentAction,
+.generationSlotHeading span,
+.generationSlotList small {
+  color: var(--ink-muted);
+  font-size: var(--font-micro);
+}
+
+.generationMeter {
+  height: 6px;
+  margin: 8px 0 7px;
+  overflow: hidden;
+  border: 1px solid var(--red-line);
+  background: var(--paper-high);
+}
+
+.generationMeter > span {
+  display: block;
+  width: var(--generation-progress);
+  height: 100%;
+  background: var(--red);
+  transition: width 240ms ease-out;
+}
+
+.generationCurrentAction {
+  min-height: 18px;
+  margin: 0 0 8px;
+  color: var(--red);
+  line-height: 1.35;
+}
+
+.generationSlotList {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.generationSlotList li {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 0 5px 10px;
+  border-left: 2px solid var(--rule);
+}
+
+.generationSlotList li[data-slot-status="running"] {
+  border-left-color: var(--red);
+}
+
+.generationSlotList li[data-slot-status="succeeded"] {
+  border-left-color: var(--ink);
+}
+
+.generationSlotList li[data-slot-status="failed"] {
+  border-left-color: var(--red);
+  background: color-mix(in srgb, var(--red) 5%, transparent);
+}
+
+.generationSlotHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.generationSlotHeading strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--font-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generationSlotHeading span {
+  flex: 0 0 auto;
+  text-align: right;
+}
+
+.generationSlotList small {
+  font-family: "Cascadia Mono", Consolas, monospace;
+}
+
+.generationSlotList button {
+  justify-self: start;
+  min-height: 24px;
+  margin-top: 2px;
+  padding: 0 7px;
+  border-color: var(--red);
+  color: var(--red);
+  font-size: var(--font-micro);
+}
+
 .generateButton {
   display: flex;
   min-height: 100%;
@@ -865,6 +979,22 @@
   gap: 8px;
 }
 
+.candidateAdoptionError {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 9px 10px;
+  color: var(--ink);
+  border-left: 3px solid var(--red);
+  background: color-mix(in srgb, var(--red) 7%, var(--paper-high));
+  font-size: var(--font-caption);
+  line-height: 1.45;
+}
+
+.candidateAdoptionError b {
+  color: var(--red);
+}
+
 .oldCandidates {
   margin: 0 18px 18px;
   border: 1px solid var(--rule);
@@ -922,6 +1052,11 @@
     grid-template-columns: minmax(190px, 0.8fr) minmax(300px, 1.2fr);
   }
 
+  .generationSlots {
+    border-top: 1px solid var(--rule);
+    border-left: 0;
+  }
+
   .generateButton {
     min-height: 58px;
     grid-column: 1 / -1;
@@ -961,6 +1096,7 @@
   .reviewActions > div { display: grid; }
   .generationDesk { grid-template-columns: 1fr; margin: 10px; }
   .generationCopy { border-right: 0; border-bottom: 1px solid var(--ink); }
+  .generationSlots { border-top: 1px solid var(--rule); }
   .generationProgress { min-height: 88px; }
   .candidateArchive,
   .oldCandidates,
@@ -970,7 +1106,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .generationProgress li[data-active="true"] b,
+  .generationMeter > span,
   .candidateCard {
     animation: none;
+    transition: none;
   }
 }

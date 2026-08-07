@@ -16,6 +16,7 @@ import type {
   BriefPolishResult,
   CandidateStrategy,
   ProviderName,
+  TaskView,
 } from "@/lib/api-client";
 import {
   buildWorkbenchCandidates,
@@ -78,6 +79,14 @@ export type CandidateSlotStatus =
   | "running"
   | "succeeded"
   | "failed";
+export type CandidateTaskStage =
+  | "queued"
+  | "planning"
+  | "processing"
+  | "generating"
+  | "validating"
+  | "completed"
+  | "failed";
 
 export const CANDIDATE_SLOT_STRATEGIES: readonly CandidateSlotStrategy[] = [
   "structure_first",
@@ -93,16 +102,39 @@ const CANDIDATE_STRATEGY_TO_FOCUS = {
 
 type CandidateSlot = {
   status: CandidateSlotStatus;
+  stage: CandidateTaskStage;
   taskRunId: number | null;
   attempt: number;
   error: string | null;
 };
 
+export function candidateTaskStageFromTask(
+  task: Pick<TaskView, "status" | "stage">,
+): CandidateTaskStage {
+  if (task.status === "succeeded" || task.stage === "completed") {
+    return "completed";
+  }
+  if (task.status === "failed" || task.status === "cancelled" || task.stage === "failed") {
+    return "failed";
+  }
+  if (task.stage === "planning") return "planning";
+  if (task.stage === "generating") return "generating";
+  if (task.stage === "validating") return "validating";
+  if (task.stage === "queued" || task.stage === "preparing") return "queued";
+  return "processing";
+}
+
 function createCandidateSlots(): Record<CandidateSlotStrategy, CandidateSlot> {
   return Object.fromEntries(
     CANDIDATE_SLOT_STRATEGIES.map((strategy) => [
       strategy,
-      { status: "pending", taskRunId: null, attempt: 1, error: null },
+      {
+        status: "pending",
+        stage: "queued",
+        taskRunId: null,
+        attempt: 1,
+        error: null,
+      },
     ]),
   ) as Record<CandidateSlotStrategy, CandidateSlot>;
 }
@@ -140,6 +172,7 @@ type CaseSessionAction =
       type: "update_generation_slot";
       strategy: CandidateSlotStrategy;
       status: CandidateSlotStatus;
+      stage?: CandidateTaskStage;
       taskRunId?: number | null;
       attempt?: number;
       error?: string | null;
@@ -201,6 +234,7 @@ export function caseSessionReducer(
     for (const strategy of action.strategies) {
       slots[strategy] = {
         status: "running",
+        stage: "queued",
         taskRunId: null,
         attempt: 1,
         error: null,
@@ -218,6 +252,7 @@ export function caseSessionReducer(
           ...state.generation.slots,
           [action.strategy]: {
             status: action.status,
+            stage: action.stage ?? previous.stage,
             taskRunId: action.taskRunId ?? previous.taskRunId,
             attempt: action.attempt ?? previous.attempt,
             error: action.error ?? null,
@@ -859,6 +894,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           type: "update_generation_slot",
           strategy,
           status: "succeeded",
+          stage: "completed",
         });
       }
       const draft = await fetchCaseDraft(projectId);
@@ -891,11 +927,24 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 attempt:
                   requestedStrategy === firstStrategy ? requestedAttempt : 1,
               });
-              await waitForTask(projectId, task.task_run_id);
+              await waitForTask(projectId, task.task_run_id, (latestTask) => {
+                dispatch({
+                  type: "update_generation_slot",
+                  strategy: firstStrategy,
+                  status:
+                    latestTask.status === "succeeded"
+                      ? "succeeded"
+                      : latestTask.status === "failed" || latestTask.status === "cancelled"
+                        ? "failed"
+                        : "running",
+                  stage: candidateTaskStageFromTask(latestTask),
+                });
+              });
               dispatch({
                 type: "update_generation_slot",
                 strategy: firstStrategy,
                 status: "succeeded",
+                stage: "completed",
               });
               dispatch({ type: "advance_generation", stage: 2 });
               return provider;
@@ -904,6 +953,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 type: "update_generation_slot",
                 strategy: firstStrategy,
                 status: "failed",
+                stage: "failed",
                 taskRunId,
                 error: error instanceof Error ? error.message : "生成失败",
               });
@@ -933,13 +983,27 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 type: "update_generation_slot",
                 strategy,
                 status: "running",
+                stage: "queued",
                 taskRunId,
               });
-              await waitForTask(projectId, task.task_run_id);
+              await waitForTask(projectId, task.task_run_id, (latestTask) => {
+                dispatch({
+                  type: "update_generation_slot",
+                  strategy,
+                  status:
+                    latestTask.status === "succeeded"
+                      ? "succeeded"
+                      : latestTask.status === "failed" || latestTask.status === "cancelled"
+                        ? "failed"
+                        : "running",
+                  stage: candidateTaskStageFromTask(latestTask),
+                });
+              });
               dispatch({
                 type: "update_generation_slot",
                 strategy,
                 status: "succeeded",
+                stage: "completed",
               });
               dispatch({ type: "advance_generation", stage: 3 });
             } catch (error) {
@@ -947,6 +1011,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 type: "update_generation_slot",
                 strategy,
                 status: "failed",
+                stage: "failed",
                 taskRunId,
                 error: error instanceof Error ? error.message : "生成失败",
               });
@@ -1005,6 +1070,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
               type: "update_generation_slot",
               strategy,
               status: "running",
+              stage: "queued",
               attempt: 2,
             });
             try {
@@ -1021,14 +1087,28 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 type: "update_generation_slot",
                 strategy,
                 status: "running",
+                stage: "queued",
                 taskRunId,
                 attempt: 2,
               });
-              await waitForTask(projectId, task.task_run_id);
+              await waitForTask(projectId, task.task_run_id, (latestTask) => {
+                dispatch({
+                  type: "update_generation_slot",
+                  strategy,
+                  status:
+                    latestTask.status === "succeeded"
+                      ? "succeeded"
+                      : latestTask.status === "failed" || latestTask.status === "cancelled"
+                        ? "failed"
+                        : "running",
+                  stage: candidateTaskStageFromTask(latestTask),
+                });
+              });
               dispatch({
                 type: "update_generation_slot",
                 strategy,
                 status: "succeeded",
+                stage: "completed",
                 attempt: 2,
               });
             } catch (error) {
@@ -1036,6 +1116,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 type: "update_generation_slot",
                 strategy,
                 status: "failed",
+                stage: "failed",
                 taskRunId,
                 attempt: 2,
                 error: error instanceof Error ? error.message : "生成失败",

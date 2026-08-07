@@ -1,9 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type CSSProperties, useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useRef, useState } from "react";
 
-import { useCaseSession } from "@/features/case-session/case-session-provider";
+import {
+  type CandidateTaskStage,
+  type CandidateSlotStrategy,
+  useCaseSession,
+} from "@/features/case-session/case-session-provider";
 
 import styles from "./intake-late-stages.module.css";
 
@@ -19,12 +23,25 @@ const strategyLabels = {
   reasoning_first: "推理优先",
 } as const;
 
-const slotStatusLabels = {
-  pending: "待生成",
-  running: "生成中",
-  succeeded: "已完成",
-  failed: "失败，可重试",
-} as const;
+const slotStageLabels: Record<CandidateTaskStage, string> = {
+  queued: "已排队，等待 Agent 接手",
+  planning: "正在规划对象结构",
+  processing: "正在处理",
+  generating: "正在生成候选内容",
+  validating: "正在校验对象与引用",
+  completed: "已完成结构与引用校验",
+  failed: "生成失败，可重试",
+};
+
+const macroStageForTaskStage: Record<CandidateTaskStage, number> = {
+  queued: 1,
+  planning: 1,
+  processing: 2,
+  generating: 2,
+  validating: 3,
+  completed: 3,
+  failed: 2,
+};
 
 const statusLabels = {
   pending: "待采用",
@@ -36,8 +53,8 @@ export function DraftCandidatesStage() {
   const router = useRouter();
   const {
     state,
+    activeProjectId,
     generateCandidates,
-    previewCandidate,
     adoptCandidate,
     beginBriefRevision,
     candidateStatus,
@@ -46,9 +63,16 @@ export function DraftCandidatesStage() {
     null,
   );
   const [notice, setNotice] = useState(
-    "候选由真实 Agent 生成，预览工作台为本地样例。",
+    "候选由真实 Agent 生成；采用后将在分析师工作台打开真实工作稿。",
   );
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [adoptingCandidateId, setAdoptingCandidateId] = useState<string | null>(
+    null,
+  );
+  const [adoptionErrors, setAdoptionErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const adoptionInFlightRef = useRef(false);
 
   const currentCandidates = useMemo(
     () =>
@@ -71,18 +95,82 @@ export function DraftCandidatesStage() {
   const hasCandidates = currentCandidates.length > 0;
   const generating = state.generation.status === "generating";
   const readyToGenerate = state.frozenBriefVersion !== null;
+  const activeGenerationStage = useMemo(() => {
+    if (generated) return 3;
+    if (!generating) return 0;
+    return Math.max(
+      1,
+      ...Object.values(state.generation.slots)
+        .filter((slot) => slot.status === "running")
+        .map((slot) => macroStageForTaskStage[slot.stage]),
+    );
+  }, [generated, generating, state.generation.slots]);
+  const currentGenerationAction = useMemo(() => {
+    const runningSlots = Object.entries(state.generation.slots).filter(
+      ([, slot]) => slot.status === "running",
+    );
+    if (runningSlots.length > 0) {
+      const [strategy, slot] = runningSlots[0];
+      const label = strategyLabels[strategy as CandidateSlotStrategy];
+      return runningSlots.length === 1
+        ? `${label}候选：${slotStageLabels[slot.stage]}`
+        : `${runningSlots.length} 份候选并行处理中 · ${slotStageLabels[slot.stage]}`;
+    }
+    const failedCount = Object.values(state.generation.slots).filter(
+      (slot) => slot.status === "failed",
+    ).length;
+    if (failedCount > 0) return `${failedCount} 份候选生成失败，可重试`;
+    if (generated) return "三份候选已完成结构与引用校验";
+    return readyToGenerate ? "等待开始生成" : "等待冻结简报";
+  }, [generated, readyToGenerate, state.generation.slots]);
 
-  function openWorkbench(candidateId: string) {
-    previewCandidate(candidateId);
-    router.push("/workbench");
-  }
-
-  function adopt(candidateId: string) {
-    if (!adoptCandidate(candidateId)) {
-      setNotice("旧简报候选只能预览，不能替换当前工作稿。 ");
+  function openWorkbench() {
+    if (activeProjectId === null) {
+      setNotice("当前会话尚未建案，无法打开分析师工作台。");
       return;
     }
-    setNotice("候选已采用为当前工作稿；工作台默认打开这一版。 ");
+    router.push(`/workbench?project=${activeProjectId}`);
+  }
+
+  async function adopt(candidateId: string) {
+    if (adoptionInFlightRef.current) return;
+    if (activeProjectId === null) {
+      setAdoptionErrors((current) => ({
+        ...current,
+        [candidateId]: "当前会话尚未建案，无法采用候选。",
+      }));
+      return;
+    }
+
+    adoptionInFlightRef.current = true;
+    setAdoptingCandidateId(candidateId);
+    setAdoptionErrors((current) => {
+      const next = { ...current };
+      delete next[candidateId];
+      return next;
+    });
+    try {
+      const adopted = await adoptCandidate(candidateId);
+      if (!adopted) {
+        setAdoptionErrors((current) => ({
+          ...current,
+          [candidateId]: "这份候选已不属于当前冻结简报，请重新生成后再采用。",
+        }));
+        return;
+      }
+      setNotice("候选已采用为当前工作稿，正在打开分析师工作台。");
+      router.push(`/workbench?project=${activeProjectId}`);
+    } catch (caught) {
+      const detail =
+        caught instanceof Error ? caught.message : "服务端未能采用这份候选。";
+      setAdoptionErrors((current) => ({
+        ...current,
+        [candidateId]: `${detail} 当前候选未被修改，可以重试。`,
+      }));
+    } finally {
+      adoptionInFlightRef.current = false;
+      setAdoptingCandidateId(null);
+    }
   }
 
   function startCandidateGeneration() {
@@ -90,7 +178,7 @@ export function DraftCandidatesStage() {
     void generateCandidates()
       .then((ok) => {
         if (ok) {
-          setNotice("三份策略候选已生成并完成引用校验，可以预览或显式采用。");
+          setNotice("三份策略候选已生成并完成引用校验，请明确采用其中一份。");
         } else {
           setNotice("部分策略候选已保留；点击生成按钮只会补齐失败或缺失槽位。");
         }
@@ -120,6 +208,7 @@ export function DraftCandidatesStage() {
     const detailId = `candidate-draft-${candidate.id}`;
     return (
       <article
+        aria-busy={adoptingCandidateId === candidate.id}
         className={styles.candidateCard}
         data-focus={candidate.focus}
         data-status={status}
@@ -172,20 +261,37 @@ export function DraftCandidatesStage() {
             <footer>
               <small>真实 Agent 生成 · 已完成结构与引用校验</small>
               <div>
-                <button onClick={() => openWorkbench(candidate.id)} type="button">预览工作台</button>
-                <button
-                  data-primary="true"
-                  disabled={status === "stale" || status === "current"}
-                  onClick={() => adopt(candidate.id)}
-                  type="button"
-                >
-                  {status === "stale"
-                    ? "旧简报候选不可采用"
-                    : status === "current"
-                      ? "已是当前工作稿"
-                      : "采用为当前工作稿 →"}
-                </button>
+                {status === "current" ? (
+                  <button
+                    data-primary="true"
+                    disabled={adoptingCandidateId !== null}
+                    onClick={openWorkbench}
+                    type="button"
+                  >
+                    打开分析师工作台 →
+                  </button>
+                ) : (
+                  <button
+                    aria-busy={adoptingCandidateId === candidate.id}
+                    data-primary="true"
+                    disabled={status === "stale" || adoptingCandidateId !== null}
+                    onClick={() => void adopt(candidate.id)}
+                    type="button"
+                  >
+                    {status === "stale"
+                      ? "旧简报候选不可采用"
+                      : adoptingCandidateId === candidate.id
+                        ? "正在采用…"
+                        : "采用为当前工作稿 →"}
+                  </button>
+                )}
               </div>
+              {adoptionErrors[candidate.id] ? (
+                <p className={styles.candidateAdoptionError} role="alert">
+                  <b>采用未完成</b>
+                  <span>{adoptionErrors[candidate.id]}</span>
+                </p>
+              ) : null}
             </footer>
           </div>
         ) : null}
@@ -230,8 +336,8 @@ export function DraftCandidatesStage() {
         <ol className={styles.generationProgress}>
           {generationStages.map((stage, index) => {
             const stageNo = index + 1;
-            const complete = generated || state.generation.stage > stageNo;
-            const active = generating && state.generation.stage === stageNo;
+            const complete = generated || activeGenerationStage > stageNo;
+            const active = generating && activeGenerationStage === stageNo;
             return (
               <li data-active={active} data-complete={complete} key={stage}>
                 <b>{complete ? "✓" : stageNo}</b>
@@ -240,25 +346,54 @@ export function DraftCandidatesStage() {
             );
           })}
         </ol>
-        <div aria-live="polite">
-          <strong>{generatedStrategyCount}/3 槽位已完成</strong>
-          <ul>
-            {Object.entries(state.generation.slots).map(([strategy, slot]) => (
-              <li key={strategy}>
-                {strategyLabels[strategy as keyof typeof strategyLabels]}：
-                {slotStatusLabels[slot.status]}
-                {slot.status === "failed" && slot.attempt < 2 ? (
-                  <button
-                    onClick={() =>
-                      retryCandidate(strategy as keyof typeof strategyLabels)
-                    }
-                    type="button"
-                  >
-                    重试
-                  </button>
-                ) : null}
-              </li>
-            ))}
+        <div aria-live="polite" className={styles.generationSlots}>
+          <div className={styles.generationMeterHeader}>
+            <strong>{generatedStrategyCount}/3</strong>
+            <span>份候选已完成</span>
+          </div>
+          <div
+            aria-label="候选生成进度"
+            aria-valuemax={3}
+            aria-valuemin={0}
+            aria-valuenow={generatedStrategyCount}
+            aria-valuetext={`${generatedStrategyCount}/3 份候选已完成`}
+            className={styles.generationMeter}
+            role="progressbar"
+          >
+            <span
+              style={
+                {
+                  "--generation-progress": `${(generatedStrategyCount / 3) * 100}%`,
+                } as CSSProperties
+              }
+            />
+          </div>
+          <p className={styles.generationCurrentAction}>{currentGenerationAction}</p>
+          <ul className={styles.generationSlotList}>
+            {Object.entries(state.generation.slots).map(([strategy, slot]) => {
+              const strategyKey = strategy as CandidateSlotStrategy;
+              const slotLabel =
+                slot.status === "pending" ? "待生成" : slotStageLabels[slot.stage];
+              return (
+                <li data-slot-stage={slot.stage} data-slot-status={slot.status} key={strategy}>
+                  <div className={styles.generationSlotHeading}>
+                    <strong>{strategyLabels[strategyKey]}</strong>
+                    <span>{slotLabel}</span>
+                  </div>
+                  {slot.attempt > 1 ? (
+                    <small>第 {slot.attempt} 次尝试</small>
+                  ) : null}
+                  {slot.status === "failed" && slot.attempt < 2 ? (
+                    <button
+                      onClick={() => retryCandidate(strategyKey)}
+                      type="button"
+                    >
+                      重试
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </div>
         <button
@@ -307,7 +442,7 @@ export function DraftCandidatesStage() {
           </h2>
           <p>
             {readyToGenerate
-                ? "每一张都基于同一份冻结简报，由独立任务生成；布局预览为样例，实际内容以后端摘要为准。"
+                ? "每一张都基于同一份冻结简报，由独立任务生成；采用后会进入真实分析师工作台。"
               : "当前工作稿继续有效，直到你冻结并采用新版本候选。"}
           </p>
           {readyToGenerate ? (
