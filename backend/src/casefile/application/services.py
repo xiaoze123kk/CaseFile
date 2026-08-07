@@ -72,6 +72,14 @@ class CaseFileService:
                 self.session.flush()
             return _project_view(owned)
 
+    def unarchive_project(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            if owned.project.status == "archived":
+                self.projects.unarchive(owned)
+                self.session.flush()
+            return _project_view(owned)
+
     def get_draft(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
@@ -163,6 +171,8 @@ def _project_view(owned: OwnedDraft) -> dict[str, Any]:
         "profile": owned.project.profile_jsonb,
         "status": owned.project.status,
         "archived_at": owned.project.archived_at,
+        "created_at": owned.project.created_at,
+        "updated_at": owned.project.updated_at,
         "casefile_id": owned.casefile.id,
         "draft": {
             "id": owned.draft.id,

@@ -47,6 +47,11 @@ export interface ProjectView {
   title: string;
   description?: string | null;
   profile: Record<string, unknown>;
+  status: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  casefile_id: number;
   draft: { id: number; revision: number; schema_version: string; status: string };
 }
 
@@ -68,6 +73,7 @@ export interface BriefView {
   draft_revision: number;
   content: BriefContent | Record<string, never>;
   current_version_id: number | null;
+  current_version_no?: number | null;
 }
 
 export interface BriefContent {
@@ -478,6 +484,24 @@ export async function streamTaskEvents(
       boundary = buffer.indexOf("\n\n");
     }
   }
+}
+
+export async function listProjects(actorId: number) {
+  return apiRequest<ProjectView[]>("/projects", { actorId });
+}
+
+export async function archiveProject(actorId: number, projectId: number) {
+  return apiRequest<ProjectView>(`/projects/${projectId}/archive`, {
+    actorId,
+    method: "POST",
+  });
+}
+
+export async function unarchiveProject(actorId: number, projectId: number) {
+  return apiRequest<ProjectView>(`/projects/${projectId}/unarchive`, {
+    actorId,
+    method: "POST",
+  });
 }
 
 export function errorMessage(error: unknown) {

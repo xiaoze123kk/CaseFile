@@ -119,6 +119,11 @@ describe("official two-page product boundary", () => {
       source("features/intake/intake-center.tsx"),
       source("features/intake/intake-model.ts"),
       source("features/analyst-workbench/analyst-workbench.tsx"),
+      source("features/analyst-workbench/workbench-agent-panel.tsx"),
+      source("features/analyst-workbench/workbench-canvas-controls.tsx"),
+      source("features/analyst-workbench/workbench-reasoning-graph.tsx"),
+      source("features/analyst-workbench/workbench-relationship-graph.tsx"),
+      source("features/analyst-workbench/workbench-secondary-views.tsx"),
     ].join("\n");
     expect(active).not.toMatch(/demo-prototype|intake-prototype|DemoPrototype|Prototype[A-Z]/);
     expect(active).not.toMatch(/["']\/demo(?:\/|["'])/);

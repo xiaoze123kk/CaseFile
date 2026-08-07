@@ -1021,7 +1021,11 @@ class WorkflowService:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
             brief = self._brief(owned)
-            return _brief_view(brief)
+            view = _brief_view(brief)
+            if brief.current_version_id is not None:
+                version = self.session.get(BriefVersion, brief.current_version_id)
+                view["current_version_no"] = version.version_no if version else None
+            return view
 
     def update_brief(
         self,

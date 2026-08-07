@@ -9,6 +9,7 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
 } from "react";
 
 import type {
@@ -297,8 +298,17 @@ export interface PolishResult {
   parentSourceRecordId: number | null;
 }
 
+/** 被历史恢复顶替的当前会话，保存在单槽暂存中。 */
+interface StashedSession {
+  projectId: number;
+  intake: Awaited<ReturnType<typeof fetchCaseIntake>>;
+  brief: Awaited<ReturnType<typeof fetchBrief>> | null;
+  state: CaseSessionState;
+}
+
 interface CaseSessionContextValue {
   state: CaseSessionState;
+  activeProjectId: number | null;
   activeCandidate: WorkbenchCandidate | null;
   patchState: (patch: Partial<CaseSessionState>) => void;
   beginBriefReview: () => Promise<void>;
@@ -316,6 +326,10 @@ interface CaseSessionContextValue {
     candidate: WorkbenchCandidate,
   ) => WorkbenchCandidateStatus;
   resetSession: () => void;
+  loadProject: (projectId: number) => Promise<void>;
+  stashCurrentSession: () => void;
+  restoreStashedSession: () => void;
+  hasStashedSession: boolean;
   submitPolish: (mode: IntakePolishMode) => Promise<PolishResult>;
   adoptPolish: (
     draft: string,
@@ -342,6 +356,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     undefined,
     createInitialCaseSessionState,
   );
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(null);
   const stateRef = useRef(state);
   const projectIdRef = useRef<number | null>(null);
   const intakeRef = useRef<Awaited<ReturnType<typeof fetchCaseIntake>> | null>(
@@ -364,6 +379,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     if (projectIdRef.current === null) {
       const project = await createCaseProject(text);
       projectIdRef.current = project.id;
+      setActiveProjectId(project.id);
       intake = await fetchCaseIntake(project.id);
       intakeRef.current = intake;
     } else if (!intake) {
@@ -1127,7 +1143,143 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     projectIdRef.current = null;
     intakeRef.current = null;
     briefRef.current = null;
+    setActiveProjectId(null);
     dispatch({ type: "reset" });
+  }, []);
+
+  const stashRef = useRef<StashedSession | null>(null);
+  const [stashAvailable, setStashAvailable] = useState(false);
+
+  const stashCurrentSession = useCallback(() => {
+    const current = stateRef.current;
+    const projectId = projectIdRef.current;
+    const intake = intakeRef.current;
+    if (projectId === null || intake === null) return;
+    const empty =
+      !current.sourceText.trim() &&
+      current.questions.length === 0 &&
+      current.briefCandidates.length === 0;
+    if (empty) return;
+    stashRef.current = {
+      projectId,
+      intake,
+      brief: briefRef.current,
+      state: current,
+    };
+    setStashAvailable(true);
+  }, []);
+
+  const restoreStashedSession = useCallback(() => {
+    const stashed = stashRef.current;
+    if (!stashed) return;
+    projectIdRef.current = stashed.projectId;
+    intakeRef.current = stashed.intake;
+    briefRef.current = stashed.brief;
+    setActiveProjectId(stashed.projectId);
+    stashRef.current = null;
+    setStashAvailable(false);
+    dispatch({ type: "patch", patch: stashed.state });
+  }, []);
+
+  const loadProject = useCallback(async (projectId: number) => {
+    const intake = await fetchCaseIntake(projectId);
+    intakeRef.current = intake;
+    const mapped = mapIntakeToSessionState(intake);
+    const pendingDecisions = intake.pending_decisions.map(
+      (decision) => decision.prompt,
+    );
+    const sourceText = intake.current_source?.content_text ?? "";
+    let brief: Awaited<ReturnType<typeof fetchBrief>> | null = null;
+    let review: BriefReview | null = null;
+    let step: IntakeStep = "idea";
+    let furthestStep = 0;
+    let frozenBriefVersion: number | null = null;
+    let draftCandidates: WorkbenchCandidate[] = [];
+    let previewCandidateId: string | null = null;
+    let adoptedCandidateId: string | null = null;
+    if (intake.stage === "questions") {
+      step = "questions";
+      furthestStep = 1;
+    } else if (intake.stage === "confirmation") {
+      step = "confirmation";
+      furthestStep = 2;
+    } else if (intake.stage === "brief_review") {
+      brief = await fetchBrief(projectId);
+      briefRef.current = brief;
+      review = mapBriefContentToReview(brief.content, pendingDecisions);
+      const frozenVersionNo = brief.current_version_no ?? null;
+      if (brief.current_version_id !== null && frozenVersionNo !== null) {
+        // 简报已冻结：回到候选稿步骤，恢复工作稿列表与采用状态。
+        frozenBriefVersion = frozenVersionNo;
+        step = "candidates";
+        furthestStep = 4;
+        const currentOnes = (await fetchDraftCandidates(projectId)).filter(
+          (candidate) => candidate.is_current_brief,
+        );
+        const rankStrategy = (strategy: CandidateStrategy) =>
+          strategy === "structure_first"
+            ? 0
+            : strategy === "atmosphere_first"
+              ? 1
+              : strategy === "reasoning_first"
+                ? 2
+                : 3;
+        const base = buildWorkbenchCandidates(
+          {
+            creativeIntent: review.creativeIntent,
+            reasoningProposition: review.reasoningProposition,
+            authorAnswer: review.authorAnswer,
+            constraints: review.creativeConstraints
+              .map((constraint) => constraint.statement.trim())
+              .filter(Boolean),
+          },
+          frozenBriefVersion,
+        );
+        draftCandidates = [...currentOnes]
+          .sort(
+            (left, right) =>
+              rankStrategy(left.candidate_strategy) -
+              rankStrategy(right.candidate_strategy),
+          )
+          .map((view) => {
+            const focus =
+              view.candidate_strategy === "balanced"
+                ? "structure"
+                : CANDIDATE_STRATEGY_TO_FOCUS[view.candidate_strategy];
+            return mapWorkbenchCandidateView(
+              view,
+              base.find((candidate) => candidate.focus === focus) ?? base[0],
+            );
+          });
+        const adopted = currentOnes.find((candidate) => candidate.is_adopted);
+        if (adopted) {
+          adoptedCandidateId = `draft-${adopted.task_run_id}`;
+          previewCandidateId = adoptedCandidateId;
+        }
+      } else {
+        step = "review";
+        furthestStep = 3;
+      }
+    }
+    projectIdRef.current = projectId;
+    setActiveProjectId(projectId);
+    dispatch({
+      type: "patch",
+      patch: {
+        step,
+        furthestStep,
+        sourceText,
+        review,
+        workingBriefVersion: frozenBriefVersion ?? 1,
+        frozenBriefVersion,
+        draftCandidates,
+        previewCandidateId,
+        adoptedCandidateId,
+        generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+        ...mapped,
+        brief: mapped.brief ?? createEmptyBrief(sourceText),
+      },
+    });
   }, []);
 
   const activeCandidate = useMemo(() => {
@@ -1141,6 +1293,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CaseSessionContextValue>(
     () => ({
       state,
+      activeProjectId,
       activeCandidate,
       patchState,
       beginBriefReview,
@@ -1153,6 +1306,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       beginBriefRevision,
       candidateStatus,
       resetSession,
+      loadProject,
+      stashCurrentSession,
+      restoreStashedSession,
+      hasStashedSession: stashAvailable,
       submitPolish,
       adoptPolish,
       continueToQuestions,
@@ -1167,6 +1324,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       activeCandidate,
+      activeProjectId,
       activateCandidate,
       adoptCandidate,
       adoptPolish,
@@ -1180,10 +1338,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       generateBriefFromAnswers,
       generateCandidates,
       generateMoreQuestions,
+      loadProject,
       patchState,
       previewCandidate,
       resetSession,
       reextractReview,
+      restoreStashedSession,
+      stashAvailable,
+      stashCurrentSession,
       saveCandidateAsNew,
       saveCandidateBookmark,
       saveReview,
