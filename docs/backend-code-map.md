@@ -55,7 +55,7 @@
 | 路径 | 职责 |
 |---|---|
 | `backend/src/casefile/benchmark/` | `brief_to_draft` Fixture 运行器与指标汇总；记录结构有效率、修复次数、延迟、工具调用有效率/执行成功率和结果采纳率，不依赖 ORM 或 Web 框架。 |
-| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`、`brief_anchor_extract`、`brief_to_draft` 的结构化结果、工具注册与 Validator 指标。 |
+| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`、`brief_anchor_extract`、`brief_strategy_options`、`brief_to_draft` 的结构化结果与 Validator 指标。当前 `brief_to_draft` 先生成对象计划，由服务端分配稳定 ID，再并发生成故事世界、证据推理、解答与约束三个分区并定向修复；历史 Prompt 版本仍保留原工具协议。 |
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
 | `backend/src/casefile/validation/` | 确定性 Schema、引用、时间、知识与发布规则的预留落位。 |

@@ -39,6 +39,7 @@ V20260804184013  Provider 密钥可删除状态
                   + 清空密文材料 + 保留历史 TaskRun 外键与配置版本
         ↓
 V20260804233938  brief_intakes + brief_intake_questions + brief_intake_candidates
+V20260808003000  冻结 Brief 的三策略分析 TaskRun
                   + 可恢复关键追问/综合任务 + 不可变候选谱系
                   + Intake/Brief 双 revision 采用边界
 ```
@@ -133,7 +134,7 @@ canon_versions（所有者确认的完整不可变 JSON）
 | `agent_messages` | Thread 内按连续序号保存用户、助手或系统消息及 pending/completed/failed 状态。 | Agent Collaboration Service；Worker。 | 对话记录持久保留；助手占位消息由执行结果完成或标记失败。 |
 | `agent_patch_sets` | 一次助手回复产生的结构化建议批，冻结基础 Draft revision，并记录 stale/applied/undone/rejected 生命周期和应用/撤销 revision。 | Agent Collaboration Service；Worker。 | 人工审阅后整批原子应用；过期批禁止应用，已应用批可整批撤销。 |
 | `agent_patch_operations` | PatchSet 内有序的字段级 add/remove/replace 建议、前后值、原因和逐项 accepted/rejected 决策。 | Agent Collaboration Service；Worker。 | 逐项审阅；数据库预留三种操作，当前应用首版只执行 replace，最终选择由所属 PatchSet 统一提交。 |
-| `task_runs` | `brief_polish`、`brief_anchor_extract`、`brief_intake_questions`、`brief_intake_synthesize`、`brief_to_draft`、`casefile_chat` 的冻结输入、输入哈希、Provider/模型、版本、预算、用量、状态和结构化结果；Intake 任务额外冻结 Intake revision 与基础候选。成功生成的 `result_snapshot_id` 仅在 Draft 候选被采用后填写。 | Workflow/Agent Collaboration/Brief Intake Service；Worker。 | PostgreSQL 队列行；同一 BriefVersion 可有多条生成 Run；Intake 过时结果保留但不激活；终态保留；同一 Thread 同时最多一个活动对话任务。 |
+| `task_runs` | `brief_polish`、`brief_anchor_extract`、`brief_intake_questions`、`brief_intake_synthesize`、`brief_strategy_options`、`brief_to_draft`、`casefile_chat` 的冻结输入、输入哈希、Provider/模型、版本、预算、用量、状态和结构化结果；Intake 任务额外冻结 Intake revision 与基础候选。成功生成的 `result_snapshot_id` 仅在 Draft 候选被采用后填写。 | Workflow/Agent Collaboration/Brief Intake Service；Worker。 | PostgreSQL 队列行；同一 BriefVersion 的成功策略分析默认恢复，显式重新分析才创建新 Run；深稿仍可有多条生成 Run；Intake 过时结果保留但不激活；终态保留；同一 Thread 同时最多一个活动对话任务。 |
 | `task_attempts` | 每次领取/恢复执行的完整候选、Validator 错误、用量和失败摘要。 | Worker。 | 按 Run + attempt_no 只追加；一旦写入非空候选，数据库禁止改写或删除。 |
 | `task_events` | 可按 sequence 回放的安全阶段、工具摘要、Validator、用量与终态事件。 | Workflow Service；Worker。 | 只追加，不可更新/删除；供 SSE 回放。 |
 | `draft_snapshots` | 指定 Draft revision 的完整 v1 JSON、Schema 和 SHA-256。 | Snapshot/Generation Service。 | 候选采用或显式快照时创建；每 revision 最多一行；不可更新/删除。 |

@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -344,6 +345,43 @@ function buildFakeBackend() {
         },
       };
     }
+    if (taskType === "brief_strategy_options") {
+      return {
+        ...common,
+        result: {
+          input_hash: "h",
+          strategy_version: "candidate-strategy-v1",
+          options: [
+            {
+              strategy: "structure_first",
+              direction: "先建立事件、对象和因果骨架。",
+              focus: "让结构首先清晰可审阅",
+              strengths: ["结构稳定", "引用易校验"],
+              tradeoffs: ["氛围细节稍后深化"],
+              brief_fit: "当前 Brief 已有明确事件边界。",
+            },
+            {
+              strategy: "atmosphere_first",
+              direction: "先建立场景质感与人物张力。",
+              focus: "让氛围成为线索载体",
+              strengths: ["场景鲜明", "人物有记忆点"],
+              tradeoffs: ["需要继续核对推理密度"],
+              brief_fit: "封存室与夜班具有明确氛围潜力。",
+            },
+            {
+              strategy: "reasoning_first",
+              direction: "先建立证据、反证和解答链。",
+              focus: "让核心命题可验证",
+              strengths: ["证据链清晰", "假设边界明确"],
+              tradeoffs: ["场景铺陈稍后深化"],
+              brief_fit: "当前 Brief 已给出明确推理命题。",
+            },
+          ],
+          recommended_strategy: "reasoning_first",
+          recommendation_reason: "明确的推理命题适合先建立证据闭环。",
+        },
+      };
+    }
     const titles = ["缺页校准稿", "封存室夜班稿", "第七码互证稿"];
     const index = draftCandidates.length;
     const summary: DraftCandidateView = {
@@ -577,6 +615,8 @@ function buildFakeBackend() {
       return recordTask("brief_intake_synthesize", provider);
     },
     startAnchorExtractTask: async () => recordTask("brief_anchor_extract"),
+    startStrategyOptionsTask: async () => recordTask("brief_strategy_options"),
+    strategyOptionsResult: (task: TaskView) => task.result,
     fetchCaseDraft: async (): Promise<DraftView> => ({
       project_id: 1,
       revision: caseDraftRevision,
@@ -825,7 +865,7 @@ describe("intake center", () => {
     expect(screen.getByText("实时简报映射")).toBeInTheDocument();
   });
 
-  it("runs the full A path against the real intake backend and generates three draft candidates", async () => {
+  it("runs the full A path, selects a tailored strategy, and generates one deep draft", async () => {
     renderIntake();
 
     fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
@@ -965,29 +1005,19 @@ describe("intake center", () => {
     await flush();
 
     expect(
-      screen.getByRole("heading", { name: "生成三份策略候选，展开比较。" }),
+      screen.getByRole("heading", { name: "先选定创作策略，再生成一份完整深稿。" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("候选卷尚空")).toBeInTheDocument();
-    const generateCandidateActions = screen.getAllByRole("button", {
-      name: /生成三份策略候选/u,
+    await waitFor(() => {
+      expect(screen.getByText(/Agent 建议：推理优先/u)).toBeInTheDocument();
     });
-    expect(generateCandidateActions).toHaveLength(2);
-    fireEvent.click(generateCandidateActions[1]);
+    fireEvent.click(screen.getByRole("button", { name: /让结构首先清晰可审阅/u }));
+    fireEvent.click(screen.getByRole("button", { name: /生成结构优先完整深稿/u }));
     await flush();
 
-    expect(fake.backend.getGenerationDraftRevisions().slice(-3)).toEqual([
-      17, 17, 17,
-    ]);
-    expect(
-      screen.getByRole("progressbar", { name: "候选生成进度" }),
-    ).toHaveAttribute("aria-valuenow", "3");
-    expect(
-      screen.getByText("三份候选已完成结构与引用校验"),
-    ).toBeInTheDocument();
-
+    expect(fake.backend.getGenerationDraftRevisions().slice(-1)).toEqual([17]);
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /封存室夜班稿/u })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /第七码互证稿/u })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /第七码互证稿/u })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /缺页校准稿/u }));
     expect(
@@ -1000,7 +1030,7 @@ describe("intake center", () => {
     );
     await flush();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "候选采用服务暂不可用。 当前候选未被修改，可以重试。",
+      "候选采用服务暂不可用。",
     );
     expect(routerPush).not.toHaveBeenCalled();
 

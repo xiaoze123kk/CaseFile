@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt_repository import (
     SUPPORTED_AGENT_IDS,
     PromptRepository,
@@ -24,7 +23,8 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_anchor_extract": "brief-anchor-extract-v2",
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
-    "brief_to_draft": "brief-to-draft-v6",
+    "brief_strategy_options": "brief-strategy-options-v1",
+    "brief_to_draft": "brief-to-draft-v7",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -54,6 +54,9 @@ EXPECTED_RELEASE_HASHES = {
     ("brief_intake_synthesize", "brief-intake-synthesize-v2"): (
         "6d3887dde3223f7f53f78053e5ed13a36069c92b9adfa56013970c6d142017a6"
     ),
+    ("brief_strategy_options", "brief-strategy-options-v1"): (
+        "31e8fa98b451f63a41dba1c3ecd42a591a0bcc8fb6cd710a898eb74014c58f87"
+    ),
     ("brief_to_draft", "brief-to-draft-v3"): (
         "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
     ),
@@ -65,6 +68,9 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_to_draft", "brief-to-draft-v6"): (
         "a6b5c79908b8053a4954c9a9a6f3e00ea403c1cb07b0273944cd79d57ddb966b"
+    ),
+    ("brief_to_draft", "brief-to-draft-v7"): (
+        "ffd17239f4562c86a964a3010e1ebfe1fc5c3be7c863980e74e6a0045be2a0ff"
     ),
     ("casefile_chat", "casefile-chat-v1"): (
         "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
@@ -124,18 +130,16 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         "brief_intake_synthesize"
     ]
     assert "不得出现没有 `：` 的条目" in prompts["brief_intake_synthesize"]
-    assert "`repair_feedback`" in prompts["brief_to_draft"]
     assert "`structure_first`" in prompts["brief_to_draft"]
     assert "`atmosphere_first`" in prompts["brief_to_draft"]
     assert "`reasoning_first`" in prompts["brief_to_draft"]
-    assert "不得声称比较过其他候选" in prompts["brief_to_draft"]
-    assert "每个顶层对象 ID 必须在对应集合中恰好使用一次" in prompts[
-        "brief_to_draft"
-    ]
-    assert "每个对象都必须同时生成非空 `description`" in prompts["brief_to_draft"]
-    assert "`Location.spatial_position` 是可选字段" in prompts["brief_to_draft"]
-    assert "不得猜测或编造真实坐标" in prompts["brief_to_draft"]
-    assert "`coordinate_system=schematic`" in prompts["brief_to_draft"]
+    assert "分区会并行生成" in prompts["brief_to_draft"]
+    assert "不得创建额外顶层 ID" in prompts["brief_to_draft"]
+    assert "`description`" in prompts["brief_to_draft"]
+    assert "WGS84" in prompts["brief_to_draft"]
+    assert "schematic" in prompts["brief_to_draft"]
+    assert "`recommended_strategy`" in prompts["brief_strategy_options"]
+    assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
     assert "未列入能力白名单" in prompts["casefile_chat"]
 

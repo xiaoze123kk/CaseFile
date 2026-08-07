@@ -18,6 +18,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "brief_anchor_extract",
     "brief_intake_questions",
     "brief_intake_synthesize",
+    "brief_strategy_options",
     "brief_to_draft",
     "casefile_chat",
 )

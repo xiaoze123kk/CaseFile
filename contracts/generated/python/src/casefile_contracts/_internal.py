@@ -665,6 +665,7 @@ class TaskType(StrEnum):
     brief_anchor_extract = 'brief_anchor_extract'
     brief_intake_questions = 'brief_intake_questions'
     brief_intake_synthesize = 'brief_intake_synthesize'
+    brief_strategy_options = 'brief_strategy_options'
     brief_to_draft = 'brief_to_draft'
     casefile_chat = 'casefile_chat'
 
@@ -734,6 +735,51 @@ class TaskFailure(BaseModel):
     message: Annotated[str, Field(max_length=320, min_length=1)]
     retryable: bool
     issues: list[TaskFailureIssue]
+
+
+class Strategy(StrEnum):
+    structure_first = 'structure_first'
+    atmosphere_first = 'atmosphere_first'
+    reasoning_first = 'reasoning_first'
+
+
+class Strength1(RootModel[str]):
+    root: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class Tradeoff(RootModel[str]):
+    root: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class BriefStrategyOption(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    strategy: Strategy
+    direction: Annotated[str, Field(max_length=600, min_length=1)]
+    focus: Annotated[str, Field(max_length=300, min_length=1)]
+    strengths: Annotated[list[Strength1], Field(max_length=3, min_length=2)]
+    tradeoffs: Annotated[list[Tradeoff], Field(max_length=2, min_length=1)]
+    brief_fit: Annotated[str, Field(max_length=400, min_length=1)]
+
+
+class RecommendedStrategy(StrEnum):
+    structure_first = 'structure_first'
+    atmosphere_first = 'atmosphere_first'
+    reasoning_first = 'reasoning_first'
+
+
+class BriefStrategyOptionsResult(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    strategy_version: Literal['candidate-strategy-v1']
+    options: Annotated[list[BriefStrategyOption], Field(max_length=3, min_length=3)]
+    recommended_strategy: RecommendedStrategy
+    recommendation_reason: Annotated[str, Field(max_length=400, min_length=1)]
 
 
 class TaskRun(BaseModel):

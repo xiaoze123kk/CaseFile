@@ -20,6 +20,7 @@ from casefile.api.schemas import (
     BriefAnchorExtractTaskRequest,
     BriefConfirmRequest,
     BriefPolishTaskRequest,
+    BriefStrategyOptionsTaskRequest,
     BriefUpdateRequest,
     DraftCandidateAdoptRequest,
     GenerateTaskRequest,
@@ -249,6 +250,24 @@ def workflow_router() -> APIRouter:
             candidate_strategy_attempt=payload.candidate_strategy_attempt,
         )
 
+    @router.post(
+        "/projects/{project_id}/tasks/brief-strategy-options",
+        status_code=202,
+    )
+    def create_strategy_options_task(
+        project_id: int,
+        payload: BriefStrategyOptionsTaskRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).create_strategy_options_task(
+            actor,
+            project_id,
+            brief_version_id=payload.brief_version_id,
+            provider=payload.provider,
+            refresh=payload.refresh,
+        )
+
     @router.get("/projects/{project_id}/draft-candidates")
     def list_draft_candidates(
         project_id: int,
@@ -327,6 +346,7 @@ def workflow_router() -> APIRouter:
             "brief_anchor_extract",
             "brief_intake_questions",
             "brief_intake_synthesize",
+            "brief_strategy_options",
             "brief_to_draft",
             "casefile_chat",
         ],

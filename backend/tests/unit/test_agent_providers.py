@@ -8,32 +8,29 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
+import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import ValidationError
-
-import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeSynthesizeRequest,
     BriefPolishCandidate,
     BriefPolishRequest,
+    BriefStrategyOptionsCandidate,
+    BriefStrategyOptionsRequest,
     CandidateStrategy,
     CaseFileChatRequest,
+    GenerationPlan,
     GenerationRequest,
 )
 from casefile.agent_runtime.prompt import casefile_chat_input
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
+    _allocate_plan_ids,
     _json_schema_instruction,
+    _partition_issues,
     _pydantic_validation_issues,
     _validate_generated_descriptions,
 )
@@ -44,6 +41,13 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -218,6 +222,108 @@ def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() ->
     assert extract.candidate.creative_constraints[0].suggested_strength == "hard"
 
 
+def test_strategy_options_are_tailored_complete_and_not_auto_selected() -> None:
+    result = FakeProvider().strategy_options(
+        BriefStrategyOptionsRequest(
+            task_run_id=8,
+            prompt_version="brief-strategy-options-v1",
+            brief={
+                "creative_intent": "失真的时间档案",
+                "reasoning_proposition": "三份记录为何指向不存在的时间？",
+            },
+            input_hash="e" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=2,
+            emit=lambda _event_type, _stage, _payload: None,
+        )
+    )
+
+    assert [option.strategy for option in result.candidate.options] == [
+        "structure_first",
+        "atmosphere_first",
+        "reasoning_first",
+    ]
+    assert result.candidate.recommended_strategy == "reasoning_first"
+    assert "不存在的时间" in result.candidate.options[2].direction
+
+
+def test_strategy_options_reject_duplicate_or_missing_direction() -> None:
+    option = {
+        "strategy": "structure_first",
+        "direction": "先建立结构。",
+        "focus": "结构",
+        "strengths": ["稳定", "可审阅"],
+        "tradeoffs": ["氛围稍后深化"],
+        "brief_fit": "适配当前 Brief。",
+    }
+    with pytest.raises(ValidationError, match="each selectable strategy exactly once"):
+        BriefStrategyOptionsCandidate.model_validate(
+            {
+                "options": [option, option, option],
+                "recommended_strategy": "structure_first",
+                "recommendation_reason": "结构最适配。",
+            }
+        )
+
+
+def test_generation_plan_rejects_unknown_keys_and_allocates_stable_ids() -> None:
+    with pytest.raises(ValidationError, match="unknown keys"):
+        GenerationPlan.model_validate(
+            {
+                "title": "非法计划",
+                "objects": [
+                    {
+                        "local_key": "answer",
+                        "collection": "resolution_specs",
+                        "title": "解答",
+                        "purpose": "固定核心答案。",
+                        "referenced_keys": ["missing"],
+                    }
+                ],
+            }
+        )
+
+    plan = GenerationPlan.model_validate(
+        {
+            "title": "稳定计划",
+            "objects": [
+                {
+                    "local_key": "answer",
+                    "collection": "resolution_specs",
+                    "title": "解答",
+                    "purpose": "固定核心答案。",
+                },
+                {
+                    "local_key": "lead",
+                    "collection": "entities",
+                    "title": "主角",
+                    "purpose": "承担调查行动。",
+                    "referenced_keys": ["answer"],
+                },
+            ],
+        }
+    )
+    assert _allocate_plan_ids(42, plan) == {
+        "answer": "res_t42_01",
+        "lead": "ent_t42_01",
+    }
+
+
+def test_cross_partition_validation_routes_only_affected_partitions() -> None:
+    grouped = _partition_issues(
+        [
+            {"code": "reference_missing", "path": "/claims/0/basis_refs/0"},
+            {"code": "description_missing", "path": "/events/0/description"},
+            {"code": "metadata_invalid", "path": "/version/version_no"},
+        ]
+    )
+
+    assert set(grouped) == {"reasoning", "story"}
+    assert grouped["reasoning"][0]["path"] == "/claims/0/basis_refs/0"
+    assert grouped["story"][0]["path"] == "/events/0/description"
+
+
 def test_fake_intake_synthesis_emits_named_outline_stages() -> None:
     result = FakeProvider().synthesize_intake(
         BriefIntakeSynthesizeRequest(
@@ -261,9 +367,7 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
             model_id="fake",
             api_key=None,
             max_turns=2,
-            emit=lambda event_type, stage, _payload: emitted.append(
-                (event_type, stage)
-            ),
+            emit=lambda event_type, stage, _payload: emitted.append((event_type, stage)),
         )
     )
 
@@ -339,9 +443,7 @@ def test_validation_tool_returns_actionable_issues_and_public_event() -> None:
     emitted: list[tuple[str, str, dict[str, object]]] = []
     request = replace(
         _request(),
-        emit=lambda event_type, stage, payload: emitted.append(
-            (event_type, stage, payload)
-        ),
+        emit=lambda event_type, stage, payload: emitted.append((event_type, stage, payload)),
     )
     context = ToolContext(
         GenerationToolContext(request),
@@ -480,15 +582,17 @@ def test_fake_generation_keeps_strategy_candidates_distinct() -> None:
     ]
 
     assert len({result.candidate["title"] for result in results}) == 3
-    assert len(
-        {
-            generation_candidate["content_hash"]
-            for generation_candidate in (
-                generation_candidate_summary(result.candidate)
-                for result in results
-            )
-        }
-    ) == 3
+    assert (
+        len(
+            {
+                generation_candidate["content_hash"]
+                for generation_candidate in (
+                    generation_candidate_summary(result.candidate) for result in results
+                )
+            }
+        )
+        == 3
+    )
 
 
 def test_provider_transport_errors_have_stable_failure_codes() -> None:
@@ -496,10 +600,7 @@ def test_provider_transport_errors_have_stable_failure_codes() -> None:
     response_401 = httpx.Response(401, request=request)
     response_429 = httpx.Response(429, request=request)
 
-    assert (
-        _error_code(APIConnectionError(request=request))
-        == "provider_connection_failed"
-    )
+    assert _error_code(APIConnectionError(request=request)) == "provider_connection_failed"
     assert _error_code(APITimeoutError(request=request)) == "provider_timeout"
     assert (
         _error_code(

@@ -35,6 +35,8 @@ from casefile.agent_runtime import (
     BriefIntakeSynthesizeResult,
     BriefPolishRequest,
     BriefPolishResult,
+    BriefStrategyOptionsRequest,
+    BriefStrategyOptionsResult,
     CandidateStrategy,
     CaseFileChatRequest,
     CaseFileChatResult,
@@ -269,6 +271,20 @@ class Worker:
                     extract_result,
                 )
                 return
+            if task_snapshot.task_type == "brief_strategy_options":
+                strategy_request = self._load_strategy_options_request(
+                    task_snapshot,
+                    api_key,
+                )
+                strategy_result = provider.strategy_options(strategy_request)
+                candidate = strategy_result.candidate.model_dump(mode="json")
+                usage = strategy_result.usage
+                self._complete_strategy_options(
+                    task_run_id,
+                    attempt_id,
+                    strategy_result,
+                )
+                return
             if task_snapshot.task_type == "brief_intake_questions":
                 if _json_hash(task_snapshot.input_jsonb) != task_snapshot.input_hash:
                     raise RuntimeError(
@@ -351,7 +367,11 @@ class Worker:
                 raise RuntimeError(f"Unsupported TaskRun type: {task_snapshot.task_type}")
             generation_request = self._load_generation_request(task_snapshot, api_key)
             result: GenerationResult | None = None
-            repair_limit = int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
+            repair_limit = (
+                0
+                if task_snapshot.prompt_version == "brief-to-draft-v7"
+                else int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
+            )
             feedback: tuple[dict[str, Any], ...] = ()
             feedback_history: list[dict[str, Any]] = []
             for repair_no in range(repair_limit + 1):
@@ -441,6 +461,38 @@ class Worker:
             )
             session.expunge(task)
             return task, api_key
+
+    def _load_strategy_options_request(
+        self,
+        task: TaskRun,
+        api_key: str,
+    ) -> BriefStrategyOptionsRequest:
+        with self.session_factory() as session, session.begin():
+            brief_version = (
+                None
+                if task.brief_version_id is None
+                else session.get(BriefVersion, task.brief_version_id)
+            )
+            if brief_version is None:
+                raise RuntimeError("Frozen strategy BriefVersion is missing")
+            frozen_brief = _required_object(task.input_jsonb, "brief")
+            if brief_version.content_hash != task.input_hash:
+                raise RuntimeError("Frozen strategy BriefVersion hash changed")
+            if _json_hash(frozen_brief) != task.input_hash:
+                raise RuntimeError("Frozen strategy Brief payload does not match its hash")
+            return BriefStrategyOptionsRequest(
+                task_run_id=task.id,
+                prompt_version=task.prompt_version,
+                brief=frozen_brief,
+                input_hash=task.input_hash,
+                model_id=task.model_id,
+                api_key=api_key,
+                max_turns=int(task.budget_jsonb.get("max_turns", 12)),
+                emit=lambda event_type, stage, payload: self._emit(
+                    task.id, event_type, stage, payload
+                ),
+                network_retries=_network_retries(task),
+            )
 
     def _load_generation_request(
         self,
@@ -654,6 +706,32 @@ class Worker:
                 candidate=result_json,
                 usage=result.usage,
                 message="原子拆解候选已生成，等待作者确认",
+            )
+
+    def _complete_strategy_options(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: BriefStrategyOptionsResult,
+    ) -> None:
+        with self.session_factory() as session, session.begin():
+            task, attempt = self._locked_completion_rows(
+                session,
+                task_run_id,
+                attempt_id,
+                expected_task_type="brief_strategy_options",
+            )
+            result_json = {
+                "input_hash": task.input_hash,
+                **result.candidate.model_dump(mode="json"),
+            }
+            self._finish_auxiliary_success(
+                session,
+                task,
+                attempt,
+                candidate=result_json,
+                usage=result.usage,
+                message="三种定制策略已形成，等待作者选择。",
             )
 
     def _complete_intake_questions(

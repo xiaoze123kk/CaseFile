@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import rfc8785
+from casefile_contracts import Brief as BriefContract
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -60,7 +61,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
-from casefile_contracts import Brief as BriefContract
 
 DEFAULT_PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.6-sol"
@@ -1100,6 +1100,75 @@ class WorkflowService:
             self.session.flush()
             return _brief_version_view(version, brief.public_id)
 
+    def create_strategy_options_task(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        *,
+        brief_version_id: int,
+        provider: str = DEFAULT_PROVIDER,
+        refresh: bool = False,
+    ) -> dict[str, Any]:
+        provider = _supported_provider(provider)
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            brief = self._brief(owned, lock=True)
+            version = self.session.scalar(
+                select(BriefVersion).where(
+                    BriefVersion.id == brief_version_id,
+                    BriefVersion.project_id == owned.project.id,
+                    BriefVersion.brief_id == brief.id,
+                )
+            )
+            if version is None:
+                raise not_found("BriefVersion")
+            if brief.current_version_id != version.id:
+                raise ApplicationError(
+                    "brief_version_not_current",
+                    "Strategy analysis requires the current confirmed Brief version",
+                    status_code=409,
+                    details={"current_version_id": brief.current_version_id},
+                )
+            content = _validate_brief(version.content_jsonb)
+            self._validate_brief_sources(owned, content)
+            _require_confirmed_atomics(content)
+            if not refresh:
+                existing = self.session.scalar(
+                    select(TaskRun)
+                    .where(
+                        TaskRun.project_id == owned.project.id,
+                        TaskRun.task_type == "brief_strategy_options",
+                        TaskRun.brief_version_id == version.id,
+                        TaskRun.input_hash == version.content_hash,
+                        TaskRun.status.in_(("queued", "running", "succeeded")),
+                    )
+                    .order_by(TaskRun.created_at.desc(), TaskRun.id.desc())
+                    .limit(1)
+                )
+                if existing is not None:
+                    return _task_view(existing)
+            setting = self._provider_setting(actor_user_id, provider)
+            task = self._new_task(
+                owned,
+                actor_user_id=actor_user_id,
+                setting=setting,
+                task_type="brief_strategy_options",
+                brief_version_id=version.id,
+                input_source_record_id=None,
+                input_brief_revision=brief.draft_revision,
+                input_hash=version.content_hash,
+                input_jsonb={
+                    "brief": content,
+                    "brief_public_id": brief.public_id,
+                    "brief_version_no": version.version_no,
+                    "strategy_version": CANDIDATE_STRATEGY_VERSION,
+                },
+            )
+            return self._queue_task(
+                task,
+                message="冻结 Brief 的三策略分析任务已进入队列",
+            )
+
     def create_generation_task(
         self,
         actor_user_id: int,
@@ -1369,6 +1438,7 @@ class WorkflowService:
             "brief_anchor_extract",
             "brief_intake_questions",
             "brief_intake_synthesize",
+            "brief_strategy_options",
             "brief_to_draft",
             "casefile_chat",
         }:

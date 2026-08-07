@@ -13,11 +13,6 @@ import pytest
 import rfc8785
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, func, select, text, update
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
@@ -47,6 +42,10 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, create_engine, func, select, text, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -668,13 +667,17 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
             )
 
 
-def test_worker_repairs_structural_output_with_actionable_feedback(
+def test_historical_worker_repairs_structural_output_with_actionable_feedback(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, task_run_id = _prepare_task(engine, actor_id)
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v6",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         worker = Worker(
             factory,
@@ -718,13 +721,17 @@ def test_worker_repairs_structural_output_with_actionable_feedback(
         assert "author-secret-value" not in repr(events)
 
 
-def test_worker_exhausts_structural_repairs_without_persisting_candidate(
+def test_historical_worker_exhausts_structural_repairs_without_persisting_candidate(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
     provider = StructuralFailureProvider(failures_before_success=99)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, task_run_id = _prepare_task(engine, actor_id)
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v6",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         worker = Worker(
             factory,
@@ -766,6 +773,35 @@ def test_worker_exhausts_structural_repairs_without_persisting_candidate(
         assert events[-1]["payload"]["failure"] == task["failure"]
         assert "author-secret-value" not in repr(task)
         assert "author-secret-value" not in repr(events)
+
+
+def test_v7_worker_does_not_retry_a_whole_invalid_casefile(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    provider = StructuralFailureProvider(failures_before_success=1)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="v7-no-whole-repair-worker"),
+            provider_factory=lambda _task: provider,
+        )
+
+        assert worker.run_once() is True
+
+        with factory() as session:
+            task = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
+            attempt = session.scalar(
+                select(TaskAttempt).where(TaskAttempt.task_run_id == task_run_id)
+            )
+
+    assert task["status"] == "failed"
+    assert task["error_code"] == "candidate_validation_failed"
+    assert provider.calls == 1
+    assert attempt is not None
+    assert len(attempt.validation_errors_jsonb) == 1
 
 
 def test_source_polish_extract_recovery_and_human_confirmation(
@@ -913,6 +949,83 @@ def test_source_polish_extract_recovery_and_human_confirmation(
             )
         assert confirmed["content"]["author_anchors"]
         assert confirmed["content"]["creative_constraints"]
+
+
+def test_strategy_options_reuse_frozen_brief_unless_refresh_is_explicit(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with factory() as session:
+            project = CaseFileService(session).create_project(
+                actor_id,
+                ProjectCreate(title="策略缓存验证", description=None, profile={}),
+            )
+        project_id = int(project["id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            workflow.save_provider_setting(
+                actor_id,
+                api_key="sk-test-strategy-secret",
+                model_id="gpt-5.6-sol",
+                model_is_custom=False,
+            )
+            source = workflow.create_source(
+                actor_id,
+                project_id,
+                source_kind="human_original",
+                content_text="三份记录共同指向不存在的时间。",
+                parent_source_record_id=None,
+            )
+            saved = workflow.update_brief(
+                actor_id,
+                project_id,
+                expected_revision=1,
+                content=_brief(source["source_record_id"]),
+            )
+            confirmed = workflow.confirm_brief(
+                actor_id,
+                project_id,
+                expected_revision=saved["draft_revision"],
+            )
+            first = workflow.create_strategy_options_task(
+                actor_id,
+                project_id,
+                brief_version_id=confirmed["brief_version_id"],
+            )
+            reused = workflow.create_strategy_options_task(
+                actor_id,
+                project_id,
+                brief_version_id=confirmed["brief_version_id"],
+            )
+            refreshed = workflow.create_strategy_options_task(
+                actor_id,
+                project_id,
+                brief_version_id=confirmed["brief_version_id"],
+                refresh=True,
+            )
+
+        assert reused["task_run_id"] == first["task_run_id"]
+        assert refreshed["task_run_id"] != first["task_run_id"]
+
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="strategy-options-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            completed = WorkflowService(session).get_task(
+                actor_id,
+                project_id,
+                first["task_run_id"],
+            )
+
+    assert completed["status"] == "succeeded"
+    assert len(completed["result"]["options"]) == 3
+    assert completed["result"]["recommended_strategy"] == "reasoning_first"
 
 
 def test_brief_updates_clear_current_version_and_reject_foreign_sources(

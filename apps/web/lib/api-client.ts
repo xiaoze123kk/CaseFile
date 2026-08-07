@@ -24,6 +24,7 @@ export type TaskType =
   | "brief_anchor_extract"
   | "brief_intake_questions"
   | "brief_intake_synthesize"
+  | "brief_strategy_options"
   | "brief_to_draft"
   | "casefile_chat";
 export type ResolutionMode =
@@ -354,6 +355,7 @@ export interface TaskView {
     | BriefAnchorExtractResult
     | BriefIntakeQuestionsResult
     | BriefIntakeSynthesizeResult
+    | BriefStrategyOptionsResult
     | GenerationCandidateSummary
     | null;
   error_code: string | null;
@@ -399,6 +401,23 @@ export interface DraftView {
   schema_version: string;
   status: string;
   content: CaseFile | null;
+}
+
+export interface BriefStrategyOption {
+  strategy: Exclude<CandidateStrategy, "balanced">;
+  direction: string;
+  focus: string;
+  strengths: string[];
+  tradeoffs: string[];
+  brief_fit: string;
+}
+
+export interface BriefStrategyOptionsResult {
+  input_hash: string;
+  strategy_version: "candidate-strategy-v1";
+  options: BriefStrategyOption[];
+  recommended_strategy: Exclude<CandidateStrategy, "balanced">;
+  recommendation_reason: string;
 }
 
 interface RequestOptions extends Omit<RequestInit, "body"> {

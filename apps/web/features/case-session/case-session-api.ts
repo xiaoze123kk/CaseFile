@@ -7,6 +7,7 @@ import {
   type BriefIntakeCandidateContent,
   type BriefIntakeView,
   type BriefVersionView,
+  type BriefStrategyOptionsResult,
   type CandidateStrategy,
   type BriefView,
   type DraftCandidateView,
@@ -413,6 +414,30 @@ export async function fetchCaseDraft(projectId: number) {
   return apiRequest<DraftView>(`/projects/${projectId}/draft`, {
     actorId: LOCAL_ACTOR_ID,
   });
+}
+
+export async function startStrategyOptionsTask(
+  projectId: number,
+  briefVersionId: number,
+  provider: ProviderName,
+  refresh = false,
+) {
+  return apiRequest<TaskView>(
+    `/projects/${projectId}/tasks/brief-strategy-options`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        brief_version_id: briefVersionId,
+        provider,
+        refresh,
+      },
+    },
+  );
+}
+
+export function strategyOptionsResult(task: TaskView) {
+  return task.result as BriefStrategyOptionsResult | null;
 }
 
 /** 以 Draft revision 为门禁更新一个 CaseFile 对象；调用方成功后应重取完整 Draft。 */

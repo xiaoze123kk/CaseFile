@@ -20,6 +20,8 @@ from ._internal import (
     BriefIntakePendingDecision,
     BriefIntakeQuestion,
     BriefIntakeQuestionSet,
+    BriefStrategyOption,
+    BriefStrategyOptionsResult,
     Capability,
     Category,
     Claim,
@@ -62,6 +64,7 @@ from ._internal import (
     Provider,
     QuestionType,
     ReasoningPath,
+    RecommendedStrategy,
     Relationship,
     Reliability,
     RequiredSlot,
@@ -73,7 +76,9 @@ from ._internal import (
     Status1,
     Status2,
     Step,
+    Strategy,
     Strength,
+    Strength1,
     StructureLock,
     Suggestion,
     Tag,
@@ -83,6 +88,7 @@ from ._internal import (
     TaskRun,
     TaskType,
     Time,
+    Tradeoff,
     Trait,
     TravelTime,
     TruthStatus,
@@ -92,7 +98,7 @@ from ._internal import (
     Wgs84SpatialPosition,
 )
 
-__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "ActorRef", "ActorType", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "Capability", "Category", "Claim", "ClaimType", "Classification", "ConclusionMode", "ConfirmationStatus", "Constraint", "CoreMetadata", "Direction", "EditingContracts", "Entity", "EntityType", "Event", "Extensions", "Goal", "Hypothesis", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "JsonPointer", "KnowledgeState", "Level", "Location", "LockType", "Materiality", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "OutputMessageId", "PatchOperation", "PathType", "Precision", "Provider", "QuestionType", "ReasoningPath", "Relationship", "Reliability", "RequiredSlot", "ResolutionSpec", "RuleId", "SchematicSpatialPosition", "Secret", "Status", "Status1", "Status2", "Step", "Strength", "StructureLock", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "Time", "Trait", "TravelTime", "TruthStatus", "ValueType", "Visibility", "VisibilityRule", "Wgs84SpatialPosition"]
+__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "ActorRef", "ActorType", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "BriefStrategyOption", "BriefStrategyOptionsResult", "Capability", "Category", "Claim", "ClaimType", "Classification", "ConclusionMode", "ConfirmationStatus", "Constraint", "CoreMetadata", "Direction", "EditingContracts", "Entity", "EntityType", "Event", "Extensions", "Goal", "Hypothesis", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "JsonPointer", "KnowledgeState", "Level", "Location", "LockType", "Materiality", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "OutputMessageId", "PatchOperation", "PathType", "Precision", "Provider", "QuestionType", "ReasoningPath", "RecommendedStrategy", "Relationship", "Reliability", "RequiredSlot", "ResolutionSpec", "RuleId", "SchematicSpatialPosition", "Secret", "Status", "Status1", "Status2", "Step", "Strategy", "Strength", "Strength1", "StructureLock", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "Time", "Tradeoff", "Trait", "TravelTime", "TruthStatus", "ValueType", "Visibility", "VisibilityRule", "Wgs84SpatialPosition"]
 
 from .public import (
     Brief,

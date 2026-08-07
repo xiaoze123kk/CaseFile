@@ -27,6 +27,55 @@
         }
       }
     },
+    "BriefStrategyOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "direction", "focus", "strengths", "tradeoffs", "brief_fit"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["structure_first", "atmosphere_first", "reasoning_first"]
+        },
+        "direction": {"type": "string", "minLength": 1, "maxLength": 600},
+        "focus": {"type": "string", "minLength": 1, "maxLength": 300},
+        "strengths": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "tradeoffs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "brief_fit": {"type": "string", "minLength": 1, "maxLength": 400}
+      }
+    },
+    "BriefStrategyOptionsResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_hash", "strategy_version", "options",
+        "recommended_strategy", "recommendation_reason"
+      ],
+      "properties": {
+        "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "strategy_version": {"const": "candidate-strategy-v1"},
+        "options": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/BriefStrategyOption"}
+        },
+        "recommended_strategy": {
+          "type": "string",
+          "enum": ["structure_first", "atmosphere_first", "reasoning_first"]
+        },
+        "recommendation_reason": {"type": "string", "minLength": 1, "maxLength": 400}
+      }
+    },
     "TaskRun": {
       "type": "object",
       "additionalProperties": false,
@@ -48,6 +97,7 @@
             "brief_anchor_extract",
             "brief_intake_questions",
             "brief_intake_synthesize",
+            "brief_strategy_options",
             "brief_to_draft",
             "casefile_chat"
           ]

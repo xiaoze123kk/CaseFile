@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_strategy_options",
+  "version": "brief-strategy-options-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "31e8fa98b451f63a41dba1c3ecd42a591a0bcc8fb6cd710a898eb74014c58f87",
+  "previous_version": null,
+  "change_summary": "新增冻结 Brief 的三策略定制分析与非代选推荐。"
+}

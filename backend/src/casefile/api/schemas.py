@@ -134,6 +134,12 @@ class BriefAnchorExtractTaskRequest(StrictRequest):
     provider: Literal["openai", "deepseek"] = "openai"
 
 
+class BriefStrategyOptionsTaskRequest(StrictRequest):
+    brief_version_id: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "openai"
+    refresh: bool = False
+
+
 class GenerateTaskRequest(StrictRequest):
     brief_version_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)

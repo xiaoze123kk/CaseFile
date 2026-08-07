@@ -5,6 +5,8 @@ import {
   isBriefIntakeRevisionConflict,
   isProviderAuthFailure,
   runTaskWithProviderFallback,
+  startStrategyOptionsTask,
+  strategyOptionsResult,
 } from "@/features/case-session/case-session-api";
 
 const { apiRequestMock, ApiErrorMock } = vi.hoisted(() => ({
@@ -29,6 +31,43 @@ afterEach(() => {
 });
 
 describe("case session provider fallback", () => {
+  it("starts strategy analysis with the frozen Brief and preserves explicit refresh", async () => {
+    const task = {
+      task_run_id: 19,
+      task_type: "brief_strategy_options",
+      status: "queued",
+      result: null,
+    };
+    apiRequestMock.mockResolvedValue(task);
+
+    await expect(
+      startStrategyOptionsTask(7, 13, "deepseek", true),
+    ).resolves.toBe(task);
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      "/projects/7/tasks/brief-strategy-options",
+      expect.objectContaining({
+        method: "POST",
+        body: {
+          brief_version_id: 13,
+          provider: "deepseek",
+          refresh: true,
+        },
+      }),
+    );
+  });
+
+  it("reads only a complete strategy result", () => {
+    const result = {
+      input_hash: "h",
+      strategy_version: "candidate-strategy-v1" as const,
+      options: [],
+      recommended_strategy: "reasoning_first" as const,
+      recommendation_reason: "适配推理命题。",
+    };
+    expect(strategyOptionsResult({ result } as never)).toBe(result);
+    expect(strategyOptionsResult({ result: null } as never)).toBeNull();
+  });
+
   it("falls back to the next configured provider on authentication failure", async () => {
     apiRequestMock.mockImplementation(async (path: string) =>
       path.includes("deepseek")

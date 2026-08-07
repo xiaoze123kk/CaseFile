@@ -6,16 +6,27 @@ import asyncio
 import json
 import re
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from time import perf_counter
+from typing import Any, Protocol, cast
 
 from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, create_model
 
 from casefile.agent_runtime.models import (
+    CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
@@ -26,18 +37,24 @@ from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
     BriefPolishResult,
+    BriefStrategyOptionsCandidate,
+    BriefStrategyOptionsRequest,
+    BriefStrategyOptionsResult,
     CandidateStrategy,
     CaseFileChatCandidate,
     CaseFileChatRequest,
     CaseFileChatResult,
+    GenerationPlan,
     GenerationRequest,
     GenerationResult,
+    StrictAgentOutput,
     ToolMetrics,
 )
 from casefile.agent_runtime.prompt import (
     anchor_extract_input,
     brief_intake_questions_input,
     brief_intake_synthesize_input,
+    brief_strategy_options_input,
     casefile_chat_input,
     generation_input,
     polish_input,
@@ -45,15 +62,6 @@ from casefile.agent_runtime.prompt import (
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 
 
 class GenerationProvider(Protocol):
@@ -63,9 +71,7 @@ class GenerationProvider(Protocol):
 class AgentProvider(GenerationProvider, Protocol):
     def polish(self, request: BriefPolishRequest) -> BriefPolishResult: ...
 
-    def extract_anchors(
-        self, request: BriefAnchorExtractRequest
-    ) -> BriefAnchorExtractResult: ...
+    def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult: ...
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
 
@@ -77,9 +83,65 @@ class AgentProvider(GenerationProvider, Protocol):
         self, request: BriefIntakeSynthesizeRequest
     ) -> BriefIntakeSynthesizeResult: ...
 
+    def strategy_options(
+        self, request: BriefStrategyOptionsRequest
+    ) -> BriefStrategyOptionsResult: ...
+
 
 class ProviderProtocolError(RuntimeError):
     """The provider returned a structurally unusable result or skipped a required tool."""
+
+
+_PARTITION_FIELDS: dict[str, tuple[str, ...]] = {
+    "story": ("entities", "relationships", "locations", "events"),
+    "reasoning": (
+        "information_units",
+        "claims",
+        "hypotheses",
+        "reasoning_paths",
+    ),
+    "governance": (
+        "resolution_specs",
+        "constraints",
+        "structure_locks",
+        "content_notices",
+        "extensions",
+    ),
+}
+
+_COLLECTION_PREFIXES = {
+    "resolution_specs": "res",
+    "entities": "ent",
+    "relationships": "rel",
+    "locations": "loc",
+    "events": "evt",
+    "information_units": "info",
+    "claims": "claim",
+    "hypotheses": "hyp",
+    "reasoning_paths": "path",
+    "constraints": "con",
+    "structure_locks": "lock",
+}
+
+
+def _partition_output_model(partition: str) -> type[BaseModel]:
+    fields: dict[str, tuple[Any, Any]] = {}
+    for field_name in _PARTITION_FIELDS[partition]:
+        model_field = CaseFile.model_fields[field_name]
+        fields[field_name] = (model_field.annotation, ...)
+    return cast(
+        type[BaseModel],
+        create_model(  # type: ignore[call-overload]
+            f"CaseFile{partition.title()}Partition",
+            __base__=StrictAgentOutput,
+            **fields,
+        ),
+    )
+
+
+_PARTITION_MODELS = {
+    partition: _partition_output_model(partition) for partition in _PARTITION_FIELDS
+}
 
 
 class FakeProvider:
@@ -102,9 +164,7 @@ class FakeProvider:
             polish_mode=request.polish_mode,
         )
 
-    def extract_anchors(
-        self, request: BriefAnchorExtractRequest
-    ) -> BriefAnchorExtractResult:
+    def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult:
         system_prompt_for_task("brief_anchor_extract", request.prompt_version)
         request.emit("model.started", "extracting", {"model_id": request.model_id})
         answer = request.brief.get("author_answer")
@@ -133,9 +193,51 @@ class FakeProvider:
         request.emit("model.completed", "extracting", {"usage": usage})
         return BriefAnchorExtractResult(candidate=candidate, usage=usage)
 
-    def intake_questions(
-        self, request: BriefIntakeQuestionsRequest
-    ) -> BriefIntakeQuestionsResult:
+    def strategy_options(self, request: BriefStrategyOptionsRequest) -> BriefStrategyOptionsResult:
+        system_prompt_for_task("brief_strategy_options", request.prompt_version)
+        request.emit("model.started", "analyzing_strategies", {"model_id": request.model_id})
+        intent = str(request.brief.get("creative_intent", "当前创意")).strip()
+        proposition = str(request.brief.get("reasoning_proposition", "核心问题")).strip()
+        candidate = BriefStrategyOptionsCandidate.model_validate(
+            {
+                "strategy_version": CANDIDATE_STRATEGY_VERSION,
+                "options": [
+                    {
+                        "strategy": "structure_first",
+                        "direction": f"围绕“{intent}”先搭建阶段、对象与因果骨架。",
+                        "focus": "让事件顺序、对象关系和推进节点首先清晰可审阅。",
+                        "strengths": ["结构稳定，便于继续扩写", "引用与因果关系更容易校验"],
+                        "tradeoffs": ["首稿的感官细节会相对克制"],
+                        "brief_fit": f"适合先稳定当前推理命题“{proposition}”的承载结构。",
+                    },
+                    {
+                        "strategy": "atmosphere_first",
+                        "direction": f"从“{intent}”的场景质感、人物张力和节奏进入。",
+                        "focus": "优先形成可感知的场景与情绪线索，同时保留事实边界。",
+                        "strengths": ["阅读体验更鲜明", "人物和地点更容易形成记忆点"],
+                        "tradeoffs": ["需要后续格外检查推理密度"],
+                        "brief_fit": "适合把当前创意中的氛围潜力转化为可追踪场景。",
+                    },
+                    {
+                        "strategy": "reasoning_first",
+                        "direction": f"围绕“{proposition}”建立问题、证据、反证与解答链。",
+                        "focus": "优先保证每个关键结论都能追溯到信息与推理路径。",
+                        "strengths": ["推理链可验证", "假设与证据边界更明确"],
+                        "tradeoffs": ["场景铺陈需要在后续编辑中继续深化"],
+                        "brief_fit": "当前 Brief 已给出明确推理命题，适合先锁定证据闭环。",
+                    },
+                ],
+                "recommended_strategy": "reasoning_first",
+                "recommendation_reason": (
+                    "当前 Brief 的推理命题足够明确，先建立证据闭环最能降低后续返工。"
+                ),
+            }
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "analyzing_strategies", {"usage": usage})
+        return BriefStrategyOptionsResult(candidate=candidate, usage=usage)
+
+    def intake_questions(self, request: BriefIntakeQuestionsRequest) -> BriefIntakeQuestionsResult:
         system_prompt_for_task("brief_intake_questions", request.prompt_version)
         request.emit("model.started", "questioning", {"model_id": request.model_id})
         questions = (
@@ -177,9 +279,7 @@ class FakeProvider:
                 },
             ]
         )
-        candidate = BriefIntakeQuestionSetContract.model_validate(
-            {"questions": questions}
-        )
+        candidate = BriefIntakeQuestionSetContract.model_validate({"questions": questions})
         usage = _zero_usage()
         request.emit("model.completed", "questioning", {"usage": usage})
         return BriefIntakeQuestionsResult(candidate=candidate, usage=usage)
@@ -191,9 +291,7 @@ class FakeProvider:
         request.emit("model.started", "synthesizing", {"model_id": request.model_id})
         source = request.input_data.get("source")
         source_text = (
-            str(source.get("content_text", "")).strip()
-            if isinstance(source, dict)
-            else ""
+            str(source.get("content_text", "")).strip() if isinstance(source, dict) else ""
         )
         concept = source_text.splitlines()[0][:1000].strip() or "尚待作者补充的创作概念"
         raw_questions = request.input_data.get("questions")
@@ -273,8 +371,7 @@ class FakeProvider:
         resolution_id = f"res_t{request.task_run_id}_01"
         constraints = _brief_constraints(request)
         constraint_ids = [
-            f"con_t{request.task_run_id}_{index:02d}"
-            for index in range(1, len(constraints) + 1)
+            f"con_t{request.task_run_id}_{index:02d}" for index in range(1, len(constraints) + 1)
         ]
         planned_ids = {resolution_id, *constraint_ids}
         metrics = ToolMetrics(
@@ -316,7 +413,7 @@ class FakeProvider:
             "title": (
                 request.brief["creative_intent"]
                 if strategy_title is None
-                else f'{request.brief["creative_intent"]}｜{strategy_title}'
+                else f"{request.brief['creative_intent']}｜{strategy_title}"
             ),
             "status": "draft",
             "version": {
@@ -430,9 +527,7 @@ class OpenAIAgentsProvider:
             polish_mode=request.polish_mode,
         )
 
-    def extract_anchors(
-        self, request: BriefAnchorExtractRequest
-    ) -> BriefAnchorExtractResult:
+    def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         candidate, usage = asyncio.run(
@@ -452,9 +547,7 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
-    def intake_questions(
-        self, request: BriefIntakeQuestionsRequest
-    ) -> BriefIntakeQuestionsResult:
+    def intake_questions(self, request: BriefIntakeQuestionsRequest) -> BriefIntakeQuestionsResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         candidate, usage = asyncio.run(
@@ -478,6 +571,25 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
+    def strategy_options(self, request: BriefStrategyOptionsRequest) -> BriefStrategyOptionsResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task(
+                    "brief_strategy_options", request.prompt_version
+                ),
+                input_text=brief_strategy_options_input(request),
+                output_type=BriefStrategyOptionsCandidate,
+                stage="analyzing_strategies",
+            )
+        )
+        return BriefStrategyOptionsResult(
+            candidate=BriefStrategyOptionsCandidate.model_validate(candidate),
+            usage=usage,
+        )
+
     def synthesize_intake(
         self, request: BriefIntakeSynthesizeRequest
     ) -> BriefIntakeSynthesizeResult:
@@ -489,9 +601,7 @@ class OpenAIAgentsProvider:
                 instructions=system_prompt_for_task(
                     "brief_intake_synthesize", request.prompt_version
                 ),
-                input_text=brief_intake_synthesize_input(
-                    request.input_data, request.input_hash
-                ),
+                input_text=brief_intake_synthesize_input(request.input_data, request.input_hash),
                 output_type=BriefIntakeCandidateContract,
                 stage="synthesizing",
             )
@@ -532,6 +642,19 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
+        if request.prompt_version == "brief-to-draft-v7":
+            return await _run_partitioned_generation(
+                request,
+                model=model,
+                model_settings=ModelSettings(
+                    reasoning=Reasoning(effort="medium"),
+                    verbosity="low",
+                    include_usage=True,
+                    parallel_tool_calls=False,
+                ),
+                structured_output=True,
+                tracing_disabled=False,
+            )
         return await _run_agent(
             request,
             model=model,
@@ -552,6 +675,7 @@ class OpenAIAgentsProvider:
             | BriefAnchorExtractRequest
             | BriefIntakeQuestionsRequest
             | BriefIntakeSynthesizeRequest
+            | BriefStrategyOptionsRequest
             | CaseFileChatRequest
         ),
         *,
@@ -615,9 +739,7 @@ class DeepSeekAgentsProvider:
             polish_mode=request.polish_mode,
         )
 
-    def extract_anchors(
-        self, request: BriefAnchorExtractRequest
-    ) -> BriefAnchorExtractResult:
+    def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
         candidate, usage = asyncio.run(
@@ -637,9 +759,7 @@ class DeepSeekAgentsProvider:
             usage=usage,
         )
 
-    def intake_questions(
-        self, request: BriefIntakeQuestionsRequest
-    ) -> BriefIntakeQuestionsResult:
+    def intake_questions(self, request: BriefIntakeQuestionsRequest) -> BriefIntakeQuestionsResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
         candidate, usage = asyncio.run(
@@ -663,6 +783,25 @@ class DeepSeekAgentsProvider:
             usage=usage,
         )
 
+    def strategy_options(self, request: BriefStrategyOptionsRequest) -> BriefStrategyOptionsResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task(
+                    "brief_strategy_options", request.prompt_version
+                ),
+                input_text=brief_strategy_options_input(request),
+                output_type=BriefStrategyOptionsCandidate,
+                stage="analyzing_strategies",
+            )
+        )
+        return BriefStrategyOptionsResult(
+            candidate=BriefStrategyOptionsCandidate.model_validate(candidate),
+            usage=usage,
+        )
+
     def synthesize_intake(
         self, request: BriefIntakeSynthesizeRequest
     ) -> BriefIntakeSynthesizeResult:
@@ -674,9 +813,7 @@ class DeepSeekAgentsProvider:
                 instructions=system_prompt_for_task(
                     "brief_intake_synthesize", request.prompt_version
                 ),
-                input_text=brief_intake_synthesize_input(
-                    request.input_data, request.input_hash
-                ),
+                input_text=brief_intake_synthesize_input(request.input_data, request.input_hash),
                 output_type=BriefIntakeCandidateContract,
                 stage="synthesizing",
             )
@@ -713,6 +850,14 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
+        if request.prompt_version == "brief-to-draft-v7":
+            return await _run_partitioned_generation(
+                request,
+                model=model,
+                model_settings=_deepseek_model_settings(),
+                structured_output=False,
+                tracing_disabled=True,
+            )
         return await _run_agent(
             request,
             model=model,
@@ -728,6 +873,7 @@ class DeepSeekAgentsProvider:
             | BriefAnchorExtractRequest
             | BriefIntakeQuestionsRequest
             | BriefIntakeSynthesizeRequest
+            | BriefStrategyOptionsRequest
             | CaseFileChatRequest
         ),
         *,
@@ -757,6 +903,7 @@ class DeepSeekAgentsProvider:
             | BriefAnchorExtractRequest
             | BriefIntakeQuestionsRequest
             | BriefIntakeSynthesizeRequest
+            | BriefStrategyOptionsRequest
             | CaseFileChatRequest
         ),
     ) -> OpenAIChatCompletionsModel:
@@ -773,10 +920,12 @@ class DeepSeekAgentsProvider:
 
 async def _run_auxiliary_agent(
     request: (
-        BriefPolishRequest
+        GenerationRequest
+        | BriefPolishRequest
         | BriefAnchorExtractRequest
         | BriefIntakeQuestionsRequest
         | BriefIntakeSynthesizeRequest
+        | BriefStrategyOptionsRequest
         | CaseFileChatRequest
     ),
     *,
@@ -825,6 +974,356 @@ async def _run_auxiliary_agent(
     usage = _usage_json(result.context_wrapper.usage)
     request.emit("model.completed", stage, {"usage": usage})
     return output.model_dump(mode="json"), usage
+
+
+async def _run_partitioned_generation(
+    request: GenerationRequest,
+    *,
+    model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
+    model_settings: ModelSettings,
+    structured_output: bool,
+    tracing_disabled: bool,
+) -> GenerationResult:
+    """Generate one complete CaseFile through a shared plan and isolated partitions."""
+
+    instructions = system_prompt_for_task("brief_to_draft", request.prompt_version)
+    strategy = (
+        request.candidate_strategy.value
+        if hasattr(request.candidate_strategy, "value")
+        else str(request.candidate_strategy)
+    )
+    frozen_context = {
+        "schema_version": "1.0",
+        "casefile_id": request.casefile_id,
+        "brief_ref": {"brief_id": request.brief_id, "version": request.brief_version},
+        "version": {
+            "version_id": request.version_id,
+            "version_no": request.version_no,
+            "parent_version_id": request.parent_version_id,
+        },
+        "status": "draft",
+        "candidate_strategy": strategy,
+        "candidate_strategy_version": request.candidate_strategy_version,
+    }
+    usage_records: list[dict[str, Any]] = []
+
+    request.emit("generation.plan_started", "planning", {"attempt": 1})
+    plan: GenerationPlan | None = None
+    for attempt in (1, 2):
+        try:
+            plan_json, usage = await _run_auxiliary_agent(
+                request,
+                model=model,
+                model_settings=model_settings,
+                instructions=(
+                    instructions + "\n当前阶段：只返回紧凑对象计划。每个 local_key 必须唯一，"
+                    "referenced_keys 只能引用同一计划中的 local_key。"
+                ),
+                input_text=json.dumps(
+                    {
+                        "brief": request.brief,
+                        "frozen_context": frozen_context,
+                        "repair": attempt == 2,
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                output_type=GenerationPlan,
+                stage="planning",
+                structured_output=structured_output,
+                tracing_disabled=tracing_disabled,
+            )
+            usage_records.append(usage)
+            plan = GenerationPlan.model_validate(plan_json)
+            break
+        except Exception as error:
+            if attempt == 2:
+                raise
+            request.emit(
+                "generation.plan_repair_started",
+                "repairing",
+                {"attempt": 2, "error_type": type(error).__name__},
+            )
+    if plan is None:
+        raise ProviderProtocolError("Generation plan was not produced")
+
+    id_directory = _allocate_plan_ids(request.task_run_id, plan)
+    plan_payload = {
+        "title": plan.title,
+        "objects": [
+            {
+                **item.model_dump(mode="json"),
+                "object_id": id_directory[item.local_key],
+                "referenced_object_ids": [id_directory[ref] for ref in item.referenced_keys],
+            }
+            for item in plan.objects
+        ],
+    }
+    request.emit(
+        "generation.plan_completed",
+        "planning",
+        {
+            "object_count": len(plan.objects),
+            "collection_counts": _plan_collection_counts(plan),
+        },
+    )
+
+    updated_at = datetime.now(UTC).isoformat()
+
+    async def generate_partition(
+        partition: str,
+        *,
+        issues: list[dict[str, Any]] | None = None,
+        previous: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        output_type = _PARTITION_MODELS[partition]
+        last_error: Exception | None = None
+        for attempt in (1, 2):
+            started_at = perf_counter()
+            request.emit(
+                "generation.partition_started",
+                f"generating_{partition}",
+                {"partition": partition, "attempt": attempt, "targeted_repair": bool(issues)},
+            )
+            try:
+                payload: dict[str, Any] = {
+                    "brief": request.brief,
+                    "frozen_context": frozen_context,
+                    "updated_at": updated_at,
+                    "shared_plan": plan_payload,
+                    "partition": partition,
+                    "required_fields": list(_PARTITION_FIELDS[partition]),
+                }
+                if issues:
+                    payload["repair_feedback"] = issues
+                    payload["previous_partition"] = previous
+                elif attempt == 2:
+                    payload["repair_feedback"] = [
+                        {
+                            "code": "partition_output_invalid",
+                            "path": f"/{partition}",
+                            "message": "上一响应无法解析或不符合当前分区结构",
+                        }
+                    ]
+                partition_json, usage = await _run_auxiliary_agent(
+                    request,
+                    model=model,
+                    model_settings=model_settings,
+                    instructions=(
+                        instructions
+                        + f"\n当前阶段：只生成 {partition} 分区，且必须完整返回："
+                        + ", ".join(_PARTITION_FIELDS[partition])
+                        + "。必须恰好使用 shared_plan 中属于这些集合的全部 object_id。"
+                    ),
+                    input_text=json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    output_type=output_type,
+                    stage=f"generating_{partition}",
+                    structured_output=structured_output,
+                    tracing_disabled=tracing_disabled,
+                )
+                validated = output_type.model_validate(partition_json).model_dump(mode="json")
+                request.emit(
+                    "generation.partition_completed",
+                    f"generating_{partition}",
+                    {
+                        "partition": partition,
+                        "attempt": attempt,
+                        "targeted_repair": bool(issues),
+                        "elapsed_ms": round((perf_counter() - started_at) * 1000),
+                    },
+                )
+                return validated, usage
+            except Exception as error:
+                last_error = error
+                request.emit(
+                    "generation.partition_failed",
+                    f"generating_{partition}",
+                    {
+                        "partition": partition,
+                        "attempt": attempt,
+                        "targeted_repair": bool(issues),
+                        "elapsed_ms": round((perf_counter() - started_at) * 1000),
+                        "error_type": type(error).__name__,
+                    },
+                )
+                if issues or attempt == 2:
+                    raise
+                request.emit(
+                    "generation.partition_repair_started",
+                    "repairing",
+                    {"partition": partition, "attempt": 2, "error_type": type(error).__name__},
+                )
+        raise last_error or ProviderProtocolError("Partition generation failed")
+
+    request.emit(
+        "generation.partitions_started",
+        "generating",
+        {"partitions": list(_PARTITION_FIELDS)},
+    )
+    partition_pairs = await asyncio.gather(
+        *(generate_partition(partition) for partition in _PARTITION_FIELDS)
+    )
+    partitions = {
+        partition: partition_pairs[index][0] for index, partition in enumerate(_PARTITION_FIELDS)
+    }
+    usage_records.extend(pair[1] for pair in partition_pairs)
+    request.emit("generation.assembly_started", "assembling", {})
+    candidate = _assemble_partitioned_candidate(
+        request,
+        plan.title,
+        partitions,
+    )
+    request.emit(
+        "generation.assembly_completed",
+        "assembling",
+        {"partitions": list(_PARTITION_FIELDS), "object_count": len(id_directory)},
+    )
+
+    request.emit("generation.validation_started", "validating", {})
+    try:
+        _validate_partitioned_candidate(candidate, id_directory)
+    except ContractValidationError as error:
+        issues_by_partition = _partition_issues(error.errors)
+        if not issues_by_partition:
+            raise
+        repaired_pairs = await asyncio.gather(
+            *(
+                generate_partition(
+                    partition,
+                    issues=issues,
+                    previous=partitions[partition],
+                )
+                for partition, issues in issues_by_partition.items()
+            )
+        )
+        for index, partition in enumerate(issues_by_partition):
+            partitions[partition] = repaired_pairs[index][0]
+            usage_records.append(repaired_pairs[index][1])
+        candidate = _assemble_partitioned_candidate(request, plan.title, partitions)
+        _validate_partitioned_candidate(candidate, id_directory)
+    request.emit(
+        "generation.validation_completed",
+        "validating",
+        {"object_count": len(id_directory)},
+    )
+
+    metrics = ToolMetrics(
+        calls=len(usage_records),
+        valid_calls=len(usage_records),
+        successful_calls=len(usage_records),
+        adopted_results=1,
+        planned_object_ids=set(id_directory.values()),
+    )
+    request.emit(
+        "generation.assembled",
+        "validating",
+        {"partitions": list(_PARTITION_FIELDS), "object_count": len(id_directory)},
+    )
+    return GenerationResult(
+        candidate=candidate,
+        usage=_merge_usage(usage_records),
+        tools=metrics,
+    )
+
+
+def _allocate_plan_ids(task_run_id: int, plan: GenerationPlan) -> dict[str, str]:
+    counters = {collection: 0 for collection in _COLLECTION_PREFIXES}
+    allocated: dict[str, str] = {}
+    for item in plan.objects:
+        counters[item.collection] += 1
+        allocated[item.local_key] = (
+            f"{_COLLECTION_PREFIXES[item.collection]}_t{task_run_id}_"
+            f"{counters[item.collection]:02d}"
+        )
+    return allocated
+
+
+def _plan_collection_counts(plan: GenerationPlan) -> dict[str, int]:
+    counts = {collection: 0 for collection in _COLLECTION_PREFIXES}
+    for item in plan.objects:
+        counts[item.collection] += 1
+    return counts
+
+
+def _assemble_partitioned_candidate(
+    request: GenerationRequest,
+    title: str,
+    partitions: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    candidate: dict[str, Any] = {
+        "schema_version": "1.0",
+        "casefile_id": request.casefile_id,
+        "title": title,
+        "status": "draft",
+        "version": {
+            "version_id": request.version_id,
+            "version_no": request.version_no,
+            "parent_version_id": request.parent_version_id,
+        },
+        "brief_ref": {"brief_id": request.brief_id, "version": request.brief_version},
+    }
+    for partition in _PARTITION_FIELDS:
+        candidate.update(partitions[partition])
+    return candidate
+
+
+def _validate_partitioned_candidate(
+    candidate: dict[str, Any],
+    id_directory: dict[str, str],
+) -> None:
+    validate_casefile(candidate)
+    _validate_generated_descriptions(candidate)
+    actual_ids = _candidate_object_ids(candidate)
+    expected_ids = set(id_directory.values())
+    if actual_ids != expected_ids:
+        raise ContractValidationError(
+            [
+                {
+                    "code": "planned_object_ids_mismatch",
+                    "path": "",
+                    "message": (
+                        f"missing={sorted(expected_ids - actual_ids)!r}; "
+                        f"unexpected={sorted(actual_ids - expected_ids)!r}"
+                    ),
+                }
+            ]
+        )
+
+
+def _partition_issues(
+    issues: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    field_to_partition = {
+        field: partition for partition, fields in _PARTITION_FIELDS.items() for field in fields
+    }
+    for issue in issues:
+        path = str(issue.get("path", ""))
+        first = path.lstrip("/").split("/", 1)[0]
+        partition = field_to_partition.get(first)
+        if partition is not None:
+            grouped.setdefault(partition, []).append(issue)
+    return grouped
+
+
+def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
+    merged: dict[str, Any] = {
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+    }
+    for record in records:
+        for key in tuple(merged):
+            value = record.get(key, 0)
+            if isinstance(value, int):
+                merged[key] += value
+    merged["partition_calls"] = len(records)
+    return merged
 
 
 async def _run_agent(
@@ -1003,10 +1502,7 @@ def _pydantic_validation_issues(error: ValidationError) -> list[dict[str, str]]:
 
 
 def _json_pointer(parts: Any) -> str:
-    escaped = [
-        str(part).replace("~", "~0").replace("/", "~1")
-        for part in parts
-    ]
+    escaped = [str(part).replace("~", "~0").replace("/", "~1") for part in parts]
     return "" if not escaped else "/" + "/".join(escaped)
 
 
@@ -1028,8 +1524,7 @@ def _json_schema_instruction(output_type: type[BaseModel]) -> str:
     return (
         "\n最终响应必须是严格匹配以下 JSON Schema 的一个 JSON 对象。"
         "必须使用准确的属性名；不得把来源追踪输入字段复制到输出；"
-        "不得使用 Markdown 包装，也不得添加任何额外说明。\n"
-        + schema
+        "不得使用 Markdown 包装，也不得添加任何额外说明。\n" + schema
     )
 
 

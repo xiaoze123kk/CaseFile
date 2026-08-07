@@ -14,6 +14,7 @@ import {
 
 import type {
   BriefPolishResult,
+  BriefStrategyOption,
   CandidateStrategy,
   ProviderName,
   TaskView,
@@ -58,6 +59,8 @@ import {
   startPolishTask,
   startQuestionsTask,
   startSynthesizeTask,
+  startStrategyOptionsTask,
+  strategyOptionsResult,
   updateBrief,
   waitForTask,
 } from "./case-session-api";
@@ -87,6 +90,7 @@ export type CandidateTaskStage =
   | "validating"
   | "completed"
   | "failed";
+export type StrategyAnalysisStatus = "idle" | "analyzing" | "ready" | "failed";
 
 export const CANDIDATE_SLOT_STRATEGIES: readonly CandidateSlotStrategy[] = [
   "structure_first",
@@ -157,6 +161,14 @@ export interface CaseSessionState {
     stage: number;
     slots: Record<CandidateSlotStrategy, CandidateSlot>;
   };
+  strategyAnalysis: {
+    status: StrategyAnalysisStatus;
+    options: BriefStrategyOption[];
+    recommendedStrategy: CandidateSlotStrategy | null;
+    recommendationReason: string | null;
+    error: string | null;
+  };
+  selectedStrategy: CandidateSlotStrategy | null;
   draftCandidates: WorkbenchCandidate[];
   previewCandidateId: string | null;
   adoptedCandidateId: string | null;
@@ -178,6 +190,13 @@ type CaseSessionAction =
       error?: string | null;
     }
   | { type: "advance_generation"; stage: number }
+  | {
+      type: "strategy_analysis_ready";
+      options: BriefStrategyOption[];
+      recommendedStrategy: CandidateSlotStrategy;
+      recommendationReason: string;
+    }
+  | { type: "select_strategy"; strategy: CandidateSlotStrategy }
   | { type: "complete_generation"; candidates: WorkbenchCandidate[] }
   | { type: "preview_candidate"; candidateId: string | null }
   | { type: "adopt_candidate"; candidateId: string }
@@ -199,6 +218,14 @@ export function createInitialCaseSessionState(): CaseSessionState {
     workingBriefVersion: 1,
     frozenBriefVersion: null,
     generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+    strategyAnalysis: {
+      status: "idle",
+      options: [],
+      recommendedStrategy: null,
+      recommendationReason: null,
+      error: null,
+    },
+    selectedStrategy: null,
     draftCandidates: [],
     previewCandidateId: null,
     adoptedCandidateId: null,
@@ -272,6 +299,21 @@ export function caseSessionReducer(
       },
     };
   }
+  if (action.type === "strategy_analysis_ready") {
+    return {
+      ...state,
+      strategyAnalysis: {
+        status: "ready",
+        options: action.options,
+        recommendedStrategy: action.recommendedStrategy,
+        recommendationReason: action.recommendationReason,
+        error: null,
+      },
+    };
+  }
+  if (action.type === "select_strategy") {
+    return { ...state, selectedStrategy: action.strategy };
+  }
   if (action.type === "complete_generation") {
     return {
       ...state,
@@ -311,6 +353,14 @@ export function caseSessionReducer(
       frozenBriefVersion: null,
       review: null,
       generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+      strategyAnalysis: {
+        status: "idle",
+        options: [],
+        recommendedStrategy: null,
+        recommendationReason: null,
+        error: null,
+      },
+      selectedStrategy: null,
       previewCandidateId: null,
     };
   }
@@ -354,6 +404,8 @@ interface CaseSessionContextValue {
     strategy?: CandidateSlotStrategy,
     attempt?: number,
   ) => Promise<boolean>;
+  analyzeStrategies: (refresh?: boolean) => Promise<boolean>;
+  selectStrategy: (strategy: CandidateSlotStrategy) => void;
   previewCandidate: (candidateId: string | null) => void;
   adoptCandidate: (candidateId: string) => Promise<boolean>;
   beginBriefRevision: () => void;
@@ -851,15 +903,79 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     return true;
   }, [saveReview]);
 
+  const analyzeStrategies = useCallback(async (refresh = false) => {
+    const current = stateRef.current;
+    if (current.strategyAnalysis.status === "analyzing") return false;
+    const projectId = projectIdRef.current;
+    if (projectId === null) return false;
+    dispatch({
+      type: "patch",
+      patch: {
+        strategyAnalysis: {
+          ...current.strategyAnalysis,
+          status: "analyzing",
+          error: null,
+        },
+      },
+    });
+    try {
+      const brief = briefRef.current ?? (await fetchBrief(projectId));
+      if (!brief.current_version_id) {
+        throw new CaseSessionError("请先冻结当前创作简报。");
+      }
+      const { result: done } = await runTaskWithProviderFallback(
+        async (provider) => {
+          const task = await startStrategyOptionsTask(
+            projectId,
+            brief.current_version_id!,
+            provider,
+            refresh,
+          );
+          return waitForTask(projectId, task.task_run_id);
+        },
+      );
+      const result = strategyOptionsResult(done);
+      if (!result || result.options.length !== 3) {
+        throw new CaseSessionError("策略分析任务没有返回完整的三个方向。");
+      }
+      dispatch({
+        type: "strategy_analysis_ready",
+        options: result.options,
+        recommendedStrategy: result.recommended_strategy,
+        recommendationReason: result.recommendation_reason,
+      });
+      return true;
+    } catch (error) {
+      const latest = stateRef.current.strategyAnalysis;
+      dispatch({
+        type: "patch",
+        patch: {
+          strategyAnalysis: {
+            ...latest,
+            status: "failed",
+            error: error instanceof Error ? error.message : "策略分析失败",
+          },
+        },
+      });
+      throw error;
+    }
+  }, []);
+
+  const selectStrategy = useCallback((strategy: CandidateSlotStrategy) => {
+    dispatch({ type: "select_strategy", strategy });
+  }, []);
+
   const generateCandidates = useCallback(
     async (
       requestedStrategy?: CandidateSlotStrategy,
       requestedAttempt = 1,
     ) => {
     const current = stateRef.current;
+    const selectedStrategy = requestedStrategy ?? current.selectedStrategy;
     if (
       !current.review ||
       current.frozenBriefVersion === null ||
+      !selectedStrategy ||
       current.generation.status === "generating"
     ) {
       return false;
@@ -883,9 +999,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
               strategy !== "balanced",
           ),
       );
-      const requestedStrategies = requestedStrategy
-        ? [requestedStrategy]
-        : CANDIDATE_SLOT_STRATEGIES;
+      const requestedStrategies = [selectedStrategy];
       const missingStrategies = requestedStrategies.filter(
         (strategy) => !existingStrategies.has(strategy),
       );
@@ -916,7 +1030,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 draft.revision,
                 provider,
                 firstStrategy,
-                requestedStrategy === firstStrategy ? requestedAttempt : 1,
+                selectedStrategy === firstStrategy ? requestedAttempt : 1,
               );
               taskRunId = task.task_run_id;
               dispatch({
@@ -925,7 +1039,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 status: "running",
                 taskRunId,
                 attempt:
-                  requestedStrategy === firstStrategy ? requestedAttempt : 1,
+                  selectedStrategy === firstStrategy ? requestedAttempt : 1,
               });
               await waitForTask(projectId, task.task_run_id, (latestTask) => {
                 dispatch({
@@ -1166,10 +1280,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           );
         });
       dispatch({ type: "complete_generation", candidates: mapped });
-      return CANDIDATE_SLOT_STRATEGIES.every((strategy) =>
-        refreshedCurrentOnes.some(
-          (candidate) => candidate.candidate_strategy === strategy,
-        ),
+      return refreshedCurrentOnes.some(
+        (candidate) => candidate.candidate_strategy === selectedStrategy,
       );
     } catch (error) {
       const generation = stateRef.current.generation;
@@ -1357,6 +1469,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         previewCandidateId,
         adoptedCandidateId,
         generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+        strategyAnalysis: {
+          status: "idle",
+          options: [],
+          recommendedStrategy: null,
+          recommendationReason: null,
+          error: null,
+        },
+        selectedStrategy: null,
         ...mapped,
         brief: mapped.brief ?? createEmptyBrief(sourceText),
       },
@@ -1381,6 +1501,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       setReview,
       saveReview,
       freezeReview,
+      analyzeStrategies,
+      selectStrategy,
       generateCandidates,
       previewCandidate,
       adoptCandidate,
@@ -1407,6 +1529,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       activeCandidate,
       activeProjectId,
       activateCandidate,
+      analyzeStrategies,
       adoptCandidate,
       adoptPolish,
       beginBriefReview,
@@ -1430,6 +1553,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       saveCandidateAsNew,
       saveCandidateBookmark,
       saveReview,
+      selectStrategy,
       setReview,
       state,
       submitPolish,
