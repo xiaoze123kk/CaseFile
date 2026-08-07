@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v1/brief-intake/brief-intake.schema.json",
+  "title": "BriefIntakeCandidate",
+  "description": "Immutable, reviewable candidate produced during the pre-Brief intake workflow.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "concept",
+    "core_selling_points",
+    "content_outline",
+    "reasoning_goal",
+    "resolution_mode",
+    "conclusion_mode",
+    "author_answer",
+    "constraints",
+    "pending_decisions",
+    "scope_estimate",
+    "risk_notes",
+    "field_sources"
+  ],
+  "properties": {
+    "concept": {"type": "string", "minLength": 1, "maxLength": 1000},
+    "core_selling_points": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 500},
+      "maxItems": 8
+    },
+    "content_outline": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 1000},
+      "maxItems": 16
+    },
+    "reasoning_goal": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "resolution_mode": {
+      "type": "string",
+      "enum": ["author_anchored", "agent_proposed", "open"]
+    },
+    "conclusion_mode": {
+      "type": "string",
+      "enum": [
+        "unique", "finite_multiple", "optimal", "probabilistic",
+        "open_interpretation", "multiple_endings", "undetermined"
+      ]
+    },
+    "author_answer": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 4000},
+        {"type": "null"}
+      ]
+    },
+    "constraints": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/BriefIntakeConstraint"},
+      "maxItems": 40
+    },
+    "pending_decisions": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/BriefIntakePendingDecision"},
+      "maxItems": 20
+    },
+    "scope_estimate": {
+      "oneOf": [
+        {"type": "string", "minLength": 1, "maxLength": 1000},
+        {"type": "null"}
+      ]
+    },
+    "risk_notes": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1, "maxLength": 500},
+      "maxItems": 12
+    },
+    "field_sources": {"$ref": "#/$defs/BriefIntakeFieldSources"}
+  },
+  "$defs": {
+    "BriefIntakeFieldSource": {
+      "type": "string",
+      "enum": [
+        "user_original",
+        "user_confirmed",
+        "agent_suggestion",
+        "unresolved"
+      ]
+    },
+    "BriefIntakeFieldSources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "concept",
+        "core_selling_points",
+        "content_outline",
+        "reasoning_goal",
+        "resolution_mode",
+        "conclusion_mode",
+        "author_answer",
+        "constraints",
+        "scope_estimate",
+        "risk_notes"
+      ],
+      "properties": {
+        "concept": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "core_selling_points": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "content_outline": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "reasoning_goal": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "resolution_mode": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "conclusion_mode": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "author_answer": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "constraints": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "scope_estimate": {"$ref": "#/$defs/BriefIntakeFieldSource"},
+        "risk_notes": {"$ref": "#/$defs/BriefIntakeFieldSource"}
+      }
+    },
+    "BriefIntakeConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "constraint_key",
+        "category",
+        "statement",
+        "strength",
+        "confirmed",
+        "source"
+      ],
+      "properties": {
+        "constraint_key": {
+          "type": "string",
+          "pattern": "^constraint_[a-z0-9][a-z0-9_]{0,51}$"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "must_keep",
+            "must_avoid",
+            "scope",
+            "cast",
+            "duration",
+            "content_scale",
+            "other"
+          ]
+        },
+        "statement": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "strength": {"type": "string", "enum": ["hard", "soft"]},
+        "confirmed": {"type": "boolean"},
+        "source": {"$ref": "#/$defs/BriefIntakeFieldSource"}
+      }
+    },
+    "BriefIntakePendingDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision_key", "prompt", "impact", "source"],
+      "properties": {
+        "decision_key": {
+          "type": "string",
+          "pattern": "^decision_[a-z0-9][a-z0-9_]{0,53}$"
+        },
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "impact": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "source": {"const": "unresolved"}
+      }
+    },
+    "BriefIntakeQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question_key",
+        "ordinal",
+        "prompt",
+        "impact",
+        "required",
+        "suggestions"
+      ],
+      "properties": {
+        "question_key": {
+          "type": "string",
+          "pattern": "^question_[a-z0-9][a-z0-9_]{0,53}$"
+        },
+        "ordinal": {"type": "integer", "minimum": 1, "maximum": 2},
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "impact": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "required": {"type": "boolean"},
+        "suggestions": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "maxItems": 3
+        }
+      }
+    },
+    "BriefIntakeQuestionSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["questions"],
+      "properties": {
+        "questions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/BriefIntakeQuestion"},
+          "maxItems": 2,
+          "contains": {
+            "type": "object",
+            "properties": {"required": {"const": true}},
+            "required": ["required"]
+          },
+          "minContains": 0,
+          "maxContains": 1
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"resolution_mode": {"const": "author_anchored"}},
+        "required": ["resolution_mode"]
+      },
+      "then": {"properties": {"author_answer": {"type": "string", "minLength": 1}}},
+      "else": {"properties": {"author_answer": {"type": "null"}}}
+    }
+  ]
+}

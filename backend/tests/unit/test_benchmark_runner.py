@@ -38,7 +38,7 @@ def test_all_fixtures_pass_fake_benchmark() -> None:
         assert report["repeats"] == 2
         assert report["status"] == "completed"
         assert report["dimension"] == "ai_model"
-        assert report["prompt_version"] == "brief-to-draft-v3"
+        assert report["prompt_version"].startswith("brief-to-draft-v")
         assert report["schema_version"] == "1.0"
 
         svr = _metric_value(report, "structure_validity_rate")

@@ -30,7 +30,8 @@
         "statement": "每层隐藏关系必须有对应的遗嘱、书信或财务记录作为证据。",
         "strength": "hard"
       }
-    ]
+    ],
+    "conclusion_mode": "multiple_endings"
   },
   "frozen_context": {
     "casefile_id": "case_benchmark_relationship",
@@ -45,6 +46,6 @@
     }
   },
   "max_turns": 15,
-  "expected_prompt_version": "brief-to-draft-v3",
+  "expected_prompt_version": "brief-to-draft-v5",
   "expected_schema_version": "1.0"
 }

@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_intake_questions",
+  "version": "brief-intake-questions-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "357cb699b2258d929be6e152582965985e0d0937317e94255a07d6faa9c8d066",
+  "previous_version": "brief-intake-questions-v2",
+  "change_summary": "Support additive optional question batches that preserve existing questions and avoid semantic duplicates."
+}

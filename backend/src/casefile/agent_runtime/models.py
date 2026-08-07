@@ -1,11 +1,19 @@
-"""Provider-neutral requests and results for the three Brief Agent tasks."""
+"""Provider-neutral requests and results for durable CaseFile Agent tasks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from enum import StrEnum
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 
 
 class EventSink(Protocol):
@@ -24,6 +32,28 @@ class BriefPolishCandidate(StrictAgentOutput):
     polished_text: str = Field(min_length=1)
     preserved_intent_summary: str = Field(min_length=1)
     ambiguities: list[str] = Field(default_factory=list)
+    introduced_details: list[str] = Field(default_factory=list)
+
+
+PolishMode = Literal["proofread", "rewrite", "narrative_enhance"]
+
+
+class CandidateStrategy(StrEnum):
+    """Frozen strategy labels for one Brief-to-Draft candidate run."""
+
+    BALANCED = "balanced"
+    STRUCTURE_FIRST = "structure_first"
+    ATMOSPHERE_FIRST = "atmosphere_first"
+    REASONING_FIRST = "reasoning_first"
+
+
+CANDIDATE_STRATEGY_VERSION = "candidate-strategy-v1"
+CANDIDATE_STRATEGY_LABELS: dict[CandidateStrategy, str] = {
+    CandidateStrategy.BALANCED: "常规候选",
+    CandidateStrategy.STRUCTURE_FIRST: "结构优先",
+    CandidateStrategy.ATMOSPHERE_FIRST: "氛围优先",
+    CandidateStrategy.REASONING_FIRST: "推理优先",
+}
 
 
 class ExtractedAnchor(StrictAgentOutput):
@@ -43,31 +73,85 @@ class BriefAnchorExtractCandidate(StrictAgentOutput):
     warnings: list[str] = Field(default_factory=list)
 
 
+class CaseFileChatSuggestionCandidate(StrictAgentOutput):
+    """One reviewable field-level change proposed against the frozen CaseFile."""
+
+    object_id: str = Field(min_length=1)
+    path: str = Field(
+        min_length=2,
+        pattern=r"^/(?:[^/~]|~[01])+(?:/(?:[^/~]|~[01])+)*$",
+    )
+    value_json: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class CaseFileChatCandidate(StrictAgentOutput):
+    """An author-facing answer plus optional changes that still require approval."""
+
+    answer: str = Field(min_length=1)
+    referenced_object_ids: list[str] = Field(default_factory=list)
+    suggestions: list[CaseFileChatSuggestionCandidate] = Field(default_factory=list)
+
+
 @dataclass(frozen=True, slots=True)
-class BriefPolishRequest:
+class BriefIntakeQuestionsRequest:
     task_run_id: int
+    prompt_version: str
     source_text: str
+    existing_questions: list[dict[str, Any]]
+    mode: Literal["initial", "additional"]
     input_hash: str
     model_id: str
     api_key: str | None
     max_turns: int
     emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeSynthesizeRequest:
+    task_run_id: int
+    prompt_version: str
+    input_data: dict[str, Any]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class BriefPolishRequest:
+    task_run_id: int
+    prompt_version: str
+    source_text: str
+    polish_mode: PolishMode
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
 class BriefAnchorExtractRequest:
     task_run_id: int
+    prompt_version: str
     brief: dict[str, Any]
     input_hash: str
     model_id: str
     api_key: str | None
     max_turns: int
     emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(frozen=True, slots=True)
 class GenerationRequest:
     task_run_id: int
+    prompt_version: str
     brief: dict[str, Any]
     casefile_id: str
     brief_id: str
@@ -79,7 +163,26 @@ class GenerationRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
-    repair_feedback: tuple[str, ...] = ()
+    network_retries: int = 2
+    repair_feedback: tuple[dict[str, Any], ...] = ()
+    candidate_strategy: CandidateStrategy = CandidateStrategy.BALANCED
+    candidate_strategy_version: str = CANDIDATE_STRATEGY_VERSION
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFileChatRequest:
+    task_run_id: int
+    prompt_version: str
+    casefile: dict[str, Any]
+    history: tuple[dict[str, str], ...]
+    message: str
+    editable_fields_by_collection: dict[str, tuple[str, ...]]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
 
 
 @dataclass(slots=True)
@@ -113,11 +216,30 @@ class GenerationResult:
 class BriefPolishResult:
     candidate: BriefPolishCandidate
     usage: dict[str, Any]
+    polish_mode: PolishMode
 
 
 @dataclass(frozen=True, slots=True)
 class BriefAnchorExtractResult:
     candidate: BriefAnchorExtractCandidate
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class CaseFileChatResult:
+    candidate: CaseFileChatCandidate
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeQuestionsResult:
+    candidate: BriefIntakeQuestionSetContract
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class BriefIntakeSynthesizeResult:
+    candidate: BriefIntakeCandidateContract
     usage: dict[str, Any]
 
 

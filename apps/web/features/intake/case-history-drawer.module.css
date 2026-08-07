@@ -1,0 +1,329 @@
+.drawerLayer {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  pointer-events: none;
+}
+
+.drawerLayer[data-open="true"] {
+  pointer-events: auto;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(26, 28, 25, 0.32);
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.drawerLayer[data-open="true"] .scrim {
+  opacity: 1;
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(400px, 92vw);
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--rule);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.03) 1px, transparent 1px);
+  background-size: 18px 18px, 18px 18px;
+  box-shadow: -18px 0 42px rgba(61, 45, 26, 0.2);
+  transform: translateX(102%);
+  transition: transform 200ms ease-out;
+}
+
+.drawerLayer[data-open="true"] .drawer {
+  transform: translateX(0);
+}
+
+.drawerHeader {
+  display: flex;
+  min-height: 84px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.drawerHeader > div {
+  display: grid;
+  gap: 2px;
+}
+
+.drawerHeader span {
+  color: var(--red);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.drawerHeader h2 {
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.drawerHeader > button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+  font: 13px/1 sans-serif;
+}
+
+.drawerHeader > button:hover {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.drawerLoading,
+.drawerError {
+  margin: 0;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink-muted);
+}
+
+.drawerError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--red);
+  background: var(--red-soft);
+}
+
+.drawerError button {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--red-line);
+  background: transparent;
+  color: var(--red);
+  font-size: 12px;
+}
+
+.drawerBody {
+  display: grid;
+  overflow-y: auto;
+}
+
+.traySection {
+  display: grid;
+}
+
+.traySection[data-archived] {
+  margin-top: 8px;
+  border-top: 1px solid var(--rule);
+}
+
+.trayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+}
+
+.trayHeader span,
+.archivedToggle span {
+  font: 10px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.trayHeader b,
+.archivedToggle b {
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+}
+
+.archivedToggle {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  border: 0;
+  background: var(--paper-low);
+}
+
+.archivedToggle span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.archivedToggle em {
+  color: var(--ink-faint);
+  font-style: normal;
+}
+
+.archivedToggle:hover {
+  color: var(--red);
+}
+
+.trayList {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 14px;
+}
+
+.caseCard {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+  box-shadow: 0 1px 0 rgba(61, 45, 26, 0.06);
+}
+
+.caseCard[data-current="true"] {
+  border-color: var(--red-line);
+  background: var(--red-soft);
+}
+
+.caseCard[data-archived="true"] {
+  background: var(--paper-low);
+}
+
+.caseCard header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.caseNumber {
+  color: var(--red);
+  font: 10px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.1em;
+}
+
+.caseCard header em {
+  color: var(--ink-faint);
+  font: normal 10px "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.caseCard header em[data-sealed] {
+  padding: 1px 6px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  letter-spacing: 0.2em;
+  transform: rotate(-1.5deg);
+}
+
+.caseCard h3 {
+  margin: 0;
+  overflow: hidden;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caseMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.caseMeta small {
+  color: var(--ink-faint);
+  font: 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.caseProgress {
+  display: grid;
+  height: 5px;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+}
+
+.caseProgress i {
+  background: var(--hairline);
+}
+
+.caseProgress i[data-on="true"] {
+  background: var(--red);
+}
+
+.caseCard footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.caseCard footer button {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  background: var(--paper-low);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 12px;
+}
+
+.caseCard footer button:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.caseCard footer .primaryAction {
+  color: white;
+  border-color: var(--red);
+  background: var(--red);
+}
+
+.caseCard footer .primaryAction:hover:not(:disabled) {
+  color: white;
+  background: #a32108;
+}
+
+.caseCard footer button:disabled {
+  opacity: 0.46;
+  cursor: wait;
+}
+
+.currentHint {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.emptyTray {
+  margin: 0;
+  padding: 16px 20px 20px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .drawer {
+    transition: none;
+  }
+}

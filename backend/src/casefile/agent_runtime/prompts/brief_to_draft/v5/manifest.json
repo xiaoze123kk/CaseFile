@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "62b08c5b26255965b73cccbe06ea88192fb3dc8f0eccf1265815a06e1abdb311",
+  "previous_version": "brief-to-draft-v4",
+  "change_summary": "增加三策略单候选生成边界、策略侧重点和共同事实与结构硬约束。"
+}

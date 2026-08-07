@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_intake_synthesize",
+  "version": "brief-intake-synthesize-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "6d3887dde3223f7f53f78053e5ed13a36069c92b9adfa56013970c6d142017a6",
+  "previous_version": "brief-intake-synthesize-v1",
+  "change_summary": "强制内容骨架逐项输出阶段名称与阶段描述，并修复历史候选中的无标题格式。"
+}

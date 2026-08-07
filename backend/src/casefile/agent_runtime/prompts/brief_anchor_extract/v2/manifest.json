@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_anchor_extract",
+  "version": "brief-anchor-extract-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d",
+  "previous_version": null,
+  "change_summary": "首次发布前中文基线：强化来源隔离、原子化提取、矛盾保留和强度判定。"
+}

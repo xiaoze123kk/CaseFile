@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_polish",
+  "version": "brief-polish-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "554f15807e88de2096aca4c6ec06d88fb516a5c285fdd5bde4425fb40712629a",
+  "previous_version": "brief-polish-v2",
+  "change_summary": "新增轻度校对、表达优化与叙事增强三档模式，并要求显式报告新增细节。"
+}

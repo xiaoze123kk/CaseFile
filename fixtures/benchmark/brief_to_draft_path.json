@@ -30,7 +30,8 @@
         "statement": "必须在冬至日才能触发，这一时间约束不可更改。",
         "strength": "hard"
       }
-    ]
+    ],
+    "conclusion_mode": "finite_multiple"
   },
   "frozen_context": {
     "casefile_id": "case_benchmark_path",
@@ -45,6 +46,6 @@
     }
   },
   "max_turns": 15,
-  "expected_prompt_version": "brief-to-draft-v3",
+  "expected_prompt_version": "brief-to-draft-v5",
   "expected_schema_version": "1.0"
 }

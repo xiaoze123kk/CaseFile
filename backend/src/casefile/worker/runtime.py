@@ -3,35 +3,70 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import socket
 import time
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import rfc8785
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime import (
+    CANDIDATE_STRATEGY_VERSION,
     AgentProvider,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
+    BriefIntakeQuestionsRequest,
+    BriefIntakeQuestionsResult,
+    BriefIntakeSynthesizeRequest,
+    BriefIntakeSynthesizeResult,
     BriefPolishRequest,
     BriefPolishResult,
+    CandidateStrategy,
+    CaseFileChatRequest,
+    CaseFileChatResult,
     DeepSeekAgentsProvider,
     GenerationRequest,
     GenerationResult,
     OpenAIAgentsProvider,
+    PolishMode,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
-from casefile.application.casefile_v1 import write_generated_casefile
-from casefile.application.workflow_service import append_task_event, source_view
-from casefile.contracts import ContractValidationError, validate_casefile
+from casefile.agent_runtime.providers import ProviderProtocolError
+from casefile.application.brief_intake_service import BriefIntakeService
+from casefile.application.casefile_v1 import (
+    generation_candidate_summary,
+    validate_generation_candidate_context,
+)
+from casefile.application.v1_editing import (
+    editable_fields_by_collection as chat_editable_fields_by_collection,
+)
+from casefile.application.workflow_service import (
+    WorkflowService,
+    append_task_event,
+    source_view,
+    task_failure_view,
+)
+from casefile.contracts import (
+    ContractValidationError,
+    public_validation_issues,
+    validate_casefile,
+)
 from casefile.data_postgres.models import (
+    AgentMessage,
     Brief,
     BriefVersion,
     SourceRecord,
@@ -179,9 +214,17 @@ class Worker:
                 )
                 if _text_hash(source_text) != task_snapshot.input_hash:
                     raise RuntimeError("Frozen SourceRecord payload does not match its input hash")
+                polish_mode = _required_string(
+                    task_snapshot.input_jsonb,
+                    "polish_mode",
+                )
+                if polish_mode not in {"proofread", "rewrite", "narrative_enhance"}:
+                    raise RuntimeError("Frozen polish mode is invalid")
                 polish_request = BriefPolishRequest(
                     task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
                     source_text=source_text,
+                    polish_mode=cast(PolishMode, polish_mode),
                     input_hash=task_snapshot.input_hash,
                     model_id=task_snapshot.model_id,
                     api_key=api_key,
@@ -189,6 +232,7 @@ class Worker:
                     emit=lambda event_type, stage, payload: self._emit(
                         task_run_id, event_type, stage, payload
                     ),
+                    network_retries=_network_retries(task_snapshot),
                 )
                 polish_result = provider.polish(polish_request)
                 candidate = polish_result.candidate.model_dump(mode="json")
@@ -205,6 +249,7 @@ class Worker:
                     raise RuntimeError("Frozen Brief payload does not match its input hash")
                 extract_request = BriefAnchorExtractRequest(
                     task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
                     brief=frozen_brief,
                     input_hash=task_snapshot.input_hash,
                     model_id=task_snapshot.model_id,
@@ -213,6 +258,7 @@ class Worker:
                     emit=lambda event_type, stage, payload: self._emit(
                         task_run_id, event_type, stage, payload
                     ),
+                    network_retries=_network_retries(task_snapshot),
                 )
                 extract_result = provider.extract_anchors(extract_request)
                 candidate = extract_result.candidate.model_dump(mode="json")
@@ -223,12 +269,91 @@ class Worker:
                     extract_result,
                 )
                 return
+            if task_snapshot.task_type == "brief_intake_questions":
+                if _json_hash(task_snapshot.input_jsonb) != task_snapshot.input_hash:
+                    raise RuntimeError(
+                        "Frozen Brief Intake question payload does not match its input hash"
+                    )
+                frozen_source = _required_object(task_snapshot.input_jsonb, "source")
+                mode = task_snapshot.input_jsonb.get("mode", "initial")
+                if mode not in ("initial", "additional"):
+                    raise RuntimeError("Frozen Brief Intake question mode is invalid")
+                existing_questions = task_snapshot.input_jsonb.get(
+                    "existing_questions", []
+                )
+                if not isinstance(existing_questions, list):
+                    raise RuntimeError(
+                        "Frozen Brief Intake existing questions must be an array"
+                    )
+                questions_request = BriefIntakeQuestionsRequest(
+                    task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
+                    source_text=_required_string(frozen_source, "content_text"),
+                    existing_questions=deepcopy(existing_questions),
+                    mode=mode,
+                    input_hash=task_snapshot.input_hash,
+                    model_id=task_snapshot.model_id,
+                    api_key=api_key,
+                    max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
+                    emit=lambda event_type, stage, payload: self._emit(
+                        task_run_id, event_type, stage, payload
+                    ),
+                    network_retries=_network_retries(task_snapshot),
+                )
+                questions_result = provider.intake_questions(questions_request)
+                candidate = questions_result.candidate.model_dump(mode="json")
+                usage = questions_result.usage
+                self._complete_intake_questions(
+                    task_run_id,
+                    attempt_id,
+                    questions_result,
+                )
+                return
+            if task_snapshot.task_type == "brief_intake_synthesize":
+                if _json_hash(task_snapshot.input_jsonb) != task_snapshot.input_hash:
+                    raise RuntimeError(
+                        "Frozen Brief Intake synthesis payload does not match its input hash"
+                    )
+                synthesize_request = BriefIntakeSynthesizeRequest(
+                    task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
+                    input_data=task_snapshot.input_jsonb,
+                    input_hash=task_snapshot.input_hash,
+                    model_id=task_snapshot.model_id,
+                    api_key=api_key,
+                    max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
+                    emit=lambda event_type, stage, payload: self._emit(
+                        task_run_id, event_type, stage, payload
+                    ),
+                    network_retries=_network_retries(task_snapshot),
+                )
+                synthesize_result = provider.synthesize_intake(synthesize_request)
+                candidate = synthesize_result.candidate.model_dump(mode="json")
+                usage = synthesize_result.usage
+                self._complete_intake_synthesize(
+                    task_run_id,
+                    attempt_id,
+                    synthesize_result,
+                )
+                return
+            if task_snapshot.task_type == "casefile_chat":
+                chat_request = self._load_chat_request(task_snapshot, api_key)
+                chat_result = provider.chat(chat_request)
+                candidate = chat_result.candidate.model_dump(mode="json")
+                usage = chat_result.usage
+                self._complete_chat(
+                    task_run_id,
+                    attempt_id,
+                    chat_result,
+                )
+                return
             if task_snapshot.task_type != "brief_to_draft":
                 raise RuntimeError(f"Unsupported TaskRun type: {task_snapshot.task_type}")
             generation_request = self._load_generation_request(task_snapshot, api_key)
             result: GenerationResult | None = None
             repair_limit = int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
-            feedback: tuple[str, ...] = ()
+            feedback: tuple[dict[str, Any], ...] = ()
+            feedback_history: list[dict[str, Any]] = []
             for repair_no in range(repair_limit + 1):
                 if repair_no:
                     self._emit(
@@ -245,15 +370,36 @@ class Worker:
                     validate_casefile(candidate)
                     break
                 except ContractValidationError as error:
-                    issue = {"repair_no": repair_no, "error": str(error)}
-                    validation_errors.append(issue)
-                    feedback = tuple(item["error"] for item in validation_errors[-3:])
+                    public_issues = public_validation_issues(error.errors)
+                    validation_errors.append(
+                        {"repair_no": repair_no, "issues": public_issues}
+                    )
+                    feedback_history.append(
+                        {"repair_no": repair_no, "issues": error.errors}
+                    )
+                    feedback = tuple(feedback_history[-3:])
+                    self._emit(
+                        task_run_id,
+                        "validation.failed",
+                        "validating",
+                        {
+                            "repair_no": repair_no,
+                            "issue_count": len(error.errors),
+                            "issues": public_issues,
+                        },
+                    )
                     if repair_no >= repair_limit:
                         raise
             if result is None or candidate is None:
                 raise RuntimeError("Provider returned no candidate")
             usage = result.usage
-            self._complete(task_run_id, attempt_id, candidate, result, validation_errors)
+            self._complete_generation_candidate(
+                task_run_id,
+                attempt_id,
+                candidate,
+                result,
+                validation_errors,
+            )
         except Exception as error:
             self._fail(
                 task_run_id,
@@ -279,6 +425,13 @@ class Worker:
                 raise RuntimeError(
                     "Frozen provider setting version no longer matches TaskRun"
                 )
+            if (
+                setting.credential_status == "deleted"
+                or setting.secret_ciphertext is None
+                or setting.secret_nonce is None
+                or setting.key_version is None
+            ):
+                raise RuntimeError("Frozen provider credential has been deleted")
             api_key = decrypt_api_key(
                 setting.secret_ciphertext,
                 setting.secret_nonce,
@@ -311,24 +464,117 @@ class Worker:
                 raise RuntimeError("Frozen BriefVersion hash no longer matches TaskRun input")
             if _json_hash(frozen_brief) != task.input_hash:
                 raise RuntimeError("Frozen TaskRun Brief payload does not match its input hash")
+            frozen_version = _required_object(task.input_jsonb, "version")
+            raw_strategy = task.input_jsonb.get(
+                "candidate_strategy",
+                CandidateStrategy.BALANCED.value,
+            )
+            try:
+                candidate_strategy = CandidateStrategy(raw_strategy)
+            except ValueError as error:
+                raise RuntimeError("Frozen candidate strategy is invalid") from error
+            candidate_strategy_version = task.input_jsonb.get(
+                "candidate_strategy_version",
+                CANDIDATE_STRATEGY_VERSION,
+            )
+            if candidate_strategy_version != CANDIDATE_STRATEGY_VERSION:
+                raise RuntimeError("Frozen candidate strategy version is invalid")
             return GenerationRequest(
                 task_run_id=task.id,
+                prompt_version=task.prompt_version,
                 brief=frozen_brief,
-                casefile_id=owned.casefile.object_id,
+                casefile_id=_required_string(task.input_jsonb, "casefile_id"),
                 brief_id=_required_string(task.input_jsonb, "brief_public_id"),
                 brief_version=_required_integer(
                     task.input_jsonb,
                     "brief_version_no",
                 ),
-                version_id=owned.draft.version_id,
-                version_no=owned.draft.version_no,
-                parent_version_id=owned.draft.parent_version_id,
+                version_id=_required_string(frozen_version, "version_id"),
+                version_no=_required_integer(frozen_version, "version_no"),
+                parent_version_id=_optional_string(
+                    frozen_version,
+                    "parent_version_id",
+                ),
                 model_id=task.model_id,
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: self._emit(
                     task.id, event_type, stage, payload
                 ),
+                network_retries=_network_retries(task),
+                candidate_strategy=candidate_strategy,
+                candidate_strategy_version=candidate_strategy_version,
+            )
+
+    def _load_chat_request(
+        self,
+        task: TaskRun,
+        api_key: str,
+    ) -> CaseFileChatRequest:
+        frozen_input = task.input_jsonb
+        if _json_hash(frozen_input) != task.input_hash:
+            raise RuntimeError("Frozen CaseFile chat payload does not match its input hash")
+        casefile = _required_object(frozen_input, "casefile")
+        message = _required_string(frozen_input, "message")
+        raw_history = frozen_input.get("history")
+        if not isinstance(raw_history, list):
+            raise RuntimeError("Frozen CaseFile chat payload is missing history")
+        history: list[dict[str, str]] = []
+        for item in raw_history:
+            if not isinstance(item, dict):
+                raise RuntimeError("Frozen CaseFile chat history entry is invalid")
+            role = item.get("role")
+            content = item.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str) or not content:
+                raise RuntimeError("Frozen CaseFile chat history entry is invalid")
+            history.append({"role": role, "content": content})
+        return CaseFileChatRequest(
+            task_run_id=task.id,
+            prompt_version=task.prompt_version,
+            casefile=casefile,
+            history=tuple(history),
+            message=message,
+            editable_fields_by_collection=chat_editable_fields_by_collection(),
+            input_hash=task.input_hash,
+            model_id=task.model_id,
+            api_key=api_key,
+            max_turns=int(task.budget_jsonb.get("max_turns", 12)),
+            emit=lambda event_type, stage, payload: self._emit(
+                task.id, event_type, stage, payload
+            ),
+            network_retries=_network_retries(task),
+        )
+
+    def _complete_chat(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: CaseFileChatResult,
+    ) -> None:
+        suggestions: list[dict[str, Any]] = []
+        for suggestion in result.candidate.suggestions:
+            try:
+                value = json.loads(suggestion.value_json)
+            except json.JSONDecodeError as error:
+                raise ProviderProtocolError(
+                    "CaseFile chat suggestion value_json is invalid"
+                ) from error
+            suggestions.append(
+                {
+                    "object_id": suggestion.object_id,
+                    "path": suggestion.path,
+                    "value": value,
+                    "reason": suggestion.reason,
+                }
+            )
+        with self.session_factory() as session:
+            WorkflowService(session).complete_chat_task(
+                task_run_id,
+                attempt_id,
+                answer=result.candidate.answer,
+                referenced_object_ids=result.candidate.referenced_object_ids,
+                suggestions=suggestions,
+                usage=result.usage,
             )
 
     def _complete_polish(
@@ -354,6 +600,9 @@ class Worker:
             )
             if source is None:
                 raise RuntimeError("Polish input SourceRecord disappeared")
+            frozen_mode = _required_string(task.input_jsonb, "polish_mode")
+            if frozen_mode != result.polish_mode:
+                raise RuntimeError("Polish result mode does not match its frozen task input")
             polished_text = result.candidate.polished_text
             proposal = SourceRecord(
                 project_id=task.project_id,
@@ -368,6 +617,7 @@ class Worker:
             session.flush()
             result_json = {
                 "input_hash": task.input_hash,
+                "polish_mode": result.polish_mode,
                 **result.candidate.model_dump(mode="json"),
                 "proposal_source_record": source_view(proposal),
             }
@@ -404,6 +654,35 @@ class Worker:
                 candidate=result_json,
                 usage=result.usage,
                 message="原子拆解候选已生成，等待作者确认",
+            )
+
+    def _complete_intake_questions(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: BriefIntakeQuestionsResult,
+    ) -> None:
+        payload = result.candidate.model_dump(mode="json")
+        with self.session_factory() as session:
+            BriefIntakeService(session).complete_questions_task(
+                task_run_id,
+                attempt_id,
+                questions=list(payload["questions"]),
+                usage=result.usage,
+            )
+
+    def _complete_intake_synthesize(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: BriefIntakeSynthesizeResult,
+    ) -> None:
+        with self.session_factory() as session:
+            BriefIntakeService(session).complete_synthesize_task(
+                task_run_id,
+                attempt_id,
+                content=result.candidate.model_dump(mode="json"),
+                usage=result.usage,
             )
 
     def _locked_completion_rows(
@@ -464,7 +743,7 @@ class Worker:
             },
         )
 
-    def _complete(
+    def _complete_generation_candidate(
         self,
         task_run_id: int,
         attempt_id: int,
@@ -494,16 +773,29 @@ class Worker:
             brief = session.get(Brief, brief_version.brief_id)
             if brief is None:
                 raise RuntimeError("Brief disappeared")
-            if owned.draft.revision != task.input_draft_revision:
-                raise RuntimeError("Draft revision changed while generation was running")
-            snapshot = write_generated_casefile(
-                session,
+            validate_generation_candidate_context(
                 owned,
-                candidate=candidate,
+                candidate,
                 brief=brief,
                 brief_version=brief_version,
-                task_run_id=task.id,
-                actor_user_id=task.actor_user_id,
+            )
+            summary = generation_candidate_summary(candidate)
+            raw_strategy = task.input_jsonb.get(
+                "candidate_strategy",
+                CandidateStrategy.BALANCED.value,
+            )
+            try:
+                candidate_strategy = CandidateStrategy(raw_strategy)
+            except ValueError as error:
+                raise RuntimeError("Frozen candidate strategy is invalid") from error
+            summary.update(
+                {
+                    "candidate_strategy": candidate_strategy.value,
+                    "candidate_strategy_version": task.input_jsonb.get(
+                        "candidate_strategy_version",
+                        CANDIDATE_STRATEGY_VERSION,
+                    ),
+                }
             )
             now = datetime.now(UTC)
             attempt.status = "succeeded"
@@ -514,14 +806,8 @@ class Worker:
             task.status = "succeeded"
             task.stage = "completed"
             task.usage_jsonb = attempt.usage_jsonb
-            task.result_snapshot_id = snapshot.id
-            task.result_jsonb = {
-                "task_run_id": task.id,
-                "status": "succeeded",
-                "snapshot_id": snapshot.id,
-                "draft_revision": owned.draft.revision,
-                "content_hash": snapshot.content_hash,
-            }
+            task.result_snapshot_id = None
+            task.result_jsonb = summary
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
@@ -530,7 +816,7 @@ class Worker:
                 task,
                 "validation.completed",
                 "validating",
-                {"valid": True, "content_hash": snapshot.content_hash},
+                {"valid": True, "content_hash": summary["content_hash"]},
             )
             append_task_event(
                 session,
@@ -538,9 +824,8 @@ class Worker:
                 "task.succeeded",
                 "completed",
                 {
-                    "message": "CaseFile 已生成并写入工作稿",
-                    "snapshot_id": snapshot.id,
-                    "draft_revision": owned.draft.revision,
+                    "message": "候选草稿已生成，等待作者采用",
+                    "content_hash": summary["content_hash"],
                     "usage": task.usage_jsonb,
                 },
             )
@@ -557,10 +842,6 @@ class Worker:
         sensitive_values: tuple[str, ...],
     ) -> None:
         error_code = _error_code(error)
-        details = {
-            "exception_type": type(error).__name__,
-            "message": _safe_error_message(error, sensitive_values),
-        }
         with self.session_factory() as session, session.begin():
             task = session.scalar(
                 select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
@@ -576,6 +857,17 @@ class Worker:
                 or attempt.status != "running"
             ):
                 return
+            failure_issues = _failure_validation_issues(validation_errors)
+            public_failure = task_failure_view(
+                error_code,
+                issues=failure_issues,
+                network_retries=_network_retries(task),
+            )
+            details = {
+                "exception_type": type(error).__name__,
+                "message": _safe_error_message(error, sensitive_values),
+                "public_failure": public_failure,
+            }
             now = datetime.now(UTC)
             attempt.status = "failed"
             attempt.candidate_jsonb = candidate
@@ -592,15 +884,33 @@ class Worker:
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
+            if task.task_type == "casefile_chat" and task.output_message_id is not None:
+                output_message = session.get(AgentMessage, task.output_message_id)
+                if output_message is not None and output_message.status == "pending":
+                    output_message.status = "failed"
+                    output_message.content_text = (
+                        public_failure["message"]
+                        if public_failure is not None
+                        else "Agent 本次没有完成回复，请稍后重试。"
+                    )
             append_task_event(
                 session,
                 task,
                 "task.failed",
                 "failed",
                 {
-                    "message": "Agent 任务失败，原始素材与已确认 Brief 未被修改",
+                    "message": (
+                        public_failure["message"]
+                        if public_failure is not None
+                        else (
+                            "Agent 本次没有完成回复，工作稿未被修改"
+                            if task.task_type == "casefile_chat"
+                            else "Agent 任务失败，原始素材与已确认 Brief 未被修改"
+                        )
+                    ),
                     "task_type": task.task_type,
                     "error_code": error_code,
+                    "failure": public_failure,
                 },
             )
 
@@ -623,16 +933,46 @@ class Worker:
 
 
 def _error_code(error: Exception) -> str:
-    if isinstance(error, ContractValidationError):
+    if isinstance(error, (ContractValidationError, ProviderProtocolError)):
         return "candidate_validation_failed"
-    name = type(error).__name__.lower()
-    if "authentication" in name:
+    if isinstance(error, AuthenticationError):
         return "provider_authentication_failed"
-    if "ratelimit" in name:
+    if isinstance(error, RateLimitError):
         return "provider_rate_limited"
-    if "timeout" in name:
+    if isinstance(error, APITimeoutError):
         return "provider_timeout"
+    if isinstance(error, APIConnectionError):
+        return "provider_connection_failed"
     return "generation_failed"
+
+
+def _network_retries(task: TaskRun) -> int:
+    retries = int(task.budget_jsonb.get("network_retries", 2))
+    return max(0, min(retries, 5))
+
+
+def _failure_validation_issues(
+    validation_errors: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for batch in validation_errors:
+        for raw_issue in batch.get("issues", []):
+            if not isinstance(raw_issue, dict):
+                continue
+            issue = {
+                "code": str(raw_issue.get("code", "validation_failed")),
+                "path": str(raw_issue.get("path", "")),
+                "message": str(raw_issue.get("message", "结构校验失败")),
+            }
+            key = (issue["code"], issue["path"], issue["message"])
+            if key in seen:
+                continue
+            seen.add(key)
+            issues.append(issue)
+            if len(issues) == 20:
+                return issues
+    return issues
 
 
 def _required_object(value: dict[str, Any], key: str) -> dict[str, Any]:
@@ -646,6 +986,13 @@ def _required_string(value: dict[str, Any], key: str) -> str:
     result = value.get(key)
     if not isinstance(result, str) or not result:
         raise RuntimeError(f"Frozen TaskRun input is missing string field: {key}")
+    return result
+
+
+def _optional_string(value: dict[str, Any], key: str) -> str | None:
+    result = value.get(key)
+    if result is not None and (not isinstance(result, str) or not result):
+        raise RuntimeError(f"Frozen TaskRun input has an invalid string field: {key}")
     return result
 
 

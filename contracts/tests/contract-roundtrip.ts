@@ -6,6 +6,8 @@ import Ajv2020, { type ErrorObject, type ValidateFunction } from "ajv/dist/2020.
 import addFormats from "ajv-formats";
 
 import type {
+  BriefIntakeCandidate,
+  BriefIntakeQuestionSet,
   CaseFile,
   PatchCandidate,
   ValidationIssue,
@@ -117,8 +119,20 @@ const issueValidator = ajv.getSchema(
 const patchValidator = ajv.getSchema(
   "https://casefile.local/schemas/v1/casefile/patch-candidate.schema.json",
 );
+const briefIntakeCandidateValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v1/brief-intake/brief-intake.schema.json",
+);
+const briefIntakeQuestionSetValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v1/brief-intake/brief-intake.schema.json#/$defs/BriefIntakeQuestionSet",
+);
 
-if (!casefileValidator || !issueValidator || !patchValidator) {
+if (
+  !casefileValidator ||
+  !issueValidator ||
+  !patchValidator ||
+  !briefIntakeCandidateValidator ||
+  !briefIntakeQuestionSetValidator
+) {
   throw new Error("Editing contract entry schemas were not registered");
 }
 
@@ -141,6 +155,81 @@ const issue = loadJson(resolve(fixtureRoot, "editing", "validation_issue.json"))
 const patch = loadJson(resolve(fixtureRoot, "editing", "patch_candidate.json"));
 assertValid(issueValidator, typedRoundTrip(issue as unknown as ValidationIssue), "ValidationIssue");
 assertValid(patchValidator, typedRoundTrip(patch as unknown as PatchCandidate), "PatchCandidate");
+
+const intakeCandidate: BriefIntakeCandidate = {
+  concept: "一名档案员发现所有证词都指向一段不存在的时间。",
+  core_selling_points: ["证词时间互相咬合"],
+  content_outline: ["建立不可能时间", "交叉验证证词"],
+  reasoning_goal: "解释可靠记录为何互相冲突。",
+  resolution_mode: "open",
+  conclusion_mode: "open_interpretation",
+  author_answer: null,
+  constraints: [],
+  pending_decisions: [
+    {
+      decision_key: "decision_supporting_cast",
+      prompt: "是否合并次要证人？",
+      impact: "只影响规模，不改变核心解答。",
+      source: "unresolved",
+    },
+  ],
+  scope_estimate: "中篇",
+  risk_notes: ["时间线信息密度较高"],
+  field_sources: {
+    concept: "user_original",
+    core_selling_points: "agent_suggestion",
+    content_outline: "agent_suggestion",
+    reasoning_goal: "user_confirmed",
+    resolution_mode: "user_confirmed",
+    conclusion_mode: "user_confirmed",
+    author_answer: "unresolved",
+    constraints: "unresolved",
+    scope_estimate: "agent_suggestion",
+    risk_notes: "agent_suggestion",
+  },
+};
+assertValid(
+  briefIntakeCandidateValidator,
+  typedRoundTrip(intakeCandidate),
+  "BriefIntakeCandidate",
+);
+
+const questionSet: BriefIntakeQuestionSet = {
+  questions: [
+    {
+      question_key: "question_truth_mode",
+      ordinal: 1,
+      prompt: "作者是否已经确定真相？",
+      impact: "决定结论模式。",
+      required: true,
+      suggestions: ["由作者确定", "保持开放"],
+    },
+    {
+      question_key: "question_scope",
+      ordinal: 2,
+      prompt: "预计采用多大规模？",
+      impact: "影响内容骨架。",
+      required: false,
+      suggestions: ["中篇"],
+    },
+  ],
+};
+assertValid(
+  briefIntakeQuestionSetValidator,
+  typedRoundTrip(questionSet),
+  "BriefIntakeQuestionSet",
+);
+
+if (
+  briefIntakeQuestionSetValidator({
+    questions: questionSet.questions.map((question) => ({
+      ...question,
+      required: true,
+    })),
+  })
+) {
+  throw new Error("BriefIntakeQuestionSet accepted two hard questions");
+}
 
 const invalidRoot = resolve(fixtureRoot, "invalid", "schema");
 const invalidManifests = readdirSync(invalidRoot)
@@ -169,5 +258,5 @@ for (const name of invalidManifests) {
 }
 
 console.log(
-  `TypeScript contracts passed: ${casefilePaths.length} CaseFiles, ValidationIssue, PatchCandidate, and ${invalidManifests.length} invalid fixtures.`,
+  `TypeScript contracts passed: ${casefilePaths.length} CaseFiles, ValidationIssue, PatchCandidate, BriefIntake candidate/questions, and ${invalidManifests.length} invalid fixtures.`,
 );

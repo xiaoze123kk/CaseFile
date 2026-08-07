@@ -12,7 +12,8 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from casefile.agent_runtime import FakeProvider, GenerationRequest, OpenAIAgentsProvider
-from casefile.agent_runtime.prompt import AGENT_VERSION, PROMPT_VERSION
+from casefile.agent_runtime.prompt import AGENT_VERSION
+from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.providers import GenerationProvider
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.snapshot import casefile_content_hash
@@ -86,7 +87,7 @@ def run_benchmark(options: BenchmarkOptions) -> BenchmarkRun:
         fixture_id=fixture["fixture_id"],
         mode=options.mode,
         model_name=options.model_id,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=prompt_version_for_task("brief_to_draft"),
         agent_version=AGENT_VERSION,
         toolset_version=TOOLSET_VERSION,
         schema_version=CASEFILE_SCHEMA_VERSION,
@@ -257,6 +258,7 @@ def _request(
     brief_ref = context["brief_ref"]
     return GenerationRequest(
         task_run_id=task_run_id,
+        prompt_version=prompt_version_for_task("brief_to_draft"),
         brief=fixture["brief"],
         casefile_id=context["casefile_id"],
         brief_id=brief_ref["brief_id"],

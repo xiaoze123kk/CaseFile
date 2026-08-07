@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { ArchiveShell } from "@/components/archive-shell";
-import { WorkflowProvider } from "@/store/workflow-store";
-import { PrototypeProvider } from "@/store/prototype-store";
+import { ProductShell } from "@/components/product-shell";
 
 import { QueryProvider } from "./providers";
 
@@ -22,11 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html lang="zh-CN">
       <body>
         <QueryProvider>
-          <WorkflowProvider>
-            <PrototypeProvider>
-              <ArchiveShell>{children}</ArchiveShell>
-            </PrototypeProvider>
-          </WorkflowProvider>
+          <ProductShell>{children}</ProductShell>
         </QueryProvider>
       </body>
     </html>

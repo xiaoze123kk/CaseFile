@@ -30,7 +30,8 @@
         "statement": "核心规则（状态回滚 / 记忆保留 / AI 退化）不得改变。",
         "strength": "hard"
       }
-    ]
+    ],
+    "conclusion_mode": "open_interpretation"
   },
   "frozen_context": {
     "casefile_id": "case_benchmark_rule",
@@ -45,6 +46,6 @@
     }
   },
   "max_turns": 15,
-  "expected_prompt_version": "brief-to-draft-v3",
+  "expected_prompt_version": "brief-to-draft-v5",
   "expected_schema_version": "1.0"
 }
