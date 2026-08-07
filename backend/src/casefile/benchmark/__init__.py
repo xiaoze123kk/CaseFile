@@ -1,28 +1,37 @@
 """Benchmark module -- evaluation orchestration layer.
 
 Responsibilities:
-- Manage benchmark suites and scenarios (what to measure, how, with what data)
-- Orchestrate benchmark runs (schedule, execute, collect metrics)
-- Store and query benchmark results (runs, metrics, trends)
-- Provide comparison views (version vs version, model vs model)
+- Define benchmark domain models (Suite, Scenario, Run, Metric)
+- Execute reproducible benchmarks against agent_runtime
+- Collect and aggregate metrics (structure validity, latency, tool rates)
+- Output typed BenchmarkRun reports
 
 Boundary:
 - Does NOT implement AI model calls (delegates to agent_runtime)
-- Does NOT implement validation rules (delegates to validation)
-- Does NOT implement simulation logic (delegates to simulation)
-- Does NOT implement compilation (delegates to compiler)
+- Does NOT implement validation rules (delegates to contracts)
+- Does NOT depend on ORM or Web frameworks
 """
 
-from casefile.benchmark.models import (  # noqa: F401
+from casefile.benchmark.models import (
+    BenchmarkDimension,
     BenchmarkMetric,
     BenchmarkRun,
     BenchmarkScenario,
+    BenchmarkStatus,
     BenchmarkSuite,
+    MetricSeverity,
 )
+from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_report
 
 __all__ = [
+    "BenchmarkDimension",
     "BenchmarkMetric",
+    "BenchmarkOptions",
     "BenchmarkRun",
     "BenchmarkScenario",
+    "BenchmarkStatus",
     "BenchmarkSuite",
+    "MetricSeverity",
+    "run_benchmark",
+    "run_to_report",
 ]

@@ -1,0 +1,51 @@
+{
+  "fixture_id": "brief_to_draft_rule_v1",
+  "brief": {
+    "source_record_ids": [
+      1
+    ],
+    "creative_intent": "围绕一个每隔七小时就会重置的地下实验设施，建立以规则发现为核心的卷宗。设施内的物资、门禁和时间循环遵循一套非直觉的规则，玩家需要从环境变化、日志记录和幸存者遗言中推导出规则的全貌。",
+    "reasoning_proposition": "地下设施的七小时时间循环遵循什么规则，循环为何被启动？",
+    "resolution_mode": "author_anchored",
+    "author_answer": "循环规则是：每次重置只回滚物质状态但不回滚人员记忆；循环由设施核心 AI 在检测到实验失控时自动启动，但 AI 自身也在每次重置中丢失部分判断能力导致无法自行终止循环。",
+    "author_anchors": [
+      {
+        "anchor_id": "anchor_benchmark_rule_state",
+        "statement": "循环只回滚物质状态，不回滚人员记忆。"
+      },
+      {
+        "anchor_id": "anchor_benchmark_rule_ai",
+        "statement": "循环由设施核心 AI 在检测到实验失控时启动，AI 自身每次重置也丢失部分能力。"
+      }
+    ],
+    "boundary_text": "必须保持核心规则的不变性；规则的发现路径必须逐步披露，不得一开始就揭示全部规则。",
+    "creative_constraints": [
+      {
+        "constraint_id": "constraint_benchmark_rule_discovery",
+        "statement": "规则发现必须通过环境线索逐步建立，至少分三个阶段揭示。",
+        "strength": "hard"
+      },
+      {
+        "constraint_id": "constraint_benchmark_rule_invariant",
+        "statement": "核心规则（状态回滚 / 记忆保留 / AI 退化）不得改变。",
+        "strength": "hard"
+      }
+    ],
+    "conclusion_mode": "open_interpretation"
+  },
+  "frozen_context": {
+    "casefile_id": "case_benchmark_rule",
+    "brief_ref": {
+      "brief_id": "brief_benchmark_rule",
+      "version": 1
+    },
+    "version": {
+      "version_id": "draft_benchmark_rule",
+      "version_no": 1,
+      "parent_version_id": null
+    }
+  },
+  "max_turns": 15,
+  "expected_prompt_version": "brief-to-draft-v5",
+  "expected_schema_version": "1.0"
+}
