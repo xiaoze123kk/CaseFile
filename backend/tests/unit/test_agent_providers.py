@@ -8,10 +8,18 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
-import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import ValidationError
+
+import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
@@ -31,8 +39,13 @@ from casefile.agent_runtime.providers import (
     _allocate_plan_ids,
     _json_schema_instruction,
     _partition_issues,
+    _prune_invalid_reference_list_items,
     _pydantic_validation_issues,
+    _remove_absent_optional_fields,
+    _retain_planned_objects,
+    _validate_auxiliary_output,
     _validate_generated_descriptions,
+    _validate_partitioned_candidate,
 )
 from casefile.agent_runtime.tools import GenerationToolContext, validate_casefile_candidate
 from casefile.application.casefile_v1 import generation_candidate_summary
@@ -41,13 +54,6 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -180,6 +186,57 @@ def test_unstructured_provider_receives_exact_auxiliary_schema() -> None:
     assert '"ambiguities"' in instruction
     assert '"introduced_details"' in instruction
     assert '"input_hash"' not in instruction
+
+
+def test_unstructured_output_preserves_schema_issues_for_bounded_repair() -> None:
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_auxiliary_output(
+            BriefPolishCandidate,
+            json.dumps(
+                {
+                    "polished_text": "修订稿",
+                    "ambiguities": [],
+                    "introduced_details": [],
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+    assert caught.value.errors == [
+        {
+            "code": "missing",
+            "path": "/preserved_intent_summary",
+            "message": "Field required",
+        }
+    ]
+
+
+def test_unstructured_output_reports_invalid_json_as_a_validation_issue() -> None:
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_auxiliary_output(BriefPolishCandidate, '{"polished_text":')
+
+    assert caught.value.errors[0]["code"] == "candidate_json_invalid"
+    assert caught.value.errors[0]["path"] == ""
+
+
+def test_generation_omits_absent_optional_spatial_positions() -> None:
+    normalized = _remove_absent_optional_fields(
+        {
+            "locations": [
+                {
+                    "id": "loc_t1_01",
+                    "description": "档案馆主楼。",
+                    "spatial_position": None,
+                    "parent_ref": None,
+                }
+            ],
+            "entities": [{"id": "ent_t1_01", "description": None}],
+        }
+    )
+
+    assert "spatial_position" not in normalized["locations"][0]
+    assert normalized["locations"][0]["parent_ref"] is None
+    assert "description" not in normalized["entities"][0]
 
 
 def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() -> None:
@@ -322,6 +379,101 @@ def test_cross_partition_validation_routes_only_affected_partitions() -> None:
     assert set(grouped) == {"reasoning", "story"}
     assert grouped["reasoning"][0]["path"] == "/claims/0/basis_refs/0"
     assert grouped["story"][0]["path"] == "/events/0/description"
+
+
+def test_partition_validation_reports_contract_and_planned_id_issues_together() -> None:
+    request = replace(
+        _request(api_key=None),
+        prompt_version="brief-to-draft-v4",
+        model_id="fake",
+        brief={
+            "creative_intent": "家庭日常中的小悬念",
+            "reasoning_proposition": "弟弟为什么偷吃蛋糕？",
+            "resolution_mode": "open",
+            "conclusion_mode": "open_interpretation",
+            "author_answer": None,
+            "author_anchors": [{"statement": "弟弟偷吃了蛋糕。"}],
+            "creative_constraints": [],
+            "source_record_ids": [],
+        },
+    )
+    candidate = FakeProvider().generate(request).candidate
+    candidate["title"] = ""
+    candidate["resolution_specs"][0]["id"] = "res_t1_unplanned"
+
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_partitioned_candidate(
+            candidate,
+            {"answer": "res_t1_01", "constraint": "con_t1_01"},
+        )
+
+    assert any(issue["path"] == "/title" for issue in caught.value.errors)
+    id_issue = next(
+        issue
+        for issue in caught.value.errors
+        if issue["code"] == "planned_object_ids_mismatch"
+    )
+    assert id_issue["path"] == "/resolution_specs"
+    assert "res_t1_01" in id_issue["message"]
+    assert "res_t1_unplanned" in id_issue["message"]
+
+
+def test_partition_discards_unplanned_objects_but_keeps_missing_ids_visible() -> None:
+    partition, discarded = _retain_planned_objects(
+        {
+            "entities": [
+                {"id": "ent_t1_01", "name": "保留"},
+                {"id": "ent_unplanned", "name": "丢弃"},
+            ],
+            "relationships": [{"id": "rel_unplanned", "label": "丢弃"}],
+        },
+        {"ent_t1_01", "ent_t1_02"},
+    )
+
+    assert partition["entities"] == [{"id": "ent_t1_01", "name": "保留"}]
+    assert partition["relationships"] == []
+    assert discarded == ["ent_unplanned", "rel_unplanned"]
+
+
+def test_bounded_repair_prunes_only_validator_identified_reference_list_items() -> None:
+    candidate = {
+        "entities": [
+            {
+                "knowledge_states": [
+                    {
+                        "false_belief_refs": [
+                            {"object_type": "claim", "object_id": "claim_keep"},
+                            {"object_type": "information_unit", "object_id": "info_drop"},
+                        ]
+                    }
+                ]
+            }
+        ],
+        "events": [{"location_ref": {"object_type": "entity", "object_id": "ent_bad"}}],
+    }
+
+    pruned = _prune_invalid_reference_list_items(
+        candidate,
+        [
+            {
+                "code": "reference_type_mismatch",
+                "path": "/entities/0/knowledge_states/0/false_belief_refs/1",
+            },
+            {
+                "code": "reference_type_mismatch",
+                "path": "/events/0/location_ref",
+            },
+        ],
+    )
+
+    assert pruned == ["/entities/0/knowledge_states/0/false_belief_refs/1"]
+    assert candidate["entities"][0]["knowledge_states"][0]["false_belief_refs"] == [
+        {"object_type": "claim", "object_id": "claim_keep"}
+    ]
+    assert candidate["events"][0]["location_ref"] == {
+        "object_type": "entity",
+        "object_id": "ent_bad",
+    }
 
 
 def test_fake_intake_synthesis_emits_named_outline_stages() -> None:

@@ -12,15 +12,6 @@ from typing import Any, Protocol, cast
 from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, ValidationError, create_model
@@ -62,6 +53,15 @@ from casefile.agent_runtime.prompt import (
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -967,10 +967,7 @@ async def _run_auxiliary_agent(
     else:
         if not isinstance(result.final_output, str):
             raise ProviderProtocolError("DeepSeek auxiliary output must be a JSON string")
-        try:
-            output = output_type.model_validate_json(result.final_output)
-        except ValueError as error:
-            raise ProviderProtocolError("DeepSeek returned invalid auxiliary JSON") from error
+        output = _validate_auxiliary_output(output_type, result.final_output)
     usage = _usage_json(result.context_wrapper.usage)
     request.emit("model.completed", stage, {"usage": usage})
     return output.model_dump(mode="json"), usage
@@ -1097,6 +1094,8 @@ async def _run_partitioned_generation(
                 if issues:
                     payload["repair_feedback"] = issues
                     payload["previous_partition"] = previous
+                elif attempt == 2 and isinstance(last_error, ContractValidationError):
+                    payload["repair_feedback"] = last_error.errors
                 elif attempt == 2:
                     payload["repair_feedback"] = [
                         {
@@ -1126,6 +1125,20 @@ async def _run_partitioned_generation(
                     tracing_disabled=tracing_disabled,
                 )
                 validated = output_type.model_validate(partition_json).model_dump(mode="json")
+                validated, discarded_ids = _retain_planned_objects(
+                    validated,
+                    set(id_directory.values()),
+                )
+                if discarded_ids:
+                    request.emit(
+                        "generation.unplanned_objects_discarded",
+                        f"generating_{partition}",
+                        {
+                            "partition": partition,
+                            "object_ids": discarded_ids,
+                            "object_count": len(discarded_ids),
+                        },
+                    )
                 request.emit(
                     "generation.partition_completed",
                     f"generating_{partition}",
@@ -1204,7 +1217,21 @@ async def _run_partitioned_generation(
             partitions[partition] = repaired_pairs[index][0]
             usage_records.append(repaired_pairs[index][1])
         candidate = _assemble_partitioned_candidate(request, plan.title, partitions)
-        _validate_partitioned_candidate(candidate, id_directory)
+        try:
+            _validate_partitioned_candidate(candidate, id_directory)
+        except ContractValidationError as repaired_error:
+            pruned_paths = _prune_invalid_reference_list_items(
+                candidate,
+                repaired_error.errors,
+            )
+            if not pruned_paths:
+                raise
+            request.emit(
+                "generation.invalid_references_pruned",
+                "repairing",
+                {"paths": pruned_paths, "reference_count": len(pruned_paths)},
+            )
+            _validate_partitioned_candidate(candidate, id_directory)
     request.emit(
         "generation.validation_completed",
         "validating",
@@ -1249,6 +1276,26 @@ def _plan_collection_counts(plan: GenerationPlan) -> dict[str, int]:
     return counts
 
 
+def _retain_planned_objects(
+    partition: dict[str, Any],
+    planned_ids: set[str],
+) -> tuple[dict[str, Any], list[str]]:
+    discarded_ids: list[str] = []
+    for collection in _COLLECTION_PREFIXES:
+        if collection not in partition:
+            continue
+        retained: list[Any] = []
+        for item in partition[collection]:
+            object_id = item.get("id") if isinstance(item, dict) else None
+            if isinstance(object_id, str) and object_id in planned_ids:
+                retained.append(item)
+                continue
+            if isinstance(object_id, str):
+                discarded_ids.append(object_id)
+        partition[collection] = retained
+    return partition, sorted(discarded_ids)
+
+
 def _assemble_partitioned_candidate(
     request: GenerationRequest,
     title: str,
@@ -1268,30 +1315,54 @@ def _assemble_partitioned_candidate(
     }
     for partition in _PARTITION_FIELDS:
         candidate.update(partitions[partition])
-    return candidate
+    return cast(dict[str, Any], _remove_absent_optional_fields(candidate))
 
 
 def _validate_partitioned_candidate(
     candidate: dict[str, Any],
     id_directory: dict[str, str],
 ) -> None:
-    validate_casefile(candidate)
-    _validate_generated_descriptions(candidate)
-    actual_ids = _candidate_object_ids(candidate)
+    issues: list[dict[str, Any]] = []
+    for validator in (validate_casefile, _validate_generated_descriptions):
+        try:
+            validator(candidate)
+        except ContractValidationError as error:
+            issues.extend(error.errors)
+    issues.extend(_planned_object_id_issues(candidate, id_directory))
+    if issues:
+        raise ContractValidationError(issues)
+
+
+def _planned_object_id_issues(
+    candidate: dict[str, Any],
+    id_directory: dict[str, str],
+) -> list[dict[str, str]]:
+    issues: list[dict[str, str]] = []
     expected_ids = set(id_directory.values())
-    if actual_ids != expected_ids:
-        raise ContractValidationError(
-            [
-                {
-                    "code": "planned_object_ids_mismatch",
-                    "path": "",
-                    "message": (
-                        f"missing={sorted(expected_ids - actual_ids)!r}; "
-                        f"unexpected={sorted(actual_ids - expected_ids)!r}"
-                    ),
-                }
-            ]
+    for collection, prefix in _COLLECTION_PREFIXES.items():
+        expected = {
+            object_id
+            for object_id in expected_ids
+            if object_id.startswith(f"{prefix}_")
+        }
+        actual = {
+            str(item.get("id"))
+            for item in candidate.get(collection, [])
+            if isinstance(item, dict) and item.get("id") is not None
+        }
+        if actual == expected:
+            continue
+        issues.append(
+            {
+                "code": "planned_object_ids_mismatch",
+                "path": f"/{collection}",
+                "message": (
+                    f"missing={sorted(expected - actual)!r}; "
+                    f"unexpected={sorted(actual - expected)!r}"
+                ),
+            }
         )
+    return issues
 
 
 def _partition_issues(
@@ -1308,6 +1379,51 @@ def _partition_issues(
         if partition is not None:
             grouped.setdefault(partition, []).append(issue)
     return grouped
+
+
+def _prune_invalid_reference_list_items(
+    candidate: dict[str, Any],
+    issues: list[dict[str, Any]],
+) -> list[str]:
+    removable_codes = {
+        "missing_reference",
+        "reference_type_mismatch",
+        "self_reference",
+    }
+    removals: dict[tuple[str, ...], set[int]] = {}
+    for issue in issues:
+        if issue.get("code") not in removable_codes:
+            continue
+        path = str(issue.get("path", ""))
+        parts = tuple(
+            part.replace("~1", "/").replace("~0", "~")
+            for part in path.lstrip("/").split("/")
+            if part
+        )
+        if not parts or not parts[-1].isdigit():
+            continue
+        removals.setdefault(parts[:-1], set()).add(int(parts[-1]))
+
+    pruned_paths: list[str] = []
+    for parent_parts, indexes in removals.items():
+        parent: Any = candidate
+        try:
+            for part in parent_parts:
+                parent = parent[int(part)] if isinstance(parent, list) else parent[part]
+        except (IndexError, KeyError, TypeError, ValueError):
+            continue
+        if not isinstance(parent, list):
+            continue
+        for index in sorted(indexes, reverse=True):
+            if index < 0 or index >= len(parent):
+                continue
+            parent.pop(index)
+            pointer = "/" + "/".join(
+                part.replace("~", "~0").replace("/", "~1")
+                for part in (*parent_parts, str(index))
+            )
+            pruned_paths.append(pointer)
+    return sorted(pruned_paths)
 
 
 def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1370,7 +1486,7 @@ async def _run_agent(
             output = CaseFile.model_validate_json(result.final_output)
         except ValidationError as error:
             raise ContractValidationError(_pydantic_validation_issues(error)) from error
-    candidate = _remove_absent_descriptions(output.model_dump(mode="json"))
+    candidate = _remove_absent_optional_fields(output.model_dump(mode="json"))
     validate_casefile(candidate)
     _validate_generated_descriptions(candidate)
     candidate_ids = _candidate_object_ids(candidate)
@@ -1434,14 +1550,14 @@ def _casefile_object_ids(casefile: dict[str, Any]) -> list[str]:
     ]
 
 
-def _remove_absent_descriptions(value: Any) -> Any:
+def _remove_absent_optional_fields(value: Any) -> Any:
     if isinstance(value, list):
-        return [_remove_absent_descriptions(item) for item in value]
+        return [_remove_absent_optional_fields(item) for item in value]
     if isinstance(value, dict):
         return {
-            key: _remove_absent_descriptions(item)
+            key: _remove_absent_optional_fields(item)
             for key, item in value.items()
-            if not (key == "description" and item is None)
+            if not (key in {"description", "spatial_position"} and item is None)
         }
     return value
 
@@ -1499,6 +1615,18 @@ def _pydantic_validation_issues(error: ValidationError) -> list[dict[str, str]]:
             "message": "CaseFile schema validation failed",
         }
     ]
+
+
+def _validate_auxiliary_output(
+    output_type: type[BaseModel],
+    raw_output: str,
+) -> BaseModel:
+    """Validate unstructured provider JSON without discarding repairable issues."""
+
+    try:
+        return output_type.model_validate_json(raw_output)
+    except ValidationError as error:
+        raise ContractValidationError(_pydantic_validation_issues(error)) from error
 
 
 def _json_pointer(parts: Any) -> str:
