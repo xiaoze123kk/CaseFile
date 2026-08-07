@@ -460,6 +460,7 @@ def test_fake_generation_keeps_strategy_candidates_distinct() -> None:
             "creative_intent": "围绕一段失真的时间记录建立推理卷宗",
             "reasoning_proposition": "三份可靠记录为何共同指向不存在的时间？",
             "resolution_mode": "open",
+            "conclusion_mode": "open_interpretation",
             "author_answer": None,
             "author_anchors": [],
             "creative_constraints": [],

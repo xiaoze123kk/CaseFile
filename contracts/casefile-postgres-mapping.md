@@ -17,7 +17,7 @@ v1 是唯一机器契约；数据库允许规范化异形，但 `Candidate → �
 | v1 对象 | 当前态落位 | 缺口与最小迁移 |
 |---|---|---|
 | `Entity` | `casefile_objects` + `entities`; `knowledge_states` / entries | aliases、goals、secrets、capabilities 放实体叶子属性；v1 知识状态使用 `as_of_event_ref`，不暴露旧 Phase。 |
-| `Location` | `casefile_objects` + `locations` | 从旧 Entity 扩展兼容演进为正式 Location 对象；保留旧行，不破坏降级。 |
+| `Location` | `casefile_objects` + `locations` | 可选 `spatial_position` 原样写入 `geo_jsonb`；空对象投影为字段省略，兼容无坐标旧行与旧 Candidate。 |
 | `Relationship` | `relationships` + `casefile_contract_refs` | 关系身份、标题、方向、真值、可见性和两端引用均可往返。 |
 | `Event` | `events` + `casefile_contract_refs` | 时间精度与所有多值引用按 JSON Pointer 保存。 |
 | `InformationUnit` | `information_units` + `casefile_contract_refs` | availability 叶子与 entity/path 引用分离保存。 |

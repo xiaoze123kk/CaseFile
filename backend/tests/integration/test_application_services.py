@@ -13,6 +13,11 @@ import pytest
 import rfc8785
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import Engine, create_engine, func, select, text, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
@@ -35,16 +40,13 @@ from casefile.data_postgres.models import (
     CaseFileObject,
     DraftOperation,
     DraftSnapshot,
+    Location,
     TaskAttempt,
     TaskEvent,
     TaskRun,
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, create_engine, func, select, text, update
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -1117,6 +1119,17 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             location_id = content["locations"][0]["id"]
             event_id = content["events"][0]["id"]
             resolution_id = content["resolution_specs"][0]["id"]
+            assert content["locations"][0]["spatial_position"] == {
+                "coordinate_system": "schematic",
+                "x": 28,
+                "y": 42,
+            }
+            stored_spatial_position = session.scalar(
+                select(Location.geo_jsonb)
+                .join(CaseFileObject, Location.object_registry_id == CaseFileObject.id)
+                .where(CaseFileObject.object_id == location_id)
+            )
+            assert stored_spatial_position == content["locations"][0]["spatial_position"]
 
         with factory() as session:
             entity, revision = V1EditingService(session).patch_object(
@@ -1144,11 +1157,26 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 changes={
                     "name": "Edited laboratory",
                     "description": "Edited location description",
+                    "spatial_position": {
+                        "coordinate_system": "wgs84",
+                        "latitude": 30.2741,
+                        "longitude": 120.1551,
+                    },
                 },
             )
             assert revision == 4
             assert location["name"] == "Edited laboratory"
             assert location["description"] == "Edited location description"
+            assert location["spatial_position"] == {
+                "coordinate_system": "wgs84",
+                "latitude": 30.2741,
+                "longitude": 120.1551,
+            }
+            assert session.scalar(
+                select(Location.geo_jsonb)
+                .join(CaseFileObject, Location.object_registry_id == CaseFileObject.id)
+                .where(CaseFileObject.object_id == location_id)
+            ) == location["spatial_position"]
 
         with factory() as session:
             event, revision = V1EditingService(session).patch_object(

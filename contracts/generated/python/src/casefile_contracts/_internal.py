@@ -143,6 +143,26 @@ class JsonPointer(RootModel[str]):
     root: Annotated[str, Field(pattern='^(?:/(?:[^~/]|~[01])*)*$')]
 
 
+class SchematicSpatialPosition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    coordinate_system: Literal['schematic']
+    x: Annotated[float, Field(ge=0.0, le=100.0)]
+    y: Annotated[float, Field(ge=0.0, le=100.0)]
+
+
+class Wgs84SpatialPosition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    coordinate_system: Literal['wgs84']
+    latitude: Annotated[float, Field(ge=-90.0, le=90.0)]
+    longitude: Annotated[float, Field(ge=-180.0, le=180.0)]
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -275,6 +295,7 @@ class Location(CoreMetadata):
     )
     id: Annotated[str, Field(pattern='^loc_[a-z0-9][a-z0-9_]{0,56}$')]
     name: Annotated[str, Field(min_length=1)]
+    spatial_position: SchematicSpatialPosition | Wgs84SpatialPosition | None = None
     parent_ref: ObjectRef | None
     adjacency_refs: list[ObjectRef]
     access_rules: list[AccessRule]

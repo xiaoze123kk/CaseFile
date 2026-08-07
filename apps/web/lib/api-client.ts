@@ -1,3 +1,5 @@
+import type { CaseFile } from "@casefile/contracts";
+
 const API_ROOT =
   process.env.NEXT_PUBLIC_CASEFILE_API_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -396,27 +398,7 @@ export interface DraftView {
   revision: number;
   schema_version: string;
   status: string;
-  content: CaseFileDocument | null;
-}
-
-export interface CaseFileObject {
-  id: string;
-  title?: string;
-  name?: string;
-  description?: string;
-  entity_type?: string;
-  truth_status?: string;
-  [key: string]: unknown;
-}
-
-export interface CaseFileDocument {
-  casefile_id: string;
-  title: string;
-  schema_version: string;
-  [collection: string]: unknown;
-  entities: CaseFileObject[];
-  locations: CaseFileObject[];
-  events: CaseFileObject[];
+  content: CaseFile | null;
 }
 
 interface RequestOptions extends Omit<RequestInit, "body"> {

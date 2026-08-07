@@ -80,11 +80,16 @@ describe("official two-page product boundary", () => {
     expect(session).toContain("adoptDraftCandidate");
   });
 
-  it("keeps fixture-driven workbench content explicit", () => {
+  it("loads the production workbench from Current Draft and isolates fixtures", () => {
     const workbench = source("features/analyst-workbench/analyst-workbench.tsx");
     const fixture = source("features/analyst-workbench/analyst-fixture.ts");
-    expect(workbench).toContain("defaultWorkbenchSeed");
-    expect(workbench).toContain("activeCandidate?.workbenchSeed");
+    const mapper = source("features/analyst-workbench/workbench-real-data.ts");
+    const apiClient = source("lib/api-client.ts");
+    expect(workbench).toContain("fetchCaseDraft(projectId)");
+    expect(workbench).toContain("mapCaseFileToWorkbenchModel");
+    expect(workbench).toContain("requestedProjectId");
+    expect(mapper).toContain("mapFixtureToWorkbenchModel");
+    expect(apiClient).toContain("content: CaseFile | null");
     expect(fixture).toContain("buildWorkbenchCandidates");
     expect(workbench).not.toContain("@/store/workflow-store");
   });

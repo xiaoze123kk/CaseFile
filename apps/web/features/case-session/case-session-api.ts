@@ -415,6 +415,23 @@ export async function fetchCaseDraft(projectId: number) {
   });
 }
 
+/** 以 Draft revision 为门禁更新一个 CaseFile 对象；调用方成功后应重取完整 Draft。 */
+export async function patchCaseDraftObject(
+  projectId: number,
+  objectId: string,
+  expectedRevision: number,
+  changes: Record<string, unknown>,
+) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/draft/objects/${encodeURIComponent(objectId)}`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "PATCH",
+      body: { expected_revision: expectedRevision, changes },
+    },
+  );
+}
+
 export async function adoptDraftCandidate(
   projectId: number,
   taskRunId: number,

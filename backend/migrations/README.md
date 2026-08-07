@@ -113,7 +113,7 @@ canon_versions（所有者确认的完整不可变 JSON）
 | `entities` | v1 Person/Organization/Object/System/Faction/Rule Actor 等通用实体字段。 | v1 Generation/Editing。 | 当前态可增改；仅存在旧 `people`/`locations` subtype 行时禁止修改判别类型。 |
 | `relationships` | v1 一等关系对象的标题、类型、方向、真值与可见性。 | v1 Generation/Projection。 | 与 `object_type=relationship` 注册行 1:1。 |
 | `people` | 旧版 Person Entity 的 1:1 扩展。 | 旧版 Entity Service。 | 与 Person Entity 同生共存。 |
-| `locations` | 同时支持旧版 Location Entity 扩展与 v1 独立 Location 对象。 | v1 Generation/Editing；旧版 Entity Service。 | `entity_id` 与 `object_registry_id` 二选一路径。 |
+| `locations` | 同时支持旧版 Location Entity 扩展与 v1 独立 Location 对象；`geo_jsonb` 原样保存可选示意坐标或 WGS84 坐标。 | v1 Generation/Editing；旧版 Entity Service。 | `entity_id` 与 `object_registry_id` 二选一路径；空 `geo_jsonb` 投影为坐标字段省略。 |
 | `events` | 标题、摘要、v1 时间对象、叙事顺序、阶段、地点、可见性与真值。 | v1 Generation/Editing。 | 当前态可编辑；多值引用进入契约引用表。 |
 | `information_units` | v1 信息类型、正文、可靠性、真值、分类、取得条件与发布状态。 | v1 Generation/Editing/Projection。 | 当前态可增改；仅存在旧 `evidence_items`/`testimonies` subtype 行时禁止修改判别类型。 |
 | `evidence_items` | 旧版 Evidence 1:1 扩展。 | 旧版 Information Service。 | 与 Evidence Information Unit 同生共存。 |

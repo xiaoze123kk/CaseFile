@@ -69,6 +69,7 @@ export type Relationship = CoreMetadata & {
 export type Location = CoreMetadata & {
   id: string;
   name: string;
+  spatial_position?: SchematicSpatialPosition | Wgs84SpatialPosition;
   parent_ref: ObjectRef | null;
   adjacency_refs: ObjectRefList;
   access_rules: string[];
@@ -336,6 +337,16 @@ export interface CoreMetadata {
 export interface ActorRef {
   actor_type: "user" | "agent" | "system";
   actor_id: string;
+}
+export interface SchematicSpatialPosition {
+  coordinate_system: "schematic";
+  x: number;
+  y: number;
+}
+export interface Wgs84SpatialPosition {
+  coordinate_system: "wgs84";
+  latitude: number;
+  longitude: number;
 }
 export interface Extensions {
   [k: string]: unknown;

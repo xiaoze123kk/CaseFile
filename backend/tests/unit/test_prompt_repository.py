@@ -24,7 +24,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_anchor_extract": "brief-anchor-extract-v2",
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
-    "brief_to_draft": "brief-to-draft-v5",
+    "brief_to_draft": "brief-to-draft-v6",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -62,6 +62,9 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_to_draft", "brief-to-draft-v5"): (
         "62b08c5b26255965b73cccbe06ea88192fb3dc8f0eccf1265815a06e1abdb311"
+    ),
+    ("brief_to_draft", "brief-to-draft-v6"): (
+        "a6b5c79908b8053a4954c9a9a6f3e00ea403c1cb07b0273944cd79d57ddb966b"
     ),
     ("casefile_chat", "casefile-chat-v1"): (
         "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
@@ -130,6 +133,9 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         "brief_to_draft"
     ]
     assert "每个对象都必须同时生成非空 `description`" in prompts["brief_to_draft"]
+    assert "`Location.spatial_position` 是可选字段" in prompts["brief_to_draft"]
+    assert "不得猜测或编造真实坐标" in prompts["brief_to_draft"]
+    assert "`coordinate_system=schematic`" in prompts["brief_to_draft"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
     assert "未列入能力白名单" in prompts["casefile_chat"]
 

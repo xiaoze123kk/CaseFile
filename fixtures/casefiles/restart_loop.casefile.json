@@ -124,6 +124,11 @@
     {
       "id": "loc_lab",
       "name": "主实验室",
+      "spatial_position": {
+        "coordinate_system": "schematic",
+        "x": 28,
+        "y": 42
+      },
       "parent_ref": null,
       "adjacency_refs": [{"object_type": "location", "object_id": "loc_corridor"}],
       "access_rules": ["研究员身份卡"],
@@ -140,6 +145,11 @@
     {
       "id": "loc_corridor",
       "name": "实验区走廊",
+      "spatial_position": {
+        "coordinate_system": "wgs84",
+        "latitude": 31.2304,
+        "longitude": 121.4737
+      },
       "parent_ref": null,
       "adjacency_refs": [{"object_type": "location", "object_id": "loc_lab"}],
       "access_rules": [],

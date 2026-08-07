@@ -519,7 +519,7 @@ def _create_content_rows(
                 entity_id=None,
                 object_registry_id=registries[item["id"]].id,
                 name=item["name"],
-                geo_jsonb={},
+                geo_jsonb=item.get("spatial_position", {}),
                 movement_rules_jsonb={},
                 access_rules_jsonb=item["access_rules"],
                 visibility_rules_jsonb=item["visibility_rules"],
@@ -834,18 +834,19 @@ def _project_locations(
             travel_times.append(
                 {"to_ref": _ref_value(ref_row), "minutes": ref_row.metadata_jsonb["minutes"]}
             )
-        result.append(
-            {
-                **_common(registry, refs),
-                "id": registry.object_id,
-                "name": row.name,
-                "parent_ref": _optional_ref(refs[registry.id], "/parent_ref"),
-                "adjacency_refs": _ref_values(refs[registry.id], "/adjacency_refs"),
-                "access_rules": row.access_rules_jsonb,
-                "travel_times": travel_times,
-                "visibility_rules": row.visibility_rules_jsonb,
-            }
-        )
+        location = {
+            **_common(registry, refs),
+            "id": registry.object_id,
+            "name": row.name,
+            "parent_ref": _optional_ref(refs[registry.id], "/parent_ref"),
+            "adjacency_refs": _ref_values(refs[registry.id], "/adjacency_refs"),
+            "access_rules": row.access_rules_jsonb,
+            "travel_times": travel_times,
+            "visibility_rules": row.visibility_rules_jsonb,
+        }
+        if row.geo_jsonb:
+            location["spatial_position"] = row.geo_jsonb
+        result.append(location)
     return result
 
 

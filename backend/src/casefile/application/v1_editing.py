@@ -71,6 +71,7 @@ EDITABLE_FIELDS = {
     "location": COMMON_EDITABLE_FIELDS
     | {
         "name",
+        "spatial_position",
         "parent_ref",
         "adjacency_refs",
         "access_rules",
@@ -525,6 +526,7 @@ class V1EditingService:
     def _apply_location(self, registry: CaseFileObject, value: dict[str, Any]) -> None:
         row = self._content_row(Location, registry, "Location")
         row.name = value["name"]
+        row.geo_jsonb = value.get("spatial_position", {})
         row.access_rules_jsonb = value["access_rules"]
         row.visibility_rules_jsonb = value["visibility_rules"]
 

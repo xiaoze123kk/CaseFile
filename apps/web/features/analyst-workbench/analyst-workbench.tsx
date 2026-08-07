@@ -1,5 +1,6 @@
 "use client";
 
+import type { CaseFile } from "@casefile/contracts";
 import Link from "next/link";
 import {
   type CSSProperties,
@@ -12,6 +13,8 @@ import {
   useRef,
   useState,
 } from "react";
+
+import { ApiError, type DraftView } from "@/lib/api-client";
 
 import {
   defaultWorkbenchSeed,
@@ -30,12 +33,18 @@ import {
   type WorkbenchCandidateStatus,
   useCaseSession,
 } from "@/features/case-session/case-session-provider";
+import {
+  fetchCaseDraft,
+  patchCaseDraftObject,
+} from "@/features/case-session/case-session-api";
 import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
 import relayStyles from "./candidate-relay.module.css";
 import { AgentPanel } from "./workbench-agent-panel";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
+import { WorkbenchObjectEditor } from "./workbench-object-editor";
+import { mapCaseFileToWorkbenchModel } from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
 import {
@@ -65,6 +74,8 @@ function createIssueStatuses(seed: WorkbenchSeed) {
 }
 
 const kindOrder: ObjectKind[] = [
+  "entity",
+  "information",
   "person",
   "evidence",
   "event",
@@ -73,6 +84,7 @@ const kindOrder: ObjectKind[] = [
 ];
 
 const inspectorTabs: Array<{ id: InspectorTab; label: string }> = [
+  { id: "object", label: "对象详情" },
   { id: "issues", label: "验证问题" },
   { id: "sources", label: "引用来源" },
   { id: "patch", label: "补丁审阅" },
@@ -181,7 +193,7 @@ function EvidenceComparison({
   onSaveManual,
 }: {
   seed: WorkbenchSeed;
-  issueId: string;
+  issueId: string | null;
   status: IssueStatus;
   manualValue: string;
   editing: boolean;
@@ -192,6 +204,14 @@ function EvidenceComparison({
   const issue =
     seed.validationIssues.find((item) => item.id === issueId) ??
     seed.validationIssues[0];
+  if (!issue) {
+    return (
+      <section className={styles.realEmptyState} aria-label="证据对照尚未接入">
+        <strong>暂无可对照的验证问题</strong>
+        <p>真实验证、补丁与来源将在后续接入；当前不会展示本地样例。</p>
+      </section>
+    );
+  }
   return (
     <section className={styles.evidenceCompare} aria-labelledby="evidence-heading">
       <header className={styles.sectionHeader}>
@@ -238,25 +258,182 @@ function EvidenceComparison({
 const DEFAULT_RAIL_WIDTH = 254;
 const DEFAULT_INSPECTOR_WIDTH = 350;
 
-export function AnalystWorkbench() {
+export function AnalystWorkbench({
+  requestedProjectId,
+  invalidProjectId = false,
+}: {
+  /** `undefined` is reserved for the isolated fixture harness used by component tests. */
+  requestedProjectId?: number | null;
+  invalidProjectId?: boolean;
+}) {
   const {
+    activeProjectId,
     activeCandidate,
     adoptCandidate,
     candidateStatus,
+    loadProject,
   } = useCaseSession();
-  const seed = activeCandidate?.workbenchSeed ?? defaultWorkbenchSeed;
+  const fixtureMode = requestedProjectId === undefined;
+  const projectId = fixtureMode ? null : requestedProjectId;
+  const [draftLoad, setDraftLoad] = useState<{
+    projectId: number;
+    draft: DraftView | null;
+    error: string | null;
+  } | null>(null);
+  const [reloadDraft, setReloadDraft] = useState(0);
+  const [savingObject, setSavingObject] = useState(false);
+  const saveInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (fixtureMode || invalidProjectId || projectId === null) return;
+    let active = true;
+    if (activeProjectId !== projectId) {
+      void loadProject(projectId).catch(() => undefined);
+    }
+    void fetchCaseDraft(projectId)
+      .then((nextDraft) => {
+        if (active) {
+          setDraftLoad({ projectId, draft: nextDraft, error: null });
+        }
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setDraftLoad({
+          projectId,
+          draft: null,
+          error:
+            caught instanceof Error ? caught.message : "当前工作稿加载失败。",
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    activeProjectId,
+    fixtureMode,
+    invalidProjectId,
+    loadProject,
+    projectId,
+    reloadDraft,
+  ]);
+
+  const fixtureSeed = activeCandidate?.workbenchSeed ?? defaultWorkbenchSeed;
   const activeCandidateStatus = activeCandidate
     ? candidateStatus(activeCandidate)
     : null;
+  const currentDraftLoad =
+    projectId !== null && draftLoad?.projectId === projectId ? draftLoad : null;
+  const draft = currentDraftLoad?.draft ?? null;
+  const draftError = currentDraftLoad?.error ?? null;
+
+  if (fixtureMode) {
+    return (
+      <AnalystWorkbenchSurface
+        activeCandidate={activeCandidate}
+        activeCandidateStatus={activeCandidateStatus}
+        adoptCandidate={adoptCandidate}
+        key={fixtureSeed.id}
+        seed={fixtureSeed}
+      />
+    );
+  }
+
+  if (invalidProjectId) {
+    return <WorkbenchGate title="项目标识不合法" detail="请从候选页重新进入分析师工作台。" />;
+  }
+  if (projectId === null) {
+    return <WorkbenchGate title="工作台需要项目 ID" detail="采用一份候选后，系统会带着项目标识进入这里。" />;
+  }
+  if (currentDraftLoad === null) {
+    return <WorkbenchGate title="正在读取当前工作稿" detail={`项目 ${projectId} · 连接服务端 Draft`} loading />;
+  }
+  if (draftError) {
+    return (
+      <WorkbenchGate
+        detail={draftError}
+        onRetry={() => {
+          setDraftLoad(null);
+          setReloadDraft((value) => value + 1);
+        }}
+        title="当前工作稿加载失败"
+      />
+    );
+  }
+  if (!draft?.content) {
+    return <WorkbenchGate title="这个项目尚无当前工作稿" detail="请先返回建案中心生成三份候选，并采用其中一份。" />;
+  }
+
+  const loadedProjectId = projectId;
+  const seed = mapCaseFileToWorkbenchModel(draft.content, draft.revision);
+
+  async function saveObject(
+    objectId: string,
+    changes: Record<string, unknown>,
+  ): Promise<"saved" | "conflict" | "error"> {
+    if (!draft || saveInFlightRef.current) return "error";
+    saveInFlightRef.current = true;
+    setSavingObject(true);
+    try {
+      await patchCaseDraftObject(loadedProjectId, objectId, draft.revision, changes);
+      const latest = await fetchCaseDraft(loadedProjectId);
+      setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
+      return "saved";
+    } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        (caught.status === 409 || caught.body.code === "draft_revision_conflict")
+      ) {
+        try {
+          const latest = await fetchCaseDraft(loadedProjectId);
+          setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
+          return "conflict";
+        } catch {
+          return "error";
+        }
+      }
+      return "error";
+    } finally {
+      saveInFlightRef.current = false;
+      setSavingObject(false);
+    }
+  }
 
   return (
     <AnalystWorkbenchSurface
       activeCandidate={activeCandidate}
       activeCandidateStatus={activeCandidateStatus}
       adoptCandidate={adoptCandidate}
-      key={seed.id}
+      draftRevision={draft.revision}
+      key={`project-${projectId}`}
+      onSaveObject={saveObject}
+      realDocument={draft.content}
+      savingObject={savingObject}
       seed={seed}
     />
+  );
+}
+
+function WorkbenchGate({
+  title,
+  detail,
+  loading = false,
+  onRetry,
+}: {
+  title: string;
+  detail: string;
+  loading?: boolean;
+  onRetry?: () => void;
+}) {
+  return (
+    <main className={styles.workbenchGate}>
+      <article aria-busy={loading}>
+        <span>{loading ? "LOADING DRAFT" : "CURRENT DRAFT"}</span>
+        <h1>{title}</h1>
+        <p>{detail}</p>
+        {onRetry ? <button onClick={onRetry} type="button">重新读取</button> : null}
+        <Link href="/">返回建案中心</Link>
+      </article>
+    </main>
   );
 }
 
@@ -265,12 +442,24 @@ function AnalystWorkbenchSurface({
   activeCandidate,
   activeCandidateStatus,
   adoptCandidate,
+  realDocument = null,
+  draftRevision = null,
+  savingObject = false,
+  onSaveObject,
 }: {
   seed: WorkbenchSeed;
   activeCandidate: WorkbenchCandidate | null;
   activeCandidateStatus: WorkbenchCandidateStatus | null;
   adoptCandidate: (candidateId: string) => Promise<boolean>;
+  realDocument?: CaseFile | null;
+  draftRevision?: number | null;
+  savingObject?: boolean;
+  onSaveObject?: (
+    objectId: string,
+    changes: Record<string, unknown>,
+  ) => Promise<"saved" | "conflict" | "error">;
 }) {
+  const realData = realDocument !== null;
   const [view, setView] = useState<WorkbenchView>("timeline");
   const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
   const [selectedObjectId, setSelectedObjectId] = useState(seed.defaultObjectId);
@@ -278,7 +467,9 @@ function AnalystWorkbenchSurface({
   const [issueStatuses, setIssueStatuses] = useState<Record<string, IssueStatus>>(
     () => createIssueStatuses(seed),
   );
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("issues");
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>(
+    seed.validationIssues.length ? "issues" : "object",
+  );
   const [kindFilter, setKindFilter] = useState<ObjectKind | "all">("all");
   const [objectQuery, setObjectQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(true);
@@ -294,7 +485,7 @@ function AnalystWorkbenchSurface({
   const [validationPhase, setValidationPhase] = useState<ValidationPhase>("idle");
   const [manualEditing, setManualEditing] = useState(false);
   const [manualValue, setManualValue] = useState(
-    seed.validationIssues[0].patchAfter,
+    seed.validationIssues[0]?.patchAfter ?? "",
   );
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([
     ...seed.initialAuditEntries,
@@ -364,8 +555,12 @@ function AnalystWorkbenchSurface({
   const selectedIssue =
     seed.validationIssues.find((item) => item.id === selectedIssueId) ??
     seed.validationIssues[0];
-  const selectedStatus = issueStatuses[selectedIssue.id] ?? "open";
-  const relatedObjectIds = [selectedEvent.id, ...selectedEvent.relatedObjectIds];
+  const selectedStatus = selectedIssue
+    ? issueStatuses[selectedIssue.id] ?? "open"
+    : "open";
+  const relatedObjectIds = selectedEvent
+    ? [selectedEvent.id, ...selectedEvent.relatedObjectIds]
+    : [];
   const unresolvedCount = seed.validationIssues.filter((issue) => {
     const status = issueStatuses[issue.id];
     return status === "open" || status === "patch-ready";
@@ -463,6 +658,10 @@ function AnalystWorkbenchSurface({
     setSelectedObjectId(object.id);
     const eventId = object.kind === "event" ? object.id : object.relatedEventIds[0];
     if (eventId) setSelectedEventId(eventId);
+    if (realData) {
+      setInspectorTab("object");
+      setMobileRegion("inspector");
+    }
     announce(`已选择${objectKindLabels[object.kind]}“${object.label}”，相关事件已高亮。`);
   }
 
@@ -481,6 +680,7 @@ function AnalystWorkbenchSurface({
   }
 
   function requestPatch() {
+    if (!selectedIssue) return;
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: "patch-ready" }));
     setInspectorTab("patch");
     setView("evidence");
@@ -489,6 +689,7 @@ function AnalystWorkbenchSurface({
   }
 
   function resolveIssue(action: "approve" | "manual" | "exception") {
+    if (!selectedIssue) return;
     const nextStatus: IssueStatus = action === "exception" ? "exception" : "resolved";
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: nextStatus }));
     setValidationPhase("recomputing");
@@ -504,6 +705,11 @@ function AnalystWorkbenchSurface({
   }
 
   function revalidateAll() {
+    if (realData) {
+      setInspectorTab("issues");
+      announce("真实验证接口尚未接入；当前不会运行样例验证器。");
+      return;
+    }
     setValidationPhase("running");
     appendAudit(
       "Validator",
@@ -523,7 +729,7 @@ function AnalystWorkbenchSurface({
     setSelectedObjectId(seed.defaultObjectId);
     setSelectedIssueId(seed.defaultIssueId);
     setIssueStatuses(createIssueStatuses(seed));
-    setInspectorTab("issues");
+    setInspectorTab(seed.validationIssues.length ? "issues" : "object");
     setKindFilter("all");
     setObjectQuery("");
     setDrawerOpen(true);
@@ -531,7 +737,7 @@ function AnalystWorkbenchSurface({
     setPlaying(false);
     setPlayhead(58);
     setManualEditing(false);
-    setManualValue(seed.validationIssues[0].patchAfter);
+    setManualValue(seed.validationIssues[0]?.patchAfter ?? "");
     setAuditEntries([...seed.initialAuditEntries]);
     setAgentOpen(false);
     announce(`工作台数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
@@ -556,30 +762,33 @@ function AnalystWorkbenchSurface({
       meta: "视图",
       action: () => { setView("relations"); setMobileRegion("canvas"); announce("主画布已切换到关系图。"); },
     },
-    {
+    ...(realData ? [] : [{
       id: "open-issue",
       label: "定位最高优先级验证问题",
       meta: "S0",
-      action: () => openIssue(seed.defaultIssueId),
-    },
-    {
+      action: () => {
+        if (seed.defaultIssueId) openIssue(seed.defaultIssueId);
+      },
+    }, {
       id: "open-audio",
       label: `打开${seed.drawer.audioTitle}`,
       meta: "来源",
       action: () => { setDrawerOpen(true); setDrawerTab("audio"); setMobileRegion("sources"); announce(`已打开${seed.drawer.audioTitle}。`); },
-    },
+    }]),
   ];
   const normalizedPaletteQuery = paletteQuery.trim().toLocaleLowerCase("zh-CN");
   const matchingPaletteEntries = paletteEntries.filter((item) => !normalizedPaletteQuery || `${item.label} ${item.meta}`.toLocaleLowerCase("zh-CN").includes(normalizedPaletteQuery));
   const matchingPaletteObjects = seed.caseObjects.filter((object) => !normalizedPaletteQuery || `${object.label} ${object.code} ${object.id}`.toLocaleLowerCase("zh-CN").includes(normalizedPaletteQuery)).slice(0, 6);
 
   function handleTimelineKeys(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (!seed.timelineEvents.length) return;
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
     const currentIndex = seed.timelineEvents.findIndex((item) => item.id === selectedEventId);
     const delta = event.key === "ArrowDown" ? 1 : -1;
     const nextIndex = Math.min(seed.timelineEvents.length - 1, Math.max(0, currentIndex + delta));
-    selectEvent(seed.timelineEvents[nextIndex].id);
+    const nextEvent = seed.timelineEvents[nextIndex];
+    if (nextEvent) selectEvent(nextEvent.id);
   }
 
   return (
@@ -611,13 +820,13 @@ function AnalystWorkbenchSurface({
           <small>{seed.caseMeta.revision}</small>
         </div>
         <div className={styles.topStatus} aria-label="卷宗状态">
-          <button data-tone={unresolvedCount > 0 ? "danger" : "success"} onClick={() => { setInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
+          <button data-tone={realData ? "muted" : unresolvedCount > 0 ? "danger" : "success"} onClick={() => { setInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
             <WorkbenchIcon name="validate" />
-            <span><small>验证</small><strong>{unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
+            <span><small>验证</small><strong>{realData ? "尚未接入" : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
           </button>
-          <button data-tone={unresolvedCount > 0 ? "muted" : "success"} onClick={() => { setView("export"); setMobileRegion("canvas"); }} type="button">
+          <button data-tone="muted" onClick={() => { setView("export"); setMobileRegion("canvas"); }} type="button">
             <WorkbenchIcon name="export" />
-            <span><small>导出</small><strong>{unresolvedCount > 0 ? "门禁阻断" : "可以导出"}</strong></span>
+            <span><small>导出</small><strong>{realData ? "开发预览" : unresolvedCount > 0 ? "门禁阻断" : "可以导出"}</strong></span>
           </button>
         </div>
         <button className={styles.globalSearch} onClick={() => setPaletteOpen(true)} ref={commandTriggerRef} type="button">
@@ -629,7 +838,8 @@ function AnalystWorkbenchSurface({
           <button aria-label="打开命令面板" onClick={() => setPaletteOpen(true)} type="button"><WorkbenchIcon name="command" /></button>
           <button
             aria-expanded={agentOpen}
-            aria-label="打开卷宗统筹 Agent 对话"
+            aria-label={realData ? "卷宗统筹 Agent 尚未接入" : "打开卷宗统筹 Agent 对话"}
+            disabled={realData}
             onClick={() => setAgentOpen(true)}
             type="button"
           >
@@ -658,12 +868,12 @@ function AnalystWorkbenchSurface({
             <p>
               {activeCandidate.focusLabel} · 简报 V
               {String(activeCandidate.briefVersion).padStart(2, "0")} ·
-              工作台预览为本地样例
+              {realData ? "服务端当前工作稿" : "本地样例"}
             </p>
           </div>
           <div>
             <Link href="/">← 返回候选卷</Link>
-            {activeCandidateStatus === "pending" ? (
+            {!realData && activeCandidateStatus === "pending" ? (
               <button
                 onClick={() => {
                   void adoptCandidate(activeCandidate.id)
@@ -687,7 +897,7 @@ function AnalystWorkbenchSurface({
               <small>旧简报候选仅供预览，不可采用</small>
             ) : null}
             {activeCandidateStatus === "current" ? (
-              <small>已采用 · 客户端路由内保持</small>
+              <small>{realData ? "已采用 · 服务端持久化" : "已采用 · 客户端路由内保持"}</small>
             ) : null}
           </div>
         </section>
@@ -739,8 +949,14 @@ function AnalystWorkbenchSurface({
             </button>
             <div className={styles.treeBranches}>
               <button data-active="true" type="button"><i />{seed.caseMeta.branchLabel} <b>{seed.timelineEvents.length}</b></button>
-              <button type="button"><i />未采用候选 <b>03</b></button>
-              <button type="button"><i />导出模板 <b>02</b></button>
+              {realData ? (
+                <button type="button"><i />服务端修订 <b>R{draftRevision ?? "—"}</b></button>
+              ) : (
+                <>
+                  <button type="button"><i />未采用候选 <b>03</b></button>
+                  <button type="button"><i />导出模板 <b>02</b></button>
+                </>
+              )}
             </div>
           </section>
 
@@ -756,7 +972,7 @@ function AnalystWorkbenchSurface({
             </label>
             <div className={styles.kindFilters} aria-label="对象类型筛选">
               <button aria-pressed={kindFilter === "all"} onClick={() => setKindFilter("all")} type="button"><span>全部</span><b>{seed.caseObjects.length}</b></button>
-              {kindOrder.map((kind) => (
+              {kindOrder.filter((kind) => !realData || seed.caseObjects.some((object) => object.kind === kind)).map((kind) => (
                 <button aria-pressed={kindFilter === kind} key={kind} onClick={() => setKindFilter(kind)} type="button">
                   <span>{objectKindLabels[kind]}</span><b>{seed.caseObjects.filter((object) => object.kind === kind).length}</b>
                 </button>
@@ -789,11 +1005,15 @@ function AnalystWorkbenchSurface({
               ))}
               {view === "evidence" ? <button aria-selected="true" role="tab" type="button"><span>证</span>证据对照</button> : null}
             </div>
-            <div className={styles.canvasMeta}><span>同步定位</span><b>{selectedEvent.time} / {selectedEvent.id}</b></div>
+            <div className={styles.canvasMeta}><span>同步定位</span><b>{selectedEvent ? `${selectedEvent.time} / ${selectedEvent.id}` : "尚无事件"}</b></div>
           </header>
           <div className={styles.canvasContent} data-view={view}>
             {view === "timeline" ? (
-              <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} onSelectObject={selectObject} seed={seed} selectedEventId={selectedEventId} selectedObjectId={selectedObjectId} />
+              seed.timelineEvents.length ? (
+                <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} onSelectObject={selectObject} seed={seed} selectedEventId={selectedEventId} selectedObjectId={selectedObjectId} />
+              ) : (
+                <section className={styles.realEmptyState}><strong>当前工作稿还没有事件</strong><p>事件由已采用候选决定；这里不会补入样例时间线。</p></section>
+              )
             ) : null}
             {view === "relations" ? (
               <RelationshipGraph onSelectObject={selectObject} relatedObjectIds={relatedObjectIds} seed={seed} selectedObjectId={selectedObjectId} />
@@ -802,7 +1022,9 @@ function AnalystWorkbenchSurface({
               <ReasoningGraphView onSelectObject={selectObject} seed={seed} />
             ) : null}
             {view === "map" ? <MapView onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} /> : null}
-            {view === "dossier" ? <DossierView seed={seed} selectedEventId={selectedEventId} /> : null}
+            {view === "dossier" ? (
+              selectedEvent ? <DossierView seed={seed} selectedEventId={selectedEventId} /> : <section className={styles.realEmptyState}><strong>没有可编辑的事件卷宗</strong><p>可以从右侧“对象详情”编辑实体、信息、地点或假设。</p></section>
+            ) : null}
             {view === "export" ? <ExportView seed={seed} unresolvedCount={unresolvedCount} /> : null}
             {view === "compile" ? (
               <CompileCenterView seed={seed} unresolvedCount={unresolvedCount} />
@@ -824,9 +1046,9 @@ function AnalystWorkbenchSurface({
 
         <aside aria-label="上下文检查器" className={styles.inspector}>
           <header className={styles.inspectorHeader}>
-            <div><span>上下文检查器</span><strong>{selectedEvent.label}</strong></div>
+            <div><span>上下文检查器</span><strong>{getObject(seed, selectedObjectId)?.label ?? selectedEvent?.label ?? "尚未选择对象"}</strong></div>
             <div className={styles.inspectorHeaderActions}>
-              <small>{selectedEvent.id}</small>
+              <small>{selectedObjectId ?? selectedEvent?.id ?? "—"}</small>
               <button
                 aria-label="收起上下文检查器"
                 aria-expanded={inspectorOpen}
@@ -843,7 +1065,7 @@ function AnalystWorkbenchSurface({
           </header>
           <div className={styles.inspectorTabs} aria-label="检查器内容" role="tablist">
             {inspectorTabs.map((tab) => {
-              const count = tab.id === "issues" ? unresolvedCount : tab.id === "sources" ? selectedIssue.evidenceIds.length : tab.id === "patch" && selectedStatus === "patch-ready" ? 1 : undefined;
+              const count = tab.id === "issues" ? unresolvedCount : tab.id === "sources" ? selectedIssue?.evidenceIds.length ?? 0 : tab.id === "patch" && selectedStatus === "patch-ready" ? 1 : undefined;
               return (
                 <button aria-selected={inspectorTab === tab.id} key={tab.id} onClick={() => setInspectorTab(tab.id)} role="tab" type="button">
                   {tab.label}{count !== undefined ? <b>{count}</b> : null}
@@ -852,8 +1074,22 @@ function AnalystWorkbenchSurface({
             })}
           </div>
           <div className={styles.inspectorContent}>
+            {inspectorTab === "object" ? (
+              realDocument && draftRevision !== null && onSaveObject ? (
+                <WorkbenchObjectEditor
+                  document={realDocument}
+                  key={selectedObjectId ?? "no-object"}
+                  onSave={onSaveObject}
+                  revision={draftRevision}
+                  saving={savingObject}
+                  selectedObjectId={selectedObjectId}
+                />
+              ) : (
+                <div className={styles.realEmptyState}><strong>本地样例不提供持久化编辑</strong><p>采用真实候选后，可在这里修改当前工作稿对象。</p></div>
+              )
+            ) : null}
             {inspectorTab === "issues" ? (
-              <div className={styles.issueInspector}>
+              selectedIssue ? <div className={styles.issueInspector}>
                 <div className={styles.issueList}>
                   {seed.validationIssues.map((issue) => {
                     const status = issueStatuses[issue.id] ?? "open";
@@ -880,13 +1116,15 @@ function AnalystWorkbenchSurface({
                     <button disabled={selectedStatus === "resolved" || selectedStatus === "exception"} onClick={() => resolveIssue("exception")} type="button">标记已知例外</button>
                   </div>
                 </article>
-              </div>
+              </div> : <div className={styles.realEmptyState}><strong>验证问题尚未接入</strong><p>当前工作台只展示真实 Draft，不会用本地问题填充检查器。</p></div>
             ) : null}
 
             {inspectorTab === "sources" ? (
-              <div className={styles.sourceInspector}>
+              realData ? (
+                <div className={styles.realEmptyState}><strong>引用来源尚未接入</strong><p>当前 CaseFile 只携带来源引用；来源正文与媒体接口将在后续接入。</p></div>
+              ) : <div className={styles.sourceInspector}>
                 <p>引用只说明“依据来自哪里”，不会自动把检索结果提升为卷宗事实。</p>
-                {seed.sourceItems.filter((source) => source.eventId === selectedEventId || (source.evidenceObjectId ? selectedIssue.evidenceIds.includes(source.evidenceObjectId) : false)).map((source) => (
+                {seed.sourceItems.filter((source) => source.eventId === selectedEventId || (source.evidenceObjectId ? selectedIssue?.evidenceIds.includes(source.evidenceObjectId) : false)).map((source) => (
                   <article key={source.id}>
                     <header><span>{source.kind}</span><small>{source.meta}</small></header>
                     <h2>{source.label}</h2><p>{source.excerpt}</p>
@@ -897,7 +1135,9 @@ function AnalystWorkbenchSurface({
             ) : null}
 
             {inspectorTab === "patch" ? (
-              <div className={styles.patchInspector}>
+              realData || !selectedIssue ? (
+                <div className={styles.realEmptyState}><strong>补丁审阅尚未接入</strong><p>当前不会生成或批准样例补丁；对象编辑会直接写入真实 Draft。</p></div>
+              ) : <div className={styles.patchInspector}>
                 {selectedStatus === "patch-ready" || selectedStatus === "resolved" ? (
                   <>
                     <div className={styles.patchSummary} data-state={selectedStatus}><span>Agent 建议</span><b>{selectedStatus === "resolved" ? "已批准" : "等待批准"}</b></div>
@@ -916,15 +1156,17 @@ function AnalystWorkbenchSurface({
             ) : null}
 
             {inspectorTab === "audit" ? (
-              <div className={styles.auditInspector}>
+              realData ? (
+                <div className={styles.realEmptyState}><strong>审计记录尚未接入</strong><p>这里不会展示本地构造的操作记录；服务端审计接口接入后再开放。</p></div>
+              ) : <div className={styles.auditInspector}>
                 <div className={styles.auditStatus}><span>当前修订</span><strong>{seed.caseMeta.revision}</strong><small>只追加记录</small></div>
                 <ol>{auditEntries.map((entry) => <li key={entry.id}><time>{entry.time}</time><i aria-hidden="true" /><div><span>{entry.actor}</span><strong>{entry.action}</strong><small>{entry.detail}</small></div></li>)}</ol>
               </div>
             ) : null}
           </div>
           <footer className={styles.inspectorFooter}>
-            <div><span>{validationPhase === "idle" ? "验证器空闲" : validationPhase === "recomputing" ? "局部重算中…" : "全量验证中…"}</span><small>{unresolvedCount} 个问题待决定</small></div>
-            <button disabled={validationPhase !== "idle"} onClick={revalidateAll} type="button">重新验证</button>
+            <div><span>{realData ? "真实验证尚未接入" : validationPhase === "idle" ? "验证器空闲" : validationPhase === "recomputing" ? "局部重算中…" : "全量验证中…"}</span><small>{realData ? "不使用样例结果" : `${unresolvedCount} 个问题待决定`}</small></div>
+            <button disabled={realData || validationPhase !== "idle"} onClick={revalidateAll} type="button">重新验证</button>
           </footer>
         </aside>
         {!inspectorOpen ? (
@@ -948,13 +1190,15 @@ function AnalystWorkbenchSurface({
         <header className={styles.drawerHeader}>
           <button aria-expanded={drawerOpen} className={styles.drawerToggle} onClick={() => setDrawerOpen((open) => !open)} type="button"><WorkbenchIcon name="chevron" /><span>来源抽屉</span><small>录音、转写与检索依据</small></button>
           <div className={styles.drawerTabs} role="tablist">
-            {drawerTabs.map((tab) => <button aria-selected={drawerTab === tab.id} key={tab.id} onClick={() => { setDrawerTab(tab.id); setDrawerOpen(true); }} role="tab" type="button">{tab.label}{tab.count ? <b>{tab.count}</b> : null}</button>)}
+            {drawerTabs.map((tab) => <button aria-selected={drawerTab === tab.id} key={tab.id} onClick={() => { setDrawerTab(tab.id); setDrawerOpen(true); }} role="tab" type="button">{tab.label}{!realData && tab.count ? <b>{tab.count}</b> : null}</button>)}
           </div>
-          <div className={styles.drawerObject}><span>绑定对象</span><strong>{selectedEvent.id}</strong></div>
+          <div className={styles.drawerObject}><span>绑定对象</span><strong>{selectedEvent?.id ?? "—"}</strong></div>
         </header>
         {drawerOpen ? (
           <div className={styles.drawerContent}>
-            {drawerTab === "audio" ? (
+            {realData ? (
+              <div className={styles.realEmptyState}><strong>真实来源内容尚未接入</strong><p>当前工作稿仅保留 CaseFile 内的引用关系，不展示样例录音、转写、日志或检索命中。</p></div>
+            ) : drawerTab === "audio" ? (
               <div className={styles.audioPlayer}>
                 <button aria-label={playing ? "暂停录音" : "播放录音"} className={styles.playButton} onClick={() => { setPlaying((value) => !value); announce(playing ? "录音已暂停。" : `正在播放${seed.drawer.audioTitle}。`); }} type="button"><WorkbenchIcon name={playing ? "pause" : "play"} /></button>
                 <div className={styles.waveform} aria-label={`录音播放进度 ${playhead}%`} role="progressbar" aria-valuemax={100} aria-valuemin={0} aria-valuenow={playhead}>{Array.from({ length: 42 }, (_, index) => <i data-played={index / 41 * 100 <= playhead} key={index} style={{ height: `${22 + ((index * 17) % 64)}%` }} />)}</div>
@@ -962,9 +1206,9 @@ function AnalystWorkbenchSurface({
                 <button className={styles.jumpButton} onClick={() => { setPlayhead(62); announce(`播放位置已跳转到 ${seed.drawer.keyTime} 的关键证词。`); }} type="button">跳到 {seed.drawer.keyTime}</button>
               </div>
             ) : null}
-            {drawerTab === "transcript" ? <div className={styles.transcriptPanel}><time>{seed.drawer.keyTime}</time><p><mark>“{seed.drawer.keyExcerpt}”</mark> {seed.drawer.transcript}</p><button onClick={() => openIssue(seed.defaultIssueId)} type="button">对照验证问题</button></div> : null}
-            {drawerTab === "logs" ? <div className={styles.logPanel}><ul>{seed.drawer.logs.map((entry) => <li key={`${entry.time}-${entry.actor}`}><span>{entry.time}</span><strong>{entry.actor}</strong><p>{entry.detail}</p></li>)}</ul></div> : null}
-            {drawerTab === "retrieval" ? <div className={styles.retrievalPanel}>{seed.sourceItems.filter((source) => source.kind === "retrieval" || source.kind === "record").map((source) => <article key={source.id}><span>{source.kind}</span><div><strong>{source.label}</strong><p>{source.excerpt}</p></div><button onClick={() => selectEvent(source.eventId)} type="button">定位</button></article>)}</div> : null}
+            {!realData && drawerTab === "transcript" ? <div className={styles.transcriptPanel}><time>{seed.drawer.keyTime}</time><p><mark>“{seed.drawer.keyExcerpt}”</mark> {seed.drawer.transcript}</p><button disabled={!seed.defaultIssueId} onClick={() => { if (seed.defaultIssueId) openIssue(seed.defaultIssueId); }} type="button">对照验证问题</button></div> : null}
+            {!realData && drawerTab === "logs" ? <div className={styles.logPanel}><ul>{seed.drawer.logs.map((entry) => <li key={`${entry.time}-${entry.actor}`}><span>{entry.time}</span><strong>{entry.actor}</strong><p>{entry.detail}</p></li>)}</ul></div> : null}
+            {!realData && drawerTab === "retrieval" ? <div className={styles.retrievalPanel}>{seed.sourceItems.filter((source) => source.kind === "retrieval" || source.kind === "record").map((source) => <article key={source.id}><span>{source.kind}</span><div><strong>{source.label}</strong><p>{source.excerpt}</p></div><button onClick={() => selectEvent(source.eventId)} type="button">定位</button></article>)}</div> : null}
           </div>
         ) : null}
       </section>
@@ -976,7 +1220,7 @@ function AnalystWorkbenchSurface({
         <section><header><span>卷宗对象</span><small>{matchingPaletteObjects.length}</small></header>{matchingPaletteObjects.map((object) => <button key={object.id} onClick={() => runPaletteAction(() => selectObject(object.id))} type="button"><span className={styles.paletteObjectMark}>{objectKindLabels[object.kind].slice(0, 1)}</span><span><strong>{object.label}</strong><small>{object.code}</small></span><i>{object.id}</i></button>)}{matchingPaletteObjects.length === 0 ? <p>没有匹配对象。</p> : null}</section>
       </FocusTrapDialog>
 
-      {agentOpen ? (
+      {agentOpen && !realData ? (
         <AgentPanel
           onClose={() => setAgentOpen(false)}
           seed={seed}

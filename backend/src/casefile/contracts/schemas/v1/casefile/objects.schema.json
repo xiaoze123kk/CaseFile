@@ -3,6 +3,28 @@
   "$id": "https://casefile.local/schemas/v1/casefile/objects.schema.json",
   "title": "CaseFile Core Objects",
   "$defs": {
+    "SchematicSpatialPosition": {
+      "title": "SchematicSpatialPosition",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_system", "x", "y"],
+      "properties": {
+        "coordinate_system": {"const": "schematic"},
+        "x": {"type": "number", "minimum": 0, "maximum": 100},
+        "y": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "Wgs84SpatialPosition": {
+      "title": "Wgs84SpatialPosition",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_system", "latitude", "longitude"],
+      "properties": {
+        "coordinate_system": {"const": "wgs84"},
+        "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+        "longitude": {"type": "number", "minimum": -180, "maximum": 180}
+      }
+    },
     "ResolutionSpec": {
       "title": "ResolutionSpec",
       "type": "object",
@@ -158,6 +180,12 @@
           "properties": {
             "id": {"type": "string", "pattern": "^loc_[a-z0-9][a-z0-9_]{0,56}$"},
             "name": {"type": "string", "minLength": 1},
+            "spatial_position": {
+              "oneOf": [
+                {"$ref": "#/$defs/SchematicSpatialPosition"},
+                {"$ref": "#/$defs/Wgs84SpatialPosition"}
+              ]
+            },
             "parent_ref": {
               "oneOf": [
                 {"$ref": "common.schema.json#/$defs/ObjectRef"},

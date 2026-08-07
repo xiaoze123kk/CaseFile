@@ -18,11 +18,29 @@ import {
   ZoomControls,
 } from "./workbench-canvas-controls";
 import { clamp } from "./workbench-geometry";
+import type { WorkbenchGraphNode } from "./workbench-real-data";
 
 interface GraphPoint {
   x: number;
   y: number;
 }
+
+const graphReferenceLabels: Record<string, string> = {
+  casefile: "卷宗",
+  resolution_spec: "核心问题",
+  entity: "实体",
+  information_unit: "信息",
+  event: "事件",
+  location: "地点",
+  hypothesis: "假设",
+  relationship: "关系",
+  claim: "主张",
+  reasoning_path: "推理路径",
+  constraint: "约束",
+  structure_lock: "结构锁",
+  source_fragment: "来源片段",
+  unknown: "引用",
+};
 
 export function RelationshipGraph({
   seed,
@@ -32,7 +50,7 @@ export function RelationshipGraph({
   compact = false,
 }: {
   seed: WorkbenchSeed;
-  selectedObjectId: string;
+  selectedObjectId: string | null;
   relatedObjectIds: string[];
   onSelectObject: (objectId: string) => void;
   compact?: boolean;
@@ -181,7 +199,7 @@ export function RelationshipGraph({
             relatedObjectIds.includes(edge.from) ||
             relatedObjectIds.includes(edge.to);
           return (
-            <g data-active={active} key={`${edge.from}-${edge.to}`}>
+            <g data-active={active} key={(edge as { id?: string }).id ?? `${edge.from}-${edge.to}-${edge.label}`}>
               <line x1={from.x} x2={to.x} y1={from.y} y2={to.y} />
               {!compact ? (
                 <text
@@ -196,11 +214,15 @@ export function RelationshipGraph({
         })}
       </svg>
       {graphNodes.map((node) => {
+        const mappedNode = node as typeof node & Partial<WorkbenchGraphNode>;
         const object = getObject(seed, node.objectId);
         const position = positions[node.objectId];
-        if (!object || !position) return null;
-        const selected = object.id === selectedObjectId;
-        const related = relatedObjectIds.includes(object.id);
+        if (!position) return null;
+        const selectableId = object?.id ?? mappedNode.directoryObjectId ?? null;
+        const selected = selectableId === selectedObjectId;
+        const related = relatedObjectIds.includes(node.objectId) || (selectableId ? relatedObjectIds.includes(selectableId) : false);
+        const kind = object?.kind ?? mappedNode.kind ?? "unknown";
+        const label = object?.label ?? mappedNode.label ?? node.objectId;
         const style = {
           "--node-x": `${position.x}%`,
           "--node-y": `${position.y}%`,
@@ -209,16 +231,17 @@ export function RelationshipGraph({
           <button
             aria-pressed={selected}
             className={styles.graphNode}
-            data-kind={object.kind}
+            data-kind={kind}
             data-related={related}
-            key={object.id}
-            onClick={() => selectNode(object.id)}
-            onPointerDown={(event) => startNodeDrag(event, object.id)}
+            disabled={!selectableId}
+            key={node.objectId}
+            onClick={() => { if (selectableId) selectNode(selectableId); }}
+            onPointerDown={(event) => startNodeDrag(event, node.objectId)}
             style={style}
             type="button"
           >
-            <small>{objectKindLabels[object.kind]}</small>
-            <strong>{object.label}</strong>
+            <small>{object ? objectKindLabels[object.kind] : graphReferenceLabels[String(kind)] ?? "引用"}</small>
+            <strong>{label}</strong>
           </button>
         );
       })}
@@ -269,6 +292,15 @@ export function RelationshipGraph({
     );
   }
 
+  const graphNodeById = new Map(
+    graphNodes.map((node) => [
+      node.objectId,
+      (node as typeof node & Partial<WorkbenchGraphNode>).label ??
+        getObject(seed, node.objectId)?.label ??
+        node.objectId,
+    ]),
+  );
+
   return (
     <section className={styles.relationsView} aria-labelledby="relations-heading">
       <header className={styles.sectionHeader}>
@@ -313,9 +345,9 @@ export function RelationshipGraph({
             <tbody>
               {seed.graphEdges.map((edge) => (
                 <tr key={`table-${edge.from}-${edge.to}`}>
-                  <td>{getObject(seed, edge.from)?.label}</td>
+                  <td>{graphNodeById.get(edge.from)}</td>
                   <td>{edge.label}</td>
-                  <td>{getObject(seed, edge.to)?.label}</td>
+                  <td>{graphNodeById.get(edge.to)}</td>
                 </tr>
               ))}
             </tbody>

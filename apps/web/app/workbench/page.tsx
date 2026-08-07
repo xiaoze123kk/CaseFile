@@ -7,6 +7,25 @@ export const metadata: Metadata = {
   description: "核对卷宗对象、时间线、证据关系、推理路径和候选工作稿。",
 };
 
-export default function WorkbenchRoute() {
-  return <AnalystWorkbench />;
+export default async function WorkbenchRoute({
+  searchParams,
+}: {
+  searchParams: Promise<{ project?: string | string[] }>;
+}) {
+  const value = (await searchParams).project;
+  const rawProjectId = Array.isArray(value) ? value[0] : value;
+  const parsedProjectId = rawProjectId ? Number(rawProjectId) : null;
+  const projectId =
+    parsedProjectId !== null &&
+    Number.isSafeInteger(parsedProjectId) &&
+    parsedProjectId > 0
+      ? parsedProjectId
+      : null;
+
+  return (
+    <AnalystWorkbench
+      invalidProjectId={rawProjectId !== undefined && projectId === null}
+      requestedProjectId={projectId}
+    />
+  );
 }
