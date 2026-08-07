@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -18,6 +19,7 @@ import type {
   BriefView,
   DraftCandidateView,
   DraftView,
+  ProjectView,
   TaskView,
 } from "@/lib/api-client";
 
@@ -79,6 +81,44 @@ function buildFakeBackend() {
   let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
   const adoptionDraftRevisions: number[] = [];
+  let projects: ProjectView[] = [
+    {
+      id: 1,
+      title: "测试项目",
+      description: null,
+      profile: {},
+      status: "active",
+      archived_at: null,
+      created_at: new Date(Date.now() - 86400000).toISOString(),
+      updated_at: new Date().toISOString(),
+      casefile_id: 1,
+      draft: { id: 1, revision: 1, schema_version: "v1", status: "open" },
+    },
+    {
+      id: 2,
+      title: "午夜回航旧案",
+      description: null,
+      profile: {},
+      status: "active",
+      archived_at: null,
+      created_at: new Date(Date.now() - 172800000).toISOString(),
+      updated_at: new Date(Date.now() - 3600000).toISOString(),
+      casefile_id: 2,
+      draft: { id: 2, revision: 1, schema_version: "v1", status: "open" },
+    },
+    {
+      id: 3,
+      title: "封存的旧卷",
+      description: null,
+      profile: {},
+      status: "archived",
+      archived_at: new Date(Date.now() - 3600000).toISOString(),
+      created_at: new Date(Date.now() - 259200000).toISOString(),
+      updated_at: new Date(Date.now() - 3600000).toISOString(),
+      casefile_id: 3,
+      draft: { id: 3, revision: 1, schema_version: "v1", status: "open" },
+    },
+  ];
 
   function intakeView(): BriefIntakeView {
     const stage =
@@ -386,6 +426,17 @@ function buildFakeBackend() {
 
   return {
     CaseSessionError,
+    resetProjects: () => {
+      projects = projects.map((project) =>
+        project.id === 3
+          ? {
+              ...project,
+              status: "archived",
+              archived_at: new Date(Date.now() - 3600000).toISOString(),
+            }
+          : { ...project, status: "active", archived_at: null },
+      );
+    },
     setConfiguredProviders: (providers: string[]) => {
       configuredProviders = providers;
     },
@@ -417,9 +468,55 @@ function buildFakeBackend() {
       title: "测试项目",
       description: null,
       profile: {},
+      status: "active",
+      archived_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      casefile_id: 1,
       draft: { id: 1, revision: 1, schema_version: "v1", status: "open" },
     }),
-    fetchCaseIntake: async () => intakeView(),
+    fetchCaseIntake: async (projectId: number) => {
+      // 历史项目各自拥有独立的 intake 状态；当前项目复用全局会话状态。
+      if (projectId === 1) return intakeView();
+      return {
+        ...intakeView(),
+        project_id: projectId,
+        stage: "idea" as const,
+        current_source: null,
+        questions: [],
+        current_candidate_id: null,
+        adopted_candidate_id: null,
+        candidates: [],
+        pending_decisions: [],
+        brief: {
+          brief_id: projectId,
+          draft_revision: 1,
+          current_version_id: null,
+          has_content: false,
+        },
+      };
+    },
+    listProjects: async () => projects,
+    archiveProject: async (_actorId: number, projectId: number) => {
+      projects = projects.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              status: "archived",
+              archived_at: new Date().toISOString(),
+            }
+          : project,
+      );
+      return projects.find((project) => project.id === projectId)!;
+    },
+    unarchiveProject: async (_actorId: number, projectId: number) => {
+      projects = projects.map((project) =>
+        project.id === projectId
+          ? { ...project, status: "active", archived_at: null }
+          : project,
+      );
+      return projects.find((project) => project.id === projectId)!;
+    },
     persistCaseSource: async (
       _projectId: number,
       _intakeRevision: number,
@@ -639,6 +736,12 @@ const fake = vi.hoisted(() => ({ backend: buildFakeBackend() }));
 
 vi.mock("@/features/case-session/case-session-api", () => fake.backend);
 
+vi.mock("@/lib/api-client", () => ({
+  listProjects: fake.backend.listProjects,
+  archiveProject: fake.backend.archiveProject,
+  unarchiveProject: fake.backend.unarchiveProject,
+}));
+
 function renderIntake() {
   return render(
     <CaseSessionProvider>
@@ -658,6 +761,7 @@ afterEach(() => {
   fake.backend.setConfiguredProviders(["openai"]);
   fake.backend.setFailOpenaiAuth(false);
   fake.backend.setFailNextQuestionRevision(false);
+  fake.backend.resetProjects();
 });
 
 describe("intake center", () => {
@@ -966,5 +1070,119 @@ describe("intake center", () => {
     expect(shell).toContain("SettingsDialog");
     expect(shell).toContain("data-casefile-kind");
     expect(globalCss).toContain("min-width: 0");
+  });
+});
+
+describe("case history drawer", () => {
+  function startCase(value = "正在建案中的念头。") {
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+  }
+
+  it("opens from the topbar and lists active cases with progress", async () => {
+    renderIntake();
+    await flush();
+    startCase();
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
+    await flush();
+
+    expect(
+      screen.getByRole("dialog", { name: "建案历史档案" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("CF-0001")).toBeInTheDocument();
+    expect(screen.getByText("CF-0002")).toBeInTheDocument();
+    expect(screen.getByText("测试项目")).toBeInTheDocument();
+    expect(screen.getByText("午夜回航旧案")).toBeInTheDocument();
+    expect(screen.getByText("当前卷宗")).toBeInTheDocument();
+    expect(screen.queryByText("封存的旧卷")).not.toBeInTheDocument();
+  });
+
+  it("reveals archived cases behind the archived toggle and can unarchive them", async () => {
+    renderIntake();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
+    await flush();
+
+    fireEvent.click(screen.getByRole("button", { name: /已归档/u }));
+    expect(screen.getByText("封存的旧卷")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "移出归档" }));
+    await flush();
+
+    // 归档层已清空，移出的卷宗回到进行中区。
+    expect(screen.getByText("没有封存的卷宗。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /已归档/u }));
+    expect(screen.getByText("封存的旧卷")).toBeInTheDocument();
+  });
+
+  it("archives an active case from the drawer", async () => {
+    renderIntake();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
+    await flush();
+
+    const cards = screen.getAllByText("午夜回航旧案");
+    const card = cards[0].closest("article")!;
+    fireEvent.click(
+      within(card).getByRole("button", { name: "归档" }),
+    );
+    await flush();
+
+    expect(screen.queryByText("午夜回航旧案")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /已归档/u }));
+    expect(screen.getByText("午夜回航旧案")).toBeInTheDocument();
+  });
+
+  it("does not offer archive for the currently active case", async () => {
+    renderIntake();
+    await flush();
+    startCase();
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
+    await flush();
+
+    const card = screen.getByText("测试项目").closest("article")!;
+    expect(
+      within(card).queryByRole("button", { name: "归档" }),
+    ).not.toBeInTheDocument();
+    expect(within(card).getByText("当前卷宗")).toBeInTheDocument();
+  });
+
+  it("stashes the current case when restoring a historical one and can return to it", async () => {
+    renderIntake();
+    await flush();
+
+    startCase("正在进行中的念头。");
+    await flush();
+    expect(
+      screen.queryByRole("button", { name: "回到暂存" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "打开建案历史" }));
+    await flush();
+    const card = screen.getByText("午夜回航旧案").closest("article")!;
+    fireEvent.click(within(card).getByRole("button", { name: "调出此卷" }));
+    await flush();
+
+    expect(
+      screen.queryByRole("dialog", { name: "建案历史档案" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("写下最初想法")).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: "回到暂存" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "回到暂存" }));
+    // 回到暂存后恢复的是当时的关键追问步骤，原文在追问视图的源胶囊中。
+    expect(
+      screen.getAllByText("正在进行中的念头。").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("button", { name: "回到暂存" }),
+    ).not.toBeInTheDocument();
   });
 });

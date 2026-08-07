@@ -129,6 +129,12 @@ class ProjectRepository:
         owned.casefile.status = "archived"
         owned.casefile.archived_at = now
 
+    def unarchive(self, owned: OwnedDraft) -> None:
+        owned.project.status = "active"
+        owned.project.archived_at = None
+        owned.casefile.status = "draft"
+        owned.casefile.archived_at = None
+
 
 class DraftRepository:
     """Current-state object, semantic-reference, and edit-log persistence."""

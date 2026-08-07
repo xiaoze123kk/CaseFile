@@ -31,6 +31,7 @@ import {
   type IntakeStep,
 } from "./intake-model";
 import { BriefReviewStage } from "./brief-review-stage";
+import { CaseHistoryDrawer } from "./case-history-drawer";
 import { DraftCandidatesStage } from "./draft-candidates-stage";
 import {
   OutlineStagesEditor,
@@ -158,6 +159,11 @@ export function IntakeCenter() {
     saveCandidateBookmark,
     activateCandidate,
     resetSession: resetSessionState,
+    loadProject,
+    stashCurrentSession,
+    restoreStashedSession,
+    hasStashedSession,
+    activeProjectId,
   } = useCaseSession();
   const {
     step,
@@ -181,6 +187,7 @@ export function IntakeCenter() {
   const [polishParentSourceRecordId, setPolishParentSourceRecordId] =
     useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [, setNotice] = useState(
@@ -534,9 +541,22 @@ export function IntakeCenter() {
     setIntroducedDetails([]);
     setPolishParentSourceRecordId(null);
     setHistoryOpen(false);
+    setHistoryDrawerOpen(false);
     setRevisionInstruction("");
     setError(null);
     announce("已恢复未建案状态；后续操作将创建新项目。");
+  }
+
+  async function restoreProject(projectId: number) {
+    stashCurrentSession();
+    await loadProject(projectId);
+    setHistoryDrawerOpen(false);
+  }
+
+  function restoreStashed() {
+    restoreStashedSession();
+    setError(null);
+    announce("已回到暂存的卷宗。");
   }
 
   return (
@@ -562,6 +582,27 @@ export function IntakeCenter() {
             <span aria-hidden="true" className={styles.analyticsIcon}>⌁</span>
             分析师工作台
           </Link>
+          <button
+            aria-label="打开建案历史"
+            className={styles.historyToggle}
+            data-stashed={hasStashedSession || undefined}
+            onClick={() => setHistoryDrawerOpen(true)}
+            type="button"
+          >
+            <Glyph name="history" />
+            建案历史
+          </button>
+          {hasStashedSession ? (
+            <button
+              aria-label="回到暂存"
+              className={styles.stashButton}
+              onClick={restoreStashed}
+              type="button"
+            >
+              <span aria-hidden="true" className={styles.resetIcon}>↩</span>
+              回到暂存
+            </button>
+          ) : null}
           <button aria-label="重置会话" onClick={resetSession} type="button">
             <span aria-hidden="true" className={styles.resetIcon}>↻</span>
             重置会话
@@ -1520,6 +1561,13 @@ export function IntakeCenter() {
         </aside>
       </div>
 
+      <CaseHistoryDrawer
+        currentProjectId={activeProjectId}
+        onClose={() => setHistoryDrawerOpen(false)}
+        onNotice={announce}
+        onRestore={restoreProject}
+        open={historyDrawerOpen}
+      />
     </div>
   );
 }

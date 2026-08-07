@@ -1850,3 +1850,49 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         )
         assert second_assistant["patch_set"]["status"] == "rejected"
         assert second_assistant["patch_set"]["is_stale"] is False
+
+
+def test_project_archive_unarchive_roundtrip_and_timestamps(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, _master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        service = CaseFileService(session)
+        created = service.create_project(
+            actor_id,
+            ProjectCreate(title="归档往返", description=None, profile=PROFILE),
+        )
+        project_id = int(created["id"])
+        assert created["status"] == "active"
+        assert created["archived_at"] is None
+        assert created["created_at"] is not None
+        assert created["updated_at"] is not None
+
+        listed = service.list_projects(actor_id)
+        assert [item["id"] for item in listed] == [project_id]
+        assert listed[0]["created_at"] == created["created_at"]
+
+        archived = service.archive_project(actor_id, project_id)
+        assert archived["status"] == "archived"
+        assert archived["archived_at"] is not None
+
+        restored = service.unarchive_project(actor_id, project_id)
+        assert restored["status"] == "active"
+        assert restored["archived_at"] is None
+
+        # 取消归档是幂等的：再次调用保持不变。
+        restored_again = service.unarchive_project(actor_id, project_id)
+        assert restored_again["status"] == "active"
+
+
+def test_get_brief_exposes_current_version_no(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, _master_key = workflow_database
+    project_id, _task_run_id = _prepare_task(engine, actor_id)
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with factory() as session:
+        brief = WorkflowService(session).get_brief(actor_id, project_id)
+        assert brief["current_version_id"] is not None
+        assert brief["current_version_no"] == 1

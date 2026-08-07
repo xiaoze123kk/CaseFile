@@ -234,6 +234,32 @@
   background: var(--red-soft);
 }
 
+.historyToggle svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentcolor;
+}
+
+.historyToggle[data-stashed="true"] {
+  color: var(--red);
+}
+
+.stashButton {
+  color: white;
+  background: var(--red);
+}
+
+.stashButton:hover {
+  color: white;
+  background: #a32108;
+}
+
+.topbarLinks .stashButton:hover {
+  color: white;
+  background: #a32108;
+}
+
 .analyticsIcon {
   display: grid;
   width: 20px;

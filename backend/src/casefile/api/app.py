@@ -217,6 +217,12 @@ def _api_router() -> APIRouter:
     ) -> dict[str, Any]:
         return CaseFileService(session).archive_project(actor, project_id)
 
+    @router.post("/projects/{project_id}/unarchive")
+    def unarchive_project(
+        project_id: int, actor: ActorDependency, session: SessionDependency
+    ) -> dict[str, Any]:
+        return CaseFileService(session).unarchive_project(actor, project_id)
+
     @router.get("/projects/{project_id}/draft")
     def get_draft(
         project_id: int,
