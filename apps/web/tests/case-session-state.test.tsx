@@ -17,6 +17,7 @@ import {
 import {
   atomicReviewComplete,
   canFreezeBriefReview,
+  candidateHistoryVersions,
   createBriefReview,
   sampleIdea,
   synthesizeBrief,
@@ -50,6 +51,12 @@ function reviewedBriefFixture() {
 }
 
 describe("case session state model", () => {
+  it("numbers candidate history from one instead of exposing database identifiers", () => {
+    expect(
+      candidateHistoryVersions([{ id: 31 }, { id: 30 }]),
+    ).toEqual(new Map([[30, 1], [31, 2]]));
+  });
+
   it("deterministically generates three distinct, reference-complete workbench seeds", () => {
     const { review } = reviewedBriefFixture();
     const input = {

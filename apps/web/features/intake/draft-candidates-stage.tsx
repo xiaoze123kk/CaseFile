@@ -228,7 +228,7 @@ export function DraftCandidatesStage() {
         </div>
 
         {analysis.status === "ready" ? (
-          <div className={styles.candidateFan}>
+          <div className={styles.strategyFan} aria-label="三种策略并列比较">
             {analysis.options.map((option, index) => {
               const selected = state.selectedStrategy === option.strategy;
               const recommended = analysis.recommendedStrategy === option.strategy;
@@ -278,26 +278,33 @@ export function DraftCandidatesStage() {
           </p>
         ) : null}
 
-        <button
-          className={styles.generateButton}
-          disabled={!state.selectedStrategy || generating || Boolean(selectedCandidate)}
-          onClick={() => void generateSelectedDraft()}
-          type="button"
-        >
-          <span>
-            {generating
-              ? `正在生成${strategyLabels[state.selectedStrategy!]}完整深稿…`
-              : selectedCandidate
-                ? "这一策略的完整深稿已生成"
-                : state.selectedStrategy
-                  ? `生成${strategyLabels[state.selectedStrategy]}完整深稿`
-                  : "请先选择一个策略"}
-          </span>
-          <b>{selectedCandidate ? "✓" : "→"}</b>
-        </button>
-        <button disabled={analysis.status === "analyzing" || generating} onClick={() => void regenerateStrategyAnalysis()} type="button">
-          重新分析三种策略
-        </button>
+        <div className={styles.strategyActions}>
+          <button
+            className={styles.generateButton}
+            disabled={!state.selectedStrategy || generating || Boolean(selectedCandidate)}
+            onClick={() => void generateSelectedDraft()}
+            type="button"
+          >
+            <span>
+              {generating
+                ? `正在生成${strategyLabels[state.selectedStrategy!]}完整深稿…`
+                : selectedCandidate
+                  ? "完整深稿已生成"
+                  : state.selectedStrategy
+                    ? `生成${strategyLabels[state.selectedStrategy]}完整深稿`
+                    : "请先选择一个策略"}
+            </span>
+            <b>{selectedCandidate ? "✓" : "→"}</b>
+          </button>
+          <button
+            className={styles.strategyRefresh}
+            disabled={analysis.status === "analyzing" || generating}
+            onClick={() => void regenerateStrategyAnalysis()}
+            type="button"
+          >
+            重新分析三种策略
+          </button>
+        </div>
       </section>
 
       {generationError ? <p className={styles.generationError} role="alert">{generationError}</p> : null}

@@ -560,7 +560,7 @@ export function errorMessage(error: unknown) {
       provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
       brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
-      brief_extraction_input_empty: "请先填写作者底牌或创作边界。",
+      brief_extraction_input_empty: "请先填写作者答案或创作规则。",
       source_content_blank: "来源原稿不能为空。",
       brief_invalid: "创作简报内容不完整，请检查后重试。",
     };

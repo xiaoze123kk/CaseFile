@@ -89,6 +89,16 @@ export interface BriefCandidate {
   brief: IntakeBrief;
 }
 
+export function candidateHistoryVersions(
+  candidates: readonly Pick<BriefCandidate, "id">[],
+): ReadonlyMap<number, number> {
+  return new Map(
+    [...candidates]
+      .sort((first, second) => first.id - second.id)
+      .map((candidate, index) => [candidate.id, index + 1]),
+  );
+}
+
 export type AtomicOrigin = "agent" | "manual" | "saved";
 
 export interface AnchorReview {
@@ -216,10 +226,10 @@ export const resolutionModes: Array<{
   {
     value: "author_anchored",
     label: "使用我提供的答案",
-    hint: "现在填写底牌；深稿只围绕它铺设证据。",
+    hint: "现在填写答案；深稿只围绕它铺设证据。",
     effectTiming: "现在与深稿生成时生效",
     effectTitle: "你先锁定答案，Agent 只负责展开",
-    effectDetail: "作者底牌会成为硬约束。Agent 可以补全证据与推理链，但不能改写、弱化或替换答案。",
+    effectDetail: "答案会被固定。Agent 可以补全证据与推理链，但不能改写、弱化或替换答案。",
   },
   {
     value: "agent_proposed",
@@ -536,7 +546,7 @@ export function reviewFieldBlockers(review: BriefReview): string[] {
     review.resolutionMode === "author_anchored" &&
     !review.authorAnswer.trim()
   ) {
-    blockers.push("作者底牌");
+    blockers.push("作者答案");
   }
   return blockers;
 }
@@ -609,7 +619,7 @@ export function missingHardFields(brief: IntakeBrief): string[] {
   if (!brief.reasoningGoal.trim()) missing.push("推理目标");
   if (brief.sources.conclusionMode !== "user_confirmed") missing.push("结论模式");
   if (brief.resolutionMode === "author_anchored" && !brief.authorAnswer.trim()) {
-    missing.push("作者底牌");
+    missing.push("作者答案");
   }
   return missing;
 }
