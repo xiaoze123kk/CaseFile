@@ -52,7 +52,7 @@ type BriefTextField =
 function Glyph({
   name,
 }: {
-  name: "arrow" | "check" | "compare" | "history" | "spark" | "target";
+  name: "archive" | "arrow" | "check" | "compare" | "history" | "spark" | "target";
 }) {
   if (name === "check") {
     return (
@@ -72,6 +72,13 @@ function Glyph({
     return (
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 7.5V12l3 2" />
+      </svg>
+    );
+  }
+  if (name === "archive") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M4 7.5h16v12H4zM3 4.5h18v3H3zM8 12h8M9 15.5h6" />
       </svg>
     );
   }
@@ -587,25 +594,36 @@ export function IntakeCenter() {
             className={styles.historyToggle}
             data-stashed={hasStashedSession || undefined}
             onClick={() => setHistoryDrawerOpen(true)}
+            title="建案历史"
             type="button"
           >
-            <Glyph name="history" />
-            建案历史
+            <Glyph name="archive" />
+            <span className={styles.topbarActionLabel}>建案历史</span>
+            <span aria-hidden="true" className={styles.topbarActionCompactLabel}>
+              历史
+            </span>
           </button>
           {hasStashedSession ? (
             <button
               aria-label="回到暂存"
               className={styles.stashButton}
               onClick={restoreStashed}
+              title="回到暂存"
               type="button"
             >
               <span aria-hidden="true" className={styles.resetIcon}>↩</span>
-              回到暂存
+              <span className={styles.topbarActionLabel}>回到暂存</span>
+              <span aria-hidden="true" className={styles.topbarActionCompactLabel}>
+                暂存
+              </span>
             </button>
           ) : null}
-          <button aria-label="重置会话" onClick={resetSession} type="button">
+          <button aria-label="重置会话" onClick={resetSession} title="重置会话" type="button">
             <span aria-hidden="true" className={styles.resetIcon}>↻</span>
-            重置会话
+            <span className={styles.topbarActionLabel}>重置会话</span>
+            <span aria-hidden="true" className={styles.topbarActionCompactLabel}>
+              重置
+            </span>
           </button>
           <button
             aria-label="打开模型服务设置"

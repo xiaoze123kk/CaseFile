@@ -239,6 +239,17 @@
   height: 15px;
   fill: none;
   stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.topbarActionLabel {
+  white-space: nowrap;
+}
+
+.topbarActionCompactLabel {
+  display: none;
 }
 
 .historyToggle[data-stashed="true"] {
@@ -877,13 +888,40 @@
   }
 
   .topbarContext,
-  .topbarLinks a,
-  .topbarLinks button:not(:last-child) {
+  .topbarLinks a {
     display: none;
   }
 
-  .topbarLinks button:last-child {
-    min-width: 88px;
+  .topbarLinks {
+    gap: 2px;
+    padding-right: 8px;
+  }
+
+  .topbarLinks button {
+    width: auto;
+    min-width: 0;
+    padding: 0 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .topbarActionLabel {
+    display: none;
+  }
+
+  .topbarActionCompactLabel {
+    display: inline;
+  }
+
+  .topbarLinks .accountButton {
+    width: 42px;
+    min-width: 42px;
+    gap: 4px;
+    padding: 0;
+  }
+
+  .accountButton > i {
+    font-size: 11px;
   }
 
   .pulseTrack {
