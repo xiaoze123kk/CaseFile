@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   type ReactNode,
   type SetStateAction,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -171,6 +172,7 @@ export function IntakeCenter() {
     restoreStashedSession,
     hasStashedSession,
     activeProjectId,
+    retryTask,
   } = useCaseSession();
   const {
     step,
@@ -182,6 +184,7 @@ export function IntakeCenter() {
     briefCandidates: candidates,
     currentBriefCandidateId: currentCandidateId,
   } = state;
+  const { hydration, latestTasks } = state;
   const [polishReviewOpen, setPolishReviewOpen] = useState(false);
   const [polishPending, setPolishPending] = useState(false);
   const [questionGenerationMode, setQuestionGenerationMode] = useState<
@@ -197,9 +200,20 @@ export function IntakeCenter() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [, setNotice] = useState(
-    "建案数据写入开发库；刷新页面将开启新会话。",
-  );
+  const [retryingTaskType, setRetryingTaskType] = useState<
+    Parameters<typeof retryTask>[0] | null
+  >(null);
+  const [, setNotice] = useState("建案数据写入开发库；当前项目可通过 URL 恢复。");
+
+  useEffect(() => {
+    if (!state.review?.dirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [state.review?.dirty]);
 
   function resolveState<T>(current: T, next: SetStateAction<T>) {
     return typeof next === "function"
@@ -233,6 +247,16 @@ export function IntakeCenter() {
       return Boolean(answer?.text.trim() && !answer.pending);
     });
   const missingFields = missingHardFields(brief);
+  const latestTaskList = Object.values(latestTasks).filter(Boolean);
+  const activeRecoveryTasks = latestTaskList.filter((task) =>
+    task && ["queued", "running", "cancelling"].includes(task.status),
+  );
+  const failedRecoveryTasks = latestTaskList.filter(
+    (task) => task && task.status === "failed",
+  );
+  const pendingDecisionCount = Object.values(answers).filter(
+    (answer) => answer.pending,
+  ).length;
 
   const completionSignals = useMemo(
     () => [
@@ -556,8 +580,37 @@ export function IntakeCenter() {
 
   async function restoreProject(projectId: number) {
     stashCurrentSession();
-    await loadProject(projectId);
-    setHistoryDrawerOpen(false);
+    try {
+      await loadProject(projectId);
+      setHistoryDrawerOpen(false);
+      setError(null);
+      announce("已恢复该卷宗；服务端状态已重新同步。");
+    } catch (caught) {
+      resetSession();
+      setHistoryDrawerOpen(false);
+      setError(caught instanceof Error ? caught.message : "卷宗恢复失败，请重试。");
+    }
+  }
+
+  async function retryLatestTask(taskType: Parameters<typeof retryTask>[0]) {
+    if (retryingTaskType) return;
+    setRetryingTaskType(taskType);
+    setError(null);
+    try {
+      const polished = await retryTask(taskType);
+      if (polished) {
+        setPolishDraft(polished.text);
+        setPolishNotes(polished.notes);
+        setIntroducedDetails(polished.introducedDetails);
+        setPolishParentSourceRecordId(polished.parentSourceRecordId);
+        setPolishReviewOpen(true);
+      }
+      announce("任务已重新提交；页面会继续显示最新执行状态。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "任务重试失败，请稍后再试。");
+    } finally {
+      setRetryingTaskType(null);
+    }
   }
 
   function restoreStashed() {
@@ -585,7 +638,7 @@ export function IntakeCenter() {
         </div>
         <div aria-hidden="true" className={styles.topbarContext} />
         <nav aria-label="产品页面" className={styles.topbarLinks}>
-          <Link href="/workbench">
+          <Link href={activeProjectId ? `/workbench?project=${activeProjectId}` : "/workbench"}>
             <span aria-hidden="true" className={styles.analyticsIcon}>⌁</span>
             分析师工作台
           </Link>
@@ -688,6 +741,46 @@ export function IntakeCenter() {
       </nav>
 
       <div className={styles.workspace}>
+        {hydration.status === "loading" ? (
+          <div aria-live="polite" className={styles.sessionStatus} role="status">
+            正在从服务端恢复当前卷宗…
+          </div>
+        ) : null}
+        {hydration.status === "error" ? (
+          <div aria-live="assertive" className={styles.sessionStatusError} role="alert">
+            {hydration.error ?? "当前卷宗恢复失败，请从建案历史重新调出。"}
+          </div>
+        ) : null}
+        {activeRecoveryTasks.length > 0 ? (
+          <div aria-live="polite" className={styles.sessionStatus} role="status">
+            已恢复 {activeRecoveryTasks.length} 个进行中的任务；返回对应步骤即可继续查看进度。
+          </div>
+        ) : null}
+        {failedRecoveryTasks.length > 0 ? (
+          <div aria-live="assertive" className={styles.sessionStatusError} role="alert">
+            {failedRecoveryTasks.length} 个任务上次执行失败。请回到对应步骤重新提交，已有输入和候选不会丢失。
+            <div className={styles.sessionTaskList}>
+              {failedRecoveryTasks.map((task) => (
+                <div key={task.task_run_id}>
+                  <span>
+                    {task.task_type} · {task.failure?.message ?? task.failure?.code ?? task.error_code ?? "任务失败"}
+                  </span>
+                  {task.failure?.retryable ? (
+                    <button
+                      disabled={retryingTaskType === task.task_type}
+                      onClick={() => void retryLatestTask(task.task_type)}
+                      type="button"
+                    >
+                      {retryingTaskType === task.task_type ? "重试中…" : "重试任务"}
+                    </button>
+                  ) : (
+                    <em>请修正输入后重新提交</em>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <aside aria-label="建案入口" className={styles.routeDock}>
           <div className={styles.routeList}>
             {intakeRoutes.map((route) => {
@@ -1564,14 +1657,15 @@ export function IntakeCenter() {
           <section className={styles.pendingQueue}>
             <header>
               <span>待决定</span>
-              <b>
-                {Object.values(answers).some((answer) => answer.pending)
-                  ? "1"
-                  : "0"}
-              </b>
+              <b>{pendingDecisionCount}</b>
             </header>
-            {Object.values(answers).some((answer) => answer.pending) ? (
-              <p>已标记的偏好会在正式审阅时继续确认。</p>
+            {pendingDecisionCount > 0 ? (
+              <>
+                <p>已标记的偏好会在正式审阅时继续确认。</p>
+                <button onClick={() => setStep("questions")} type="button">
+                  回到问题处理
+                </button>
+              </>
             ) : (
               <p>没有被隐藏的待决定事项。</p>
             )}

@@ -16,7 +16,7 @@ describe("official two-page product boundary", () => {
       '@/features/analyst-workbench/analyst-workbench',
     );
     expect(source("features/intake/intake-center.tsx")).toContain(
-      'href="/workbench"',
+      '`/workbench?project=${activeProjectId}`',
     );
     expect(source("features/analyst-workbench/analyst-workbench.tsx")).toContain(
       'href="/"',

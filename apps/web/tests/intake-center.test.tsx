@@ -834,6 +834,7 @@ async function flush() {
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   vi.useRealTimers();
   routerPush.mockReset();
   fake.backend.setConfiguredProviders(["openai"]);
@@ -863,6 +864,29 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("写下最初想法")).toHaveValue("");
     expect(screen.getByText("实时简报映射")).toBeInTheDocument();
+  });
+
+  it("hydrates the current project from the URL pointer", async () => {
+    window.history.replaceState({}, "", "/?project=1");
+    renderIntake();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: /分析师工作台/u }),
+      ).toHaveAttribute("href", "/workbench?project=1"),
+    );
+    expect(screen.queryByText("正在从服务端恢复当前卷宗…")).not.toBeInTheDocument();
+  });
+
+  it("rejects an invalid URL project pointer without creating a session", async () => {
+    window.history.replaceState({}, "", "/?project=invalid");
+    renderIntake();
+    await flush();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "项目地址无效，请从建案历史重新调出。",
+    );
+    expect(screen.getByLabelText("写下最初想法")).toHaveValue("");
+    expect(window.location.search).toBe("");
   });
 
   it("runs the full A path, selects a tailored strategy, and generates one deep draft", async () => {

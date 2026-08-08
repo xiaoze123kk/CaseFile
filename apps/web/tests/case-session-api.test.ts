@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CaseSessionError,
+  fetchLatestTask,
   isBriefIntakeRevisionConflict,
   isProviderAuthFailure,
   runTaskWithProviderFallback,
@@ -31,6 +32,21 @@ afterEach(() => {
 });
 
 describe("case session provider fallback", () => {
+  it("reads the latest task for project recovery", async () => {
+    const task = {
+      task_run_id: 21,
+      task_type: "brief_intake_questions",
+      status: "running",
+    };
+    apiRequestMock.mockResolvedValue(task);
+
+    await expect(fetchLatestTask(7, "brief_intake_questions")).resolves.toBe(task);
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      "/projects/7/tasks/latest?task_type=brief_intake_questions",
+      { actorId: expect.any(Number) },
+    );
+  });
+
   it("starts strategy analysis with the frozen Brief and preserves explicit refresh", async () => {
     const task = {
       task_run_id: 19,

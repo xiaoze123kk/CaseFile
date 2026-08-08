@@ -17,6 +17,7 @@ import type {
   BriefStrategyOption,
   CandidateStrategy,
   ProviderName,
+  TaskType,
   TaskView,
 } from "@/lib/api-client";
 import {
@@ -50,6 +51,8 @@ import {
   fetchCaseDraft,
   fetchDraftCandidates,
   fetchCaseIntake,
+  fetchLatestTask,
+  fetchTask,
   isBriefIntakeRevisionConflict,
   persistCaseSource,
   runTaskWithProviderFallback,
@@ -91,6 +94,7 @@ export type CandidateTaskStage =
   | "completed"
   | "failed";
 export type StrategyAnalysisStatus = "idle" | "analyzing" | "ready" | "failed";
+export type SessionHydrationStatus = "idle" | "loading" | "ready" | "error";
 
 export const CANDIDATE_SLOT_STRATEGIES: readonly CandidateSlotStrategy[] = [
   "structure_first",
@@ -144,6 +148,10 @@ function createCandidateSlots(): Record<CandidateSlotStrategy, CandidateSlot> {
 }
 
 export interface CaseSessionState {
+  hydration: {
+    status: SessionHydrationStatus;
+    error: string | null;
+  };
   step: IntakeStep;
   furthestStep: number;
   sourceText: string;
@@ -172,6 +180,7 @@ export interface CaseSessionState {
   draftCandidates: WorkbenchCandidate[];
   previewCandidateId: string | null;
   adoptedCandidateId: string | null;
+  latestTasks: Partial<Record<TaskType, TaskView>>;
 }
 
 type CaseSessionAction =
@@ -205,6 +214,7 @@ type CaseSessionAction =
 
 export function createInitialCaseSessionState(): CaseSessionState {
   return {
+    hydration: { status: "idle", error: null },
     step: "idea",
     furthestStep: 0,
     sourceText: "",
@@ -229,6 +239,7 @@ export function createInitialCaseSessionState(): CaseSessionState {
     draftCandidates: [],
     previewCandidateId: null,
     adoptedCandidateId: null,
+    latestTasks: {},
   };
 }
 
@@ -404,6 +415,7 @@ interface CaseSessionContextValue {
     strategy?: CandidateSlotStrategy,
     attempt?: number,
   ) => Promise<boolean>;
+  retryTask: (taskType: TaskType) => Promise<PolishResult | null>;
   analyzeStrategies: (refresh?: boolean) => Promise<boolean>;
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
   previewCandidate: (candidateId: string | null) => void;
@@ -437,6 +449,21 @@ const CaseSessionContext = createContext<CaseSessionContextValue | null>(
   null,
 );
 
+const RECOVERABLE_TASK_TYPES: readonly TaskType[] = [
+  "brief_polish",
+  "brief_anchor_extract",
+  "brief_intake_questions",
+  "brief_intake_synthesize",
+  "brief_strategy_options",
+  "brief_to_draft",
+];
+
+const ACTIVE_TASK_STATUSES = new Set<TaskView["status"]>([
+  "queued",
+  "running",
+  "cancelling",
+]);
+
 export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(
     caseSessionReducer,
@@ -452,6 +479,23 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const briefRef = useRef<Awaited<ReturnType<typeof fetchBrief>> | null>(
     null,
   );
+  const recoveringTaskIdsRef = useRef(new Set<number>());
+  const initialProjectLoadRef = useRef(false);
+
+  const syncProjectPointer = useCallback((projectId: number | null) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (projectId === null) {
+      url.searchParams.delete("project");
+    } else {
+      url.searchParams.set("project", String(projectId));
+    }
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, []);
 
   useEffect(() => {
     stateRef.current = state;
@@ -467,6 +511,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       const project = await createCaseProject(text);
       projectIdRef.current = project.id;
       setActiveProjectId(project.id);
+      syncProjectPointer(project.id);
       intake = await fetchCaseIntake(project.id);
       intakeRef.current = intake;
     } else if (!intake) {
@@ -1299,6 +1344,81 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "preview_candidate", candidateId });
   }, []);
 
+  const retryTask = useCallback(
+    async (taskType: TaskType): Promise<PolishResult | null> => {
+      const current = stateRef.current;
+      const refreshLatest = async () => {
+        const projectId = projectIdRef.current;
+        if (projectId === null) return;
+        let latest: TaskView | null = null;
+        try {
+          latest = await fetchLatestTask(projectId, taskType);
+        } catch {
+          // The retry request has already been submitted; a refresh failure should not
+          // turn a successful retry into a false error state in the UI.
+          return;
+        }
+        if (!latest) return;
+        dispatch({
+          type: "patch",
+          patch: {
+            latestTasks: {
+              ...stateRef.current.latestTasks,
+              [taskType]: latest,
+            },
+          },
+        });
+      };
+      switch (taskType) {
+        case "brief_polish": {
+          const result = await submitPolish(current.polishMode);
+          await refreshLatest();
+          return result;
+        }
+        case "brief_intake_questions":
+          await requestQuestions(true);
+          await refreshLatest();
+          return null;
+        case "brief_intake_synthesize":
+          await generateBriefFromAnswers();
+          await refreshLatest();
+          return null;
+        case "brief_anchor_extract": {
+          const review = await reextractReview();
+          dispatch({ type: "set_review", review });
+          await refreshLatest();
+          return null;
+        }
+        case "brief_strategy_options":
+          await analyzeStrategies(true);
+          await refreshLatest();
+          return null;
+        case "brief_to_draft": {
+          if (!current.selectedStrategy) {
+            throw new CaseSessionError("请先选择一个创作策略，再重试深稿生成。");
+          }
+          const previousTask = current.latestTasks[taskType];
+          await generateCandidates(
+            current.selectedStrategy,
+            (previousTask?.attempt_count ?? 1) + 1,
+          );
+          await refreshLatest();
+          return null;
+        }
+        default:
+          throw new CaseSessionError("当前任务类型暂不支持自动重试，请回到对应步骤操作。");
+      }
+    },
+    [
+      analyzeStrategies,
+      generateBriefFromAnswers,
+      generateCandidates,
+      reextractReview,
+      requestQuestions,
+      submitPolish,
+    ],
+  );
+
   const adoptCandidate = useCallback(async (candidateId: string) => {
     const current = stateRef.current;
     const candidate = current.draftCandidates.find(
@@ -1337,8 +1457,9 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     intakeRef.current = null;
     briefRef.current = null;
     setActiveProjectId(null);
+    syncProjectPointer(null);
     dispatch({ type: "reset" });
-  }, []);
+  }, [syncProjectPointer]);
 
   const stashRef = useRef<StashedSession | null>(null);
   const [stashAvailable, setStashAvailable] = useState(false);
@@ -1371,10 +1492,45 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     setActiveProjectId(stashed.projectId);
     stashRef.current = null;
     setStashAvailable(false);
+    syncProjectPointer(stashed.projectId);
     dispatch({ type: "patch", patch: stashed.state });
+  }, [syncProjectPointer]);
+
+  const resumeTask = useCallback(async (projectId: number, task: TaskView) => {
+    if (!ACTIVE_TASK_STATUSES.has(task.status)) return;
+    if (recoveringTaskIdsRef.current.has(task.task_run_id)) return;
+    recoveringTaskIdsRef.current.add(task.task_run_id);
+    const update = (latest: TaskView) => {
+      if (projectIdRef.current !== projectId) return;
+      dispatch({
+        type: "patch",
+        patch: {
+          latestTasks: {
+            ...stateRef.current.latestTasks,
+            [latest.task_type]: latest,
+          },
+        },
+      });
+    };
+    try {
+      await waitForTask(projectId, task.task_run_id, update);
+    } catch {
+      try {
+        update(await fetchTask(projectId, task.task_run_id));
+      } catch {
+        // The next explicit action will surface the authoritative API error.
+      }
+    } finally {
+      recoveringTaskIdsRef.current.delete(task.task_run_id);
+    }
   }, []);
 
   const loadProject = useCallback(async (projectId: number) => {
+    dispatch({
+      type: "patch",
+      patch: { hydration: { status: "loading", error: null } },
+    });
+    try {
     const intake = await fetchCaseIntake(projectId);
     intakeRef.current = intake;
     const mapped = mapIntakeToSessionState(intake);
@@ -1390,6 +1546,17 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     let draftCandidates: WorkbenchCandidate[] = [];
     let previewCandidateId: string | null = null;
     let adoptedCandidateId: string | null = null;
+    const latestTasks: Partial<Record<TaskType, TaskView>> = {};
+    await Promise.all(
+      RECOVERABLE_TASK_TYPES.map(async (taskType) => {
+        try {
+          const task = await fetchLatestTask(projectId, taskType);
+          if (task) latestTasks[taskType] = task;
+        } catch {
+          // A missing task record must not prevent the project itself from loading.
+        }
+      }),
+    );
     if (intake.stage === "questions") {
       step = "questions";
       furthestStep = 1;
@@ -1477,11 +1644,60 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           error: null,
         },
         selectedStrategy: null,
+        latestTasks,
+        hydration: { status: "ready", error: null },
         ...mapped,
         brief: mapped.brief ?? createEmptyBrief(sourceText),
       },
     });
-  }, []);
+    projectIdRef.current = projectId;
+    syncProjectPointer(projectId);
+    for (const task of Object.values(latestTasks)) {
+      if (task) void resumeTask(projectId, task);
+    }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "项目恢复失败，请重试。";
+      projectIdRef.current = null;
+      setActiveProjectId(null);
+      syncProjectPointer(null);
+      dispatch({
+        type: "patch",
+        patch: { hydration: { status: "error", error: message } },
+      });
+      throw error;
+    }
+  }, [resumeTask, syncProjectPointer]);
+
+  useEffect(() => {
+    if (initialProjectLoadRef.current || typeof window === "undefined") return;
+    initialProjectLoadRef.current = true;
+    const rawProjectId = new URLSearchParams(window.location.search).get("project");
+    if (!rawProjectId) {
+      dispatch({
+        type: "patch",
+        patch: { hydration: { status: "ready", error: null } },
+      });
+      return;
+    }
+    const projectId = /^\d+$/.test(rawProjectId) ? Number(rawProjectId) : NaN;
+    if (!Number.isSafeInteger(projectId) || projectId < 1) {
+      dispatch({
+        type: "patch",
+        patch: {
+          hydration: {
+            status: "error",
+            error: "项目地址无效，请从建案历史重新调出。",
+          },
+        },
+      });
+      syncProjectPointer(null);
+      return;
+    }
+    const recoveryTimer = window.setTimeout(() => {
+      void loadProject(projectId).catch(() => undefined);
+    }, 0);
+    return () => window.clearTimeout(recoveryTimer);
+  }, [loadProject, syncProjectPointer]);
 
   const activeCandidate = useMemo(() => {
     const activeId = state.previewCandidateId ?? state.adoptedCandidateId;
@@ -1504,6 +1720,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       analyzeStrategies,
       selectStrategy,
       generateCandidates,
+      retryTask,
       previewCandidate,
       adoptCandidate,
       beginBriefRevision,
@@ -1542,6 +1759,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       generateBriefFromAnswers,
       generateCandidates,
       generateMoreQuestions,
+      retryTask,
       loadProject,
       patchState,
       previewCandidate,

@@ -17,6 +17,7 @@ import {
   type ProviderName,
   type ProviderSettingView,
   type TaskView,
+  type TaskType,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
@@ -251,6 +252,13 @@ export async function fetchTask(projectId: number, taskRunId: number) {
   return apiRequest<TaskView>(`/projects/${projectId}/tasks/${taskRunId}`, {
     actorId: LOCAL_ACTOR_ID,
   });
+}
+
+export async function fetchLatestTask(projectId: number, taskType: TaskType) {
+  return apiRequest<TaskView | null>(
+    `/projects/${projectId}/tasks/latest?task_type=${encodeURIComponent(taskType)}`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
 }
 
 export async function waitForTask(
