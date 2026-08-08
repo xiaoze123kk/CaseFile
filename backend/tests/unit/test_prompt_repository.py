@@ -7,6 +7,11 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+from casefile.agent_runtime.prompt import (
+    AGENT_VERSION,
+    V8_GENERATION_AGENT_VERSION,
+    agent_version_for_task,
+)
 from casefile.agent_runtime.prompt_repository import (
     SUPPORTED_AGENT_IDS,
     PromptRepository,
@@ -31,57 +36,60 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
-    ("brief_polish", "brief-polish-v2"): (
-        "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"
-    ),
-    ("brief_polish", "brief-polish-v3"): (
-        "554f15807e88de2096aca4c6ec06d88fb516a5c285fdd5bde4425fb40712629a"
-    ),
-    ("brief_anchor_extract", "brief-anchor-extract-v2"): (
-        "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d"
-    ),
-    ("brief_anchor_extract", "brief-anchor-extract-v3"): (
-        "cbbd4f6da817be6137ec6ae0a782349fe76ad987bf85e0fbf560311d19a10442"
-    ),
-    ("brief_intake_questions", "brief-intake-questions-v1"): (
-        "d1f96b6bfee51b90f4c8de9cad9b8b512e6e0540a8cc2d890060255dc1337a62"
-    ),
-    ("brief_intake_questions", "brief-intake-questions-v2"): (
-        "59a4cab9b080cffbf1bfc6264d07a2121dcb786f8c153f172ebe54f540656305"
-    ),
-    ("brief_intake_questions", "brief-intake-questions-v3"): (
-        "357cb699b2258d929be6e152582965985e0d0937317e94255a07d6faa9c8d066"
-    ),
-    ("brief_intake_synthesize", "brief-intake-synthesize-v1"): (
-        "c8ed044d334fc937698f5784e68ddd9f1decf2ff561e157560f3fcb4dca1e72c"
-    ),
-    ("brief_intake_synthesize", "brief-intake-synthesize-v2"): (
-        "6d3887dde3223f7f53f78053e5ed13a36069c92b9adfa56013970c6d142017a6"
-    ),
-    ("brief_strategy_options", "brief-strategy-options-v1"): (
-        "31e8fa98b451f63a41dba1c3ecd42a591a0bcc8fb6cd710a898eb74014c58f87"
-    ),
-    ("brief_to_draft", "brief-to-draft-v3"): (
-        "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
-    ),
-    ("brief_to_draft", "brief-to-draft-v4"): (
-        "e8a9385ee762d6c7a36ca8405e0d2e48259fbb37e9acac19fa7d5f95b69e076b"
-    ),
-    ("brief_to_draft", "brief-to-draft-v5"): (
-        "62b08c5b26255965b73cccbe06ea88192fb3dc8f0eccf1265815a06e1abdb311"
-    ),
-    ("brief_to_draft", "brief-to-draft-v6"): (
-        "a6b5c79908b8053a4954c9a9a6f3e00ea403c1cb07b0273944cd79d57ddb966b"
-    ),
-    ("brief_to_draft", "brief-to-draft-v7"): (
-        "ffd17239f4562c86a964a3010e1ebfe1fc5c3be7c863980e74e6a0045be2a0ff"
-    ),
-    ("brief_to_draft", "brief-to-draft-v8"): (
-        "d12eee1955ed6aedf2a5b33650da88ff5c0fab97cca6a8023d2591974f4ecf73"
-    ),
-    ("casefile_chat", "casefile-chat-v1"): (
-        "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
-    ),
+    ("brief_polish", "brief-polish-v2"): {
+        "system": "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"
+    },
+    ("brief_polish", "brief-polish-v3"): {
+        "system": "554f15807e88de2096aca4c6ec06d88fb516a5c285fdd5bde4425fb40712629a"
+    },
+    ("brief_anchor_extract", "brief-anchor-extract-v2"): {
+        "system": "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d"
+    },
+    ("brief_anchor_extract", "brief-anchor-extract-v3"): {
+        "system": "cbbd4f6da817be6137ec6ae0a782349fe76ad987bf85e0fbf560311d19a10442"
+    },
+    ("brief_intake_questions", "brief-intake-questions-v1"): {
+        "system": "d1f96b6bfee51b90f4c8de9cad9b8b512e6e0540a8cc2d890060255dc1337a62"
+    },
+    ("brief_intake_questions", "brief-intake-questions-v2"): {
+        "system": "59a4cab9b080cffbf1bfc6264d07a2121dcb786f8c153f172ebe54f540656305"
+    },
+    ("brief_intake_questions", "brief-intake-questions-v3"): {
+        "system": "357cb699b2258d929be6e152582965985e0d0937317e94255a07d6faa9c8d066"
+    },
+    ("brief_intake_synthesize", "brief-intake-synthesize-v1"): {
+        "system": "c8ed044d334fc937698f5784e68ddd9f1decf2ff561e157560f3fcb4dca1e72c"
+    },
+    ("brief_intake_synthesize", "brief-intake-synthesize-v2"): {
+        "system": "6d3887dde3223f7f53f78053e5ed13a36069c92b9adfa56013970c6d142017a6"
+    },
+    ("brief_strategy_options", "brief-strategy-options-v1"): {
+        "system": "31e8fa98b451f63a41dba1c3ecd42a591a0bcc8fb6cd710a898eb74014c58f87"
+    },
+    ("brief_to_draft", "brief-to-draft-v3"): {
+        "system": "ef8aedf9c5c72f0baeaec5eafcdcdd29238a476c99d596590ac56fe7435091ae"
+    },
+    ("brief_to_draft", "brief-to-draft-v4"): {
+        "system": "e8a9385ee762d6c7a36ca8405e0d2e48259fbb37e9acac19fa7d5f95b69e076b"
+    },
+    ("brief_to_draft", "brief-to-draft-v5"): {
+        "system": "62b08c5b26255965b73cccbe06ea88192fb3dc8f0eccf1265815a06e1abdb311"
+    },
+    ("brief_to_draft", "brief-to-draft-v6"): {
+        "system": "a6b5c79908b8053a4954c9a9a6f3e00ea403c1cb07b0273944cd79d57ddb966b"
+    },
+    ("brief_to_draft", "brief-to-draft-v7"): {
+        "system": "ffd17239f4562c86a964a3010e1ebfe1fc5c3be7c863980e74e6a0045be2a0ff"
+    },
+    ("brief_to_draft", "brief-to-draft-v8"): {
+        "planner": "d12eee1955ed6aedf2a5b33650da88ff5c0fab97cca6a8023d2591974f4ecf73",
+        "story": "223bb2bee82ca98470482eb6db5ea2737b89818770c8e50825674a83aacf42d9",
+        "evidence": "3256cb833025986b80564725a1135430f35509a157246bb15bae1d4f2dfe1e0b",
+        "governance": "806eb87356df8260fef0596a49729fb8c7f117bceed7a20c60b5ec391c580c6b",
+    },
+    ("casefile_chat", "casefile-chat-v1"): {
+        "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
+    },
 }
 
 
@@ -96,10 +104,21 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     } == EXPECTED_CURRENT_VERSIONS
 
 
+def test_task_agent_version_identifies_the_v8_pipeline() -> None:
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v8")
+        == V8_GENERATION_AGENT_VERSION
+    )
+    assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
+    assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
+
+
 def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
     definitions = validate_prompt_repository()
     actual_hashes = {
-        (definition.agent_id, definition.version): definition.system_prompt_sha256
+        (definition.agent_id, definition.version): (
+            definition.component_sha256 or {"system": definition.system_prompt_sha256}
+        )
         for definition in definitions
     }
 
@@ -110,6 +129,7 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
             definition.agent_id,
             definition.version,
         ) == definition.system_prompt
+        assert all(prompt.endswith("\n") for prompt in definition.component_prompts.values())
 
 
 def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> None:

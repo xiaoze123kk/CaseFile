@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -20,7 +19,7 @@ from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     CandidateStrategy,
 )
-from casefile.agent_runtime.prompt import AGENT_VERSION
+from casefile.agent_runtime.prompt import agent_version_for_task
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.agent_collaboration import (
@@ -1733,10 +1732,6 @@ class WorkflowService:
         output_message_id: int | None = None,
     ) -> TaskRun:
         prompt_version = prompt_version_for_task(task_type)
-        if task_type == "brief_to_draft":
-            override = os.getenv("CASEFILE_BRIEF_TO_DRAFT_PROMPT_VERSION", "").strip()
-            if override in {"brief-to-draft-v7", "brief-to-draft-v8"}:
-                prompt_version = override
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,
@@ -1762,7 +1757,7 @@ class WorkflowService:
             model_id=setting.model_id,
             provider_config_version=setting.config_version,
             schema_version=CASEFILE_SCHEMA_VERSION,
-            agent_version=AGENT_VERSION,
+            agent_version=agent_version_for_task(task_type, prompt_version),
             prompt_version=prompt_version,
             toolset_version=TOOLSET_VERSION,
             budget_jsonb=dict(setting.default_budget_jsonb),

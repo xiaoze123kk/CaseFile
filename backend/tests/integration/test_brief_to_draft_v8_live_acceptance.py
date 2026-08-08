@@ -106,7 +106,6 @@ def test_live_brief_to_draft_v8_runtime_acceptance() -> None:
             {
                 "DATABASE_URL": config.test_database_url,
                 "CASEFILE_MASTER_KEY": config.master_key,
-                "CASEFILE_BRIEF_TO_DRAFT_PROMPT_VERSION": "brief-to-draft-v8",
             },
         ):
             app = create_app(config.test_database_url)

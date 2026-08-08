@@ -6,13 +6,14 @@ import asyncio
 import json
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
+from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeSynthesizeRequest,
@@ -26,6 +27,7 @@ from casefile.agent_runtime.models import (
     GenerationRequest,
 )
 from casefile.agent_runtime.prompt import casefile_chat_input
+from casefile.agent_runtime.prompt_repository import PromptRepositoryError
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
     _allocate_plan_ids,
@@ -57,7 +59,7 @@ from openai import (
     AuthenticationError,
     RateLimitError,
 )
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -108,6 +110,38 @@ def test_deepseek_v8_protocol_uses_json_mode_for_known_flash_capability(
 def test_deepseek_provider_requires_a_key_before_network_access() -> None:
     with pytest.raises(ProviderProtocolError, match="DeepSeek API key is required"):
         DeepSeekAgentsProvider().generate(_request(api_key=None))
+
+
+def test_v8_validates_the_frozen_bundle_before_any_step_can_be_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded: list[tuple[str, str]] = []
+
+    def reject_bundle(agent_id: str, version: str) -> object:
+        loaded.append((agent_id, version))
+        raise PromptRepositoryError("frozen bundle is unavailable")
+
+    async def unexpected_model_call(
+        _instructions: str,
+        _input_text: str,
+        _output_type: type[BaseModel],
+        _stage: str,
+        _component_id: str,
+        _schema_id: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        raise AssertionError("model steps must not start before Bundle validation")
+
+    monkeypatch.setattr(v8_workflow, "load_prompt", reject_bundle)
+    request = replace(
+        _request(api_key=None),
+        prompt_version="brief-to-draft-v8",
+        reusable_steps={"case_blueprint_planner": {}},
+    )
+
+    with pytest.raises(PromptRepositoryError, match="frozen bundle is unavailable"):
+        asyncio.run(v8_workflow.run_v8_generation(request, call_component=unexpected_model_call))
+
+    assert loaded == [("brief_to_draft", "brief-to-draft-v8")]
 
 
 def test_openai_provider_loads_the_prompt_version_frozen_on_the_request(

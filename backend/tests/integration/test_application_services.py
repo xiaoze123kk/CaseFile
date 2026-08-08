@@ -303,6 +303,28 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
     return project_id, int(task["task_run_id"])
 
 
+def test_generation_task_uses_the_registry_version_without_a_deployment_override(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_BRIEF_TO_DRAFT_PROMPT_VERSION": "brief-to-draft-v7",
+        },
+    ):
+        _project_id, task_run_id = _prepare_task(engine, actor_id)
+
+    with factory() as session:
+        task = session.get(TaskRun, task_run_id)
+        assert task is not None
+        assert task.prompt_version == "brief-to-draft-v8"
+        assert task.agent_version == "brief-to-draft-pipeline-v8"
+
+
 def _adopt_candidate(
     engine: Engine,
     actor_id: int,

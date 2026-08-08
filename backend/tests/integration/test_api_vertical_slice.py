@@ -262,7 +262,6 @@ def test_settings_brief_generation_sse_and_completion_gate(
         os.environ,
         {
             "CASEFILE_MASTER_KEY": master_key,
-            "CASEFILE_BRIEF_TO_DRAFT_PROMPT_VERSION": "brief-to-draft-v8",
         },
     ), TestClient(app) as client:
         assert client.get("/health/ready").status_code == 200

@@ -12,6 +12,15 @@ from casefile.agent_runtime.models import (
 )
 
 AGENT_VERSION = "casefile-single-agent-v2"
+V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
+
+
+def agent_version_for_task(task_type: str, prompt_version: str) -> str:
+    """Return the runtime topology frozen alongside a TaskRun."""
+
+    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v8":
+        return V8_GENERATION_AGENT_VERSION
+    return AGENT_VERSION
 
 
 def generation_input(request: GenerationRequest) -> str:
@@ -149,6 +158,8 @@ def casefile_chat_input(request: CaseFileChatRequest) -> str:
 
 __all__ = [
     "AGENT_VERSION",
+    "V8_GENERATION_AGENT_VERSION",
+    "agent_version_for_task",
     "anchor_extract_input",
     "brief_intake_questions_input",
     "brief_intake_synthesize_input",

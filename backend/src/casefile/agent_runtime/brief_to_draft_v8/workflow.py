@@ -27,7 +27,11 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     StoryWorldIRV1,
 )
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
-from casefile.agent_runtime.prompt_repository import component_prompt_for_task
+from casefile.agent_runtime.prompt_repository import (
+    PromptRepositoryError,
+    component_prompt_for_task,
+    load_prompt,
+)
 from casefile.contracts import ContractValidationError, validate_casefile
 
 ComponentCall = Callable[
@@ -45,6 +49,7 @@ _STEP_SCHEMA = {
     "casefile_compiler": "casefile-v1",
     "quality_repair_gate": "casefile-v1",
 }
+_V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
 
 _DOMAIN_REFERENCE_CONTRACTS = {
     "story_world": {
@@ -98,6 +103,7 @@ async def run_v8_generation(
 ) -> GenerationResult:
     """Run the six business stages with one bounded targeted domain repair."""
 
+    _validate_frozen_prompt_bundle(request)
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
     context = _build_context_pack(request)
@@ -247,6 +253,17 @@ async def run_v8_generation(
                 else:
                     governance = ResolutionGovernanceIRV1.model_validate(value)
     raise RuntimeError("brief-to-draft v8 quality gate exhausted")
+
+
+def _validate_frozen_prompt_bundle(request: GenerationRequest) -> None:
+    """Fail before any resume reuse when the TaskRun's v8 Bundle is unavailable."""
+
+    definition = load_prompt("brief_to_draft", request.prompt_version)
+    if set(definition.component_prompts) != _V8_PROMPT_COMPONENTS:
+        raise PromptRepositoryError(
+            f"Prompt Bundle {request.prompt_version} must define "
+            "planner, story, evidence, and governance components"
+        )
 
 
 def _build_context_pack(request: GenerationRequest) -> DraftContextPackV1:
