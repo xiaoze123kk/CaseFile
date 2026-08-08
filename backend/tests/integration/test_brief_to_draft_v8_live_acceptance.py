@@ -890,7 +890,7 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
         return "blocked"
     if int(report["runs_attempted"]) != expected_runs:
         return "blocked"
-    required_successes = 27 if expected_runs == 30 else expected_runs
+    required_successes = expected_runs
     if int(report["successful_runs"]) < required_successes:
         return "failed"
     if report["invariant_violations"]:
