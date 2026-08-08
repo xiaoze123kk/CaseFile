@@ -25,6 +25,7 @@ from casefile.api.schemas import (
     DraftCandidateAdoptRequest,
     GenerateTaskRequest,
     ProviderSettingRequest,
+    ResumeGenerationTaskRequest,
     SourceRecordCreateRequest,
 )
 from casefile.application.errors import ApplicationError
@@ -334,6 +335,8 @@ def workflow_router() -> APIRouter:
             project_id,
             expected_brief_revision=payload.expected_brief_revision,
             provider=payload.provider,
+            mode=payload.mode,
+            content=payload.content,
         )
 
     @router.get("/projects/{project_id}/tasks/latest")
@@ -365,6 +368,25 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
     ) -> dict[str, Any]:
         return WorkflowService(session).get_task(actor, project_id, task_run_id)
+
+    @router.post(
+        "/projects/{project_id}/tasks/{task_run_id}/resume",
+        status_code=202,
+    )
+    def resume_generation_task(
+        project_id: int,
+        task_run_id: int,
+        payload: ResumeGenerationTaskRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).resume_generation_task(
+            actor,
+            project_id,
+            task_run_id,
+            expected_draft_revision=payload.expected_draft_revision,
+            expected_brief_revision=payload.expected_brief_revision,
+        )
 
     @router.get("/projects/{project_id}/tasks/{task_run_id}/events")
     def get_task_events(
@@ -441,13 +463,13 @@ def _last_event_sequence(value: str | None) -> int:
     except ValueError as error:
         raise ApplicationError(
             "last_event_id_invalid",
-            "Last-Event-ID must be a non-negative integer",
+            "事件序号必须是非负整数。",
             status_code=422,
         ) from error
     if sequence < 0:
         raise ApplicationError(
             "last_event_id_invalid",
-            "Last-Event-ID must be a non-negative integer",
+            "事件序号必须是非负整数。",
             status_code=422,
         )
     return sequence

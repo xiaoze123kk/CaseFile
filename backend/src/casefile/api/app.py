@@ -90,7 +90,7 @@ async def _validation_error_handler(_: Request, error: Exception) -> JSONRespons
     details = [
         {
             "path": "/".join(str(part) for part in item["loc"]),
-            "message": item["msg"],
+            "message": _validation_message(item),
             "type": item["type"],
         }
         for item in error.errors()
@@ -99,7 +99,7 @@ async def _validation_error_handler(_: Request, error: Exception) -> JSONRespons
         status_code=422,
         content={
             "code": "request_invalid",
-            "message": "The request did not match the API contract",
+            "message": "提交内容不符合接口要求，请检查后重试。",
             "details": {"errors": details},
         },
     )
@@ -108,7 +108,11 @@ async def _validation_error_handler(_: Request, error: Exception) -> JSONRespons
 async def _http_error_handler(_: Request, error: Exception) -> JSONResponse:
     assert isinstance(error, StarletteHTTPException)
     codes = {404: "not_found", 405: "method_not_allowed"}
-    message = error.detail if isinstance(error.detail, str) else "The HTTP request failed"
+    messages = {
+        404: "没有找到请求的数据。",
+        405: "当前操作不受支持。",
+    }
+    message = messages.get(error.status_code, "请求未能完成，请稍后重试。")
     return JSONResponse(
         status_code=error.status_code,
         content={
@@ -125,15 +129,15 @@ async def _database_error_handler(_: Request, error: Exception) -> JSONResponse:
     if isinstance(error, IntegrityError):
         status_code = 409
         code = "resource_conflict"
-        message = "The requested change conflicts with current persisted state"
+        message = "当前修改与已保存的数据冲突，请刷新后重试。"
     elif isinstance(error, OperationalError):
         status_code = 503
         code = "database_unavailable"
-        message = "The database is temporarily unavailable"
+        message = "数据库暂时不可用，请稍后重试。"
     else:
         status_code = 500
         code = "database_error"
-        message = "The database request failed"
+        message = "数据库请求失败，请稍后重试。"
     return JSONResponse(
         status_code=status_code,
         content={"code": code, "message": message, "details": {}},
@@ -145,10 +149,32 @@ async def _unexpected_error_handler(_: Request, error: Exception) -> JSONRespons
         status_code=500,
         content={
             "code": "internal_error",
-            "message": "The request could not be completed",
+            "message": "请求暂时无法完成，请稍后重试。",
             "details": {},
         },
     )
+
+
+def _validation_message(item: dict[str, Any]) -> str:
+    """Convert Pydantic's English validation details into author-facing Chinese."""
+
+    messages = {
+        "missing": "缺少必填字段。",
+        "extra_forbidden": "包含未被允许的字段。",
+        "string_type": "字段应为文本。",
+        "string_too_short": "文本长度不足。",
+        "string_too_long": "文本长度超出限制。",
+        "int_parsing": "字段应为整数。",
+        "int_type": "字段应为整数。",
+        "bool_type": "字段应为布尔值。",
+        "list_type": "字段应为列表。",
+        "dict_type": "字段应为对象。",
+        "greater_than_equal": "数值低于允许的最小值。",
+        "less_than_equal": "数值高于允许的最大值。",
+        "literal_error": "字段值不在允许范围内。",
+        "enum": "字段值不在允许范围内。",
+    }
+    return messages.get(str(item.get("type") or ""), "字段值无效，请检查后重试。")
 
 
 def _health_router() -> APIRouter:

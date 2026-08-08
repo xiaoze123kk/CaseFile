@@ -118,20 +118,20 @@ def adopt_generation_candidate(
     if owned.draft.revision != expected_draft_revision:
         raise ApplicationError(
             "draft_revision_conflict",
-            "Draft revision is stale",
+            "草稿已被更新，请刷新后重新提交。",
             status_code=409,
             details={"current_revision": owned.draft.revision},
         )
     if owned.project.status == "archived" or owned.casefile.status == "archived":
         raise ApplicationError(
             "project_archived",
-            "Archived projects cannot be modified",
+            "已归档的项目不能修改。",
             status_code=409,
         )
     if owned.draft.status != "active":
         raise ApplicationError(
             "draft_locked",
-            "Locked Drafts cannot be modified",
+            "已锁定的草稿不能修改。",
             status_code=409,
         )
 
@@ -151,7 +151,7 @@ def adopt_generation_candidate(
     if used_ids:
         raise ApplicationError(
             "candidate_object_ids_used",
-            "This candidate has already been adopted or reuses historical object IDs",
+            "该候选已经被采用，或重复使用了历史对象 ID。",
             status_code=409,
             details={"object_ids": sorted(used_ids)},
         )
@@ -268,7 +268,7 @@ def adopt_generation_candidate(
     if projected != candidate or projected_hash != content_hash:
         raise ApplicationError(
             "casefile_roundtrip_mismatch",
-            "The normalized CaseFile projection differs from the validated candidate",
+            "标准化后的 CaseFile 投影与已校验候选不一致。",
             status_code=500,
             details={"candidate_hash": content_hash, "projected_hash": projected_hash},
         )
@@ -326,7 +326,7 @@ def build_casefile_document(session: Session, owned: OwnedDraft) -> dict[str, An
     if brief is None or brief_version is None:
         raise ApplicationError(
             "brief_version_missing",
-            "The Draft does not point to a confirmed Brief version",
+            "当前草稿没有指向已确认的创作简报版本。",
             status_code=409,
         )
 
@@ -395,7 +395,7 @@ def _validate_generation_context(
     if failures:
         raise ApplicationError(
             "generation_context_mismatch",
-            "The generated CaseFile does not match its frozen task context",
+            "生成的 CaseFile 与任务冻结时的上下文不一致。",
             status_code=422,
             details={"expected": failures},
         )
@@ -444,6 +444,19 @@ def _create_content_rows(
         "casefile_id": owned.casefile.id,
         "draft_id": owned.draft.id,
     }
+    # Event.narrative_order is a normalized-table uniqueness key, while the
+    # public CaseFile contract deliberately derives event order from the
+    # collection ordinal.  Archived candidate rows remain available for audit,
+    # so start each new projection after their largest internal ordinal instead
+    # of reusing 1 on every candidate adoption.
+    event_order_offset = int(
+        session.scalar(
+            select(func.coalesce(func.max(Event.narrative_order), 0)).where(
+                Event.draft_id == owned.draft.id
+            )
+        )
+        or 0
+    )
     for item in candidate["resolution_specs"]:
         registry = registries[item["id"]]
         text_answers = {
@@ -535,7 +548,7 @@ def _create_content_rows(
                 start_time_jsonb=None,
                 end_time_jsonb=None,
                 time_jsonb=item["time"],
-                narrative_order=ordinal,
+                narrative_order=event_order_offset + ordinal,
                 narrative_phase_id=None,
                 location_id=None,
                 visibility="restricted",
@@ -1111,7 +1124,7 @@ def _single_ref_row(rows: list[CaseFileContractRef], field_path: str) -> CaseFil
     if len(matches) != 1:
         raise ApplicationError(
             "casefile_mapping_incomplete",
-            f"Expected exactly one normalized ref at {field_path}",
+            f"字段 {field_path} 应恰好对应一个标准化引用。",
             status_code=500,
         )
     return matches[0]

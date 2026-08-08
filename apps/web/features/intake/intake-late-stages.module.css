@@ -210,6 +210,12 @@
   background: var(--paper-low);
 }
 
+.disabledFieldHint {
+  color: var(--ink-faint);
+  font-size: var(--font-micro);
+  line-height: 1.5;
+}
+
 .wideField {
   grid-column: 1 / -1;
 }
@@ -994,6 +1000,42 @@
 .candidateAdoptionError b {
   color: var(--red);
 }
+
+.agentPipeline {
+  margin: 0 18px 18px;
+  border: 1px solid var(--ink);
+  background: var(--paper-low);
+}
+
+.agentPipeline > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ink);
+}
+
+.agentPipeline > header span,
+.agentPipeline > header strong { display: block; }
+.agentPipeline > header span { color: var(--red); font: 11px "Cascadia Mono", monospace; }
+.agentPipeline > header b { font: 12px "Cascadia Mono", monospace; }
+.agentPipeline > ol { display: grid; grid-template-columns: repeat(6, 1fr); margin: 0; padding: 0; list-style: none; }
+.agentPipeline > ol > li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; min-height: 86px; padding: 12px; border-right: 1px solid var(--rule); }
+.agentPipeline > ol > li:last-child { border-right: 0; }
+.agentPipeline li > span { color: var(--ink-muted); font: 11px "Cascadia Mono", monospace; }
+.agentPipeline li strong,
+.agentPipeline li small { display: block; }
+.agentPipeline li small { margin-top: 4px; color: var(--ink-muted); }
+.agentPipeline li[data-status="running"] { background: color-mix(in srgb, var(--red) 7%, transparent); }
+.agentPipeline li[data-status="failed"] { color: var(--red); }
+.agentPipeline li[data-status="succeeded"] > span,
+.agentPipeline li[data-status="reused"] > span { color: #356548; }
+.agentPipeline li ul { margin: 8px 0 0; padding: 0; list-style: none; font-size: 11px; }
+.agentPipeline li ul li { padding: 2px 0; }
+.componentFailure { display: grid; gap: 7px; padding: 12px 14px; border-top: 1px solid var(--red); color: var(--red); }
+.componentFailure p { margin: 0; font-size: 12px; }
+.componentFailure code { display: block; white-space: normal; color: var(--ink); }
+.componentFailure button { justify-self: start; }
 
 .oldCandidates {
   margin: 0 18px 18px;

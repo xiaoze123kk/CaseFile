@@ -99,7 +99,7 @@ class CaseFileService:
                 if existing.content_hash != content_hash or existing.snapshot_jsonb != document:
                     raise ApplicationError(
                         "snapshot_content_mismatch",
-                        "The existing Snapshot differs from the current Draft projection",
+                        "已有快照与当前草稿投影不一致。",
                         status_code=409,
                     )
                 return _snapshot_view(existing, include_content=True), False
@@ -138,13 +138,13 @@ class CaseFileService:
         if owned.project.status == "archived" or owned.casefile.status == "archived":
             raise ApplicationError(
                 "project_archived",
-                "Archived projects cannot be modified",
+                "已归档的项目不能修改。",
                 status_code=409,
             )
         if owned.draft.status != "active":
             raise ApplicationError(
                 "draft_locked",
-                "Locked Drafts cannot be modified",
+                "已锁定的草稿不能修改。",
                 status_code=409,
             )
         if owned.draft.revision != base_revision:
@@ -157,7 +157,7 @@ class CaseFileService:
         except ContractValidationError as error:
             raise ApplicationError(
                 "casefile_contract_invalid",
-                "The current Draft cannot be projected to CaseFile 0.1.0",
+                "当前草稿无法转换为 CaseFile 文档。",
                 status_code=409,
                 details={"errors": error.errors},
             ) from error
@@ -214,7 +214,7 @@ def _integrity_error(error: IntegrityError) -> ApplicationError:
     constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
     return ApplicationError(
         "resource_conflict",
-        "The requested change conflicts with current persisted state",
+        "当前修改与已保存的数据冲突，请刷新后重试。",
         status_code=409,
         details={"constraint": constraint} if constraint else {},
     )

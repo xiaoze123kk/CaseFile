@@ -15,6 +15,9 @@ def main() -> None:
     parser.add_argument("--mode", choices=("fake", "live"), default="fake")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--model", default="gpt-5.6-sol")
+    parser.add_argument("--provider", choices=("openai", "deepseek"), default="openai")
+    parser.add_argument("--prompt-version")
+    parser.add_argument("--report-path", type=Path)
     arguments = parser.parse_args()
     report = run_benchmark(
         BenchmarkOptions(
@@ -22,9 +25,17 @@ def main() -> None:
             mode=arguments.mode,
             repeats=arguments.repeats,
             model_id=arguments.model,
+            provider=arguments.provider,
+            prompt_version=arguments.prompt_version,
         )
     )
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    rendered = json.dumps(report, ensure_ascii=False, indent=2)
+    print(rendered)
+    if arguments.report_path is not None:
+        arguments.report_path.parent.mkdir(parents=True, exist_ok=True)
+        arguments.report_path.write_text(rendered + "\n", encoding="utf-8")
+    if report["status"] != "passed":
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

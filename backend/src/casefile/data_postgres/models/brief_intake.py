@@ -84,9 +84,7 @@ class BriefIntake(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     revision: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
-    stage: Mapped[str] = mapped_column(
-        String(32), nullable=False, server_default=text("'idea'")
-    )
+    stage: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'idea'"))
     current_source_record_id: Mapped[int | None] = mapped_column(BigInteger)
     current_questions_task_run_id: Mapped[int | None] = mapped_column(BigInteger)
     current_candidate_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -133,8 +131,7 @@ class BriefIntakeQuestion(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint("btrim(impact) <> ''", name="impact_not_blank"),
         CheckConstraint("jsonb_typeof(suggestions_jsonb) = 'array'", name="suggestions_is_array"),
         CheckConstraint(
-            "answer_status IN "
-            "('unanswered', 'user_answered', 'suggestion_accepted', 'pending')",
+            "answer_status IN ('unanswered', 'user_answered', 'suggestion_accepted', 'pending')",
             name="answer_status_allowed",
         ),
         CheckConstraint(
@@ -213,9 +210,7 @@ class BriefIntakeCandidate(BigIntIdentityPrimaryKeyMixin, Base):
             "origin IN ('agent_synthesis', 'dialogue_revision', 'manual_edit', 'legacy_import')",
             name="origin_allowed",
         ),
-        CheckConstraint(
-            "basis_input_hash ~ '^[0-9a-f]{64}$'", name="basis_input_hash_format"
-        ),
+        CheckConstraint("basis_input_hash ~ '^[0-9a-f]{64}$'", name="basis_input_hash_format"),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),
         CheckConstraint("jsonb_typeof(content_jsonb) = 'object'", name="content_is_object"),
         CheckConstraint(

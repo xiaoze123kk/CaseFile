@@ -1,5 +1,6 @@
 """Import all persistence models so Alembic sees the complete metadata."""
 
+from casefile.data_postgres.models.agent_execution import AgentModelCall, AgentStepRun
 from casefile.data_postgres.models.brief_intake import (
     BriefIntake,
     BriefIntakeCandidate,
@@ -55,6 +56,8 @@ from casefile.data_postgres.models.workflow import (
 )
 
 __all__ = [
+    "AgentModelCall",
+    "AgentStepRun",
     "AgentMessage",
     "AgentPatchOperation",
     "AgentPatchSet",

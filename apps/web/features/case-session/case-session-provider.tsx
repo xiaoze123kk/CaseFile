@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import type {
+  BriefContent,
   BriefPolishResult,
   BriefStrategyOption,
   CandidateStrategy,
@@ -27,6 +28,7 @@ import {
 import {
   canFreezeBriefReview,
   createEmptyBrief,
+  missingHardFields,
   mergeReviewIntoBrief,
   type IntakeAnswer,
   type IntakeBrief,
@@ -61,6 +63,7 @@ import {
   startDraftGenerationTask,
   startPolishTask,
   startQuestionsTask,
+  resumeDraftGenerationTask,
   startSynthesizeTask,
   startStrategyOptionsTask,
   strategyOptionsResult,
@@ -72,6 +75,7 @@ import {
   currentIntakeCandidate,
   mapBriefContentToReview,
   mapBriefToCandidateContent,
+  mapIntakeBriefToAnchorContent,
   mapWorkbenchCandidateView,
   mapIntakeToSessionState,
   mapReviewToBriefContent,
@@ -114,6 +118,7 @@ type CandidateSlot = {
   taskRunId: number | null;
   attempt: number;
   error: string | null;
+  latestTask: TaskView | null;
 };
 
 export function candidateTaskStageFromTask(
@@ -142,6 +147,7 @@ function createCandidateSlots(): Record<CandidateSlotStrategy, CandidateSlot> {
         taskRunId: null,
         attempt: 1,
         error: null,
+        latestTask: null,
       },
     ]),
   ) as Record<CandidateSlotStrategy, CandidateSlot>;
@@ -197,6 +203,7 @@ type CaseSessionAction =
       taskRunId?: number | null;
       attempt?: number;
       error?: string | null;
+      task?: TaskView | null;
     }
   | { type: "advance_generation"; stage: number }
   | {
@@ -276,6 +283,7 @@ export function caseSessionReducer(
         taskRunId: null,
         attempt: 1,
         error: null,
+        latestTask: null,
       };
     }
     return { ...state, generation: { status: "generating", stage: 1, slots } };
@@ -294,6 +302,7 @@ export function caseSessionReducer(
             taskRunId: action.taskRunId ?? previous.taskRunId,
             attempt: action.attempt ?? previous.attempt,
             error: action.error ?? null,
+            latestTask: action.task ?? previous.latestTask,
           },
         },
       },
@@ -415,6 +424,7 @@ interface CaseSessionContextValue {
     strategy?: CandidateSlotStrategy,
     attempt?: number,
   ) => Promise<boolean>;
+  resumeGeneration: (strategy: CandidateSlotStrategy) => Promise<boolean>;
   retryTask: (taskType: TaskType) => Promise<PolishResult | null>;
   analyzeStrategies: (refresh?: boolean) => Promise<boolean>;
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
@@ -443,6 +453,7 @@ interface CaseSessionContextValue {
   saveCandidateBookmark: (candidateId: number) => Promise<void>;
   activateCandidate: (candidateId: number) => Promise<void>;
   reextractReview: () => Promise<BriefReview>;
+  generateAuthorAnswer: (draft?: IntakeBrief) => Promise<string>;
 }
 
 const CaseSessionContext = createContext<CaseSessionContextValue | null>(
@@ -806,16 +817,26 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     if (projectId === null) {
       throw new CaseSessionError("请先完成最初想法与追问。");
     }
-    let intake = intakeRef.current ?? (await fetchCaseIntake(projectId));
+    // 这个入口可能在上一次请求已经推进服务端状态、但页面尚未完成迁移时再次点击。
+    // 每次都读取权威 Intake，避免用旧 revision 重复提交并卡在第 3 步。
+    let intake = await fetchCaseIntake(projectId);
+    intakeRef.current = intake;
+    const serverAlreadyInReview = intake.stage === "brief_review";
+    if (!serverAlreadyInReview) {
+      const missing = missingHardFields(current.brief);
+      if (missing.length) {
+        throw new CaseSessionError("进入审阅前请补齐：" + missing.join("、") + "。");
+      }
+    }
     const currentCandidate = currentIntakeCandidate(intake);
     let adoptedBrief: Awaited<ReturnType<typeof fetchBrief>>;
     if (
-      intake.stage === "brief_review" &&
+      serverAlreadyInReview &&
       currentCandidate &&
       briefsMatch(current.brief, currentCandidate.content)
     ) {
       // 简报已在服务端确认且内容未变，直接读取，避免重复采用。
-      adoptedBrief = briefRef.current ?? (await fetchBrief(projectId));
+      adoptedBrief = await fetchBrief(projectId);
     } else {
       let candidateId = intake.current_candidate_id;
       if (
@@ -886,26 +907,47 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "save_review" });
   }, []);
 
+  const runAnchorExtract = useCallback(
+    async (
+      mode: "extract" | "suggest_author_answer",
+      content?: BriefContent,
+    ) => {
+      const current = stateRef.current;
+      const projectId = projectIdRef.current;
+      if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
+      const brief = briefRef.current ?? (await fetchBrief(projectId));
+      const { result: done } = await runTaskWithProviderFallback(
+        async (provider) => {
+          const task = await startAnchorExtractTask(
+            projectId,
+            brief.draft_revision,
+            provider,
+            mode,
+            content,
+          );
+          return waitForTask(projectId, task.task_run_id);
+        },
+      );
+      const result = done.result as
+        | {
+            suggested_author_answer?: string;
+            author_anchors: Array<{ statement: string }>;
+            creative_constraints: Array<{
+              statement: string;
+              suggested_strength: "hard" | "soft";
+            }>;
+          }
+        | null;
+      if (!result) throw new CaseSessionError("拆解任务没有返回结果。");
+      return result;
+    },
+    [],
+  );
+
   const reextractReview = useCallback(async () => {
     const current = stateRef.current;
     if (!current.review) throw new CaseSessionError("审阅尚未建立。");
-    const projectId = projectIdRef.current;
-    if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
-    const brief = briefRef.current ?? (await fetchBrief(projectId));
-    const { result: done } = await runTaskWithProviderFallback(
-      async (provider) => {
-        const task = await startAnchorExtractTask(
-          projectId,
-          brief.draft_revision,
-          provider,
-        );
-        return waitForTask(projectId, task.task_run_id);
-      },
-    );
-    const result = done.result as
-      | { author_anchors: Array<{ statement: string }>; creative_constraints: Array<{ statement: string; suggested_strength: "hard" | "soft" }> }
-      | null;
-    if (!result) throw new CaseSessionError("拆解任务没有返回结果。");
+    const result = await runAnchorExtract("extract");
     return {
       ...current.review,
       authorAnchors: result.author_anchors.map((anchor, index) => ({
@@ -924,7 +966,28 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       dirty: true,
       saved: false,
     };
-  }, []);
+  }, [runAnchorExtract]);
+
+  const generateAuthorAnswer = useCallback(async (draftOverride?: IntakeBrief) => {
+    const current = stateRef.current;
+    const draft = draftOverride ?? current.brief;
+    const projectId = projectIdRef.current;
+    if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
+    const brief = briefRef.current ?? (await fetchBrief(projectId));
+    const content = current.review
+      ? undefined
+      : mapIntakeBriefToAnchorContent(
+          draft,
+          brief.content,
+          intakeRef.current?.current_source?.source_record_id ?? null,
+        );
+    const result = await runAnchorExtract("suggest_author_answer", content);
+    const suggestion = result.suggested_author_answer?.trim();
+    if (!suggestion) {
+      throw new CaseSessionError("Agent 没有形成可审阅的作者底牌候选，请直接填写你的结论。");
+    }
+    return suggestion;
+  }, [runAnchorExtract]);
 
   const freezeReview = useCallback(async () => {
     const current = stateRef.current;
@@ -1097,6 +1160,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                         ? "failed"
                         : "running",
                   stage: candidateTaskStageFromTask(latestTask),
+                  task: latestTask,
                 });
               });
               dispatch({
@@ -1156,6 +1220,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                         ? "failed"
                         : "running",
                   stage: candidateTaskStageFromTask(latestTask),
+                  task: latestTask,
                 });
               });
               dispatch({
@@ -1261,6 +1326,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                         ? "failed"
                         : "running",
                   stage: candidateTaskStageFromTask(latestTask),
+                  task: latestTask,
                 });
               });
               dispatch({
@@ -1623,6 +1689,28 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     }
     projectIdRef.current = projectId;
     setActiveProjectId(projectId);
+    const generationSlots = createCandidateSlots();
+    const latestGenerationTask = latestTasks.brief_to_draft;
+    const resumedStrategy = latestGenerationTask?.candidate_strategy;
+    const selectedStrategy = CANDIDATE_SLOT_STRATEGIES.find(
+      (strategy) => strategy === resumedStrategy,
+    ) ?? null;
+    if (latestGenerationTask && selectedStrategy) {
+      generationSlots[selectedStrategy] = {
+        status:
+          latestGenerationTask.status === "succeeded"
+            ? "succeeded"
+            : latestGenerationTask.status === "failed" ||
+                latestGenerationTask.status === "cancelled"
+              ? "failed"
+              : "running",
+        stage: candidateTaskStageFromTask(latestGenerationTask),
+        taskRunId: latestGenerationTask.task_run_id,
+        attempt: Math.max(1, latestGenerationTask.attempt_count),
+        error: latestGenerationTask.failure?.message ?? null,
+        latestTask: latestGenerationTask,
+      };
+    }
     dispatch({
       type: "patch",
       patch: {
@@ -1635,7 +1723,17 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         draftCandidates,
         previewCandidateId,
         adoptedCandidateId,
-        generation: { status: "idle", stage: 0, slots: createCandidateSlots() },
+        generation: {
+          status:
+            latestGenerationTask?.status === "running" ||
+            latestGenerationTask?.status === "queued"
+              ? "generating"
+              : latestGenerationTask
+                ? "ready"
+                : "idle",
+          stage: latestGenerationTask ? 1 : 0,
+          slots: generationSlots,
+        },
         strategyAnalysis: {
           status: "idle",
           options: [],
@@ -1643,7 +1741,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           recommendationReason: null,
           error: null,
         },
-        selectedStrategy: null,
+        selectedStrategy,
         latestTasks,
         hydration: { status: "ready", error: null },
         ...mapped,
@@ -1667,6 +1765,60 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       throw error;
     }
   }, [resumeTask, syncProjectPointer]);
+
+  const resumeGeneration = useCallback(
+    async (strategy: CandidateSlotStrategy) => {
+      const projectId = projectIdRef.current;
+      const slot = stateRef.current.generation.slots[strategy];
+      if (projectId === null || slot.taskRunId === null || !slot.latestTask) {
+        return false;
+      }
+      const brief = briefRef.current ?? (await fetchBrief(projectId));
+      const draft = await fetchCaseDraft(projectId);
+      const resumed = await resumeDraftGenerationTask(
+        projectId,
+        slot.taskRunId,
+        draft.revision,
+        brief.draft_revision,
+      );
+      dispatch({
+        type: "update_generation_slot",
+        strategy,
+        status: "running",
+        stage: "queued",
+        task: resumed,
+        error: null,
+      });
+      try {
+        await waitForTask(projectId, resumed.task_run_id, (task) => {
+          dispatch({
+            type: "update_generation_slot",
+            strategy,
+            status:
+              task.status === "succeeded"
+                ? "succeeded"
+                : task.status === "failed" || task.status === "cancelled"
+                  ? "failed"
+                  : "running",
+            stage: candidateTaskStageFromTask(task),
+            task,
+          });
+        });
+        await loadProject(projectId);
+        return true;
+      } catch (error) {
+        dispatch({
+          type: "update_generation_slot",
+          strategy,
+          status: "failed",
+          stage: "failed",
+          error: error instanceof Error ? error.message : "恢复失败",
+        });
+        throw error;
+      }
+    },
+    [loadProject],
+  );
 
   useEffect(() => {
     if (initialProjectLoadRef.current || typeof window === "undefined") return;
@@ -1720,6 +1872,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       analyzeStrategies,
       selectStrategy,
       generateCandidates,
+      resumeGeneration,
       retryTask,
       previewCandidate,
       adoptCandidate,
@@ -1741,6 +1894,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       saveCandidateBookmark,
       activateCandidate,
       reextractReview,
+      generateAuthorAnswer,
     }),
     [
       activeCandidate,
@@ -1758,7 +1912,9 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       freezeReview,
       generateBriefFromAnswers,
       generateCandidates,
+      resumeGeneration,
       generateMoreQuestions,
+      generateAuthorAnswer,
       retryTask,
       loadProject,
       patchState,

@@ -132,6 +132,8 @@ class BriefPolishTaskRequest(StrictRequest):
 class BriefAnchorExtractTaskRequest(StrictRequest):
     expected_brief_revision: int = Field(ge=1)
     provider: Literal["openai", "deepseek"] = "openai"
+    mode: Literal["extract", "suggest_author_answer"] = "extract"
+    content: dict[str, Any] | None = None
 
 
 class BriefStrategyOptionsTaskRequest(StrictRequest):
@@ -155,6 +157,11 @@ class GenerateTaskRequest(StrictRequest):
 
 class DraftCandidateAdoptRequest(StrictRequest):
     expected_draft_revision: int = Field(ge=1)
+
+
+class ResumeGenerationTaskRequest(StrictRequest):
+    expected_draft_revision: int = Field(ge=1)
+    expected_brief_revision: int = Field(ge=1)
 
 
 class AgentThreadCreateRequest(StrictRequest):

@@ -28,7 +28,7 @@ def get_actor_user_id(
     if value is None:
         raise ApplicationError(
             "identity_required",
-            "X-CaseFile-User-Id is required for this local API",
+            "当前请求缺少本地用户身份。",
             status_code=401,
         )
     try:
@@ -36,14 +36,14 @@ def get_actor_user_id(
     except ValueError as error:
         raise ApplicationError(
             "identity_invalid",
-            "X-CaseFile-User-Id must be a positive integer",
+            "本地用户身份必须是正整数。",
             status_code=401,
         ) from error
     if user_id < 1 or ProjectRepository(session).get_active_user(user_id) is None:
         session.rollback()
         raise ApplicationError(
             "identity_invalid",
-            "The local API user does not exist or is disabled",
+            "本地用户不存在或已被停用。",
             status_code=401,
         )
     session.rollback()
@@ -59,7 +59,7 @@ def get_base_revision(
     if value is None:
         raise ApplicationError(
             "base_revision_required",
-            "X-CaseFile-Base-Revision is required for Draft mutations",
+            "修改草稿前必须提供草稿版本信息。",
             status_code=428,
         )
     try:
@@ -67,13 +67,13 @@ def get_base_revision(
     except ValueError as error:
         raise ApplicationError(
             "base_revision_invalid",
-            "X-CaseFile-Base-Revision must be a positive integer",
+            "草稿版本必须是正整数。",
             status_code=422,
         ) from error
     if revision < 1:
         raise ApplicationError(
             "base_revision_invalid",
-            "X-CaseFile-Base-Revision must be a positive integer",
+            "草稿版本必须是正整数。",
             status_code=422,
         )
     return revision

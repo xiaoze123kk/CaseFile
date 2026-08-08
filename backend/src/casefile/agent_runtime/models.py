@@ -93,12 +93,7 @@ class GenerationPlan(StrictAgentOutput):
         if len(keys) != len(set(keys)):
             raise ValueError("generation plan local_key values must be unique")
         known = set(keys)
-        unknown = {
-            ref
-            for item in self.objects
-            for ref in item.referenced_keys
-            if ref not in known
-        }
+        unknown = {ref for item in self.objects for ref in item.referenced_keys if ref not in known}
         if unknown:
             raise ValueError(f"generation plan references unknown keys: {sorted(unknown)!r}")
         if not any(item.collection == "resolution_specs" for item in self.objects):
@@ -148,6 +143,7 @@ class ExtractedConstraint(StrictAgentOutput):
 class BriefAnchorExtractCandidate(StrictAgentOutput):
     """Atomic candidates that remain proposals until the author confirms them."""
 
+    suggested_author_answer: str | None = Field(default=None, min_length=1, max_length=20_000)
     author_anchors: list[ExtractedAnchor] = Field(default_factory=list)
     creative_constraints: list[ExtractedConstraint] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
@@ -226,6 +222,7 @@ class BriefAnchorExtractRequest:
     max_turns: int
     emit: EventSink
     network_retries: int = 2
+    mode: Literal["extract", "suggest_author_answer"] = "extract"
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +257,7 @@ class GenerationRequest:
     repair_feedback: tuple[dict[str, Any], ...] = ()
     candidate_strategy: CandidateStrategy = CandidateStrategy.BALANCED
     candidate_strategy_version: str = CANDIDATE_STRATEGY_VERSION
+    reusable_steps: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

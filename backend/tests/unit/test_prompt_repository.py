@@ -11,6 +11,7 @@ from casefile.agent_runtime.prompt_repository import (
     SUPPORTED_AGENT_IDS,
     PromptRepository,
     PromptRepositoryError,
+    load_prompt,
     packaged_prompt_repository,
     prompt_version_for_task,
     system_prompt_for_task,
@@ -20,11 +21,11 @@ from casefile_contracts import TaskType
 
 EXPECTED_CURRENT_VERSIONS = {
     "brief_polish": "brief-polish-v3",
-    "brief_anchor_extract": "brief-anchor-extract-v2",
+    "brief_anchor_extract": "brief-anchor-extract-v3",
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v7",
+    "brief_to_draft": "brief-to-draft-v8",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -38,6 +39,9 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_anchor_extract", "brief-anchor-extract-v2"): (
         "0c343b59def3c106698e5320c29916bc7f0d32f3514c2320a3500c21450dce6d"
+    ),
+    ("brief_anchor_extract", "brief-anchor-extract-v3"): (
+        "cbbd4f6da817be6137ec6ae0a782349fe76ad987bf85e0fbf560311d19a10442"
     ),
     ("brief_intake_questions", "brief-intake-questions-v1"): (
         "d1f96b6bfee51b90f4c8de9cad9b8b512e6e0540a8cc2d890060255dc1337a62"
@@ -71,6 +75,9 @@ EXPECTED_RELEASE_HASHES = {
     ),
     ("brief_to_draft", "brief-to-draft-v7"): (
         "ffd17239f4562c86a964a3010e1ebfe1fc5c3be7c863980e74e6a0045be2a0ff"
+    ),
+    ("brief_to_draft", "brief-to-draft-v8"): (
+        "d12eee1955ed6aedf2a5b33650da88ff5c0fab97cca6a8023d2591974f4ecf73"
     ),
     ("casefile_chat", "casefile-chat-v1"): (
         "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
@@ -109,6 +116,7 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     prompts = {
         agent_id: system_prompt_for_task(agent_id, version)
         for agent_id, version in EXPECTED_CURRENT_VERSIONS.items()
+        if agent_id != "brief_to_draft"
     }
 
     for prompt in prompts.values():
@@ -120,6 +128,8 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "`narrative_enhance`" in prompts["brief_polish"]
     assert "`introduced_details`" in prompts["brief_polish"]
     assert "不能作为候选项的事实来源" in prompts["brief_anchor_extract"]
+    assert "suggest_author_answer" in prompts["brief_anchor_extract"]
+    assert "不得覆盖已有 `author_answer`" in prompts["brief_anchor_extract"]
     assert "最多一项 `required=true`" in prompts["brief_intake_questions"]
     assert "`mode=additional`" in prompts["brief_intake_questions"]
     assert "不得重新增加必答门槛" in prompts["brief_intake_questions"]
@@ -130,14 +140,13 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         "brief_intake_synthesize"
     ]
     assert "不得出现没有 `：` 的条目" in prompts["brief_intake_synthesize"]
-    assert "`structure_first`" in prompts["brief_to_draft"]
-    assert "`atmosphere_first`" in prompts["brief_to_draft"]
-    assert "`reasoning_first`" in prompts["brief_to_draft"]
-    assert "分区会并行生成" in prompts["brief_to_draft"]
-    assert "不得创建额外顶层 ID" in prompts["brief_to_draft"]
-    assert "`description`" in prompts["brief_to_draft"]
-    assert "WGS84" in prompts["brief_to_draft"]
-    assert "schematic" in prompts["brief_to_draft"]
+    v8 = load_prompt("brief_to_draft", "brief-to-draft-v8")
+    assert set(v8.component_prompts) == {"planner", "story", "evidence", "governance"}
+    assert "CaseBlueprintV1" in v8.component_prompts["planner"]
+    assert "StoryWorldIRV1" in v8.component_prompts["story"]
+    assert "EvidenceLogicIRV1" in v8.component_prompts["evidence"]
+    assert "ResolutionGovernanceIRV1" in v8.component_prompts["governance"]
+    assert all("local_key" in prompt for prompt in v8.component_prompts.values())
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]

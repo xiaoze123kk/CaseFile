@@ -23,6 +23,7 @@
 | `backend/src/casefile/data_postgres/models/reasoning.py` | Hypothesis、Reasoning Path/Node/Edge、Resolution Spec/Slot、Constraint 与 Structure Lock ORM。 |
 | `backend/src/casefile/data_postgres/models/versioning.py` | `draft_snapshots`、`canon_versions`、`audit_events` ORM。 |
 | `backend/src/casefile/data_postgres/models/workflow.py` | `briefs`、不可变 `brief_versions`、不可变 `source_records`、三类 `task_runs`、`task_attempts` 与不可变 `task_events` ORM。 |
+| `backend/src/casefile/data_postgres/models/agent_execution.py` | v8 `agent_step_runs` 与 `agent_model_calls` 的组件产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
 | `backend/src/casefile/data_postgres/models/__init__.py` | 汇总导入全部 ORM，供 Alembic metadata 发现。 |
 | `backend/src/casefile/data_postgres/models/benchmark.py` | Benchmark 持久化模型的预留落位；当前不定义或导出 ORM。 |
 
@@ -54,8 +55,8 @@
 
 | 路径 | 职责 |
 |---|---|
-| `backend/src/casefile/benchmark/` | `brief_to_draft` Fixture 运行器与指标汇总；记录结构有效率、修复次数、延迟、工具调用有效率/执行成功率和结果采纳率，不依赖 ORM 或 Web 框架。 |
-| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及 `brief_polish`、`brief_anchor_extract`、`brief_strategy_options`、`brief_to_draft` 的结构化结果与 Validator 指标。当前 `brief_to_draft` 先生成对象计划，由服务端分配稳定 ID，再并发生成故事世界、证据推理、解答与约束三个分区并定向修复；历史 Prompt 版本仍保留原工具协议。 |
+| `backend/src/casefile/benchmark/` | `brief_to_draft` Provider 级 Fixture 运行器与指标汇总；记录 CaseFile 结构有效率、模型调用/工具协议、修复次数、延迟和结构化诊断覆盖率。它明确不验证 TaskRun、Worker、持久化、SSE 或候选采用边界，不能单独作为发布验收。 |
+| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及全部 Agent 任务的结构化结果与 Validator 指标。`structured_output.py` 统一 Pydantic Schema 编译、OpenAI 原生 Structured Output、DeepSeek Beta strict tool、正式 JSON 模式降级、有限定向重试与用量汇总；当前 `brief_to_draft` 先生成对象计划，由服务端分配稳定 ID，再并发生成故事世界、证据推理、解答与约束三个分区并定向修复；历史 Prompt 版本仍保留原工具协议。 |
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
 | `backend/src/casefile/validation/` | 确定性 Schema、引用、时间、知识与发布规则的预留落位。 |
@@ -72,17 +73,19 @@
 | `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 38 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
 | `backend/tests/unit/test_casefile_contract.py` | 验证 v1 CaseFile Schema、自身合法性、三类产品 Fixture、确定性语义错误和规范哈希。 |
 | `backend/tests/unit/test_agent_providers.py` | 验证 OpenAI/DeepSeek Provider 路由、DeepSeek 官方兼容端点和无 Key 网络调用门禁。 |
+| `backend/tests/unit/test_structured_output.py` | 验证 DeepSeek strict transport Schema、Beta 强制工具协议、正式 JSON 自动降级、OpenAI 原生结构输出与最多三次的有限修复状态机。 |
 | `backend/tests/unit/test_benchmark_runner.py` | 验证 fake `brief_to_draft` Benchmark 与工具调用指标。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证七段升降级、38 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |
 | `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、三类 Worker、lease 恢复、不可变历史和 v1 有限编辑闭环。 |
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、SSE 恢复与完成门禁闭环。 |
+| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider v8 验收：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 执行策略轮换任务，检查步骤/模型调用持久化、SSE、诊断和 Draft/Canon 未自动写入边界。 |
 
-## 38 表清单
+## 47 表清单
 
-当前正式业务表恰好为 38 张：
+当前正式业务表恰好为 47 张：
 
-- 身份、输入与任务：`users`、`projects`、`user_provider_settings`、`source_records`、`briefs`、`brief_versions`、`task_runs`、`task_attempts`、`task_events`。
+- 身份、输入与任务：`users`、`projects`、`user_provider_settings`、`source_records`、`briefs`、`brief_versions`、`task_runs`、`task_attempts`、`task_events`、`agent_step_runs`、`agent_model_calls`。
 - 编辑与契约映射：`casefiles`、`drafts`、`casefile_objects`、`casefile_refs`、`casefile_contract_refs`、`draft_operations`。
 - 叙事与内容：`narrative_phases`、`entities`、`relationships`、`people`、`locations`、`events`、`information_units`、`evidence_items`、`testimonies`、`claims`、`knowledge_states`、`knowledge_state_entries`。
 - 推理与结论：`hypotheses`、`reasoning_paths`、`reasoning_nodes`、`reasoning_edges`、`resolution_specs`、`resolution_slots`、`casefile_constraints`、`structure_locks`。

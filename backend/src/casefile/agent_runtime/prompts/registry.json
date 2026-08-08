@@ -5,7 +5,7 @@
       "current_version": "brief-polish-v3"
     },
     "brief_anchor_extract": {
-      "current_version": "brief-anchor-extract-v2"
+      "current_version": "brief-anchor-extract-v3"
     },
     "brief_intake_questions": {
       "current_version": "brief-intake-questions-v3"
@@ -17,7 +17,7 @@
       "current_version": "brief-strategy-options-v1"
     },
     "brief_to_draft": {
-      "current_version": "brief-to-draft-v7"
+      "current_version": "brief-to-draft-v8"
     },
     "casefile_chat": {
       "current_version": "casefile-chat-v1"

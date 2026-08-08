@@ -26,7 +26,7 @@ class ApplicationError(Exception):
 def not_found(resource: str) -> ApplicationError:
     return ApplicationError(
         "not_found",
-        f"{resource} was not found",
+        "没有找到请求的数据。",
         status_code=404,
     )
 
@@ -34,7 +34,7 @@ def not_found(resource: str) -> ApplicationError:
 def revision_conflict(*, expected: int, received: int) -> ApplicationError:
     return ApplicationError(
         "draft_revision_conflict",
-        "Draft revision is stale",
+        "草稿已被更新，请刷新后重新提交。",
         status_code=409,
         details={"current_revision": expected, "received_revision": received},
     )

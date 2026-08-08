@@ -349,6 +349,8 @@ def test_casefile_chat_task_roundtrips_with_message_lineage(
             "stale": False,
         },
         "failure": None,
+        "candidate_strategy": None,
+        "component_steps": [],
     }
 
     validators["task"].validate(task)

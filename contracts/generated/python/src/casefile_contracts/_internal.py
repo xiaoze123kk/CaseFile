@@ -716,6 +716,13 @@ class OutputMessageId(RootModel[int]):
     root: Annotated[int, Field(ge=1)]
 
 
+class CandidateStrategy(StrEnum):
+    structure_first = 'structure_first'
+    atmosphere_first = 'atmosphere_first'
+    reasoning_first = 'reasoning_first'
+    balanced = 'balanced'
+
+
 class TaskFailureIssue(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -735,6 +742,48 @@ class TaskFailure(BaseModel):
     message: Annotated[str, Field(max_length=320, min_length=1)]
     retryable: bool
     issues: list[TaskFailureIssue]
+
+
+class AgentDiagnosticIssue(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    failure_layer: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    schema_id: str | None
+    code: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    path: Annotated[str, Field(max_length=512)]
+    message: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class Status3(StrEnum):
+    pending = 'pending'
+    running = 'running'
+    succeeded = 'succeeded'
+    failed = 'failed'
+    reused = 'reused'
+    skipped = 'skipped'
+
+
+class AgentComponentStepView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    step_run_id: Annotated[int, Field(ge=1)]
+    attempt_no: Annotated[int, Field(ge=1)]
+    component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    parent_component_id: str | None
+    execution_no: Annotated[int, Field(ge=1)]
+    status: Status3
+    schema_id: Annotated[str, Field(min_length=1)]
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    output_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')]
+    failure_layer: str | None
+    issues: list[AgentDiagnosticIssue]
+    recoverable: bool
+    resumed_from_step_run_id: Annotated[int | None, Field(ge=1)]
 
 
 class Strategy(StrEnum):
@@ -804,12 +853,14 @@ class TaskRun(BaseModel):
     input_message_id: InputMessageId | None
     output_message_id: OutputMessageId | None
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    candidate_strategy: CandidateStrategy | None
     attempt_count: Annotated[int, Field(ge=0)]
     usage: dict[str, Any]
     result: dict[str, Any] | None
     result_snapshot_id: Annotated[int | None, Field(ge=1)] = None
     error_code: str | None = None
     failure: TaskFailure | None
+    component_steps: list[AgentComponentStepView]
     created_at: AwareDatetime | None = None
     updated_at: AwareDatetime | None = None
 

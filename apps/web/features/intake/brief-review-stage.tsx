@@ -287,10 +287,19 @@ export function BriefReviewStage() {
                 aria-label="审阅作者底牌原文"
                 disabled={review.resolutionMode !== "author_anchored"}
                 onChange={(event) => updateText("authorAnswer", event.target.value)}
-                placeholder="只有按作者底牌展开时需要填写。"
+                placeholder="只有选择“使用我提供的答案”时需要填写。"
                 rows={3}
                 value={review.authorAnswer}
               />
+              {review.resolutionMode === "author_anchored" ? (
+                <small className={styles.disabledFieldHint}>
+                  作者底牌候选请在简报草案阶段生成；这里负责逐条核对与拆解。
+                </small>
+              ) : (
+                <small className={styles.disabledFieldHint}>
+                  当前处理方式不使用作者底牌；如需明确唯一真相，请切换为“使用我提供的答案”。
+                </small>
+              )}
             </label>
             <label className={styles.wideField}>
               <span><b>06</b><strong>创作边界原文</strong><em>硬约束或软偏好</em></span>

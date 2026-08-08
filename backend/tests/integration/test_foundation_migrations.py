@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 45-table personal foundation."""
+"""Disposable PostgreSQL verification for the 47-table personal foundation."""
 
 from __future__ import annotations
 
@@ -25,10 +25,12 @@ pytestmark = pytest.mark.postgres
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "20260728084832"
 BUSINESS_TABLES = {
+    "agent_model_calls",
     "agent_messages",
     "agent_patch_operations",
     "agent_patch_sets",
     "agent_threads",
+    "agent_step_runs",
     "audit_events",
     "brief_versions",
     "briefs",
@@ -823,7 +825,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_45_identity_tables_without_team_columns(
+def test_database_has_47_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -837,7 +839,7 @@ def test_database_has_45_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 45
+    assert len(identity_rows) == 47
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
@@ -1895,6 +1897,78 @@ def test_source_records_and_task_candidates_are_immutable_and_project_scoped(
             },
         ).scalar_one()
     )
+    step_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO agent_step_runs (
+                    project_id, task_run_id, task_attempt_id, component_id,
+                    execution_no, status, input_hash, ir_schema_id, component_version
+                ) VALUES (
+                    :project_id, :task_run_id, :attempt_id, 'case_blueprint_planner',
+                    1, 'running', :input_hash, 'case-blueprint-v1', 'brief-to-draft-v8'
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "task_run_id": task_run_id,
+                "attempt_id": candidate_attempt_id,
+                "input_hash": task_parameters["input_hash"],
+            },
+        ).scalar_one()
+    )
+    connection.execute(
+        sa.text(
+            "UPDATE agent_step_runs SET status = 'succeeded', finished_at = CURRENT_TIMESTAMP "
+            "WHERE id = :step_id"
+        ),
+        {"step_id": step_id},
+    )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text("UPDATE agent_step_runs SET output_hash = :hash WHERE id = :step_id"),
+            {"step_id": step_id, "hash": "f" * 64},
+        )
+
+    model_call_id = int(
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO agent_model_calls (
+                    project_id, task_run_id, task_attempt_id, agent_step_run_id,
+                    call_no, status, provider, model_id, output_protocol,
+                    prompt_version, prompt_component_id, target_schema_id, input_hash
+                ) VALUES (
+                    :project_id, :task_run_id, :attempt_id, :step_id,
+                    1, 'running', 'fake', 'fixture-model', 'fake_strict',
+                    'brief-to-draft-v8', 'case_blueprint_planner',
+                    'case-blueprint-v1', :input_hash
+                ) RETURNING id
+                """
+            ),
+            {
+                "project_id": first.project_id,
+                "task_run_id": task_run_id,
+                "attempt_id": candidate_attempt_id,
+                "step_id": step_id,
+                "input_hash": task_parameters["input_hash"],
+            },
+        ).scalar_one()
+    )
+    connection.execute(
+        sa.text(
+            "UPDATE agent_model_calls SET status = 'succeeded', finished_at = CURRENT_TIMESTAMP "
+            "WHERE id = :call_id"
+        ),
+        {"call_id": model_call_id},
+    )
+    with _expect_database_error(connection):
+        connection.execute(
+            sa.text("DELETE FROM agent_model_calls WHERE id = :call_id"),
+            {"call_id": model_call_id},
+        )
+
     with _expect_database_error(connection):
         connection.execute(
             sa.text(

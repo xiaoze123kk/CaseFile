@@ -27,6 +27,51 @@
         }
       }
     },
+    "AgentDiagnosticIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id", "failure_layer", "schema_id", "code", "path", "message"
+      ],
+      "properties": {
+        "component_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "failure_layer": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "schema_id": {"type": ["string", "null"]},
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "path": {"type": "string", "maxLength": 512},
+        "message": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    },
+    "AgentComponentStepView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_run_id", "attempt_no", "component_id", "parent_component_id",
+        "execution_no", "status", "schema_id", "input_hash", "output_hash",
+        "failure_layer", "issues", "recoverable", "resumed_from_step_run_id"
+      ],
+      "properties": {
+        "step_run_id": {"type": "integer", "minimum": 1},
+        "attempt_no": {"type": "integer", "minimum": 1},
+        "component_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "parent_component_id": {"type": ["string", "null"]},
+        "execution_no": {"type": "integer", "minimum": 1},
+        "status": {
+          "type": "string",
+          "enum": ["pending", "running", "succeeded", "failed", "reused", "skipped"]
+        },
+        "schema_id": {"type": "string", "minLength": 1},
+        "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "output_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "failure_layer": {"type": ["string", "null"]},
+        "issues": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/AgentDiagnosticIssue"}
+        },
+        "recoverable": {"type": "boolean"},
+        "resumed_from_step_run_id": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
     "BriefStrategyOption": {
       "type": "object",
       "additionalProperties": false,
@@ -85,7 +130,8 @@
         "input_source_record_id", "input_brief_intake_id",
         "input_brief_intake_revision", "base_brief_intake_candidate_id",
         "agent_thread_id", "input_message_id",
-        "output_message_id", "input_hash", "attempt_count", "usage", "result", "failure"
+        "output_message_id", "input_hash", "attempt_count", "usage", "result", "failure",
+        "component_steps", "candidate_strategy"
       ],
       "properties": {
         "task_run_id": {"type": "integer", "minimum": 1},
@@ -159,6 +205,15 @@
           ]
         },
         "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "candidate_strategy": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["structure_first", "atmosphere_first", "reasoning_first", "balanced"]
+            },
+            {"type": "null"}
+          ]
+        },
         "attempt_count": {"type": "integer", "minimum": 0},
         "usage": {"type": "object", "additionalProperties": true},
         "result": {
@@ -174,6 +229,10 @@
             {"$ref": "#/$defs/TaskFailure"},
             {"type": "null"}
           ]
+        },
+        "component_steps": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/AgentComponentStepView"}
         },
         "created_at": {"type": "string", "format": "date-time"},
         "updated_at": {"type": "string", "format": "date-time"}

@@ -30,6 +30,7 @@ export function DraftCandidatesStage() {
     analyzeStrategies,
     selectStrategy,
     generateCandidates,
+    resumeGeneration,
     adoptCandidate,
     beginBriefRevision,
     candidateStatus,
@@ -61,6 +62,18 @@ export function DraftCandidatesStage() {
   const generating = state.generation.status === "generating";
   const analysis = state.strategyAnalysis;
   const ready = state.frozenBriefVersion !== null;
+  const selectedSlot = state.selectedStrategy
+    ? state.generation.slots[state.selectedStrategy]
+    : null;
+  const componentSteps = selectedSlot?.latestTask?.component_steps ?? [];
+  const latestComponentSteps = new Map(
+    [...componentSteps]
+      .sort((left, right) => left.step_run_id - right.step_run_id)
+      .map((step) => [step.component_id, step]),
+  );
+  const failedComponent = [...latestComponentSteps.values()].find(
+    (step) => step.status === "failed",
+  );
 
   useEffect(() => {
     if (!ready || analysis.status !== "idle" || analysisStartedRef.current) return;
@@ -101,7 +114,7 @@ export function DraftCandidatesStage() {
     setAdoptingCandidateId(candidateId);
     try {
       if (!(await adoptCandidate(candidateId))) {
-        setGenerationError("这份深稿不属于当前冻结 Brief，请重新生成。");
+        setGenerationError("这份深稿不属于当前冻结的创作简报，请重新生成。");
         return;
       }
       router.push(`/workbench?project=${activeProjectId}`);
@@ -110,6 +123,17 @@ export function DraftCandidatesStage() {
     } finally {
       adoptionInFlightRef.current = false;
       setAdoptingCandidateId(null);
+    }
+  }
+
+  async function resumeFailedDraft() {
+    if (!state.selectedStrategy) return;
+    setGenerationError(null);
+    try {
+      await resumeGeneration(state.selectedStrategy);
+      setNotice("已从失败阶段恢复，输入与上游哈希一致的成功部件已复用。");
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "恢复失败");
     }
   }
 
@@ -243,7 +267,7 @@ export function DraftCandidatesStage() {
           </div>
         ) : (
           <div className={styles.candidateEmpty} aria-busy={analysis.status === "analyzing"}>
-            <span>{analysis.status === "failed" ? "策略分析未完成" : "正在读取冻结 Brief"}</span>
+            <span>{analysis.status === "failed" ? "策略分析未完成" : "正在读取冻结的创作简报"}</span>
             <p>{analysis.error ?? "Agent 将给出三个针对本案的方向，不会替你作出选择。"}</p>
           </div>
         )}
@@ -278,6 +302,49 @@ export function DraftCandidatesStage() {
 
       {generationError ? <p className={styles.generationError} role="alert">{generationError}</p> : null}
 
+      {selectedSlot?.latestTask && componentSteps.length ? (
+        <section className={styles.agentPipeline} aria-label="深稿生成部件进度">
+          <header>
+            <div><span>brief_to_draft-v8</span><strong>六步生成流水线</strong></div>
+            <b>Attempt {selectedSlot.latestTask.attempt_count}</b>
+          </header>
+          <ol>
+            {pipelineRows(latestComponentSteps).map((row, index) => (
+              <li data-status={row.status} key={row.id}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <div>
+                  <strong>{row.label}</strong>
+                  <small>{stepStatusLabel(row.status)}</small>
+                  {row.children ? (
+                    <ul>{row.children.map((child) => (
+                      <li data-status={child.status} key={child.id}>
+                        {child.label} · {stepStatusLabel(child.status)}
+                      </li>
+                    ))}</ul>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ol>
+          {failedComponent ? (
+            <div className={styles.componentFailure} role="alert">
+              <strong>{componentLabel(failedComponent.component_id)}执行失败</strong>
+              <p>层：{failedComponent.failure_layer ?? "未知"} · Schema：{failedComponent.schema_id}</p>
+              {failedComponent.issues.map((issue) => (
+                <code key={`${issue.code}-${issue.path}`}>{issue.path || "/"} · {issue.message}</code>
+              ))}
+              <button
+                disabled={!failedComponent.recoverable || generating}
+                onClick={() => void resumeFailedDraft()}
+                type="button"
+              >
+                {failedComponent.recoverable ? "从失败阶段恢复" : "当前失败不可恢复"}
+              </button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       {currentCandidates.length ? (
         <section className={styles.candidateArchive} aria-label="当前简报完整深稿">
           <header><div><span>完整深稿</span><strong>已生成的策略方向</strong></div><b>{currentCandidates.length}</b></header>
@@ -304,4 +371,43 @@ function strategyFocus(strategy: CandidateSlotStrategy) {
   if (strategy === "structure_first") return "structure";
   if (strategy === "atmosphere_first") return "atmosphere";
   return "reasoning";
+}
+
+type PipelineStatus = "pending" | "running" | "succeeded" | "failed" | "reused" | "skipped";
+
+function pipelineRows(steps: Map<string, { status: PipelineStatus }>) {
+  const direct = (id: string) => steps.get(id)?.status ?? "pending";
+  const domains = [
+    { id: "story_world", label: "故事世界", status: direct("story_world") },
+    { id: "evidence_logic", label: "证据推理", status: direct("evidence_logic") },
+    { id: "resolution_governance", label: "解答治理", status: direct("resolution_governance") },
+  ];
+  const domainStatus: PipelineStatus = domains.some((item) => item.status === "failed")
+    ? "failed"
+    : domains.every((item) => item.status === "succeeded" || item.status === "reused")
+      ? domains.some((item) => item.status === "reused") ? "reused" : "succeeded"
+      : domains.some((item) => item.status === "running") ? "running" : "pending";
+  return [
+    { id: "context_pack_builder", label: "上下文包构建", status: direct("context_pack_builder") },
+    { id: "case_blueprint_planner", label: "案件蓝图规划", status: direct("case_blueprint_planner") },
+    { id: "domain_drafters", label: "三域创作", status: domainStatus, children: domains },
+    { id: "reference_linker", label: "引用链接", status: direct("reference_linker") },
+    { id: "casefile_compiler", label: "CaseFile 编译", status: direct("casefile_compiler") },
+    { id: "quality_repair_gate", label: "质量与修复门禁", status: direct("quality_repair_gate") },
+  ];
+}
+
+function stepStatusLabel(status: PipelineStatus) {
+  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过" }[status];
+}
+
+function componentLabel(componentId: string) {
+  const domains: Record<string, string> = {
+    story_world: "故事世界",
+    evidence_logic: "证据推理",
+    resolution_governance: "解答治理",
+  };
+  return pipelineRows(new Map()).find((row) => row.id === componentId)?.label
+    ?? domains[componentId]
+    ?? componentId;
 }

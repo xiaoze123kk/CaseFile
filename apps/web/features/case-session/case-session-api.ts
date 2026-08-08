@@ -12,6 +12,7 @@ import {
   type BriefView,
   type DraftCandidateView,
   type DraftView,
+  type AnchorExtractMode,
   type PolishMode,
   type ProjectView,
   type ProviderName,
@@ -213,6 +214,8 @@ export async function startAnchorExtractTask(
   projectId: number,
   briefRevision: number,
   provider: ProviderName,
+  mode: AnchorExtractMode = "extract",
+  content?: BriefContent,
 ) {
   return apiRequest<TaskView>(
     `/projects/${projectId}/tasks/brief-anchor-extract`,
@@ -222,6 +225,8 @@ export async function startAnchorExtractTask(
       body: {
         expected_brief_revision: briefRevision,
         provider,
+        mode,
+        ...(content ? { content } : {}),
       },
     },
   );
@@ -252,6 +257,25 @@ export async function fetchTask(projectId: number, taskRunId: number) {
   return apiRequest<TaskView>(`/projects/${projectId}/tasks/${taskRunId}`, {
     actorId: LOCAL_ACTOR_ID,
   });
+}
+
+export async function resumeDraftGenerationTask(
+  projectId: number,
+  taskRunId: number,
+  draftRevision: number,
+  briefRevision: number,
+) {
+  return apiRequest<TaskView>(
+    `/projects/${projectId}/tasks/${taskRunId}/resume`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_revision: draftRevision,
+        expected_brief_revision: briefRevision,
+      },
+    },
+  );
 }
 
 export async function fetchLatestTask(projectId: number, taskType: TaskType) {

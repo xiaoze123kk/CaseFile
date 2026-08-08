@@ -19,9 +19,10 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from casefile.data_postgres.base import Base, BigIntIdentityPrimaryKeyMixin, TimestampMixin
+from casefile.data_postgres.models.agent_execution import AgentStepRun
 
 
 class Brief(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
@@ -124,8 +125,7 @@ class SourceRecord(BigIntIdentityPrimaryKeyMixin, Base):
         ),
         UniqueConstraint("project_id", "id", name="uq_source_records_project_id_id"),
         CheckConstraint(
-            "source_kind IN "
-            "('human_original', 'agent_polish_proposal', 'human_revision')",
+            "source_kind IN ('human_original', 'agent_polish_proposal', 'human_revision')",
             name="source_kind_allowed",
         ),
         CheckConstraint("btrim(content_text) <> ''", name="content_not_blank"),
@@ -372,8 +372,7 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "agent_thread_id",
             unique=True,
             postgresql_where=text(
-                "agent_thread_id IS NOT NULL "
-                "AND status IN ('queued', 'running', 'cancelling')"
+                "agent_thread_id IS NOT NULL AND status IN ('queued', 'running', 'cancelling')"
             ),
         ),
     )
@@ -445,6 +444,13 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
+    component_step_runs: Mapped[list[AgentStepRun]] = relationship(
+        AgentStepRun,
+        primaryjoin="TaskRun.id == foreign(AgentStepRun.task_run_id)",
+        order_by="AgentStepRun.id",
+        lazy="selectin",
+        viewonly=True,
+    )
 
 
 class TaskAttempt(BigIntIdentityPrimaryKeyMixin, Base):
@@ -459,6 +465,7 @@ class TaskAttempt(BigIntIdentityPrimaryKeyMixin, Base):
             ondelete="RESTRICT",
         ),
         UniqueConstraint("task_run_id", "attempt_no", name="uq_task_attempts_run_attempt_no"),
+        UniqueConstraint("id", "task_run_id", name="uq_task_attempts_id_task_run_id"),
         CheckConstraint("attempt_no >= 1", name="attempt_no_positive"),
         CheckConstraint(
             "status IN ('running', 'succeeded', 'failed', 'cancelled')",

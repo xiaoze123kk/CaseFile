@@ -180,6 +180,8 @@ def test_brief_optional_projection_fields_and_intake_task_shape() -> None:
             "usage": {},
             "result": None,
             "failure": None,
+            "candidate_strategy": None,
+            "component_steps": [],
         }
     )
     assert task.task_type.value == "brief_intake_synthesize"

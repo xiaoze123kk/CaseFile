@@ -72,6 +72,7 @@ function buildFakeBackend() {
   let briefVersionId: number | null = null;
   let versionNo = 0;
   let briefContent: BriefContent | null = null;
+  let formalBriefReview = false;
   const caseDraftRevision = 17;
   let draftCandidates: DraftCandidateView[] = [];
   let taskSeq = 100;
@@ -79,6 +80,7 @@ function buildFakeBackend() {
   const taskProviders = new Map<number, string>();
   let configuredProviders = ["openai"];
   let failOpenaiAuth = false;
+  let failNextAnchorExtract = false;
   let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
   const adoptionDraftRevisions: number[] = [];
@@ -125,7 +127,9 @@ function buildFakeBackend() {
 
   function intakeView(): BriefIntakeView {
     const stage =
-      currentCandidateId !== null
+      formalBriefReview
+        ? "brief_review"
+        : currentCandidateId !== null
         ? "confirmation"
         : currentQuestions.length > 0
           ? "questions"
@@ -192,7 +196,9 @@ function buildFakeBackend() {
       result_snapshot_id: null,
       result: null,
       error_code: null,
-      failure: null,
+    failure: null,
+    candidate_strategy: null,
+    component_steps: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -335,11 +341,16 @@ function buildFakeBackend() {
       };
     }
     if (taskType === "brief_anchor_extract") {
+      if (failNextAnchorExtract) {
+        failNextAnchorExtract = false;
+        throw new Error("作者底牌候选生成接口不兼容，请重启本地服务后重试。");
+      }
       return {
         ...common,
         result: {
           input_hash: "h",
-          author_anchors: [],
+          suggested_author_answer: "真正的发送者来自未来，并利用求救信号改写当前记录。",
+          author_anchors: [{ statement: "真正的发送者来自未来。" }],
           creative_constraints: [],
           warnings: [],
         },
@@ -467,6 +478,7 @@ function buildFakeBackend() {
   return {
     CaseSessionError,
     resetProjects: () => {
+      formalBriefReview = false;
       projects = projects.map((project) =>
         project.id === 3
           ? {
@@ -483,11 +495,18 @@ function buildFakeBackend() {
     setFailOpenaiAuth: (value: boolean) => {
       failOpenaiAuth = value;
     },
+    setFailNextAnchorExtract: (value: boolean) => {
+      failNextAnchorExtract = value;
+    },
     setFailNextQuestionRevision: (value: boolean) => {
       failNextQuestionRevision = value;
     },
     setFailNextDraftAdoption: (value: boolean) => {
       failNextDraftAdoption = value;
+    },
+    markFormalBriefReview: () => {
+      formalBriefReview = true;
+      revision += 1;
     },
     setDraftAdoptionGate: (gate: Promise<void> | null) => {
       draftAdoptionGate = gate;
@@ -697,10 +716,16 @@ function buildFakeBackend() {
     },
     createBriefCandidate: async (
       _projectId: number,
-      _intakeRevision: number,
+      intakeRevision: number,
       content: BriefIntakeCandidateContent,
       parentCandidateId: number | null = null,
     ) => {
+      if (intakeRevision !== revision) {
+        throw new CaseSessionError(
+          "Brief Intake revision is stale",
+          "brief_intake_revision_conflict",
+        );
+      }
       const candidateId = candidates.length + 1;
       candidates = [
         {
@@ -839,6 +864,7 @@ afterEach(() => {
   routerPush.mockReset();
   fake.backend.setConfiguredProviders(["openai"]);
   fake.backend.setFailOpenaiAuth(false);
+  fake.backend.setFailNextAnchorExtract(false);
   fake.backend.setFailNextQuestionRevision(false);
   fake.backend.setFailNextDraftAdoption(false);
   fake.backend.setDraftAdoptionGate(null);
@@ -985,6 +1011,32 @@ describe("intake center", () => {
     expect(
       screen.getByRole("radio", { name: /信息不足时保持未决/u }),
     ).toBeChecked();
+    expect(screen.getByText("Agent 会随深稿拟定答案")).toBeInTheDocument();
+    expect(
+      screen.getByText(/这里不会立即出现候选。生成深稿时/u),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("radio", { name: /使用我提供的答案/u }),
+    );
+    expect(
+      screen.getByText("你先锁定答案，Agent 只负责展开"),
+    ).toBeInTheDocument();
+    fake.backend.setFailNextAnchorExtract(true);
+    fireEvent.click(screen.getByRole("button", { name: "让 Agent 先拟一版" }));
+    await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "作者底牌候选生成接口不兼容，请重启本地服务后重试。",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "让 Agent 先拟一版" }));
+    await flush();
+    expect(screen.getByText("Agent 候选 · 待作者确认")).toBeInTheDocument();
+    expect(
+      screen.getByText("Agent 只提供候选，不会自动写入作者底牌。"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "不采用，我自己写" }));
+    fireEvent.change(screen.getByLabelText("作者底牌"), {
+      target: { value: "我自己的结论：真正的发送者是未来的档案修复师。" },
+    });
     expect(
       screen.getByRole("button", { name: /进入创作简报审阅/u }),
     ).toBeEnabled();
@@ -1010,6 +1062,8 @@ describe("intake center", () => {
       ),
     ).toBe(true);
     expect(screen.getByText("约束抽屉")).toBeInTheDocument();
+    // 服务端已经推进到正式审阅，但页面仍停留在草案步骤；入口必须恢复而不是用旧 revision 重试。
+    fake.backend.markFormalBriefReview();
 
     fireEvent.click(
       screen.getByRole("button", { name: /进入创作简报审阅/u }),
@@ -1019,12 +1073,23 @@ describe("intake center", () => {
     expect(
       screen.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
     ).toBeInTheDocument();
-    // 采用候选时简报已在服务端保存，审阅可直接冻结。
+    expect(
+      screen
+        .getByRole("button", { name: "03 成案 创作简报草案" })
+        .closest("li"),
+    ).toHaveAttribute("data-complete", "true");
+    expect(screen.getByLabelText("审阅作者底牌原文")).toHaveValue(
+      "我自己的结论：真正的发送者是未来的档案修复师。",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重新拆解底牌与边界" }));
+    await flush();
+    // 作者改写底牌后需要再次保存，保存成功才允许冻结。
     const freeze = screen.getByRole("button", { name: /确认并冻结/u });
-    expect(freeze).toBeEnabled();
+    expect(freeze).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "保存审阅" }));
     await flush();
+    expect(freeze).toBeEnabled();
     fireEvent.click(freeze);
     await flush();
 

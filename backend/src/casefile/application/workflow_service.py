@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -72,16 +73,18 @@ DEFAULT_BUDGET: dict[str, Any] = {
 }
 
 _FAILURE_MESSAGES = {
-    "candidate_validation_failed": "模型输出未通过 CaseFile 结构校验，已停止写入 Draft。",
+    "agent_component_failed": "深稿生成部件未通过门禁，可从失败阶段恢复。",
+    "candidate_validation_failed": "模型输出未通过 CaseFile 结构校验，已停止写入草稿。",
     "provider_connection_failed": "无法连接模型服务，网络重试已耗尽。",
     "provider_timeout": "模型服务响应超时，网络重试已耗尽。",
     "provider_rate_limited": "模型服务当前限流，请稍后重试。",
-    "provider_authentication_failed": "模型服务认证失败，请检查 API Key 与模型权限。",
-    "generation_failed": "Agent 生成失败，Draft 未被修改。",
+    "provider_authentication_failed": "模型服务认证失败，请检查 API 密钥与模型权限。",
+    "generation_failed": "Agent 生成失败，草稿未被修改。",
 }
 _RETRYABLE_FAILURES = frozenset(
     {
         "candidate_validation_failed",
+        "agent_component_failed",
         "provider_connection_failed",
         "provider_timeout",
         "provider_rate_limited",
@@ -137,7 +140,7 @@ class WorkflowService:
         if title is not None and not normalized_title:
             raise ApplicationError(
                 "agent_thread_title_invalid",
-                "Agent thread title cannot be blank",
+                "Agent 对话标题不能为空。",
                 status_code=422,
             )
         with self.session.begin():
@@ -175,7 +178,7 @@ class WorkflowService:
                 if not normalized_title:
                     raise ApplicationError(
                         "agent_thread_title_invalid",
-                        "Agent thread title cannot be blank",
+                        "Agent 对话标题不能为空。",
                         status_code=422,
                     )
                 thread.title = normalized_title
@@ -196,7 +199,7 @@ class WorkflowService:
                     if active_task is not None:
                         raise ApplicationError(
                             "agent_thread_busy",
-                            "An Agent task is still running in this thread",
+                            "当前对话仍有 Agent 任务在执行。",
                             status_code=409,
                             details={"task_run_id": active_task},
                         )
@@ -219,7 +222,7 @@ class WorkflowService:
         if after_sequence < 0:
             raise ApplicationError(
                 "agent_message_cursor_invalid",
-                "after_sequence must be a non-negative integer",
+                "消息序号必须是非负整数。",
                 status_code=422,
             )
         with self.session.begin():
@@ -261,9 +264,7 @@ class WorkflowService:
             }
             current_document = (
                 None
-                if not any(
-                    patch.status == "applied" for patch in patch_sets_by_message.values()
-                )
+                if not any(patch.status == "applied" for patch in patch_sets_by_message.values())
                 else build_casefile_document(self.session, owned)
             )
             return [
@@ -297,7 +298,7 @@ class WorkflowService:
         if not content:
             raise ApplicationError(
                 "agent_message_empty",
-                "Agent message cannot be blank",
+                "Agent 消息不能为空。",
                 status_code=422,
             )
         with self.session.begin():
@@ -306,7 +307,7 @@ class WorkflowService:
             if thread.status != "active":
                 raise ApplicationError(
                     "agent_thread_archived",
-                    "Archived Agent threads cannot accept new messages",
+                    "已归档的 Agent 对话不能接收新消息。",
                     status_code=409,
                 )
             active_task = self.session.scalar(
@@ -320,7 +321,7 @@ class WorkflowService:
             if active_task is not None:
                 raise ApplicationError(
                     "agent_thread_busy",
-                    "Wait for the current Agent response before sending another message",
+                    "请等待当前 Agent 回复后再发送下一条消息。",
                     status_code=409,
                     details={"task_run_id": active_task},
                 )
@@ -481,9 +482,7 @@ class WorkflowService:
             frozen_object_ids = _frozen_object_ids(frozen_casefile)
             missing_references = sorted(set(referenced) - frozen_object_ids)
             if missing_references:
-                raise RuntimeError(
-                    f"Chat result references unknown objects: {missing_references}"
-                )
+                raise RuntimeError(f"Chat result references unknown objects: {missing_references}")
 
             stale = owned.draft.revision != task.input_draft_revision
             patch_set: AgentPatchSet | None = None
@@ -522,15 +521,12 @@ class WorkflowService:
                     object_id = str(suggestion["object_id"])
                     registry = registries.get(object_id)
                     if registry is None:
-                        raise RuntimeError(
-                            f"Chat suggestion targets unknown object: {object_id}"
-                        )
+                        raise RuntimeError(f"Chat suggestion targets unknown object: {object_id}")
                     field_path = str(suggestion["path"])
                     top_field = _pointer_top_field(field_path)
                     if top_field not in EDITABLE_FIELDS.get(registry.object_type, set()):
                         raise RuntimeError(
-                            f"Chat suggestion targets a read-only field: "
-                            f"{object_id}{field_path}"
+                            f"Chat suggestion targets a read-only field: {object_id}{field_path}"
                         )
                     frozen_object = _find_frozen_object(frozen_casefile, object_id)
                     old_value = _frozen_pointer_value(frozen_object, field_path)
@@ -628,7 +624,7 @@ class WorkflowService:
             if patch_set.status != "pending":
                 raise ApplicationError(
                     "agent_patch_not_pending",
-                    "Only pending Agent suggestions can be applied",
+                    "只有待处理的 Agent 建议才能被采用。",
                     status_code=409,
                     details={"status": patch_set.status},
                 )
@@ -638,7 +634,7 @@ class WorkflowService:
             ):
                 raise ApplicationError(
                     "agent_patch_stale",
-                    "The CaseFile changed after this suggestion was generated",
+                    "生成这条建议后，CaseFile 已发生变化。",
                     status_code=409,
                     details={
                         "current_revision": owned.draft.revision,
@@ -662,7 +658,7 @@ class WorkflowService:
             if not selected.issubset(known):
                 raise ApplicationError(
                     "agent_patch_selection_invalid",
-                    "Accepted operations must belong to the selected Agent patch",
+                    "已接受的操作必须属于所选 Agent 修改批次。",
                     status_code=422,
                     details={"unknown_operation_ids": sorted(selected - known)},
                 )
@@ -715,9 +711,7 @@ class WorkflowService:
                         "new_value": operation.new_value_jsonb,
                     }
                 )
-            revision, group_no, applied = V1EditingService(
-                self.session
-            ).apply_operation_batch(
+            revision, group_no, applied = V1EditingService(self.session).apply_operation_batch(
                 owned,
                 operations=batch,
                 actor_user_id=actor_user_id,
@@ -757,7 +751,7 @@ class WorkflowService:
             if patch_set.status != "applied":
                 raise ApplicationError(
                     "agent_patch_not_applied",
-                    "Only an applied Agent patch can be undone",
+                    "只有已应用的 Agent 修改批次才能撤销。",
                     status_code=409,
                     details={"status": patch_set.status},
                 )
@@ -768,7 +762,7 @@ class WorkflowService:
             ):
                 raise ApplicationError(
                     "agent_patch_undo_stale",
-                    "Undo is available only before any later Draft edit",
+                    "只有在后续没有修改草稿前才能撤销。",
                     status_code=409,
                     details={
                         "current_revision": owned.draft.revision,
@@ -931,7 +925,7 @@ class WorkflowService:
             if active_task_count:
                 raise ApplicationError(
                     "provider_credential_in_use",
-                    "The API key is still used by an active task",
+                    "当前 API 密钥仍被执行中的任务使用，请等待任务结束后再删除。",
                     status_code=409,
                     details={"provider": provider, "active_task_count": active_task_count},
                 )
@@ -972,25 +966,25 @@ class WorkflowService:
         if source_kind not in {"human_original", "human_revision"}:
             raise ApplicationError(
                 "source_kind_not_writable",
-                "Only human-authored SourceRecord kinds can be created through the API",
+                "只能通过接口创建作者撰写的来源记录。",
                 status_code=422,
             )
         if not content_text.strip():
             raise ApplicationError(
                 "source_content_blank",
-                "SourceRecord content must not be blank",
+                "来源记录内容不能为空。",
                 status_code=422,
             )
         if source_kind == "human_revision" and parent_source_record_id is None:
             raise ApplicationError(
                 "source_parent_required",
-                "A human revision must reference its parent SourceRecord",
+                "作者修订必须引用父来源记录。",
                 status_code=422,
             )
         if source_kind == "human_original" and parent_source_record_id is not None:
             raise ApplicationError(
                 "source_parent_forbidden",
-                "An original SourceRecord cannot reference a parent",
+                "原始来源记录不能引用父来源。",
                 status_code=422,
             )
         with self.session.begin():
@@ -1042,7 +1036,7 @@ class WorkflowService:
             if brief.draft_revision != expected_revision:
                 raise ApplicationError(
                     "brief_revision_conflict",
-                    "Brief draft revision is stale",
+                    "创作简报草稿版本已过期，请刷新后重试。",
                     status_code=409,
                     details={
                         "current_revision": brief.draft_revision,
@@ -1071,7 +1065,7 @@ class WorkflowService:
             if brief.draft_revision != expected_revision:
                 raise ApplicationError(
                     "brief_revision_conflict",
-                    "Brief draft revision is stale",
+                    "创作简报草稿版本已过期，请刷新后重试。",
                     status_code=409,
                     details={"current_revision": brief.draft_revision},
                 )
@@ -1125,7 +1119,7 @@ class WorkflowService:
             if brief.current_version_id != version.id:
                 raise ApplicationError(
                     "brief_version_not_current",
-                    "Strategy analysis requires the current confirmed Brief version",
+                    "策略分析需要使用当前已确认的创作简报版本。",
                     status_code=409,
                     details={"current_version_id": brief.current_version_id},
                 )
@@ -1186,14 +1180,14 @@ class WorkflowService:
         except ValueError as error:
             raise ApplicationError(
                 "unsupported_candidate_strategy",
-                "Unsupported candidate strategy",
+                "不支持的候选策略。",
                 status_code=422,
                 details={"candidate_strategy": candidate_strategy},
             ) from error
         if candidate_strategy_attempt not in {1, 2}:
             raise ApplicationError(
                 "candidate_strategy_attempt_invalid",
-                "Candidate strategy retry is limited to one additional attempt",
+                "候选策略最多只能额外重试一次。",
                 status_code=422,
             )
         with self.session.begin():
@@ -1201,7 +1195,7 @@ class WorkflowService:
             if owned.draft.revision != expected_draft_revision:
                 raise ApplicationError(
                     "draft_revision_conflict",
-                    "Draft revision is stale",
+                    "草稿已被更新，请刷新后重新提交。",
                     status_code=409,
                     details={"current_revision": owned.draft.revision},
                 )
@@ -1218,7 +1212,7 @@ class WorkflowService:
             if brief.current_version_id != version.id:
                 raise ApplicationError(
                     "brief_version_not_current",
-                    "Generation requires the current user-confirmed Brief version",
+                    "生成任务需要使用当前已确认的创作简报版本。",
                     status_code=409,
                     details={"current_version_id": brief.current_version_id},
                 )
@@ -1350,7 +1344,7 @@ class WorkflowService:
         if polish_mode not in {"proofread", "rewrite", "narrative_enhance"}:
             raise ApplicationError(
                 "unsupported_polish_mode",
-                "Unsupported polish mode",
+                "不支持的润色方式。",
                 status_code=422,
             )
         with self.session.begin():
@@ -1388,27 +1382,36 @@ class WorkflowService:
         *,
         expected_brief_revision: int,
         provider: str = DEFAULT_PROVIDER,
+        mode: str = "extract",
+        content: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
+        if mode not in {"extract", "suggest_author_answer"}:
+            raise ApplicationError(
+                "unsupported_anchor_extract_mode",
+                "不支持的作者底牌生成方式。",
+                status_code=422,
+            )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             brief = self._brief(owned, lock=True)
             if brief.draft_revision != expected_brief_revision:
                 raise ApplicationError(
                     "brief_revision_conflict",
-                    "Brief draft revision is stale",
+                    "创作简报草稿版本已过期，请刷新后重试。",
                     status_code=409,
                     details={
                         "current_revision": brief.draft_revision,
                         "received_revision": expected_brief_revision,
                     },
                 )
-            content = _validate_brief(brief.draft_jsonb)
+            brief_content = _validate_brief(brief.draft_jsonb)
+            content = _validate_brief(content) if content is not None else brief_content
             self._validate_brief_sources(owned, content)
-            if not content["author_answer"] and not content["boundary_text"]:
+            if mode == "extract" and not content["author_answer"] and not content["boundary_text"]:
                 raise ApplicationError(
                     "brief_extraction_input_empty",
-                    "Author answer or creative boundary is required for extraction",
+                    "请先填写作者底牌或创作边界，再进行拆解。",
                     status_code=422,
                 )
             setting = self._provider_setting(actor_user_id, provider)
@@ -1422,9 +1425,14 @@ class WorkflowService:
                 input_source_record_id=None,
                 input_brief_revision=brief.draft_revision,
                 input_hash=input_hash,
-                input_jsonb={"brief": content},
+                input_jsonb={"brief": content, "mode": mode},
             )
-            return self._queue_task(task, message="作者底牌与创作边界拆解任务已进入队列")
+            message = (
+                "作者底牌候选生成任务已进入队列"
+                if mode == "suggest_author_answer"
+                else "作者底牌与创作边界拆解任务已进入队列"
+            )
+            return self._queue_task(task, message=message)
 
     def get_latest_task(
         self,
@@ -1444,7 +1452,7 @@ class WorkflowService:
         }:
             raise ApplicationError(
                 "task_type_not_supported",
-                f"Task type is not supported: {task_type}",
+                "不支持当前任务类型。",
                 status_code=422,
             )
         with self.session.begin():
@@ -1463,6 +1471,83 @@ class WorkflowService:
     def get_task(self, actor_user_id: int, project_id: int, task_run_id: int) -> dict[str, Any]:
         with self.session.begin():
             task = self._task(actor_user_id, project_id, task_run_id)
+            return _task_view(task)
+
+    def resume_generation_task(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        task_run_id: int,
+        *,
+        expected_draft_revision: int,
+        expected_brief_revision: int,
+    ) -> dict[str, Any]:
+        """Queue a new attempt on one failed v8 generation TaskRun."""
+
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            task = self.session.scalar(
+                select(TaskRun)
+                .where(
+                    TaskRun.id == task_run_id,
+                    TaskRun.project_id == owned.project.id,
+                )
+                .with_for_update()
+            )
+            if task is None:
+                raise not_found("TaskRun")
+            if task.task_type != "brief_to_draft" or task.prompt_version != "brief-to-draft-v8":
+                raise ApplicationError(
+                    "task_resume_not_supported",
+                    "只有 v8 深稿生成任务支持从失败阶段恢复。",
+                    status_code=409,
+                )
+            if task.status != "failed":
+                raise ApplicationError(
+                    "task_resume_status_invalid",
+                    "只有失败的深稿生成任务可以恢复。",
+                    status_code=409,
+                )
+            brief = self._brief(owned, lock=True)
+            if (
+                owned.draft.revision != expected_draft_revision
+                or task.input_draft_revision != expected_draft_revision
+            ):
+                raise ApplicationError(
+                    "task_resume_draft_stale",
+                    "工作稿已更新，请重新生成整份候选。",
+                    status_code=409,
+                    details={"current_revision": owned.draft.revision},
+                )
+            if (
+                brief.draft_revision != expected_brief_revision
+                or task.input_brief_revision != expected_brief_revision
+                or brief.current_version_id != task.brief_version_id
+            ):
+                raise ApplicationError(
+                    "task_resume_brief_stale",
+                    "创作简报已更新，请重新生成整份候选。",
+                    status_code=409,
+                    details={"current_revision": brief.draft_revision},
+                )
+            task.status = "queued"
+            task.stage = "queued"
+            task.completed_at = None
+            task.error_code = None
+            task.error_details_jsonb = {}
+            task.leased_by = None
+            task.lease_expires_at = None
+            task.cancel_requested_at = None
+            _append_event(
+                self.session,
+                task,
+                "task.resumed",
+                "queued",
+                {
+                    "message": "已恢复任务，将复用输入与上游哈希完全一致的成功部件。",
+                    "previous_attempt_count": task.attempt_count,
+                },
+            )
             return _task_view(task)
 
     def list_task_events(
@@ -1544,9 +1629,7 @@ class WorkflowService:
             row.id: row
             for row in self.session.scalars(
                 select(CaseFileObject).where(
-                    CaseFileObject.id.in_(
-                        operation.target_object_id for operation in operations
-                    )
+                    CaseFileObject.id.in_(operation.target_object_id for operation in operations)
                 )
             )
         }
@@ -1562,8 +1645,7 @@ class WorkflowService:
                         "new_value": operation.new_value_jsonb,
                     }
                     for operation in operations
-                    if operation.decision == "accepted"
-                    and operation.target_object_id in registries
+                    if operation.decision == "accepted" and operation.target_object_id in registries
                 ]
                 validator_issues = _nonblocking_validator_issues(document, accepted)
         return {
@@ -1594,9 +1676,7 @@ class WorkflowService:
                         if (registry := registries.get(operation.target_object_id)) is None
                         else registry.object_id
                     ),
-                    "object_type": (
-                        None if registry is None else registry.object_type
-                    ),
+                    "object_type": (None if registry is None else registry.object_type),
                     "operation_type": operation.operation_type,
                     "field_path": operation.field_path,
                     "expected_object_revision": operation.expected_object_revision,
@@ -1630,7 +1710,7 @@ class WorkflowService:
         if setting is None or setting.credential_status == "deleted":
             raise ApplicationError(
                 "provider_setting_required",
-                f"Configure a {provider} API key before starting the task",
+                f"开始任务前请先配置 {provider} API 密钥。",
                 status_code=409,
                 details={"provider": provider},
             )
@@ -1652,6 +1732,11 @@ class WorkflowService:
         input_message_id: int | None = None,
         output_message_id: int | None = None,
     ) -> TaskRun:
+        prompt_version = prompt_version_for_task(task_type)
+        if task_type == "brief_to_draft":
+            override = os.getenv("CASEFILE_BRIEF_TO_DRAFT_PROMPT_VERSION", "").strip()
+            if override in {"brief-to-draft-v7", "brief-to-draft-v8"}:
+                prompt_version = override
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,
@@ -1678,7 +1763,7 @@ class WorkflowService:
             provider_config_version=setting.config_version,
             schema_version=CASEFILE_SCHEMA_VERSION,
             agent_version=AGENT_VERSION,
-            prompt_version=prompt_version_for_task(task_type),
+            prompt_version=prompt_version,
             toolset_version=TOOLSET_VERSION,
             budget_jsonb=dict(setting.default_budget_jsonb),
             usage_jsonb={},
@@ -1722,7 +1807,7 @@ class WorkflowService:
         if missing:
             raise ApplicationError(
                 "brief_source_invalid",
-                "Every Brief source must belong to the current Project",
+                "创作简报的每条来源都必须属于当前项目。",
                 status_code=422,
                 details={"missing_source_record_ids": missing},
             )
@@ -1813,7 +1898,7 @@ def _validate_brief(content: dict[str, Any]) -> dict[str, Any]:
     except ValidationError as error:
         raise ApplicationError(
             "brief_invalid",
-            "Brief does not satisfy the v1 contract",
+            "创作简报不符合当前内容要求。",
             status_code=422,
             details={"issues": error.errors(include_url=False)},
         ) from error
@@ -1827,22 +1912,23 @@ def _validate_brief_semantics(content: dict[str, Any]) -> None:
     if any(not str(content[field]).strip() for field in text_fields):
         raise ApplicationError(
             "brief_invalid",
-            "Brief intent and reasoning proposition must not be blank",
+            "创作意图和推理命题不能为空。",
             status_code=422,
         )
     for field in ("author_answer", "boundary_text"):
         value = content[field]
         if value is not None and not str(value).strip():
+            field_label = {"author_answer": "作者底牌", "boundary_text": "创作边界"}[field]
             raise ApplicationError(
                 "brief_invalid",
-                f"{field} must be null or non-blank",
+                f"{field_label}必须为空或填写有效内容。",
                 status_code=422,
             )
     source_record_ids = content["source_record_ids"]
     if len(source_record_ids) != len(set(source_record_ids)):
         raise ApplicationError(
             "brief_source_record_duplicate",
-            "Brief source record references must be unique",
+            "创作简报中的来源记录引用不能重复。",
             status_code=422,
         )
     resolution_mode = content["resolution_mode"]
@@ -1850,25 +1936,21 @@ def _validate_brief_semantics(content: dict[str, Any]) -> None:
         if content["author_answer"] is None:
             raise ApplicationError(
                 "brief_author_answer_required",
-                "Author-anchored resolution mode requires an author answer",
+                "按作者底牌展开时必须填写作者底牌。",
                 status_code=422,
             )
     elif content["author_answer"] is not None or content["author_anchors"]:
         raise ApplicationError(
             "brief_resolution_mode_conflict",
-            "Non-anchored resolution modes cannot contain an author answer or anchors",
+            "非作者底牌展开方式不能包含作者底牌或底牌原子项。",
             status_code=422,
         )
     anchor_ids = [item["anchor_id"] for item in content["author_anchors"]]
-    constraint_ids = [
-        item["constraint_id"] for item in content["creative_constraints"]
-    ]
-    if len(anchor_ids) != len(set(anchor_ids)) or len(constraint_ids) != len(
-        set(constraint_ids)
-    ):
+    constraint_ids = [item["constraint_id"] for item in content["creative_constraints"]]
+    if len(anchor_ids) != len(set(anchor_ids)) or len(constraint_ids) != len(set(constraint_ids)):
         raise ApplicationError(
             "brief_atomic_id_duplicate",
-            "Brief atomic IDs must be unique within their collection",
+            "同一组创作简报原子项的 ID 不能重复。",
             status_code=422,
         )
     statements = [
@@ -1878,7 +1960,7 @@ def _validate_brief_semantics(content: dict[str, Any]) -> None:
     if any(not str(statement).strip() for statement in statements):
         raise ApplicationError(
             "brief_atomic_statement_blank",
-            "Brief atomic statements must not be blank",
+            "创作简报原子项内容不能为空。",
             status_code=422,
         )
 
@@ -1887,13 +1969,13 @@ def _require_confirmed_atomics(content: dict[str, Any]) -> None:
     if content["author_answer"] and not content["author_anchors"]:
         raise ApplicationError(
             "brief_author_anchors_required",
-            "Author answer must be decomposed into at least one confirmed atomic anchor",
+            "作者底牌至少要拆解为一个已确认的底牌原子项。",
             status_code=422,
         )
     if content["boundary_text"] and not content["creative_constraints"]:
         raise ApplicationError(
             "brief_creative_constraints_required",
-            "Creative boundary must be decomposed into at least one confirmed atomic constraint",
+            "创作边界至少要拆解为一个已确认的边界原子项。",
             status_code=422,
         )
 
@@ -1927,7 +2009,7 @@ def _supported_provider(provider: str) -> str:
     if normalized not in SUPPORTED_PROVIDERS:
         raise ApplicationError(
             "provider_not_supported",
-            f"Provider is not supported: {provider}",
+            f"不支持的模型服务：{provider}。",
             status_code=422,
             details={"supported_providers": sorted(SUPPORTED_PROVIDERS)},
         )
@@ -2026,14 +2108,56 @@ def _task_view(task: TaskRun) -> dict[str, Any]:
         "input_message_id": task.input_message_id,
         "output_message_id": task.output_message_id,
         "input_hash": task.input_hash,
+        "candidate_strategy": (
+            task.input_jsonb.get("candidate_strategy")
+            if task.task_type == "brief_to_draft"
+            and task.input_jsonb.get("candidate_strategy")
+            in {"structure_first", "atmosphere_first", "reasoning_first", "balanced"}
+            else None
+        ),
         "attempt_count": task.attempt_count,
         "usage": task.usage_jsonb,
         "result_snapshot_id": task.result_snapshot_id,
         "result": task.result_jsonb,
         "error_code": task.error_code,
         "failure": _task_failure_from_row(task),
+        "component_steps": [_component_step_view(step) for step in task.component_step_runs],
         "created_at": _time(task.created_at),
         "updated_at": _time(task.updated_at),
+    }
+
+
+def _component_step_view(step: Any) -> dict[str, Any]:
+    diagnostic = step.diagnostic_jsonb if isinstance(step.diagnostic_jsonb, dict) else {}
+    raw_issues = diagnostic.get("issues", [])
+    issues = [
+        {
+            "component_id": str(issue.get("component_id") or step.component_id),
+            "failure_layer": str(
+                issue.get("failure_layer") or diagnostic.get("failure_layer") or "unknown"
+            ),
+            "schema_id": issue.get("schema_id") or step.ir_schema_id,
+            "code": str(issue.get("code") or "validation_failed"),
+            "path": str(issue.get("path") or ""),
+            "message": str(issue.get("message") or "部件执行失败。")[:240],
+        }
+        for issue in raw_issues
+        if isinstance(issue, dict)
+    ]
+    return {
+        "step_run_id": step.id,
+        "attempt_no": step.task_attempt.attempt_no if hasattr(step, "task_attempt") else 1,
+        "component_id": step.component_id,
+        "parent_component_id": step.parent_component_id,
+        "execution_no": step.execution_no,
+        "status": step.status,
+        "schema_id": step.ir_schema_id,
+        "input_hash": step.input_hash,
+        "output_hash": step.output_hash,
+        "failure_layer": diagnostic.get("failure_layer"),
+        "issues": issues,
+        "recoverable": bool(diagnostic.get("recoverable")),
+        "resumed_from_step_run_id": step.resumed_from_step_run_id,
     }
 
 
@@ -2046,10 +2170,10 @@ def task_failure_view(
     if error_code is None:
         return None
     message = _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])
-    if (
-        network_retries is not None
-        and error_code in {"provider_connection_failed", "provider_timeout"}
-    ):
+    if network_retries is not None and error_code in {
+        "provider_connection_failed",
+        "provider_timeout",
+    }:
         message = f"{message}（已自动重试 {network_retries} 次）"
     return {
         "code": error_code,

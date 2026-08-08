@@ -243,7 +243,7 @@ class V1EditingService:
         if not operations:
             raise ApplicationError(
                 "patch_operation_empty",
-                "At least one accepted patch operation is required",
+                "至少需要一项已接受的修改操作。",
                 status_code=422,
             )
 
@@ -257,7 +257,7 @@ class V1EditingService:
             if operation.get("operation_type", "replace") != "replace":
                 raise ApplicationError(
                     "patch_operation_not_supported",
-                    "This release supports field replacement operations only",
+                    "当前版本仅支持替换字段值。",
                     status_code=422,
                     details={"operation_id": operation.get("operation_id")},
                 )
@@ -273,7 +273,7 @@ class V1EditingService:
             ):
                 raise ApplicationError(
                     "patch_object_revision_conflict",
-                    "A suggested object changed after the Agent read it",
+                    "Agent 读取后，该建议对象已发生变化。",
                     status_code=409,
                     details={
                         "object_id": object_id,
@@ -299,7 +299,7 @@ class V1EditingService:
             if old_value != operation.get("old_value"):
                 raise ApplicationError(
                     "patch_old_value_conflict",
-                    "A suggested field no longer matches its frozen value",
+                    "建议字段已不再匹配冻结时的值。",
                     status_code=409,
                     details={
                         "object_id": object_id,
@@ -404,7 +404,7 @@ class V1EditingService:
         if unknown:
             raise ApplicationError(
                 "field_read_only",
-                "The patch contains immutable or unsupported fields",
+                "修改内容包含不可变或不受支持的字段。",
                 status_code=422,
                 details={"fields": unknown, "object_type": object_type},
             )
@@ -413,7 +413,7 @@ class V1EditingService:
     def _object_read_only(object_type: str) -> ApplicationError:
         return ApplicationError(
             "object_read_only",
-            "This object type is not editable in the current CaseFile contract",
+            "当前 CaseFile 契约中的该对象类型不可编辑。",
             status_code=409,
             details={"object_type": object_type},
         )
@@ -681,7 +681,7 @@ def _pointer_parts(path: str) -> list[str]:
     if not path.startswith("/") or path == "/":
         raise ApplicationError(
             "patch_path_invalid",
-            "Patch paths must address one business field",
+            "修改路径必须指向一个业务字段。",
             status_code=422,
             details={"field_path": path},
         )
@@ -700,7 +700,7 @@ def _pointer_value(value: Any, path: str) -> Any:
         except (IndexError, KeyError, TypeError, ValueError) as error:
             raise ApplicationError(
                 "patch_path_missing",
-                "The suggested field does not exist in the current object",
+                "建议字段不存在于当前对象中。",
                 status_code=409,
                 details={"field_path": path},
             ) from error
@@ -716,7 +716,7 @@ def _replace_pointer(value: Any, path: str, replacement: Any) -> None:
         except (IndexError, KeyError, TypeError, ValueError) as error:
             raise ApplicationError(
                 "patch_path_missing",
-                "The suggested field does not exist in the current object",
+                "建议字段不存在于当前对象中。",
                 status_code=409,
                 details={"field_path": path},
             ) from error
@@ -729,7 +729,7 @@ def _replace_pointer(value: Any, path: str, replacement: Any) -> None:
     except (IndexError, KeyError, TypeError, ValueError) as error:
         raise ApplicationError(
             "patch_path_missing",
-            "The suggested field does not exist in the current object",
+            "建议字段不存在于当前对象中。",
             status_code=409,
             details={"field_path": path},
         ) from error

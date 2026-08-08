@@ -2,6 +2,9 @@ param(
     [ValidateSet("fake", "live")][string]$Mode = "fake",
     [ValidateRange(1, 100)][int]$Repeats = 3,
     [string]$Model = "gpt-5.6-sol",
+    [ValidateSet("openai", "deepseek")][string]$Provider = "openai",
+    [string]$PromptVersion = "",
+    [string]$ReportPath = "",
     [string]$Fixture = "fixtures\benchmark\brief_to_draft.json"
 )
 
@@ -19,11 +22,26 @@ $fixturePath = if ([System.IO.Path]::IsPathRooted($Fixture)) {
 
 Push-Location (Join-Path $repoRoot "backend")
 try {
-    & $python -m casefile.benchmark `
-        --fixture $fixturePath `
-        --mode $Mode `
-        --repeats $Repeats `
-        --model $Model
+    $arguments = @(
+        "-m", "casefile.benchmark",
+        "--fixture", $fixturePath,
+        "--mode", $Mode,
+        "--repeats", $Repeats,
+        "--model", $Model,
+        "--provider", $Provider
+    )
+    if ($PromptVersion) {
+        $arguments += @("--prompt-version", $PromptVersion)
+    }
+    if ($ReportPath) {
+        $reportFile = if ([System.IO.Path]::IsPathRooted($ReportPath)) {
+            $ReportPath
+        } else {
+            Join-Path $repoRoot $ReportPath
+        }
+        $arguments += @("--report-path", $reportFile)
+    }
+    & $python @arguments
     if ($LASTEXITCODE -ne 0) {
         throw "Benchmark failed."
     }

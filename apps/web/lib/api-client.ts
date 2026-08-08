@@ -14,7 +14,11 @@ export class ApiError extends Error {
     readonly status: number,
     readonly body: ApiErrorBody,
   ) {
-    super(body.message);
+    super(
+      /[\u3400-\u9fff]/u.test(body.message)
+        ? body.message
+        : "请求未能完成，请稍后重试。",
+    );
   }
 }
 
@@ -245,6 +249,7 @@ export interface SourceRecordView {
 }
 
 export type PolishMode = "proofread" | "rewrite" | "narrative_enhance";
+export type AnchorExtractMode = "extract" | "suggest_author_answer";
 
 export interface BriefPolishResult {
   input_hash: string;
@@ -258,6 +263,7 @@ export interface BriefPolishResult {
 
 export interface BriefAnchorExtractResult {
   input_hash: string;
+  suggested_author_answer?: string;
   author_anchors: Array<{ statement: string }>;
   creative_constraints: Array<{
     statement: string;
@@ -306,6 +312,31 @@ export interface TaskFailure {
   issues: TaskFailureIssue[];
 }
 
+export interface AgentDiagnosticIssue {
+  component_id: string;
+  failure_layer: string;
+  schema_id: string | null;
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface AgentComponentStepView {
+  step_run_id: number;
+  attempt_no: number;
+  component_id: string;
+  parent_component_id: string | null;
+  execution_no: number;
+  status: "pending" | "running" | "succeeded" | "failed" | "reused" | "skipped";
+  schema_id: string;
+  input_hash: string;
+  output_hash: string | null;
+  failure_layer: string | null;
+  issues: AgentDiagnosticIssue[];
+  recoverable: boolean;
+  resumed_from_step_run_id: number | null;
+}
+
 export interface GenerationCandidateSummary {
   candidate_strategy: CandidateStrategy;
   candidate_strategy_version: string;
@@ -347,6 +378,7 @@ export interface TaskView {
   input_message_id: number | null;
   output_message_id: number | null;
   input_hash: string;
+  candidate_strategy: CandidateStrategy | null;
   attempt_count: number;
   usage: Record<string, unknown>;
   result_snapshot_id: number | null;
@@ -360,6 +392,7 @@ export interface TaskView {
     | null;
   error_code: string | null;
   failure: TaskFailure | null;
+  component_steps: AgentComponentStepView[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -521,6 +554,8 @@ export function errorMessage(error: unknown) {
       internal_error: "请求暂时无法完成，请稍后重试。",
       not_found: "没有找到请求的数据。",
       method_not_allowed: "当前操作不受支持。",
+      brief_intake_already_adopted:
+        "当前建案已进入正式创作简报审阅，不能再回退修改。",
       provider_setting_required: "请先配置当前模型服务。",
       provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
@@ -531,8 +566,7 @@ export function errorMessage(error: unknown) {
     };
     const localizedMessage = localizedMessages[error.body.code];
     if (localizedMessage) return localizedMessage;
-    if (/[\u3400-\u9fff]/u.test(error.body.message)) return error.body.message;
-    return `请求未能完成（错误代码：${error.body.code}）。`;
+    return error.message;
   }
   return error instanceof Error ? error.message : "请求未完成，请检查 API 与数据库状态。";
 }

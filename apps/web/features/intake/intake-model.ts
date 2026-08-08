@@ -209,21 +209,33 @@ export const resolutionModes: Array<{
   value: ResolutionMode;
   label: string;
   hint: string;
+  effectTiming: string;
+  effectTitle: string;
+  effectDetail: string;
 }> = [
   {
     value: "author_anchored",
-    label: "按作者底牌展开",
-    hint: "答案已经确定，后续围绕它铺设证据。",
+    label: "使用我提供的答案",
+    hint: "现在填写底牌；深稿只围绕它铺设证据。",
+    effectTiming: "现在与深稿生成时生效",
+    effectTitle: "你先锁定答案，Agent 只负责展开",
+    effectDetail: "作者底牌会成为硬约束。Agent 可以补全证据与推理链，但不能改写、弱化或替换答案。",
   },
   {
     value: "agent_proposed",
-    label: "由 Agent 提出候选结论",
-    hint: "先形成多个可验证答案，再由你采用。",
+    label: "让 Agent 在深稿中拟定",
+    hint: "现在不生成；冻结简报后补全一套可验证答案。",
+    effectTiming: "冻结简报后生效",
+    effectTitle: "Agent 会随深稿拟定答案",
+    effectDetail: "这里不会立即出现候选。生成深稿时，Agent 会补全一套答案、证据与推理链；你最终审阅并采用的是整份深稿。",
   },
   {
     value: "open",
-    label: "保持开放",
-    hint: "暂时不锁定真相，只确认调查问题。",
+    label: "暂不设定答案",
+    hint: "深稿保留多种解释，不收束为唯一真相。",
+    effectTiming: "深稿生成时生效",
+    effectTitle: "Agent 不会替你暗中锁定真相",
+    effectDetail: "深稿仍会组织线索与推理路径，但必须真实保留答案开放性，不能制造唯一结论。",
   },
 ];
 

@@ -121,33 +121,33 @@ class DraftCandidateService:
             if task.status != "succeeded":
                 raise ApplicationError(
                     "candidate_not_ready",
-                    "Only a successful generation candidate can be adopted",
+                    "只有生成成功的候选才能被采用。",
                     status_code=409,
                 )
             if task.result_snapshot_id is not None:
                 raise ApplicationError(
                     "candidate_already_adopted",
-                    "This candidate has already been adopted",
+                    "该候选已经被采用。",
                     status_code=409,
                 )
             attempt = self._successful_candidate_attempt(task)
             if attempt is None or not isinstance(attempt.candidate_jsonb, dict):
                 raise ApplicationError(
                     "candidate_not_ready",
-                    "The successful generation task has no validated candidate",
+                    "生成成功的任务没有可用的已校验候选。",
                     status_code=409,
                 )
             brief = self._brief(owned, lock=True)
             if task.brief_version_id is None:
                 raise ApplicationError(
                     "candidate_brief_missing",
-                    "The generation candidate has no frozen Brief version",
+                    "生成候选没有对应的冻结创作简报版本。",
                     status_code=409,
                 )
             if brief.current_version_id != task.brief_version_id:
                 raise ApplicationError(
                     "candidate_brief_stale",
-                    "The candidate belongs to an older Brief version",
+                    "该候选属于较早的创作简报版本，已失效。",
                     status_code=409,
                     details={"current_version_id": brief.current_version_id},
                 )

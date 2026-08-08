@@ -12,7 +12,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import rfc8785
 from openai import (
@@ -21,7 +21,7 @@ from openai import (
     AuthenticationError,
     RateLimitError,
 )
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime import (
@@ -69,6 +69,8 @@ from casefile.contracts import (
 )
 from casefile.data_postgres.models import (
     AgentMessage,
+    AgentModelCall,
+    AgentStepRun,
     Brief,
     BriefVersion,
     SourceRecord,
@@ -249,6 +251,9 @@ class Worker:
                 frozen_brief = _required_object(task_snapshot.input_jsonb, "brief")
                 if _json_hash(frozen_brief) != task_snapshot.input_hash:
                     raise RuntimeError("Frozen Brief payload does not match its input hash")
+                mode = task_snapshot.input_jsonb.get("mode", "extract")
+                if mode not in {"extract", "suggest_author_answer"}:
+                    raise RuntimeError("Frozen Brief anchor extraction mode is invalid")
                 extract_request = BriefAnchorExtractRequest(
                     task_run_id=task_snapshot.id,
                     prompt_version=task_snapshot.prompt_version,
@@ -261,9 +266,13 @@ class Worker:
                         task_run_id, event_type, stage, payload
                     ),
                     network_retries=_network_retries(task_snapshot),
+                    mode=cast(Literal["extract", "suggest_author_answer"], mode),
                 )
                 extract_result = provider.extract_anchors(extract_request)
-                candidate = extract_result.candidate.model_dump(mode="json")
+                candidate = extract_result.candidate.model_dump(
+                    mode="json",
+                    exclude_none=True,
+                )
                 usage = extract_result.usage
                 self._complete_anchor_extract(
                     task_run_id,
@@ -294,13 +303,9 @@ class Worker:
                 mode = task_snapshot.input_jsonb.get("mode", "initial")
                 if mode not in ("initial", "additional"):
                     raise RuntimeError("Frozen Brief Intake question mode is invalid")
-                existing_questions = task_snapshot.input_jsonb.get(
-                    "existing_questions", []
-                )
+                existing_questions = task_snapshot.input_jsonb.get("existing_questions", [])
                 if not isinstance(existing_questions, list):
-                    raise RuntimeError(
-                        "Frozen Brief Intake existing questions must be an array"
-                    )
+                    raise RuntimeError("Frozen Brief Intake existing questions must be an array")
                 questions_request = BriefIntakeQuestionsRequest(
                     task_run_id=task_snapshot.id,
                     prompt_version=task_snapshot.prompt_version,
@@ -391,12 +396,8 @@ class Worker:
                     break
                 except ContractValidationError as error:
                     public_issues = public_validation_issues(error.errors)
-                    validation_errors.append(
-                        {"repair_no": repair_no, "issues": public_issues}
-                    )
-                    feedback_history.append(
-                        {"repair_no": repair_no, "issues": error.errors}
-                    )
+                    validation_errors.append({"repair_no": repair_no, "issues": public_issues})
+                    feedback_history.append({"repair_no": repair_no, "issues": error.errors})
                     feedback = tuple(feedback_history[-3:])
                     self._emit(
                         task_run_id,
@@ -442,9 +443,7 @@ class Worker:
             if setting.user_id != task.actor_user_id or setting.provider != task.provider:
                 raise RuntimeError("Frozen provider setting does not match TaskRun provenance")
             if setting.config_version != task.provider_config_version:
-                raise RuntimeError(
-                    "Frozen provider setting version no longer matches TaskRun"
-                )
+                raise RuntimeError("Frozen provider setting version no longer matches TaskRun")
             if (
                 setting.credential_status == "deleted"
                 or setting.secret_ciphertext is None
@@ -556,6 +555,7 @@ class Worker:
                 network_retries=_network_retries(task),
                 candidate_strategy=candidate_strategy,
                 candidate_strategy_version=candidate_strategy_version,
+                reusable_steps=_reusable_v8_steps(session, task),
             )
 
     def _load_chat_request(
@@ -591,9 +591,7 @@ class Worker:
             model_id=task.model_id,
             api_key=api_key,
             max_turns=int(task.budget_jsonb.get("max_turns", 12)),
-            emit=lambda event_type, stage, payload: self._emit(
-                task.id, event_type, stage, payload
-            ),
+            emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
             network_retries=_network_retries(task),
         )
 
@@ -771,9 +769,7 @@ class Worker:
         *,
         expected_task_type: str,
     ) -> tuple[TaskRun, TaskAttempt]:
-        task = session.scalar(
-            select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
-        )
+        task = session.scalar(select(TaskRun).where(TaskRun.id == task_run_id).with_for_update())
         attempt = session.scalar(
             select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
         )
@@ -935,7 +931,42 @@ class Worker:
                 or attempt.status != "running"
             ):
                 return
+            safe_message = _safe_error_message(error, sensitive_values)
+            if task.prompt_version == "brief-to-draft-v8":
+                underlying_error_code = error_code
+                error_code = "agent_component_failed"
             failure_issues = _failure_validation_issues(validation_errors)
+            if task.prompt_version == "brief-to-draft-v8":
+                coordinator_issue = {
+                    "component_id": "run_coordinator",
+                    "failure_layer": "frozen_context",
+                    "schema_id": "task-run-v1",
+                    "code": underlying_error_code,
+                    "path": "",
+                    "message": safe_message,
+                }
+                if not failure_issues:
+                    failure_issues = [
+                        {
+                            "code": underlying_error_code,
+                            "path": "",
+                            "message": safe_message,
+                        }
+                    ]
+                has_failed_step = session.scalar(
+                    select(AgentStepRun.id).where(
+                        AgentStepRun.task_attempt_id == attempt.id,
+                        AgentStepRun.status == "failed",
+                    )
+                )
+                if has_failed_step is None:
+                    _record_v8_coordinator_failure(
+                        session,
+                        task=task,
+                        attempt=attempt,
+                        issue=coordinator_issue,
+                        finished_at=datetime.now(UTC),
+                    )
             public_failure = task_failure_view(
                 error_code,
                 issues=failure_issues,
@@ -943,7 +974,7 @@ class Worker:
             )
             details = {
                 "exception_type": type(error).__name__,
-                "message": _safe_error_message(error, sensitive_values),
+                "message": safe_message,
                 "public_failure": public_failure,
             }
             now = datetime.now(UTC)
@@ -1007,7 +1038,248 @@ class Worker:
                 raise RuntimeError("TaskRun lease was lost")
             task.stage = stage
             task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.config.lease_seconds)
-            append_task_event(session, task, event_type, stage, payload)
+            _persist_agent_execution_event(session, task, event_type, payload)
+            public_payload = {
+                key: value for key, value in payload.items() if not key.startswith("_")
+            }
+            append_task_event(session, task, event_type, stage, public_payload)
+
+
+def _persist_agent_execution_event(
+    session: Session,
+    task: TaskRun,
+    event_type: str,
+    payload: dict[str, Any],
+) -> None:
+    """Project v8 execution events into queryable step/call audit rows."""
+
+    if task.prompt_version != "brief-to-draft-v8":
+        return
+    component_id = payload.get("component_id")
+    if not isinstance(component_id, str) or not component_id:
+        return
+    attempt = session.scalar(
+        select(TaskAttempt)
+        .where(TaskAttempt.task_run_id == task.id, TaskAttempt.status == "running")
+        .order_by(TaskAttempt.attempt_no.desc())
+    )
+    if attempt is None:
+        return
+    now = datetime.now(UTC)
+    if event_type == "agent.step.started":
+        execution_no = int(
+            session.scalar(
+                select(func.coalesce(func.max(AgentStepRun.execution_no), 0) + 1).where(
+                    AgentStepRun.task_attempt_id == attempt.id,
+                    AgentStepRun.component_id == component_id,
+                )
+            )
+            or 1
+        )
+        session.add(
+            AgentStepRun(
+                project_id=task.project_id,
+                task_run_id=task.id,
+                task_attempt_id=attempt.id,
+                component_id=component_id,
+                parent_component_id=(
+                    "domain_drafters"
+                    if component_id in {"story_world", "evidence_logic", "resolution_governance"}
+                    else None
+                ),
+                execution_no=execution_no,
+                status="running",
+                input_hash=str(payload.get("input_hash") or task.input_hash),
+                upstream_hashes_jsonb=dict(payload.get("upstream_hashes") or {}),
+                ir_schema_id=str(payload.get("schema_id") or "unknown"),
+                component_version=task.prompt_version,
+            )
+        )
+        session.flush()
+        return
+    step = session.scalar(
+        select(AgentStepRun)
+        .where(
+            AgentStepRun.task_attempt_id == attempt.id,
+            AgentStepRun.component_id == component_id,
+            AgentStepRun.status == "running",
+        )
+        .order_by(AgentStepRun.execution_no.desc())
+        .with_for_update(of=AgentStepRun)
+    )
+    if step is None:
+        return
+    if event_type in {"agent.step.completed", "agent.step.failed", "agent.step.reused"}:
+        step.status = {
+            "agent.step.completed": "succeeded",
+            "agent.step.failed": "failed",
+            "agent.step.reused": "reused",
+        }[event_type]
+        step.output_hash = _optional_hash(payload.get("output_hash"))
+        artifact = payload.get("_artifact")
+        if isinstance(artifact, (dict, list)):
+            step.output_jsonb = artifact
+        step.diagnostic_jsonb = {
+            "failure_layer": payload.get("failure_layer"),
+            "schema_id": payload.get("schema_id"),
+            "error_code": payload.get("error_code"),
+            "issues": payload.get("issues", []),
+            "recoverable": payload.get("recoverable", False),
+        }
+        step.usage_jsonb = dict(payload.get("usage") or {})
+        step.finished_at = now
+        resumed_from = payload.get("resumed_from_step_run_id")
+        if isinstance(resumed_from, int):
+            step.resumed_from_step_run_id = resumed_from
+        return
+    if event_type == "agent.model_call.started":
+        call_no = int(payload.get("attempt_no") or 1)
+        session.add(
+            AgentModelCall(
+                project_id=task.project_id,
+                task_run_id=task.id,
+                task_attempt_id=attempt.id,
+                agent_step_run_id=step.id,
+                call_no=call_no,
+                status="running",
+                provider=task.provider,
+                model_id=task.model_id,
+                output_protocol=str(payload.get("protocol") or "unknown"),
+                prompt_version=task.prompt_version,
+                prompt_component_id=component_id,
+                prompt_sha256=_optional_hash(payload.get("prompt_sha256")),
+                target_schema_id=str(payload.get("schema_id") or step.ir_schema_id),
+                input_hash=step.input_hash,
+            )
+        )
+        session.flush()
+        return
+    if event_type in {"agent.model_call.completed", "agent.model_call.failed"}:
+        call_no = int(payload.get("attempt_no") or 1)
+        model_call = session.scalar(
+            select(AgentModelCall)
+            .where(
+                AgentModelCall.agent_step_run_id == step.id,
+                AgentModelCall.call_no == call_no,
+                AgentModelCall.status == "running",
+            )
+            .with_for_update(of=AgentModelCall)
+        )
+        if model_call is None:
+            return
+        model_call.status = "succeeded" if event_type == "agent.model_call.completed" else "failed"
+        model_call.output_hash = _optional_hash(payload.get("output_hash"))
+        raw_size = payload.get("output_size_bytes")
+        model_call.output_size_bytes = raw_size if isinstance(raw_size, int) else None
+        model_call.raw_output_text = (
+            payload.get("_raw_output") if isinstance(payload.get("_raw_output"), str) else None
+        )
+        model_call.raw_output_truncated = bool(payload.get("raw_output_truncated"))
+        model_call.issues_jsonb = list(payload.get("issues") or [])
+        model_call.usage_jsonb = dict(payload.get("usage") or {})
+        model_call.error_code = (
+            str(payload.get("error_code") or "model_call_failed")
+            if event_type == "agent.model_call.failed"
+            else None
+        )
+        model_call.finished_at = now
+
+
+def _record_v8_coordinator_failure(
+    session: Session,
+    *,
+    task: TaskRun,
+    attempt: TaskAttempt,
+    issue: dict[str, str],
+    finished_at: datetime,
+) -> None:
+    """Persist a v8 failure that happened before a business component could start."""
+
+    execution_no = int(
+        session.scalar(
+            select(func.coalesce(func.max(AgentStepRun.execution_no), 0) + 1).where(
+                AgentStepRun.task_attempt_id == attempt.id,
+                AgentStepRun.component_id == "run_coordinator",
+            )
+        )
+        or 1
+    )
+    session.add(
+        AgentStepRun(
+            project_id=task.project_id,
+            task_run_id=task.id,
+            task_attempt_id=attempt.id,
+            component_id="run_coordinator",
+            parent_component_id=None,
+            execution_no=execution_no,
+            status="failed",
+            input_hash=task.input_hash,
+            upstream_hashes_jsonb={},
+            ir_schema_id=issue["schema_id"],
+            component_version=task.prompt_version,
+            diagnostic_jsonb={
+                "failure_layer": issue["failure_layer"],
+                "schema_id": issue["schema_id"],
+                "error_code": issue["code"],
+                "issues": [issue],
+                "recoverable": False,
+            },
+            usage_jsonb={},
+            finished_at=finished_at,
+        )
+    )
+    append_task_event(
+        session,
+        task,
+        "agent.step.failed",
+        "preflight",
+        {
+            "component_id": "run_coordinator",
+            "failure_layer": issue["failure_layer"],
+            "schema_id": issue["schema_id"],
+            "error_code": issue["code"],
+            "issues": [issue],
+            "recoverable": False,
+        },
+    )
+
+
+def _optional_hash(value: object) -> str | None:
+    return value if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) else None
+
+
+def _reusable_v8_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
+    if task.prompt_version != "brief-to-draft-v8" or task.attempt_count < 2:
+        return {}
+    rows = session.scalars(
+        select(AgentStepRun)
+        .where(
+            AgentStepRun.task_run_id == task.id,
+            AgentStepRun.status.in_(("succeeded", "reused")),
+            AgentStepRun.component_version == task.prompt_version,
+            AgentStepRun.component_id.in_(
+                (
+                    "case_blueprint_planner",
+                    "story_world",
+                    "evidence_logic",
+                    "resolution_governance",
+                )
+            ),
+        )
+        .order_by(AgentStepRun.id.desc())
+    )
+    reusable: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row.component_id in reusable or not isinstance(row.output_jsonb, dict):
+            continue
+        reusable[row.component_id] = {
+            "step_run_id": row.id,
+            "input_hash": row.input_hash,
+            "output_hash": row.output_hash,
+            "schema_id": row.ir_schema_id,
+            "output": row.output_jsonb,
+        }
+    return reusable
 
 
 def _error_code(error: Exception) -> str:

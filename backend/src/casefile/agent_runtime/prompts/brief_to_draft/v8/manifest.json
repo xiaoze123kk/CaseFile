@@ -1,0 +1,24 @@
+{
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v8",
+  "previous_version": "brief-to-draft-v7",
+  "change_summary": "改为原子 Prompt Bundle、固定集合蓝图、三领域语义 IR 与服务端确定性链接编译。",
+  "components": {
+    "planner": {
+      "file": "planner.md",
+      "sha256": "d12eee1955ed6aedf2a5b33650da88ff5c0fab97cca6a8023d2591974f4ecf73"
+    },
+    "story": {
+      "file": "story.md",
+      "sha256": "223bb2bee82ca98470482eb6db5ea2737b89818770c8e50825674a83aacf42d9"
+    },
+    "evidence": {
+      "file": "evidence.md",
+      "sha256": "3256cb833025986b80564725a1135430f35509a157246bb15bae1d4f2dfe1e0b"
+    },
+    "governance": {
+      "file": "governance.md",
+      "sha256": "806eb87356df8260fef0596a49729fb8c7f117bceed7a20c60b5ec391c580c6b"
+    }
+  }
+}

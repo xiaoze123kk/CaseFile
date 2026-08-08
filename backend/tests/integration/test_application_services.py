@@ -499,7 +499,7 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
             candidates = workflow.list_generation_candidates(actor_id, project_id)
         assert task["result_snapshot_id"] is not None
         assert draft["revision"] == 2
-        assert draft["content"]["title"] == "围绕午夜回航建立目标无关的推理卷宗。"
+        assert draft["content"]["title"] == task["result"]["title"]
         assert candidates[0]["is_current"] is True
         assert candidates[0]["is_adopted"] is True
 
@@ -754,7 +754,7 @@ def test_historical_worker_exhausts_structural_repairs_without_persisting_candid
         assert task["error_code"] == "candidate_validation_failed"
         assert task["failure"] == {
             "code": "candidate_validation_failed",
-            "message": "模型输出未通过 CaseFile 结构校验，已停止写入 Draft。",
+            "message": "模型输出未通过 CaseFile 结构校验，已停止写入草稿。",
             "retryable": True,
             "issues": [
                 {
@@ -781,7 +781,11 @@ def test_v7_worker_does_not_retry_a_whole_invalid_casefile(
     engine, actor_id, master_key = workflow_database
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, task_run_id = _prepare_task(engine, actor_id)
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v7",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         worker = Worker(
             factory,
@@ -1175,7 +1179,17 @@ def test_worker_rejects_rotated_provider_configuration(
         with factory() as session:
             task = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
         assert task["status"] == "failed"
-        assert task["error_code"] == "generation_failed"
+        assert task["error_code"] == "agent_component_failed"
+        assert task["failure"]["issues"][0]["code"] == "generation_failed"
+        assert len(task["component_steps"]) == 1
+        coordinator = task["component_steps"][0]
+        assert coordinator["component_id"] == "run_coordinator"
+        assert coordinator["status"] == "failed"
+        assert coordinator["failure_layer"] == "frozen_context"
+        assert coordinator["schema_id"] == "task-run-v1"
+        assert coordinator["recoverable"] is False
+        assert coordinator["issues"][0]["component_id"] == "run_coordinator"
+        assert coordinator["issues"][0]["code"] == "generation_failed"
 
 
 def test_confirmed_brief_and_task_events_are_database_immutable(

@@ -50,6 +50,20 @@ type BriefTextField =
   | "scopeEstimate"
   | "riskNotes";
 
+const taskTypeLabels: Record<string, string> = {
+  brief_polish: "原稿润色",
+  brief_anchor_extract: "底牌拆解",
+  brief_intake_questions: "关键追问",
+  brief_intake_synthesize: "创作简报候选",
+  brief_strategy_options: "策略分析",
+  brief_to_draft: "深稿生成",
+  casefile_chat: "Agent 对话",
+};
+
+function taskTypeLabel(taskType: string) {
+  return taskTypeLabels[taskType] ?? "任务";
+}
+
 function Glyph({
   name,
 }: {
@@ -161,6 +175,7 @@ export function IntakeCenter() {
     continueToQuestions: proceedToQuestions,
     generateMoreQuestions: requestMoreQuestions,
     generateBriefFromAnswers: synthesizeBriefFromServer,
+    generateAuthorAnswer,
     createManualBrief,
     saveCandidateAsNew: saveCandidateToServer,
     createDialogueRevision: createDialogueRevisionFromServer,
@@ -191,6 +206,11 @@ export function IntakeCenter() {
     "initial" | "additional" | null
   >(null);
   const [briefGenerationPending, setBriefGenerationPending] = useState(false);
+  const [authorAnswerSuggestion, setAuthorAnswerSuggestion] = useState<string | null>(
+    null,
+  );
+  const [authorAnswerPending, setAuthorAnswerPending] = useState(false);
+  const [authorAnswerError, setAuthorAnswerError] = useState<string | null>(null);
   const [polishDraft, setPolishDraft] = useState("");
   const [polishNotes, setPolishNotes] = useState<string[]>([]);
   const [introducedDetails, setIntroducedDetails] = useState<string[]>([]);
@@ -304,6 +324,11 @@ export function IntakeCenter() {
   function openReachableStep(target: IntakeStep) {
     const targetIndex = intakeSteps.findIndex((item) => item.id === target);
     if (targetIndex <= furthestStep) {
+      if (target !== "confirmation") {
+        setAuthorAnswerPending(false);
+        setAuthorAnswerSuggestion(null);
+        setAuthorAnswerError(null);
+      }
       setStep(target);
       setError(null);
       announce("已切换到" + intakeSteps[targetIndex].label + "。");
@@ -422,6 +447,8 @@ export function IntakeCenter() {
       return;
     }
     setError(null);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
     setBriefGenerationPending(true);
     setStep("confirmation");
     try {
@@ -454,10 +481,16 @@ export function IntakeCenter() {
         [field]: "user_confirmed",
       },
     }));
+    if (field === "authorAnswer") {
+      setAuthorAnswerSuggestion(null);
+      setAuthorAnswerError(null);
+    }
     setError(null);
   }
 
   function updateResolutionMode(value: ResolutionMode) {
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
     setBrief((current) => ({
       ...current,
       resolutionMode: value,
@@ -471,6 +504,33 @@ export function IntakeCenter() {
             : "unresolved",
       },
     }));
+  }
+
+  async function generateAuthorAnswerSuggestion() {
+    setAuthorAnswerPending(true);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
+    setError(null);
+    try {
+      const suggestion = await generateAuthorAnswer(brief);
+      setAuthorAnswerSuggestion(suggestion);
+      announce("Agent 只提供了一版底牌候选；你可以采用、改写，或直接写自己的结论。 ");
+    } catch (caught) {
+      setAuthorAnswerError(
+        caught instanceof Error
+          ? caught.message
+          : "作者底牌候选生成未完成，请直接填写你的结论。",
+      );
+    } finally {
+      setAuthorAnswerPending(false);
+    }
+  }
+
+  function adoptAuthorAnswerSuggestion() {
+    if (!authorAnswerSuggestion) return;
+    updateBriefField("authorAnswer", authorAnswerSuggestion);
+    setAuthorAnswerSuggestion(null);
+    announce("已把 Agent 候选放入简报草案；提交审阅前仍可继续改写。 ");
   }
 
   function updateConclusionMode(value: ConclusionMode) {
@@ -549,13 +609,12 @@ export function IntakeCenter() {
   }
 
   async function enterBriefReview() {
-    if (missingFields.length) {
-      setError("进入审阅前请补齐：" + missingFields.join("、") + "。");
-      return;
-    }
     setError(null);
     try {
       await beginBriefReview();
+      setAuthorAnswerPending(false);
+      setAuthorAnswerSuggestion(null);
+      setAuthorAnswerError(null);
       announce("已进入创作简报审阅；保存并冻结后才能生成候选稿。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "进入审阅失败。");
@@ -567,6 +626,9 @@ export function IntakeCenter() {
     setPolishReviewOpen(false);
     setQuestionGenerationMode(null);
     setBriefGenerationPending(false);
+    setAuthorAnswerPending(false);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
     setPolishDraft("");
     setPolishNotes([]);
     setIntroducedDetails([]);
@@ -618,6 +680,10 @@ export function IntakeCenter() {
     setError(null);
     announce("已回到暂存的卷宗。");
   }
+
+  const selectedResolutionMode = resolutionModes.find(
+    (mode) => mode.value === brief.resolutionMode,
+  );
 
   return (
     <div
@@ -763,7 +829,7 @@ export function IntakeCenter() {
               {failedRecoveryTasks.map((task) => (
                 <div key={task.task_run_id}>
                   <span>
-                    {task.task_type} · {task.failure?.message ?? task.failure?.code ?? task.error_code ?? "任务失败"}
+                    {taskTypeLabel(task.task_type)} · {task.failure?.message ?? "任务失败。"}
                   </span>
                   {task.failure?.retryable ? (
                     <button
@@ -1259,7 +1325,12 @@ export function IntakeCenter() {
                   <h1 id="confirmation-step-title">确认整体方向，再交给正式审阅。</h1>
                   <button
                     className={stageStyles.headerBackAction}
-                    onClick={() => setStep("questions")}
+                    onClick={() => {
+                      setAuthorAnswerPending(false);
+                      setAuthorAnswerSuggestion(null);
+                      setAuthorAnswerError(null);
+                      setStep("questions");
+                    }}
                     type="button"
                   >
                     ← 返回追问
@@ -1354,7 +1425,7 @@ export function IntakeCenter() {
                   </div>
                 </FieldShell>
                 <FieldShell
-                  hint="决定谁来锁定最终答案"
+                  hint="选择答案由谁提供，以及深稿是否必须收束"
                   label="结论处理方式"
                   source={brief.sources.resolutionMode}
                   wide
@@ -1375,6 +1446,17 @@ export function IntakeCenter() {
                       </label>
                     ))}
                   </div>
+                  {selectedResolutionMode ? (
+                    <div
+                      aria-live="polite"
+                      className={stageStyles.resolutionEffect}
+                      data-resolution-mode={selectedResolutionMode.value}
+                    >
+                      <span>{selectedResolutionMode.effectTiming}</span>
+                      <strong>{selectedResolutionMode.effectTitle}</strong>
+                      <p>{selectedResolutionMode.effectDetail}</p>
+                    </div>
+                  ) : null}
                 </FieldShell>
                 {brief.resolutionMode === "author_anchored" ? (
                   <FieldShell
@@ -1393,6 +1475,40 @@ export function IntakeCenter() {
                       rows={3}
                       value={brief.authorAnswer}
                     />
+                    <div className={stageStyles.authorAnswerTools}>
+                      <div>
+                        <button
+                          disabled={authorAnswerPending}
+                          onClick={() => void generateAuthorAnswerSuggestion()}
+                          type="button"
+                        >
+                          {authorAnswerPending ? "Agent 正在拟定…" : "让 Agent 先拟一版"}
+                        </button>
+                        <small>Agent 只提供候选，不会自动写入作者底牌。</small>
+                      </div>
+                      {authorAnswerError ? (
+                        <p className={stageStyles.inlineError} role="alert">
+                          {authorAnswerError}
+                        </p>
+                      ) : null}
+                      {authorAnswerSuggestion ? (
+                        <div aria-live="polite" className={stageStyles.authorAnswerSuggestion}>
+                          <span>Agent 候选 · 待作者确认</span>
+                          <p>{authorAnswerSuggestion}</p>
+                          <div>
+                            <button onClick={adoptAuthorAnswerSuggestion} type="button">
+                              采用这条候选
+                            </button>
+                            <button
+                              onClick={() => setAuthorAnswerSuggestion(null)}
+                              type="button"
+                            >
+                              不采用，我自己写
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </FieldShell>
                 ) : null}
                 <FieldShell
@@ -1589,7 +1705,6 @@ export function IntakeCenter() {
                   </button>
                   <button
                     className={stageStyles.primaryAction}
-                    disabled={missingFields.length > 0}
                     onClick={enterBriefReview}
                     type="button"
                   >
