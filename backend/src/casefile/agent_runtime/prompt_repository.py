@@ -9,7 +9,16 @@ from functools import cache
 from hashlib import sha256
 from importlib.resources import files
 from importlib.resources.abc import Traversable
+from types import MappingProxyType
 from typing import Final, cast
+
+from casefile.agent_runtime.prompt_package import (
+    PromptComponent,
+    PromptFragment,
+    PromptPackage,
+    PromptPackageError,
+    validate_prompt_package_bindings,
+)
 
 PROMPT_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.prompts"
 PROMPT_REGISTRY_SCHEMA_VERSION: Final = 1
@@ -44,6 +53,31 @@ _BUNDLE_MANIFEST_KEYS = frozenset(
 )
 _BUNDLE_COMPONENT_KEYS = frozenset({"planner", "story", "evidence", "governance"})
 _BUNDLE_ENTRY_KEYS = frozenset({"file", "sha256"})
+_PACKAGE_MANIFEST_KEYS = frozenset(
+    {
+        "schema_version",
+        "agent_id",
+        "version",
+        "previous_version",
+        "change_summary",
+        "runtime",
+        "fragments",
+        "components",
+    }
+)
+_PACKAGE_RUNTIME_KEYS = frozenset({"agent_version", "toolset_version"})
+_PACKAGE_FRAGMENT_KEYS = frozenset({"file", "sha256"})
+_PACKAGE_COMPONENT_KEYS = frozenset(
+    {
+        "instruction_fragments",
+        "input_contract_id",
+        "output_schema_id",
+        "tool_policy_id",
+    }
+)
+_PACKAGE_SCHEMA_VERSION = 2
+_IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")
+_PACKAGE_FILE = re.compile(r"^[a-z0-9][a-z0-9_/-]*\.(?:md|json)$")
 
 
 class PromptRepositoryError(RuntimeError):
@@ -62,6 +96,7 @@ class PromptDefinition:
     change_summary: str
     component_prompts: dict[str, str] = field(default_factory=dict)
     component_sha256: dict[str, str] = field(default_factory=dict)
+    package: PromptPackage | None = None
 
 
 class PromptRepository:
@@ -142,24 +177,37 @@ class PromptRepository:
                 key=lambda value: int(value[1:]),
             ):
                 version_root = agent_root.joinpath(version_directory)
-                version_resources = {
-                    child.name for child in version_root.iterdir() if child.name != "__pycache__"
-                }
+                version_resources = _resource_files_relative(version_root)
                 manifest = _read_json_object(
                     version_root.joinpath("manifest.json"),
                     f"Prompt manifest {agent_id}/{version_directory}",
                 )
-                expected_resources = (
-                    _VERSION_RESOURCE_FILES
-                    if "components" not in manifest
-                    else frozenset(
+                if manifest.get("schema_version") == _PACKAGE_SCHEMA_VERSION:
+                    fragments = _require_object(
+                        manifest.get("fragments"), "Prompt Package fragments"
+                    )
+                    expected_resources = frozenset(
+                        {"manifest.json"}
+                        | {
+                            _require_non_empty_string(
+                                _require_object(value, "Prompt Package fragment")["file"],
+                                "Prompt Package fragment file",
+                            )
+                            for value in fragments.values()
+                        }
+                    )
+                else:
+                    expected_resources = (
+                        _VERSION_RESOURCE_FILES
+                        if "components" not in manifest
+                        else frozenset(
                         {"manifest.json"}
                         | {
                             _require_non_empty_string(value["file"], "bundle file")
                             for value in _bundle_entries(manifest).values()
                         }
                     )
-                )
+                    )
                 if version_resources != expected_resources:
                     raise PromptRepositoryError(
                         f"Prompt version resources do not match the repository contract for "
@@ -257,6 +305,14 @@ class PromptRepository:
             f"Prompt manifest {agent_id}/{version_directory}",
         )
         manifest_label = f"Prompt manifest {agent_id}/{version_directory}"
+        if manifest.get("schema_version") == _PACKAGE_SCHEMA_VERSION:
+            return self._load_package_manifest(
+                agent_id,
+                version_directory,
+                manifest,
+                manifest_label,
+                expected_version=expected_version,
+            )
         if "components" in manifest:
             return self._load_bundle_manifest(
                 agent_id,
@@ -446,6 +502,178 @@ class PromptRepository:
             component_sha256=hashes,
         )
 
+    def _load_package_manifest(
+        self,
+        agent_id: str,
+        version_directory: str,
+        manifest: dict[str, object],
+        manifest_label: str,
+        *,
+        expected_version: str | None,
+    ) -> PromptDefinition:
+        _require_exact_keys(manifest, _PACKAGE_MANIFEST_KEYS, manifest_label)
+        if manifest["schema_version"] != _PACKAGE_SCHEMA_VERSION:
+            raise PromptRepositoryError(
+                f"{manifest_label} has unsupported schema_version"
+            )
+        manifest_agent_id = _require_non_empty_string(
+            manifest["agent_id"], f"{manifest_label} agent_id"
+        )
+        if manifest_agent_id != agent_id:
+            raise PromptRepositoryError(f"{manifest_label} agent_id does not match its directory")
+        version = _require_non_empty_string(manifest["version"], f"{manifest_label} version")
+        if _version_directory(agent_id, version) != version_directory:
+            raise PromptRepositoryError(f"{manifest_label} version does not match its directory")
+        if expected_version is not None and version != expected_version:
+            raise PromptRepositoryError(
+                f"{manifest_label} version does not match the requested version"
+            )
+        previous_version = _optional_previous_version(
+            agent_id, version, manifest["previous_version"], manifest_label
+        )
+        change_summary = _require_non_empty_string(
+            manifest["change_summary"], f"{manifest_label} change_summary"
+        )
+
+        runtime = _require_object(manifest["runtime"], f"{manifest_label} runtime")
+        _require_exact_keys(runtime, _PACKAGE_RUNTIME_KEYS, f"{manifest_label} runtime")
+        runtime_agent_version = _require_non_empty_string(
+            runtime["agent_version"], f"{manifest_label} runtime agent_version"
+        )
+        runtime_toolset_version = _require_non_empty_string(
+            runtime["toolset_version"], f"{manifest_label} runtime toolset_version"
+        )
+
+        version_root = self._root.joinpath(agent_id, version_directory)
+        raw_fragments = _require_object(
+            manifest["fragments"], f"{manifest_label} fragments"
+        )
+        if not raw_fragments:
+            raise PromptRepositoryError(f"{manifest_label} fragments must not be empty")
+        fragments: dict[str, PromptFragment] = {}
+        fragment_files: set[str] = set()
+        for fragment_id, raw_entry in raw_fragments.items():
+            _require_identifier(fragment_id, f"{manifest_label} fragment id")
+            entry = _require_object(raw_entry, f"{manifest_label} fragment {fragment_id}")
+            _require_exact_keys(
+                entry, _PACKAGE_FRAGMENT_KEYS, f"{manifest_label} fragment {fragment_id}"
+            )
+            file_name = _require_package_file(
+                entry["file"], f"{manifest_label} fragment {fragment_id} file"
+            )
+            if file_name in fragment_files:
+                raise PromptRepositoryError(
+                    f"{manifest_label} fragment files must be unique: {file_name}"
+                )
+            fragment_files.add(file_name)
+            expected_hash = _require_sha256(
+                entry["sha256"], f"{manifest_label} fragment {fragment_id} sha256"
+            )
+            raw = _read_bytes(
+                version_root.joinpath(*file_name.split("/")),
+                f"Prompt Package fragment {agent_id}/{version_directory}/{file_name}",
+            )
+            content, actual_hash = _decode_prompt_asset(
+                raw, f"Prompt Package fragment {fragment_id}"
+            )
+            if actual_hash != expected_hash:
+                raise PromptRepositoryError(
+                    f"Prompt Package fragment hash mismatch for {fragment_id}: "
+                    f"expected={expected_hash}, actual={actual_hash}"
+                )
+            fragments[fragment_id] = PromptFragment(
+                fragment_id=fragment_id,
+                file=file_name,
+                content=content,
+                sha256=actual_hash,
+            )
+
+        raw_components = _require_object(
+            manifest["components"], f"{manifest_label} components"
+        )
+        if not raw_components:
+            raise PromptRepositoryError(f"{manifest_label} components must not be empty")
+        components: dict[str, PromptComponent] = {}
+        referenced_fragments: set[str] = set()
+        for component_id, raw_entry in raw_components.items():
+            _require_identifier(component_id, f"{manifest_label} component id")
+            entry = _require_object(raw_entry, f"{manifest_label} component {component_id}")
+            _require_exact_keys(
+                entry, _PACKAGE_COMPONENT_KEYS, f"{manifest_label} component {component_id}"
+            )
+            instruction_fragments = _require_string_list(
+                entry["instruction_fragments"],
+                f"{manifest_label} component {component_id} instruction_fragments",
+            )
+            unknown = set(instruction_fragments) - set(fragments)
+            if unknown:
+                raise PromptRepositoryError(
+                    f"{manifest_label} component {component_id} references unknown fragments: "
+                    f"{sorted(unknown)!r}"
+                )
+            referenced_fragments.update(instruction_fragments)
+            components[component_id] = PromptComponent(
+                component_id=component_id,
+                instruction_fragments=instruction_fragments,
+                input_contract_id=_require_non_empty_string(
+                    entry["input_contract_id"],
+                    f"{manifest_label} component {component_id} input_contract_id",
+                ),
+                output_schema_id=_require_non_empty_string(
+                    entry["output_schema_id"],
+                    f"{manifest_label} component {component_id} output_schema_id",
+                ),
+                tool_policy_id=_require_non_empty_string(
+                    entry["tool_policy_id"],
+                    f"{manifest_label} component {component_id} tool_policy_id",
+                ),
+            )
+        unused_fragments = set(fragments) - referenced_fragments
+        if unused_fragments:
+            raise PromptRepositoryError(
+                f"{manifest_label} contains unused fragments: {sorted(unused_fragments)!r}"
+            )
+
+        package = PromptPackage(
+            agent_id=agent_id,
+            version=version,
+            previous_version=previous_version,
+            change_summary=change_summary,
+            runtime_agent_version=runtime_agent_version,
+            runtime_toolset_version=runtime_toolset_version,
+            fragments=MappingProxyType(fragments),
+            components=MappingProxyType(components),
+        )
+        try:
+            validate_prompt_package_bindings(package)
+        except PromptPackageError as error:
+            raise PromptRepositoryError(str(error)) from error
+
+        component_prompts = {
+            component_id: "\n\n".join(
+                fragments[fragment_id].content.rstrip("\n")
+                for fragment_id in component.instruction_fragments
+            )
+            + "\n"
+            for component_id, component in components.items()
+        }
+        component_hashes = {
+            component_id: sha256(prompt.encode("utf-8")).hexdigest()
+            for component_id, prompt in component_prompts.items()
+        }
+        first_component_id = next(iter(components))
+        return PromptDefinition(
+            agent_id=agent_id,
+            version=version,
+            system_prompt=component_prompts[first_component_id],
+            system_prompt_sha256=component_hashes[first_component_id],
+            previous_version=previous_version,
+            change_summary=change_summary,
+            component_prompts=component_prompts,
+            component_sha256=component_hashes,
+            package=package,
+        )
+
 
 def _version_directory(agent_id: str, version: str) -> str:
     prefix = f"{agent_id.replace('_', '-')}-"
@@ -481,6 +709,27 @@ def _read_bytes(resource: Traversable, label: str) -> bytes:
         return resource.read_bytes()
     except OSError as error:
         raise PromptRepositoryError(f"{label} could not be read") from error
+
+
+def _resource_files_relative(root: Traversable) -> set[str]:
+    resources: set[str] = set()
+
+    def visit(directory: Traversable, prefix: str) -> None:
+        for child in directory.iterdir():
+            if child.name == "__pycache__":
+                continue
+            relative = f"{prefix}/{child.name}" if prefix else child.name
+            if child.is_dir():
+                visit(child, relative)
+            elif child.is_file():
+                resources.add(relative)
+            else:
+                raise PromptRepositoryError(
+                    f"Unexpected Prompt Repository resource: {relative}"
+                )
+
+    visit(root, "")
+    return resources
 
 
 def _bundle_entries(manifest: dict[str, object]) -> dict[str, dict[str, object]]:
@@ -520,6 +769,69 @@ def _require_non_empty_string(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise PromptRepositoryError(f"{label} must be a non-empty string")
     return value
+
+
+def _require_identifier(value: object, label: str) -> str:
+    identifier = _require_non_empty_string(value, label)
+    if _IDENTIFIER.fullmatch(identifier) is None:
+        raise PromptRepositoryError(f"{label} is invalid: {identifier!r}")
+    return identifier
+
+
+def _require_package_file(value: object, label: str) -> str:
+    file_name = _require_non_empty_string(value, label)
+    if (
+        _PACKAGE_FILE.fullmatch(file_name) is None
+        or "//" in file_name
+        or any(part in {".", ".."} for part in file_name.split("/"))
+    ):
+        raise PromptRepositoryError(f"{label} is not a safe package-relative path")
+    return file_name
+
+
+def _require_sha256(value: object, label: str) -> str:
+    digest = _require_non_empty_string(value, label)
+    if _SHA256.fullmatch(digest) is None:
+        raise PromptRepositoryError(f"{label} is not a valid SHA-256")
+    return digest
+
+
+def _require_string_list(value: object, label: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not value:
+        raise PromptRepositoryError(f"{label} must be a non-empty JSON array")
+    result = tuple(_require_identifier(item, label) for item in value)
+    if len(result) != len(set(result)):
+        raise PromptRepositoryError(f"{label} must not contain duplicates")
+    return result
+
+
+def _optional_previous_version(
+    agent_id: str,
+    version: str,
+    value: object,
+    manifest_label: str,
+) -> str | None:
+    if value is None:
+        return None
+    previous_version = _require_non_empty_string(
+        value, f"{manifest_label} previous_version"
+    )
+    _version_directory(agent_id, previous_version)
+    if previous_version == version:
+        raise PromptRepositoryError(f"{manifest_label} cannot supersede itself")
+    return previous_version
+
+
+def _decode_prompt_asset(raw: bytes, label: str) -> tuple[str, str]:
+    if b"\r" in raw:
+        raise PromptRepositoryError(f"{label} must use LF line endings")
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise PromptRepositoryError(f"{label} must be UTF-8") from error
+    if not content.strip():
+        raise PromptRepositoryError(f"{label} must not be empty")
+    return content, sha256(raw).hexdigest()
 
 
 @cache

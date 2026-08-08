@@ -1,7 +1,8 @@
 param(
     [ValidateRange(1, 100)][int]$Repeats = 30,
     [ValidateSet("deepseek", "openai")][string]$Provider = "deepseek",
-    [string]$ReportPath = "tmp\brief-to-draft-v8-live-acceptance.json"
+    [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9")][string]$PromptVersion = "brief-to-draft-v8",
+    [string]$ReportPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,22 +43,28 @@ if ([string]::IsNullOrWhiteSpace($env:CASEFILE_MASTER_KEY)) {
     throw "CASEFILE_MASTER_KEY is required to exercise the stored provider credential path."
 }
 
-$reportFile = if ([System.IO.Path]::IsPathRooted($ReportPath)) {
-    $ReportPath
+$resolvedReportPath = if ([string]::IsNullOrWhiteSpace($ReportPath)) {
+    "tmp\$PromptVersion-live-acceptance.json"
 } else {
-    Join-Path $repoRoot $ReportPath
+    $ReportPath
+}
+$reportFile = if ([System.IO.Path]::IsPathRooted($resolvedReportPath)) {
+    $resolvedReportPath
+} else {
+    Join-Path $repoRoot $resolvedReportPath
 }
 
 $env:CASEFILE_RUN_LIVE_ACCEPTANCE = "1"
 $env:CASEFILE_LIVE_ACCEPTANCE_REPEATS = "$Repeats"
 $env:CASEFILE_LIVE_ACCEPTANCE_PROVIDER = $Provider
+$env:CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION = $PromptVersion
 $env:CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH = $reportFile
 
 Push-Location $backendRoot
 try {
     & $python -m pytest tests/integration/test_brief_to_draft_v8_live_acceptance.py -q
     if ($LASTEXITCODE -ne 0) {
-        throw "brief_to_draft-v8 live acceptance did not pass. See $reportFile."
+        throw "$PromptVersion live acceptance did not pass. See $reportFile."
     }
 } finally {
     Pop-Location

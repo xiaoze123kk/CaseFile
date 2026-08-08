@@ -258,6 +258,8 @@ class GenerationRequest:
     candidate_strategy: CandidateStrategy = CandidateStrategy.BALANCED
     candidate_strategy_version: str = CANDIDATE_STRATEGY_VERSION
     reusable_steps: dict[str, dict[str, Any]] = field(default_factory=dict)
+    agent_version: str | None = None
+    toolset_version: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

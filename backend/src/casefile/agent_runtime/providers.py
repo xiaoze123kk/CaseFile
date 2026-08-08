@@ -29,6 +29,7 @@ from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
 
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
+from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -392,7 +393,7 @@ class FakeProvider:
         return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
-        if request.prompt_version == "brief-to-draft-v8":
+        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
 
             async def call_component(
                 _instructions: str,
@@ -437,7 +438,12 @@ class FakeProvider:
                 )
                 return output, usage
 
-            return asyncio.run(run_v8_generation(request, call_component=call_component))
+            runner = (
+                run_v9_generation
+                if request.prompt_version == "brief-to-draft-v9"
+                else run_v8_generation
+            )
+            return asyncio.run(runner(request, call_component=call_component))
         system_prompt_for_task("brief_to_draft", request.prompt_version)
         request.emit("tool.started", "planning", {"tool": "plan_object_ids"})
         resolution_id = f"res_t{request.task_run_id}_01"
@@ -718,7 +724,7 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        if request.prompt_version == "brief-to-draft-v8":
+        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
 
             async def call_component(
                 instructions: str,
@@ -747,7 +753,12 @@ class OpenAIAgentsProvider:
                     schema_id=schema_id,
                 )
 
-            return await run_v8_generation(request, call_component=call_component)
+            runner = (
+                run_v9_generation
+                if request.prompt_version == "brief-to-draft-v9"
+                else run_v8_generation
+            )
+            return await runner(request, call_component=call_component)
         if request.prompt_version == "brief-to-draft-v7":
             return await _run_partitioned_generation(
                 request,
@@ -960,7 +971,7 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
-        if request.prompt_version == "brief-to-draft-v8":
+        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
 
             async def call_component(
                 instructions: str,
@@ -985,7 +996,12 @@ class DeepSeekAgentsProvider:
                     deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
                 )
 
-            return await run_v8_generation(request, call_component=call_component)
+            runner = (
+                run_v9_generation
+                if request.prompt_version == "brief-to-draft-v9"
+                else run_v8_generation
+            )
+            return await runner(request, call_component=call_component)
         if request.prompt_version == "brief-to-draft-v7":
             return await _run_partitioned_generation(
                 request,

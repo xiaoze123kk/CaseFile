@@ -1,4 +1,4 @@
-"""Persistent v8 Agent component steps and individual model calls."""
+"""Persistent Agent component steps and individual model calls."""
 
 from __future__ import annotations
 

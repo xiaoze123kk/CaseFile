@@ -555,7 +555,9 @@ class Worker:
                 network_retries=_network_retries(task),
                 candidate_strategy=candidate_strategy,
                 candidate_strategy_version=candidate_strategy_version,
-                reusable_steps=_reusable_v8_steps(session, task),
+                reusable_steps=_reusable_component_steps(session, task),
+                agent_version=task.agent_version,
+                toolset_version=task.toolset_version,
             )
 
     def _load_chat_request(
@@ -1051,9 +1053,9 @@ def _persist_agent_execution_event(
     event_type: str,
     payload: dict[str, Any],
 ) -> None:
-    """Project v8 execution events into queryable step/call audit rows."""
+    """Project component execution events into queryable step/call audit rows."""
 
-    if task.prompt_version != "brief-to-draft-v8":
+    if task.prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
@@ -1248,7 +1250,7 @@ def _optional_hash(value: object) -> str | None:
     return value if isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) else None
 
 
-def _reusable_v8_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
+def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
     if task.prompt_version != "brief-to-draft-v8" or task.attempt_count < 2:
         return {}
     rows = session.scalars(

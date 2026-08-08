@@ -10,6 +10,7 @@ import pytest
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
+    V9_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -87,6 +88,16 @@ EXPECTED_RELEASE_HASHES = {
         "evidence": "3256cb833025986b80564725a1135430f35509a157246bb15bae1d4f2dfe1e0b",
         "governance": "806eb87356df8260fef0596a49729fb8c7f117bceed7a20c60b5ec391c580c6b",
     },
+    ("brief_to_draft", "brief-to-draft-v9"): {
+        "fragment:common": "91f8417d301c2b8a2c8cf6ae19ebe3f5e0b8aa9850bd016bd406b1b3efc10f99",
+        "fragment:planner": "c89012d1b8d457ec8ef220cd12f948fbe20d7e73ff03215d38b847b9504f5045",
+        "fragment:domain_common": (
+            "0d20f4fe4b60668f1c19c7277d93ea29c0ee43e0939d08ee577d731c41747c82"
+        ),
+        "fragment:story": "b62c800d4f62b1c39fd075416b8401de1161059753450c85984efda87f0bc46e",
+        "fragment:evidence": "fcb5de2bf8ee2c4068907226f16f4cf985b9bd5b4713ad6b3da8ca4823a0647a",
+        "fragment:governance": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -109,6 +120,10 @@ def test_task_agent_version_identifies_the_v8_pipeline() -> None:
         agent_version_for_task("brief_to_draft", "brief-to-draft-v8")
         == V8_GENERATION_AGENT_VERSION
     )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v9")
+        == V9_GENERATION_AGENT_VERSION
+    )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
 
@@ -117,7 +132,13 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
     definitions = validate_prompt_repository()
     actual_hashes = {
         (definition.agent_id, definition.version): (
-            definition.component_sha256 or {"system": definition.system_prompt_sha256}
+            {
+                f"fragment:{fragment_id}": fragment.sha256
+                for fragment_id, fragment in definition.package.fragments.items()
+            }
+            if definition.package is not None
+            else definition.component_sha256
+            or {"system": definition.system_prompt_sha256}
         )
         for definition in definitions
     }

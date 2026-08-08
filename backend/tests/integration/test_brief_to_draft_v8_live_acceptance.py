@@ -1,4 +1,4 @@
-"""Opt-in API/Worker/PostgreSQL acceptance for real brief-to-draft v8 calls.
+"""Opt-in API/Worker/PostgreSQL acceptance for versioned brief-to-draft calls.
 
 The test deliberately runs only when ``CASEFILE_RUN_LIVE_ACCEPTANCE=1``.  It
 copies an already encrypted configured provider credential from the local
@@ -71,14 +71,15 @@ class LiveAcceptanceConfig:
     test_database_url: str
     master_key: str
     provider: str
+    prompt_version: str
     repeats: int
     report_path: Path | None
 
 
-def test_live_brief_to_draft_v8_runtime_acceptance() -> None:
+def test_live_brief_to_draft_runtime_acceptance() -> None:
     config = _live_config()
     report: dict[str, Any] = {
-        "suite": "brief_to_draft_v8",
+        "suite": config.prompt_version.replace("-", "_"),
         "evaluation_scope": "api_worker_postgres",
         "release_gate_eligible": config.repeats == 30,
         "provider": config.provider,
@@ -111,9 +112,17 @@ def test_live_brief_to_draft_v8_runtime_acceptance() -> None:
             app = create_app(config.test_database_url)
             worker = Worker(
                 factory,
-                config=WorkerConfig(worker_id="brief-to-draft-v8-live-acceptance"),
+                config=WorkerConfig(
+                    worker_id=f"{config.prompt_version}-live-acceptance"
+                ),
             )
-            with TestClient(app) as client:
+            with (
+                patch(
+                    "casefile.application.workflow_service.prompt_version_for_task",
+                    return_value=config.prompt_version,
+                ),
+                TestClient(app) as client,
+            ):
                 _run_acceptance_suite(
                     client,
                     factory,
@@ -161,11 +170,17 @@ def _live_config() -> LiveAcceptanceConfig:
     if not 1 <= repeats <= 100:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPEATS must be between 1 and 100.")
     report_value = os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH", "").strip()
+    prompt_version = os.getenv(
+        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v8"
+    ).strip()
+    if prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8 or v9.")
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
         test_database_url=test_database_url,
         master_key=master_key,
         provider=os.getenv("CASEFILE_LIVE_ACCEPTANCE_PROVIDER", "deepseek").strip(),
+        prompt_version=prompt_version,
         repeats=repeats,
         report_path=Path(report_value) if report_value else None,
     )
@@ -372,7 +387,11 @@ def _queue_generation_task(
     created = client.post(
         "/api/v1/projects",
         headers=headers,
-        json={"title": f"v8 Live Acceptance {run_index + 1}", "description": None, "profile": {}},
+        json={
+            "title": f"Prompt Live Acceptance {run_index + 1}",
+            "description": None,
+            "profile": {},
+        },
     )
     assert created.status_code == 201, created.text
     project_id = int(created.json()["id"])

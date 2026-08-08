@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v9",
+  "previous_version": "brief-to-draft-v8",
+  "change_summary": "引入类型化 Prompt Package，冻结指令片段、输入输出契约、工具策略与运行时兼容关系。",
+  "runtime": {
+    "agent_version": "brief-to-draft-pipeline-v9",
+    "toolset_version": "casefile-generation-tools-v2"
+  },
+  "fragments": {
+    "common": {
+      "file": "fragments/common.md",
+      "sha256": "91f8417d301c2b8a2c8cf6ae19ebe3f5e0b8aa9850bd016bd406b1b3efc10f99"
+    },
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "c89012d1b8d457ec8ef220cd12f948fbe20d7e73ff03215d38b847b9504f5045"
+    },
+    "domain_common": {
+      "file": "fragments/domain_common.md",
+      "sha256": "0d20f4fe4b60668f1c19c7277d93ea29c0ee43e0939d08ee577d731c41747c82"
+    },
+    "story": {
+      "file": "fragments/story.md",
+      "sha256": "b62c800d4f62b1c39fd075416b8401de1161059753450c85984efda87f0bc46e"
+    },
+    "evidence": {
+      "file": "fragments/evidence.md",
+      "sha256": "fcb5de2bf8ee2c4068907226f16f4cf985b9bd5b4713ad6b3da8ca4823a0647a"
+    },
+    "governance": {
+      "file": "fragments/governance.md",
+      "sha256": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146"
+    }
+  },
+  "components": {
+    "planner": {
+      "instruction_fragments": ["common", "planner"],
+      "input_contract_id": "brief-to-draft-planner-input-v1",
+      "output_schema_id": "case-blueprint-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "story": {
+      "instruction_fragments": ["common", "domain_common", "story"],
+      "input_contract_id": "brief-to-draft-domain-input-v1",
+      "output_schema_id": "story-world-ir-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "evidence": {
+      "instruction_fragments": ["common", "domain_common", "evidence"],
+      "input_contract_id": "brief-to-draft-domain-input-v1",
+      "output_schema_id": "evidence-logic-ir-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "governance": {
+      "instruction_fragments": ["common", "domain_common", "governance"],
+      "input_contract_id": "brief-to-draft-domain-input-v1",
+      "output_schema_id": "resolution-governance-ir-v1",
+      "tool_policy_id": "no-tools-v1"
+    }
+  }
+}
