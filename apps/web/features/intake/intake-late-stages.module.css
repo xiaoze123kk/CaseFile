@@ -6,6 +6,11 @@
   font-family: "Noto Serif SC", "STSong", "SimSun", serif;
 }
 
+.candidatesStage {
+  container-name: candidate-stage;
+  container-type: inline-size;
+}
+
 .stageHeader {
   display: flex;
   min-height: 108px;
@@ -60,6 +65,64 @@
 .stageHeader dd {
   margin: 4px 0 0;
   font: 700 var(--font-caption) "Cascadia Mono", Consolas, monospace;
+}
+
+.handoffStrip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 18px;
+  margin: 14px 18px 0;
+  padding: 12px 14px 12px 18px;
+  border: 1px solid var(--ink);
+  border-left: 5px solid var(--red);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 31px, rgba(26, 28, 25, 0.025) 31px 32px),
+    var(--paper-high);
+  box-shadow: 3px 3px 0 rgba(26, 28, 25, 0.08);
+}
+
+.handoffStrip > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.handoffStrip span {
+  color: var(--ink-faint);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.handoffStrip strong {
+  overflow: hidden;
+  font-size: var(--font-heading-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.handoffStrip p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+}
+
+.handoffStrip > b {
+  padding: 5px 8px;
+  color: var(--red);
+  border: 2px solid var(--red);
+  font: 800 var(--font-micro) "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.12em;
+  transform: rotate(-2deg);
+}
+
+.handoffStrip > button {
+  min-height: 42px;
+  padding: 0 16px;
+  color: white;
+  border-color: var(--ink);
+  background: var(--ink);
+  font-weight: 700;
 }
 
 .reviewSpread {
@@ -780,6 +843,12 @@
   background: var(--paper-high);
 }
 
+.strategyRefresh[data-danger="true"] {
+  color: var(--red);
+  border-color: var(--red-line);
+  background: var(--red-soft);
+}
+
 .generateButton span,
 .generateButton b {
   display: block;
@@ -1189,8 +1258,7 @@
   to { opacity: 1; transform: translateY(0) rotate(0); }
 }
 
-@media (max-width: 1120px) {
-  .reviewSpread { grid-template-columns: minmax(0, 1fr) 242px; }
+@container candidate-stage (max-width: 920px) {
   .generationDesk {
     grid-template-areas:
       "copy"
@@ -1199,21 +1267,40 @@
       "actions";
     grid-template-columns: minmax(0, 1fr);
   }
+
   .generationCopy,
   .strategyFan { border-right: 0; }
+
   .strategyActions { border-width: 1px 0 0; }
+
   .strategyFan {
-    grid-auto-columns: minmax(310px, 58vw);
+    grid-auto-columns: minmax(310px, 72cqi);
     grid-auto-flow: column;
     grid-template-columns: none;
     overflow-x: auto;
     padding-bottom: 20px;
     scroll-snap-type: x mandatory;
   }
+
   .strategyFan .candidateCard { scroll-snap-align: start; }
+
   .candidateFan,
   .oldCandidates > div { grid-template-columns: 1fr; }
+
   .candidateSummary { min-height: 132px; }
+}
+
+@container candidate-stage (max-width: 780px) {
+  .handoffStrip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    margin: 10px 10px 0;
+  }
+
+  .handoffStrip > button { grid-column: 1 / -1; }
+}
+
+@media (max-width: 1120px) {
+  .reviewSpread { grid-template-columns: minmax(0, 1fr) 242px; }
 }
 
 @media (max-width: 780px) {
@@ -1240,7 +1327,7 @@
   .generationDesk { margin: 10px; }
   .generationCopy { border-right: 0; border-bottom: 1px solid var(--ink); }
   .strategyFan { grid-auto-columns: minmax(280px, 82vw); }
-  .strategyActions { grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; }
+  .strategyActions { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
   .strategyRefresh { min-height: 0; }
   .generationSlots { border-top: 1px solid var(--rule); }
   .generationProgress { min-height: 88px; }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from casefile.agent_runtime.models import (
@@ -18,12 +18,12 @@ from casefile.application.casefile_v1 import (
 )
 from casefile.application.casefile_v1 import generation_candidate_summary
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.task_events import append_task_event
 from casefile.data_postgres.models import (
     Brief,
     BriefVersion,
     DraftOperation,
     TaskAttempt,
-    TaskEvent,
     TaskRun,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
@@ -91,12 +91,21 @@ class DraftCandidateService:
             attempt = self._successful_candidate_attempt(task)
             if attempt is None:
                 raise not_found("DraftCandidate")
-            return self._candidate_view(
+            view = self._candidate_view(
                 task,
                 attempt=attempt,
                 current_brief_version_id=brief.current_version_id,
                 current_task_run_id=self._current_generation_task_run_id(owned),
             )
+            # The successful attempt is the immutable source of truth for preview.
+            # Returning it here must never project it into the mutable Draft; adoption
+            # remains an explicit POST guarded by Brief and Draft revisions.
+            return {
+                **view,
+                "preview": True,
+                "read_only": True,
+                "content": attempt.candidate_jsonb,
+            }
 
     def adopt_candidate(
         self,
@@ -171,7 +180,8 @@ class DraftCandidateService:
                 expected_draft_revision=expected_draft_revision,
             )
             task.result_snapshot_id = snapshot.id
-            self._append_event(
+            append_task_event(
+                self.session,
                 task,
                 "candidate.adopted",
                 "completed",
@@ -306,34 +316,6 @@ class DraftCandidateService:
             "created_at": _time(task.created_at),
             "completed_at": _time(task.completed_at),
         }
-
-    def _append_event(
-        self,
-        task: TaskRun,
-        event_type: str,
-        stage: str,
-        payload: dict[str, Any],
-    ) -> TaskEvent:
-        sequence = int(
-            self.session.scalar(
-                select(func.coalesce(func.max(TaskEvent.sequence_no), 0) + 1).where(
-                    TaskEvent.task_run_id == task.id
-                )
-            )
-            or 1
-        )
-        event = TaskEvent(
-            project_id=task.project_id,
-            task_run_id=task.id,
-            sequence_no=sequence,
-            event_type=event_type,
-            stage=stage,
-            payload_jsonb=payload,
-        )
-        self.session.add(event)
-        self.session.flush()
-        return event
-
 
 def _time(value: datetime | None) -> str | None:
     return None if value is None else value.astimezone(UTC).isoformat()

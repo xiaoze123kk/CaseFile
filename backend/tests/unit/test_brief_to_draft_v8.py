@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+
 from casefile.agent_runtime.brief_to_draft_v8.compiler import (
     LinkerValidationError,
     compile_casefile,
@@ -20,7 +21,10 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     StoryWorldIRV1,
     TimeIR,
 )
-from casefile.agent_runtime.brief_to_draft_v8.workflow import _safe_diagnostic_message
+from casefile.agent_runtime.brief_to_draft_v8.workflow import (
+    _merge_usage,
+    _safe_diagnostic_message,
+)
 from casefile.agent_runtime.models import GenerationRequest
 from casefile.agent_runtime.prompt_repository import (
     component_prompt_for_task,
@@ -374,3 +378,35 @@ def test_v8_diagnostics_redact_full_and_provider_masked_api_keys() -> None:
     assert "3548" not in redacted
     assert "sk-secret" not in redacted
     assert redacted.count("[REDACTED]") == 2
+
+
+def test_v8_usage_merge_preserves_retry_cache_and_reasoning_totals() -> None:
+    merged = _merge_usage(
+        [
+            {
+                "requests": 2,
+                "input_tokens": 100,
+                "output_tokens": 30,
+                "total_tokens": 130,
+                "cached_tokens": 40,
+                "reasoning_tokens": 10,
+            },
+            {
+                "requests": 1,
+                "input_tokens": 20,
+                "output_tokens": 5,
+                "total_tokens": 25,
+                "cached_tokens": 15,
+                "reasoning_tokens": 3,
+            },
+        ]
+    )
+
+    assert merged == {
+        "requests": 3,
+        "input_tokens": 120,
+        "output_tokens": 35,
+        "total_tokens": 155,
+        "cached_tokens": 55,
+        "reasoning_tokens": 13,
+    }

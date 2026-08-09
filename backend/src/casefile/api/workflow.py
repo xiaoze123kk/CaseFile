@@ -28,6 +28,7 @@ from casefile.api.schemas import (
     ResumeGenerationTaskRequest,
     SourceRecordCreateRequest,
 )
+from casefile.application.a_path_metrics import APathMetricsService
 from casefile.application.errors import ApplicationError
 from casefile.application.workflow_service import WorkflowService
 
@@ -360,6 +361,14 @@ def workflow_router() -> APIRouter:
             task_type=task_type,
         )
 
+    @router.get("/projects/{project_id}/a-path-metrics")
+    def get_a_path_metrics(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return APathMetricsService(session).project_metrics(actor, project_id)
+
     @router.get("/projects/{project_id}/tasks/{task_run_id}")
     def get_task(
         project_id: int,
@@ -368,6 +377,18 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
     ) -> dict[str, Any]:
         return WorkflowService(session).get_task(actor, project_id, task_run_id)
+
+    @router.post(
+        "/projects/{project_id}/tasks/{task_run_id}/cancel",
+        status_code=202,
+    )
+    def cancel_task(
+        project_id: int,
+        task_run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).cancel_task(actor, project_id, task_run_id)
 
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/resume",

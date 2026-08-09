@@ -3,6 +3,7 @@
 import {
   ApiError,
   apiRequest,
+  streamTaskEvents,
   type BriefContent,
   type BriefIntakeCandidateContent,
   type BriefIntakeView,
@@ -11,6 +12,7 @@ import {
   type CandidateStrategy,
   type BriefView,
   type DraftCandidateView,
+  type DraftCandidatePreviewView,
   type DraftView,
   type AnchorExtractMode,
   type PolishMode,
@@ -31,7 +33,7 @@ const TERMINAL_TASK_STATUSES = new Set<TaskView["status"]>([
   "cancelled",
 ]);
 const POLL_INTERVAL_MS = 800;
-const MAX_POLLS = 600;
+const TASK_WAIT_TIMEOUT_MS = 600 * POLL_INTERVAL_MS;
 
 export class CaseSessionError extends Error {
   constructor(
@@ -42,9 +44,31 @@ export class CaseSessionError extends Error {
   }
 }
 
-function delay(milliseconds: number) {
-  return new Promise<void>((resolve) => {
-    window.setTimeout(resolve, milliseconds);
+export class TaskCancelledError extends CaseSessionError {
+  constructor(readonly task: TaskView) {
+    super(
+      task.failure?.message ?? "任务已取消，Current Draft 未被修改。",
+      task.failure?.code ?? task.error_code ?? "task_cancelled",
+    );
+    this.name = "TaskCancelledError";
+  }
+}
+
+export function isTaskCancelledError(error: unknown): error is TaskCancelledError {
+  return error instanceof TaskCancelledError;
+}
+
+function delay(milliseconds: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      window.clearTimeout(timeoutId);
+      reject(new DOMException("Task wait aborted", "AbortError"));
+    };
+    const timeoutId = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -253,10 +277,25 @@ export async function startDraftGenerationTask(
   });
 }
 
-export async function fetchTask(projectId: number, taskRunId: number) {
+export async function fetchTask(
+  projectId: number,
+  taskRunId: number,
+  signal?: AbortSignal,
+) {
   return apiRequest<TaskView>(`/projects/${projectId}/tasks/${taskRunId}`, {
     actorId: LOCAL_ACTOR_ID,
+    signal,
   });
+}
+
+export async function cancelTask(projectId: number, taskRunId: number) {
+  return apiRequest<TaskView>(
+    `/projects/${projectId}/tasks/${taskRunId}/cancel`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+    },
+  );
 }
 
 export async function resumeDraftGenerationTask(
@@ -289,11 +328,29 @@ export async function waitForTask(
   projectId: number,
   taskRunId: number,
   onTick?: (task: TaskView) => void,
+  signal?: AbortSignal,
 ): Promise<TaskView> {
-  for (let attempt = 0; attempt < MAX_POLLS; attempt += 1) {
-    const task = await fetchTask(projectId, taskRunId);
+  const deadline = Date.now() + TASK_WAIT_TIMEOUT_MS;
+  let lastEventId = 0;
+
+  while (Date.now() < deadline) {
+    if (signal?.aborted) {
+      throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
+    }
+    let task: TaskView;
+    try {
+      task = await fetchTask(projectId, taskRunId, signal);
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
+      }
+      throw error;
+    }
     onTick?.(task);
     if (TERMINAL_TASK_STATUSES.has(task.status)) {
+      if (task.status === "cancelled") {
+        throw new TaskCancelledError(task);
+      }
       if (task.status !== "succeeded") {
         throw new CaseSessionError(
           task.failure?.message ?? `任务未完成：${task.status}`,
@@ -302,9 +359,64 @@ export async function waitForTask(
       }
       return task;
     }
-    await delay(POLL_INTERVAL_MS);
+
+    const streamController = new AbortController();
+    const abortStream = () => streamController.abort();
+    signal?.addEventListener("abort", abortStream, { once: true });
+    const remaining = Math.max(1, deadline - Date.now());
+    const timeoutId = window.setTimeout(abortStream, remaining);
+    try {
+      await streamTaskEvents(
+        `/projects/${projectId}/tasks/${taskRunId}/stream`,
+        LOCAL_ACTOR_ID,
+        (event) => {
+          lastEventId = Math.max(lastEventId, event.sequence_no);
+          const eventStatus: Partial<Record<string, TaskView["status"]>> = {
+            "task.started": "running",
+            "task.cancel_requested": "cancelling",
+            "task.cancelled": "cancelled",
+            "task.succeeded": "succeeded",
+            "task.failed": "failed",
+          };
+          task = {
+            ...task,
+            status: eventStatus[event.event_type] ?? task.status,
+            stage: event.stage,
+          };
+          onTick?.(task);
+        },
+        streamController.signal,
+        lastEventId,
+      );
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
+      }
+      if (Date.now() >= deadline) break;
+      // A proxy or browser may interrupt SSE. The next loop performs one
+      // authoritative poll, then reconnects with Last-Event-ID replay.
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        await delay(POLL_INTERVAL_MS, signal);
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", abortStream);
+    }
   }
-  throw new CaseSessionError("任务执行超时，请稍后重试。");
+  throw new CaseSessionError("任务执行超时，请稍后重试。", "task_wait_timeout");
+}
+
+export async function waitForRecoveredTask(
+  projectId: number,
+  taskRunId: number,
+  onTick: (task: TaskView) => void,
+) {
+  try {
+    return await waitForTask(projectId, taskRunId, onTick);
+  } catch (error) {
+    if (isTaskCancelledError(error)) return error.task;
+    return fetchTask(projectId, taskRunId).catch(() => null);
+  }
 }
 
 export interface QuestionAnswerInput {
@@ -441,11 +553,39 @@ export async function fetchDraftCandidates(projectId: number) {
   );
 }
 
+/** 只读加载一份已校验候选正文；不会采用候选或写入 Current Draft。 */
+export async function fetchDraftCandidatePreview(
+  projectId: number,
+  taskRunId: number,
+) {
+  return apiRequest<DraftCandidatePreviewView>(
+    `/projects/${projectId}/draft-candidates/${taskRunId}`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
 /** 读取 CaseFile 当前工作稿，供需要 Draft revision 的写入门禁使用。 */
 export async function fetchCaseDraft(projectId: number) {
   return apiRequest<DraftView>(`/projects/${projectId}/draft`, {
     actorId: LOCAL_ACTOR_ID,
   });
+}
+
+export async function reconcileDraftCandidateAdoption(
+  projectId: number,
+  taskRunId: number,
+) {
+  const [candidates, draft] = await Promise.all([
+    fetchDraftCandidates(projectId),
+    fetchCaseDraft(projectId),
+  ]);
+  return {
+    candidates,
+    draft,
+    targetIsCurrent: candidates.some(
+      (candidate) => candidate.task_run_id === taskRunId && candidate.is_current,
+    ),
+  };
 }
 
 export async function startStrategyOptionsTask(
@@ -502,4 +642,26 @@ export async function adoptDraftCandidate(
       body: { expected_draft_revision: draftRevision },
     },
   );
+}
+
+export async function adoptDraftCandidateWithReconciliation(
+  projectId: number,
+  taskRunId: number,
+  draftRevision: number,
+) {
+  try {
+    await adoptDraftCandidate(projectId, taskRunId, draftRevision);
+    return { facts: null, error: null };
+  } catch (error) {
+    let facts: Awaited<ReturnType<typeof reconcileDraftCandidateAdoption>>;
+    try {
+      facts = await reconcileDraftCandidateAdoption(projectId, taskRunId);
+    } catch {
+      throw new CaseSessionError(
+        "采用结果暂时无法确认，请刷新候选列表后核对 Current Draft。",
+        "draft_candidate_adoption_unconfirmed",
+      );
+    }
+    return { facts, error: facts.targetIsCurrent ? null : error };
+  }
 }

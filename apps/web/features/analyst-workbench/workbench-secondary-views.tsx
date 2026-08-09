@@ -26,6 +26,16 @@ import type {
 
 const DEFAULT_TIMELINE_WIDTH = 340;
 
+function timelineClock(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 export function TimelineOverview({
   seed,
   selectedEventId,
@@ -116,7 +126,14 @@ export function TimelineOverview({
                   onClick={() => onSelectEvent(event.id)}
                   type="button"
                 >
-                  <span className={styles.eventTime}>{event.time}</span>
+                  <time
+                    aria-label={event.time}
+                    className={styles.eventTime}
+                    dateTime={event.time}
+                    title={event.time}
+                  >
+                    {timelineClock(event.time)}
+                  </time>
                   <span className={styles.eventMarker} aria-hidden="true" />
                   <span className={styles.eventCopy}>
                     <strong>{event.label}</strong>
@@ -447,9 +464,9 @@ export function ExportView({
               <span>{realData ? "真实关系投影" : "引用可追溯"}</span>
               <b>{realData ? "已生成" : "通过"}</b>
             </li>
-            <li data-state={realData ? "pending" : ready ? "pass" : "blocked"}>
+            <li data-state={ready ? "pass" : "blocked"}>
               <span>语义验证</span>
-              <b>{realData ? "尚未接入" : ready ? "通过" : `${unresolvedCount} 个问题`}</b>
+              <b>{ready ? "通过" : `${unresolvedCount} 个问题`}</b>
             </li>
             <li data-state="pending">
               <span>作者批准</span>
@@ -580,7 +597,7 @@ function composeCompilePreview(
             `用例 ${issue.id} · ${issue.severity} ${issue.title}\n规则 ${issue.rule} · 依据 ${issue.evidenceIds.join("、")}`,
         ),
         "",
-        `门禁：${realData ? "语义验证尚未接入" : unresolvedCount > 0 ? `语义验证阻断（${unresolvedCount} 个问题）` : "全部通过"}`,
+        `门禁：${unresolvedCount > 0 ? `语义验证阻断（${unresolvedCount} 个问题）` : "全部通过"}`,
       ].join("\n");
   }
 }
@@ -662,9 +679,9 @@ export function CompileCenterView({
                 <span>引用可追溯</span>
                 <b>通过</b>
               </li>
-              <li data-state={realData ? "pending" : blocked ? "blocked" : "pass"}>
+              <li data-state={blocked ? "blocked" : "pass"}>
                 <span>语义验证</span>
-                <b>{realData ? "尚未接入" : blocked ? `${unresolvedCount} 个问题` : "通过"}</b>
+                <b>{blocked ? `${unresolvedCount} 个问题` : "通过"}</b>
               </li>
             </ul>
           </div>
