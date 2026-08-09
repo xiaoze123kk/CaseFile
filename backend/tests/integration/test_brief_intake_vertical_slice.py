@@ -725,6 +725,7 @@ def test_brief_intake_initializes_legacy_projects_once_and_keeps_review_closed(
         )
         assert blocked.status_code == 409
         assert blocked.json()["code"] == "brief_intake_already_adopted"
+        assert blocked.json()["message"] == "当前建案已进入正式创作简报审阅，不能再回退修改。"
 
         source_only_project = client.post(
             "/api/v1/projects",

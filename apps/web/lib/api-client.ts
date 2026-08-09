@@ -1,3 +1,5 @@
+import type { CaseFile } from "@casefile/contracts";
+
 const API_ROOT =
   process.env.NEXT_PUBLIC_CASEFILE_API_URL ?? "http://127.0.0.1:8000/api/v1";
 
@@ -12,7 +14,11 @@ export class ApiError extends Error {
     readonly status: number,
     readonly body: ApiErrorBody,
   ) {
-    super(body.message);
+    super(
+      /[\u3400-\u9fff]/u.test(body.message)
+        ? body.message
+        : "请求未能完成，请稍后重试。",
+    );
   }
 }
 
@@ -22,6 +28,7 @@ export type TaskType =
   | "brief_anchor_extract"
   | "brief_intake_questions"
   | "brief_intake_synthesize"
+  | "brief_strategy_options"
   | "brief_to_draft"
   | "casefile_chat";
 export type ResolutionMode =
@@ -242,6 +249,7 @@ export interface SourceRecordView {
 }
 
 export type PolishMode = "proofread" | "rewrite" | "narrative_enhance";
+export type AnchorExtractMode = "extract" | "suggest_author_answer";
 
 export interface BriefPolishResult {
   input_hash: string;
@@ -255,6 +263,7 @@ export interface BriefPolishResult {
 
 export interface BriefAnchorExtractResult {
   input_hash: string;
+  suggested_author_answer?: string;
   author_anchors: Array<{ statement: string }>;
   creative_constraints: Array<{
     statement: string;
@@ -303,6 +312,31 @@ export interface TaskFailure {
   issues: TaskFailureIssue[];
 }
 
+export interface AgentDiagnosticIssue {
+  component_id: string;
+  failure_layer: string;
+  schema_id: string | null;
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface AgentComponentStepView {
+  step_run_id: number;
+  attempt_no: number;
+  component_id: string;
+  parent_component_id: string | null;
+  execution_no: number;
+  status: "pending" | "running" | "succeeded" | "failed" | "reused" | "skipped";
+  schema_id: string;
+  input_hash: string;
+  output_hash: string | null;
+  failure_layer: string | null;
+  issues: AgentDiagnosticIssue[];
+  recoverable: boolean;
+  resumed_from_step_run_id: number | null;
+}
+
 export interface GenerationCandidateSummary {
   candidate_strategy: CandidateStrategy;
   candidate_strategy_version: string;
@@ -344,6 +378,7 @@ export interface TaskView {
   input_message_id: number | null;
   output_message_id: number | null;
   input_hash: string;
+  candidate_strategy: CandidateStrategy | null;
   attempt_count: number;
   usage: Record<string, unknown>;
   result_snapshot_id: number | null;
@@ -352,10 +387,12 @@ export interface TaskView {
     | BriefAnchorExtractResult
     | BriefIntakeQuestionsResult
     | BriefIntakeSynthesizeResult
+    | BriefStrategyOptionsResult
     | GenerationCandidateSummary
     | null;
   error_code: string | null;
   failure: TaskFailure | null;
+  component_steps: AgentComponentStepView[];
   created_at: string | null;
   updated_at: string | null;
 }
@@ -396,27 +433,24 @@ export interface DraftView {
   revision: number;
   schema_version: string;
   status: string;
-  content: CaseFileDocument | null;
+  content: CaseFile | null;
 }
 
-export interface CaseFileObject {
-  id: string;
-  title?: string;
-  name?: string;
-  description?: string;
-  entity_type?: string;
-  truth_status?: string;
-  [key: string]: unknown;
+export interface BriefStrategyOption {
+  strategy: Exclude<CandidateStrategy, "balanced">;
+  direction: string;
+  focus: string;
+  strengths: string[];
+  tradeoffs: string[];
+  brief_fit: string;
 }
 
-export interface CaseFileDocument {
-  casefile_id: string;
-  title: string;
-  schema_version: string;
-  [collection: string]: unknown;
-  entities: CaseFileObject[];
-  locations: CaseFileObject[];
-  events: CaseFileObject[];
+export interface BriefStrategyOptionsResult {
+  input_hash: string;
+  strategy_version: "candidate-strategy-v1";
+  options: BriefStrategyOption[];
+  recommended_strategy: Exclude<CandidateStrategy, "balanced">;
+  recommendation_reason: string;
 }
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
@@ -520,18 +554,19 @@ export function errorMessage(error: unknown) {
       internal_error: "请求暂时无法完成，请稍后重试。",
       not_found: "没有找到请求的数据。",
       method_not_allowed: "当前操作不受支持。",
+      brief_intake_already_adopted:
+        "当前建案已进入正式创作简报审阅，不能再回退修改。",
       provider_setting_required: "请先配置当前模型服务。",
       provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
       brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
-      brief_extraction_input_empty: "请先填写作者底牌或创作边界。",
+      brief_extraction_input_empty: "请先填写作者答案或创作规则。",
       source_content_blank: "来源原稿不能为空。",
       brief_invalid: "创作简报内容不完整，请检查后重试。",
     };
     const localizedMessage = localizedMessages[error.body.code];
     if (localizedMessage) return localizedMessage;
-    if (/[\u3400-\u9fff]/u.test(error.body.message)) return error.body.message;
-    return `请求未能完成（错误代码：${error.body.code}）。`;
+    return error.message;
   }
   return error instanceof Error ? error.message : "请求未完成，请检查 API 与数据库状态。";
 }

@@ -74,7 +74,7 @@ class BriefIntakeService:
         if not normalized:
             raise ApplicationError(
                 "brief_intake_source_blank",
-                "The original idea must not be blank",
+                "最初想法不能为空。",
                 status_code=422,
             )
         with self.session.begin():
@@ -90,7 +90,7 @@ class BriefIntakeService:
                 if parent_source_record_id is not None:
                     raise ApplicationError(
                         "brief_intake_source_parent_forbidden",
-                        "The first source cannot reference a parent",
+                        "首次来源不能引用父来源。",
                         status_code=422,
                     )
                 source_kind = "human_original"
@@ -150,7 +150,7 @@ class BriefIntakeService:
                 if not normalized:
                     raise ApplicationError(
                         "brief_intake_answer_blank",
-                        "A free-form answer must not be blank",
+                        "自由回答不能为空。",
                         status_code=422,
                     )
                 question.answer_status = "user_answered"
@@ -165,7 +165,7 @@ class BriefIntakeService:
                 ):
                     raise ApplicationError(
                         "brief_intake_suggestion_invalid",
-                        "The selected Agent suggestion does not exist",
+                        "所选 Agent 建议不存在。",
                         status_code=422,
                     )
                 question.answer_status = "suggestion_accepted"
@@ -175,7 +175,7 @@ class BriefIntakeService:
                 if question.is_required:
                     raise ApplicationError(
                         "brief_intake_required_question_pending",
-                        "A required direction question cannot be left pending",
+                        "必答方向问题不能暂缓。",
                         status_code=422,
                         details={"question_key": question.question_key},
                     )
@@ -185,7 +185,7 @@ class BriefIntakeService:
             else:
                 raise ApplicationError(
                     "brief_intake_answer_mode_invalid",
-                    "Unsupported Brief Intake answer mode",
+                    "不支持的建案回答方式。",
                     status_code=422,
                 )
 
@@ -300,7 +300,7 @@ class BriefIntakeService:
             if brief.draft_revision != expected_brief_revision:
                 raise ApplicationError(
                     "brief_revision_conflict",
-                    "Brief draft revision is stale",
+                    "创作简报草稿版本已过期。",
                     status_code=409,
                     details={
                         "current_revision": brief.draft_revision,
@@ -310,7 +310,7 @@ class BriefIntakeService:
             if brief.current_version_id is not None:
                 raise ApplicationError(
                     "brief_intake_formal_version_exists",
-                    "A confirmed Brief version already exists; continue in formal review",
+                    "已确认的创作简报版本已经存在，请进入正式审阅继续操作。",
                     status_code=409,
                 )
 
@@ -394,7 +394,7 @@ class BriefIntakeService:
         if instruction is not None and not normalized_instruction:
             raise ApplicationError(
                 "brief_intake_instruction_blank",
-                "A dialogue revision instruction must not be blank",
+                "对话修改指令不能为空。",
                 status_code=422,
             )
         with self.session.begin():
@@ -412,7 +412,7 @@ class BriefIntakeService:
             if normalized_instruction is not None and base_candidate is None:
                 raise ApplicationError(
                     "brief_intake_base_candidate_required",
-                    "Dialogue revision requires a base candidate",
+                    "对话修改需要一个基础候选。",
                     status_code=422,
                 )
             setting = self._provider_setting(actor_user_id, provider)
@@ -805,7 +805,7 @@ class BriefIntakeService:
         if candidate.basis_input_hash != self._basis_hash(intake):
             raise ApplicationError(
                 "brief_intake_candidate_stale",
-                "The candidate was produced from older Intake input",
+                "候选来自较早的建案输入，已失效。",
                 status_code=409,
                 details={"candidate_id": candidate.id},
             )
@@ -814,7 +814,7 @@ class BriefIntakeService:
         if intake.stage == "brief_review":
             raise ApplicationError(
                 "brief_intake_already_adopted",
-                "This intake has already entered formal Brief review",
+                "当前建案已进入正式创作简报审阅，不能再回退修改。",
                 status_code=409,
             )
 
@@ -827,7 +827,7 @@ class BriefIntakeService:
         if unresolved:
             raise ApplicationError(
                 "brief_intake_required_questions_unanswered",
-                "Resolve every required direction question before continuing",
+                "请先解决所有必答方向问题。",
                 status_code=422,
                 details={"question_keys": unresolved},
             )
@@ -845,7 +845,7 @@ class BriefIntakeService:
         if active_task_id is not None:
             raise ApplicationError(
                 "brief_intake_task_active",
-                "A matching Brief Intake task is already active",
+                "匹配的建案任务已经在执行中。",
                 status_code=409,
                 details={"task_run_id": active_task_id, "task_type": task_type},
             )
@@ -864,7 +864,7 @@ class BriefIntakeService:
         if setting is None or setting.credential_status == "deleted":
             raise ApplicationError(
                 "provider_setting_required",
-                f"Configure a {provider} API key before starting the task",
+                f"开始任务前请先配置 {provider} API 密钥。",
                 status_code=409,
                 details={"provider": provider},
             )
@@ -1044,7 +1044,7 @@ class BriefIntakeService:
         if source is None:
             raise ApplicationError(
                 "brief_intake_source_required",
-                "Save the original idea before continuing",
+                "请先保存最初想法。",
                 status_code=422,
             )
         return source
@@ -1053,7 +1053,7 @@ class BriefIntakeService:
         if intake.revision != received:
             raise ApplicationError(
                 "brief_intake_revision_conflict",
-                "Brief Intake revision is stale",
+                "建案版本已过期，请刷新后重试。",
                 status_code=409,
                 details={
                     "current_revision": intake.revision,
@@ -1118,7 +1118,7 @@ def validate_candidate_content(content: dict[str, Any]) -> dict[str, Any]:
     except ValidationError as error:
         raise ApplicationError(
             "brief_intake_candidate_invalid",
-            "Candidate does not satisfy the Brief Intake contract",
+            "候选不符合建案内容要求。",
             status_code=422,
             details={"issues": error.errors(include_url=False)},
         ) from error
@@ -1154,7 +1154,7 @@ def validate_candidate_content(content: dict[str, Any]) -> dict[str, Any]:
     if any(not value for value in text_values):
         raise ApplicationError(
             "brief_intake_candidate_invalid",
-            "Candidate text fields must not be blank",
+            "候选文本字段不能为空。",
             status_code=422,
         )
     mode = normalized["resolution_mode"]
@@ -1162,13 +1162,13 @@ def validate_candidate_content(content: dict[str, Any]) -> dict[str, Any]:
     if mode == "author_anchored" and not answer:
         raise ApplicationError(
             "brief_intake_author_answer_required",
-            "Author-anchored resolution requires the author's answer",
+            "按作者底牌展开时必须填写作者底牌。",
             status_code=422,
         )
     if mode != "author_anchored" and answer is not None:
         raise ApplicationError(
             "brief_intake_resolution_conflict",
-            "Only author-anchored resolution may contain an author answer",
+            "只有按作者底牌展开时才能填写作者底牌。",
             status_code=422,
         )
     constraint_keys = [item["constraint_key"] for item in normalized["constraints"]]
@@ -1178,7 +1178,7 @@ def validate_candidate_content(content: dict[str, Any]) -> dict[str, Any]:
     ):
         raise ApplicationError(
             "brief_intake_candidate_key_duplicate",
-            "Candidate constraint and pending-decision keys must be unique",
+            "候选约束与待决定事项的键不能重复。",
             status_code=422,
         )
     return normalized
@@ -1221,7 +1221,7 @@ def project_candidate_to_brief(
     except ValidationError as error:
         raise ApplicationError(
             "brief_intake_projection_invalid",
-            "Candidate cannot be projected into a formal Brief draft",
+            "候选无法转换为正式创作简报草案。",
             status_code=422,
             details={"issues": error.errors(include_url=False)},
         ) from error
@@ -1285,7 +1285,7 @@ def _supported_provider(provider: str) -> str:
     if normalized not in SUPPORTED_PROVIDERS:
         raise ApplicationError(
             "provider_not_supported",
-            f"Provider is not supported: {provider}",
+            f"不支持的模型服务：{provider}。",
             status_code=422,
             details={"supported_providers": sorted(SUPPORTED_PROVIDERS)},
         )

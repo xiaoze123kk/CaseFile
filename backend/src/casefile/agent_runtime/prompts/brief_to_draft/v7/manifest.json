@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "ffd17239f4562c86a964a3010e1ebfe1fc5c3be7c863980e74e6a0045be2a0ff",
+  "previous_version": "brief-to-draft-v6",
+  "change_summary": "改为服务端对象计划、三分区并发生成与分区定向修复，移除模型自主整稿校验。"
+}

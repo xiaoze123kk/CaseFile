@@ -715,6 +715,71 @@
   font-size: 10px;
 }
 
+.authorAnswerTools {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--red);
+  background: rgba(255, 247, 241, 0.9);
+}
+
+.authorAnswerTools > div:first-child {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.authorAnswerTools button {
+  min-height: 29px;
+  padding: 0 9px;
+  color: var(--red);
+  border-color: var(--red-line);
+  background: var(--red-soft);
+  font-size: var(--font-micro);
+}
+
+.authorAnswerTools button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.authorAnswerTools small {
+  color: var(--ink-faint);
+  font-size: var(--font-micro);
+  line-height: 1.5;
+}
+
+.authorAnswerSuggestion {
+  padding-top: 2px;
+}
+
+.authorAnswerSuggestion > span {
+  color: var(--red);
+  font: var(--font-micro) "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+
+.authorAnswerSuggestion p {
+  margin: 6px 0 8px;
+  color: var(--ink);
+  font-size: var(--font-caption);
+  line-height: 1.6;
+}
+
+.authorAnswerSuggestion > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.authorAnswerSuggestion > div button:last-child {
+  color: var(--ink-muted);
+  border-color: var(--rule);
+  background: var(--paper-high);
+}
+
 .stepActions {
   position: fixed;
   z-index: 35;
@@ -999,6 +1064,35 @@
   color: var(--red);
   background: var(--red-soft);
   box-shadow: inset 0 -3px var(--red);
+}
+
+.resolutionEffect {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 0.85fr) minmax(0, 1.6fr);
+  align-items: baseline;
+  gap: 12px;
+  padding: 11px 12px;
+  border-top: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--red-soft) 38%, transparent);
+}
+
+.resolutionEffect span {
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.resolutionEffect strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.resolutionEffect p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .constraintDrawer {
@@ -1296,6 +1390,11 @@
   .resolutionChoices,
   .constraintGrid {
     grid-template-columns: 1fr;
+  }
+
+  .resolutionEffect {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .polishModes label,

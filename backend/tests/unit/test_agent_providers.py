@@ -6,36 +6,45 @@ import asyncio
 import json
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
+import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import ValidationError
-
-import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
+from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeSynthesizeRequest,
     BriefPolishCandidate,
     BriefPolishRequest,
+    BriefStrategyOptionsCandidate,
+    BriefStrategyOptionsRequest,
     CandidateStrategy,
     CaseFileChatRequest,
+    GenerationPlan,
     GenerationRequest,
 )
 from casefile.agent_runtime.prompt import casefile_chat_input
+from casefile.agent_runtime.prompt_repository import PromptRepositoryError
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
+    _allocate_plan_ids,
+    _deepseek_v8_output_protocol,
     _json_schema_instruction,
-    _pydantic_validation_issues,
+    _partition_issues,
+    _prune_invalid_reference_list_items,
+    _remove_absent_optional_fields,
+    _retain_planned_objects,
     _validate_generated_descriptions,
+    _validate_partitioned_candidate,
+)
+from casefile.agent_runtime.structured_output import (
+    pydantic_validation_issues as _pydantic_validation_issues,
+)
+from casefile.agent_runtime.structured_output import (
+    validate_model_json as _validate_auxiliary_output,
 )
 from casefile.agent_runtime.tools import GenerationToolContext, validate_casefile_candidate
 from casefile.application.casefile_v1 import generation_candidate_summary
@@ -43,7 +52,14 @@ from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
-from casefile_contracts import CaseFile
+from casefile_contracts import CaseFile, ObjectRef
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -74,9 +90,58 @@ def test_deepseek_client_uses_official_chat_completions_endpoint() -> None:
     assert client.max_retries == 4
 
 
+def test_deepseek_v8_protocol_uses_json_mode_for_known_flash_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CASEFILE_DEEPSEEK_V8_OUTPUT_PROTOCOL", raising=False)
+
+    assert _deepseek_v8_output_protocol("deepseek-v4-flash") == "json_object"
+    assert _deepseek_v8_output_protocol("deepseek-chat") == "json_object"
+    assert _deepseek_v8_output_protocol("deepseek-v4-pro") == "strict_tool"
+
+    monkeypatch.setenv("CASEFILE_DEEPSEEK_V8_OUTPUT_PROTOCOL", "strict_tool")
+    assert _deepseek_v8_output_protocol("deepseek-v4-flash") == "strict_tool"
+
+    monkeypatch.setenv("CASEFILE_DEEPSEEK_V8_OUTPUT_PROTOCOL", "not-a-protocol")
+    with pytest.raises(ProviderProtocolError, match="CASEFILE_DEEPSEEK_V8_OUTPUT_PROTOCOL"):
+        _deepseek_v8_output_protocol("deepseek-v4-flash")
+
+
 def test_deepseek_provider_requires_a_key_before_network_access() -> None:
     with pytest.raises(ProviderProtocolError, match="DeepSeek API key is required"):
         DeepSeekAgentsProvider().generate(_request(api_key=None))
+
+
+def test_v8_validates_the_frozen_bundle_before_any_step_can_be_reused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded: list[tuple[str, str]] = []
+
+    def reject_bundle(agent_id: str, version: str) -> object:
+        loaded.append((agent_id, version))
+        raise PromptRepositoryError("frozen bundle is unavailable")
+
+    async def unexpected_model_call(
+        _instructions: str,
+        _input_text: str,
+        _output_type: type[BaseModel],
+        _stage: str,
+        _component_id: str,
+        _schema_id: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        raise AssertionError("model steps must not start before Bundle validation")
+
+    monkeypatch.setattr(v8_workflow, "load_prompt", reject_bundle)
+    request = replace(
+        _request(api_key=None),
+        prompt_version="brief-to-draft-v8",
+        reusable_steps={"case_blueprint_planner": {}},
+    )
+
+    with pytest.raises(PromptRepositoryError, match="frozen bundle is unavailable"):
+        asyncio.run(v8_workflow.run_v8_generation(request, call_component=unexpected_model_call))
+
+    assert loaded == [("brief_to_draft", "brief-to-draft-v8")]
 
 
 def test_openai_provider_loads_the_prompt_version_frozen_on_the_request(
@@ -178,6 +243,137 @@ def test_unstructured_provider_receives_exact_auxiliary_schema() -> None:
     assert '"input_hash"' not in instruction
 
 
+def test_unstructured_output_preserves_schema_issues_for_bounded_repair() -> None:
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_auxiliary_output(
+            BriefPolishCandidate,
+            json.dumps(
+                {
+                    "polished_text": "修订稿",
+                    "ambiguities": [],
+                    "introduced_details": [],
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+    assert caught.value.errors == [
+        {
+            "code": "missing",
+            "path": "/preserved_intent_summary",
+            "message": "缺少必填字段。",
+        }
+    ]
+
+
+def test_unstructured_output_reports_invalid_json_as_a_validation_issue() -> None:
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_auxiliary_output(BriefPolishCandidate, '{"polished_text":')
+
+    assert caught.value.errors[0]["code"] == "candidate_json_invalid"
+    assert caught.value.errors[0]["path"] == ""
+
+
+def test_unstructured_output_discards_only_forbidden_extra_fields() -> None:
+    discarded_paths: list[str] = []
+
+    candidate = _validate_auxiliary_output(
+        BriefPolishCandidate,
+        json.dumps(
+            {
+                "polished_text": "修订稿",
+                "preserved_intent_summary": "保留原意",
+                "ambiguities": [],
+                "introduced_details": [],
+                "confirmation_status_note": "模型自行补充的说明",
+            },
+            ensure_ascii=False,
+        ),
+        discarded_paths=discarded_paths,
+    )
+
+    assert candidate.polished_text == "修订稿"
+    assert discarded_paths == ["/confirmation_status_note"]
+
+
+def test_unstructured_output_keeps_non_extra_validation_failures_after_cleanup() -> None:
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_auxiliary_output(
+            BriefPolishCandidate,
+            json.dumps(
+                {
+                    "polished_text": "修订稿",
+                    "ambiguities": [],
+                    "introduced_details": [],
+                    "confirmation_status_note": "模型自行补充的说明",
+                },
+                ensure_ascii=False,
+            ),
+        )
+
+    assert caught.value.errors == [
+        {
+            "code": "missing",
+            "path": "/preserved_intent_summary",
+            "message": "缺少必填字段。",
+        }
+    ]
+
+
+def test_unstructured_output_normalizes_refs_from_authoritative_planned_ids() -> None:
+    normalized_ref_paths: list[str] = []
+    reference = _validate_auxiliary_output(
+        ObjectRef,
+        json.dumps(
+            {
+                "object_type": "constraints",
+                "object_id": "con_t96_01",
+            }
+        ),
+        planned_object_types={"con_t96_01": "constraint"},
+        normalized_ref_paths=normalized_ref_paths,
+    )
+
+    assert reference.object_type.value == "constraint"
+    assert normalized_ref_paths == ["/object_type"]
+
+
+def test_unstructured_output_does_not_guess_unknown_reference_types() -> None:
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_auxiliary_output(
+            ObjectRef,
+            json.dumps(
+                {
+                    "object_type": "constraints",
+                    "object_id": "con_unknown",
+                }
+            ),
+            planned_object_types={"con_t96_01": "constraint"},
+        )
+
+    assert caught.value.errors[0]["path"] == "/object_type"
+
+
+def test_generation_omits_absent_optional_spatial_positions() -> None:
+    normalized = _remove_absent_optional_fields(
+        {
+            "locations": [
+                {
+                    "id": "loc_t1_01",
+                    "description": "档案馆主楼。",
+                    "spatial_position": None,
+                    "parent_ref": None,
+                }
+            ],
+            "entities": [{"id": "ent_t1_01", "description": None}],
+        }
+    )
+
+    assert "spatial_position" not in normalized["locations"][0]
+    assert normalized["locations"][0]["parent_ref"] is None
+    assert "description" not in normalized["entities"][0]
+
+
 def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() -> None:
     provider = FakeProvider()
     polish = provider.polish(
@@ -216,6 +412,223 @@ def test_fake_provider_keeps_polish_and_extraction_as_reviewable_candidates() ->
         "乙触发保护。",
     ]
     assert extract.candidate.creative_constraints[0].suggested_strength == "hard"
+    suggestion = provider.extract_anchors(
+        BriefAnchorExtractRequest(
+            task_run_id=3,
+            prompt_version="brief-anchor-extract-v3",
+            brief={
+                "creative_intent": "失真的时间档案",
+                "reasoning_proposition": "三份记录为何指向不存在的时间？",
+                "author_answer": None,
+                "boundary_text": None,
+            },
+            input_hash="c" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=2,
+            emit=lambda _event_type, _stage, _payload: None,
+            mode="suggest_author_answer",
+        )
+    )
+    assert suggestion.candidate.suggested_author_answer is not None
+    assert "不存在的时间" in suggestion.candidate.suggested_author_answer
+
+
+def test_strategy_options_are_tailored_complete_and_not_auto_selected() -> None:
+    result = FakeProvider().strategy_options(
+        BriefStrategyOptionsRequest(
+            task_run_id=8,
+            prompt_version="brief-strategy-options-v1",
+            brief={
+                "creative_intent": "失真的时间档案",
+                "reasoning_proposition": "三份记录为何指向不存在的时间？",
+            },
+            input_hash="e" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=2,
+            emit=lambda _event_type, _stage, _payload: None,
+        )
+    )
+
+    assert [option.strategy for option in result.candidate.options] == [
+        "structure_first",
+        "atmosphere_first",
+        "reasoning_first",
+    ]
+    assert result.candidate.recommended_strategy == "reasoning_first"
+    assert "不存在的时间" in result.candidate.options[2].direction
+
+
+def test_strategy_options_reject_duplicate_or_missing_direction() -> None:
+    option = {
+        "strategy": "structure_first",
+        "direction": "先建立结构。",
+        "focus": "结构",
+        "strengths": ["稳定", "可审阅"],
+        "tradeoffs": ["氛围稍后深化"],
+        "brief_fit": "适配当前 Brief。",
+    }
+    with pytest.raises(ValidationError, match="each selectable strategy exactly once"):
+        BriefStrategyOptionsCandidate.model_validate(
+            {
+                "options": [option, option, option],
+                "recommended_strategy": "structure_first",
+                "recommendation_reason": "结构最适配。",
+            }
+        )
+
+
+def test_generation_plan_rejects_unknown_keys_and_allocates_stable_ids() -> None:
+    with pytest.raises(ValidationError, match="unknown keys"):
+        GenerationPlan.model_validate(
+            {
+                "title": "非法计划",
+                "objects": [
+                    {
+                        "local_key": "answer",
+                        "collection": "resolution_specs",
+                        "title": "解答",
+                        "purpose": "固定核心答案。",
+                        "referenced_keys": ["missing"],
+                    }
+                ],
+            }
+        )
+
+    plan = GenerationPlan.model_validate(
+        {
+            "title": "稳定计划",
+            "objects": [
+                {
+                    "local_key": "answer",
+                    "collection": "resolution_specs",
+                    "title": "解答",
+                    "purpose": "固定核心答案。",
+                },
+                {
+                    "local_key": "lead",
+                    "collection": "entities",
+                    "title": "主角",
+                    "purpose": "承担调查行动。",
+                    "referenced_keys": ["answer"],
+                },
+            ],
+        }
+    )
+    assert _allocate_plan_ids(42, plan) == {
+        "answer": "res_t42_01",
+        "lead": "ent_t42_01",
+    }
+
+
+def test_cross_partition_validation_routes_only_affected_partitions() -> None:
+    grouped = _partition_issues(
+        [
+            {"code": "reference_missing", "path": "/claims/0/basis_refs/0"},
+            {"code": "description_missing", "path": "/events/0/description"},
+            {"code": "metadata_invalid", "path": "/version/version_no"},
+        ]
+    )
+
+    assert set(grouped) == {"reasoning", "story"}
+    assert grouped["reasoning"][0]["path"] == "/claims/0/basis_refs/0"
+    assert grouped["story"][0]["path"] == "/events/0/description"
+
+
+def test_partition_validation_reports_contract_and_planned_id_issues_together() -> None:
+    request = replace(
+        _request(api_key=None),
+        prompt_version="brief-to-draft-v4",
+        model_id="fake",
+        brief={
+            "creative_intent": "家庭日常中的小悬念",
+            "reasoning_proposition": "弟弟为什么偷吃蛋糕？",
+            "resolution_mode": "open",
+            "conclusion_mode": "open_interpretation",
+            "author_answer": None,
+            "author_anchors": [{"statement": "弟弟偷吃了蛋糕。"}],
+            "creative_constraints": [],
+            "source_record_ids": [],
+        },
+    )
+    candidate = FakeProvider().generate(request).candidate
+    candidate["title"] = ""
+    candidate["resolution_specs"][0]["id"] = "res_t1_unplanned"
+
+    with pytest.raises(ContractValidationError) as caught:
+        _validate_partitioned_candidate(
+            candidate,
+            {"answer": "res_t1_01", "constraint": "con_t1_01"},
+        )
+
+    assert any(issue["path"] == "/title" for issue in caught.value.errors)
+    id_issue = next(
+        issue
+        for issue in caught.value.errors
+        if issue["code"] == "planned_object_ids_mismatch"
+    )
+    assert id_issue["path"] == "/resolution_specs"
+    assert "res_t1_01" in id_issue["message"]
+    assert "res_t1_unplanned" in id_issue["message"]
+
+
+def test_partition_discards_unplanned_objects_but_keeps_missing_ids_visible() -> None:
+    partition, discarded = _retain_planned_objects(
+        {
+            "entities": [
+                {"id": "ent_t1_01", "name": "保留"},
+                {"id": "ent_unplanned", "name": "丢弃"},
+            ],
+            "relationships": [{"id": "rel_unplanned", "label": "丢弃"}],
+        },
+        {"ent_t1_01", "ent_t1_02"},
+    )
+
+    assert partition["entities"] == [{"id": "ent_t1_01", "name": "保留"}]
+    assert partition["relationships"] == []
+    assert discarded == ["ent_unplanned", "rel_unplanned"]
+
+
+def test_bounded_repair_prunes_only_validator_identified_reference_list_items() -> None:
+    candidate = {
+        "entities": [
+            {
+                "knowledge_states": [
+                    {
+                        "false_belief_refs": [
+                            {"object_type": "claim", "object_id": "claim_keep"},
+                            {"object_type": "information_unit", "object_id": "info_drop"},
+                        ]
+                    }
+                ]
+            }
+        ],
+        "events": [{"location_ref": {"object_type": "entity", "object_id": "ent_bad"}}],
+    }
+
+    pruned = _prune_invalid_reference_list_items(
+        candidate,
+        [
+            {
+                "code": "reference_type_mismatch",
+                "path": "/entities/0/knowledge_states/0/false_belief_refs/1",
+            },
+            {
+                "code": "reference_type_mismatch",
+                "path": "/events/0/location_ref",
+            },
+        ],
+    )
+
+    assert pruned == ["/entities/0/knowledge_states/0/false_belief_refs/1"]
+    assert candidate["entities"][0]["knowledge_states"][0]["false_belief_refs"] == [
+        {"object_type": "claim", "object_id": "claim_keep"}
+    ]
+    assert candidate["events"][0]["location_ref"] == {
+        "object_type": "entity",
+        "object_id": "ent_bad",
+    }
 
 
 def test_fake_intake_synthesis_emits_named_outline_stages() -> None:
@@ -261,9 +674,7 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
             model_id="fake",
             api_key=None,
             max_turns=2,
-            emit=lambda event_type, stage, _payload: emitted.append(
-                (event_type, stage)
-            ),
+            emit=lambda event_type, stage, _payload: emitted.append((event_type, stage)),
         )
     )
 
@@ -339,9 +750,7 @@ def test_validation_tool_returns_actionable_issues_and_public_event() -> None:
     emitted: list[tuple[str, str, dict[str, object]]] = []
     request = replace(
         _request(),
-        emit=lambda event_type, stage, payload: emitted.append(
-            (event_type, stage, payload)
-        ),
+        emit=lambda event_type, stage, payload: emitted.append((event_type, stage, payload)),
     )
     context = ToolContext(
         GenerationToolContext(request),
@@ -406,7 +815,7 @@ def test_generation_quality_gate_rejects_missing_object_descriptions(
         {
             "code": "generated_description_missing",
             "path": "/entities/0/description",
-            "message": "Agent-generated objects require a non-empty description",
+            "message": "Agent 生成的对象必须填写非空描述。",
         }
     ]
 
@@ -460,6 +869,7 @@ def test_fake_generation_keeps_strategy_candidates_distinct() -> None:
             "creative_intent": "围绕一段失真的时间记录建立推理卷宗",
             "reasoning_proposition": "三份可靠记录为何共同指向不存在的时间？",
             "resolution_mode": "open",
+            "conclusion_mode": "open_interpretation",
             "author_answer": None,
             "author_anchors": [],
             "creative_constraints": [],
@@ -479,15 +889,17 @@ def test_fake_generation_keeps_strategy_candidates_distinct() -> None:
     ]
 
     assert len({result.candidate["title"] for result in results}) == 3
-    assert len(
-        {
-            generation_candidate["content_hash"]
-            for generation_candidate in (
-                generation_candidate_summary(result.candidate)
-                for result in results
-            )
-        }
-    ) == 3
+    assert (
+        len(
+            {
+                generation_candidate["content_hash"]
+                for generation_candidate in (
+                    generation_candidate_summary(result.candidate) for result in results
+                )
+            }
+        )
+        == 3
+    )
 
 
 def test_provider_transport_errors_have_stable_failure_codes() -> None:
@@ -495,10 +907,7 @@ def test_provider_transport_errors_have_stable_failure_codes() -> None:
     response_401 = httpx.Response(401, request=request)
     response_429 = httpx.Response(429, request=request)
 
-    assert (
-        _error_code(APIConnectionError(request=request))
-        == "provider_connection_failed"
-    )
+    assert _error_code(APIConnectionError(request=request)) == "provider_connection_failed"
     assert _error_code(APITimeoutError(request=request)) == "provider_timeout"
     assert (
         _error_code(

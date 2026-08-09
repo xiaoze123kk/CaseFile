@@ -2,29 +2,37 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
     CaseFileChatResult,
+    GenerationRequest,
+    GenerationResult,
 )
+from casefile.agent_runtime.providers import _fake_v8_output
 from casefile.api.app import create_app
+from casefile.contracts import ContractValidationError
+from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -61,6 +69,69 @@ class ApiChatProvider(FakeProvider):
                 "total_tokens": 10,
             },
         )
+
+
+class RecoverableV8Provider(FakeProvider):
+    def __init__(self) -> None:
+        self.fail_evidence = True
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        async def call_component(
+            _instructions: str,
+            _input_text: str,
+            output_type: type[BaseModel],
+            stage: str,
+            component_id: str,
+            schema_id: str,
+        ) -> tuple[dict[str, Any], dict[str, Any]]:
+            request.emit(
+                "agent.model_call.started",
+                stage,
+                {
+                    "component_id": component_id,
+                    "schema_id": schema_id,
+                    "attempt_no": 1,
+                    "protocol": "fake_strict",
+                },
+            )
+            if component_id == "evidence_logic" and self.fail_evidence:
+                issue = {
+                    "code": "missing",
+                    "path": "/claims/0/statement",
+                    "message": "缺少必填字段。",
+                }
+                request.emit(
+                    "agent.model_call.failed",
+                    stage,
+                    {
+                        "component_id": component_id,
+                        "schema_id": schema_id,
+                        "attempt_no": 1,
+                        "protocol": "fake_strict",
+                        "failure_layer": "pydantic",
+                        "issues": [issue],
+                    },
+                )
+                raise ContractValidationError([issue])
+            output = _fake_v8_output(output_type)
+            if component_id == "resolution_governance":
+                output["resolution_specs"][0]["conclusion_mode"] = request.brief[
+                    "conclusion_mode"
+                ]
+            request.emit(
+                "agent.model_call.completed",
+                stage,
+                {
+                    "component_id": component_id,
+                    "schema_id": schema_id,
+                    "attempt_no": 1,
+                    "protocol": "fake_strict",
+                    "usage": {},
+                },
+            )
+            return output, {}
+
+        return asyncio.run(run_v8_generation(request, call_component=call_component))
 
 
 def _brief(source_record_id: int) -> dict[str, object]:
@@ -187,7 +258,12 @@ def test_settings_brief_generation_sse_and_completion_gate(
 ) -> None:
     database_url, engine, actor_id, master_key = api_database
     app = create_app(database_url)
-    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}), TestClient(app) as client:
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+        },
+    ), TestClient(app) as client:
         assert client.get("/health/ready").status_code == 200
         assert client.get("/api/v1/projects").status_code == 401
 
@@ -372,23 +448,136 @@ def test_settings_brief_generation_sse_and_completion_gate(
         task = client.get(
             f"/api/v1/projects/{project_id}/tasks/{task_id}", headers=_identity(actor_id)
         )
+        with factory() as diagnostic_session:
+            diagnostic_attempt = diagnostic_session.scalar(
+                select(TaskAttempt).where(TaskAttempt.task_run_id == task_id)
+            )
         assert task.status_code == 200
-        assert task.json()["status"] == "succeeded"
+        assert task.json()["status"] == "succeeded", json.dumps(
+            {
+                "task": task.json(),
+                "attempt_error": (
+                    diagnostic_attempt.error_details_jsonb if diagnostic_attempt else None
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
         assert task.json()["failure"] is None
+        assert task.json()["candidate_strategy"] == "structure_first"
+        assert [step["component_id"] for step in task.json()["component_steps"]] == [
+            "context_pack_builder",
+            "case_blueprint_planner",
+            "story_world",
+            "evidence_logic",
+            "resolution_governance",
+            "reference_linker",
+            "casefile_compiler",
+            "quality_repair_gate",
+        ]
         assert task.json()["result_snapshot_id"] is None
         assert task.json()["result"]["title"]
         assert task.json()["result"]["candidate_strategy"] == "structure_first"
         assert task.json()["result"]["candidate_strategy_version"] == "candidate-strategy-v1"
+
+        recoverable_provider = RecoverableV8Provider()
+        recovery_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="api-recovery-worker"),
+            provider_factory=lambda _task: recoverable_provider,
+        )
+        recoverable_queued = client.post(
+            f"/api/v1/projects/{project_id}/tasks/generate",
+            headers=_identity(actor_id),
+            json={
+                "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_revision": 1,
+                "provider": "deepseek",
+                "candidate_strategy": "atmosphere_first",
+            },
+        )
+        assert recoverable_queued.status_code == 202
+        recoverable_task_id = recoverable_queued.json()["task_run_id"]
+        assert recovery_worker.run_once() is True
+        failed_task = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{recoverable_task_id}",
+            headers=_identity(actor_id),
+        ).json()
+        assert failed_task["status"] == "failed"
+        assert any(
+            step["component_id"] == "evidence_logic"
+            and step["status"] == "failed"
+            and step["failure_layer"] == "structured_output"
+            for step in failed_task["component_steps"]
+        )
+
+        recoverable_provider.fail_evidence = False
+        resumed = client.post(
+            f"/api/v1/projects/{project_id}/tasks/{recoverable_task_id}/resume",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_revision": 1,
+                "expected_brief_revision": updated.json()["draft_revision"],
+            },
+        )
+        assert resumed.status_code == 202
+        assert resumed.json()["attempt_count"] == 1
+        assert recovery_worker.run_once() is True
+        recovered_task = client.get(
+            f"/api/v1/projects/{project_id}/tasks/{recoverable_task_id}",
+            headers=_identity(actor_id),
+        ).json()
+        assert recovered_task["status"] == "succeeded"
+        assert recovered_task["attempt_count"] == 2
+        second_attempt_steps = [
+            step for step in recovered_task["component_steps"] if step["attempt_no"] == 2
+        ]
+        assert {
+            step["component_id"]
+            for step in second_attempt_steps
+            if step["status"] == "reused"
+        } >= {"case_blueprint_planner", "story_world", "resolution_governance"}
+        assert any(
+            step["component_id"] == "evidence_logic" and step["status"] == "succeeded"
+            for step in second_attempt_steps
+        )
+
+        stale_provider = RecoverableV8Provider()
+        stale_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="api-stale-worker"),
+            provider_factory=lambda _task: stale_provider,
+        )
+        stale_queued = client.post(
+            f"/api/v1/projects/{project_id}/tasks/generate",
+            headers=_identity(actor_id),
+            json={
+                "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_revision": 1,
+                "provider": "deepseek",
+                "candidate_strategy": "reasoning_first",
+            },
+        )
+        assert stale_queued.status_code == 202
+        stale_task_id = stale_queued.json()["task_run_id"]
+        assert stale_worker.run_once() is True
 
         candidates = client.get(
             f"/api/v1/projects/{project_id}/draft-candidates",
             headers=_identity(actor_id),
         )
         assert candidates.status_code == 200
-        assert [candidate["task_run_id"] for candidate in candidates.json()] == [task_id]
-        assert candidates.json()[0]["can_adopt"] is True
-        assert candidates.json()[0]["candidate_strategy"] == "structure_first"
-        assert candidates.json()[0]["candidate_strategy_label"] == "结构优先"
+        assert {candidate["task_run_id"] for candidate in candidates.json()} == {
+            task_id,
+            recoverable_task_id,
+        }
+        structure_candidate = next(
+            candidate
+            for candidate in candidates.json()
+            if candidate["candidate_strategy"] == "structure_first"
+        )
+        assert structure_candidate["can_adopt"] is True
+        assert structure_candidate["candidate_strategy_label"] == "结构优先"
         empty_draft = client.get(
             f"/api/v1/projects/{project_id}/draft",
             headers=_identity(actor_id),
@@ -406,6 +595,16 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
         )
         assert adopted_task.json()["result_snapshot_id"] is not None
+        stale_resume = client.post(
+            f"/api/v1/projects/{project_id}/tasks/{stale_task_id}/resume",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_revision": 2,
+                "expected_brief_revision": updated.json()["draft_revision"],
+            },
+        )
+        assert stale_resume.status_code == 409
+        assert stale_resume.json()["code"] == "task_resume_draft_stale"
 
         stream = client.get(
             f"/api/v1/projects/{project_id}/tasks/{task_id}/stream",
@@ -414,6 +613,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert stream.status_code == 200
         assert "id: 1\n" not in stream.text
         assert "event: task.succeeded" in stream.text
+        assert "event: agent.step.completed" in stream.text
         assert "sk-test-api-secret" not in stream.text
         assert "sk-deepseek-api-secret" not in stream.text
         assert "chain_of_thought" not in stream.text

@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator, FormatChecker
+from pydantic import ValidationError
 from referencing import Registry, Resource
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -227,6 +228,56 @@ def test_three_casefiles_validate_and_cover_contract_foundation(
     assert {"user_confirmed", "ai_inferred"} <= confirmation_statuses
 
 
+def test_location_spatial_positions_are_optional_strict_and_bounded(
+    validators: dict[str, Draft202012Validator],
+) -> None:
+    fixture = load_json(FIXTURE_ROOT / "casefiles" / "restart_loop.casefile.json")
+    positions = [location["spatial_position"] for location in fixture["locations"]]
+    assert positions == [
+        {"coordinate_system": "schematic", "x": 28, "y": 42},
+        {
+            "coordinate_system": "wgs84",
+            "latitude": 31.2304,
+            "longitude": 121.4737,
+        },
+    ]
+
+    generated = CaseFile.model_validate(fixture)
+    assert generated.model_dump(mode="json", by_alias=True, exclude_unset=True) == fixture
+
+    legacy = copy.deepcopy(fixture)
+    for location in legacy["locations"]:
+        location.pop("spatial_position")
+    validators["casefile"].validate(legacy)
+    assert (
+        CaseFile.model_validate(legacy).model_dump(
+            mode="json", by_alias=True, exclude_unset=True
+        )
+        == legacy
+    )
+
+    invalid_positions = (
+        {"coordinate_system": "schematic", "x": -0.01, "y": 50},
+        {"coordinate_system": "schematic", "x": 50, "y": 100.01},
+        {"coordinate_system": "schematic", "x": 50, "y": 50, "latitude": 0},
+        {"coordinate_system": "wgs84", "latitude": -90.01, "longitude": 0},
+        {"coordinate_system": "wgs84", "latitude": 0, "longitude": 180.01},
+        {"coordinate_system": "wgs84", "latitude": 0, "longitude": 0, "x": 50},
+        {"coordinate_system": "local", "x": 50, "y": 50},
+    )
+    for position in invalid_positions:
+        invalid = copy.deepcopy(fixture)
+        invalid["locations"][0]["spatial_position"] = position
+        errors = list(validators["casefile"].iter_errors(invalid))
+        assert errors, position
+        assert any(
+            error_path(error).startswith("/locations/0/spatial_position")
+            for error in errors
+        )
+        with pytest.raises(ValidationError):
+            CaseFile.model_validate(invalid)
+
+
 def test_validation_issue_and_patch_candidate_validate_in_both_python_layers(
     validators: dict[str, Draft202012Validator],
 ) -> None:
@@ -298,6 +349,8 @@ def test_casefile_chat_task_roundtrips_with_message_lineage(
             "stale": False,
         },
         "failure": None,
+        "candidate_strategy": None,
+        "component_steps": [],
     }
 
     validators["task"].validate(task)

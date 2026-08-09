@@ -15,7 +15,7 @@ from referencing import Registry, Resource
 
 CASEFILE_SCHEMA_VERSION = "1.0"
 
-_COLLECTION_TYPES = {
+COLLECTION_OBJECT_TYPES = {
     "resolution_specs": "resolution_spec",
     "entities": "entity",
     "relationships": "relationship",
@@ -145,7 +145,7 @@ def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []
     registry: dict[str, str] = {document["casefile_id"]: "casefile"}
 
-    for collection_name, object_type in _COLLECTION_TYPES.items():
+    for collection_name, object_type in COLLECTION_OBJECT_TYPES.items():
         for index, item in enumerate(document[collection_name]):
             object_id = item["id"]
             if object_id in registry:

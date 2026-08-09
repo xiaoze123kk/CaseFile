@@ -27,9 +27,11 @@ export interface ReasoningPath {
   hypothesisId: string;
 }
 
-export type InspectorTab = "issues" | "sources" | "patch" | "audit";
+export type InspectorTab = "object" | "issues" | "sources" | "patch" | "audit";
 
 export type ObjectKind =
+  | "entity"
+  | "information"
   | "person"
   | "evidence"
   | "event"
@@ -158,9 +160,9 @@ export interface WorkbenchSeed {
   mapLabels: WorkbenchMapLabel[];
   drawer: WorkbenchDrawerCopy;
   initialAuditEntries: WorkbenchAuditEntry[];
-  defaultEventId: string;
-  defaultObjectId: string;
-  defaultIssueId: string;
+  defaultEventId: string | null;
+  defaultObjectId: string | null;
+  defaultIssueId: string | null;
 }
 
 export type WorkbenchCandidateFocus = "structure" | "atmosphere" | "reasoning";
@@ -193,6 +195,8 @@ export interface CandidateBriefInput {
 }
 
 export const objectKindLabels: Record<ObjectKind, string> = {
+  entity: "实体",
+  information: "信息",
   person: "人物",
   evidence: "证据",
   event: "事件",
@@ -1079,16 +1083,16 @@ export function validateWorkbenchSeed(seed: WorkbenchSeed) {
     }
     if (!objectIds.has(path.hypothesisId)) errors.push(`推理 ${path.id} 引用未知假设 ${path.hypothesisId}`);
   }
-  if (!eventIds.has(seed.defaultEventId)) errors.push("默认事件不存在");
-  if (!objectIds.has(seed.defaultObjectId)) errors.push("默认对象不存在");
-  if (!issueIds.has(seed.defaultIssueId)) errors.push("默认问题不存在");
+  if (seed.defaultEventId !== null && !eventIds.has(seed.defaultEventId)) errors.push("默认事件不存在");
+  if (seed.defaultObjectId !== null && !objectIds.has(seed.defaultObjectId)) errors.push("默认对象不存在");
+  if (seed.defaultIssueId !== null && !issueIds.has(seed.defaultIssueId)) errors.push("默认问题不存在");
   return errors;
 }
 
-export function getObject(seed: WorkbenchSeed, objectId: string) {
+export function getObject(seed: WorkbenchSeed, objectId: string | null) {
   return seed.caseObjects.find((item) => item.id === objectId);
 }
 
-export function getEvent(seed: WorkbenchSeed, eventId: string) {
+export function getEvent(seed: WorkbenchSeed, eventId: string | null) {
   return seed.timelineEvents.find((item) => item.id === eventId);
 }

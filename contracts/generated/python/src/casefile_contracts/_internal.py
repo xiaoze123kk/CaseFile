@@ -143,6 +143,26 @@ class JsonPointer(RootModel[str]):
     root: Annotated[str, Field(pattern='^(?:/(?:[^~/]|~[01])*)*$')]
 
 
+class SchematicSpatialPosition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    coordinate_system: Literal['schematic']
+    x: Annotated[float, Field(ge=0.0, le=100.0)]
+    y: Annotated[float, Field(ge=0.0, le=100.0)]
+
+
+class Wgs84SpatialPosition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    coordinate_system: Literal['wgs84']
+    latitude: Annotated[float, Field(ge=-90.0, le=90.0)]
+    longitude: Annotated[float, Field(ge=-180.0, le=180.0)]
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -275,6 +295,7 @@ class Location(CoreMetadata):
     )
     id: Annotated[str, Field(pattern='^loc_[a-z0-9][a-z0-9_]{0,56}$')]
     name: Annotated[str, Field(min_length=1)]
+    spatial_position: SchematicSpatialPosition | Wgs84SpatialPosition | None = None
     parent_ref: ObjectRef | None
     adjacency_refs: list[ObjectRef]
     access_rules: list[AccessRule]
@@ -644,6 +665,7 @@ class TaskType(StrEnum):
     brief_anchor_extract = 'brief_anchor_extract'
     brief_intake_questions = 'brief_intake_questions'
     brief_intake_synthesize = 'brief_intake_synthesize'
+    brief_strategy_options = 'brief_strategy_options'
     brief_to_draft = 'brief_to_draft'
     casefile_chat = 'casefile_chat'
 
@@ -694,6 +716,13 @@ class OutputMessageId(RootModel[int]):
     root: Annotated[int, Field(ge=1)]
 
 
+class CandidateStrategy(StrEnum):
+    structure_first = 'structure_first'
+    atmosphere_first = 'atmosphere_first'
+    reasoning_first = 'reasoning_first'
+    balanced = 'balanced'
+
+
 class TaskFailureIssue(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -713,6 +742,93 @@ class TaskFailure(BaseModel):
     message: Annotated[str, Field(max_length=320, min_length=1)]
     retryable: bool
     issues: list[TaskFailureIssue]
+
+
+class AgentDiagnosticIssue(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    failure_layer: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    schema_id: str | None
+    code: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    path: Annotated[str, Field(max_length=512)]
+    message: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class Status3(StrEnum):
+    pending = 'pending'
+    running = 'running'
+    succeeded = 'succeeded'
+    failed = 'failed'
+    reused = 'reused'
+    skipped = 'skipped'
+
+
+class AgentComponentStepView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    step_run_id: Annotated[int, Field(ge=1)]
+    attempt_no: Annotated[int, Field(ge=1)]
+    component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    parent_component_id: str | None
+    execution_no: Annotated[int, Field(ge=1)]
+    status: Status3
+    schema_id: Annotated[str, Field(min_length=1)]
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    output_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')]
+    failure_layer: str | None
+    issues: list[AgentDiagnosticIssue]
+    recoverable: bool
+    resumed_from_step_run_id: Annotated[int | None, Field(ge=1)]
+
+
+class Strategy(StrEnum):
+    structure_first = 'structure_first'
+    atmosphere_first = 'atmosphere_first'
+    reasoning_first = 'reasoning_first'
+
+
+class Strength1(RootModel[str]):
+    root: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class Tradeoff(RootModel[str]):
+    root: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class BriefStrategyOption(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    strategy: Strategy
+    direction: Annotated[str, Field(max_length=600, min_length=1)]
+    focus: Annotated[str, Field(max_length=300, min_length=1)]
+    strengths: Annotated[list[Strength1], Field(max_length=3, min_length=2)]
+    tradeoffs: Annotated[list[Tradeoff], Field(max_length=2, min_length=1)]
+    brief_fit: Annotated[str, Field(max_length=400, min_length=1)]
+
+
+class RecommendedStrategy(StrEnum):
+    structure_first = 'structure_first'
+    atmosphere_first = 'atmosphere_first'
+    reasoning_first = 'reasoning_first'
+
+
+class BriefStrategyOptionsResult(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    strategy_version: Literal['candidate-strategy-v1']
+    options: Annotated[list[BriefStrategyOption], Field(max_length=3, min_length=3)]
+    recommended_strategy: RecommendedStrategy
+    recommendation_reason: Annotated[str, Field(max_length=400, min_length=1)]
 
 
 class TaskRun(BaseModel):
@@ -737,12 +853,14 @@ class TaskRun(BaseModel):
     input_message_id: InputMessageId | None
     output_message_id: OutputMessageId | None
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    candidate_strategy: CandidateStrategy | None
     attempt_count: Annotated[int, Field(ge=0)]
     usage: dict[str, Any]
     result: dict[str, Any] | None
     result_snapshot_id: Annotated[int | None, Field(ge=1)] = None
     error_code: str | None = None
     failure: TaskFailure | None
+    component_steps: list[AgentComponentStepView]
     created_at: AwareDatetime | None = None
     updated_at: AwareDatetime | None = None
 

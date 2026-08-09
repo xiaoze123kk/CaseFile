@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   type ReactNode,
   type SetStateAction,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -12,6 +13,7 @@ import { useCaseSession } from "@/features/case-session/case-session-provider";
 
 import {
   candidateOriginLabels,
+  candidateHistoryVersions,
   conclusionModes,
   fieldSourceLabels,
   intakeRoutes,
@@ -49,10 +51,24 @@ type BriefTextField =
   | "scopeEstimate"
   | "riskNotes";
 
+const taskTypeLabels: Record<string, string> = {
+  brief_polish: "原稿润色",
+  brief_anchor_extract: "整理答案与规则",
+  brief_intake_questions: "关键追问",
+  brief_intake_synthesize: "创作简报候选",
+  brief_strategy_options: "策略分析",
+  brief_to_draft: "深稿生成",
+  casefile_chat: "Agent 对话",
+};
+
+function taskTypeLabel(taskType: string) {
+  return taskTypeLabels[taskType] ?? "任务";
+}
+
 function Glyph({
   name,
 }: {
-  name: "arrow" | "check" | "compare" | "history" | "spark" | "target";
+  name: "archive" | "arrow" | "check" | "compare" | "history" | "spark" | "target";
 }) {
   if (name === "check") {
     return (
@@ -72,6 +88,13 @@ function Glyph({
     return (
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 7.5V12l3 2" />
+      </svg>
+    );
+  }
+  if (name === "archive") {
+    return (
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M4 7.5h16v12H4zM3 4.5h18v3H3zM8 12h8M9 15.5h6" />
       </svg>
     );
   }
@@ -153,6 +176,7 @@ export function IntakeCenter() {
     continueToQuestions: proceedToQuestions,
     generateMoreQuestions: requestMoreQuestions,
     generateBriefFromAnswers: synthesizeBriefFromServer,
+    generateAuthorAnswer,
     createManualBrief,
     saveCandidateAsNew: saveCandidateToServer,
     createDialogueRevision: createDialogueRevisionFromServer,
@@ -164,6 +188,7 @@ export function IntakeCenter() {
     restoreStashedSession,
     hasStashedSession,
     activeProjectId,
+    retryTask,
   } = useCaseSession();
   const {
     step,
@@ -175,12 +200,18 @@ export function IntakeCenter() {
     briefCandidates: candidates,
     currentBriefCandidateId: currentCandidateId,
   } = state;
+  const { hydration, latestTasks } = state;
   const [polishReviewOpen, setPolishReviewOpen] = useState(false);
   const [polishPending, setPolishPending] = useState(false);
   const [questionGenerationMode, setQuestionGenerationMode] = useState<
     "initial" | "additional" | null
   >(null);
   const [briefGenerationPending, setBriefGenerationPending] = useState(false);
+  const [authorAnswerSuggestion, setAuthorAnswerSuggestion] = useState<string | null>(
+    null,
+  );
+  const [authorAnswerPending, setAuthorAnswerPending] = useState(false);
+  const [authorAnswerError, setAuthorAnswerError] = useState<string | null>(null);
   const [polishDraft, setPolishDraft] = useState("");
   const [polishNotes, setPolishNotes] = useState<string[]>([]);
   const [introducedDetails, setIntroducedDetails] = useState<string[]>([]);
@@ -190,9 +221,20 @@ export function IntakeCenter() {
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [revisionInstruction, setRevisionInstruction] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [, setNotice] = useState(
-    "建案数据写入开发库；刷新页面将开启新会话。",
-  );
+  const [retryingTaskType, setRetryingTaskType] = useState<
+    Parameters<typeof retryTask>[0] | null
+  >(null);
+  const [, setNotice] = useState("建案数据写入开发库；当前项目可通过 URL 恢复。");
+
+  useEffect(() => {
+    if (!state.review?.dirty) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [state.review?.dirty]);
 
   function resolveState<T>(current: T, next: SetStateAction<T>) {
     return typeof next === "function"
@@ -216,6 +258,10 @@ export function IntakeCenter() {
   const questionsPending = questionGenerationMode !== null;
   const currentCandidate =
     candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
+  const candidateHistoryVersionById = useMemo(
+    () => candidateHistoryVersions(candidates),
+    [candidates],
+  );
   const requiredQuestions = state.questions.filter(
     (question) => question.required,
   );
@@ -226,6 +272,16 @@ export function IntakeCenter() {
       return Boolean(answer?.text.trim() && !answer.pending);
     });
   const missingFields = missingHardFields(brief);
+  const latestTaskList = Object.values(latestTasks).filter(Boolean);
+  const activeRecoveryTasks = latestTaskList.filter((task) =>
+    task && ["queued", "running", "cancelling"].includes(task.status),
+  );
+  const failedRecoveryTasks = latestTaskList.filter(
+    (task) => task && task.status === "failed",
+  );
+  const pendingDecisionCount = Object.values(answers).filter(
+    (answer) => answer.pending,
+  ).length;
 
   const completionSignals = useMemo(
     () => [
@@ -273,6 +329,11 @@ export function IntakeCenter() {
   function openReachableStep(target: IntakeStep) {
     const targetIndex = intakeSteps.findIndex((item) => item.id === target);
     if (targetIndex <= furthestStep) {
+      if (target !== "confirmation") {
+        setAuthorAnswerPending(false);
+        setAuthorAnswerSuggestion(null);
+        setAuthorAnswerError(null);
+      }
       setStep(target);
       setError(null);
       announce("已切换到" + intakeSteps[targetIndex].label + "。");
@@ -391,6 +452,8 @@ export function IntakeCenter() {
       return;
     }
     setError(null);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
     setBriefGenerationPending(true);
     setStep("confirmation");
     try {
@@ -423,10 +486,16 @@ export function IntakeCenter() {
         [field]: "user_confirmed",
       },
     }));
+    if (field === "authorAnswer") {
+      setAuthorAnswerSuggestion(null);
+      setAuthorAnswerError(null);
+    }
     setError(null);
   }
 
   function updateResolutionMode(value: ResolutionMode) {
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
     setBrief((current) => ({
       ...current,
       resolutionMode: value,
@@ -440,6 +509,33 @@ export function IntakeCenter() {
             : "unresolved",
       },
     }));
+  }
+
+  async function generateAuthorAnswerSuggestion() {
+    setAuthorAnswerPending(true);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
+    setError(null);
+    try {
+      const suggestion = await generateAuthorAnswer(brief);
+      setAuthorAnswerSuggestion(suggestion);
+      announce("Agent 只提供了一版答案候选；你可以采用、改写，或直接写自己的结论。");
+    } catch (caught) {
+      setAuthorAnswerError(
+        caught instanceof Error
+          ? caught.message
+          : "答案候选生成未完成，请直接填写你的结论。",
+      );
+    } finally {
+      setAuthorAnswerPending(false);
+    }
+  }
+
+  function adoptAuthorAnswerSuggestion() {
+    if (!authorAnswerSuggestion) return;
+    updateBriefField("authorAnswer", authorAnswerSuggestion);
+    setAuthorAnswerSuggestion(null);
+    announce("已把 Agent 候选放入简报草案；提交审阅前仍可继续改写。 ");
   }
 
   function updateConclusionMode(value: ConclusionMode) {
@@ -518,13 +614,12 @@ export function IntakeCenter() {
   }
 
   async function enterBriefReview() {
-    if (missingFields.length) {
-      setError("进入审阅前请补齐：" + missingFields.join("、") + "。");
-      return;
-    }
     setError(null);
     try {
       await beginBriefReview();
+      setAuthorAnswerPending(false);
+      setAuthorAnswerSuggestion(null);
+      setAuthorAnswerError(null);
       announce("已进入创作简报审阅；保存并冻结后才能生成候选稿。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "进入审阅失败。");
@@ -536,6 +631,9 @@ export function IntakeCenter() {
     setPolishReviewOpen(false);
     setQuestionGenerationMode(null);
     setBriefGenerationPending(false);
+    setAuthorAnswerPending(false);
+    setAuthorAnswerSuggestion(null);
+    setAuthorAnswerError(null);
     setPolishDraft("");
     setPolishNotes([]);
     setIntroducedDetails([]);
@@ -549,8 +647,37 @@ export function IntakeCenter() {
 
   async function restoreProject(projectId: number) {
     stashCurrentSession();
-    await loadProject(projectId);
-    setHistoryDrawerOpen(false);
+    try {
+      await loadProject(projectId);
+      setHistoryDrawerOpen(false);
+      setError(null);
+      announce("已恢复该卷宗；服务端状态已重新同步。");
+    } catch (caught) {
+      resetSession();
+      setHistoryDrawerOpen(false);
+      setError(caught instanceof Error ? caught.message : "卷宗恢复失败，请重试。");
+    }
+  }
+
+  async function retryLatestTask(taskType: Parameters<typeof retryTask>[0]) {
+    if (retryingTaskType) return;
+    setRetryingTaskType(taskType);
+    setError(null);
+    try {
+      const polished = await retryTask(taskType);
+      if (polished) {
+        setPolishDraft(polished.text);
+        setPolishNotes(polished.notes);
+        setIntroducedDetails(polished.introducedDetails);
+        setPolishParentSourceRecordId(polished.parentSourceRecordId);
+        setPolishReviewOpen(true);
+      }
+      announce("任务已重新提交；页面会继续显示最新执行状态。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "任务重试失败，请稍后再试。");
+    } finally {
+      setRetryingTaskType(null);
+    }
   }
 
   function restoreStashed() {
@@ -558,6 +685,10 @@ export function IntakeCenter() {
     setError(null);
     announce("已回到暂存的卷宗。");
   }
+
+  const selectedResolutionMode = resolutionModes.find(
+    (mode) => mode.value === brief.resolutionMode,
+  );
 
   return (
     <div
@@ -578,7 +709,7 @@ export function IntakeCenter() {
         </div>
         <div aria-hidden="true" className={styles.topbarContext} />
         <nav aria-label="产品页面" className={styles.topbarLinks}>
-          <Link href="/workbench">
+          <Link href={activeProjectId ? `/workbench?project=${activeProjectId}` : "/workbench"}>
             <span aria-hidden="true" className={styles.analyticsIcon}>⌁</span>
             分析师工作台
           </Link>
@@ -587,25 +718,36 @@ export function IntakeCenter() {
             className={styles.historyToggle}
             data-stashed={hasStashedSession || undefined}
             onClick={() => setHistoryDrawerOpen(true)}
+            title="建案历史"
             type="button"
           >
-            <Glyph name="history" />
-            建案历史
+            <Glyph name="archive" />
+            <span className={styles.topbarActionLabel}>建案历史</span>
+            <span aria-hidden="true" className={styles.topbarActionCompactLabel}>
+              历史
+            </span>
           </button>
           {hasStashedSession ? (
             <button
               aria-label="回到暂存"
               className={styles.stashButton}
               onClick={restoreStashed}
+              title="回到暂存"
               type="button"
             >
               <span aria-hidden="true" className={styles.resetIcon}>↩</span>
-              回到暂存
+              <span className={styles.topbarActionLabel}>回到暂存</span>
+              <span aria-hidden="true" className={styles.topbarActionCompactLabel}>
+                暂存
+              </span>
             </button>
           ) : null}
-          <button aria-label="重置会话" onClick={resetSession} type="button">
+          <button aria-label="重置会话" onClick={resetSession} title="重置会话" type="button">
             <span aria-hidden="true" className={styles.resetIcon}>↻</span>
-            重置会话
+            <span className={styles.topbarActionLabel}>重置会话</span>
+            <span aria-hidden="true" className={styles.topbarActionCompactLabel}>
+              重置
+            </span>
           </button>
           <button
             aria-label="打开模型服务设置"
@@ -670,6 +812,46 @@ export function IntakeCenter() {
       </nav>
 
       <div className={styles.workspace}>
+        {hydration.status === "loading" ? (
+          <div aria-live="polite" className={styles.sessionStatus} role="status">
+            正在从服务端恢复当前卷宗…
+          </div>
+        ) : null}
+        {hydration.status === "error" ? (
+          <div aria-live="assertive" className={styles.sessionStatusError} role="alert">
+            {hydration.error ?? "当前卷宗恢复失败，请从建案历史重新调出。"}
+          </div>
+        ) : null}
+        {activeRecoveryTasks.length > 0 ? (
+          <div aria-live="polite" className={styles.sessionStatus} role="status">
+            已恢复 {activeRecoveryTasks.length} 个进行中的任务；返回对应步骤即可继续查看进度。
+          </div>
+        ) : null}
+        {failedRecoveryTasks.length > 0 ? (
+          <div aria-live="assertive" className={styles.sessionStatusError} role="alert">
+            {failedRecoveryTasks.length} 个任务上次执行失败。请回到对应步骤重新提交，已有输入和候选不会丢失。
+            <div className={styles.sessionTaskList}>
+              {failedRecoveryTasks.map((task) => (
+                <div key={task.task_run_id}>
+                  <span>
+                    {taskTypeLabel(task.task_type)} · {task.failure?.message ?? "任务失败。"}
+                  </span>
+                  {task.failure?.retryable ? (
+                    <button
+                      disabled={retryingTaskType === task.task_type}
+                      onClick={() => void retryLatestTask(task.task_type)}
+                      type="button"
+                    >
+                      {retryingTaskType === task.task_type ? "重试中…" : "重试任务"}
+                    </button>
+                  ) : (
+                    <em>请修正输入后重新提交</em>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <aside aria-label="建案入口" className={styles.routeDock}>
           <div className={styles.routeList}>
             {intakeRoutes.map((route) => {
@@ -1148,7 +1330,12 @@ export function IntakeCenter() {
                   <h1 id="confirmation-step-title">确认整体方向，再交给正式审阅。</h1>
                   <button
                     className={stageStyles.headerBackAction}
-                    onClick={() => setStep("questions")}
+                    onClick={() => {
+                      setAuthorAnswerPending(false);
+                      setAuthorAnswerSuggestion(null);
+                      setAuthorAnswerError(null);
+                      setStep("questions");
+                    }}
                     type="button"
                   >
                     ← 返回追问
@@ -1243,7 +1430,7 @@ export function IntakeCenter() {
                   </div>
                 </FieldShell>
                 <FieldShell
-                  hint="决定谁来锁定最终答案"
+                  hint="选择答案由谁提供，以及深稿是否必须收束"
                   label="结论处理方式"
                   source={brief.sources.resolutionMode}
                   wide
@@ -1264,17 +1451,28 @@ export function IntakeCenter() {
                       </label>
                     ))}
                   </div>
+                  {selectedResolutionMode ? (
+                    <div
+                      aria-live="polite"
+                      className={stageStyles.resolutionEffect}
+                      data-resolution-mode={selectedResolutionMode.value}
+                    >
+                      <span>{selectedResolutionMode.effectTiming}</span>
+                      <strong>{selectedResolutionMode.effectTitle}</strong>
+                      <p>{selectedResolutionMode.effectDetail}</p>
+                    </div>
+                  ) : null}
                 </FieldShell>
                 {brief.resolutionMode === "author_anchored" ? (
                   <FieldShell
                     hint="只有已经知道答案时填写"
-                    label="作者底牌"
+                    label="作者答案"
                     required
                     source={brief.sources.authorAnswer}
                     wide
                   >
                     <textarea
-                      aria-label="作者底牌"
+                      aria-label="作者答案"
                       onChange={(event) =>
                         updateBriefField("authorAnswer", event.target.value)
                       }
@@ -1282,6 +1480,40 @@ export function IntakeCenter() {
                       rows={3}
                       value={brief.authorAnswer}
                     />
+                    <div className={stageStyles.authorAnswerTools}>
+                      <div>
+                        <button
+                          disabled={authorAnswerPending}
+                          onClick={() => void generateAuthorAnswerSuggestion()}
+                          type="button"
+                        >
+                          {authorAnswerPending ? "Agent 正在拟定…" : "让 Agent 先拟一版"}
+                        </button>
+                        <small>Agent 只提供候选，不会自动写入作者答案。</small>
+                      </div>
+                      {authorAnswerError ? (
+                        <p className={stageStyles.inlineError} role="alert">
+                          {authorAnswerError}
+                        </p>
+                      ) : null}
+                      {authorAnswerSuggestion ? (
+                        <div aria-live="polite" className={stageStyles.authorAnswerSuggestion}>
+                          <span>Agent 候选 · 待作者确认</span>
+                          <p>{authorAnswerSuggestion}</p>
+                          <div>
+                            <button onClick={adoptAuthorAnswerSuggestion} type="button">
+                              采用这条候选
+                            </button>
+                            <button
+                              onClick={() => setAuthorAnswerSuggestion(null)}
+                              type="button"
+                            >
+                              不采用，我自己写
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </FieldShell>
                 ) : null}
                 <FieldShell
@@ -1430,7 +1662,7 @@ export function IntakeCenter() {
                         data-current={candidate.id === currentCandidateId}
                         key={candidate.id}
                       >
-                        <span>V{String(candidate.id).padStart(2, "0")}</span>
+                        <span>V{candidateHistoryVersionById.get(candidate.id) ?? 1}</span>
                         <div>
                           <b>{candidate.label}</b>
                           <small>
@@ -1478,7 +1710,6 @@ export function IntakeCenter() {
                   </button>
                   <button
                     className={stageStyles.primaryAction}
-                    disabled={missingFields.length > 0}
                     onClick={enterBriefReview}
                     type="button"
                   >
@@ -1546,14 +1777,15 @@ export function IntakeCenter() {
           <section className={styles.pendingQueue}>
             <header>
               <span>待决定</span>
-              <b>
-                {Object.values(answers).some((answer) => answer.pending)
-                  ? "1"
-                  : "0"}
-              </b>
+              <b>{pendingDecisionCount}</b>
             </header>
-            {Object.values(answers).some((answer) => answer.pending) ? (
-              <p>已标记的偏好会在正式审阅时继续确认。</p>
+            {pendingDecisionCount > 0 ? (
+              <>
+                <p>已标记的偏好会在正式审阅时继续确认。</p>
+                <button onClick={() => setStep("questions")} type="button">
+                  回到问题处理
+                </button>
+              </>
             ) : (
               <p>没有被隐藏的待决定事项。</p>
             )}

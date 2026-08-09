@@ -1,0 +1,8 @@
+{
+  "agent_id": "brief_anchor_extract",
+  "version": "brief-anchor-extract-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "cbbd4f6da817be6137ec6ae0a782349fe76ad987bf85e0fbf560311d19a10442",
+  "previous_version": "brief-anchor-extract-v2",
+  "change_summary": "增加作者底牌候选生成模式，明确 Agent 只提供建议且不得覆盖作者结论。"
+}

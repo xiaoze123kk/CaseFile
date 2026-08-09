@@ -4,6 +4,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { readFileSync } from "node:fs";
@@ -71,6 +72,7 @@ function buildFakeBackend() {
   let briefVersionId: number | null = null;
   let versionNo = 0;
   let briefContent: BriefContent | null = null;
+  let formalBriefReview = false;
   const caseDraftRevision = 17;
   let draftCandidates: DraftCandidateView[] = [];
   let taskSeq = 100;
@@ -78,9 +80,12 @@ function buildFakeBackend() {
   const taskProviders = new Map<number, string>();
   let configuredProviders = ["openai"];
   let failOpenaiAuth = false;
+  let failNextAnchorExtract = false;
   let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
   const adoptionDraftRevisions: number[] = [];
+  let failNextDraftAdoption = false;
+  let draftAdoptionGate: Promise<void> | null = null;
   let projects: ProjectView[] = [
     {
       id: 1,
@@ -122,7 +127,9 @@ function buildFakeBackend() {
 
   function intakeView(): BriefIntakeView {
     const stage =
-      currentCandidateId !== null
+      formalBriefReview
+        ? "brief_review"
+        : currentCandidateId !== null
         ? "confirmation"
         : currentQuestions.length > 0
           ? "questions"
@@ -189,7 +196,9 @@ function buildFakeBackend() {
       result_snapshot_id: null,
       result: null,
       error_code: null,
-      failure: null,
+    failure: null,
+    candidate_strategy: null,
+    component_steps: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -332,13 +341,55 @@ function buildFakeBackend() {
       };
     }
     if (taskType === "brief_anchor_extract") {
+      if (failNextAnchorExtract) {
+        failNextAnchorExtract = false;
+        throw new Error("作者答案候选生成接口不兼容，请重启本地服务后重试。");
+      }
       return {
         ...common,
         result: {
           input_hash: "h",
-          author_anchors: [],
+          suggested_author_answer: "真正的发送者来自未来，并利用求救信号改写当前记录。",
+          author_anchors: [{ statement: "真正的发送者来自未来。" }],
           creative_constraints: [],
           warnings: [],
+        },
+      };
+    }
+    if (taskType === "brief_strategy_options") {
+      return {
+        ...common,
+        result: {
+          input_hash: "h",
+          strategy_version: "candidate-strategy-v1",
+          options: [
+            {
+              strategy: "structure_first",
+              direction: "先建立事件、对象和因果骨架。",
+              focus: "让结构首先清晰可审阅",
+              strengths: ["结构稳定", "引用易校验"],
+              tradeoffs: ["氛围细节稍后深化"],
+              brief_fit: "当前 Brief 已有明确事件边界。",
+            },
+            {
+              strategy: "atmosphere_first",
+              direction: "先建立场景质感与人物张力。",
+              focus: "让氛围成为线索载体",
+              strengths: ["场景鲜明", "人物有记忆点"],
+              tradeoffs: ["需要继续核对推理密度"],
+              brief_fit: "封存室与夜班具有明确氛围潜力。",
+            },
+            {
+              strategy: "reasoning_first",
+              direction: "先建立证据、反证和解答链。",
+              focus: "让核心命题可验证",
+              strengths: ["证据链清晰", "假设边界明确"],
+              tradeoffs: ["场景铺陈稍后深化"],
+              brief_fit: "当前 Brief 已给出明确推理命题。",
+            },
+          ],
+          recommended_strategy: "reasoning_first",
+          recommendation_reason: "明确的推理命题适合先建立证据闭环。",
         },
       };
     }
@@ -427,6 +478,7 @@ function buildFakeBackend() {
   return {
     CaseSessionError,
     resetProjects: () => {
+      formalBriefReview = false;
       projects = projects.map((project) =>
         project.id === 3
           ? {
@@ -443,8 +495,21 @@ function buildFakeBackend() {
     setFailOpenaiAuth: (value: boolean) => {
       failOpenaiAuth = value;
     },
+    setFailNextAnchorExtract: (value: boolean) => {
+      failNextAnchorExtract = value;
+    },
     setFailNextQuestionRevision: (value: boolean) => {
       failNextQuestionRevision = value;
+    },
+    setFailNextDraftAdoption: (value: boolean) => {
+      failNextDraftAdoption = value;
+    },
+    markFormalBriefReview: () => {
+      formalBriefReview = true;
+      revision += 1;
+    },
+    setDraftAdoptionGate: (gate: Promise<void> | null) => {
+      draftAdoptionGate = gate;
     },
     getGenerationDraftRevisions: () => generationDraftRevisions,
     getAdoptionDraftRevisions: () => adoptionDraftRevisions,
@@ -569,6 +634,8 @@ function buildFakeBackend() {
       return recordTask("brief_intake_synthesize", provider);
     },
     startAnchorExtractTask: async () => recordTask("brief_anchor_extract"),
+    startStrategyOptionsTask: async () => recordTask("brief_strategy_options"),
+    strategyOptionsResult: (task: TaskView) => task.result,
     fetchCaseDraft: async (): Promise<DraftView> => ({
       project_id: 1,
       revision: caseDraftRevision,
@@ -589,8 +656,29 @@ function buildFakeBackend() {
     },
     fetchTask: async (_projectId: number, taskRunId: number) =>
       terminalTask(taskRunId),
-    waitForTask: async (_projectId: number, taskRunId: number) =>
-      terminalTask(taskRunId),
+    waitForTask: async (
+      _projectId: number,
+      taskRunId: number,
+      onTick?: (task: TaskView) => void,
+    ) => {
+      const taskType = (taskTypes.get(taskRunId) ?? "brief_to_draft") as TaskView["task_type"];
+      for (const stage of ["planning", "generating", "validating"] as const) {
+        onTick?.({
+          ...baseTask(taskRunId),
+          task_type: taskType,
+          status: "running",
+          stage,
+        });
+        await Promise.resolve();
+      }
+      onTick?.({
+        ...baseTask(taskRunId),
+        task_type: taskType,
+        status: "succeeded",
+        stage: "completed",
+      });
+      return terminalTask(taskRunId);
+    },
     answerQuestion: async (
       _projectId: number,
       _intakeRevision: number,
@@ -628,10 +716,16 @@ function buildFakeBackend() {
     },
     createBriefCandidate: async (
       _projectId: number,
-      _intakeRevision: number,
+      intakeRevision: number,
       content: BriefIntakeCandidateContent,
       parentCandidateId: number | null = null,
     ) => {
+      if (intakeRevision !== revision) {
+        throw new CaseSessionError(
+          "Brief Intake revision is stale",
+          "brief_intake_revision_conflict",
+        );
+      }
       const candidateId = candidates.length + 1;
       candidates = [
         {
@@ -719,6 +813,15 @@ function buildFakeBackend() {
       expectedDraftRevision: number,
     ) => {
       adoptionDraftRevisions.push(expectedDraftRevision);
+      const gate = draftAdoptionGate;
+      if (gate) {
+        draftAdoptionGate = null;
+        await gate;
+      }
+      if (failNextDraftAdoption) {
+        failNextDraftAdoption = false;
+        throw new Error("候选采用服务暂不可用。");
+      }
       if (expectedDraftRevision !== caseDraftRevision) {
         throw new Error("CaseFile Draft revision is stale");
       }
@@ -756,11 +859,15 @@ async function flush() {
 
 afterEach(() => {
   cleanup();
+  window.history.replaceState({}, "", "/");
   vi.useRealTimers();
   routerPush.mockReset();
   fake.backend.setConfiguredProviders(["openai"]);
   fake.backend.setFailOpenaiAuth(false);
+  fake.backend.setFailNextAnchorExtract(false);
   fake.backend.setFailNextQuestionRevision(false);
+  fake.backend.setFailNextDraftAdoption(false);
+  fake.backend.setDraftAdoptionGate(null);
   fake.backend.resetProjects();
 });
 
@@ -785,7 +892,30 @@ describe("intake center", () => {
     expect(screen.getByText("实时简报映射")).toBeInTheDocument();
   });
 
-  it("runs the full A path against the real intake backend and generates three draft candidates", async () => {
+  it("hydrates the current project from the URL pointer", async () => {
+    window.history.replaceState({}, "", "/?project=1");
+    renderIntake();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: /分析师工作台/u }),
+      ).toHaveAttribute("href", "/workbench?project=1"),
+    );
+    expect(screen.queryByText("正在从服务端恢复当前卷宗…")).not.toBeInTheDocument();
+  });
+
+  it("rejects an invalid URL project pointer without creating a session", async () => {
+    window.history.replaceState({}, "", "/?project=invalid");
+    renderIntake();
+    await flush();
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "项目地址无效，请从建案历史重新调出。",
+    );
+    expect(screen.getByLabelText("写下最初想法")).toHaveValue("");
+    expect(window.location.search).toBe("");
+  });
+
+  it("runs the full A path, selects a tailored strategy, and generates one deep draft", async () => {
     renderIntake();
 
     fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
@@ -881,6 +1011,32 @@ describe("intake center", () => {
     expect(
       screen.getByRole("radio", { name: /信息不足时保持未决/u }),
     ).toBeChecked();
+    expect(screen.getByText("Agent 会随深稿拟定答案")).toBeInTheDocument();
+    expect(
+      screen.getByText(/这里不会立即出现候选。生成深稿时/u),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("radio", { name: /使用我提供的答案/u }),
+    );
+    expect(
+      screen.getByText("你先锁定答案，Agent 只负责展开"),
+    ).toBeInTheDocument();
+    fake.backend.setFailNextAnchorExtract(true);
+    fireEvent.click(screen.getByRole("button", { name: "让 Agent 先拟一版" }));
+    await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "作者答案候选生成接口不兼容，请重启本地服务后重试。",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "让 Agent 先拟一版" }));
+    await flush();
+    expect(screen.getByText("Agent 候选 · 待作者确认")).toBeInTheDocument();
+    expect(
+      screen.getByText("Agent 只提供候选，不会自动写入作者答案。"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "不采用，我自己写" }));
+    fireEvent.change(screen.getByLabelText("作者答案"), {
+      target: { value: "我自己的结论：真正的发送者是未来的档案修复师。" },
+    });
     expect(
       screen.getByRole("button", { name: /进入创作简报审阅/u }),
     ).toBeEnabled();
@@ -906,6 +1062,8 @@ describe("intake center", () => {
       ),
     ).toBe(true);
     expect(screen.getByText("约束抽屉")).toBeInTheDocument();
+    // 服务端已经推进到正式审阅，但页面仍停留在草案步骤；入口必须恢复而不是用旧 revision 重试。
+    fake.backend.markFormalBriefReview();
 
     fireEvent.click(
       screen.getByRole("button", { name: /进入创作简报审阅/u }),
@@ -915,45 +1073,92 @@ describe("intake center", () => {
     expect(
       screen.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
     ).toBeInTheDocument();
-    // 采用候选时简报已在服务端保存，审阅可直接冻结。
+    expect(
+      screen
+        .getByRole("button", { name: "03 成案 创作简报草案" })
+        .closest("li"),
+    ).toHaveAttribute("data-complete", "true");
+    expect(screen.getByLabelText("审阅作者答案原文")).toHaveValue(
+      "我自己的结论：真正的发送者是未来的档案修复师。",
+    );
     const freeze = screen.getByRole("button", { name: /确认并冻结/u });
     expect(freeze).toBeEnabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "保存审阅" }));
-    await flush();
+    expect(
+      screen.getByText("已满足冻结条件；确认后会保存当前审阅并创建不可变版本。"),
+    ).toBeInTheDocument();
     fireEvent.click(freeze);
     await flush();
 
     expect(
-      screen.getByRole("heading", { name: "生成三份策略候选，展开比较。" }),
+      screen.getByRole("heading", { name: "先选定创作策略，再生成一份完整深稿。" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("候选卷尚空")).toBeInTheDocument();
-    const generateCandidateActions = screen.getAllByRole("button", {
-      name: /生成三份策略候选/u,
+    await waitFor(() => {
+      expect(screen.getByText(/Agent 建议：推理优先/u)).toBeInTheDocument();
     });
-    expect(generateCandidateActions).toHaveLength(2);
-    fireEvent.click(generateCandidateActions[1]);
+    const strategyComparison = screen.getByLabelText("三种策略并列比较");
+    expect(within(strategyComparison).getAllByRole("button")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: /让结构首先清晰可审阅/u }));
+    fireEvent.click(screen.getByRole("button", { name: /生成结构优先完整深稿/u }));
     await flush();
 
-    expect(fake.backend.getGenerationDraftRevisions().slice(-3)).toEqual([
-      17, 17, 17,
-    ]);
-
+    expect(fake.backend.getGenerationDraftRevisions().slice(-1)).toEqual([17]);
+    expect(screen.getByRole("button", { name: /完整深稿已生成/u })).toBeDisabled();
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /封存室夜班稿/u })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /第七码互证稿/u })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /第七码互证稿/u })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /缺页校准稿/u }));
-    fireEvent.click(screen.getByRole("button", { name: "预览工作台" }));
-    expect(routerPush).toHaveBeenCalledWith("/workbench");
+    expect(
+      screen.queryByRole("button", { name: "预览工作台" }),
+    ).not.toBeInTheDocument();
+
+    fake.backend.setFailNextDraftAdoption(true);
     fireEvent.click(
       screen.getByRole("button", { name: /采用为当前工作稿/u }),
     );
     await flush();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "候选采用服务暂不可用。",
+    );
+    expect(routerPush).not.toHaveBeenCalled();
+
+    let releaseAdoption = () => {};
+    fake.backend.setDraftAdoptionGate(
+      new Promise<void>((resolve) => {
+        releaseAdoption = resolve;
+      }),
+    );
+    const adoptionCountBeforeRetry =
+      fake.backend.getAdoptionDraftRevisions().length;
+    fireEvent.click(
+      screen.getByRole("button", { name: /采用为当前工作稿/u }),
+    );
+    await flush();
+
+    const adopting = screen.getByRole("button", { name: "正在采用…" });
+    expect(adopting).toBeDisabled();
+    fireEvent.click(adopting);
+    expect(fake.backend.getAdoptionDraftRevisions()).toHaveLength(
+      adoptionCountBeforeRetry + 1,
+    );
+
+    await act(async () => {
+      releaseAdoption();
+    });
+    await flush();
+
     expect(fake.backend.getAdoptionDraftRevisions().at(-1)).toBe(17);
+    expect(routerPush).toHaveBeenCalledTimes(1);
+    expect(routerPush).toHaveBeenLastCalledWith("/workbench?project=1");
     expect(
-      screen.getByRole("button", { name: /已是当前工作稿/u }),
+      screen.getByRole("button", { name: /打开分析师工作台/u }),
     ).toBeInTheDocument();
+
+    routerPush.mockClear();
+    fireEvent.click(
+      screen.getByRole("button", { name: /打开分析师工作台/u }),
+    );
+    expect(routerPush).toHaveBeenCalledWith("/workbench?project=1");
   });
 
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {

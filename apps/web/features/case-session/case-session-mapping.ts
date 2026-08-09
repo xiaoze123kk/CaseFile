@@ -21,6 +21,7 @@ import type {
 } from "@/features/intake/intake-model";
 import {
   createConstraints,
+  extractAuthorAnchors,
   type FieldSource,
 } from "@/features/intake/intake-model";
 
@@ -296,16 +297,60 @@ export function mapBriefToCandidateContent(
   };
 }
 
+export function mapIntakeBriefToAnchorContent(
+  brief: IntakeBrief,
+  base: BriefContent | Record<string, never>,
+  sourceRecordId: number | null,
+): BriefContent {
+  const constraints = brief.constraints
+    .filter((constraint) => constraint.statement.trim())
+    .map((constraint) => ({
+      constraint_id: `constraint_${constraint.key.replace(/^constraint_/u, "")}`,
+      statement: constraint.statement.trim(),
+      strength: constraint.strength,
+    }));
+  const authorAnswer = brief.authorAnswer.trim() || null;
+  return {
+    ...base,
+    source_record_ids:
+      Array.isArray(base.source_record_ids) && base.source_record_ids.length
+        ? base.source_record_ids
+        : sourceRecordId
+          ? [sourceRecordId]
+          : [],
+    creative_intent: brief.concept.trim(),
+    reasoning_proposition: brief.reasoningGoal.trim(),
+    // The suggestion is allowed before the author has supplied a final answer.
+    resolution_mode:
+      authorAnswer && brief.resolutionMode === "author_anchored"
+        ? "author_anchored"
+        : "agent_proposed",
+    conclusion_mode: brief.conclusionMode,
+    author_answer: authorAnswer,
+    author_anchors: [],
+    boundary_text: constraints.length
+      ? constraints.map((constraint) => constraint.statement).join("\n")
+      : null,
+    creative_constraints: constraints,
+  };
+}
+
 export function mapBriefContentToReview(
   content: BriefContent | Record<string, never>,
   pendingDecisions: string[],
 ): BriefReview {
   const briefContent = "creative_intent" in content ? content : null;
-  const authorAnchors = (briefContent?.author_anchors ?? []).map((anchor) => ({
+  const serverAuthorAnchors = (briefContent?.author_anchors ?? []).map((anchor) => ({
     id: anchor.anchor_id,
     statement: anchor.statement,
     origin: "agent" as const,
   }));
+  // Brief Intake 采用投影会先写入作者底牌原文，原子项则留待审阅确认。
+  // 与创作边界的回填一致，这里先从原文建立可审阅原子项，确认冻结时再写回服务端。
+  const authorAnchors =
+    serverAuthorAnchors.length > 0
+      ? serverAuthorAnchors
+      : extractAuthorAnchors(briefContent?.author_answer ?? "");
   const boundaryText = briefContent?.boundary_text ?? "";
   const serverConstraints = (briefContent?.creative_constraints ?? []).map(
     (constraint) => ({

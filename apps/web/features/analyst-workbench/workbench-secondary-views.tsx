@@ -19,6 +19,10 @@ import {
 import { clamp } from "./workbench-geometry";
 import { reasoningOutcomeLabels } from "./workbench-presenters";
 import { RelationshipGraph } from "./workbench-relationship-graph";
+import type {
+  WorkbenchCoordinateSystem,
+  WorkbenchModel,
+} from "./workbench-real-data";
 
 const DEFAULT_TIMELINE_WIDTH = 340;
 
@@ -31,8 +35,8 @@ export function TimelineOverview({
   onSelectObject,
 }: {
   seed: WorkbenchSeed;
-  selectedEventId: string;
-  selectedObjectId: string;
+  selectedEventId: string | null;
+  selectedObjectId: string | null;
   issueStatuses: Record<string, IssueStatus>;
   onSelectEvent: (eventId: string) => void;
   onSelectObject: (objectId: string) => void;
@@ -62,6 +66,10 @@ export function TimelineOverview({
 
   function endTimelineResize() {
     timelineResizeRef.current = null;
+  }
+
+  if (!selectedEvent) {
+    return null;
   }
 
   return (
@@ -151,9 +159,14 @@ export function MapView({
   onSelectEvent,
 }: {
   seed: WorkbenchSeed;
-  selectedEventId: string;
+  selectedEventId: string | null;
   onSelectEvent: (id: string) => void;
 }) {
+  const mappedSeed = seed as WorkbenchSeed & Partial<Pick<WorkbenchModel, "map">>;
+  const mapModel = mappedSeed.map ?? null;
+  const [mapMode, setMapMode] = useState<WorkbenchCoordinateSystem | null>(
+    mapModel?.defaultMode ?? null,
+  );
   const [zoom, setZoom] = useState(1);
   const [tool, setTool] = useState<CanvasTool>("select");
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -162,6 +175,14 @@ export function MapView({
     startY: number;
     startPan: { x: number; y: number };
   } | null>(null);
+  const effectiveMapMode =
+    mapModel && mapMode && mapModel.availableModes.includes(mapMode)
+      ? mapMode
+      : mapModel?.defaultMode ?? mapMode;
+  const activeMapGroup =
+    mapModel && effectiveMapMode ? mapModel.groups[effectiveMapMode] : null;
+  const activeLabels = activeMapGroup?.locations ?? seed.mapLabels;
+  const activeMarkers = activeMapGroup?.eventMarkers ?? seed.mapMarkers;
 
   function startMapPan(event: ReactPointerEvent<HTMLDivElement>) {
     if (tool !== "pan") return;
@@ -200,6 +221,20 @@ export function MapView({
         </div>
         <div className={styles.sectionTrailing}>
           <small>{seed.caseMeta.mapMeta}</small>
+          {mapModel && mapModel.availableModes.length > 1 ? (
+            <div className={styles.mapModeToggle} aria-label="地图坐标模式">
+              {mapModel.availableModes.map((mode) => (
+                <button
+                  aria-pressed={effectiveMapMode === mode}
+                  key={mode}
+                  onClick={() => setMapMode(mode)}
+                  type="button"
+                >
+                  {mode === "wgs84" ? "地理坐标" : "空间示意"}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </header>
       <div className={styles.zoomViewport}>
@@ -210,6 +245,7 @@ export function MapView({
           >
             <div
               className={styles.mapBoard}
+              data-coordinate-system={effectiveMapMode ?? "fixture"}
               data-tool={tool}
               onPointerCancel={endMapPan}
               onPointerDown={startMapPan}
@@ -231,7 +267,8 @@ export function MapView({
                   d="M19 63C34 58 39 29 30 25s11 27 24 27 10 18 19 18"
                 />
               </svg>
-              {seed.mapLabels.map((label) => (
+              {effectiveMapMode === "wgs84" ? <span className={styles.mapNorth} aria-label="北向上">N</span> : null}
+              {activeLabels.map((label) => (
                 <span
                   className={styles.mapLabel}
                   key={`${label.label}-${label.x}-${label.y}`}
@@ -240,7 +277,7 @@ export function MapView({
                   {label.label}
                 </span>
               ))}
-              {seed.mapMarkers.map((marker) => (
+              {activeMarkers.map((marker) => (
                 <button
                   aria-pressed={selectedEventId === marker.eventId}
                   className={styles.mapMarker}
@@ -253,6 +290,9 @@ export function MapView({
                   <span>{marker.label}</span>
                 </button>
               ))}
+              {activeLabels.length === 0 && activeMarkers.length === 0 ? (
+                <div className={styles.mapEmpty}><strong>当前工作稿没有地点坐标</strong><span>缺坐标地点会在存在拓扑引用时使用确定性示意布局。</span></div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -275,9 +315,11 @@ export function DossierView({
   selectedEventId,
 }: {
   seed: WorkbenchSeed;
-  selectedEventId: string;
+  selectedEventId: string | null;
 }) {
   const event = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
+  if (!event) return null;
+  const realData = (seed as WorkbenchSeed & Partial<WorkbenchModel>).origin === "contract";
   const objectById = new Map(
     seed.caseObjects.map((object) => [object.id, object]),
   );
@@ -285,13 +327,13 @@ export function DossierView({
     .map((id) => objectById.get(id))
     .filter((object) => object !== undefined);
   const people = relatedObjects
-    .filter((object) => object.kind === "person")
+    .filter((object) => object.kind === "person" || object.kind === "entity")
     .map((object) => object.label);
   const locations = relatedObjects
     .filter((object) => object.kind === "location")
     .map((object) => object.label);
   const evidence = relatedObjects
-    .filter((object) => object.kind === "evidence")
+    .filter((object) => object.kind === "evidence" || object.kind === "information")
     .map((object) => object.label);
   const hypotheses = relatedObjects
     .filter((object) => object.kind === "hypothesis")
@@ -320,36 +362,37 @@ export function DossierView({
         <div className={styles.sheetFields}>
           <label>
             <span>发生时间</span>
-            <input defaultValue={event.time} />
+            <input defaultValue={event.time} readOnly={realData} />
           </label>
           <label>
             <span>发生地点</span>
-            <input defaultValue={event.location} />
+            <input defaultValue={event.location} readOnly={realData} />
           </label>
           <label className={styles.sheetWide}>
             <span>事件摘要</span>
-            <textarea defaultValue={event.summary} rows={5} />
+            <textarea defaultValue={event.summary} readOnly={realData} rows={5} />
           </label>
           <label>
-            <span>参与人物</span>
-            <input defaultValue={people.join("、")} />
+            <span>{realData ? "参与实体" : "参与人物"}</span>
+            <input defaultValue={people.join("、")} readOnly={realData} />
           </label>
           <label>
             <span>关联地点</span>
-            <input defaultValue={locations.join("、")} />
+            <input defaultValue={locations.join("、")} readOnly={realData} />
           </label>
           <label>
-            <span>关联证据</span>
-            <input defaultValue={evidence.join("、")} />
+            <span>{realData ? "关联信息" : "关联证据"}</span>
+            <input defaultValue={evidence.join("、")} readOnly={realData} />
           </label>
           <label>
             <span>候选假设</span>
-            <input defaultValue={hypotheses.join("、")} />
+            <input defaultValue={hypotheses.join("、")} readOnly={realData} />
           </label>
           <label className={styles.sheetWide}>
             <span>引用来源</span>
             <input
               defaultValue={sources.map((source) => source.label).join("、")}
+              readOnly={realData}
             />
           </label>
         </div>
@@ -360,7 +403,7 @@ export function DossierView({
               {issue.severity} · {issue.title}
             </p>
           ))}
-          <p>知识状态存在冲突</p>
+          {realData ? <p>编辑请使用右侧“对象详情”</p> : <p>知识状态存在冲突</p>}
         </aside>
       </div>
     </section>
@@ -374,7 +417,8 @@ export function ExportView({
   seed: WorkbenchSeed;
   unresolvedCount: number;
 }) {
-  const ready = unresolvedCount === 0;
+  const realData = (seed as WorkbenchSeed & Partial<WorkbenchModel>).origin === "contract";
+  const ready = !realData && unresolvedCount === 0;
 
   return (
     <section className={styles.exportView} aria-labelledby="export-heading">
@@ -383,7 +427,7 @@ export function ExportView({
           <span>导出预览</span>
           <h2 id="export-heading">{seed.caseMeta.exportTitle}</h2>
         </div>
-        <small>{ready ? "READY" : "GATE BLOCKED"}</small>
+        <small>{realData ? "DEVELOPMENT PREVIEW" : ready ? "READY" : "GATE BLOCKED"}</small>
       </header>
       <div className={styles.exportSheet}>
         <div className={styles.exportCover}>
@@ -396,16 +440,16 @@ export function ExportView({
           <h3>发布门禁</h3>
           <ul>
             <li data-state="pass">
-              <span>结构完整性</span>
-              <b>通过</b>
+              <span>{realData ? "真实对象投影" : "结构完整性"}</span>
+              <b>{realData ? "已生成" : "通过"}</b>
             </li>
             <li data-state="pass">
-              <span>引用可追溯</span>
-              <b>通过</b>
+              <span>{realData ? "真实关系投影" : "引用可追溯"}</span>
+              <b>{realData ? "已生成" : "通过"}</b>
             </li>
-            <li data-state={ready ? "pass" : "blocked"}>
+            <li data-state={realData ? "pending" : ready ? "pass" : "blocked"}>
               <span>语义验证</span>
-              <b>{ready ? "通过" : `${unresolvedCount} 个问题`}</b>
+              <b>{realData ? "尚未接入" : ready ? "通过" : `${unresolvedCount} 个问题`}</b>
             </li>
             <li data-state="pending">
               <span>作者批准</span>
@@ -413,9 +457,9 @@ export function ExportView({
             </li>
           </ul>
           <button disabled={!ready} type="button">
-            生成导出包
+            {realData ? "正式导出尚未接入" : "生成导出包"}
           </button>
-          {!ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
+          {realData ? <p>当前页面仅从真实 Draft 派生开发预览。</p> : !ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
         </div>
       </div>
     </section>
@@ -472,11 +516,12 @@ function composeCompilePreview(
   seed: WorkbenchSeed,
   unresolvedCount: number,
 ): string {
+  const realData = (seed as WorkbenchSeed & Partial<WorkbenchModel>).origin === "contract";
   const people = seed.caseObjects
-    .filter((object) => object.kind === "person")
+    .filter((object) => object.kind === "person" || object.kind === "entity")
     .map((object) => object.label);
   const evidence = seed.caseObjects
-    .filter((object) => object.kind === "evidence")
+    .filter((object) => object.kind === "evidence" || object.kind === "information")
     .map((object) => object.label);
   const events = seed.timelineEvents;
 
@@ -520,7 +565,7 @@ function composeCompilePreview(
         `作者卷宗 · ${seed.caseMeta.title}`,
         `修订 ${seed.caseMeta.revision}`,
         "",
-        `对象 ${seed.caseObjects.length} 个（人物 ${people.length} · 证据 ${evidence.length}）`,
+        `对象 ${seed.caseObjects.length} 个（${realData ? "实体" : "人物"} ${people.length} · ${realData ? "信息" : "证据"} ${evidence.length}）`,
         `事件 ${events.length} 个 · 推理路径 ${seed.reasoningPaths.length} 条`,
         `待处理问题 ${unresolvedCount} 个`,
         "",
@@ -535,7 +580,7 @@ function composeCompilePreview(
             `用例 ${issue.id} · ${issue.severity} ${issue.title}\n规则 ${issue.rule} · 依据 ${issue.evidenceIds.join("、")}`,
         ),
         "",
-        `门禁：${unresolvedCount > 0 ? `语义验证阻断（${unresolvedCount} 个问题）` : "全部通过"}`,
+        `门禁：${realData ? "语义验证尚未接入" : unresolvedCount > 0 ? `语义验证阻断（${unresolvedCount} 个问题）` : "全部通过"}`,
       ].join("\n");
   }
 }
@@ -551,7 +596,8 @@ export function CompileCenterView({
   const [compiled, setCompiled] = useState(false);
   const target =
     compileTargets.find((item) => item.id === targetId) ?? compileTargets[0];
-  const blocked = unresolvedCount > 0;
+  const realData = (seed as WorkbenchSeed & Partial<WorkbenchModel>).origin === "contract";
+  const blocked = !realData && unresolvedCount > 0;
 
   return (
     <section className={styles.compileView} aria-labelledby="compile-heading">
@@ -616,9 +662,9 @@ export function CompileCenterView({
                 <span>引用可追溯</span>
                 <b>通过</b>
               </li>
-              <li data-state={blocked ? "blocked" : "pass"}>
+              <li data-state={realData ? "pending" : blocked ? "blocked" : "pass"}>
                 <span>语义验证</span>
-                <b>{blocked ? `${unresolvedCount} 个问题` : "通过"}</b>
+                <b>{realData ? "尚未接入" : blocked ? `${unresolvedCount} 个问题` : "通过"}</b>
               </li>
             </ul>
           </div>
@@ -628,7 +674,7 @@ export function CompileCenterView({
             onClick={() => setCompiled(true)}
             type="button"
           >
-            {blocked ? "先处理验证问题" : `编译为${target.label}`}
+            {blocked ? "先处理验证问题" : realData ? `生成${target.label}开发预览` : `编译为${target.label}`}
           </button>
           {blocked ? <p>存在未解决验证问题，编译产物可能携带矛盾。</p> : null}
         </aside>

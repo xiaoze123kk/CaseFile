@@ -83,7 +83,10 @@ function buildReasoningCanvas(
       });
       initialPositions[stepId] = {
         x: columnX,
-        y: 32 + (stepIndex * 26) / (stepCount - 1),
+        y:
+          stepCount === 1
+            ? 45
+            : 32 + (stepIndex * 26) / (stepCount - 1),
       };
       for (const evidenceId of step.evidenceIds) {
         if (!evidenceIds.includes(evidenceId)) continue;

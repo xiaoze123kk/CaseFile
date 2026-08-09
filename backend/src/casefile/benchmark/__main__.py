@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_report
 
@@ -18,32 +19,45 @@ def main() -> None:
     parser.add_argument("--mode", choices=("fake", "live"), default="fake")
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--model", default="gpt-5.6-sol")
+    parser.add_argument("--provider", choices=("openai", "deepseek"), default="openai")
+    parser.add_argument("--prompt-version")
+    parser.add_argument("--report-path", type=Path)
     arguments = parser.parse_args()
-
     if not arguments.fixture and not arguments.suite:
         parser.error("one of --fixture or --suite is required")
 
     if arguments.suite:
-        _run_suite(arguments)
+        payload = _run_suite(arguments)
     else:
-        report = run_benchmark(
-            BenchmarkOptions(
-                fixture=arguments.fixture,
-                mode=arguments.mode,
-                repeats=arguments.repeats,
-                model_id=arguments.model,
+        payload = run_to_report(
+            run_benchmark(
+                BenchmarkOptions(
+                    fixture=arguments.fixture,
+                    mode=arguments.mode,
+                    repeats=arguments.repeats,
+                    model_id=arguments.model,
+                    provider=arguments.provider,
+                    prompt_version=arguments.prompt_version,
+                )
             )
         )
-        print(json.dumps(run_to_report(report), ensure_ascii=False, indent=2))
+
+    rendered = json.dumps(payload, ensure_ascii=False, indent=2)
+    print(rendered)
+    if arguments.report_path is not None:
+        arguments.report_path.parent.mkdir(parents=True, exist_ok=True)
+        arguments.report_path.write_text(rendered + "\n", encoding="utf-8")
+    if payload.get("status") not in {"completed", "passed"}:
+        raise SystemExit(2)
 
 
-def _run_suite(arguments: argparse.Namespace) -> None:
+def _run_suite(arguments: argparse.Namespace) -> dict[str, Any]:
     suite_dir = arguments.suite
     fixture_files = sorted(suite_dir.glob("*.json"))
     if not fixture_files:
         raise SystemExit(f"No .json fixture files found in {suite_dir}")
 
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     for fixture_path in fixture_files:
         run = run_benchmark(
             BenchmarkOptions(
@@ -51,6 +65,8 @@ def _run_suite(arguments: argparse.Namespace) -> None:
                 mode=arguments.mode,
                 repeats=arguments.repeats,
                 model_id=arguments.model,
+                provider=arguments.provider,
+                prompt_version=arguments.prompt_version,
             )
         )
         results.append(run_to_report(run))
@@ -63,11 +79,16 @@ def _run_suite(arguments: argparse.Namespace) -> None:
         "repeats": arguments.repeats,
         "runs": results,
         "aggregate": _aggregate(results),
+        "status": (
+            "completed"
+            if all(result["status"] == "completed" for result in results)
+            else "failed"
+        ),
     }
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return summary
 
 
-def _aggregate(results: list[dict]) -> dict:
+def _aggregate(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Compute suite-level aggregate metrics across all fixture runs."""
     all_metrics: dict[str, list[float]] = {}
     for result in results:

@@ -41,6 +41,7 @@ export function BriefReviewStage() {
   const [notice, setNotice] = useState(
     "逐条核对后先保存审阅，再冻结为不可变生成依据。",
   );
+  const [freezing, setFreezing] = useState(false);
   const manualSequence = useRef(0);
   const reviewState = state.review;
 
@@ -111,7 +112,7 @@ export function BriefReviewStage() {
     try {
       const next = await reextractFromServer();
       commit(next);
-      setNotice("Agent 已重新拆解；请逐条确认并保存审阅。 ");
+      setNotice("Agent 已整理答案与规则；请逐条确认并保存审阅。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "拆解任务未完成。");
     }
@@ -161,7 +162,7 @@ export function BriefReviewStage() {
     setError(null);
     try {
       await saveReview();
-      setNotice("审阅已保存。原子项完整后即可冻结。 ");
+      setNotice("审阅已保存。答案要点与创作规则完整后即可冻结。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "审阅保存失败。");
     }
@@ -173,25 +174,37 @@ export function BriefReviewStage() {
       return;
     }
     if (!atomicReviewComplete(review)) {
-      setError("请先确认底牌与创作边界的原子项。 ");
+      setError("请先确认答案要点与创作规则。");
       return;
     }
     setError(null);
+    setFreezing(true);
+    setNotice("正在保存审阅并冻结简报。 ");
     try {
       if (!(await freezeReview())) {
         setError("当前简报尚未通过冻结门禁。 ");
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "冻结未完成。");
+    } finally {
+      setFreezing(false);
     }
   }
 
   const atomicsComplete = atomicReviewComplete(review);
+  const fieldBlockers = reviewFieldBlockers(review);
   const freezeReady =
     review.saved &&
     !review.dirty &&
     atomicsComplete &&
-    reviewFieldBlockers(review).length === 0;
+    fieldBlockers.length === 0;
+  const freezeGuidance = fieldBlockers.length
+    ? `冻结前请补齐：${fieldBlockers.join("、")}。`
+    : review.dirty || !review.saved
+      ? "冻结前请先保存当前审阅修改。"
+      : !atomicsComplete
+        ? "冻结前请确认答案要点与创作规则；如已修改原文，可重新整理或手动新增。"
+        : "已满足冻结条件；确认后会保存当前审阅并创建不可变版本。";
 
   return (
     <section className={styles.reviewStage} aria-labelledby="review-stage-title">
@@ -253,7 +266,7 @@ export function BriefReviewStage() {
                 value={review.reasoningProposition}
               />
             </label>
-            <label>
+            <label className={styles.selectField}>
               <span><b>03</b><strong>结论模式*</strong><em>作者决定</em></span>
               <select
                 aria-label="审阅结论模式"
@@ -267,7 +280,7 @@ export function BriefReviewStage() {
                 ))}
               </select>
             </label>
-            <label>
+            <label className={styles.selectField}>
               <span><b>04</b><strong>结论处理方式</strong><em>作者决定</em></span>
               <select
                 aria-label="审阅结论处理方式"
@@ -281,32 +294,37 @@ export function BriefReviewStage() {
                 ))}
               </select>
             </label>
-            <label>
-              <span><b>05</b><strong>作者底牌原文</strong><em>硬约束来源</em></span>
+            <label className={styles.answerField}>
+              <span><b>05</b><strong>作者答案原文</strong><em>必须遵守</em></span>
               <textarea
-                aria-label="审阅作者底牌原文"
+                aria-label="审阅作者答案原文"
                 disabled={review.resolutionMode !== "author_anchored"}
                 onChange={(event) => updateText("authorAnswer", event.target.value)}
-                placeholder="只有按作者底牌展开时需要填写。"
+                placeholder="只有选择“使用我提供的答案”时需要填写。"
                 rows={3}
                 value={review.authorAnswer}
               />
+              {review.resolutionMode !== "author_anchored" ? (
+                <small className={styles.disabledFieldHint}>
+                  当前不使用作者答案；如需明确唯一答案，请切换为“使用我提供的答案”。
+                </small>
+              ) : null}
             </label>
             <label className={styles.wideField}>
-              <span><b>06</b><strong>创作边界原文</strong><em>硬约束或软偏好</em></span>
+              <span><b>06</b><strong>创作规则原文</strong><em>必须遵守或偏好</em></span>
               <textarea
-                aria-label="审阅创作边界原文"
+                aria-label="审阅创作规则原文"
                 onChange={(event) => updateText("boundaryText", event.target.value)}
-                placeholder="每行一项；修改后需要重新拆解。"
+                placeholder="每行一项；修改后需要重新整理。"
                 rows={4}
                 value={review.boundaryText}
               />
             </label>
           </div>
 
-          <section className={styles.atomicSection} aria-label="原子底牌审阅">
+          <section className={styles.atomicSection} aria-label="答案要点审阅">
             <header>
-              <div><span>作者锚点</span><strong>原子底牌</strong></div>
+              <div><strong>答案要点</strong></div>
               <button onClick={addAnchor} type="button">＋ 人工新增</button>
             </header>
             {review.authorAnchors.length ? (
@@ -315,7 +333,7 @@ export function BriefReviewStage() {
                   <div key={anchor.id}>
                     <small data-origin={anchor.origin}>{originLabel(anchor.origin)}</small>
                     <input
-                      aria-label={`底牌原子项 ${anchor.id}`}
+                      aria-label={`答案要点 ${anchor.id}`}
                       onChange={(event) =>
                         commit({
                           ...review,
@@ -332,7 +350,7 @@ export function BriefReviewStage() {
                     />
                     <b>硬约束</b>
                     <button
-                      aria-label={`删除底牌原子项 ${anchor.id}`}
+                      aria-label={`删除答案要点 ${anchor.id}`}
                       onClick={() =>
                         commit({
                           ...review,
@@ -351,15 +369,15 @@ export function BriefReviewStage() {
             ) : (
               <p className={styles.atomicEmpty}>
                 {review.authorAnswer
-                  ? "原文已改变，请重新拆解或人工新增。"
-                  : "当前没有需要原子化的作者底牌。"}
+                  ? "原文已改变，请重新整理或手动新增。"
+                  : "当前没有需要确认的答案要点。"}
               </p>
             )}
           </section>
 
-          <section className={styles.atomicSection} aria-label="原子创作约束审阅">
+          <section className={styles.atomicSection} aria-label="创作规则审阅">
             <header>
-              <div><span>创作边界</span><strong>原子创作约束</strong></div>
+              <div><strong>创作规则</strong></div>
               <button onClick={addConstraint} type="button">＋ 人工新增</button>
             </header>
             {review.creativeConstraints.length ? (
@@ -368,7 +386,7 @@ export function BriefReviewStage() {
                   <div key={constraint.id}>
                     <small data-origin={constraint.origin}>{originLabel(constraint.origin)}</small>
                     <input
-                      aria-label={`创作约束 ${constraint.id}`}
+                      aria-label={`创作规则 ${constraint.id}`}
                       onChange={(event) =>
                         commit({
                           ...review,
@@ -384,7 +402,7 @@ export function BriefReviewStage() {
                       value={constraint.statement}
                     />
                     <select
-                      aria-label={`约束强度 ${constraint.id}`}
+                      aria-label={`规则强度 ${constraint.id}`}
                       onChange={(event) =>
                         commit({
                           ...review,
@@ -406,7 +424,7 @@ export function BriefReviewStage() {
                       <option value="soft">软偏好</option>
                     </select>
                     <button
-                      aria-label={`删除创作约束 ${constraint.id}`}
+                      aria-label={`删除创作规则 ${constraint.id}`}
                       onClick={() =>
                         commit({
                           ...review,
@@ -425,25 +443,35 @@ export function BriefReviewStage() {
             ) : (
               <p className={styles.atomicEmpty}>
                 {review.boundaryText
-                  ? "原文已改变，请重新拆解或人工新增。"
-                  : "当前没有额外创作边界。"}
+                  ? "原文已改变，请重新整理或手动新增。"
+                  : "当前没有额外的创作规则。"}
               </p>
             )}
           </section>
 
+          <p
+            className={styles.freezeGuidance}
+            data-ready={freezeReady}
+            id="freeze-guidance"
+            role="status"
+          >
+            {freezeGuidance}
+          </p>
+          {error ? <p className={styles.formError} role="alert">{error}</p> : null}
           <footer className={styles.reviewActions}>
-            <button onClick={reextract} type="button">重新拆解底牌与边界</button>
+            <button onClick={reextract} type="button">重新整理答案要点和创作规则</button>
             <div>
               <button type="submit">保存审阅</button>
               <button
+                aria-describedby="freeze-guidance"
                 data-primary="true"
-                disabled={!freezeReady}
+                disabled={!freezeReady || freezing}
                 onClick={handleFreeze}
+                title={freezeReady ? "确认并冻结简报" : freezeGuidance}
                 type="button"
-              >确认并冻结 →</button>
+              >{freezing ? "正在冻结…" : "确认并冻结 →"}</button>
             </div>
           </footer>
-          {error ? <p className={styles.formError} role="alert">{error}</p> : null}
         </form>
 
         <aside className={styles.reviewLedger}>
@@ -451,7 +479,7 @@ export function BriefReviewStage() {
           <ol>
             <li data-complete={atomicsComplete}>
               <b>{atomicsComplete ? "✓" : "1"}</b>
-              <span><strong>原子拆解</strong><small>{atomicsComplete ? "结构完整" : "等待确认"}</small></span>
+              <span><strong>答案与规则</strong><small>{atomicsComplete ? "内容完整" : "等待确认"}</small></span>
             </li>
             <li data-complete={review.saved && !review.dirty}>
               <b>{review.saved && !review.dirty ? "✓" : "2"}</b>

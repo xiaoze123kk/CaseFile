@@ -37,6 +37,7 @@ packages = ["src/casefile", "src/casefile_contracts"]
 testpaths = ["tests"]
 markers = [
   "postgres: requires CASEFILE_TEST_DATABASE_URL pointing to a disposable *_test PostgreSQL database",
+  "live: opt-in real-provider acceptance; requires CASEFILE_RUN_LIVE_ACCEPTANCE=1",
 ]
 
 [tool.ruff]

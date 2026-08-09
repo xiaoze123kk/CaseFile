@@ -7,15 +7,18 @@ import {
   type BriefIntakeCandidateContent,
   type BriefIntakeView,
   type BriefVersionView,
+  type BriefStrategyOptionsResult,
   type CandidateStrategy,
   type BriefView,
   type DraftCandidateView,
   type DraftView,
+  type AnchorExtractMode,
   type PolishMode,
   type ProjectView,
   type ProviderName,
   type ProviderSettingView,
   type TaskView,
+  type TaskType,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
@@ -211,6 +214,8 @@ export async function startAnchorExtractTask(
   projectId: number,
   briefRevision: number,
   provider: ProviderName,
+  mode: AnchorExtractMode = "extract",
+  content?: BriefContent,
 ) {
   return apiRequest<TaskView>(
     `/projects/${projectId}/tasks/brief-anchor-extract`,
@@ -220,6 +225,8 @@ export async function startAnchorExtractTask(
       body: {
         expected_brief_revision: briefRevision,
         provider,
+        mode,
+        ...(content ? { content } : {}),
       },
     },
   );
@@ -250,6 +257,32 @@ export async function fetchTask(projectId: number, taskRunId: number) {
   return apiRequest<TaskView>(`/projects/${projectId}/tasks/${taskRunId}`, {
     actorId: LOCAL_ACTOR_ID,
   });
+}
+
+export async function resumeDraftGenerationTask(
+  projectId: number,
+  taskRunId: number,
+  draftRevision: number,
+  briefRevision: number,
+) {
+  return apiRequest<TaskView>(
+    `/projects/${projectId}/tasks/${taskRunId}/resume`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_revision: draftRevision,
+        expected_brief_revision: briefRevision,
+      },
+    },
+  );
+}
+
+export async function fetchLatestTask(projectId: number, taskType: TaskType) {
+  return apiRequest<TaskView | null>(
+    `/projects/${projectId}/tasks/latest?task_type=${encodeURIComponent(taskType)}`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
 }
 
 export async function waitForTask(
@@ -413,6 +446,47 @@ export async function fetchCaseDraft(projectId: number) {
   return apiRequest<DraftView>(`/projects/${projectId}/draft`, {
     actorId: LOCAL_ACTOR_ID,
   });
+}
+
+export async function startStrategyOptionsTask(
+  projectId: number,
+  briefVersionId: number,
+  provider: ProviderName,
+  refresh = false,
+) {
+  return apiRequest<TaskView>(
+    `/projects/${projectId}/tasks/brief-strategy-options`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        brief_version_id: briefVersionId,
+        provider,
+        refresh,
+      },
+    },
+  );
+}
+
+export function strategyOptionsResult(task: TaskView) {
+  return task.result as BriefStrategyOptionsResult | null;
+}
+
+/** 以 Draft revision 为门禁更新一个 CaseFile 对象；调用方成功后应重取完整 Draft。 */
+export async function patchCaseDraftObject(
+  projectId: number,
+  objectId: string,
+  expectedRevision: number,
+  changes: Record<string, unknown>,
+) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/draft/objects/${encodeURIComponent(objectId)}`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "PATCH",
+      body: { expected_revision: expectedRevision, changes },
+    },
+  );
 }
 
 export async function adoptDraftCandidate(

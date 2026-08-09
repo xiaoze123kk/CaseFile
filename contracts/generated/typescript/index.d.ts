@@ -69,6 +69,7 @@ export type Relationship = CoreMetadata & {
 export type Location = CoreMetadata & {
   id: string;
   name: string;
+  spatial_position?: SchematicSpatialPosition | Wgs84SpatialPosition;
   parent_ref: ObjectRef | null;
   adjacency_refs: ObjectRefList;
   access_rules: string[];
@@ -337,6 +338,16 @@ export interface ActorRef {
   actor_type: "user" | "agent" | "system";
   actor_id: string;
 }
+export interface SchematicSpatialPosition {
+  coordinate_system: "schematic";
+  x: number;
+  y: number;
+}
+export interface Wgs84SpatialPosition {
+  coordinate_system: "wgs84";
+  latitude: number;
+  longitude: number;
+}
 export interface Extensions {
   [k: string]: unknown;
 }
@@ -436,6 +447,7 @@ export interface TaskRun {
     | "brief_anchor_extract"
     | "brief_intake_questions"
     | "brief_intake_synthesize"
+    | "brief_strategy_options"
     | "brief_to_draft"
     | "casefile_chat";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
@@ -452,6 +464,7 @@ export interface TaskRun {
   input_message_id: number | null;
   output_message_id: number | null;
   input_hash: string;
+  candidate_strategy: ("structure_first" | "atmosphere_first" | "reasoning_first" | "balanced") | null;
   attempt_count: number;
   usage: {
     [k: string]: unknown;
@@ -462,6 +475,7 @@ export interface TaskRun {
   result_snapshot_id?: number | null;
   error_code?: string | null;
   failure: TaskFailure | null;
+  component_steps: AgentComponentStepView[];
   created_at?: string;
   updated_at?: string;
 }
@@ -472,6 +486,29 @@ export interface TaskFailure {
   issues: TaskFailureIssue[];
 }
 export interface TaskFailureIssue {
+  code: string;
+  path: string;
+  message: string;
+}
+export interface AgentComponentStepView {
+  step_run_id: number;
+  attempt_no: number;
+  component_id: string;
+  parent_component_id: string | null;
+  execution_no: number;
+  status: "pending" | "running" | "succeeded" | "failed" | "reused" | "skipped";
+  schema_id: string;
+  input_hash: string;
+  output_hash: string | null;
+  failure_layer: string | null;
+  issues: AgentDiagnosticIssue[];
+  recoverable: boolean;
+  resumed_from_step_run_id: number | null;
+}
+export interface AgentDiagnosticIssue {
+  component_id: string;
+  failure_layer: string;
+  schema_id: string | null;
   code: string;
   path: string;
   message: string;

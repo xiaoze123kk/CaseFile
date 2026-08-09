@@ -35,6 +35,7 @@ from casefile.data_postgres.models import (
     CaseFileObject,
     DraftOperation,
     DraftSnapshot,
+    Location,
     TaskAttempt,
     TaskEvent,
     TaskRun,
@@ -302,6 +303,28 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
     return project_id, int(task["task_run_id"])
 
 
+def test_generation_task_uses_the_registry_version_without_a_deployment_override(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_BRIEF_TO_DRAFT_PROMPT_VERSION": "brief-to-draft-v7",
+        },
+    ):
+        _project_id, task_run_id = _prepare_task(engine, actor_id)
+
+    with factory() as session:
+        task = session.get(TaskRun, task_run_id)
+        assert task is not None
+        assert task.prompt_version == "brief-to-draft-v8"
+        assert task.agent_version == "brief-to-draft-pipeline-v8"
+
+
 def _adopt_candidate(
     engine: Engine,
     actor_id: int,
@@ -498,7 +521,7 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
             candidates = workflow.list_generation_candidates(actor_id, project_id)
         assert task["result_snapshot_id"] is not None
         assert draft["revision"] == 2
-        assert draft["content"]["title"] == "围绕午夜回航建立目标无关的推理卷宗。"
+        assert draft["content"]["title"] == task["result"]["title"]
         assert candidates[0]["is_current"] is True
         assert candidates[0]["is_adopted"] is True
 
@@ -666,13 +689,17 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
             )
 
 
-def test_worker_repairs_structural_output_with_actionable_feedback(
+def test_historical_worker_repairs_structural_output_with_actionable_feedback(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, task_run_id = _prepare_task(engine, actor_id)
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v6",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         worker = Worker(
             factory,
@@ -716,13 +743,17 @@ def test_worker_repairs_structural_output_with_actionable_feedback(
         assert "author-secret-value" not in repr(events)
 
 
-def test_worker_exhausts_structural_repairs_without_persisting_candidate(
+def test_historical_worker_exhausts_structural_repairs_without_persisting_candidate(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
     provider = StructuralFailureProvider(failures_before_success=99)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
-        project_id, task_run_id = _prepare_task(engine, actor_id)
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v6",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         worker = Worker(
             factory,
@@ -745,7 +776,7 @@ def test_worker_exhausts_structural_repairs_without_persisting_candidate(
         assert task["error_code"] == "candidate_validation_failed"
         assert task["failure"] == {
             "code": "candidate_validation_failed",
-            "message": "模型输出未通过 CaseFile 结构校验，已停止写入 Draft。",
+            "message": "模型输出未通过 CaseFile 结构校验，已停止写入草稿。",
             "retryable": True,
             "issues": [
                 {
@@ -764,6 +795,39 @@ def test_worker_exhausts_structural_repairs_without_persisting_candidate(
         assert events[-1]["payload"]["failure"] == task["failure"]
         assert "author-secret-value" not in repr(task)
         assert "author-secret-value" not in repr(events)
+
+
+def test_v7_worker_does_not_retry_a_whole_invalid_casefile(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    provider = StructuralFailureProvider(failures_before_success=1)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v7",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="v7-no-whole-repair-worker"),
+            provider_factory=lambda _task: provider,
+        )
+
+        assert worker.run_once() is True
+
+        with factory() as session:
+            task = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
+            attempt = session.scalar(
+                select(TaskAttempt).where(TaskAttempt.task_run_id == task_run_id)
+            )
+
+    assert task["status"] == "failed"
+    assert task["error_code"] == "candidate_validation_failed"
+    assert provider.calls == 1
+    assert attempt is not None
+    assert len(attempt.validation_errors_jsonb) == 1
 
 
 def test_source_polish_extract_recovery_and_human_confirmation(
@@ -913,6 +977,83 @@ def test_source_polish_extract_recovery_and_human_confirmation(
         assert confirmed["content"]["creative_constraints"]
 
 
+def test_strategy_options_reuse_frozen_brief_unless_refresh_is_explicit(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with factory() as session:
+            project = CaseFileService(session).create_project(
+                actor_id,
+                ProjectCreate(title="策略缓存验证", description=None, profile={}),
+            )
+        project_id = int(project["id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            workflow.save_provider_setting(
+                actor_id,
+                api_key="sk-test-strategy-secret",
+                model_id="gpt-5.6-sol",
+                model_is_custom=False,
+            )
+            source = workflow.create_source(
+                actor_id,
+                project_id,
+                source_kind="human_original",
+                content_text="三份记录共同指向不存在的时间。",
+                parent_source_record_id=None,
+            )
+            saved = workflow.update_brief(
+                actor_id,
+                project_id,
+                expected_revision=1,
+                content=_brief(source["source_record_id"]),
+            )
+            confirmed = workflow.confirm_brief(
+                actor_id,
+                project_id,
+                expected_revision=saved["draft_revision"],
+            )
+            first = workflow.create_strategy_options_task(
+                actor_id,
+                project_id,
+                brief_version_id=confirmed["brief_version_id"],
+            )
+            reused = workflow.create_strategy_options_task(
+                actor_id,
+                project_id,
+                brief_version_id=confirmed["brief_version_id"],
+            )
+            refreshed = workflow.create_strategy_options_task(
+                actor_id,
+                project_id,
+                brief_version_id=confirmed["brief_version_id"],
+                refresh=True,
+            )
+
+        assert reused["task_run_id"] == first["task_run_id"]
+        assert refreshed["task_run_id"] != first["task_run_id"]
+
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="strategy-options-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            completed = WorkflowService(session).get_task(
+                actor_id,
+                project_id,
+                first["task_run_id"],
+            )
+
+    assert completed["status"] == "succeeded"
+    assert len(completed["result"]["options"]) == 3
+    assert completed["result"]["recommended_strategy"] == "reasoning_first"
+
+
 def test_brief_updates_clear_current_version_and_reject_foreign_sources(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
@@ -1060,7 +1201,17 @@ def test_worker_rejects_rotated_provider_configuration(
         with factory() as session:
             task = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
         assert task["status"] == "failed"
-        assert task["error_code"] == "generation_failed"
+        assert task["error_code"] == "agent_component_failed"
+        assert task["failure"]["issues"][0]["code"] == "generation_failed"
+        assert len(task["component_steps"]) == 1
+        coordinator = task["component_steps"][0]
+        assert coordinator["component_id"] == "run_coordinator"
+        assert coordinator["status"] == "failed"
+        assert coordinator["failure_layer"] == "frozen_context"
+        assert coordinator["schema_id"] == "task-run-v1"
+        assert coordinator["recoverable"] is False
+        assert coordinator["issues"][0]["component_id"] == "run_coordinator"
+        assert coordinator["issues"][0]["code"] == "generation_failed"
 
 
 def test_confirmed_brief_and_task_events_are_database_immutable(
@@ -1117,6 +1268,17 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             location_id = content["locations"][0]["id"]
             event_id = content["events"][0]["id"]
             resolution_id = content["resolution_specs"][0]["id"]
+            assert content["locations"][0]["spatial_position"] == {
+                "coordinate_system": "schematic",
+                "x": 28,
+                "y": 42,
+            }
+            stored_spatial_position = session.scalar(
+                select(Location.geo_jsonb)
+                .join(CaseFileObject, Location.object_registry_id == CaseFileObject.id)
+                .where(CaseFileObject.object_id == location_id)
+            )
+            assert stored_spatial_position == content["locations"][0]["spatial_position"]
 
         with factory() as session:
             entity, revision = V1EditingService(session).patch_object(
@@ -1144,11 +1306,26 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 changes={
                     "name": "Edited laboratory",
                     "description": "Edited location description",
+                    "spatial_position": {
+                        "coordinate_system": "wgs84",
+                        "latitude": 30.2741,
+                        "longitude": 120.1551,
+                    },
                 },
             )
             assert revision == 4
             assert location["name"] == "Edited laboratory"
             assert location["description"] == "Edited location description"
+            assert location["spatial_position"] == {
+                "coordinate_system": "wgs84",
+                "latitude": 30.2741,
+                "longitude": 120.1551,
+            }
+            assert session.scalar(
+                select(Location.geo_jsonb)
+                .join(CaseFileObject, Location.object_registry_id == CaseFileObject.id)
+                .where(CaseFileObject.object_id == location_id)
+            ) == location["spatial_position"]
 
         with factory() as session:
             event, revision = V1EditingService(session).patch_object(

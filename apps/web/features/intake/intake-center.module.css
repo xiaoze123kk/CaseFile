@@ -239,6 +239,17 @@
   height: 15px;
   fill: none;
   stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.topbarActionLabel {
+  white-space: nowrap;
+}
+
+.topbarActionCompactLabel {
+  display: none;
 }
 
 .historyToggle[data-stashed="true"] {
@@ -485,12 +496,62 @@
 }
 
 .workspace {
+  position: relative;
   display: grid;
   min-width: 0;
   min-height: calc(100svh - 170px);
   grid-template-columns: 264px minmax(0, 1fr) 314px;
   gap: 0;
   padding: 0;
+}
+
+.sessionStatus,
+.sessionStatusError {
+  grid-column: 1 / -1;
+  margin: 12px 20px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--red);
+  color: var(--ink-muted);
+  background: rgba(255, 250, 247, 0.96);
+  font-size: 12px;
+}
+
+.sessionStatusError {
+  color: #8f220e;
+  border-color: var(--red-line);
+  background: var(--red-soft);
+}
+
+.sessionTaskList {
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.sessionTaskList > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sessionTaskList span {
+  font: 10px "Cascadia Mono", Consolas, monospace;
+}
+
+.sessionTaskList button {
+  padding: 4px 8px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  background: transparent;
+  font-size: 11px;
+}
+
+.sessionTaskList em {
+  color: #8f220e;
+  font-size: 11px;
+  font-style: normal;
 }
 
 .routeDock,
@@ -765,6 +826,15 @@
   color: var(--red);
 }
 
+.pendingQueue button {
+  margin-top: 10px;
+  padding: 5px 8px;
+  border: 1px solid var(--red-line);
+  color: var(--red);
+  background: transparent;
+  font-size: 11px;
+}
+
 .intakeCenter .primaryAction:disabled {
   opacity: 1;
 }
@@ -877,13 +947,40 @@
   }
 
   .topbarContext,
-  .topbarLinks a,
-  .topbarLinks button:not(:last-child) {
+  .topbarLinks a {
     display: none;
   }
 
-  .topbarLinks button:last-child {
-    min-width: 88px;
+  .topbarLinks {
+    gap: 2px;
+    padding-right: 8px;
+  }
+
+  .topbarLinks button {
+    width: auto;
+    min-width: 0;
+    padding: 0 4px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .topbarActionLabel {
+    display: none;
+  }
+
+  .topbarActionCompactLabel {
+    display: inline;
+  }
+
+  .topbarLinks .accountButton {
+    width: 42px;
+    min-width: 42px;
+    gap: 4px;
+    padding: 0;
+  }
+
+  .accountButton > i {
+    font-size: 11px;
   }
 
   .pulseTrack {

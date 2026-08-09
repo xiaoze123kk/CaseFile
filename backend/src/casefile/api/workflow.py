@@ -20,10 +20,12 @@ from casefile.api.schemas import (
     BriefAnchorExtractTaskRequest,
     BriefConfirmRequest,
     BriefPolishTaskRequest,
+    BriefStrategyOptionsTaskRequest,
     BriefUpdateRequest,
     DraftCandidateAdoptRequest,
     GenerateTaskRequest,
     ProviderSettingRequest,
+    ResumeGenerationTaskRequest,
     SourceRecordCreateRequest,
 )
 from casefile.application.errors import ApplicationError
@@ -249,6 +251,24 @@ def workflow_router() -> APIRouter:
             candidate_strategy_attempt=payload.candidate_strategy_attempt,
         )
 
+    @router.post(
+        "/projects/{project_id}/tasks/brief-strategy-options",
+        status_code=202,
+    )
+    def create_strategy_options_task(
+        project_id: int,
+        payload: BriefStrategyOptionsTaskRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).create_strategy_options_task(
+            actor,
+            project_id,
+            brief_version_id=payload.brief_version_id,
+            provider=payload.provider,
+            refresh=payload.refresh,
+        )
+
     @router.get("/projects/{project_id}/draft-candidates")
     def list_draft_candidates(
         project_id: int,
@@ -315,6 +335,8 @@ def workflow_router() -> APIRouter:
             project_id,
             expected_brief_revision=payload.expected_brief_revision,
             provider=payload.provider,
+            mode=payload.mode,
+            content=payload.content,
         )
 
     @router.get("/projects/{project_id}/tasks/latest")
@@ -327,6 +349,7 @@ def workflow_router() -> APIRouter:
             "brief_anchor_extract",
             "brief_intake_questions",
             "brief_intake_synthesize",
+            "brief_strategy_options",
             "brief_to_draft",
             "casefile_chat",
         ],
@@ -345,6 +368,25 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
     ) -> dict[str, Any]:
         return WorkflowService(session).get_task(actor, project_id, task_run_id)
+
+    @router.post(
+        "/projects/{project_id}/tasks/{task_run_id}/resume",
+        status_code=202,
+    )
+    def resume_generation_task(
+        project_id: int,
+        task_run_id: int,
+        payload: ResumeGenerationTaskRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).resume_generation_task(
+            actor,
+            project_id,
+            task_run_id,
+            expected_draft_revision=payload.expected_draft_revision,
+            expected_brief_revision=payload.expected_brief_revision,
+        )
 
     @router.get("/projects/{project_id}/tasks/{task_run_id}/events")
     def get_task_events(
@@ -421,13 +463,13 @@ def _last_event_sequence(value: str | None) -> int:
     except ValueError as error:
         raise ApplicationError(
             "last_event_id_invalid",
-            "Last-Event-ID must be a non-negative integer",
+            "事件序号必须是非负整数。",
             status_code=422,
         ) from error
     if sequence < 0:
         raise ApplicationError(
             "last_event_id_invalid",
-            "Last-Event-ID must be a non-negative integer",
+            "事件序号必须是非负整数。",
             status_code=422,
         )
     return sequence

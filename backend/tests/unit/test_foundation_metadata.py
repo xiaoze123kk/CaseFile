@@ -1,4 +1,4 @@
-"""Static contracts for the 45-table personal-product database metadata."""
+"""Static contracts for the 47-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ from casefile.data_postgres.base import Base
 from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
+    "agent_model_calls",
     "agent_messages",
     "agent_patch_operations",
     "agent_patch_sets",
     "agent_threads",
+    "agent_step_runs",
     "audit_events",
     "brief_intake_candidates",
     "brief_intake_questions",
@@ -84,8 +86,14 @@ DEDICATED_CURRENT_TABLES = {
 }
 
 JSONB_ALLOWLIST = {
+    ("agent_model_calls", "issues_jsonb"),
+    ("agent_model_calls", "usage_jsonb"),
     ("agent_patch_operations", "new_value_jsonb"),
     ("agent_patch_operations", "old_value_jsonb"),
+    ("agent_step_runs", "diagnostic_jsonb"),
+    ("agent_step_runs", "output_jsonb"),
+    ("agent_step_runs", "upstream_hashes_jsonb"),
+    ("agent_step_runs", "usage_jsonb"),
     ("audit_events", "details_jsonb"),
     ("brief_intake_candidates", "content_jsonb"),
     ("brief_intake_questions", "suggestions_jsonb"),
@@ -239,10 +247,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_45_personal_tables() -> None:
+def test_metadata_contains_exactly_the_47_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 45
+    assert len(models.__all__) == 47
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

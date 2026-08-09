@@ -9,6 +9,7 @@ import {
   createInitialCaseSessionState,
   CaseSessionProvider,
   caseSessionReducer,
+  candidateTaskStageFromTask,
   workbenchCandidateStatus,
   type CaseSessionState,
   useCaseSession,
@@ -16,6 +17,7 @@ import {
 import {
   atomicReviewComplete,
   canFreezeBriefReview,
+  candidateHistoryVersions,
   createBriefReview,
   sampleIdea,
   synthesizeBrief,
@@ -49,6 +51,12 @@ function reviewedBriefFixture() {
 }
 
 describe("case session state model", () => {
+  it("numbers candidate history from one instead of exposing database identifiers", () => {
+    expect(
+      candidateHistoryVersions([{ id: 31 }, { id: 30 }]),
+    ).toEqual(new Map([[30, 1], [31, 2]]));
+  });
+
   it("deterministically generates three distinct, reference-complete workbench seeds", () => {
     const { review } = reviewedBriefFixture();
     const input = {
@@ -188,5 +196,85 @@ describe("CaseSessionProvider lifecycle", () => {
       </CaseSessionProvider>,
     );
     expect(screen.getByRole("button", { name: "空白初态" })).toBeInTheDocument();
+  });
+});
+
+describe("candidate generation progress", () => {
+  it("maps task stages to user-facing generation stages", () => {
+    expect(candidateTaskStageFromTask({ status: "running", stage: "planning" })).toBe(
+      "planning",
+    );
+    expect(candidateTaskStageFromTask({ status: "running", stage: "generating" })).toBe(
+      "generating",
+    );
+    expect(candidateTaskStageFromTask({ status: "running", stage: "validating" })).toBe(
+      "validating",
+    );
+    expect(candidateTaskStageFromTask({ status: "succeeded", stage: "completed" })).toBe(
+      "completed",
+    );
+    expect(candidateTaskStageFromTask({ status: "failed", stage: "failed" })).toBe(
+      "failed",
+    );
+  });
+
+  it("keeps slot progress while a candidate moves through generation", () => {
+    let state = createInitialCaseSessionState();
+    state = caseSessionReducer(state, {
+      type: "start_generation",
+      strategies: ["structure_first"],
+    });
+    state = caseSessionReducer(state, {
+      type: "update_generation_slot",
+      strategy: "structure_first",
+      status: "running",
+      stage: "generating",
+      taskRunId: 101,
+    });
+    expect(state.generation.slots.structure_first).toMatchObject({
+      status: "running",
+      stage: "generating",
+      taskRunId: 101,
+    });
+
+    state = caseSessionReducer(state, {
+      type: "update_generation_slot",
+      strategy: "structure_first",
+      status: "succeeded",
+      stage: "completed",
+    });
+    expect(state.generation.slots.structure_first).toMatchObject({
+      status: "succeeded",
+      stage: "completed",
+    });
+
+    state = caseSessionReducer(state, {
+      type: "update_generation_slot",
+      strategy: "structure_first",
+      status: "failed",
+      stage: "failed",
+      attempt: 1,
+      error: "候选结构校验失败",
+    });
+    expect(state.generation.slots.structure_first).toMatchObject({
+      status: "failed",
+      stage: "failed",
+      error: "候选结构校验失败",
+    });
+
+    state = caseSessionReducer(state, {
+      type: "update_generation_slot",
+      strategy: "structure_first",
+      status: "running",
+      stage: "queued",
+      attempt: 2,
+      error: null,
+    });
+    expect(state.generation.slots.structure_first).toMatchObject({
+      status: "running",
+      stage: "queued",
+      attempt: 2,
+      error: null,
+    });
   });
 });
