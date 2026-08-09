@@ -22,10 +22,6 @@ import type {
   TaskView,
 } from "@/lib/api-client";
 import {
-  buildWorkbenchCandidates,
-  type WorkbenchCandidate,
-} from "@/features/analyst-workbench/analyst-fixture";
-import {
   canFreezeBriefReview,
   createEmptyBrief,
   missingHardFields,
@@ -42,8 +38,9 @@ import {
 import {
   activateBriefCandidate,
   adoptBriefCandidate,
-  adoptDraftCandidate,
+  adoptDraftCandidateWithReconciliation,
   answerQuestion,
+  cancelTask,
   confirmBrief,
   createBriefCandidate,
   createCaseProject,
@@ -54,8 +51,8 @@ import {
   fetchDraftCandidates,
   fetchCaseIntake,
   fetchLatestTask,
-  fetchTask,
   isBriefIntakeRevisionConflict,
+  isTaskCancelledError,
   persistCaseSource,
   runTaskWithProviderFallback,
   saveBriefCandidate,
@@ -69,16 +66,20 @@ import {
   strategyOptionsResult,
   updateBrief,
   waitForTask,
+  waitForRecoveredTask,
 } from "./case-session-api";
 import {
   briefsMatch,
   currentIntakeCandidate,
+  mapAuthoritativeDraftCandidateState,
   mapBriefContentToReview,
   mapBriefToCandidateContent,
+  mapCurrentBriefDraftCandidates,
   mapIntakeBriefToAnchorContent,
-  mapWorkbenchCandidateView,
   mapIntakeToSessionState,
   mapReviewToBriefContent,
+  rankDraftCandidateStrategy,
+  type SessionWorkbenchCandidate,
 } from "./case-session-mapping";
 
 export type GenerationStatus = "idle" | "generating" | "ready";
@@ -88,6 +89,7 @@ export type CandidateSlotStatus =
   | "pending"
   | "running"
   | "succeeded"
+  | "cancelled"
   | "failed";
 export type CandidateTaskStage =
   | "queued"
@@ -96,7 +98,9 @@ export type CandidateTaskStage =
   | "generating"
   | "validating"
   | "completed"
+  | "cancelled"
   | "failed";
+export type CandidateGenerationOutcome = "succeeded" | "cancelled" | "not_started";
 export type StrategyAnalysisStatus = "idle" | "analyzing" | "ready" | "failed";
 export type SessionHydrationStatus = "idle" | "loading" | "ready" | "error";
 
@@ -105,12 +109,6 @@ export const CANDIDATE_SLOT_STRATEGIES: readonly CandidateSlotStrategy[] = [
   "atmosphere_first",
   "reasoning_first",
 ];
-
-const CANDIDATE_STRATEGY_TO_FOCUS = {
-  structure_first: "structure",
-  atmosphere_first: "atmosphere",
-  reasoning_first: "reasoning",
-} as const;
 
 type CandidateSlot = {
   status: CandidateSlotStatus;
@@ -127,7 +125,8 @@ export function candidateTaskStageFromTask(
   if (task.status === "succeeded" || task.stage === "completed") {
     return "completed";
   }
-  if (task.status === "failed" || task.status === "cancelled" || task.stage === "failed") {
+  if (task.status === "cancelled") return "cancelled";
+  if (task.status === "failed" || task.stage === "failed") {
     return "failed";
   }
   if (task.stage === "planning") return "planning";
@@ -135,6 +134,15 @@ export function candidateTaskStageFromTask(
   if (task.stage === "validating") return "validating";
   if (task.stage === "queued" || task.stage === "preparing") return "queued";
   return "processing";
+}
+
+export function candidateSlotStatusFromTask(
+  task: Pick<TaskView, "status">,
+): CandidateSlotStatus {
+  if (task.status === "succeeded") return "succeeded";
+  if (task.status === "cancelled") return "cancelled";
+  if (task.status === "failed") return "failed";
+  return "running";
 }
 
 function createCandidateSlots(): Record<CandidateSlotStrategy, CandidateSlot> {
@@ -183,7 +191,7 @@ export interface CaseSessionState {
     error: string | null;
   };
   selectedStrategy: CandidateSlotStrategy | null;
-  draftCandidates: WorkbenchCandidate[];
+  draftCandidates: SessionWorkbenchCandidate[];
   previewCandidateId: string | null;
   adoptedCandidateId: string | null;
   latestTasks: Partial<Record<TaskType, TaskView>>;
@@ -206,6 +214,7 @@ type CaseSessionAction =
       task?: TaskView | null;
     }
   | { type: "advance_generation"; stage: number }
+  | { type: "end_generation"; status: "idle" | "ready"; stage: number }
   | {
       type: "strategy_analysis_ready";
       options: BriefStrategyOption[];
@@ -213,7 +222,7 @@ type CaseSessionAction =
       recommendationReason: string;
     }
   | { type: "select_strategy"; strategy: CandidateSlotStrategy }
-  | { type: "complete_generation"; candidates: WorkbenchCandidate[] }
+  | { type: "complete_generation"; candidates: SessionWorkbenchCandidate[] }
   | { type: "preview_candidate"; candidateId: string | null }
   | { type: "adopt_candidate"; candidateId: string }
   | { type: "begin_revision" }
@@ -319,6 +328,12 @@ export function caseSessionReducer(
       },
     };
   }
+  if (action.type === "end_generation") {
+    return {
+      ...state,
+      generation: { ...state.generation, status: action.status, stage: action.stage },
+    };
+  }
   if (action.type === "strategy_analysis_ready") {
     return {
       ...state,
@@ -353,13 +368,28 @@ export function caseSessionReducer(
     const candidate = state.draftCandidates.find(
       (item) => item.id === action.candidateId,
     );
-    if (!candidate || candidate.briefVersion !== state.frozenBriefVersion) {
+    if (!candidate || workbenchCandidateStatus(state, candidate) !== "pending") {
       return state;
     }
     return {
       ...state,
       adoptedCandidateId: candidate.id,
       previewCandidateId: candidate.id,
+      draftCandidates: state.draftCandidates.map((item) =>
+        item.candidateState
+          ? {
+              ...item,
+              candidateState: {
+                ...item.candidateState,
+                isCurrent: item.id === candidate.id,
+                isAdopted:
+                  item.candidateState.isAdopted || item.id === candidate.id,
+                canAdopt:
+                  item.id === candidate.id ? false : item.candidateState.canAdopt,
+              },
+            }
+          : item,
+      ),
     };
   }
   if (action.type === "begin_revision") {
@@ -389,9 +419,13 @@ export function caseSessionReducer(
 
 export function workbenchCandidateStatus(
   state: CaseSessionState,
-  candidate: WorkbenchCandidate,
+  candidate: SessionWorkbenchCandidate,
 ): WorkbenchCandidateStatus {
   if (candidate.id === state.adoptedCandidateId) return "current";
+  if (candidate.candidateState) {
+    if (candidate.candidateState.isCurrent) return "current";
+    return candidate.candidateState.canAdopt ? "pending" : "stale";
+  }
   if (candidate.briefVersion === state.frozenBriefVersion) return "pending";
   return "stale";
 }
@@ -414,7 +448,7 @@ interface StashedSession {
 interface CaseSessionContextValue {
   state: CaseSessionState;
   activeProjectId: number | null;
-  activeCandidate: WorkbenchCandidate | null;
+  activeCandidate: SessionWorkbenchCandidate | null;
   patchState: (patch: Partial<CaseSessionState>) => void;
   beginBriefReview: () => Promise<void>;
   setReview: (review: BriefReview) => void;
@@ -423,8 +457,9 @@ interface CaseSessionContextValue {
   generateCandidates: (
     strategy?: CandidateSlotStrategy,
     attempt?: number,
-  ) => Promise<boolean>;
+  ) => Promise<CandidateGenerationOutcome>;
   resumeGeneration: (strategy: CandidateSlotStrategy) => Promise<boolean>;
+  cancelGeneration: (strategy: CandidateSlotStrategy) => Promise<TaskView | null>;
   retryTask: (taskType: TaskType) => Promise<PolishResult | null>;
   analyzeStrategies: (refresh?: boolean) => Promise<boolean>;
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
@@ -432,7 +467,7 @@ interface CaseSessionContextValue {
   adoptCandidate: (candidateId: string) => Promise<boolean>;
   beginBriefRevision: () => void;
   candidateStatus: (
-    candidate: WorkbenchCandidate,
+    candidate: SessionWorkbenchCandidate,
   ) => WorkbenchCandidateStatus;
   resetSession: () => void;
   loadProject: (projectId: number) => Promise<void>;
@@ -512,9 +547,9 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     stateRef.current = state;
   }, [state]);
 
-  async function ensureProjectAndSource(
+  const ensureProjectAndSource = useCallback(async (
     text: string,
-  ): Promise<Awaited<ReturnType<typeof fetchCaseIntake>>> {
+  ): Promise<Awaited<ReturnType<typeof fetchCaseIntake>>> => {
     const normalized = text.trim();
     if (!normalized) throw new CaseSessionError("请先写下最初想法。");
     let intake = intakeRef.current;
@@ -538,7 +573,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       intakeRef.current = intake;
     }
     return intake;
-  }
+  }, [syncProjectPointer]);
 
   const patchState = useCallback((patch: Partial<CaseSessionState>) => {
     dispatch({ type: "patch", patch });
@@ -573,7 +608,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           result.proposal_source_record?.source_record_id ?? null,
       };
     },
-    [],
+    [ensureProjectAndSource],
   );
 
   const adoptPolish = useCallback(
@@ -645,7 +680,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         answers: mapped.answers,
       },
     });
-  }, [startWithFreshIntakeRevision]);
+  }, [ensureProjectAndSource, startWithFreshIntakeRevision]);
 
   const continueToQuestions = useCallback(
     () => requestQuestions(false),
@@ -705,7 +740,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         brief: mapped.brief ?? current.brief,
       },
     });
-  }, [startWithFreshIntakeRevision]);
+  }, [ensureProjectAndSource, startWithFreshIntakeRevision]);
 
   const createManualBrief = useCallback(async () => {
     const current = stateRef.current;
@@ -729,7 +764,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         brief: mapped.brief ?? current.brief,
       },
     });
-  }, []);
+  }, [ensureProjectAndSource]);
 
   const saveCandidateAsNew = useCallback(async () => {
     const current = stateRef.current;
@@ -912,7 +947,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       mode: "extract" | "suggest_author_answer",
       content?: BriefContent,
     ) => {
-      const current = stateRef.current;
       const projectId = projectIdRef.current;
       if (projectId === null) throw new CaseSessionError("当前会话尚未建案。");
       const brief = briefRef.current ?? (await fetchBrief(projectId));
@@ -1086,10 +1120,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       !selectedStrategy ||
       current.generation.status === "generating"
     ) {
-      return false;
+      return "not_started";
     }
     const projectId = projectIdRef.current;
-    if (projectId === null) return false;
+    if (projectId === null) return "not_started";
     try {
       const brief = briefRef.current ?? (await fetchBrief(projectId));
       if (!brief.current_version_id) {
@@ -1153,12 +1187,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 dispatch({
                   type: "update_generation_slot",
                   strategy: firstStrategy,
-                  status:
-                    latestTask.status === "succeeded"
-                      ? "succeeded"
-                      : latestTask.status === "failed" || latestTask.status === "cancelled"
-                        ? "failed"
-                        : "running",
+                  status: candidateSlotStatusFromTask(latestTask),
                   stage: candidateTaskStageFromTask(latestTask),
                   task: latestTask,
                 });
@@ -1213,12 +1242,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 dispatch({
                   type: "update_generation_slot",
                   strategy,
-                  status:
-                    latestTask.status === "succeeded"
-                      ? "succeeded"
-                      : latestTask.status === "failed" || latestTask.status === "cancelled"
-                        ? "failed"
-                        : "running",
+                  status: candidateSlotStatusFromTask(latestTask),
                   stage: candidateTaskStageFromTask(latestTask),
                   task: latestTask,
                 });
@@ -1248,14 +1272,6 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       let refreshedCurrentOnes = candidates.filter(
         (candidate) => candidate.is_current_brief,
       );
-      const rankStrategy = (strategy: CandidateStrategy) =>
-        strategy === "structure_first"
-          ? 0
-          : strategy === "atmosphere_first"
-            ? 1
-            : strategy === "reasoning_first"
-              ? 2
-              : 3;
       const duplicateRetryStrategies = [
         ...new Set(
           [...
@@ -1278,8 +1294,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
             return group
               .sort(
                 (left, right) =>
-                  rankStrategy(left.candidate_strategy) -
-                  rankStrategy(right.candidate_strategy),
+                  rankDraftCandidateStrategy(left.candidate_strategy) -
+                  rankDraftCandidateStrategy(right.candidate_strategy),
               )
               .slice(1)
               .map((candidate) => candidate.candidate_strategy as CandidateSlotStrategy);
@@ -1319,12 +1335,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
                 dispatch({
                   type: "update_generation_slot",
                   strategy,
-                  status:
-                    latestTask.status === "succeeded"
-                      ? "succeeded"
-                      : latestTask.status === "failed" || latestTask.status === "cancelled"
-                        ? "failed"
-                        : "running",
+                  status: candidateSlotStatusFromTask(latestTask),
                   stage: candidateTaskStageFromTask(latestTask),
                   task: latestTask,
                 });
@@ -1353,53 +1364,31 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           (candidate) => candidate.is_current_brief,
         );
       }
-      const duplicateHashCounts = new Map<string, number>();
-      for (const candidate of refreshedCurrentOnes) {
-        duplicateHashCounts.set(
-          candidate.content_hash,
-          (duplicateHashCounts.get(candidate.content_hash) ?? 0) + 1,
-        );
-      }
-      const base = buildWorkbenchCandidates(
-        {
-          creativeIntent: current.review.creativeIntent,
-          reasoningProposition: current.review.reasoningProposition,
-          authorAnswer: current.review.authorAnswer,
-          constraints: current.review.creativeConstraints
-            .map((constraint) => constraint.statement.trim())
-            .filter(Boolean),
-        },
+      const mapped = mapCurrentBriefDraftCandidates(
+        refreshedCurrentOnes,
+        current.review,
         current.frozenBriefVersion,
       );
-      const mapped = [...refreshedCurrentOnes]
-        .sort(
-          (left, right) =>
-            rankStrategy(left.candidate_strategy) -
-            rankStrategy(right.candidate_strategy),
-        )
-        .map((view) => {
-          const focus =
-            view.candidate_strategy === "balanced"
-              ? "structure"
-              : CANDIDATE_STRATEGY_TO_FOCUS[view.candidate_strategy];
-          return mapWorkbenchCandidateView(
-            view,
-            base.find((candidate) => candidate.focus === focus) ?? base[0],
-            duplicateHashCounts.get(view.content_hash)! > 1
-              ? "与同批候选内容相同，差异不足"
-              : undefined,
-          );
-        });
       dispatch({ type: "complete_generation", candidates: mapped });
       return refreshedCurrentOnes.some(
         (candidate) => candidate.candidate_strategy === selectedStrategy,
-      );
+      )
+        ? "succeeded"
+        : "not_started";
     } catch (error) {
-      const generation = stateRef.current.generation;
-      dispatch({
-        type: "patch",
-        patch: { generation: { ...generation, status: "idle", stage: 0 } },
-      });
+      if (isTaskCancelledError(error)) {
+        dispatch({
+          type: "update_generation_slot",
+          strategy: selectedStrategy,
+          status: "cancelled",
+          stage: "cancelled",
+          task: error.task,
+          error: null,
+        });
+        dispatch({ type: "end_generation", status: "idle", stage: 0 });
+        return "cancelled";
+      }
+      dispatch({ type: "end_generation", status: "idle", stage: 0 });
       throw error;
     }
     },
@@ -1490,9 +1479,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const candidate = current.draftCandidates.find(
       (item) => item.id === candidateId,
     );
-    if (!candidate || candidate.briefVersion !== current.frozenBriefVersion) {
-      return false;
-    }
+    if (!candidate || workbenchCandidateStatus(current, candidate) !== "pending") return false;
     const projectId = projectIdRef.current;
     if (projectId === null) {
       // 无后端会话（纯 fixture 接力场景）时只在会话内采用。
@@ -1502,9 +1489,34 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const taskRunId = Number(candidateId.replace(/^draft-/, ""));
     if (!Number.isInteger(taskRunId)) return false;
     const draft = await fetchCaseDraft(projectId);
-    await adoptDraftCandidate(projectId, taskRunId, draft.revision);
-    briefRef.current = await fetchBrief(projectId);
-    dispatch({ type: "adopt_candidate", candidateId });
+    const outcome = await adoptDraftCandidateWithReconciliation(
+      projectId,
+      taskRunId,
+      draft.revision,
+    );
+    let reconciled = false;
+    if (outcome.facts) {
+      const latest = stateRef.current;
+      if (latest.review) {
+        dispatch({
+          type: "patch",
+          patch: mapAuthoritativeDraftCandidateState(
+            outcome.facts.candidates,
+            latest.review,
+            latest.previewCandidateId,
+          ),
+        });
+        reconciled = outcome.facts.targetIsCurrent;
+      }
+    }
+    if (outcome.error) throw outcome.error;
+    if (!reconciled) dispatch({ type: "adopt_candidate", candidateId });
+    try {
+      briefRef.current = await fetchBrief(projectId);
+    } catch {
+      // Candidate adoption is already durable. A Brief refresh failure must not
+      // turn the successful write into an author-facing adoption failure.
+    }
     return true;
   }, []);
 
@@ -1513,7 +1525,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const candidateStatus = useCallback(
-    (candidate: WorkbenchCandidate) =>
+    (candidate: SessionWorkbenchCandidate) =>
       workbenchCandidateStatus(state, candidate),
     [state],
   );
@@ -1562,7 +1574,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "patch", patch: stashed.state });
   }, [syncProjectPointer]);
 
-  const resumeTask = useCallback(async (projectId: number, task: TaskView) => {
+  const resumeTask = useCallback(async (
+    projectId: number,
+    task: TaskView,
+    recoveryReview: BriefReview | null,
+  ) => {
     if (!ACTIVE_TASK_STATUSES.has(task.status)) return;
     if (recoveringTaskIdsRef.current.has(task.task_run_id)) return;
     recoveringTaskIdsRef.current.add(task.task_run_id);
@@ -1577,17 +1593,57 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           },
         },
       });
-    };
-    try {
-      await waitForTask(projectId, task.task_run_id, update);
-    } catch {
-      try {
-        update(await fetchTask(projectId, task.task_run_id));
-      } catch {
-        // The next explicit action will surface the authoritative API error.
+      if (latest.task_type !== "brief_to_draft") return;
+      const strategy = CANDIDATE_SLOT_STRATEGIES.find(
+        (candidateStrategy) => candidateStrategy === latest.candidate_strategy,
+      );
+      if (!strategy) return;
+      dispatch({
+        type: "update_generation_slot",
+        strategy,
+        status: candidateSlotStatusFromTask(latest),
+        stage: candidateTaskStageFromTask(latest),
+        task: latest,
+        error:
+          latest.status === "failed"
+            ? latest.failure?.message ?? "生成任务失败，Current Draft 未被修改。"
+            : null,
+      });
+      if (!ACTIVE_TASK_STATUSES.has(latest.status)) {
+        dispatch({
+          type: "end_generation",
+          status: latest.status === "cancelled" ? "idle" : "ready",
+          stage: latest.status === "succeeded" ? 3 : 0,
+        });
       }
+    };
+    let terminalTask: TaskView | null = null;
+    try {
+      terminalTask = await waitForRecoveredTask(projectId, task.task_run_id, update);
+      if (terminalTask) update(terminalTask);
     } finally {
       recoveringTaskIdsRef.current.delete(task.task_run_id);
+    }
+    if (
+      task.task_type === "brief_to_draft" &&
+      terminalTask &&
+      !ACTIVE_TASK_STATUSES.has(terminalTask.status)
+    ) {
+      try {
+        const candidates = await fetchDraftCandidates(projectId);
+        if (projectIdRef.current === projectId && recoveryReview) {
+          dispatch({
+            type: "patch",
+            patch: mapAuthoritativeDraftCandidateState(
+              candidates,
+              recoveryReview,
+              stateRef.current.previewCandidateId,
+            ),
+          });
+        }
+      } catch {
+        // The terminal slot remains usable; an explicit reload retries project facts.
+      }
     }
   }, []);
 
@@ -1609,7 +1665,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     let step: IntakeStep = "idea";
     let furthestStep = 0;
     let frozenBriefVersion: number | null = null;
-    let draftCandidates: WorkbenchCandidate[] = [];
+    let draftCandidates: SessionWorkbenchCandidate[] = [];
     let previewCandidateId: string | null = null;
     let adoptedCandidateId: string | null = null;
     const latestTasks: Partial<Record<TaskType, TaskView>> = {};
@@ -1639,49 +1695,11 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         frozenBriefVersion = frozenVersionNo;
         step = "candidates";
         furthestStep = 4;
-        const currentOnes = (await fetchDraftCandidates(projectId)).filter(
-          (candidate) => candidate.is_current_brief,
-        );
-        const rankStrategy = (strategy: CandidateStrategy) =>
-          strategy === "structure_first"
-            ? 0
-            : strategy === "atmosphere_first"
-              ? 1
-              : strategy === "reasoning_first"
-                ? 2
-                : 3;
-        const base = buildWorkbenchCandidates(
-          {
-            creativeIntent: review.creativeIntent,
-            reasoningProposition: review.reasoningProposition,
-            authorAnswer: review.authorAnswer,
-            constraints: review.creativeConstraints
-              .map((constraint) => constraint.statement.trim())
-              .filter(Boolean),
-          },
-          frozenBriefVersion,
-        );
-        draftCandidates = [...currentOnes]
-          .sort(
-            (left, right) =>
-              rankStrategy(left.candidate_strategy) -
-              rankStrategy(right.candidate_strategy),
-          )
-          .map((view) => {
-            const focus =
-              view.candidate_strategy === "balanced"
-                ? "structure"
-                : CANDIDATE_STRATEGY_TO_FOCUS[view.candidate_strategy];
-            return mapWorkbenchCandidateView(
-              view,
-              base.find((candidate) => candidate.focus === focus) ?? base[0],
-            );
-          });
-        const adopted = currentOnes.find((candidate) => candidate.is_adopted);
-        if (adopted) {
-          adoptedCandidateId = `draft-${adopted.task_run_id}`;
-          previewCandidateId = adoptedCandidateId;
-        }
+        const candidateViews = await fetchDraftCandidates(projectId);
+        const candidateState = mapAuthoritativeDraftCandidateState(candidateViews, review, null);
+        draftCandidates = candidateState.draftCandidates;
+        adoptedCandidateId = candidateState.adoptedCandidateId;
+        previewCandidateId = candidateState.previewCandidateId;
       } else {
         step = "review";
         furthestStep = 3;
@@ -1697,17 +1715,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     ) ?? null;
     if (latestGenerationTask && selectedStrategy) {
       generationSlots[selectedStrategy] = {
-        status:
-          latestGenerationTask.status === "succeeded"
-            ? "succeeded"
-            : latestGenerationTask.status === "failed" ||
-                latestGenerationTask.status === "cancelled"
-              ? "failed"
-              : "running",
+        status: candidateSlotStatusFromTask(latestGenerationTask),
         stage: candidateTaskStageFromTask(latestGenerationTask),
         taskRunId: latestGenerationTask.task_run_id,
         attempt: Math.max(1, latestGenerationTask.attempt_count),
-        error: latestGenerationTask.failure?.message ?? null,
+        error:
+          latestGenerationTask.status === "failed"
+            ? latestGenerationTask.failure?.message ?? "生成任务失败"
+            : null,
         latestTask: latestGenerationTask,
       };
     }
@@ -1725,9 +1740,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         adoptedCandidateId,
         generation: {
           status:
-            latestGenerationTask?.status === "running" ||
-            latestGenerationTask?.status === "queued"
+            latestGenerationTask && ACTIVE_TASK_STATUSES.has(latestGenerationTask.status)
               ? "generating"
+              : latestGenerationTask?.status === "cancelled"
+                ? "idle"
               : latestGenerationTask
                 ? "ready"
                 : "idle",
@@ -1751,7 +1767,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     projectIdRef.current = projectId;
     syncProjectPointer(projectId);
     for (const task of Object.values(latestTasks)) {
-      if (task) void resumeTask(projectId, task);
+      if (task) void resumeTask(projectId, task, review);
     }
     } catch (error) {
       const message = error instanceof Error ? error.message : "项目恢复失败，请重试。";
@@ -1794,12 +1810,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           dispatch({
             type: "update_generation_slot",
             strategy,
-            status:
-              task.status === "succeeded"
-                ? "succeeded"
-                : task.status === "failed" || task.status === "cancelled"
-                  ? "failed"
-                  : "running",
+            status: candidateSlotStatusFromTask(task),
             stage: candidateTaskStageFromTask(task),
             task,
           });
@@ -1816,6 +1827,40 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         });
         throw error;
       }
+    },
+    [loadProject],
+  );
+
+  const cancelGeneration = useCallback(
+    async (strategy: CandidateSlotStrategy) => {
+      const projectId = projectIdRef.current;
+      const slot = stateRef.current.generation.slots[strategy];
+      if (
+        projectId === null ||
+        slot.taskRunId === null ||
+        !slot.latestTask ||
+        !ACTIVE_TASK_STATUSES.has(slot.latestTask.status)
+      ) {
+        return null;
+      }
+      const task = await cancelTask(projectId, slot.taskRunId);
+      dispatch({
+        type: "update_generation_slot",
+        strategy,
+        status: candidateSlotStatusFromTask(task),
+        stage: candidateTaskStageFromTask(task),
+        task,
+        error:
+          task.status === "failed"
+            ? task.failure?.message ?? "生成任务已失败，Current Draft 未被修改。"
+            : null,
+      });
+      if (task.status === "succeeded") {
+        await loadProject(projectId);
+      } else if (task.status === "cancelled" || task.status === "failed") {
+        dispatch({ type: "end_generation", status: "idle", stage: 0 });
+      }
+      return task;
     },
     [loadProject],
   );
@@ -1873,6 +1918,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       selectStrategy,
       generateCandidates,
       resumeGeneration,
+      cancelGeneration,
       retryTask,
       previewCandidate,
       adoptCandidate,
@@ -1913,6 +1959,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       generateBriefFromAnswers,
       generateCandidates,
       resumeGeneration,
+      cancelGeneration,
       generateMoreQuestions,
       generateAuthorAnswer,
       retryTask,

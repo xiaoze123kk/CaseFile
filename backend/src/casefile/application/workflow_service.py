@@ -8,8 +8,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import rfc8785
-from casefile_contracts import Brief as BriefContract
-from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -44,7 +42,30 @@ from casefile.application.agent_collaboration import unique_strings as _unique_s
 from casefile.application.casefile_v1 import build_casefile_document
 from casefile.application.draft_candidates import DraftCandidateService
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.task_cancellation import (
+    TERMINAL_TASK_STATUSES,
+    finalize_task_cancellation,
+)
+from casefile.application.task_events import append_task_event
 from casefile.application.v1_editing import EDITABLE_FIELDS, V1EditingService
+from casefile.application.workflow_brief_validation import (
+    require_confirmed_atomics as _require_confirmed_atomics,
+)
+from casefile.application.workflow_brief_validation import validate_brief as _validate_brief
+from casefile.application.workflow_views import (
+    agent_message_view as _agent_message_view,
+)
+from casefile.application.workflow_views import agent_thread_view as _agent_thread_view
+from casefile.application.workflow_views import brief_version_view as _brief_version_view
+from casefile.application.workflow_views import brief_view as _brief_view
+from casefile.application.workflow_views import (
+    event_view,
+    provider_view,
+    source_view,
+    task_failure_view,
+    task_view,
+    time_view,
+)
 from casefile.contracts import CASEFILE_SCHEMA_VERSION
 from casefile.data_postgres.models import (
     AgentMessage,
@@ -71,24 +92,12 @@ DEFAULT_BUDGET: dict[str, Any] = {
     "structural_repair_attempts": 2,
 }
 
-_FAILURE_MESSAGES = {
-    "agent_component_failed": "深稿生成部件未通过门禁，可从失败阶段恢复。",
-    "candidate_validation_failed": "模型输出未通过 CaseFile 结构校验，已停止写入草稿。",
-    "provider_connection_failed": "无法连接模型服务，网络重试已耗尽。",
-    "provider_timeout": "模型服务响应超时，网络重试已耗尽。",
-    "provider_rate_limited": "模型服务当前限流，请稍后重试。",
-    "provider_authentication_failed": "模型服务认证失败，请检查 API 密钥与模型权限。",
-    "generation_failed": "Agent 生成失败，草稿未被修改。",
-}
-_RETRYABLE_FAILURES = frozenset(
-    {
-        "candidate_validation_failed",
-        "agent_component_failed",
-        "provider_connection_failed",
-        "provider_timeout",
-        "provider_rate_limited",
-    }
-)
+_append_event = append_task_event
+_event_view = event_view
+_provider_view = provider_view
+_source_view = source_view
+_task_view = task_view
+_time = time_view
 
 
 class WorkflowService:
@@ -1472,6 +1481,53 @@ class WorkflowService:
             task = self._task(actor_user_id, project_id, task_run_id)
             return _task_view(task)
 
+    def cancel_task(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        task_run_id: int,
+    ) -> dict[str, Any]:
+        """Request cooperative cancellation without discarding frozen task history."""
+
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id)
+            task = self.session.scalar(
+                select(TaskRun)
+                .where(
+                    TaskRun.id == task_run_id,
+                    TaskRun.project_id == owned.project.id,
+                )
+                .with_for_update()
+            )
+            if task is None:
+                raise not_found("TaskRun")
+            if task.status in TERMINAL_TASK_STATUSES:
+                return _task_view(task)
+
+            now = datetime.now(UTC)
+            if task.cancel_requested_at is None:
+                task.cancel_requested_at = now
+            if task.status == "queued":
+                finalize_task_cancellation(self.session, task, now=now)
+                _append_event(
+                    self.session,
+                    task,
+                    "task.cancelled",
+                    "cancelled",
+                    {"message": "任务已取消，尚未开始生成。"},
+                )
+            elif task.status == "running":
+                task.status = "cancelling"
+                task.stage = "cancelling"
+                _append_event(
+                    self.session,
+                    task,
+                    "task.cancel_requested",
+                    "cancelling",
+                    {"message": "已请求停止任务，正在安全结束当前步骤。"},
+                )
+            return _task_view(task)
+
     def resume_generation_task(
         self,
         actor_user_id: int,
@@ -1838,168 +1894,12 @@ class WorkflowService:
         return task
 
 
-def append_task_event(
-    session: Session,
-    task: TaskRun,
-    event_type: str,
-    stage: str,
-    payload: dict[str, Any],
-) -> TaskEvent:
-    """Append one replayable event; callers must own the surrounding transaction."""
-
-    return _append_event(session, task, event_type, stage, payload)
-
-
-def task_view(task: TaskRun) -> dict[str, Any]:
-    return _task_view(task)
-
-
-def source_view(source: SourceRecord) -> dict[str, Any]:
-    return _source_view(source)
-
-
-def event_view(event: TaskEvent) -> dict[str, Any]:
-    return _event_view(event)
-
-
-def _append_event(
-    session: Session,
-    task: TaskRun,
-    event_type: str,
-    stage: str,
-    payload: dict[str, Any],
-) -> TaskEvent:
-    sequence = int(
-        session.scalar(
-            select(func.coalesce(func.max(TaskEvent.sequence_no), 0) + 1).where(
-                TaskEvent.task_run_id == task.id
-            )
-        )
-        or 1
-    )
-    event = TaskEvent(
-        project_id=task.project_id,
-        task_run_id=task.id,
-        sequence_no=sequence,
-        event_type=event_type,
-        stage=stage,
-        payload_jsonb=payload,
-    )
-    session.add(event)
-    session.flush()
-    return event
-
-
-def _validate_brief(content: dict[str, Any]) -> dict[str, Any]:
-    try:
-        model = BriefContract.model_validate(content)
-    except ValidationError as error:
-        raise ApplicationError(
-            "brief_invalid",
-            "创作简报不符合当前内容要求。",
-            status_code=422,
-            details={"issues": error.errors(include_url=False)},
-        ) from error
-    validated = model.model_dump(mode="json", exclude_none=False)
-    _validate_brief_semantics(validated)
-    return validated
-
-
-def _validate_brief_semantics(content: dict[str, Any]) -> None:
-    text_fields = ("creative_intent", "reasoning_proposition")
-    if any(not str(content[field]).strip() for field in text_fields):
-        raise ApplicationError(
-            "brief_invalid",
-            "创作意图和推理命题不能为空。",
-            status_code=422,
-        )
-    for field in ("author_answer", "boundary_text"):
-        value = content[field]
-        if value is not None and not str(value).strip():
-            field_label = {"author_answer": "作者底牌", "boundary_text": "创作边界"}[field]
-            raise ApplicationError(
-                "brief_invalid",
-                f"{field_label}必须为空或填写有效内容。",
-                status_code=422,
-            )
-    source_record_ids = content["source_record_ids"]
-    if len(source_record_ids) != len(set(source_record_ids)):
-        raise ApplicationError(
-            "brief_source_record_duplicate",
-            "创作简报中的来源记录引用不能重复。",
-            status_code=422,
-        )
-    resolution_mode = content["resolution_mode"]
-    if resolution_mode == "author_anchored":
-        if content["author_answer"] is None:
-            raise ApplicationError(
-                "brief_author_answer_required",
-                "按作者底牌展开时必须填写作者底牌。",
-                status_code=422,
-            )
-    elif content["author_answer"] is not None or content["author_anchors"]:
-        raise ApplicationError(
-            "brief_resolution_mode_conflict",
-            "非作者底牌展开方式不能包含作者底牌或底牌原子项。",
-            status_code=422,
-        )
-    anchor_ids = [item["anchor_id"] for item in content["author_anchors"]]
-    constraint_ids = [item["constraint_id"] for item in content["creative_constraints"]]
-    if len(anchor_ids) != len(set(anchor_ids)) or len(constraint_ids) != len(set(constraint_ids)):
-        raise ApplicationError(
-            "brief_atomic_id_duplicate",
-            "同一组创作简报原子项的 ID 不能重复。",
-            status_code=422,
-        )
-    statements = [
-        *(item["statement"] for item in content["author_anchors"]),
-        *(item["statement"] for item in content["creative_constraints"]),
-    ]
-    if any(not str(statement).strip() for statement in statements):
-        raise ApplicationError(
-            "brief_atomic_statement_blank",
-            "创作简报原子项内容不能为空。",
-            status_code=422,
-        )
-
-
-def _require_confirmed_atomics(content: dict[str, Any]) -> None:
-    if content["author_answer"] and not content["author_anchors"]:
-        raise ApplicationError(
-            "brief_author_anchors_required",
-            "作者底牌至少要拆解为一个已确认的底牌原子项。",
-            status_code=422,
-        )
-    if content["boundary_text"] and not content["creative_constraints"]:
-        raise ApplicationError(
-            "brief_creative_constraints_required",
-            "创作边界至少要拆解为一个已确认的边界原子项。",
-            status_code=422,
-        )
-
-
 def _json_hash(value: dict[str, Any]) -> str:
     return hashlib.sha256(rfc8785.dumps(value)).hexdigest()
 
 
 def _text_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _provider_view(setting: UserProviderSetting) -> dict[str, Any]:
-    if setting.secret_last_four is None or setting.credential_status == "deleted":
-        raise RuntimeError("Deleted provider credentials do not have a public view")
-    return {
-        "provider": setting.provider,
-        "model_id": setting.model_id,
-        "model_is_custom": setting.model_is_custom,
-        "config_version": setting.config_version,
-        "credential_status": setting.credential_status,
-        "masked_api_key": f"••••••••{setting.secret_last_four}",
-        "validated_at": _time(setting.validated_at),
-        "validation_error_code": setting.validation_error_code,
-        "default_budget": setting.default_budget_jsonb,
-    }
 
 
 def _supported_provider(provider: str) -> str:
@@ -2012,198 +1912,6 @@ def _supported_provider(provider: str) -> str:
             details={"supported_providers": sorted(SUPPORTED_PROVIDERS)},
         )
     return normalized
-
-
-def _brief_view(brief: Brief) -> dict[str, Any]:
-    return {
-        "brief_id": brief.id,
-        "public_id": brief.public_id,
-        "draft_revision": brief.draft_revision,
-        "content": brief.draft_jsonb,
-        "current_version_id": brief.current_version_id,
-        "updated_at": _time(brief.updated_at),
-    }
-
-
-def _brief_version_view(version: BriefVersion, public_id: str) -> dict[str, Any]:
-    return {
-        "brief_version_id": version.id,
-        "brief_id": version.brief_id,
-        "public_id": public_id,
-        "version_no": version.version_no,
-        "content": version.content_jsonb,
-        "content_hash": version.content_hash,
-        "confirmed_at": _time(version.confirmed_at),
-    }
-
-
-def _source_view(source: SourceRecord) -> dict[str, Any]:
-    return {
-        "source_record_id": source.id,
-        "source_kind": source.source_kind,
-        "content_text": source.content_text,
-        "content_hash": source.content_hash,
-        "parent_source_record_id": source.parent_source_record_id,
-        "generated_by_task_run_id": source.generated_by_task_run_id,
-        "created_at": _time(source.created_at),
-    }
-
-
-def _agent_thread_view(thread: AgentThread) -> dict[str, Any]:
-    return {
-        "thread_id": thread.id,
-        "title": thread.title,
-        "title_source": thread.title_source,
-        "is_pinned": thread.is_pinned,
-        "status": thread.status,
-        "last_message_at": _time(thread.last_message_at),
-        "created_at": _time(thread.created_at),
-        "updated_at": _time(thread.updated_at),
-    }
-
-
-def _agent_message_view(
-    message: AgentMessage,
-    *,
-    task: TaskRun | None = None,
-    patch_set: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return {
-        "message_id": message.id,
-        "thread_id": message.thread_id,
-        "sequence_no": message.sequence_no,
-        "role": message.role,
-        "status": message.status,
-        "content": message.content_text,
-        "task": None if task is None else _task_view(task),
-        "referenced_object_ids": (
-            []
-            if task is None or not isinstance(task.result_jsonb, dict)
-            else list(task.result_jsonb.get("referenced_object_ids", []))
-        ),
-        "patch_set": patch_set,
-        "created_at": _time(message.created_at),
-        "updated_at": _time(message.updated_at),
-    }
-
-
-def _task_view(task: TaskRun) -> dict[str, Any]:
-    return {
-        "task_run_id": task.id,
-        "project_id": task.project_id,
-        "task_type": task.task_type,
-        "status": task.status,
-        "stage": task.stage,
-        "provider": task.provider,
-        "model_id": task.model_id,
-        "input_draft_revision": task.input_draft_revision,
-        "input_brief_revision": task.input_brief_revision,
-        "input_source_record_id": task.input_source_record_id,
-        "input_brief_intake_id": task.brief_intake_id,
-        "input_brief_intake_revision": task.input_brief_intake_revision,
-        "base_brief_intake_candidate_id": task.base_brief_intake_candidate_id,
-        "agent_thread_id": task.agent_thread_id,
-        "input_message_id": task.input_message_id,
-        "output_message_id": task.output_message_id,
-        "input_hash": task.input_hash,
-        "candidate_strategy": (
-            task.input_jsonb.get("candidate_strategy")
-            if task.task_type == "brief_to_draft"
-            and task.input_jsonb.get("candidate_strategy")
-            in {"structure_first", "atmosphere_first", "reasoning_first", "balanced"}
-            else None
-        ),
-        "attempt_count": task.attempt_count,
-        "usage": task.usage_jsonb,
-        "result_snapshot_id": task.result_snapshot_id,
-        "result": task.result_jsonb,
-        "error_code": task.error_code,
-        "failure": _task_failure_from_row(task),
-        "component_steps": [_component_step_view(step) for step in task.component_step_runs],
-        "created_at": _time(task.created_at),
-        "updated_at": _time(task.updated_at),
-    }
-
-
-def _component_step_view(step: Any) -> dict[str, Any]:
-    diagnostic = step.diagnostic_jsonb if isinstance(step.diagnostic_jsonb, dict) else {}
-    raw_issues = diagnostic.get("issues", [])
-    issues = [
-        {
-            "component_id": str(issue.get("component_id") or step.component_id),
-            "failure_layer": str(
-                issue.get("failure_layer") or diagnostic.get("failure_layer") or "unknown"
-            ),
-            "schema_id": issue.get("schema_id") or step.ir_schema_id,
-            "code": str(issue.get("code") or "validation_failed"),
-            "path": str(issue.get("path") or ""),
-            "message": str(issue.get("message") or "部件执行失败。")[:240],
-        }
-        for issue in raw_issues
-        if isinstance(issue, dict)
-    ]
-    return {
-        "step_run_id": step.id,
-        "attempt_no": step.task_attempt.attempt_no if hasattr(step, "task_attempt") else 1,
-        "component_id": step.component_id,
-        "parent_component_id": step.parent_component_id,
-        "execution_no": step.execution_no,
-        "status": step.status,
-        "schema_id": step.ir_schema_id,
-        "input_hash": step.input_hash,
-        "output_hash": step.output_hash,
-        "failure_layer": diagnostic.get("failure_layer"),
-        "issues": issues,
-        "recoverable": bool(diagnostic.get("recoverable")),
-        "resumed_from_step_run_id": step.resumed_from_step_run_id,
-    }
-
-
-def task_failure_view(
-    error_code: str | None,
-    *,
-    issues: list[dict[str, str]] | None = None,
-    network_retries: int | None = None,
-) -> dict[str, Any] | None:
-    if error_code is None:
-        return None
-    message = _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])
-    if network_retries is not None and error_code in {
-        "provider_connection_failed",
-        "provider_timeout",
-    }:
-        message = f"{message}（已自动重试 {network_retries} 次）"
-    return {
-        "code": error_code,
-        "message": message,
-        "retryable": error_code in _RETRYABLE_FAILURES,
-        "issues": list(issues or []),
-    }
-
-
-def _task_failure_from_row(task: TaskRun) -> dict[str, Any] | None:
-    stored = task.error_details_jsonb.get("public_failure")
-    if isinstance(stored, dict):
-        return stored
-    if task.status != "failed":
-        return None
-    return task_failure_view(task.error_code)
-
-
-def _event_view(event: TaskEvent) -> dict[str, Any]:
-    return {
-        "event_id": event.id,
-        "task_run_id": event.task_run_id,
-        "sequence_no": event.sequence_no,
-        "event_type": event.event_type,
-        "stage": event.stage,
-        "payload": event.payload_jsonb,
-        "occurred_at": _time(event.occurred_at),
-    }
-
-
-def _time(value: datetime | None) -> str | None:
-    return None if value is None else value.astimezone(UTC).isoformat()
 
 
 __all__ = [

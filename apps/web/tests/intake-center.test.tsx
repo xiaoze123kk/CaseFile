@@ -807,7 +807,7 @@ function buildFakeBackend() {
       };
     },
     fetchDraftCandidates: async () => draftCandidates,
-    adoptDraftCandidate: async (
+    adoptDraftCandidateWithReconciliation: async (
       _projectId: number,
       taskRunId: number,
       expectedDraftRevision: number,
@@ -830,7 +830,7 @@ function buildFakeBackend() {
           ? { ...candidate, is_adopted: true, is_current: true }
           : candidate,
       );
-      return { task_run_id: taskRunId, adopted: true as const };
+      return { facts: null, error: null };
     },
   };
 }
@@ -1108,9 +1108,11 @@ describe("intake center", () => {
     expect(screen.queryByRole("button", { name: /第七码互证稿/u })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /缺页校准稿/u }));
-    expect(
-      screen.queryByRole("button", { name: "预览工作台" }),
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "预览工作台" }));
+    expect(routerPush).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^\/workbench\?project=1&preview=\d+$/u),
+    );
+    routerPush.mockClear();
 
     fake.backend.setFailNextDraftAdoption(true);
     fireEvent.click(

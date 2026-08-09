@@ -7,24 +7,38 @@ export const metadata: Metadata = {
   description: "核对卷宗对象、时间线、证据关系、推理路径和候选工作稿。",
 };
 
+function positiveInteger(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined || !/^\d+$/u.test(raw)) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default async function WorkbenchRoute({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string | string[] }>;
+  searchParams: Promise<{
+    project?: string | string[];
+    preview?: string | string[];
+  }>;
 }) {
-  const value = (await searchParams).project;
-  const rawProjectId = Array.isArray(value) ? value[0] : value;
-  const parsedProjectId = rawProjectId ? Number(rawProjectId) : null;
-  const projectId =
-    parsedProjectId !== null &&
-    Number.isSafeInteger(parsedProjectId) &&
-    parsedProjectId > 0
-      ? parsedProjectId
-      : null;
+  const params = await searchParams;
+  const rawProjectId = Array.isArray(params.project)
+    ? params.project[0]
+    : params.project;
+  const rawPreviewTaskRunId = Array.isArray(params.preview)
+    ? params.preview[0]
+    : params.preview;
+  const projectId = positiveInteger(params.project);
+  const previewTaskRunId = positiveInteger(params.preview);
 
   return (
     <AnalystWorkbench
+      invalidPreviewTaskRunId={
+        rawPreviewTaskRunId !== undefined && previewTaskRunId === null
+      }
       invalidProjectId={rawProjectId !== undefined && projectId === null}
+      requestedPreviewTaskRunId={previewTaskRunId}
       requestedProjectId={projectId}
     />
   );

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -25,6 +27,7 @@ from casefile.api.schemas import (
     ProjectCreateRequest,
     ProjectUpdateRequest,
 )
+from casefile.api.workbench import workbench_router
 from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
@@ -35,6 +38,11 @@ from casefile.data_postgres.session import (
     create_database_engine,
     create_session_factory,
     current_database_revision,
+)
+
+_DEFAULT_CORS_ORIGINS = (
+    "http://127.0.0.1:3000",
+    "http://localhost:3000",
 )
 
 
@@ -60,7 +68,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     application.state.session_factory = session_factory
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
+        allow_origins=_cors_origins(),
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -74,7 +82,35 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     application.include_router(_api_router())
     application.include_router(brief_intake_router())
     application.include_router(workflow_router())
+    application.include_router(workbench_router())
     return application
+
+
+def _cors_origins() -> list[str]:
+    """Return exact browser origins, with an opt-in list for isolated local harnesses."""
+
+    configured = os.getenv("CASEFILE_CORS_ORIGINS", "")
+    origins = list(_DEFAULT_CORS_ORIGINS)
+    for raw_origin in configured.split(","):
+        origin = raw_origin.strip().rstrip("/")
+        if not origin:
+            continue
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise RuntimeError(
+                "CASEFILE_CORS_ORIGINS must contain comma-separated HTTP(S) origins"
+            )
+        if origin not in origins:
+            origins.append(origin)
+    return origins
 
 
 async def _application_error_handler(_: Request, error: Exception) -> JSONResponse:

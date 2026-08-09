@@ -358,6 +358,7 @@ export interface TaskView {
   task_run_id: number;
   project_id: number;
   task_type: TaskType;
+  prompt_version?: string;
   status:
     | "queued"
     | "running"
@@ -411,6 +412,13 @@ export interface DraftCandidateView extends GenerationCandidateSummary {
   completed_at: string | null;
 }
 
+/** A validated candidate loaded without replacing or mutating Current Draft. */
+export interface DraftCandidatePreviewView extends DraftCandidateView {
+  preview: true;
+  read_only: true;
+  content: CaseFile;
+}
+
 export interface DraftCandidateAdoption {
   task_run_id: number;
   title: string;
@@ -434,6 +442,70 @@ export interface DraftView {
   schema_version: string;
   status: string;
   content: CaseFile | null;
+}
+
+export interface WorkbenchValidationIssueView {
+  issue_id: string;
+  code: string;
+  path: string;
+  message: string;
+  severity: "error";
+}
+
+export interface WorkbenchValidationView {
+  status: "passed" | "failed" | "unavailable";
+  validator: "casefile.contracts.validate_casefile";
+  schema_version: string;
+  issue_count: number;
+  issues: WorkbenchValidationIssueView[];
+  reason: "draft_has_no_confirmed_brief" | null;
+}
+
+export interface WorkbenchSourceView {
+  trace_id: string;
+  source_table: "source_records";
+  source_record_id: number;
+  source_kind: SourceKind;
+  content_text: string;
+  content_hash: string;
+  parent_source_record_id: number | null;
+  generated_by_task_run_id: number | null;
+  created_by_user_id: number;
+  created_at: string;
+}
+
+export interface WorkbenchContractSourceRefView {
+  source_fragment_id: string;
+  paths: string[];
+}
+
+export interface WorkbenchAuditActorView {
+  kind: "user" | "agent" | "system" | "import";
+  user_id: number | null;
+  ref: string | null;
+}
+
+export interface WorkbenchAuditEntryView {
+  entry_id: string;
+  source_table: "audit_events" | "draft_operations";
+  record_id: number;
+  occurred_at: string;
+  actor: WorkbenchAuditActorView;
+  action: string;
+  target_type: string;
+  target_id: number | string;
+  trace_id: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface WorkbenchContextView {
+  project_id: number;
+  draft_id: number;
+  draft_revision: number;
+  validation: WorkbenchValidationView;
+  sources: WorkbenchSourceView[];
+  contract_source_refs: WorkbenchContractSourceRefView[];
+  audit_entries: WorkbenchAuditEntryView[];
 }
 
 export interface BriefStrategyOption {
@@ -522,6 +594,13 @@ export async function streamTaskEvents(
 
 export async function listProjects(actorId: number) {
   return apiRequest<ProjectView[]>("/projects", { actorId });
+}
+
+export async function fetchWorkbenchContext(actorId: number, projectId: number) {
+  return apiRequest<WorkbenchContextView>(
+    `/projects/${projectId}/workbench-context`,
+    { actorId },
+  );
 }
 
 export async function archiveProject(actorId: number, projectId: number) {

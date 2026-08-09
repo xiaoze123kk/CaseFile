@@ -698,9 +698,21 @@ def _allowed_reference_values(
 
 
 def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
-    merged: dict[str, Any] = {"requests": len(records)}
+    merged: dict[str, Any] = {"requests": 0}
     for record in records:
-        for key in ("input_tokens", "output_tokens", "total_tokens"):
+        requests = record.get("requests")
+        merged["requests"] += (
+            requests
+            if isinstance(requests, int) and not isinstance(requests, bool)
+            else 1
+        )
+        for key in (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cached_tokens",
+            "reasoning_tokens",
+        ):
             value = record.get(key)
             if isinstance(value, int):
                 merged[key] = int(merged.get(key, 0)) + value

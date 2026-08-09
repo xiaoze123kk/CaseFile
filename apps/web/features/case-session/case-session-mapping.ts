@@ -6,10 +6,14 @@ import type {
   BriefIntakeCandidateView,
   BriefIntakeQuestionView,
   BriefIntakeView,
+  CandidateStrategy,
   DraftCandidateView,
 } from "@/lib/api-client";
 
-import type { WorkbenchCandidate } from "@/features/analyst-workbench/analyst-fixture";
+import {
+  buildWorkbenchCandidates,
+  type WorkbenchCandidate,
+} from "@/features/analyst-workbench/analyst-fixture";
 import type {
   IntakeAnswer,
   IntakeBrief,
@@ -438,11 +442,25 @@ export function mapReviewToBriefContent(
   };
 }
 
+export interface DraftCandidateRuntimeState {
+  taskRunId: number;
+  isCurrentBrief: boolean;
+  isCurrent: boolean;
+  isAdopted: boolean;
+  canAdopt: boolean;
+  completedAt: string | null;
+}
+
+export type SessionWorkbenchCandidate = WorkbenchCandidate & {
+  /** Present for server-backed candidates; omitted by the isolated fixture harness. */
+  candidateState?: DraftCandidateRuntimeState;
+};
+
 export function mapWorkbenchCandidateView(
   view: DraftCandidateView,
   base: WorkbenchCandidate,
   differenceNote?: string,
-): WorkbenchCandidate {
+): SessionWorkbenchCandidate {
   const totalObjects = Object.values(view.object_counts).reduce(
     (sum, count) => sum + count,
     0,
@@ -450,6 +468,14 @@ export function mapWorkbenchCandidateView(
   return {
     ...base,
     id: `draft-${view.task_run_id}`,
+    candidateState: {
+      taskRunId: view.task_run_id,
+      isCurrentBrief: view.is_current_brief,
+      isCurrent: view.is_current,
+      isAdopted: view.is_adopted,
+      canAdopt: view.can_adopt,
+      completedAt: view.completed_at,
+    },
     briefVersion: view.brief_version_no,
     candidateStrategy: view.candidate_strategy,
     focusLabel: view.candidate_strategy_label,
@@ -467,5 +493,117 @@ export function mapWorkbenchCandidateView(
       "后续修订会生成新的简报版本",
       ...(differenceNote ? [differenceNote] : []),
     ],
+  };
+}
+
+const DRAFT_CANDIDATE_STRATEGY_ORDER: Record<CandidateStrategy, number> = {
+  structure_first: 0,
+  atmosphere_first: 1,
+  reasoning_first: 2,
+  balanced: 3,
+};
+
+const CANDIDATE_STRATEGY_TO_FOCUS = {
+  structure_first: "structure",
+  atmosphere_first: "atmosphere",
+  reasoning_first: "reasoning",
+} as const;
+
+export function rankDraftCandidateStrategy(strategy: CandidateStrategy): number {
+  return DRAFT_CANDIDATE_STRATEGY_ORDER[strategy];
+}
+
+function workbenchCandidateInput(review: BriefReview) {
+  return {
+    creativeIntent: review.creativeIntent,
+    reasoningProposition: review.reasoningProposition,
+    authorAnswer: review.authorAnswer,
+    constraints: review.creativeConstraints
+      .map((constraint) => constraint.statement.trim())
+      .filter(Boolean),
+  };
+}
+
+function candidateFocus(strategy: CandidateStrategy) {
+  return strategy === "balanced"
+    ? "structure"
+    : CANDIDATE_STRATEGY_TO_FOCUS[strategy];
+}
+
+export function mapCurrentBriefDraftCandidates(
+  views: DraftCandidateView[],
+  review: BriefReview,
+  briefVersion: number,
+): SessionWorkbenchCandidate[] {
+  const duplicateHashCounts = new Map<string, number>();
+  for (const candidate of views) {
+    duplicateHashCounts.set(
+      candidate.content_hash,
+      (duplicateHashCounts.get(candidate.content_hash) ?? 0) + 1,
+    );
+  }
+  const base = buildWorkbenchCandidates(
+    workbenchCandidateInput(review),
+    briefVersion,
+  );
+  return [...views]
+    .sort(
+      (left, right) =>
+        rankDraftCandidateStrategy(left.candidate_strategy) -
+        rankDraftCandidateStrategy(right.candidate_strategy),
+    )
+    .map((view) =>
+      mapWorkbenchCandidateView(
+        view,
+        base.find((candidate) => candidate.focus === candidateFocus(view.candidate_strategy)) ??
+          base[0],
+        duplicateHashCounts.get(view.content_hash)! > 1
+          ? "与同批候选内容相同，差异不足"
+          : undefined,
+      ),
+    );
+}
+
+export function mapDraftCandidateHistory(
+  views: DraftCandidateView[],
+  review: BriefReview,
+): SessionWorkbenchCandidate[] {
+  return [...views]
+    .sort((left, right) => {
+      if (left.is_current_brief !== right.is_current_brief) {
+        return left.is_current_brief ? -1 : 1;
+      }
+      if (left.brief_version_no !== right.brief_version_no) {
+        return right.brief_version_no - left.brief_version_no;
+      }
+      return (
+        rankDraftCandidateStrategy(left.candidate_strategy) -
+        rankDraftCandidateStrategy(right.candidate_strategy)
+      );
+    })
+    .map((view) => {
+      const base = buildWorkbenchCandidates(
+        workbenchCandidateInput(review),
+        view.brief_version_no,
+      );
+      return mapWorkbenchCandidateView(
+        view,
+        base.find((candidate) => candidate.focus === candidateFocus(view.candidate_strategy)) ??
+          base[0],
+      );
+    });
+}
+
+export function mapAuthoritativeDraftCandidateState(
+  views: DraftCandidateView[],
+  review: BriefReview,
+  previewCandidateId: string | null,
+) {
+  const current = views.find((candidate) => candidate.is_current);
+  const currentId = current ? `draft-${current.task_run_id}` : null;
+  return {
+    draftCandidates: mapDraftCandidateHistory(views, review),
+    adoptedCandidateId: currentId,
+    previewCandidateId: currentId ?? previewCandidateId,
   };
 }
