@@ -1,13 +1,3 @@
-export type WorkbenchView =
-  | "timeline"
-  | "relations"
-  | "reasoning"
-  | "map"
-  | "dossier"
-  | "export"
-  | "compile"
-  | "evidence";
-
 export type ReasoningOutcome = "supported" | "contested" | "eliminated";
 
 export interface ReasoningStep {
@@ -204,20 +194,6 @@ export const objectKindLabels: Record<ObjectKind, string> = {
   location: "地点",
   hypothesis: "假设",
 };
-
-export const viewOptions: Array<{
-  id: Exclude<WorkbenchView, "evidence">;
-  label: string;
-  shortLabel: string;
-}> = [
-  { id: "timeline", label: "时间线", shortLabel: "时" },
-  { id: "relations", label: "关系图", shortLabel: "关" },
-  { id: "reasoning", label: "推理图", shortLabel: "推" },
-  { id: "map", label: "地图", shortLabel: "图" },
-  { id: "dossier", label: "卷宗编辑器", shortLabel: "卷" },
-  { id: "export", label: "导出预览", shortLabel: "出" },
-  { id: "compile", label: "编译中心", shortLabel: "编" },
-];
 
 export const caseObjects: CaseObject[] = [
   {

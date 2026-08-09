@@ -32,8 +32,6 @@ import {
   objectKindLabels,
   type WorkbenchCandidate,
   type WorkbenchSeed,
-  viewOptions,
-  type WorkbenchView,
 } from "./analyst-fixture";
 import {
   type WorkbenchCandidateStatus,
@@ -74,6 +72,10 @@ import {
   MapView,
   TimelineOverview,
 } from "./workbench-secondary-views";
+import {
+  workbenchViewOptions,
+  type WorkbenchView,
+} from "./workbench-views";
 
 type MobileRegion = "objects" | "canvas" | "inspector" | "sources";
 type DrawerTab = "audio" | "transcript" | "logs" | "retrieval";
@@ -202,6 +204,7 @@ function FocusTrapDialog({
 function EvidenceComparison({
   seed,
   issueId,
+  selectedObjectId,
   status,
   manualValue,
   editing,
@@ -211,6 +214,7 @@ function EvidenceComparison({
 }: {
   seed: WorkbenchSeed;
   issueId: string | null;
+  selectedObjectId: string | null;
   status: IssueStatus;
   manualValue: string;
   editing: boolean;
@@ -221,11 +225,21 @@ function EvidenceComparison({
   const issue =
     seed.validationIssues.find((item) => item.id === issueId) ??
     seed.validationIssues[0];
+  const selectedObject = getObject(seed, selectedObjectId);
   if (!issue) {
     return (
-      <section className={styles.realEmptyState} aria-label="证据对照尚未接入">
-        <strong>暂无可对照的验证问题</strong>
-        <p>真实验证、补丁与来源将在后续接入；当前不会展示本地样例。</p>
+      <section className={styles.realEmptyState} aria-labelledby="evidence-heading">
+        <span>证据对比</span>
+        <strong id="evidence-heading">
+          {selectedObject
+            ? `“${selectedObject.label}”暂无可对照证据`
+            : "尚未选择对象"}
+        </strong>
+        <p>
+          {selectedObject
+            ? `当前工作稿未提供与${objectKindLabels[selectedObject.kind]}“${selectedObject.label}”关联的验证对照。可以继续在右侧检查器核对对象详情和引用来源。`
+            : "从左侧对象目录选择一个对象后，可在这里核对关联证据。"}
+        </p>
       </section>
     );
   }
@@ -1318,17 +1332,34 @@ function AnalystWorkbenchSurface({
           />
         </aside>
 
-        <main className={styles.canvas} id="analyst-canvas" onKeyDown={handleTimelineKeys} tabIndex={-1}>
+        <main
+          className={styles.canvas}
+          data-draft-revision={seed.caseMeta.revision}
+          data-selected-object-id={selectedObjectId ?? ""}
+          data-workbench-view={view}
+          id="analyst-canvas"
+          onKeyDown={handleTimelineKeys}
+          tabIndex={-1}
+        >
           <header className={styles.canvasToolbar}>
             <div className={styles.viewTabs} aria-label="主画布视图" role="tablist">
-              {viewOptions.map((option) => (
+              {workbenchViewOptions.map((option) => (
                 <button aria-selected={view === option.id} disabled={writeLocked && (option.id === "export" || option.id === "compile")} key={option.id} onClick={() => { setView(option.id); announce(`主画布已切换到${option.label}。`); }} role="tab" type="button">
                   <span>{option.shortLabel}</span>{option.label}
                 </button>
               ))}
-              {view === "evidence" ? <button aria-selected="true" role="tab" type="button"><span>证</span>证据对照</button> : null}
             </div>
-            <div className={styles.canvasMeta}><span>同步定位</span><b>{selectedEvent ? `${selectedEvent.time} / ${selectedEvent.id}` : "尚无事件"}</b></div>
+            <div className={styles.canvasMeta} data-selection={selectedObject ? "object" : "none"}>
+              <span>同步定位</span>
+              <b>
+                {selectedObject
+                  ? `${objectKindLabels[selectedObject.kind]} · ${selectedObject.label} / ${selectedObject.id}`
+                  : "尚未选择对象"}
+              </b>
+              {selectedEvent ? (
+                <small>关联事件 · {selectedEvent.time} / {selectedEvent.id}</small>
+              ) : null}
+            </div>
           </header>
           <div className={styles.canvasContent} data-view={view}>
             {view === "timeline" ? (
@@ -1364,6 +1395,7 @@ function AnalystWorkbenchSurface({
                 onManualValueChange={setManualValue}
                 onSaveManual={() => resolveIssue("manual")}
                 onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
+                selectedObjectId={selectedObjectId}
                 seed={seed}
                 status={selectedStatus}
               />

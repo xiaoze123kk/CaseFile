@@ -636,6 +636,7 @@
 
 .canvasMeta span { color: var(--ink-faint); }
 .canvasMeta b { margin-top: 3px; color: var(--ink); font-family: "Cascadia Mono", Consolas, monospace; font-size: 10px; }
+.canvasMeta small { margin-top: 2px; color: var(--ink-muted); font-size: 9px; white-space: nowrap; }
 
 .canvasContent {
   min-width: 0;
@@ -1441,6 +1442,13 @@
   color: var(--ink);
   font-family: "Noto Serif SC", "STSong", SimSun, serif;
   font-size: 17px;
+}
+
+.realEmptyState > span {
+  color: var(--primary-strong);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
 }
 
 .realEmptyState p {

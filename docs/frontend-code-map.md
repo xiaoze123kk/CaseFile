@@ -30,8 +30,8 @@
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts` | 分析师工作台页面编排、跨面板共享状态、候选工作稿切换与本地工作台数据模型。 |
-| `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和双坐标空间图工作台模型，集中声明生产视图类型并提供显式 Fixture 兼容适配。 |
+| `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts`、`workbench-views.ts` | 分析师工作台页面编排、跨面板共享状态、候选工作稿切换与本地 Fixture 数据模型；`workbench-views.ts` 是八种生产主画布视图的唯一注册表，真实证据对比缺少验证数据时由工作台显示当前对象的明确空态。 |
+| `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和双坐标空间图工作台模型，集中声明生产数据类型并提供显式 Fixture 兼容适配。 |
 | `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数，以及真实对象详情、关联事件、有限编辑和未保存切换保护。 |
 | `apps/web/features/analyst-workbench/workbench-context-panels.tsx`、`workbench-context-panels.module.css` | 展示当前 Draft 的真实确定性验证、冻结 Brief 来源正文/追溯标识和只追加审计事实，并统一加载、空态、错误、重试与专属面板样式。 |
 | `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、地图、卷宗编辑、导出预览与编译中心等独立主画布视图。 |

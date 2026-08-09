@@ -693,6 +693,53 @@ describe("production analyst workbench", () => {
     ).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("keeps a Current Draft object synchronized across all eight permanent views", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", {
+      name: "搜索对象名称或编号",
+    });
+    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /记录曾被改写/ }),
+    );
+
+    const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
+    const expectedSelection = "假设 · 记录曾被改写 / hyp_record_tampered";
+    const views = [
+      ["时间线", "timeline"],
+      ["关系图", "relations"],
+      ["推理图", "reasoning"],
+      ["地图", "map"],
+      ["卷宗编辑器", "dossier"],
+      ["导出预览", "export"],
+      ["编译中心", "compile"],
+      ["证据对比", "evidence"],
+    ] as const;
+
+    for (const [label, view] of views) {
+      fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
+      expect(canvas).toHaveAttribute("data-workbench-view", view);
+      expect(canvas).toHaveAttribute("data-draft-revision", "R7");
+      expect(canvas).toHaveAttribute(
+        "data-selected-object-id",
+        "hyp_record_tampered",
+      );
+      expect(within(canvas).getByText(expectedSelection)).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: new RegExp(label) })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    }
+
+    expect(
+      screen.getByText("“记录曾被改写”暂无可对照证据"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("角色提前知道“第五人权限”")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();
+  });
+
   it("clears stale timeline context for an object without related events", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);

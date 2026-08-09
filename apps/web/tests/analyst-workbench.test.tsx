@@ -61,6 +61,27 @@ function CandidateSeedHarness() {
 }
 
 describe("analyst workbench", () => {
+  it("keeps all eight workbench views available, including direct evidence comparison", () => {
+    const { container } = renderWorkbench();
+    const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
+    const tablist = screen.getByRole("tablist", { name: "主画布视图" });
+
+    expect(within(tablist).getAllByRole("tab")).toHaveLength(8);
+    expect(
+      within(tablist).getByRole("tab", { name: /证据对比/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(tablist).getByRole("tab", { name: /证据对比/ }),
+    );
+
+    expect(canvas).toHaveAttribute("data-workbench-view", "evidence");
+    expect(
+      within(tablist).getByRole("tab", { name: /证据对比/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("事件前已知")).toBeInTheDocument();
+  });
+
   it("moves from an S0 issue to evidence comparison and explicit patch approval", () => {
     renderWorkbench();
 
