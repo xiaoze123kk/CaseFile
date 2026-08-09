@@ -23,7 +23,7 @@
 | `backend/src/casefile/data_postgres/models/reasoning.py` | Hypothesis、Reasoning Path/Node/Edge、Resolution Spec/Slot、Constraint 与 Structure Lock ORM。 |
 | `backend/src/casefile/data_postgres/models/versioning.py` | `draft_snapshots`、`canon_versions`、`audit_events` ORM。 |
 | `backend/src/casefile/data_postgres/models/workflow.py` | `briefs`、不可变 `brief_versions`、不可变 `source_records`、三类 `task_runs`、`task_attempts` 与不可变 `task_events` ORM。 |
-| `backend/src/casefile/data_postgres/models/agent_execution.py` | v8 `agent_step_runs` 与 `agent_model_calls` 的组件产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
+| `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8/v9 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
 | `backend/src/casefile/data_postgres/models/__init__.py` | 汇总导入全部 ORM，供 Alembic metadata 发现。 |
 | `backend/src/casefile/data_postgres/models/benchmark.py` | Benchmark 持久化模型的预留落位；当前不定义或导出 ORM。 |
 
@@ -79,7 +79,7 @@
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证七段升降级、38 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |
 | `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、三类 Worker、lease 恢复、不可变历史和 v1 有限编辑闭环。 |
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、SSE 恢复与完成门禁闭环。 |
-| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider v8 验收：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 执行策略轮换任务，检查步骤/模型调用持久化、SSE、诊断和 Draft/Canon 未自动写入边界。 |
+| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8/v9 验收（默认 v9）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 执行策略轮换任务，检查步骤/模型调用持久化、SSE、诊断和 Draft/Canon 未自动写入边界。 |
 
 ## 47 表清单
 

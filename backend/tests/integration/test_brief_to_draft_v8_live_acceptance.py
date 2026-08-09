@@ -22,6 +22,11 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
+
 from casefile.api.app import create_app
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
@@ -34,10 +39,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, func, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = [
     pytest.mark.postgres,
@@ -171,7 +172,7 @@ def _live_config() -> LiveAcceptanceConfig:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPEATS must be between 1 and 100.")
     report_value = os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH", "").strip()
     prompt_version = os.getenv(
-        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v8"
+        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v9"
     ).strip()
     if prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
         pytest.fail("Live acceptance prompt version must be brief-to-draft-v8 or v9.")

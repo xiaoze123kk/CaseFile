@@ -81,6 +81,9 @@ from casefile.data_postgres.models import (
 from casefile.data_postgres.repositories import ProjectRepository
 
 ProviderFactory = Callable[[TaskRun], AgentProvider]
+_COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(
+    {"brief-to-draft-v8", "brief-to-draft-v9"}
+)
 
 
 def provider_for_task(task: TaskRun) -> AgentProvider:
@@ -934,11 +937,11 @@ class Worker:
             ):
                 return
             safe_message = _safe_error_message(error, sensitive_values)
-            if task.prompt_version == "brief-to-draft-v8":
-                underlying_error_code = error_code
+            underlying_error_code = error_code
+            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
                 error_code = "agent_component_failed"
             failure_issues = _failure_validation_issues(validation_errors)
-            if task.prompt_version == "brief-to-draft-v8":
+            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
                 coordinator_issue = {
                     "component_id": "run_coordinator",
                     "failure_layer": "frozen_context",
@@ -962,7 +965,7 @@ class Worker:
                     )
                 )
                 if has_failed_step is None:
-                    _record_v8_coordinator_failure(
+                    _record_component_coordinator_failure(
                         session,
                         task=task,
                         attempt=attempt,
@@ -1055,7 +1058,7 @@ def _persist_agent_execution_event(
 ) -> None:
     """Project component execution events into queryable step/call audit rows."""
 
-    if task.prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+    if task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS:
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
@@ -1187,7 +1190,7 @@ def _persist_agent_execution_event(
         model_call.finished_at = now
 
 
-def _record_v8_coordinator_failure(
+def _record_component_coordinator_failure(
     session: Session,
     *,
     task: TaskRun,
@@ -1195,7 +1198,7 @@ def _record_v8_coordinator_failure(
     issue: dict[str, str],
     finished_at: datetime,
 ) -> None:
-    """Persist a v8 failure that happened before a business component could start."""
+    """Persist a component-generation failure before a business step can start."""
 
     execution_no = int(
         session.scalar(
@@ -1251,7 +1254,10 @@ def _optional_hash(value: object) -> str | None:
 
 
 def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
-    if task.prompt_version != "brief-to-draft-v8" or task.attempt_count < 2:
+    if (
+        task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS
+        or task.attempt_count < 2
+    ):
         return {}
     rows = session.scalars(
         select(AgentStepRun)

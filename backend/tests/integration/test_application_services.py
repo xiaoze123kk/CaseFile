@@ -13,6 +13,11 @@ import pytest
 import rfc8785
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import Engine, create_engine, func, select, text, update
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
@@ -42,10 +47,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, create_engine, func, select, text, update
-from sqlalchemy.engine import make_url
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -321,8 +322,8 @@ def test_generation_task_uses_the_registry_version_without_a_deployment_override
     with factory() as session:
         task = session.get(TaskRun, task_run_id)
         assert task is not None
-        assert task.prompt_version == "brief-to-draft-v8"
-        assert task.agent_version == "brief-to-draft-pipeline-v8"
+        assert task.prompt_version == "brief-to-draft-v9"
+        assert task.agent_version == "brief-to-draft-pipeline-v9"
 
 
 def _adopt_candidate(

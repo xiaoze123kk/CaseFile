@@ -482,9 +482,10 @@ def _request(
     context = fixture["frozen_context"]
     version = context["version"]
     brief_ref = context["brief_ref"]
+    resolved_prompt_version = prompt_version or prompt_version_for_task("brief_to_draft")
     return GenerationRequest(
         task_run_id=task_run_id,
-        prompt_version=prompt_version or prompt_version_for_task("brief_to_draft"),
+        prompt_version=resolved_prompt_version,
         brief=fixture["brief"],
         casefile_id=context["casefile_id"],
         brief_id=brief_ref["brief_id"],
@@ -499,6 +500,8 @@ def _request(
             {"event_type": event_type, "stage": stage, "payload": payload}
         ),
         candidate_strategy=candidate_strategy,
+        agent_version=agent_version_for_task("brief_to_draft", resolved_prompt_version),
+        toolset_version=TOOLSET_VERSION,
     )
 
 
