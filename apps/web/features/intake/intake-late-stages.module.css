@@ -116,13 +116,14 @@
   transform: rotate(-2deg);
 }
 
-.handoffStrip > button {
+.candidatesStage .handoffStrip > button {
   min-height: 42px;
   padding: 0 16px;
-  color: white;
+  color: var(--paper-high);
   border-color: var(--ink);
   background: var(--ink);
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .reviewSpread {
