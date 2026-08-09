@@ -173,3 +173,22 @@ powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1 -SkipPostgres
 ```
+
+### 6. A 路径真实浏览器验收
+
+黄金路径使用真实 Next.js 页面、FastAPI、独立 Worker 和 PostgreSQL `*_test` 数据库，
+但 Worker 固定为零成本 `FakeProvider`。测试覆盖“想法 → 追问 → Brief → 审阅冻结 →
+策略 → 深稿候选 → 只读预览 → 显式采用 → 工作台”，并在采用前后直接核对服务端
+Current Draft、窄屏关键操作和 A 路径指标响应。
+
+首次运行安装隔离的 Chromium；以后可省略 `-InstallBrowser`：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test-a-path-e2e.ps1 -WebPort 13000 -InstallBrowser
+```
+
+脚本只接受数据库名以 `_test` 结尾的 `CASEFILE_TEST_DATABASE_URL`，每次运行前重建该
+测试库的 `public` schema，并拒绝占用中的 Web/API 端口（默认 13000/18000；可通过
+`-WebPort`/`-ApiPort` 调整）。它使用
+临时加密主密钥和假的 Provider 凭据，不读取或输出真实模型密钥；运行日志保存在忽略
+提交的 `var/e2e/`。

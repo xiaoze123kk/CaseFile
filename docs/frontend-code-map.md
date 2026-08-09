@@ -33,6 +33,7 @@
 | `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts` | 分析师工作台页面编排、跨面板共享状态、候选工作稿切换与本地工作台数据模型。 |
 | `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和双坐标空间图工作台模型，集中声明生产视图类型并提供显式 Fixture 兼容适配。 |
 | `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数，以及真实对象详情、关联事件、有限编辑和未保存切换保护。 |
+| `apps/web/features/analyst-workbench/workbench-context-panels.tsx`、`workbench-context-panels.module.css` | 展示当前 Draft 的真实确定性验证、冻结 Brief 来源正文/追溯标识和只追加审计事实，并统一加载、空态、错误、重试与专属面板样式。 |
 | `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、地图、卷宗编辑、导出预览与编译中心等独立主画布视图。 |
 | `apps/web/features/analyst-workbench/workbench-relationship-graph.tsx`、`workbench-reasoning-graph.tsx` | 关系图与推理图的布局、拖拽、平移、缩放和无障碍替代视图。 |
 | `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 工作台内卷宗统筹 Agent 对话、预设指令和本地响应编排。 |
@@ -50,7 +51,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、工作流 DTO 和统一错误消息。 |
+| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、工作流与工作台读模型 DTO，以及统一错误消息。 |
 | `apps/web/lib/prototype-model.ts` | 仅供本地原型使用的状态模型、样例数据和编译门禁纯函数；正式服务端契约继续来自 `@casefile/contracts`。 |
 | `apps/web/lib/reasoning-prototype.ts` | 推理实验室本地 Fixture、推理路径/节点/边/候选模型与纯查询函数；不承担 React UI。 |
 | `apps/web/lib/` | 其他无 UI 基础设施；不得放 React 业务状态。 |

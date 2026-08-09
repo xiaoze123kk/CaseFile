@@ -67,6 +67,7 @@ describe("official two-page product boundary", () => {
   it("keeps the real intake backend and candidate adoption boundary", () => {
     const api = source("features/case-session/case-session-api.ts");
     const session = source("features/case-session/case-session-provider.tsx");
+    const mapping = source("features/case-session/case-session-mapping.ts");
     [
       "/brief-intake",
       "/tasks/brief-polish",
@@ -76,7 +77,8 @@ describe("official two-page product boundary", () => {
       "/tasks/generate",
       "/draft-candidates",
     ].forEach((route) => expect(api).toContain(route));
-    expect(session).toContain("buildWorkbenchCandidates");
+    expect(session).toContain("mapCurrentBriefDraftCandidates");
+    expect(mapping).toContain("buildWorkbenchCandidates");
     expect(session).toContain("adoptDraftCandidate");
   });
 

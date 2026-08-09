@@ -196,7 +196,16 @@
   padding: 0 18px;
 }
 
+.caseIdentityTitleRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
 .caseIdentity strong {
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   margin-top: 3px;
   font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif;
@@ -204,6 +213,39 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.candidateBackLink,
+.candidateAdoptButton {
+  display: inline-flex;
+  min-height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+  color: var(--primary-hover);
+  border: 1px solid rgba(224, 173, 101, 0.56);
+  background: rgba(199, 139, 60, 0.08);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.candidateBackLink:hover {
+  color: var(--chrome);
+  background: var(--primary-hover);
+}
+
+.candidateAdoptButton {
+  color: var(--chrome);
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
+.candidateAdoptButton:hover {
+  color: var(--chrome);
+  background: #f0c27e;
 }
 
 .caseIdentity small {
@@ -295,6 +337,77 @@
   font-weight: 700;
 }
 .topActions a:hover { color: var(--chrome); background: var(--primary-hover); }
+
+.previewBanner {
+  position: relative;
+  z-index: 8;
+  display: grid;
+  grid-row: 2;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 11px 18px;
+  color: #f7ead4;
+  border-bottom: 1px solid rgba(224, 173, 101, 0.62);
+  background:
+    linear-gradient(90deg, rgba(135, 86, 31, 0.92), rgba(62, 43, 24, 0.96)),
+    var(--chrome-raised);
+  box-shadow: inset 4px 0 var(--primary-hover), 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.previewBanner > div:first-child {
+  min-width: 0;
+}
+
+.previewBanner span,
+.previewBanner small {
+  color: #e6c997;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.previewBanner strong {
+  display: block;
+  margin-top: 3px;
+  color: #fffaf0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 17px;
+}
+
+.previewBanner p {
+  margin: 3px 0 0;
+  color: #e8ddcb;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.previewBanner > div:last-child {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.previewBanner a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 11px;
+  color: #fff6e7;
+  border: 1px solid rgba(255, 239, 214, 0.42);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.previewBanner a:hover {
+  color: var(--chrome);
+  background: var(--primary-hover);
+}
 
 .mobileRegionNav { display: none; }
 
@@ -990,16 +1103,6 @@
 .issueActions button:last-child { grid-column: 1 / -1; color: #946013; border-color: rgba(217, 154, 62, 0.52); }
 .issueActions button:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
 
-.sourceInspector { padding: 12px; }
-.sourceInspector > p { margin: 0 0 10px; padding: 10px; color: var(--ink-muted); border-left: 2px solid var(--primary); background: rgba(199, 139, 60, 0.075); font-size: 9.5px; line-height: 1.6; }
-.sourceInspector article { margin-bottom: 8px; padding: 11px; border: 1px solid var(--rule); background: var(--paper-high); }
-.sourceInspector article header { display: flex; justify-content: space-between; gap: 8px; color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
-.sourceInspector article header span { color: var(--primary-strong); text-transform: uppercase; }
-.sourceInspector h2 { margin: 8px 0 0; font-size: 11px; }
-.sourceInspector article > p { margin: 7px 0; color: var(--ink-muted); font-size: 9.5px; line-height: 1.55; }
-.sourceInspector article > div { display: flex; gap: 6px; }
-.sourceInspector article button { min-height: 32px; padding: 0 9px; color: var(--ink-muted); border: 1px solid var(--rule); background: transparent; font-size: 8.5px; }
-
 .patchInspector { padding: 14px; }
 .patchSummary { display: flex; align-items: center; justify-content: space-between; }
 .patchSummary span { font-size: 12px; font-weight: 650; }
@@ -1021,22 +1124,6 @@
 .inspectorEmpty h2 { margin: 16px 0 0; font-size: 13px; }
 .inspectorEmpty p { max-width: 230px; color: var(--ink-muted); font-size: 9.5px; line-height: 1.6; }
 .inspectorEmpty button { min-height: 40px; padding: 0 13px; color: #f5f0e6; border: 0; background: var(--chrome-soft); font-size: 9.5px; }
-
-.auditInspector { padding: 12px; }
-.auditStatus { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 11px; color: #f5f0e6; background: var(--chrome-soft); }
-.auditStatus span { color: #aaa69d; font-size: 9px; }
-.auditStatus strong { grid-row: 1 / 3; grid-column: 2; align-self: center; color: var(--primary-hover); font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
-.auditStatus small { margin-top: 3px; color: #838681; font-size: 8px; }
-.auditInspector ol { margin: 13px 0 0; padding: 0; list-style: none; }
-.auditInspector li { display: grid; grid-template-columns: 36px 10px minmax(0, 1fr); gap: 7px; min-height: 64px; }
-.auditInspector time { padding-top: 2px; color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
-.auditInspector li > i { position: relative; width: 7px; height: 7px; margin-top: 3px; border: 1px solid var(--paper-high); border-radius: 50%; background: var(--relation); box-shadow: 0 0 0 1px var(--relation); }
-.auditInspector li > i::after { position: absolute; top: 7px; bottom: -55px; left: 2px; width: 1px; content: ""; background: var(--relation-soft); }
-.auditInspector li:last-child > i::after { display: none; }
-.auditInspector li > div { display: flex; flex-direction: column; }
-.auditInspector li span { color: var(--primary-strong); font-size: 8px; }
-.auditInspector li strong { margin-top: 2px; font-size: 10px; }
-.auditInspector li small { margin-top: 3px; color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
 
 .inspectorFooter { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 12px; border-top: 1px solid var(--rule); background: var(--paper-high); }
 .inspectorFooter > div { display: flex; min-width: 0; flex-direction: column; }
@@ -1207,6 +1294,21 @@
   .topActions { justify-self: end; }
   .topActions a { min-width: 82px; }
 
+  .previewBanner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .previewBanner > div:last-child {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .previewBanner > div:last-child small {
+    display: none;
+  }
+
   .mobileRegionNav {
     display: grid;
     grid-row: 3;
@@ -1346,6 +1448,15 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.7;
+}
+
+.realEmptyState button {
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  font-size: 10px;
 }
 
 .workbenchGate {

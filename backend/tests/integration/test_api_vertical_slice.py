@@ -13,6 +13,12 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.credentials import generate_master_key
@@ -28,11 +34,6 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -583,6 +584,36 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
         )
         assert empty_draft.json()["content"] is None
+        preview = client.get(
+            f"/api/v1/projects/{project_id}/draft-candidates/{task_id}",
+            headers=_identity(actor_id),
+        )
+        assert preview.status_code == 200
+        assert preview.json()["task_run_id"] == task_id
+        assert preview.json()["preview"] is True
+        assert preview.json()["read_only"] is True
+        assert preview.json()["content"]["title"] == structure_candidate["title"]
+        assert preview.json()["content_hash"] == structure_candidate["content_hash"]
+        foreign_actor_id = actor_id + 1
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO users (id, display_name, status) "
+                    "VALUES (:id, 'Foreign preview actor', 'active')"
+                ),
+                {"id": foreign_actor_id},
+            )
+        foreign_preview = client.get(
+            f"/api/v1/projects/{project_id}/draft-candidates/{task_id}",
+            headers=_identity(foreign_actor_id),
+        )
+        assert foreign_preview.status_code == 404
+        assert foreign_preview.json()["code"] == "not_found"
+        draft_after_preview = client.get(
+            f"/api/v1/projects/{project_id}/draft",
+            headers=_identity(actor_id),
+        )
+        assert draft_after_preview.json() == empty_draft.json()
         adopted = client.post(
             f"/api/v1/projects/{project_id}/draft-candidates/{task_id}/adopt",
             headers=_identity(actor_id),
@@ -606,6 +637,53 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert stale_resume.status_code == 409
         assert stale_resume.json()["code"] == "task_resume_draft_stale"
 
+        current_brief = client.get(
+            f"/api/v1/projects/{project_id}/brief",
+            headers=_identity(actor_id),
+        ).json()
+        revised_content = _brief(source["source_record_id"])
+        revised_content["creative_intent"] = "用新的创作方向验证旧候选只读边界。"
+        revised_brief = client.put(
+            f"/api/v1/projects/{project_id}/brief",
+            headers=_identity(actor_id),
+            json={
+                "expected_revision": current_brief["draft_revision"],
+                "content": revised_content,
+            },
+        )
+        assert revised_brief.status_code == 200
+        reconfirmed = client.post(
+            f"/api/v1/projects/{project_id}/brief/confirm",
+            headers=_identity(actor_id),
+            json={"expected_revision": revised_brief.json()["draft_revision"]},
+        )
+        assert reconfirmed.status_code == 201
+        candidate_history = client.get(
+            f"/api/v1/projects/{project_id}/draft-candidates",
+            headers=_identity(actor_id),
+        ).json()
+        old_current = next(
+            candidate for candidate in candidate_history if candidate["task_run_id"] == task_id
+        )
+        assert old_current["is_current"] is True
+        assert old_current["is_current_brief"] is False
+        stale_candidate = next(
+            candidate
+            for candidate in candidate_history
+            if candidate["task_run_id"] == recoverable_task_id
+        )
+        assert stale_candidate["can_adopt"] is False
+        stale_adoption = client.post(
+            (
+                f"/api/v1/projects/{project_id}/draft-candidates/"
+                f"{recoverable_task_id}/adopt"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_draft_revision": 2},
+        )
+        assert stale_adoption.status_code == 409
+        assert stale_adoption.json()["code"] == "candidate_brief_stale"
+
         stream = client.get(
             f"/api/v1/projects/{project_id}/tasks/{task_id}/stream",
             headers={**_identity(actor_id), "Last-Event-ID": "1"},
@@ -627,6 +705,35 @@ def test_settings_brief_generation_sse_and_completion_gate(
         draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert draft.json()["revision"] == 2
         assert draft.json()["content"]["schema_version"] == "1.0"
+
+        workbench_context = client.get(
+            f"/api/v1/projects/{project_id}/workbench-context",
+            headers=_identity(actor_id),
+        )
+        assert workbench_context.status_code == 200
+        context = workbench_context.json()
+        assert context["draft_revision"] == 2
+        assert context["validation"] == {
+            "status": "passed",
+            "validator": "casefile.contracts.validate_casefile",
+            "schema_version": "1.0",
+            "issue_count": 0,
+            "issues": [],
+            "reason": None,
+        }
+        assert context["sources"][0]["trace_id"] == (
+            f"source_records:{source['source_record_id']}"
+        )
+        assert context["sources"][0]["content_text"] == (
+            "一艘渡轮每天午夜会重新驶回同一座码头。"
+        )
+        adoption_fact = next(
+            entry
+            for entry in context["audit_entries"]
+            if entry["action"] == "agent_adopt_brief_candidate"
+        )
+        assert adoption_fact["source_table"] == "draft_operations"
+        assert adoption_fact["details"]["result_revision"] == 2
 
         thread_response = client.post(
             f"/api/v1/projects/{project_id}/agent/threads",
@@ -694,6 +801,27 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert undone.status_code == 200
         assert undone.json()["status"] == "undone"
         assert undone.json()["draft_revision"] == 4
+
+        metrics = client.get(
+            f"/api/v1/projects/{project_id}/a-path-metrics",
+            headers=_identity(actor_id),
+        )
+        assert metrics.status_code == 200
+        metrics_body = metrics.json()
+        assert metrics_body["version"] == "a-path-funnel-v1"
+        assert metrics_body["funnel"]["task_runs"] >= 3
+        assert metrics_body["funnel"]["generated_candidates"] >= 2
+        assert metrics_body["funnel"]["adopted_candidates"] == 1
+        assert metrics_body["funnel"]["post_adoption_edited_candidates"] == 1
+        assert metrics_body["post_adoption"]["adoption_operations"] == 1
+        assert metrics_body["post_adoption"]["edit_operations"] >= 2
+        assert metrics_body["usage_observations"]["task_attempts"] >= 3
+        foreign_metrics = client.get(
+            f"/api/v1/projects/{project_id}/a-path-metrics",
+            headers=_identity(foreign_actor_id),
+        )
+        assert foreign_metrics.status_code == 404
+        assert foreign_metrics.json()["code"] == "not_found"
 
         rejected_chat = client.post(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",

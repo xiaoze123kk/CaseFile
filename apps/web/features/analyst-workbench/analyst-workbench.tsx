@@ -13,7 +13,15 @@ import {
   useState,
 } from "react";
 
-import { ApiError, type DraftView } from "@/lib/api-client";
+import {
+  ApiError,
+  errorMessage,
+  fetchWorkbenchContext,
+  type DraftCandidatePreviewView,
+  type DraftView,
+  type WorkbenchContextView,
+} from "@/lib/api-client";
+import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
 import {
   defaultWorkbenchSeed,
@@ -33,11 +41,11 @@ import {
 } from "@/features/case-session/case-session-provider";
 import {
   fetchCaseDraft,
+  fetchDraftCandidatePreview,
   patchCaseDraftObject,
 } from "@/features/case-session/case-session-api";
 import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
-import relayStyles from "./candidate-relay.module.css";
 import { AgentPanel } from "./workbench-agent-panel";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
@@ -49,6 +57,13 @@ import {
   WorkbenchObjectDirectory,
 } from "./workbench-object-directory";
 import { WorkbenchObjectEditor } from "./workbench-object-editor";
+import contextStyles from "./workbench-context-panels.module.css";
+import {
+  WorkbenchAuditPanel,
+  type WorkbenchContextState,
+  WorkbenchSourcesPanel,
+  WorkbenchValidationPanel,
+} from "./workbench-context-panels";
 import { mapCaseFileToWorkbenchModel } from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
@@ -113,6 +128,13 @@ function currentClock() {
     minute: "2-digit",
     hour12: false,
   }).format(new Date());
+}
+
+function workbenchErrorMessage(error: unknown) {
+  const message = errorMessage(error);
+  return /[\u3400-\u9fff]/u.test(message)
+    ? message
+    : "工作台数据读取失败，请检查连接后重试。";
 }
 
 function FocusTrapDialog({
@@ -255,11 +277,15 @@ const DEFAULT_INSPECTOR_WIDTH = 350;
 
 export function AnalystWorkbench({
   requestedProjectId,
+  requestedPreviewTaskRunId = null,
   invalidProjectId = false,
+  invalidPreviewTaskRunId = false,
 }: {
   /** `undefined` is reserved for the isolated fixture harness used by component tests. */
   requestedProjectId?: number | null;
+  requestedPreviewTaskRunId?: number | null;
   invalidProjectId?: boolean;
+  invalidPreviewTaskRunId?: boolean;
 }) {
   const {
     activeProjectId,
@@ -270,17 +296,40 @@ export function AnalystWorkbench({
   } = useCaseSession();
   const fixtureMode = requestedProjectId === undefined;
   const projectId = fixtureMode ? null : requestedProjectId;
+  const previewTaskRunId = fixtureMode ? null : requestedPreviewTaskRunId;
+  const previewMode = previewTaskRunId !== null;
   const [draftLoad, setDraftLoad] = useState<{
     projectId: number;
     draft: DraftView | null;
     error: string | null;
   } | null>(null);
   const [reloadDraft, setReloadDraft] = useState(0);
+  const [previewLoad, setPreviewLoad] = useState<{
+    projectId: number;
+    taskRunId: number;
+    preview: DraftCandidatePreviewView | null;
+    error: string | null;
+  } | null>(null);
+  const [reloadPreview, setReloadPreview] = useState(0);
+  const [contextLoad, setContextLoad] = useState<{
+    projectId: number;
+    context: WorkbenchContextView | null;
+    error: string | null;
+  } | null>(null);
+  const [reloadContext, setReloadContext] = useState(0);
   const [savingObject, setSavingObject] = useState(false);
   const saveInFlightRef = useRef(false);
 
   useEffect(() => {
-    if (fixtureMode || invalidProjectId || projectId === null) return;
+    if (
+      fixtureMode ||
+      invalidProjectId ||
+      invalidPreviewTaskRunId ||
+      previewMode ||
+      projectId === null
+    ) {
+      return;
+    }
     let active = true;
     if (activeProjectId !== projectId) {
       void loadProject(projectId).catch(() => undefined);
@@ -296,8 +345,7 @@ export function AnalystWorkbench({
         setDraftLoad({
           projectId,
           draft: null,
-          error:
-            caught instanceof Error ? caught.message : "当前工作稿加载失败。",
+          error: workbenchErrorMessage(caught),
         });
       });
     return () => {
@@ -306,10 +354,91 @@ export function AnalystWorkbench({
   }, [
     activeProjectId,
     fixtureMode,
+    invalidPreviewTaskRunId,
     invalidProjectId,
     loadProject,
+    previewMode,
     projectId,
     reloadDraft,
+  ]);
+
+  useEffect(() => {
+    if (
+      fixtureMode ||
+      invalidProjectId ||
+      invalidPreviewTaskRunId ||
+      projectId === null ||
+      previewTaskRunId === null
+    ) {
+      return;
+    }
+    let active = true;
+    void fetchDraftCandidatePreview(projectId, previewTaskRunId)
+      .then((preview) => {
+        if (active) {
+          setPreviewLoad({
+            projectId,
+            taskRunId: previewTaskRunId,
+            preview,
+            error: null,
+          });
+        }
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setPreviewLoad({
+          projectId,
+          taskRunId: previewTaskRunId,
+          preview: null,
+          error: workbenchErrorMessage(caught),
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    fixtureMode,
+    invalidPreviewTaskRunId,
+    invalidProjectId,
+    previewTaskRunId,
+    projectId,
+    reloadPreview,
+  ]);
+
+  useEffect(() => {
+    if (
+      fixtureMode ||
+      invalidProjectId ||
+      invalidPreviewTaskRunId ||
+      previewMode ||
+      projectId === null
+    ) {
+      return;
+    }
+    let active = true;
+    void fetchWorkbenchContext(LOCAL_ACTOR_ID, projectId)
+      .then((context) => {
+        if (active) setContextLoad({ projectId, context, error: null });
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setContextLoad({
+            projectId,
+            context: null,
+            error: workbenchErrorMessage(caught),
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    fixtureMode,
+    invalidPreviewTaskRunId,
+    invalidProjectId,
+    previewMode,
+    projectId,
+    reloadContext,
   ]);
 
   const fixtureSeed = activeCandidate?.workbenchSeed ?? defaultWorkbenchSeed;
@@ -320,6 +449,35 @@ export function AnalystWorkbench({
     projectId !== null && draftLoad?.projectId === projectId ? draftLoad : null;
   const draft = currentDraftLoad?.draft ?? null;
   const draftError = currentDraftLoad?.error ?? null;
+  const currentPreviewLoad =
+    projectId !== null &&
+    previewTaskRunId !== null &&
+    previewLoad?.projectId === projectId &&
+    previewLoad.taskRunId === previewTaskRunId
+      ? previewLoad
+      : null;
+  const currentContextLoad =
+    projectId !== null && contextLoad?.projectId === projectId
+      ? contextLoad
+      : null;
+  const contextRevisionMismatch = Boolean(
+    currentContextLoad?.context &&
+      draft &&
+      currentContextLoad.context.draft_revision !== draft.revision,
+  );
+  const realContextState: WorkbenchContextState = {
+    data: contextRevisionMismatch ? null : currentContextLoad?.context ?? null,
+    error: contextRevisionMismatch
+      ? "当前工作稿已更新，请重新读取验证、来源与审计事实。"
+      : currentContextLoad?.error ?? null,
+    loading: currentContextLoad === null,
+  };
+
+  function refreshContext() {
+    if (previewMode) return;
+    setContextLoad(null);
+    setReloadContext((value) => value + 1);
+  }
 
   if (fixtureMode) {
     return (
@@ -338,6 +496,69 @@ export function AnalystWorkbench({
   }
   if (projectId === null) {
     return <WorkbenchGate title="工作台需要项目 ID" detail="采用一份候选后，系统会带着项目标识进入这里。" />;
+  }
+  if (invalidPreviewTaskRunId) {
+    return (
+      <WorkbenchGate
+        title="候选预览标识不合法"
+        detail="请从候选页重新打开这份只读预览。"
+      />
+    );
+  }
+  if (previewMode) {
+    if (currentPreviewLoad === null) {
+      return (
+        <WorkbenchGate
+          title="正在读取候选预览"
+          detail={`项目 ${projectId} · 候选任务 #${previewTaskRunId}`}
+          loading
+        />
+      );
+    }
+    if (currentPreviewLoad.error) {
+      return (
+        <WorkbenchGate
+          detail={currentPreviewLoad.error}
+          onRetry={() => {
+            setPreviewLoad(null);
+            setReloadPreview((value) => value + 1);
+          }}
+          title="候选预览加载失败"
+        />
+      );
+    }
+    if (!currentPreviewLoad.preview) {
+      return (
+        <WorkbenchGate
+          title="候选预览不可用"
+          detail="这份候选尚未成功生成，或已无法恢复。"
+        />
+      );
+    }
+    const preview = currentPreviewLoad.preview;
+    const previewSeed = mapCaseFileToWorkbenchModel(preview.content, 0);
+    const seed = {
+      ...previewSeed,
+      caseMeta: {
+        ...previewSeed.caseMeta,
+        subtitle: `CaseFile ${preview.content.schema_version} · 候选预览`,
+        revision: `候选 #${preview.task_run_id}`,
+        branchLabel: "候选预览",
+      },
+    };
+    return (
+      <AnalystWorkbenchSurface
+        activeCandidate={null}
+        activeCandidateStatus={null}
+        adoptCandidate={adoptCandidate}
+        key={`preview-${projectId}-${preview.task_run_id}`}
+        previewCandidate={preview}
+        previewProjectId={projectId}
+        readOnlyPreview
+        realDocument={preview.content}
+        seed={seed}
+      />
+    );
   }
   if (currentDraftLoad === null) {
     return <WorkbenchGate title="正在读取当前工作稿" detail={`项目 ${projectId} · 连接服务端 Draft`} loading />;
@@ -372,6 +593,7 @@ export function AnalystWorkbench({
       await patchCaseDraftObject(loadedProjectId, objectId, draft.revision, changes);
       const latest = await fetchCaseDraft(loadedProjectId);
       setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
+      refreshContext();
       return "saved";
     } catch (caught) {
       if (
@@ -381,6 +603,7 @@ export function AnalystWorkbench({
         try {
           const latest = await fetchCaseDraft(loadedProjectId);
           setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
+          refreshContext();
           return "conflict";
         } catch {
           return "error";
@@ -402,6 +625,8 @@ export function AnalystWorkbench({
       key={`project-${projectId}`}
       onSaveObject={saveObject}
       realDocument={draft.content}
+      realContextState={realContextState}
+      onReloadContext={refreshContext}
       savingObject={savingObject}
       seed={seed}
     />
@@ -432,29 +657,79 @@ function WorkbenchGate({
   );
 }
 
+function CandidatePreviewFactBoundary({
+  area,
+}: {
+  area: "validation" | "sources" | "patch" | "audit";
+}) {
+  const copy = {
+    validation: {
+      title: "生成候选已通过完整 Contract 校验",
+      detail:
+        "只读预览不会读取 Current Draft 的验证读模型；明确采用后，才能基于当前修订重新验证。",
+    },
+    sources: {
+      title: "候选预览不读取 Current Draft 来源",
+      detail:
+        "候选正文中的稳定引用仍可核对，但 SourceRecord 正文只随 Current Draft 读模型展示。",
+    },
+    patch: {
+      title: "候选预览不允许补丁操作",
+      detail: "返回候选卷显式采用后，才能请求、批准或撤销补丁。",
+    },
+    audit: {
+      title: "候选尚未进入 Current Draft",
+      detail:
+        "GET 预览不会产生采用或编辑审计；明确采用后才会新增只追加事实。",
+    },
+  }[area];
+  return (
+    <div className={styles.realEmptyState} data-tone="success">
+      <strong>{copy.title}</strong>
+      <p>{copy.detail}</p>
+    </div>
+  );
+}
+
 function AnalystWorkbenchSurface({
   seed,
   activeCandidate,
   activeCandidateStatus,
   adoptCandidate,
+  previewCandidate = null,
+  previewProjectId = null,
+  readOnlyPreview = false,
   realDocument = null,
+  realContextState,
   draftRevision = null,
   savingObject = false,
+  onReloadContext,
   onSaveObject,
 }: {
   seed: WorkbenchSeed;
   activeCandidate: WorkbenchCandidate | null;
   activeCandidateStatus: WorkbenchCandidateStatus | null;
   adoptCandidate: (candidateId: string) => Promise<boolean>;
+  previewCandidate?: DraftCandidatePreviewView | null;
+  previewProjectId?: number | null;
+  readOnlyPreview?: boolean;
   realDocument?: CaseFile | null;
+  realContextState?: WorkbenchContextState;
   draftRevision?: number | null;
   savingObject?: boolean;
+  onReloadContext?: () => void;
   onSaveObject?: (
     objectId: string,
     changes: Record<string, unknown>,
   ) => Promise<"saved" | "conflict" | "error">;
 }) {
   const realData = realDocument !== null;
+  const writeLocked = readOnlyPreview;
+  const contextState = realContextState ?? {
+    data: null,
+    error: null,
+    loading: false,
+  };
   const [view, setView] = useState<WorkbenchView>("timeline");
   const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
   const [selectedObjectId, setSelectedObjectId] = useState(seed.defaultObjectId);
@@ -568,10 +843,23 @@ function AnalystWorkbenchSurface({
         return event ? [event] : [];
       })
     : [];
-  const unresolvedCount = seed.validationIssues.filter((issue) => {
-    const status = issueStatuses[issue.id];
-    return status === "open" || status === "patch-ready";
-  }).length;
+  const unresolvedCount = realData
+    ? contextState.data?.validation.issue_count ?? 0
+    : seed.validationIssues.filter((issue) => {
+        const status = issueStatuses[issue.id];
+        return status === "open" || status === "patch-ready";
+      }).length;
+  const realValidationLabel = contextState.loading
+    ? "验证中"
+    : writeLocked
+      ? "生成门禁已通过"
+      : contextState.error
+        ? "读取失败"
+        : contextState.data?.validation.status === "passed"
+          ? "已通过"
+          : contextState.data?.validation.status === "failed"
+            ? `${unresolvedCount} 个问题`
+            : "暂不可用";
 
   function schedule(callback: () => void, delay: number) {
     const timer = window.setTimeout(callback, delay);
@@ -744,9 +1032,14 @@ function AnalystWorkbenchSurface({
 
   function revalidateAll() {
     if (blockDirtyObjectNavigation()) return;
+    if (writeLocked) {
+      announce("候选预览为只读；采用为 Current Draft 后才能重新验证。");
+      return;
+    }
     if (realData) {
       setInspectorTab("issues");
-      announce("真实验证接口尚未接入；当前不会运行样例验证器。");
+      onReloadContext?.();
+      announce("正在重新读取当前 Draft 并执行确定性验证。");
       return;
     }
     setValidationPhase("running");
@@ -764,6 +1057,10 @@ function AnalystWorkbenchSurface({
 
   function resetWorkbench() {
     if (blockDirtyObjectNavigation()) return;
+    if (writeLocked) {
+      announce("候选预览为只读，不执行重置。");
+      return;
+    }
     setView("timeline");
     setSelectedEventId(seed.defaultEventId);
     setSelectedObjectId(seed.defaultObjectId);
@@ -836,6 +1133,7 @@ function AnalystWorkbenchSurface({
     <div
       className={styles.workbench}
       data-mobile-region={mobileRegion}
+      data-read-only-preview={writeLocked}
       data-workbench-seed={seed.id}
     >
       <a className={styles.skipLink} href="#analyst-canvas">跳到主画布</a>
@@ -856,18 +1154,46 @@ function AnalystWorkbenchSurface({
           </button>
         </div>
         <div className={styles.caseIdentity}>
-          <span>当前卷宗</span>
-          <strong>{seed.caseMeta.title}</strong>
+          <span>{writeLocked ? "候选预览" : "当前卷宗"}</span>
+          <div className={styles.caseIdentityTitleRow}>
+            <strong>{seed.caseMeta.title}</strong>
+            {activeCandidate ? (
+              <>
+                <Link className={styles.candidateBackLink} href="/">← 返回候选卷</Link>
+                {!realData && activeCandidateStatus === "pending" ? (
+                  <button
+                    className={styles.candidateAdoptButton}
+                    onClick={() => {
+                      void adoptCandidate(activeCandidate.id)
+                        .then((ok) => {
+                          if (ok) announce("该候选已采用为当前工作稿。");
+                        })
+                        .catch((caught) => {
+                          announce(
+                            caught instanceof Error
+                              ? caught.message
+                              : "采用未完成，请稍后重试。",
+                          );
+                        });
+                    }}
+                    type="button"
+                  >
+                    采用为当前工作稿
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
           <small>{seed.caseMeta.revision}</small>
         </div>
         <div className={styles.topStatus} aria-label="卷宗状态">
-          <button data-tone={realData ? "muted" : unresolvedCount > 0 ? "danger" : "success"} onClick={() => { showInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
+          <button data-tone={writeLocked ? "success" : realData ? contextState.error || unresolvedCount > 0 ? "danger" : contextState.data?.validation.status === "passed" ? "success" : "muted" : unresolvedCount > 0 ? "danger" : "success"} onClick={() => { showInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
             <WorkbenchIcon name="validate" />
-            <span><small>验证</small><strong>{realData ? "尚未接入" : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
+            <span><small>验证</small><strong>{realData ? realValidationLabel : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
           </button>
-          <button data-tone="muted" onClick={() => { setView("export"); setMobileRegion("canvas"); }} type="button">
+          <button disabled={writeLocked} data-tone="muted" onClick={() => { setView("export"); setMobileRegion("canvas"); }} type="button">
             <WorkbenchIcon name="export" />
-            <span><small>导出</small><strong>{realData ? "开发预览" : unresolvedCount > 0 ? "门禁阻断" : "可以导出"}</strong></span>
+            <span><small>导出</small><strong>{writeLocked ? "预览锁定" : realData ? "开发预览" : unresolvedCount > 0 ? "门禁阻断" : "可以导出"}</strong></span>
           </button>
         </div>
         <button className={styles.globalSearch} onClick={() => setPaletteOpen(true)} ref={commandTriggerRef} type="button">
@@ -879,67 +1205,43 @@ function AnalystWorkbenchSurface({
           <button aria-label="打开命令面板" onClick={() => setPaletteOpen(true)} type="button"><WorkbenchIcon name="command" /></button>
           <button
             aria-expanded={agentOpen}
-            aria-label={realData ? "卷宗统筹 Agent 尚未接入" : "打开卷宗统筹 Agent 对话"}
+            aria-label={writeLocked ? "候选预览不可使用 Agent" : realData ? "卷宗统筹 Agent 尚未接入" : "打开卷宗统筹 Agent 对话"}
             disabled={realData}
             onClick={() => setAgentOpen(true)}
             type="button"
           >
             <WorkbenchIcon name="chat" />
           </button>
-          <button aria-label="重置工作台数据" onClick={resetWorkbench} type="button"><WorkbenchIcon name="reset" /></button>
+          <button aria-label={writeLocked ? "候选预览不可重置" : "重置工作台数据"} disabled={writeLocked} onClick={resetWorkbench} type="button"><WorkbenchIcon name="reset" /></button>
           <Link href="/">建案中心</Link>
         </div>
       </header>
 
-      {activeCandidate ? (
+      {writeLocked && previewCandidate ? (
         <section
-          aria-label="工作稿接力状态"
-          className={relayStyles.candidateRelay}
-          data-status={activeCandidateStatus ?? "pending"}
+          aria-label="候选预览只读提示"
+          className={styles.previewBanner}
+          role="status"
         >
           <div>
-            <span>
-              {activeCandidateStatus === "current"
-                ? "当前工作稿"
-                : activeCandidateStatus === "stale"
-                  ? "旧简报"
-                  : "预览稿"}
-            </span>
-            <strong>{activeCandidate.title}</strong>
+            <span>READ-ONLY CANDIDATE</span>
+            <strong>候选预览，不是 Current Draft</strong>
             <p>
-              {activeCandidate.focusLabel} · 简报 V
-              {String(activeCandidate.briefVersion).padStart(2, "0")} ·
-              {realData ? "服务端当前工作稿" : "本地样例"}
+              {previewCandidate.candidate_strategy_label} · Brief V
+              {previewCandidate.brief_version_no} · 任务 #{previewCandidate.task_run_id}
+              。预览不会采用候选，也不会读取或修改当前工作稿。
             </p>
           </div>
           <div>
-            <Link href="/">← 返回候选卷</Link>
-            {!realData && activeCandidateStatus === "pending" ? (
-              <button
-                onClick={() => {
-                  void adoptCandidate(activeCandidate.id)
-                    .then((ok) => {
-                      if (ok) announce("该候选已采用为当前工作稿。");
-                    })
-                    .catch((caught) => {
-                      announce(
-                        caught instanceof Error
-                          ? caught.message
-                          : "采用未完成，请稍后重试。",
-                      );
-                    });
-                }}
-                type="button"
-              >
-                采用为当前工作稿
-              </button>
+            <small>
+              编辑、重置、重新验证、Agent、补丁、编译与导出均已锁定
+            </small>
+            {previewProjectId ? (
+              <Link href={`/workbench?project=${previewProjectId}`}>
+                查看 Current Draft
+              </Link>
             ) : null}
-            {activeCandidateStatus === "stale" ? (
-              <small>旧简报候选仅供预览，不可采用</small>
-            ) : null}
-            {activeCandidateStatus === "current" ? (
-              <small>{realData ? "已采用 · 服务端持久化" : "已采用 · 客户端路由内保持"}</small>
-            ) : null}
+            <Link href="/">返回候选卷</Link>
           </div>
         </section>
       ) : null}
@@ -991,7 +1293,7 @@ function AnalystWorkbenchSurface({
             <div className={styles.treeBranches}>
               <button data-active="true" type="button"><i />{seed.caseMeta.branchLabel} <b>{seed.timelineEvents.length}</b></button>
               {realData ? (
-                <button type="button"><i />服务端修订 <b>R{draftRevision ?? "—"}</b></button>
+                <button type="button"><i />{writeLocked ? "候选任务" : "服务端修订"} <b>{writeLocked ? `#${previewCandidate?.task_run_id ?? "—"}` : `R${draftRevision ?? "—"}`}</b></button>
               ) : (
                 <>
                   <button type="button"><i />未采用候选 <b>03</b></button>
@@ -1020,7 +1322,7 @@ function AnalystWorkbenchSurface({
           <header className={styles.canvasToolbar}>
             <div className={styles.viewTabs} aria-label="主画布视图" role="tablist">
               {viewOptions.map((option) => (
-                <button aria-selected={view === option.id} key={option.id} onClick={() => { setView(option.id); announce(`主画布已切换到${option.label}。`); }} role="tab" type="button">
+                <button aria-selected={view === option.id} disabled={writeLocked && (option.id === "export" || option.id === "compile")} key={option.id} onClick={() => { setView(option.id); announce(`主画布已切换到${option.label}。`); }} role="tab" type="button">
                   <span>{option.shortLabel}</span>{option.label}
                 </button>
               ))}
@@ -1090,7 +1392,7 @@ function AnalystWorkbenchSurface({
           </header>
           <div className={styles.inspectorTabs} aria-label="检查器内容" role="tablist">
             {inspectorTabs.map((tab) => {
-              const count = tab.id === "issues" ? unresolvedCount : tab.id === "sources" ? selectedIssue?.evidenceIds.length ?? 0 : tab.id === "patch" && selectedStatus === "patch-ready" ? 1 : undefined;
+              const count = tab.id === "issues" ? unresolvedCount : tab.id === "sources" ? realData ? contextState.data?.sources.length ?? 0 : selectedIssue?.evidenceIds.length ?? 0 : tab.id === "audit" && realData ? contextState.data?.audit_entries.length ?? 0 : tab.id === "patch" && selectedStatus === "patch-ready" ? 1 : undefined;
               return (
                 <button aria-selected={inspectorTab === tab.id} key={tab.id} onClick={() => showInspectorTab(tab.id)} role="tab" type="button">
                   {tab.label}{count !== undefined ? <b>{count}</b> : null}
@@ -1100,7 +1402,7 @@ function AnalystWorkbenchSurface({
           </div>
           <div className={styles.inspectorContent}>
             {inspectorTab === "object" ? (
-              realDocument && draftRevision !== null && onSaveObject ? (
+              realDocument ? (
                 <WorkbenchObjectEditor
                   document={realDocument}
                   key={selectedObjectId ?? "no-object"}
@@ -1109,7 +1411,13 @@ function AnalystWorkbenchSurface({
                   onSave={onSaveObject}
                   onSelectRelatedEvent={selectEvent}
                   relatedEvents={selectedRelatedEvents}
-                  revision={draftRevision}
+                  readOnly={writeLocked || !onSaveObject}
+                  revision={draftRevision ?? 0}
+                  revisionLabel={
+                    writeLocked
+                      ? `候选任务 #${previewCandidate?.task_run_id ?? "—"}`
+                      : undefined
+                  }
                   saving={savingObject}
                   selectedObjectId={selectedObjectId}
                 />
@@ -1118,7 +1426,14 @@ function AnalystWorkbenchSurface({
               )
             ) : null}
             {inspectorTab === "issues" ? (
-              selectedIssue ? <div className={styles.issueInspector}>
+              writeLocked ? (
+                <CandidatePreviewFactBoundary area="validation" />
+              ) : realData ? (
+                <WorkbenchValidationPanel
+                  onRetry={revalidateAll}
+                  state={contextState}
+                />
+              ) : selectedIssue ? <div className={styles.issueInspector}>
                 <div className={styles.issueList}>
                   {seed.validationIssues.map((issue) => {
                     const status = issueStatuses[issue.id] ?? "open";
@@ -1145,13 +1460,18 @@ function AnalystWorkbenchSurface({
                     <button disabled={selectedStatus === "resolved" || selectedStatus === "exception"} onClick={() => resolveIssue("exception")} type="button">标记已知例外</button>
                   </div>
                 </article>
-              </div> : <div className={styles.realEmptyState}><strong>验证问题尚未接入</strong><p>当前工作台只展示真实 Draft，不会用本地问题填充检查器。</p></div>
+              </div> : <div className={styles.realEmptyState}><strong>暂无验证问题</strong><p>当前本地样例没有需要处理的问题。</p></div>
             ) : null}
 
             {inspectorTab === "sources" ? (
-              realData ? (
-                <div className={styles.realEmptyState}><strong>引用来源尚未接入</strong><p>当前 CaseFile 只携带来源引用；来源正文与媒体接口将在后续接入。</p></div>
-              ) : <div className={styles.sourceInspector}>
+              writeLocked ? (
+                <CandidatePreviewFactBoundary area="sources" />
+              ) : realData ? (
+                <WorkbenchSourcesPanel
+                  onRetry={onReloadContext ?? (() => undefined)}
+                  state={contextState}
+                />
+              ) : <div className={contextStyles.sourceInspector}>
                 <p>引用只说明“依据来自哪里”，不会自动把检索结果提升为卷宗事实。</p>
                 {seed.sourceItems.filter((source) => source.eventId === selectedEventId || (source.evidenceObjectId ? selectedIssue?.evidenceIds.includes(source.evidenceObjectId) : false)).map((source) => (
                   <article key={source.id}>
@@ -1164,7 +1484,9 @@ function AnalystWorkbenchSurface({
             ) : null}
 
             {inspectorTab === "patch" ? (
-              realData || !selectedIssue ? (
+              writeLocked ? (
+                <CandidatePreviewFactBoundary area="patch" />
+              ) : realData || !selectedIssue ? (
                 <div className={styles.realEmptyState}><strong>补丁审阅尚未接入</strong><p>当前不会生成或批准样例补丁；对象编辑会直接写入真实 Draft。</p></div>
               ) : <div className={styles.patchInspector}>
                 {selectedStatus === "patch-ready" || selectedStatus === "resolved" ? (
@@ -1185,17 +1507,22 @@ function AnalystWorkbenchSurface({
             ) : null}
 
             {inspectorTab === "audit" ? (
-              realData ? (
-                <div className={styles.realEmptyState}><strong>审计记录尚未接入</strong><p>这里不会展示本地构造的操作记录；服务端审计接口接入后再开放。</p></div>
-              ) : <div className={styles.auditInspector}>
-                <div className={styles.auditStatus}><span>当前修订</span><strong>{seed.caseMeta.revision}</strong><small>只追加记录</small></div>
+              writeLocked ? (
+                <CandidatePreviewFactBoundary area="audit" />
+              ) : realData ? (
+                <WorkbenchAuditPanel
+                  onRetry={onReloadContext ?? (() => undefined)}
+                  state={contextState}
+                />
+              ) : <div className={contextStyles.auditInspector}>
+                <div className={contextStyles.auditStatus}><span>当前修订</span><strong>{seed.caseMeta.revision}</strong><small>只追加记录</small></div>
                 <ol>{auditEntries.map((entry) => <li key={entry.id}><time>{entry.time}</time><i aria-hidden="true" /><div><span>{entry.actor}</span><strong>{entry.action}</strong><small>{entry.detail}</small></div></li>)}</ol>
               </div>
             ) : null}
           </div>
           <footer className={styles.inspectorFooter}>
-            <div><span>{realData ? "真实验证尚未接入" : validationPhase === "idle" ? "验证器空闲" : validationPhase === "recomputing" ? "局部重算中…" : "全量验证中…"}</span><small>{realData ? "不使用样例结果" : `${unresolvedCount} 个问题待决定`}</small></div>
-            <button disabled={realData || validationPhase !== "idle"} onClick={revalidateAll} type="button">重新验证</button>
+            <div><span>{writeLocked ? "候选预览只读" : realData ? contextState.loading ? "确定性验证中…" : "服务端验证器空闲" : validationPhase === "idle" ? "验证器空闲" : validationPhase === "recomputing" ? "局部重算中…" : "全量验证中…"}</span><small>{writeLocked ? "采用后才能重新验证" : realData ? contextState.error ? "读取失败，可恢复重试" : `${unresolvedCount} 个确定性问题` : `${unresolvedCount} 个问题待决定`}</small></div>
+            <button disabled={writeLocked || (realData ? contextState.loading || !onReloadContext : validationPhase !== "idle")} onClick={revalidateAll} type="button">重新验证</button>
           </footer>
         </aside>
         {!inspectorOpen ? (
@@ -1225,8 +1552,13 @@ function AnalystWorkbenchSurface({
         </header>
         {drawerOpen ? (
           <div className={styles.drawerContent}>
-            {realData ? (
-              <div className={styles.realEmptyState}><strong>真实来源内容尚未接入</strong><p>当前工作稿仅保留 CaseFile 内的引用关系，不展示样例录音、转写、日志或检索命中。</p></div>
+            {writeLocked ? (
+              <CandidatePreviewFactBoundary area="sources" />
+            ) : realData ? (
+              <WorkbenchSourcesPanel
+                onRetry={onReloadContext ?? (() => undefined)}
+                state={contextState}
+              />
             ) : drawerTab === "audio" ? (
               <div className={styles.audioPlayer}>
                 <button aria-label={playing ? "暂停录音" : "播放录音"} className={styles.playButton} onClick={() => { setPlaying((value) => !value); announce(playing ? "录音已暂停。" : `正在播放${seed.drawer.audioTitle}。`); }} type="button"><WorkbenchIcon name={playing ? "pause" : "play"} /></button>

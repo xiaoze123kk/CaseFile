@@ -47,12 +47,17 @@ from casefile.agent_runtime import (
     PolishMode,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.agent_runtime.observability import (
+    brief_semantic_coverage,
+    standardize_generation_cost_usage,
+)
 from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.application.brief_intake_service import BriefIntakeService
 from casefile.application.casefile_v1 import (
     generation_candidate_summary,
     validate_generation_candidate_context,
 )
+from casefile.application.task_cancellation import finalize_task_cancellation
 from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
@@ -81,6 +86,9 @@ from casefile.data_postgres.models import (
 from casefile.data_postgres.repositories import ProjectRepository
 
 ProviderFactory = Callable[[TaskRun], AgentProvider]
+_COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(
+    {"brief-to-draft-v8", "brief-to-draft-v9"}
+)
 
 
 def provider_for_task(task: TaskRun) -> AgentProvider:
@@ -107,6 +115,10 @@ class WorkerConfig:
         )
 
 
+class TaskCancellationRequested(RuntimeError):
+    """Internal control flow used to finish one cooperatively cancelled attempt."""
+
+
 class Worker:
     """Consume TaskRuns with `FOR UPDATE SKIP LOCKED`; one instance executes serially."""
 
@@ -130,11 +142,13 @@ class Worker:
         claimed = self._claim_next()
         if claimed is None:
             return False
+        if claimed == "cancelled":
+            return True
         task_run_id, attempt_id = claimed
         self._execute(task_run_id, attempt_id)
         return True
 
-    def _claim_next(self) -> tuple[int, int] | None:
+    def _claim_next(self) -> tuple[int, int] | Literal["cancelled"] | None:
         now = datetime.now(UTC)
         with self.session_factory() as session, session.begin():
             task = session.scalar(
@@ -143,6 +157,11 @@ class Worker:
                     or_(
                         TaskRun.status == "queued",
                         (TaskRun.status == "running") & (TaskRun.lease_expires_at < now),
+                        (TaskRun.status == "cancelling")
+                        & (
+                            TaskRun.lease_expires_at.is_(None)
+                            | (TaskRun.lease_expires_at < now)
+                        ),
                     )
                 )
                 .order_by(TaskRun.created_at, TaskRun.id)
@@ -151,6 +170,31 @@ class Worker:
             )
             if task is None:
                 return None
+            if task.status == "cancelling":
+                attempt = session.scalar(
+                    select(TaskAttempt)
+                    .where(
+                        TaskAttempt.task_run_id == task.id,
+                        TaskAttempt.status == "running",
+                    )
+                    .order_by(TaskAttempt.attempt_no.desc())
+                    .limit(1)
+                    .with_for_update()
+                )
+                finalize_task_cancellation(
+                    session,
+                    task,
+                    now=now,
+                    attempt=attempt,
+                )
+                append_task_event(
+                    session,
+                    task,
+                    "task.cancelled",
+                    "cancelled",
+                    {"message": "任务已安全停止。"},
+                )
+                return "cancelled"
             if task.status == "running":
                 previous = session.scalar(
                     select(TaskAttempt)
@@ -421,7 +465,21 @@ class Worker:
                 result,
                 validation_errors,
             )
+        except TaskCancellationRequested:
+            self._cancel(
+                task_run_id,
+                attempt_id,
+                usage=usage,
+                validation_errors=validation_errors,
+            )
         except Exception as error:
+            if self._cancel(
+                task_run_id,
+                attempt_id,
+                usage=usage,
+                validation_errors=validation_errors,
+            ):
+                return
             self._fail(
                 task_run_id,
                 attempt_id,
@@ -779,6 +837,8 @@ class Worker:
             raise RuntimeError("TaskRun or TaskAttempt disappeared")
         if task.task_type != expected_task_type:
             raise RuntimeError("TaskRun dispatch type changed")
+        if task.status == "cancelling" and task.leased_by == self.config.worker_id:
+            raise TaskCancellationRequested
         if task.leased_by != self.config.worker_id or task.status != "running":
             raise RuntimeError("TaskRun lease was lost before the final write")
         return task, attempt
@@ -864,6 +924,15 @@ class Worker:
                 candidate_strategy = CandidateStrategy(raw_strategy)
             except ValueError as error:
                 raise RuntimeError("Frozen candidate strategy is invalid") from error
+            semantic_coverage = brief_semantic_coverage(
+                brief_version.content_jsonb,
+                candidate,
+            )
+            cost_usage = standardize_generation_cost_usage(
+                result.usage,
+                provider=task.provider,
+                model_id=task.model_id,
+            )
             summary.update(
                 {
                     "candidate_strategy": candidate_strategy.value,
@@ -871,6 +940,8 @@ class Worker:
                         "candidate_strategy_version",
                         CANDIDATE_STRATEGY_VERSION,
                     ),
+                    "semantic_coverage": semantic_coverage,
+                    "cost_usage": cost_usage,
                 }
             )
             now = datetime.now(UTC)
@@ -903,8 +974,51 @@ class Worker:
                     "message": "候选草稿已生成，等待作者采用",
                     "content_hash": summary["content_hash"],
                     "usage": task.usage_jsonb,
+                    "semantic_coverage": semantic_coverage,
+                    "cost_usage": cost_usage,
                 },
             )
+
+    def _cancel(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        usage: dict[str, Any],
+        validation_errors: list[dict[str, Any]],
+    ) -> bool:
+        with self.session_factory() as session, session.begin():
+            task = session.scalar(
+                select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
+            )
+            attempt = session.scalar(
+                select(TaskAttempt).where(TaskAttempt.id == attempt_id).with_for_update()
+            )
+            if task is None or attempt is None or task.status != "cancelling":
+                return False
+            if task.leased_by != self.config.worker_id or attempt.status != "running":
+                return False
+            now = datetime.now(UTC)
+            finalize_task_cancellation(
+                session,
+                task,
+                now=now,
+                attempt=attempt,
+                usage=usage,
+                validation_errors=validation_errors,
+            )
+            append_task_event(
+                session,
+                task,
+                "task.cancelled",
+                "cancelled",
+                {
+                    "message": "任务已安全停止，Current Draft 未被修改。",
+                    "task_type": task.task_type,
+                    "usage": usage,
+                },
+            )
+            return True
 
     def _fail(
         self,
@@ -934,11 +1048,11 @@ class Worker:
             ):
                 return
             safe_message = _safe_error_message(error, sensitive_values)
-            if task.prompt_version == "brief-to-draft-v8":
-                underlying_error_code = error_code
+            underlying_error_code = error_code
+            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
                 error_code = "agent_component_failed"
             failure_issues = _failure_validation_issues(validation_errors)
-            if task.prompt_version == "brief-to-draft-v8":
+            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
                 coordinator_issue = {
                     "component_id": "run_coordinator",
                     "failure_layer": "frozen_context",
@@ -962,7 +1076,7 @@ class Worker:
                     )
                 )
                 if has_failed_step is None:
-                    _record_v8_coordinator_failure(
+                    _record_component_coordinator_failure(
                         session,
                         task=task,
                         attempt=attempt,
@@ -1036,6 +1150,8 @@ class Worker:
             task = session.scalar(
                 select(TaskRun).where(TaskRun.id == task_run_id).with_for_update()
             )
+            if task is not None and task.status == "cancelling":
+                raise TaskCancellationRequested
             if task is None or task.status != "running" or task.leased_by != self.config.worker_id:
                 raise RuntimeError("TaskRun lease was lost")
             task.stage = stage
@@ -1055,7 +1171,7 @@ def _persist_agent_execution_event(
 ) -> None:
     """Project component execution events into queryable step/call audit rows."""
 
-    if task.prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+    if task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS:
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
@@ -1187,7 +1303,7 @@ def _persist_agent_execution_event(
         model_call.finished_at = now
 
 
-def _record_v8_coordinator_failure(
+def _record_component_coordinator_failure(
     session: Session,
     *,
     task: TaskRun,
@@ -1195,7 +1311,7 @@ def _record_v8_coordinator_failure(
     issue: dict[str, str],
     finished_at: datetime,
 ) -> None:
-    """Persist a v8 failure that happened before a business component could start."""
+    """Persist a component-generation failure before a business step can start."""
 
     execution_no = int(
         session.scalar(
@@ -1251,7 +1367,10 @@ def _optional_hash(value: object) -> str | None:
 
 
 def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
-    if task.prompt_version != "brief-to-draft-v8" or task.attempt_count < 2:
+    if (
+        task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS
+        or task.attempt_count < 2
+    ):
         return {}
     rows = session.scalars(
         select(AgentStepRun)

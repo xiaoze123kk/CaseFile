@@ -458,7 +458,7 @@ describe("analyst workbench", () => {
     expect(node.style.getPropertyValue("--node-y")).toBe("50%");
   });
 
-  it("switches the complete workbench seed and exposes preview, current, and stale states", () => {
+  it("switches the complete workbench seed and keeps candidate navigation in the title row", () => {
     const { container } = renderWorkbench(<CandidateSeedHarness />);
 
     expect(
@@ -471,22 +471,23 @@ describe("analyst workbench", () => {
     expect(screen.getAllByText("缺页校准案").length).toBeGreaterThan(0);
     expect(screen.getByText("封存前 39 分钟的校准链")).toBeInTheDocument();
     expect(screen.getByText("交接台口述记录 C-07")).toBeInTheDocument();
-    expect(screen.getByText("预览稿")).toBeInTheDocument();
+    const returnLink = screen.getByRole("link", { name: "← 返回候选卷" });
+    expect(returnLink.parentElement?.querySelector("strong")).toHaveTextContent("缺页校准案");
+    expect(screen.queryByText("预览稿")).not.toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "采用为当前工作稿" }),
     );
-    expect(screen.getByText("当前工作稿")).toBeInTheDocument();
+    expect(screen.queryByText("当前工作稿")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "载入推理候选" }));
     expect(container.querySelector('[data-workbench-seed="brief-1-reasoning"]')).toBeTruthy();
     expect(screen.getAllByText("第七码互证案").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "载入旧简报候选" }));
-    expect(screen.getByText("旧简报")).toBeInTheDocument();
-    expect(
-      screen.getByText("旧简报候选仅供预览，不可采用"),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← 返回候选卷" })).toBeInTheDocument();
+    expect(screen.queryByText("旧简报")).not.toBeInTheDocument();
+    expect(screen.queryByText("旧简报候选仅供预览，不可采用")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "采用为当前工作稿" }),
     ).not.toBeInTheDocument();

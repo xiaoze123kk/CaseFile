@@ -147,25 +147,29 @@ export function WorkbenchObjectEditor({
   document,
   selectedObjectId,
   revision,
+  revisionLabel,
   saving,
   relatedEvents,
   navigationNotice,
   onDirtyChange,
   onSelectRelatedEvent,
   onSave,
+  readOnly = false,
 }: {
   document: CaseFile;
   selectedObjectId: string | null;
   revision: number;
+  revisionLabel?: string;
   saving: boolean;
   relatedEvents: TimelineEvent[];
   navigationNotice: string | null;
   onDirtyChange: (dirty: boolean) => void;
   onSelectRelatedEvent: (eventId: string) => void;
-  onSave: (
+  onSave?: (
     objectId: string,
     changes: Record<string, unknown>,
   ) => Promise<SaveResult>;
+  readOnly?: boolean;
 }) {
   const selected = useMemo(
     () => findObject(document, selectedObjectId),
@@ -199,6 +203,7 @@ export function WorkbenchObjectEditor({
   );
 
   function change(name: string, value: string) {
+    if (readOnly) return;
     setValues((current) => ({ ...current, [name]: value }));
     if (!dirty) {
       setDirty(true);
@@ -221,12 +226,14 @@ export function WorkbenchObjectEditor({
         {multiline ? (
           <textarea
             onChange={(event) => change(name, event.target.value)}
+            readOnly={readOnly}
             rows={4}
             value={values[name] ?? ""}
           />
         ) : (
           <input
             onChange={(event) => change(name, event.target.value)}
+            readOnly={readOnly}
             value={values[name] ?? ""}
           />
         )}
@@ -327,6 +334,7 @@ export function WorkbenchObjectEditor({
   }
 
   async function save() {
+    if (readOnly || !onSave) return;
     const validationMessage = invalidMessage();
     if (!dirty || validationMessage) {
       if (validationMessage) setNotice(validationMessage);
@@ -345,13 +353,16 @@ export function WorkbenchObjectEditor({
   }
 
   return (
-    <section className={styles.objectEditor} aria-label="对象详情与编辑">
+    <section
+      className={styles.objectEditor}
+      aria-label={readOnly ? "对象详情（只读）" : "对象详情与编辑"}
+    >
       <header>
         <div>
           <span>{collectionLabels[collection]} · {objectSubtype(collection, object)}</span>
           <strong>{object.id}</strong>
         </div>
-        <small>Draft R{revision} · 对象 R{String(metadata.revision ?? "—")}</small>
+        <small>{revisionLabel ?? `Draft R${revision}`} · 对象 R{String(metadata.revision ?? "—")}</small>
       </header>
 
       <div className={styles.objectEditorFields}>
@@ -361,9 +372,9 @@ export function WorkbenchObjectEditor({
             {field("标题", "title")}
             {field("说明", "description", true)}
             {field("正文", "content", true)}
-            <label><span>可靠度</span><select onChange={(event) => change("reliability", event.target.value)} value={values.reliability}>{["high", "medium", "low", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label><span>真值状态</span><select onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label><span>分类</span><select onChange={(event) => change("classification", event.target.value)} value={values.classification}>{["key", "supporting", "background", "distractor", "misleading", "incomplete"].map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label><span>可靠度</span><select disabled={readOnly} onChange={(event) => change("reliability", event.target.value)} value={values.reliability}>{["high", "medium", "low", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label><span>真值状态</span><select disabled={readOnly} onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label><span>分类</span><select disabled={readOnly} onChange={(event) => change("classification", event.target.value)} value={values.classification}>{["key", "supporting", "background", "distractor", "misleading", "incomplete"].map((value) => <option key={value}>{value}</option>)}</select></label>
           </>
         ) : null}
         {collection === "events" ? (
@@ -372,15 +383,15 @@ export function WorkbenchObjectEditor({
             {field("说明", "description", true)}
             {field("开始时间", "time_start")}
             {field("结束时间", "time_end")}
-            <label><span>时间精度</span><select onChange={(event) => change("time_precision", event.target.value)} value={values.time_precision}>{["second", "minute", "hour", "day", "approximate", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label><span>真值状态</span><select onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label><span>时间精度</span><select disabled={readOnly} onChange={(event) => change("time_precision", event.target.value)} value={values.time_precision}>{["second", "minute", "hour", "day", "approximate", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label><span>真值状态</span><select disabled={readOnly} onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
           </>
         ) : null}
         {collection === "locations" ? (
           <>
             {field("名称", "name")}
             {field("说明", "description", true)}
-            <label><span>坐标系统</span><select onChange={(event) => change("coordinate_system", event.target.value)} value={values.coordinate_system}><option disabled value="">选择坐标系统</option><option value="schematic">空间示意</option><option value="wgs84">WGS84</option></select></label>
+            <label><span>坐标系统</span><select disabled={readOnly} onChange={(event) => change("coordinate_system", event.target.value)} value={values.coordinate_system}><option disabled value="">选择坐标系统</option><option value="schematic">空间示意</option><option value="wgs84">WGS84</option></select></label>
             {values.coordinate_system === "schematic" ? <>{field("X（0–100）", "x")}{field("Y（0–100）", "y")}</> : null}
             {values.coordinate_system === "wgs84" ? <>{field("纬度", "latitude")}{field("经度", "longitude")}</> : null}
           </>
@@ -390,7 +401,7 @@ export function WorkbenchObjectEditor({
             {field("标题", "title")}
             {field("说明", "description", true)}
             {field("命题", "proposition", true)}
-            <label><span>状态</span><select onChange={(event) => change("hypothesis_status", event.target.value)} value={values.hypothesis_status}>{["active", "supported", "eliminated", "accepted", "rejected", "undetermined"].map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label><span>状态</span><select disabled={readOnly} onChange={(event) => change("hypothesis_status", event.target.value)} value={values.hypothesis_status}>{["active", "supported", "eliminated", "accepted", "rejected", "undetermined"].map((value) => <option key={value}>{value}</option>)}</select></label>
             {field("分数（0–1，可空）", "score")}
           </>
         ) : null}
@@ -437,18 +448,18 @@ export function WorkbenchObjectEditor({
         </p>
       ) : null}
       <footer>
-        <span>{dirty ? "有未保存修改" : "已与服务端同步"}</span>
+        <span>{readOnly ? "候选预览只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
         <div className={styles.footerActions}>
           <button
             className={styles.cancelButton}
-            disabled={!dirty || saving}
+            disabled={readOnly || !dirty || saving}
             onClick={cancelChanges}
             type="button"
           >
             取消修改
           </button>
-          <button disabled={!dirty || saving} onClick={() => void save()} type="button">
-            {saving ? "正在保存…" : "保存到当前工作稿"}
+          <button disabled={readOnly || !dirty || saving} onClick={() => void save()} type="button">
+            {readOnly ? "采用后才能编辑" : saving ? "正在保存…" : "保存到当前工作稿"}
           </button>
         </div>
       </footer>

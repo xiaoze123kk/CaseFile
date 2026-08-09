@@ -24,6 +24,7 @@
 .objectEditorFields label { display: grid; align-content: start; gap: 5px; min-width: 0; }
 .objectEditorFields label > span { color: var(--ink-muted); font-size: 10px; letter-spacing: 0.08em; }
 .objectEditorFields :is(input, textarea, select) { width: 100%; min-width: 0; border: 1px solid var(--rule); border-radius: 2px; background: color-mix(in srgb, var(--paper) 92%, white); color: var(--ink); font: inherit; font-size: 12px; padding: 8px 9px; }
+.objectEditorFields :is(input:read-only, textarea:read-only, select:disabled) { color: var(--ink-muted); background: var(--paper-low); cursor: not-allowed; }
 .objectEditorFields textarea { resize: vertical; line-height: 1.6; }
 .objectEditorWide { grid-column: 1 / -1; }
 

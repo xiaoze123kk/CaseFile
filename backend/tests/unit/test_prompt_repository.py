@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
@@ -31,7 +32,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v8",
+    "brief_to_draft": "brief-to-draft-v9",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -115,7 +116,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     } == EXPECTED_CURRENT_VERSIONS
 
 
-def test_task_agent_version_identifies_the_v8_pipeline() -> None:
+def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v8")
         == V8_GENERATION_AGENT_VERSION

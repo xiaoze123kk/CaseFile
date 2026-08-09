@@ -31,6 +31,8 @@ export function DraftCandidatesStage() {
     selectStrategy,
     generateCandidates,
     resumeGeneration,
+    cancelGeneration,
+    previewCandidate,
     adoptCandidate,
     beginBriefRevision,
     candidateStatus,
@@ -74,6 +76,10 @@ export function DraftCandidatesStage() {
   const failedComponent = [...latestComponentSteps.values()].find(
     (step) => step.status === "failed",
   );
+  const adoptedCandidate = state.draftCandidates.find(
+    (candidate) => candidate.id === state.adoptedCandidateId,
+  ) ?? null;
+  const cancelling = selectedSlot?.latestTask?.status === "cancelling";
 
   useEffect(() => {
     if (!ready || analysis.status !== "idle" || analysisStartedRef.current) return;
@@ -97,12 +103,14 @@ export function DraftCandidatesStage() {
     if (!state.selectedStrategy) return;
     setGenerationError(null);
     try {
-      const completed = await generateCandidates(state.selectedStrategy);
-      setNotice(
-        completed
-          ? `${strategyLabels[state.selectedStrategy]}完整深稿已通过结构与引用校验。`
-          : "生成任务未完成，请查看当前槽位并重试。",
-      );
+      const outcome = await generateCandidates(state.selectedStrategy);
+      if (outcome === "succeeded") {
+        setNotice(`${strategyLabels[state.selectedStrategy]}完整深稿已通过结构与引用校验。`);
+      } else if (outcome === "cancelled") {
+        setNotice("本次生成已安全停止，Current Draft 未被修改。");
+      } else {
+        setNotice("生成任务未启动，请检查当前槽位后重试。");
+      }
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "完整深稿生成失败");
     }
@@ -126,6 +134,18 @@ export function DraftCandidatesStage() {
     }
   }
 
+  function openPreview(candidate: (typeof state.draftCandidates)[number]) {
+    if (activeProjectId === null) return;
+    const taskRunId = candidate.candidateState?.taskRunId
+      ?? Number(candidate.id.replace(/^draft-/, ""));
+    if (!Number.isSafeInteger(taskRunId) || taskRunId < 1) {
+      setGenerationError("这份候选缺少可恢复的任务标识，请刷新后重试。");
+      return;
+    }
+    previewCandidate(candidate.id);
+    router.push(`/workbench?project=${activeProjectId}&preview=${taskRunId}`);
+  }
+
   async function resumeFailedDraft() {
     if (!state.selectedStrategy) return;
     setGenerationError(null);
@@ -134,6 +154,30 @@ export function DraftCandidatesStage() {
       setNotice("已从失败阶段恢复，输入与上游哈希一致的成功部件已复用。");
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "恢复失败");
+    }
+  }
+
+  async function cancelSelectedDraft() {
+    if (!state.selectedStrategy) return;
+    setGenerationError(null);
+    try {
+      const task = await cancelGeneration(state.selectedStrategy);
+      if (!task) return;
+      if (task.status === "cancelling") {
+        setNotice("已请求安全停止；Worker 会结束当前步骤，Current Draft 不会改变。");
+      } else if (task.status === "cancelled") {
+        setNotice("本次生成已安全停止，Current Draft 未被修改。");
+      } else if (task.status === "succeeded") {
+        setNotice("任务已在停止请求到达前完成，候选列表已刷新。");
+      } else if (task.status === "failed") {
+        setGenerationError(
+          `任务已在停止请求到达前失败：${task.failure?.message ?? "请查看失败详情后重试。"}`,
+        );
+      } else {
+        setGenerationError(`停止请求返回任务状态“${task.status}”，请刷新后确认。`);
+      }
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "停止任务失败");
     }
   }
 
@@ -178,22 +222,38 @@ export function DraftCandidatesStage() {
               <div><dt>推理链</dt><dd>{candidate.objectCounts.reasoning_paths}</dd></div>
             </dl>
             <footer>
-              <small>真实 Agent 生成 · 已完成完整 Contract 校验</small>
-              {status === "current" ? (
-                <button onClick={() => router.push(`/workbench?project=${activeProjectId}`)} type="button">
-                  打开分析师工作台 →
-                </button>
-              ) : (
-                <button
-                  aria-busy={adoptingCandidateId === candidate.id}
-                  data-primary="true"
-                  disabled={status === "stale" || adoptingCandidateId !== null}
-                  onClick={() => void adopt(candidate.id)}
-                  type="button"
-                >
-                  {adoptingCandidateId === candidate.id ? "正在采用…" : "采用为当前工作稿 →"}
-                </button>
-              )}
+              <small
+                data-testid={`candidate-completed-at-${candidate.candidateState?.taskRunId ?? candidate.id}`}
+              >
+                真实 Agent 生成 · 已完成完整 Contract 校验 ·{" "}
+                {formatCandidateCompletedAt(candidate.candidateState?.completedAt)}
+              </small>
+              <div>
+                {status === "current" ? (
+                  <button onClick={() => router.push(`/workbench?project=${activeProjectId}`)} type="button">
+                    打开分析师工作台 →
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={() => openPreview(candidate)} type="button">
+                      预览工作台
+                    </button>
+                    <button
+                      aria-busy={adoptingCandidateId === candidate.id}
+                      data-primary="true"
+                      disabled={status === "stale" || adoptingCandidateId !== null}
+                      onClick={() => void adopt(candidate.id)}
+                      type="button"
+                    >
+                      {adoptingCandidateId === candidate.id
+                        ? "正在采用…"
+                        : status === "stale"
+                          ? "历史候选不可采用"
+                          : "采用为当前工作稿 →"}
+                    </button>
+                  </>
+                )}
+              </div>
             </footer>
           </div>
         ) : null}
@@ -213,6 +273,20 @@ export function DraftCandidatesStage() {
           <div><dt>当前工作稿</dt><dd>{state.adoptedCandidateId ? "已采用" : "尚未采用"}</dd></div>
         </dl>
       </header>
+
+      {adoptedCandidate ? (
+        <section className={styles.handoffStrip} aria-label="当前工作稿交接">
+          <div>
+            <span>Current Draft · CF-{activeProjectId ?? "—"} / TR-{adoptedCandidate.candidateState?.taskRunId ?? "—"}</span>
+            <strong>{adoptedCandidate.title}</strong>
+            <p>冻结 Brief V{String(adoptedCandidate.briefVersion).padStart(2, "0")} · 已由作者明确采用 · 可继续验证、溯源与编辑</p>
+          </div>
+          <b>ADOPTED</b>
+          <button onClick={() => router.push(`/workbench?project=${activeProjectId}`)} type="button">
+            进入分析师工作台 →
+          </button>
+        </section>
+      ) : null}
 
       <section className={styles.generationDesk} aria-label="创作策略选择">
         <div className={styles.generationCopy}>
@@ -287,7 +361,9 @@ export function DraftCandidatesStage() {
           >
             <span>
               {generating
-                ? `正在生成${strategyLabels[state.selectedStrategy!]}完整深稿…`
+                ? cancelling
+                  ? "正在安全停止生成…"
+                  : `正在生成${strategyLabels[state.selectedStrategy!]}完整深稿…`
                 : selectedCandidate
                   ? "完整深稿已生成"
                   : state.selectedStrategy
@@ -304,6 +380,17 @@ export function DraftCandidatesStage() {
           >
             重新分析三种策略
           </button>
+          {generating ? (
+            <button
+              className={styles.strategyRefresh}
+              data-danger="true"
+              disabled={!selectedSlot?.taskRunId || cancelling}
+              onClick={() => void cancelSelectedDraft()}
+              type="button"
+            >
+              {cancelling ? "正在停止…" : "停止本次生成"}
+            </button>
+          ) : null}
         </div>
       </section>
 
@@ -312,7 +399,7 @@ export function DraftCandidatesStage() {
       {selectedSlot?.latestTask && componentSteps.length ? (
         <section className={styles.agentPipeline} aria-label="深稿生成部件进度">
           <header>
-            <div><span>brief_to_draft-v8</span><strong>六步生成流水线</strong></div>
+            <div><span>{selectedSlot.latestTask.prompt_version ?? "brief_to_draft"}</span><strong>六步生成流水线</strong></div>
             <b>Attempt {selectedSlot.latestTask.attempt_count}</b>
           </header>
           <ol>
@@ -378,6 +465,16 @@ function strategyFocus(strategy: CandidateSlotStrategy) {
   if (strategy === "structure_first") return "structure";
   if (strategy === "atmosphere_first") return "atmosphere";
   return "reasoning";
+}
+
+export function formatCandidateCompletedAt(value: string | null | undefined) {
+  if (!value) return "完成时间待同步";
+  const completedAt = new Date(value);
+  if (Number.isNaN(completedAt.getTime())) return "完成时间待同步";
+  return `完成于 ${new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(completedAt)}`;
 }
 
 type PipelineStatus = "pending" | "running" | "succeeded" | "failed" | "reused" | "skipped";

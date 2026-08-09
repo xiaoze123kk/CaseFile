@@ -9,6 +9,7 @@ import {
   createInitialCaseSessionState,
   CaseSessionProvider,
   caseSessionReducer,
+  candidateSlotStatusFromTask,
   candidateTaskStageFromTask,
   workbenchCandidateStatus,
   type CaseSessionState,
@@ -216,6 +217,11 @@ describe("candidate generation progress", () => {
     expect(candidateTaskStageFromTask({ status: "failed", stage: "failed" })).toBe(
       "failed",
     );
+    expect(candidateTaskStageFromTask({ status: "cancelled", stage: "failed" })).toBe(
+      "cancelled",
+    );
+    expect(candidateSlotStatusFromTask({ status: "cancelled" })).toBe("cancelled");
+    expect(candidateSlotStatusFromTask({ status: "failed" })).toBe("failed");
   });
 
   it("keeps slot progress while a candidate moves through generation", () => {

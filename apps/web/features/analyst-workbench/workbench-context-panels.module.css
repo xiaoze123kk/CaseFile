@@ -1,0 +1,345 @@
+.realEmptyState {
+  display: grid;
+  min-height: 180px;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.realEmptyState strong {
+  color: var(--ink);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 17px;
+}
+
+.realEmptyState p {
+  max-width: 36ch;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.realEmptyState button,
+.realValidationPanel > button {
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  font-size: 10px;
+}
+
+.realValidationPanel {
+  padding: 12px;
+}
+
+.realValidationPanel > header {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  color: var(--paper);
+  background: var(--chrome-soft);
+}
+
+.realValidationPanel > header span,
+.realValidationPanel > header small {
+  color: #aaa69d;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+}
+
+.realValidationPanel > header strong {
+  font-size: 12px;
+}
+
+.realValidationPanel ol {
+  display: grid;
+  gap: 1px;
+  margin: 10px 0;
+  padding: 1px;
+  background: var(--rule);
+  list-style: none;
+}
+
+.realValidationPanel li {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px;
+  background: var(--paper-high);
+}
+
+.realValidationPanel li > span {
+  color: var(--issue-strong);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.realValidationPanel li > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.realValidationPanel li strong {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.realValidationPanel li code {
+  overflow-wrap: anywhere;
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.sourceInspector {
+  padding: 12px;
+}
+
+.sourceInspector > p {
+  margin: 0 0 10px;
+  padding: 10px;
+  color: var(--ink-muted);
+  border-left: 2px solid var(--primary);
+  background: rgba(199, 139, 60, 0.075);
+  font-size: 9.5px;
+  line-height: 1.6;
+}
+
+.sourceInspector article {
+  margin-bottom: 8px;
+  padding: 11px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.sourceInspector article header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+}
+
+.sourceInspector article header span {
+  color: var(--primary-strong);
+  text-transform: uppercase;
+}
+
+.sourceInspector h2 {
+  margin: 8px 0 0;
+  font-size: 11px;
+}
+
+.sourceInspector article > p {
+  margin: 7px 0;
+  color: var(--ink-muted);
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.sourceInspector article > div {
+  display: flex;
+  gap: 6px;
+}
+
+.sourceInspector article button {
+  min-height: 32px;
+  padding: 0 9px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: transparent;
+  font-size: 8.5px;
+}
+
+.sourceRecordBody {
+  max-height: 220px;
+  margin: 8px 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  color: var(--ink-muted);
+  font: 9.5px/1.65 "Cascadia Mono", Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+.sourceTraceFacts {
+  display: grid !important;
+  gap: 4px !important;
+  margin: 8px 0 0;
+}
+
+.sourceTraceFacts > div {
+  display: grid !important;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px !important;
+}
+
+.sourceTraceFacts dt {
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.sourceTraceFacts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-muted);
+  font-size: 8px;
+}
+
+.contractSourceRefs {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--rule);
+  background: rgba(255, 255, 255, 0.38);
+}
+
+.contractSourceRefs > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.contractSourceRefs > header strong {
+  font-size: 10px;
+}
+
+.contractSourceRefs > header small {
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.contractSourceRefs ul {
+  display: grid;
+  gap: 7px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contractSourceRefs li {
+  display: grid;
+  gap: 3px;
+}
+
+.contractSourceRefs code {
+  overflow-wrap: anywhere;
+  color: var(--primary-strong);
+  font-size: 8px;
+}
+
+.contractSourceRefs span {
+  overflow-wrap: anywhere;
+  color: var(--ink-faint);
+  font-size: 8px;
+}
+
+.auditInspector {
+  padding: 12px;
+}
+
+.auditStatus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 11px;
+  color: #f5f0e6;
+  background: var(--chrome-soft);
+}
+
+.auditStatus span {
+  color: #aaa69d;
+  font-size: 9px;
+}
+
+.auditStatus strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+  color: var(--primary-hover);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.auditStatus small {
+  margin-top: 3px;
+  color: #838681;
+  font-size: 8px;
+}
+
+.auditInspector ol {
+  margin: 13px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auditInspector li {
+  display: grid;
+  min-height: 64px;
+  grid-template-columns: 36px 10px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.auditInspector time {
+  padding-top: 2px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+}
+
+.auditInspector li > i {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  margin-top: 3px;
+  border: 1px solid var(--paper-high);
+  border-radius: 50%;
+  background: var(--relation);
+  box-shadow: 0 0 0 1px var(--relation);
+}
+
+.auditInspector li > i::after {
+  position: absolute;
+  top: 7px;
+  bottom: -55px;
+  left: 2px;
+  width: 1px;
+  content: "";
+  background: var(--relation-soft);
+}
+
+.auditInspector li:last-child > i::after {
+  display: none;
+}
+
+.auditInspector li > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.auditInspector li span {
+  color: var(--primary-strong);
+  font-size: 8px;
+}
+
+.auditInspector li strong {
+  margin-top: 2px;
+  font-size: 10px;
+}
+
+.auditInspector li small {
+  margin-top: 3px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+}
+
+.auditProvenance {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--ink-faint);
+  font-size: 7.5px;
+}
