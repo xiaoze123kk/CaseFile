@@ -17,8 +17,10 @@ import {
   ApiError,
   errorMessage,
   fetchWorkbenchContext,
+  listProjects,
   type DraftCandidatePreviewView,
   type DraftView,
+  type ProjectView,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -500,6 +502,7 @@ export function AnalystWorkbench({
         activeCandidateStatus={activeCandidateStatus}
         adoptCandidate={adoptCandidate}
         key={fixtureSeed.id}
+        projectId={null}
         seed={fixtureSeed}
       />
     );
@@ -568,6 +571,7 @@ export function AnalystWorkbench({
         key={`preview-${projectId}-${preview.task_run_id}`}
         previewCandidate={preview}
         previewProjectId={projectId}
+        projectId={projectId}
         readOnlyPreview
         realDocument={preview.content}
         seed={seed}
@@ -638,6 +642,7 @@ export function AnalystWorkbench({
       draftRevision={draft.revision}
       key={`project-${projectId}`}
       onSaveObject={saveObject}
+      projectId={projectId}
       realDocument={draft.content}
       realContextState={realContextState}
       onReloadContext={refreshContext}
@@ -710,6 +715,7 @@ function AnalystWorkbenchSurface({
   activeCandidate,
   activeCandidateStatus,
   adoptCandidate,
+  projectId = null,
   previewCandidate = null,
   previewProjectId = null,
   readOnlyPreview = false,
@@ -724,6 +730,7 @@ function AnalystWorkbenchSurface({
   activeCandidate: WorkbenchCandidate | null;
   activeCandidateStatus: WorkbenchCandidateStatus | null;
   adoptCandidate: (candidateId: string) => Promise<boolean>;
+  projectId?: number | null;
   previewCandidate?: DraftCandidatePreviewView | null;
   previewProjectId?: number | null;
   readOnlyPreview?: boolean;
@@ -781,6 +788,11 @@ function AnalystWorkbenchSurface({
     ...seed.initialAuditEntries,
   ]);
   const [railWidth, setRailWidth] = useState<number | null>(null);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [projectOptions, setProjectOptions] = useState<ProjectView[] | null>(null);
+  const [projectMenuError, setProjectMenuError] = useState<string | null>(null);
+  const projectSelectorRef = useRef<HTMLDivElement>(null);
+  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const railResizeRef = useRef<{
     startX: number;
     startWidth: number;
@@ -797,6 +809,80 @@ function AnalystWorkbenchSurface({
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    if (!projectMenuOpen) return;
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!projectSelectorRef.current?.contains(event.target as Node)) {
+        setProjectMenuOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: globalThis.KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setProjectMenuOpen(false);
+      projectTriggerRef.current?.focus();
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [projectMenuOpen]);
+
+  useEffect(() => {
+    if (
+      !projectMenuOpen ||
+      projectId === null ||
+      projectOptions !== null ||
+      projectMenuError !== null
+    ) {
+      return;
+    }
+    let active = true;
+    void listProjects(LOCAL_ACTOR_ID)
+      .then((projects) => {
+        if (!active) return;
+        setProjectOptions(projects);
+      })
+      .catch((caught: unknown) => {
+        if (!active) return;
+        setProjectMenuError(workbenchErrorMessage(caught));
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, projectMenuError, projectMenuOpen, projectOptions]);
+
+  const selectedProjectIndex =
+    projectId !== null
+      ? projectOptions
+          ?.filter((project) => project.status !== "archived" || project.id === projectId)
+          .findIndex((project) => project.id === projectId) ?? -1
+      : -1;
+  const switchableProjects = projectOptions?.filter(
+    (project) => project.status !== "archived" || project.id === projectId,
+  );
+  const projectPosition =
+    projectOptions && selectedProjectIndex >= 0
+      ? `${String(selectedProjectIndex + 1).padStart(2, "0")} / ${String(projectOptions.length).padStart(2, "0")}`
+      : "01 / 03";
+
+  function toggleProjectMenu() {
+    if (!projectMenuOpen && projectId !== null && projectOptions === null) {
+      setProjectMenuError(null);
+    }
+    setProjectMenuOpen((open) => !open);
+  }
+
+  const projectMenuLoading =
+    projectMenuOpen &&
+    projectId !== null &&
+    projectOptions === null &&
+    projectMenuError === null;
 
   function startRailResize(event: ReactPointerEvent<HTMLDivElement>) {
     railResizeRef.current = {
@@ -1298,12 +1384,74 @@ function AnalystWorkbenchSurface({
         />
         <aside aria-label="项目与对象导航" className={styles.objectRail}>
           <section className={styles.projectTree}>
-            <div className={styles.railEyebrow}><span>项目树</span><b>01 / 03</b></div>
-            <button className={styles.projectSelector} type="button">
-              <span className={styles.projectMonogram}>{seed.caseMeta.monogram}</span>
-              <span><strong>{seed.caseMeta.title}</strong><small>主卷宗 · {seed.caseMeta.revision}</small></span>
-              <WorkbenchIcon name="chevron" />
-            </button>
+            <div className={styles.railEyebrow}><span>项目树</span><b>{projectPosition}</b></div>
+            <div className={styles.projectSelectorShell} ref={projectSelectorRef}>
+              <button
+                aria-controls="workbench-project-menu"
+                aria-expanded={projectMenuOpen}
+                aria-haspopup="menu"
+                aria-label={`切换项目：${seed.caseMeta.title}`}
+                className={styles.projectSelector}
+                onClick={toggleProjectMenu}
+                ref={projectTriggerRef}
+                type="button"
+              >
+                <span className={styles.projectMonogram}>{seed.caseMeta.monogram}</span>
+                <span><strong>{seed.caseMeta.title}</strong><small>主卷宗 · {seed.caseMeta.revision}</small></span>
+                <WorkbenchIcon name="chevron" />
+              </button>
+              {projectMenuOpen ? (
+                <div aria-label="切换项目" className={styles.projectMenu} id="workbench-project-menu" role="menu">
+                  <div className={styles.projectMenuHeader}>
+                    <span>切换项目</span>
+                    <small>{projectId === null ? "本地预览" : "仅显示未归档项目"}</small>
+                  </div>
+                  {projectId === null ? (
+                    <>
+                      <div className={styles.projectMenuEmpty}>
+                        <strong>当前为本地工作台预览</strong>
+                        <small>真实项目请从项目历史进入。</small>
+                      </div>
+                      <Link
+                        className={styles.projectMenuLink}
+                        href="/"
+                        onClick={() => setProjectMenuOpen(false)}
+                        role="menuitem"
+                      >
+                        返回候选卷
+                      </Link>
+                    </>
+                  ) : projectMenuLoading ? (
+                    <div className={styles.projectMenuEmpty} role="status">正在读取项目列表…</div>
+                  ) : projectMenuError ? (
+                    <div className={styles.projectMenuEmpty}>
+                      <strong>项目列表读取失败</strong>
+                      <small>{projectMenuError}</small>
+                    </div>
+                  ) : switchableProjects?.length ? (
+                    switchableProjects.map((project) => (
+                      <Link
+                        aria-current={project.id === projectId ? "page" : undefined}
+                        className={styles.projectMenuLink}
+                        data-current={project.id === projectId}
+                        href={`/workbench?project=${project.id}`}
+                        key={project.id}
+                        onClick={() => setProjectMenuOpen(false)}
+                        role="menuitem"
+                      >
+                        <span>
+                          <strong>{project.title}</strong>
+                          <small>{project.archived_at ? "已归档" : `当前修订 R${project.draft.revision}`}</small>
+                        </span>
+                        {project.id === projectId ? <b>当前</b> : null}
+                      </Link>
+                    ))
+                  ) : (
+                    <div className={styles.projectMenuEmpty} role="status">暂无可切换的项目。</div>
+                  )}
+                </div>
+              ) : null}
+            </div>
             <div className={styles.treeBranches}>
               <button data-active="true" type="button"><i />{seed.caseMeta.branchLabel} <b>{seed.timelineEvents.length}</b></button>
               {realData ? (

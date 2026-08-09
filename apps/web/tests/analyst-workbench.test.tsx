@@ -61,6 +61,24 @@ function CandidateSeedHarness() {
 }
 
 describe("analyst workbench", () => {
+  it("opens the project selector and closes it with Escape", () => {
+    renderWorkbench();
+
+    const trigger = screen.getByRole("button", { name: /切换项目/u });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(trigger);
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("menu", { name: "切换项目" })).toBeInTheDocument();
+    expect(screen.getByText("当前为本地工作台预览")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("keeps all eight workbench views available, including direct evidence comparison", () => {
     const { container } = renderWorkbench();
     const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
