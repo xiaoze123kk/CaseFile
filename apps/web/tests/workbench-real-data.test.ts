@@ -314,6 +314,23 @@ describe("real workbench data mapper", () => {
       model.caseObjects.find((object) => object.id === "info_gate_log")
         ?.relatedEventIds,
     ).toEqual(["evt_early"]);
+    expect(
+      model.caseObjects.find((object) => object.id === "ent_analyst")
+        ?.relatedEventIds,
+    ).toEqual(["evt_early"]);
+    expect(
+      model.caseObjects.find((object) => object.id === "ent_operator")
+        ?.relatedEventIds,
+    ).toEqual(["evt_early", "evt_late"]);
+    expect(
+      model.caseObjects.find((object) => object.id === "loc_geo_north")
+        ?.relatedEventIds,
+    ).toEqual(["evt_late"]);
+    expect(
+      model.caseObjects.find(
+        (object) => object.id === "hyp_operator_changed_record",
+      )?.relatedEventIds,
+    ).toEqual([]);
 
     expect(model.graphEdges).toEqual(
       expect.arrayContaining([

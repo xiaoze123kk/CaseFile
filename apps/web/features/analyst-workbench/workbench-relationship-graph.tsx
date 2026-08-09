@@ -76,6 +76,28 @@ export function RelationshipGraph({
     setCanvasState({ graphNodes, positions: initialPositions });
   }
   const positions = canvasState.positions;
+  const selectedGraphNodeIds = useMemo(
+    () =>
+      new Set(
+        graphNodes.flatMap((node) => {
+          const mappedNode = node as typeof node & Partial<WorkbenchGraphNode>;
+          const selectableId =
+            getObject(seed, node.objectId)?.id ??
+            mappedNode.directoryObjectId ??
+            null;
+          return selectableId === selectedObjectId ? [node.objectId] : [];
+        }),
+      ),
+    [graphNodes, seed, selectedObjectId],
+  );
+  const directlyRelatedNodeIds = useMemo(() => {
+    const nodeIds = new Set(selectedGraphNodeIds);
+    for (const edge of seed.graphEdges) {
+      if (selectedGraphNodeIds.has(edge.from)) nodeIds.add(edge.to);
+      if (selectedGraphNodeIds.has(edge.to)) nodeIds.add(edge.from);
+    }
+    return nodeIds;
+  }, [seed.graphEdges, selectedGraphNodeIds]);
   const setPositions = useMemo(
     () =>
       (
@@ -191,15 +213,20 @@ export function RelationshipGraph({
         preserveAspectRatio="none"
         viewBox="0 0 100 100"
       >
-        {seed.graphEdges.map((edge) => {
+        {seed.graphEdges.map((edge, edgeIndex) => {
           const from = positions[edge.from];
           const to = positions[edge.to];
           if (!from || !to) return null;
-          const active =
-            relatedObjectIds.includes(edge.from) ||
-            relatedObjectIds.includes(edge.to);
+          const active = compact
+            ? relatedObjectIds.includes(edge.from) ||
+              relatedObjectIds.includes(edge.to)
+            : selectedGraphNodeIds.has(edge.from) ||
+              selectedGraphNodeIds.has(edge.to);
           return (
-            <g data-active={active} key={(edge as { id?: string }).id ?? `${edge.from}-${edge.to}-${edge.label}`}>
+            <g
+              data-active={active}
+              key={`${(edge as { id?: string }).id ?? `${edge.from}-${edge.to}-${edge.label}`}-${edgeIndex}`}
+            >
               <line x1={from.x} x2={to.x} y1={from.y} y2={to.y} />
               {!compact ? (
                 <text
@@ -220,7 +247,10 @@ export function RelationshipGraph({
         if (!position) return null;
         const selectableId = object?.id ?? mappedNode.directoryObjectId ?? null;
         const selected = selectableId === selectedObjectId;
-        const related = relatedObjectIds.includes(node.objectId) || (selectableId ? relatedObjectIds.includes(selectableId) : false);
+        const related = compact
+          ? relatedObjectIds.includes(node.objectId) ||
+            (selectableId ? relatedObjectIds.includes(selectableId) : false)
+          : directlyRelatedNodeIds.has(node.objectId);
         const kind = object?.kind ?? mappedNode.kind ?? "unknown";
         const label = object?.label ?? mappedNode.label ?? node.objectId;
         const style = {
@@ -343,8 +373,8 @@ export function RelationshipGraph({
               </tr>
             </thead>
             <tbody>
-              {seed.graphEdges.map((edge) => (
-                <tr key={`table-${edge.from}-${edge.to}`}>
+              {seed.graphEdges.map((edge, edgeIndex) => (
+                <tr key={`table-${edge.from}-${edge.to}-${edgeIndex}`}>
                   <td>{graphNodeById.get(edge.from)}</td>
                   <td>{edge.label}</td>
                   <td>{graphNodeById.get(edge.to)}</td>

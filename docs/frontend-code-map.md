@@ -32,6 +32,7 @@
 |---|---|
 | `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts` | 分析师工作台页面编排、跨面板共享状态、候选工作稿切换与本地工作台数据模型。 |
 | `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和双坐标空间图工作台模型，集中声明生产视图类型并提供显式 Fixture 兼容适配。 |
+| `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数，以及真实对象详情、关联事件、有限编辑和未保存切换保护。 |
 | `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、地图、卷宗编辑、导出预览与编译中心等独立主画布视图。 |
 | `apps/web/features/analyst-workbench/workbench-relationship-graph.tsx`、`workbench-reasoning-graph.tsx` | 关系图与推理图的布局、拖拽、平移、缩放和无障碍替代视图。 |
 | `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 工作台内卷宗统筹 Agent 对话、预设指令和本地响应编排。 |

@@ -3,7 +3,8 @@
 import type { CaseFile } from "@casefile/contracts";
 import { useMemo, useState } from "react";
 
-import styles from "./analyst-workbench.module.css";
+import type { TimelineEvent } from "./analyst-fixture";
+import styles from "./workbench-object-editor.module.css";
 
 type EditableCollection =
   | "entities"
@@ -147,12 +148,20 @@ export function WorkbenchObjectEditor({
   selectedObjectId,
   revision,
   saving,
+  relatedEvents,
+  navigationNotice,
+  onDirtyChange,
+  onSelectRelatedEvent,
   onSave,
 }: {
   document: CaseFile;
   selectedObjectId: string | null;
   revision: number;
   saving: boolean;
+  relatedEvents: TimelineEvent[];
+  navigationNotice: string | null;
+  onDirtyChange: (dirty: boolean) => void;
+  onSelectRelatedEvent: (eventId: string) => void;
   onSave: (
     objectId: string,
     changes: Record<string, unknown>,
@@ -170,7 +179,7 @@ export function WorkbenchObjectEditor({
 
   if (!selected) {
     return (
-      <div className={styles.realEmptyState}>
+      <div className={styles.emptyState}>
         <strong>选择一个对象开始核对</strong>
         <p>这里会显示真实字段、引用和可安全编辑的内容。</p>
       </div>
@@ -191,8 +200,18 @@ export function WorkbenchObjectEditor({
 
   function change(name: string, value: string) {
     setValues((current) => ({ ...current, [name]: value }));
-    setDirty(true);
+    if (!dirty) {
+      setDirty(true);
+      onDirtyChange(true);
+    }
     setNotice(null);
+  }
+
+  function cancelChanges() {
+    setValues(valuesForSelected(selected));
+    setDirty(false);
+    onDirtyChange(false);
+    setNotice("已取消未保存修改。");
   }
 
   function field(label: string, name: string, multiline = false) {
@@ -316,6 +335,7 @@ export function WorkbenchObjectEditor({
     const result = await onSave(object.id, buildChanges());
     if (result === "saved") {
       setDirty(false);
+      onDirtyChange(false);
       setNotice("修改已写入当前工作稿。");
     } else if (result === "conflict") {
       setNotice("工作稿已更新。你的输入已保留，请核对最新版后再次保存。");
@@ -376,6 +396,33 @@ export function WorkbenchObjectEditor({
         ) : null}
       </div>
 
+      <section className={styles.relatedEvents} aria-label="关联事件">
+        <header>
+          <strong>关联事件</strong>
+          <small>{relatedEvents.length} EVENTS</small>
+        </header>
+        {relatedEvents.length ? (
+          <ol>
+            {relatedEvents.map((event) => (
+              <li key={event.id}>
+                <button
+                  onClick={() => onSelectRelatedEvent(event.id)}
+                  type="button"
+                >
+                  <time>{event.time}</time>
+                  <span>
+                    <strong>{event.label}</strong>
+                    <small>{event.id}</small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p>此对象尚未关联事件，时间线不会沿用上一次选择。</p>
+        )}
+      </section>
+
       <dl className={styles.objectMetadata}>
         <div><dt>确认状态</dt><dd>{String(metadata.confirmation_status ?? "—")}</dd></div>
         <div><dt>置信度</dt><dd>{metadata.confidence === null || metadata.confidence === undefined ? "—" : String(metadata.confidence)}</dd></div>
@@ -384,12 +431,26 @@ export function WorkbenchObjectEditor({
         <div><dt>结构锁</dt><dd>{structureLocks.length ? structureLocks.map((lock) => `${lock.id} · ${lock.title}`).join("；") : "无"}</dd></div>
       </dl>
 
-      {notice ? <p className={styles.objectEditorNotice} role="status">{notice}</p> : null}
+      {navigationNotice || notice ? (
+        <p className={styles.objectEditorNotice} role="status">
+          {navigationNotice ?? notice}
+        </p>
+      ) : null}
       <footer>
         <span>{dirty ? "有未保存修改" : "已与服务端同步"}</span>
-        <button disabled={!dirty || saving} onClick={() => void save()} type="button">
-          {saving ? "正在保存…" : "保存到当前工作稿"}
-        </button>
+        <div className={styles.footerActions}>
+          <button
+            className={styles.cancelButton}
+            disabled={!dirty || saving}
+            onClick={cancelChanges}
+            type="button"
+          >
+            取消修改
+          </button>
+          <button disabled={!dirty || saving} onClick={() => void save()} type="button">
+            {saving ? "正在保存…" : "保存到当前工作稿"}
+          </button>
+        </div>
       </footer>
     </section>
   );

@@ -451,104 +451,6 @@
 .treeBranches button[data-active="true"] i { background: var(--primary); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.16); }
 .treeBranches b { color: #7e817d; font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; }
 
-.objectCatalog {
-  display: grid;
-  min-height: 0;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  padding-top: 12px;
-  overflow: hidden;
-}
-
-.catalogHeading {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-}
-
-.catalogHeading > div { display: flex; flex-direction: column; }
-.catalogHeading span { color: #ece7dd; font-weight: 650; }
-.catalogHeading small { margin-top: 2px; color: #7e817c; font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.08em; }
-.catalogHeading button { width: 28px; height: 28px; color: #aaa69c; border: 1px solid var(--rule-dark); background: transparent; font-size: 10px; }
-.catalogHeading button:hover { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.5); }
-
-.objectSearch {
-  display: grid;
-  min-height: 36px;
-  grid-template-columns: 15px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  margin: 4px 14px 10px;
-  padding: 0 9px;
-  color: #858983;
-  border: 1px solid var(--rule-dark);
-  background: rgba(0, 0, 0, 0.12);
-}
-
-.objectSearch:focus-within { border-color: var(--primary-hover); }
-.objectSearch svg { width: 14px; height: 14px; }
-.objectSearch input { width: 100%; min-width: 0; color: #e0dbd2; border: 0; outline: 0; background: transparent; font-size: 11px; }
-.objectSearch input::placeholder { color: #737772; }
-
-.kindFilters {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  margin: 0 14px 10px;
-  border: 1px solid var(--rule-dark);
-  background: var(--rule-dark);
-}
-
-.kindFilters button {
-  display: flex;
-  min-width: 0;
-  min-height: 31px;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 7px;
-  color: #92928b;
-  border: 0;
-  background: var(--chrome-raised);
-  font-size: 10px;
-}
-
-.kindFilters button:hover { color: #f3eee4; background: var(--chrome-soft); }
-.kindFilters button[aria-pressed="true"] { color: #f4e7d4; background: var(--primary-soft); box-shadow: inset 2px 0 var(--primary); }
-.kindFilters b { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; font-weight: 500; }
-
-.objectList {
-  min-height: 0;
-  padding: 0 8px 12px;
-  overflow: auto;
-  scrollbar-color: #4b504f transparent;
-  scrollbar-width: thin;
-}
-
-.objectList > button {
-  position: relative;
-  display: grid;
-  width: 100%;
-  min-height: 47px;
-  grid-template-columns: 26px minmax(0, 1fr) 8px;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 7px;
-  color: #bbb7ae;
-  border: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.045);
-  background: transparent;
-  text-align: left;
-}
-
-.objectList > button:hover { color: #f7f2e8; background: rgba(255, 255, 255, 0.035); }
-.objectList > button[aria-pressed="true"] { color: #f7f2e8; background: var(--primary-soft); box-shadow: inset 2px 0 var(--primary); }
-.objectList > button > span:nth-child(2) { display: flex; min-width: 0; flex-direction: column; }
-.objectList strong { overflow: hidden; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.objectList small { overflow: hidden; margin-top: 3px; color: #7c807b; font-family: "Cascadia Mono", Consolas, monospace; font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
-.objectList > button > i { width: 6px; height: 6px; border: 1px solid var(--relation); border-radius: 50%; box-shadow: 0 0 0 3px var(--relation-soft); }
-
-.objectKindMark,
 .paletteObjectMark {
   display: grid;
   width: 24px;
@@ -558,14 +460,6 @@
   font-family: "Cascadia Mono", Consolas, monospace;
   font-size: 9px;
 }
-
-.objectKindMark[data-kind="person"] { color: #9eb1b1; }
-.objectKindMark[data-kind="evidence"] { color: #d6a05c; }
-.objectKindMark[data-kind="event"] { color: #da7867; }
-.objectKindMark[data-kind="location"] { color: #aaa06d; }
-.objectKindMark[data-kind="hypothesis"] { color: #a98ca5; }
-
-.emptyState { margin: 18px 10px; color: #81847f; font-size: 11px; line-height: 1.6; }
 
 .canvas {
   display: grid;
@@ -1430,130 +1324,6 @@
   }
 }
 
-/* 真实 Draft 对象详情：沿用检查器的纸面层级，不引入新的视觉系统。 */
-.objectEditor {
-  display: grid;
-  min-height: 0;
-  gap: 14px;
-  padding: 16px;
-  overflow: auto;
-}
-
-.objectEditor > header,
-.objectEditor > footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.objectEditor > header div {
-  display: grid;
-  gap: 3px;
-}
-
-.objectEditor > header span,
-.objectEditor > header small,
-.objectEditor > footer span {
-  color: var(--ink-muted);
-  font-size: 11px;
-}
-
-.objectEditor > header strong {
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 12px;
-}
-
-.objectEditorFields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.objectEditorFields label {
-  display: grid;
-  align-content: start;
-  gap: 5px;
-  min-width: 0;
-}
-
-.objectEditorFields label > span {
-  color: var(--ink-muted);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-}
-
-.objectEditorFields :is(input, textarea, select) {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--paper) 92%, white);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  padding: 8px 9px;
-}
-
-.objectEditorFields textarea {
-  resize: vertical;
-  line-height: 1.6;
-}
-
-.objectEditorWide {
-  grid-column: 1 / -1;
-}
-
-.objectMetadata {
-  display: grid;
-  gap: 0;
-  margin: 0;
-  border-block: 1px solid var(--rule);
-}
-
-.objectMetadata div {
-  display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--rule);
-}
-
-.objectMetadata div:last-child {
-  border-bottom: 0;
-}
-
-.objectMetadata :is(dt, dd) {
-  margin: 0;
-  font-size: 11px;
-}
-
-.objectMetadata dt {
-  color: var(--ink-muted);
-}
-
-.objectMetadata dd {
-  overflow-wrap: anywhere;
-}
-
-.objectEditorNotice {
-  margin: 0;
-  border-left: 2px solid var(--primary);
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
-  padding: 9px 10px;
-  color: var(--ink);
-  font-size: 11px;
-  line-height: 1.55;
-}
-
-.objectEditor > footer button {
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-  padding: 8px 12px;
-  font-size: 11px;
-}
-
 .realEmptyState {
   display: grid;
   place-content: center;
@@ -1620,16 +1390,6 @@
   color: #f3f1eb;
   padding: 9px 14px;
   text-decoration: none;
-}
-
-@media (max-width: 780px) {
-  .objectEditorFields {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .objectEditorWide {
-    grid-column: auto;
-  }
 }
 
 /* 画布缩放与工具 */

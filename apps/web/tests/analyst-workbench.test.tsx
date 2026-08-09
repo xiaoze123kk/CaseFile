@@ -467,6 +467,7 @@ describe("analyst workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "载入结构候选" }));
 
     expect(container.querySelector('[data-workbench-seed="brief-1-structure"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /来源抽屉/ }));
     expect(screen.getAllByText("缺页校准案").length).toBeGreaterThan(0);
     expect(screen.getByText("封存前 39 分钟的校准链")).toBeInTheDocument();
     expect(screen.getByText("交接台口述记录 C-07")).toBeInTheDocument();

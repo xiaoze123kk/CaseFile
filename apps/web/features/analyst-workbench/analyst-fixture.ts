@@ -46,6 +46,7 @@ export interface CaseObject {
   label: string;
   code: string;
   meta: string;
+  subtype?: string;
   relatedEventIds: string[];
 }
 

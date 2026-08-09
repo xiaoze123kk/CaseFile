@@ -9,7 +9,6 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -22,7 +21,6 @@ import {
   getObject,
   type InspectorTab,
   type IssueStatus,
-  type ObjectKind,
   objectKindLabels,
   type WorkbenchCandidate,
   type WorkbenchSeed,
@@ -43,6 +41,13 @@ import relayStyles from "./candidate-relay.module.css";
 import { AgentPanel } from "./workbench-agent-panel";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
+import {
+  type DirectoryObjectKind,
+  directoryObjectKind,
+  fixtureObjectKinds,
+  productionObjectKinds,
+  WorkbenchObjectDirectory,
+} from "./workbench-object-directory";
 import { WorkbenchObjectEditor } from "./workbench-object-editor";
 import { mapCaseFileToWorkbenchModel } from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
@@ -72,16 +77,6 @@ function createIssueStatuses(seed: WorkbenchSeed) {
     seed.validationIssues.map((issue) => [issue.id, "open"]),
   ) as Record<string, IssueStatus>;
 }
-
-const kindOrder: ObjectKind[] = [
-  "entity",
-  "information",
-  "person",
-  "evidence",
-  "event",
-  "location",
-  "hypothesis",
-];
 
 const inspectorTabs: Array<{ id: InspectorTab; label: string }> = [
   { id: "object", label: "对象详情" },
@@ -470,9 +465,15 @@ function AnalystWorkbenchSurface({
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>(
     seed.validationIssues.length ? "issues" : "object",
   );
-  const [kindFilter, setKindFilter] = useState<ObjectKind | "all">("all");
+  const [kindFilter, setKindFilter] = useState<DirectoryObjectKind | "all">(
+    "all",
+  );
+  const [subtypeFilter, setSubtypeFilter] = useState<string | "all">("all");
   const [objectQuery, setObjectQuery] = useState("");
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [objectEditorDirty, setObjectEditorDirty] = useState(false);
+  const [objectEditorNavigationNotice, setObjectEditorNavigationNotice] =
+    useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("audio");
   const [playing, setPlaying] = useState(false);
   const [playhead, setPlayhead] = useState(58);
@@ -550,30 +551,27 @@ function AnalystWorkbenchSurface({
     inspectorResizeRef.current = null;
   }
 
-  const selectedEvent =
-    getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
+  const selectedEvent = getEvent(seed, selectedEventId);
+  const selectedObject = getObject(seed, selectedObjectId);
   const selectedIssue =
     seed.validationIssues.find((item) => item.id === selectedIssueId) ??
     seed.validationIssues[0];
   const selectedStatus = selectedIssue
     ? issueStatuses[selectedIssue.id] ?? "open"
     : "open";
-  const relatedObjectIds = selectedEvent
+  const eventRelatedObjectIds = selectedEvent
     ? [selectedEvent.id, ...selectedEvent.relatedObjectIds]
+    : [];
+  const selectedRelatedEvents = selectedObject
+    ? selectedObject.relatedEventIds.flatMap((eventId) => {
+        const event = getEvent(seed, eventId);
+        return event ? [event] : [];
+      })
     : [];
   const unresolvedCount = seed.validationIssues.filter((issue) => {
     const status = issueStatuses[issue.id];
     return status === "open" || status === "patch-ready";
   }).length;
-
-  const visibleObjects = useMemo(() => {
-    const query = objectQuery.trim().toLocaleLowerCase("zh-CN");
-    return seed.caseObjects.filter((object) => {
-      const matchesKind = kindFilter === "all" || object.kind === kindFilter;
-      const matchesQuery = !query || `${object.label} ${object.code} ${object.id}`.toLocaleLowerCase("zh-CN").includes(query);
-      return matchesKind && matchesQuery;
-    });
-  }, [kindFilter, objectQuery, seed]);
 
   function schedule(callback: () => void, delay: number) {
     const timer = window.setTimeout(callback, delay);
@@ -633,6 +631,32 @@ function AnalystWorkbenchSurface({
     setLiveMessage(message);
   }
 
+  function blockDirtyObjectNavigation(nextObjectId?: string) {
+    if (
+      !realData ||
+      !objectEditorDirty ||
+      (nextObjectId !== undefined && nextObjectId === selectedObjectId)
+    ) {
+      return false;
+    }
+    const message = "有未保存修改。请先保存或取消修改，再切换对象。";
+    setInspectorTab("object");
+    setMobileRegion("inspector");
+    setObjectEditorNavigationNotice(message);
+    announce(message);
+    return true;
+  }
+
+  function updateObjectEditorDirty(dirty: boolean) {
+    setObjectEditorDirty(dirty);
+    if (!dirty) setObjectEditorNavigationNotice(null);
+  }
+
+  function showInspectorTab(tab: InspectorTab) {
+    if (tab !== "object" && blockDirtyObjectNavigation()) return;
+    setInspectorTab(tab);
+  }
+
   function appendAudit(actor: string, action: string, detail: string) {
     setAuditEntries((entries) => [
       { id: `AUD-${Date.now()}`, time: currentClock(), actor, action, detail },
@@ -642,22 +666,33 @@ function AnalystWorkbenchSurface({
 
   function selectEvent(eventId: string) {
     const event = getEvent(seed, eventId);
-    if (!event) return;
+    if (!event || blockDirtyObjectNavigation(event.id)) return;
     setSelectedEventId(event.id);
     setSelectedObjectId(event.id);
+    setObjectEditorNavigationNotice(null);
     const issueId = event.issueIds[0];
     if (issueId) setSelectedIssueId(issueId);
+    setObjectQuery("");
+    setKindFilter("event");
+    setSubtypeFilter("all");
     setView("timeline");
+    if (realData) setInspectorTab("object");
     setMobileRegion("canvas");
     announce(`已选择事件“${event.label}”，关系图和检查器已同步定位。`);
   }
 
-  function selectObject(objectId: string) {
+  function selectObject(objectId: string, revealInDirectory = false) {
     const object = getObject(seed, objectId);
-    if (!object) return;
+    if (!object || blockDirtyObjectNavigation(object.id)) return;
     setSelectedObjectId(object.id);
     const eventId = object.kind === "event" ? object.id : object.relatedEventIds[0];
-    if (eventId) setSelectedEventId(eventId);
+    setSelectedEventId(eventId ?? null);
+    setObjectEditorNavigationNotice(null);
+    if (revealInDirectory) {
+      setObjectQuery("");
+      setKindFilter(directoryObjectKind(object.kind));
+      setSubtypeFilter("all");
+    }
     if (realData) {
       setInspectorTab("object");
       setMobileRegion("inspector");
@@ -667,10 +702,13 @@ function AnalystWorkbenchSurface({
 
   function openIssue(issueId: string) {
     const issue = seed.validationIssues.find((item) => item.id === issueId);
-    if (!issue) return;
+    if (!issue || blockDirtyObjectNavigation(issue.eventId)) return;
     setSelectedIssueId(issue.id);
     setSelectedEventId(issue.eventId);
     setSelectedObjectId(issue.eventId);
+    setObjectQuery("");
+    setKindFilter("event");
+    setSubtypeFilter("all");
     setView("evidence");
     setInspectorTab("issues");
     setMobileRegion("canvas");
@@ -705,6 +743,7 @@ function AnalystWorkbenchSurface({
   }
 
   function revalidateAll() {
+    if (blockDirtyObjectNavigation()) return;
     if (realData) {
       setInspectorTab("issues");
       announce("真实验证接口尚未接入；当前不会运行样例验证器。");
@@ -724,6 +763,7 @@ function AnalystWorkbenchSurface({
   }
 
   function resetWorkbench() {
+    if (blockDirtyObjectNavigation()) return;
     setView("timeline");
     setSelectedEventId(seed.defaultEventId);
     setSelectedObjectId(seed.defaultObjectId);
@@ -731,8 +771,9 @@ function AnalystWorkbenchSurface({
     setIssueStatuses(createIssueStatuses(seed));
     setInspectorTab(seed.validationIssues.length ? "issues" : "object");
     setKindFilter("all");
+    setSubtypeFilter("all");
     setObjectQuery("");
-    setDrawerOpen(true);
+    setDrawerOpen(false);
     setDrawerTab("audio");
     setPlaying(false);
     setPlayhead(58);
@@ -820,7 +861,7 @@ function AnalystWorkbenchSurface({
           <small>{seed.caseMeta.revision}</small>
         </div>
         <div className={styles.topStatus} aria-label="卷宗状态">
-          <button data-tone={realData ? "muted" : unresolvedCount > 0 ? "danger" : "success"} onClick={() => { setInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
+          <button data-tone={realData ? "muted" : unresolvedCount > 0 ? "danger" : "success"} onClick={() => { showInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
             <WorkbenchIcon name="validate" />
             <span><small>验证</small><strong>{realData ? "尚未接入" : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
           </button>
@@ -960,39 +1001,19 @@ function AnalystWorkbenchSurface({
             </div>
           </section>
 
-          <section className={styles.objectCatalog}>
-            <div className={styles.catalogHeading}>
-              <div><span>对象目录</span><small>{seed.caseObjects.length} OBJECTS</small></div>
-              <button aria-label="对象筛选器" onClick={() => setObjectQuery("")} type="button">筛</button>
-            </div>
-            <label className={styles.objectSearch}>
-              <WorkbenchIcon name="search" />
-              <span className={styles.srOnly}>筛选对象</span>
-              <input onChange={(event) => setObjectQuery(event.target.value)} placeholder="筛选当前卷宗" value={objectQuery} />
-            </label>
-            <div className={styles.kindFilters} aria-label="对象类型筛选">
-              <button aria-pressed={kindFilter === "all"} onClick={() => setKindFilter("all")} type="button"><span>全部</span><b>{seed.caseObjects.length}</b></button>
-              {kindOrder.filter((kind) => !realData || seed.caseObjects.some((object) => object.kind === kind)).map((kind) => (
-                <button aria-pressed={kindFilter === kind} key={kind} onClick={() => setKindFilter(kind)} type="button">
-                  <span>{objectKindLabels[kind]}</span><b>{seed.caseObjects.filter((object) => object.kind === kind).length}</b>
-                </button>
-              ))}
-            </div>
-            <div className={styles.objectList}>
-              {visibleObjects.map((object) => {
-                const selected = object.id === selectedObjectId;
-                const related = relatedObjectIds.includes(object.id);
-                return (
-                  <button aria-pressed={selected} data-related={related} key={object.id} onClick={() => selectObject(object.id)} type="button">
-                    <span className={styles.objectKindMark} data-kind={object.kind}>{objectKindLabels[object.kind].slice(0, 1)}</span>
-                    <span><strong>{object.label}</strong><small>{object.code}</small></span>
-                    {related ? <i aria-label="与当前事件相关" /> : null}
-                  </button>
-                );
-              })}
-              {visibleObjects.length === 0 ? <p className={styles.emptyState}>没有匹配对象。清除筛选后查看完整目录。</p> : null}
-            </div>
-          </section>
+          <WorkbenchObjectDirectory
+            kindFilter={kindFilter}
+            kinds={realData ? productionObjectKinds : fixtureObjectKinds}
+            objects={seed.caseObjects}
+            onKindFilterChange={setKindFilter}
+            onQueryChange={setObjectQuery}
+            onSelectObject={(objectId) => selectObject(objectId)}
+            onSubtypeFilterChange={setSubtypeFilter}
+            query={objectQuery}
+            relatedObjectIds={eventRelatedObjectIds}
+            selectedObjectId={selectedObjectId}
+            subtypeFilter={subtypeFilter}
+          />
         </aside>
 
         <main className={styles.canvas} id="analyst-canvas" onKeyDown={handleTimelineKeys} tabIndex={-1}>
@@ -1010,16 +1031,20 @@ function AnalystWorkbenchSurface({
           <div className={styles.canvasContent} data-view={view}>
             {view === "timeline" ? (
               seed.timelineEvents.length ? (
-                <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} onSelectObject={selectObject} seed={seed} selectedEventId={selectedEventId} selectedObjectId={selectedObjectId} />
+                selectedEvent ? (
+                  <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedEventId={selectedEventId} selectedObjectId={selectedObjectId} />
+                ) : (
+                  <section className={styles.realEmptyState}><strong>此对象没有关联事件</strong><p>检查器仍显示当前对象详情；可以从对象树选择其他对象继续核对。</p></section>
+                )
               ) : (
                 <section className={styles.realEmptyState}><strong>当前工作稿还没有事件</strong><p>事件由已采用候选决定；这里不会补入样例时间线。</p></section>
               )
             ) : null}
             {view === "relations" ? (
-              <RelationshipGraph onSelectObject={selectObject} relatedObjectIds={relatedObjectIds} seed={seed} selectedObjectId={selectedObjectId} />
+              <RelationshipGraph onSelectObject={(objectId) => selectObject(objectId, true)} relatedObjectIds={eventRelatedObjectIds} seed={seed} selectedObjectId={selectedObjectId} />
             ) : null}
             {view === "reasoning" ? (
-              <ReasoningGraphView onSelectObject={selectObject} seed={seed} />
+              <ReasoningGraphView onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} />
             ) : null}
             {view === "map" ? <MapView onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} /> : null}
             {view === "dossier" ? (
@@ -1067,7 +1092,7 @@ function AnalystWorkbenchSurface({
             {inspectorTabs.map((tab) => {
               const count = tab.id === "issues" ? unresolvedCount : tab.id === "sources" ? selectedIssue?.evidenceIds.length ?? 0 : tab.id === "patch" && selectedStatus === "patch-ready" ? 1 : undefined;
               return (
-                <button aria-selected={inspectorTab === tab.id} key={tab.id} onClick={() => setInspectorTab(tab.id)} role="tab" type="button">
+                <button aria-selected={inspectorTab === tab.id} key={tab.id} onClick={() => showInspectorTab(tab.id)} role="tab" type="button">
                   {tab.label}{count !== undefined ? <b>{count}</b> : null}
                 </button>
               );
@@ -1079,7 +1104,11 @@ function AnalystWorkbenchSurface({
                 <WorkbenchObjectEditor
                   document={realDocument}
                   key={selectedObjectId ?? "no-object"}
+                  navigationNotice={objectEditorNavigationNotice}
+                  onDirtyChange={updateObjectEditorDirty}
                   onSave={onSaveObject}
+                  onSelectRelatedEvent={selectEvent}
+                  relatedEvents={selectedRelatedEvents}
                   revision={draftRevision}
                   saving={savingObject}
                   selectedObjectId={selectedObjectId}
@@ -1217,7 +1246,7 @@ function AnalystWorkbenchSurface({
 
       <FocusTrapDialog inputRef={paletteInputRef} modalRef={modalRef} onClose={() => setPaletteOpen(false)} onQueryChange={setPaletteQuery} open={paletteOpen} query={paletteQuery}>
         <section><header><span>命令</span><small>{matchingPaletteEntries.length}</small></header>{matchingPaletteEntries.map((item) => <button key={item.id} onClick={() => runPaletteAction(item.action)} type="button"><span className={styles.paletteCommandMark}>⌘</span><span><strong>{item.label}</strong><small>{item.meta}</small></span><i>打开</i></button>)}{matchingPaletteEntries.length === 0 ? <p>没有匹配命令。</p> : null}</section>
-        <section><header><span>卷宗对象</span><small>{matchingPaletteObjects.length}</small></header>{matchingPaletteObjects.map((object) => <button key={object.id} onClick={() => runPaletteAction(() => selectObject(object.id))} type="button"><span className={styles.paletteObjectMark}>{objectKindLabels[object.kind].slice(0, 1)}</span><span><strong>{object.label}</strong><small>{object.code}</small></span><i>{object.id}</i></button>)}{matchingPaletteObjects.length === 0 ? <p>没有匹配对象。</p> : null}</section>
+        <section><header><span>卷宗对象</span><small>{matchingPaletteObjects.length}</small></header>{matchingPaletteObjects.map((object) => <button key={object.id} onClick={() => runPaletteAction(() => selectObject(object.id, true))} type="button"><span className={styles.paletteObjectMark}>{objectKindLabels[object.kind].slice(0, 1)}</span><span><strong>{object.label}</strong><small>{object.code}</small></span><i>{object.id}</i></button>)}{matchingPaletteObjects.length === 0 ? <p>没有匹配对象。</p> : null}</section>
       </FocusTrapDialog>
 
       {agentOpen && !realData ? (
