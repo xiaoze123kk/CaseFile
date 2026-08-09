@@ -343,7 +343,7 @@ function buildFakeBackend() {
     if (taskType === "brief_anchor_extract") {
       if (failNextAnchorExtract) {
         failNextAnchorExtract = false;
-        throw new Error("作者底牌候选生成接口不兼容，请重启本地服务后重试。");
+        throw new Error("作者答案候选生成接口不兼容，请重启本地服务后重试。");
       }
       return {
         ...common,
@@ -1025,16 +1025,16 @@ describe("intake center", () => {
     fireEvent.click(screen.getByRole("button", { name: "让 Agent 先拟一版" }));
     await flush();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "作者底牌候选生成接口不兼容，请重启本地服务后重试。",
+      "作者答案候选生成接口不兼容，请重启本地服务后重试。",
     );
     fireEvent.click(screen.getByRole("button", { name: "让 Agent 先拟一版" }));
     await flush();
     expect(screen.getByText("Agent 候选 · 待作者确认")).toBeInTheDocument();
     expect(
-      screen.getByText("Agent 只提供候选，不会自动写入作者底牌。"),
+      screen.getByText("Agent 只提供候选，不会自动写入作者答案。"),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "不采用，我自己写" }));
-    fireEvent.change(screen.getByLabelText("作者底牌"), {
+    fireEvent.change(screen.getByLabelText("作者答案"), {
       target: { value: "我自己的结论：真正的发送者是未来的档案修复师。" },
     });
     expect(
@@ -1078,18 +1078,14 @@ describe("intake center", () => {
         .getByRole("button", { name: "03 成案 创作简报草案" })
         .closest("li"),
     ).toHaveAttribute("data-complete", "true");
-    expect(screen.getByLabelText("审阅作者底牌原文")).toHaveValue(
+    expect(screen.getByLabelText("审阅作者答案原文")).toHaveValue(
       "我自己的结论：真正的发送者是未来的档案修复师。",
     );
-    fireEvent.click(screen.getByRole("button", { name: "重新拆解底牌与边界" }));
-    await flush();
-    // 作者改写底牌后需要再次保存，保存成功才允许冻结。
     const freeze = screen.getByRole("button", { name: /确认并冻结/u });
-    expect(freeze).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "保存审阅" }));
-    await flush();
     expect(freeze).toBeEnabled();
+    expect(
+      screen.getByText("已满足冻结条件；确认后会保存当前审阅并创建不可变版本。"),
+    ).toBeInTheDocument();
     fireEvent.click(freeze);
     await flush();
 
@@ -1099,11 +1095,14 @@ describe("intake center", () => {
     await waitFor(() => {
       expect(screen.getByText(/Agent 建议：推理优先/u)).toBeInTheDocument();
     });
+    const strategyComparison = screen.getByLabelText("三种策略并列比较");
+    expect(within(strategyComparison).getAllByRole("button")).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: /让结构首先清晰可审阅/u }));
     fireEvent.click(screen.getByRole("button", { name: /生成结构优先完整深稿/u }));
     await flush();
 
     expect(fake.backend.getGenerationDraftRevisions().slice(-1)).toEqual([17]);
+    expect(screen.getByRole("button", { name: /完整深稿已生成/u })).toBeDisabled();
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /第七码互证稿/u })).not.toBeInTheDocument();

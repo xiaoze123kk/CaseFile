@@ -13,6 +13,7 @@ import { useCaseSession } from "@/features/case-session/case-session-provider";
 
 import {
   candidateOriginLabels,
+  candidateHistoryVersions,
   conclusionModes,
   fieldSourceLabels,
   intakeRoutes,
@@ -52,7 +53,7 @@ type BriefTextField =
 
 const taskTypeLabels: Record<string, string> = {
   brief_polish: "原稿润色",
-  brief_anchor_extract: "底牌拆解",
+  brief_anchor_extract: "整理答案与规则",
   brief_intake_questions: "关键追问",
   brief_intake_synthesize: "创作简报候选",
   brief_strategy_options: "策略分析",
@@ -257,6 +258,10 @@ export function IntakeCenter() {
   const questionsPending = questionGenerationMode !== null;
   const currentCandidate =
     candidates.find((candidate) => candidate.id === currentCandidateId) ?? null;
+  const candidateHistoryVersionById = useMemo(
+    () => candidateHistoryVersions(candidates),
+    [candidates],
+  );
   const requiredQuestions = state.questions.filter(
     (question) => question.required,
   );
@@ -514,12 +519,12 @@ export function IntakeCenter() {
     try {
       const suggestion = await generateAuthorAnswer(brief);
       setAuthorAnswerSuggestion(suggestion);
-      announce("Agent 只提供了一版底牌候选；你可以采用、改写，或直接写自己的结论。 ");
+      announce("Agent 只提供了一版答案候选；你可以采用、改写，或直接写自己的结论。");
     } catch (caught) {
       setAuthorAnswerError(
         caught instanceof Error
           ? caught.message
-          : "作者底牌候选生成未完成，请直接填写你的结论。",
+          : "答案候选生成未完成，请直接填写你的结论。",
       );
     } finally {
       setAuthorAnswerPending(false);
@@ -1461,13 +1466,13 @@ export function IntakeCenter() {
                 {brief.resolutionMode === "author_anchored" ? (
                   <FieldShell
                     hint="只有已经知道答案时填写"
-                    label="作者底牌"
+                    label="作者答案"
                     required
                     source={brief.sources.authorAnswer}
                     wide
                   >
                     <textarea
-                      aria-label="作者底牌"
+                      aria-label="作者答案"
                       onChange={(event) =>
                         updateBriefField("authorAnswer", event.target.value)
                       }
@@ -1484,7 +1489,7 @@ export function IntakeCenter() {
                         >
                           {authorAnswerPending ? "Agent 正在拟定…" : "让 Agent 先拟一版"}
                         </button>
-                        <small>Agent 只提供候选，不会自动写入作者底牌。</small>
+                        <small>Agent 只提供候选，不会自动写入作者答案。</small>
                       </div>
                       {authorAnswerError ? (
                         <p className={stageStyles.inlineError} role="alert">
@@ -1657,7 +1662,7 @@ export function IntakeCenter() {
                         data-current={candidate.id === currentCandidateId}
                         key={candidate.id}
                       >
-                        <span>V{String(candidate.id).padStart(2, "0")}</span>
+                        <span>V{candidateHistoryVersionById.get(candidate.id) ?? 1}</span>
                         <div>
                           <b>{candidate.label}</b>
                           <small>

@@ -176,6 +176,36 @@ describe("case session candidate mapping", () => {
     expect(canFreezeBriefReview(review)).toBe(true);
   });
 
+  it("derives review anchors from an adopted author answer when the server has none", () => {
+    const review = mapBriefContentToReview(
+      {
+        source_record_ids: [1],
+        creative_intent: "创作意图",
+        reasoning_proposition: "核心命题",
+        resolution_mode: "author_anchored",
+        conclusion_mode: "unique",
+        author_answer: "档案修复师在封存前改写了记录。",
+        author_anchors: [],
+        boundary_text: null,
+        creative_constraints: [],
+        core_selling_points: ["卖点"],
+        content_outline: ["骨架"],
+        scope_estimate: null,
+        risk_notes: [],
+      },
+      [],
+    );
+
+    expect(review.authorAnchors).toEqual([
+      {
+        id: "anchor-agent-1",
+        statement: "档案修复师在封存前改写了记录",
+        origin: "agent",
+      },
+    ]);
+    expect(canFreezeBriefReview(review)).toBe(true);
+  });
+
   it("prefers server atomic constraints over parsing boundary text", () => {
     const content = {
       source_record_ids: [1],

@@ -984,7 +984,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const result = await runAnchorExtract("suggest_author_answer", content);
     const suggestion = result.suggested_author_answer?.trim();
     if (!suggestion) {
-      throw new CaseSessionError("Agent 没有形成可审阅的作者底牌候选，请直接填写你的结论。");
+      throw new CaseSessionError("Agent 没有形成可审阅的作者答案候选，请直接填写你的结论。");
     }
     return suggestion;
   }, [runAnchorExtract]);
