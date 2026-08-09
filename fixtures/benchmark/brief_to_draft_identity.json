@@ -1,0 +1,51 @@
+{
+  "fixture_id": "brief_to_draft_identity_v1",
+  "brief": {
+    "source_record_ids": [
+      1
+    ],
+    "creative_intent": "围绕一家跨国企业内部的商业间谍事件，建立可检验的身份判断卷宗。核心悬疑是内部团队中有人向竞争对手泄露了产品设计，但嫌疑人的真实身份、动机和幕后指使者均隐藏在表面关系之下。",
+    "reasoning_proposition": "商业间谍的真实身份是什么，其幕后指使者是谁？",
+    "resolution_mode": "author_anchored",
+    "author_answer": "产品总监陈启明是商业间谍；幕后指使者是竞争对手公司的首席运营官，二人通过一个已注销的海外空壳公司进行资金转移。",
+    "author_anchors": [
+      {
+        "anchor_id": "anchor_benchmark_identity_spy",
+        "statement": "产品总监陈启明是商业间谍。"
+      },
+      {
+        "anchor_id": "anchor_benchmark_identity_backer",
+        "statement": "幕后指使者是对手公司的首席运营官，二人通过海外空壳公司转移资金。"
+      }
+    ],
+    "boundary_text": "必须保持身份判断的唯一性；间谍身份和幕后指使者不可替换为其他角色；所有推论必须基于可被发现的资金记录和邮件通信。",
+    "creative_constraints": [
+      {
+        "constraint_id": "constraint_benchmark_identity_unique",
+        "statement": "间谍身份必须唯一，不得引入多个嫌疑人分摊责任。",
+        "strength": "hard"
+      },
+      {
+        "constraint_id": "constraint_benchmark_identity_transfer",
+        "statement": "资金转移路径必须存在可被调查发现的纸质或数字证据。",
+        "strength": "hard"
+      }
+    ],
+    "conclusion_mode": "unique"
+  },
+  "frozen_context": {
+    "casefile_id": "case_benchmark_identity",
+    "brief_ref": {
+      "brief_id": "brief_benchmark_identity",
+      "version": 1
+    },
+    "version": {
+      "version_id": "draft_benchmark_identity",
+      "version_no": 1,
+      "parent_version_id": null
+    }
+  },
+  "max_turns": 12,
+  "expected_prompt_version": "brief-to-draft-v5",
+  "expected_schema_version": "1.0"
+}

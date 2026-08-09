@@ -5,7 +5,8 @@ param(
     [ValidateSet("openai", "deepseek")][string]$Provider = "openai",
     [string]$PromptVersion = "",
     [string]$ReportPath = "",
-    [string]$Fixture = "fixtures\benchmark\brief_to_draft.json"
+    [string]$Fixture = "fixtures\benchmark\brief_to_draft.json",
+    [string]$SuiteDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,22 +15,25 @@ $python = Join-Path $repoRoot "backend\.venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
     $python = (Get-Command python -ErrorAction Stop).Source
 }
-$fixturePath = if ([System.IO.Path]::IsPathRooted($Fixture)) {
-    $Fixture
-} else {
-    Join-Path $repoRoot $Fixture
-}
 
 Push-Location (Join-Path $repoRoot "backend")
 try {
-    $arguments = @(
-        "-m", "casefile.benchmark",
-        "--fixture", $fixturePath,
-        "--mode", $Mode,
-        "--repeats", $Repeats,
-        "--model", $Model,
-        "--provider", $Provider
-    )
+    $arguments = @("-m", "casefile.benchmark", "--mode", $Mode, "--repeats", $Repeats, "--model", $Model, "--provider", $Provider)
+    if ($SuiteDir) {
+        $suitePath = if ([System.IO.Path]::IsPathRooted($SuiteDir)) {
+            $SuiteDir
+        } else {
+            Join-Path $repoRoot $SuiteDir
+        }
+        $arguments += @("--suite", $suitePath)
+    } else {
+        $fixturePath = if ([System.IO.Path]::IsPathRooted($Fixture)) {
+            $Fixture
+        } else {
+            Join-Path $repoRoot $Fixture
+        }
+        $arguments += @("--fixture", $fixturePath)
+    }
     if ($PromptVersion) {
         $arguments += @("--prompt-version", $PromptVersion)
     }

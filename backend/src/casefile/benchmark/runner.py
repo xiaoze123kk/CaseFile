@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 from casefile.agent_runtime import (
     CandidateStrategy,
@@ -21,10 +22,12 @@ from casefile.agent_runtime import (
     GenerationRequest,
     OpenAIAgentsProvider,
 )
+from casefile.agent_runtime.prompt import agent_version_for_task
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.providers import GenerationProvider
+from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.snapshot import casefile_content_hash
-from casefile.contracts import validate_casefile
+from casefile.contracts import CASEFILE_SCHEMA_VERSION, validate_casefile
 
 BenchmarkMode = Literal["fake", "live"]
 
@@ -85,6 +88,12 @@ def run_benchmark(options: BenchmarkOptions) -> dict[str, Any]:
     tool_totals = {"started": 0, "completed": 0, "failed": 0}
     model_call_totals = {"started": 0, "completed": 0, "failed": 0}
     content_hashes: list[str] = []
+    generation_tool_totals = {
+        "calls": 0,
+        "valid_calls": 0,
+        "successful_calls": 0,
+        "adopted_results": 0,
+    }
     failures: list[dict[str, Any]] = []
     failed_diagnostics: list[dict[str, Any]] = []
     status: Literal["passed", "failed", "blocked"] = "passed"
@@ -94,7 +103,6 @@ def run_benchmark(options: BenchmarkOptions) -> dict[str, Any]:
         CandidateStrategy.ATMOSPHERE_FIRST,
         CandidateStrategy.REASONING_FIRST,
     )
-
     for run_index in range(options.repeats):
         events: list[dict[str, Any]] = []
         request = _request(
@@ -114,6 +122,7 @@ def run_benchmark(options: BenchmarkOptions) -> dict[str, Any]:
             structure_successes += 1
             retry_counts.append(_repair_count(events))
             _accumulate_event_metrics(events, tool_totals, model_call_totals)
+            _accumulate_generation_tool_metrics(result, generation_tool_totals)
             content_hashes.append(casefile_content_hash(result.candidate))
         except Exception as error:
             durations.append((time.perf_counter() - started) * 1000)
@@ -150,6 +159,7 @@ def run_benchmark(options: BenchmarkOptions) -> dict[str, Any]:
         retry_counts=retry_counts,
         tool_totals=tool_totals,
         model_call_totals=model_call_totals,
+        generation_tool_totals=generation_tool_totals,
         content_hashes=content_hashes,
         failures=failures,
         failed_diagnostics=failed_diagnostics,
@@ -161,6 +171,58 @@ def _load_fixture(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("benchmark fixture must be a JSON object")
     return value
+
+
+def run_to_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Convert the detailed provider report to the typed benchmark JSON shape."""
+
+    metrics = report["metrics"]
+    generation_tools = metrics["generation_tools"]
+    return {
+        "id": str(uuid4()),
+        "status": "completed" if report["status"] == "passed" else "failed",
+        "dimension": "ai_model",
+        "fixture_id": report["fixture"],
+        "mode": report["mode"],
+        "model_name": report["model_id"],
+        "prompt_version": report["prompt_version"],
+        "agent_version": report["agent_version"],
+        "toolset_version": report["toolset_version"],
+        "schema_version": report["schema_version"],
+        "started_at": None,
+        "completed_at": None,
+        "duration_ms": round(metrics["latency_ms"]["p95"]),
+        "total_tokens": 0,
+        "repeats": report["runs"],
+        "content_hashes": report["content_hashes"],
+        "error_message": report["blocked_reason"] or report["setup_error"],
+        "metrics": [
+            {"name": "structure_validity_rate", "value": metrics["structure_validity_rate"]},
+            {
+                "name": "structure_retries_total",
+                "value": float(metrics["structural_retries"]["total"]),
+            },
+            {
+                "name": "structure_retries_max",
+                "value": float(metrics["structural_retries"]["max"]),
+            },
+            {"name": "latency_p50_ms", "value": metrics["latency_ms"]["p50"]},
+            {"name": "latency_p95_ms", "value": metrics["latency_ms"]["p95"]},
+            {"name": "tool_calls", "value": float(generation_tools["calls"])},
+            {
+                "name": "tool_validity_rate",
+                "value": generation_tools["validity_rate"],
+            },
+            {
+                "name": "tool_execution_success_rate",
+                "value": generation_tools["execution_success_rate"],
+            },
+            {
+                "name": "tool_result_adoption_rate",
+                "value": generation_tools["result_adoption_rate"],
+            },
+        ],
+    }
 
 
 def _provider(mode: BenchmarkMode, provider: Literal["openai", "deepseek"]) -> GenerationProvider:
@@ -192,6 +254,7 @@ def _report(
     retry_counts: list[int] | None = None,
     tool_totals: dict[str, int] | None = None,
     model_call_totals: dict[str, int] | None = None,
+    generation_tool_totals: dict[str, int] | None = None,
     content_hashes: list[str] | None = None,
     failures: list[dict[str, Any]] | None = None,
     failed_diagnostics: list[dict[str, Any]] | None = None,
@@ -206,6 +269,12 @@ def _report(
         "failed": 0,
     }
     model_call_totals = model_call_totals or {"started": 0, "completed": 0, "failed": 0}
+    generation_tool_totals = generation_tool_totals or {
+        "calls": 0,
+        "valid_calls": 0,
+        "successful_calls": 0,
+        "adopted_results": 0,
+    }
     content_hashes = content_hashes or []
     failures = failures or []
     failed_diagnostics = failed_diagnostics or []
@@ -232,6 +301,9 @@ def _report(
         "model_id": options.model_id,
         "provider": options.provider,
         "prompt_version": prompt_version,
+        "agent_version": agent_version_for_task("brief_to_draft", prompt_version),
+        "toolset_version": TOOLSET_VERSION,
+        "schema_version": CASEFILE_SCHEMA_VERSION,
         "runs": options.repeats,
         "runs_attempted": runs_attempted,
         "metrics": {
@@ -259,6 +331,20 @@ def _report(
                 **model_call_totals,
                 "completion_rate": _rate(
                     model_call_totals["completed"], model_call_totals["started"]
+                ),
+            },
+            "generation_tools": {
+                **generation_tool_totals,
+                "validity_rate": _rate(
+                    generation_tool_totals["valid_calls"], generation_tool_totals["calls"]
+                ),
+                "execution_success_rate": _rate(
+                    generation_tool_totals["successful_calls"],
+                    generation_tool_totals["valid_calls"],
+                ),
+                "result_adoption_rate": _rate(
+                    generation_tool_totals["adopted_results"],
+                    generation_tool_totals["successful_calls"],
                 ),
             },
             "candidate_adoption": {
@@ -310,6 +396,15 @@ def _accumulate_event_metrics(
             model_call_totals["completed"] += 1
         elif event_type == "agent.model_call.failed":
             model_call_totals["failed"] += 1
+
+
+def _accumulate_generation_tool_metrics(result: Any, totals: dict[str, int]) -> None:
+    metrics = getattr(result, "tools", None)
+    if metrics is None or not hasattr(metrics, "as_dict"):
+        return
+    values = metrics.as_dict()
+    for key in totals:
+        totals[key] += int(values.get(key, 0))
 
 
 def _failure_record(
@@ -408,6 +503,8 @@ def _request(
 
 
 def _percentile(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
     if len(values) == 1:
         return values[0]
     ordered = sorted(values)
@@ -422,4 +519,4 @@ def _rate(numerator: int, denominator: int) -> float:
     return 0.0 if denominator == 0 else numerator / denominator
 
 
-__all__ = ["BenchmarkOptions", "run_benchmark"]
+__all__ = ["BenchmarkOptions", "run_benchmark", "run_to_report"]

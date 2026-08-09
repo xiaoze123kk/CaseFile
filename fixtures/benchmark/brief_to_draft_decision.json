@@ -1,0 +1,51 @@
+{
+  "fixture_id": "brief_to_draft_decision_v1",
+  "brief": {
+    "source_record_ids": [
+      1
+    ],
+    "creative_intent": "围绕一艘遇险深海探测船上的生存决策，建立以决策推理为核心的卷宗。探测船失去动力并缓慢下沉，船上有 6 名人员但逃生舱只能容纳 4 人。船上的氧气、食物和专业知识分布不均，玩家需要在有限信息下做出最优人员选择方案。",
+    "reasoning_proposition": "在逃生资源有限的情况下，应选择哪 4 人进入逃生舱，才能最大化全员生存概率？",
+    "resolution_mode": "author_anchored",
+    "author_answer": "最优方案：选择机械工程师（可修复逃生舱推进器）、随船医生（保证途中医疗）、导航员（引导逃生路线）和海洋生物学家的实习生（体重最轻节约燃料，同时具备基本生存知识）；船长和大副留在船上利用剩余氧气继续尝试修复主系统。",
+    "author_anchors": [
+      {
+        "anchor_id": "anchor_benchmark_decision_criteria",
+        "statement": "选择标准为最大化全员生存概率，而非单纯按职位或年龄排序。"
+      },
+      {
+        "anchor_id": "anchor_benchmark_decision_crew",
+        "statement": "船上有 6 人：船长、大副、机械工程师、随船医生、导航员、海洋生物学家的实习生。"
+      }
+    ],
+    "boundary_text": "必须保持最优方案的选择逻辑不变；人员配置和专业技能不可更改；不同选择方案的后果必须可推理可比较。",
+    "creative_constraints": [
+      {
+        "constraint_id": "constraint_benchmark_decision_compare",
+        "statement": "至少给出 3 个候选方案并明确比较标准，不得只有一个方案。",
+        "strength": "hard"
+      },
+      {
+        "constraint_id": "constraint_benchmark_decision_skill",
+        "statement": "不得改变任何人员的专业技能和体重信息。",
+        "strength": "hard"
+      }
+    ],
+    "conclusion_mode": "optimal"
+  },
+  "frozen_context": {
+    "casefile_id": "case_benchmark_decision",
+    "brief_ref": {
+      "brief_id": "brief_benchmark_decision",
+      "version": 1
+    },
+    "version": {
+      "version_id": "draft_benchmark_decision",
+      "version_no": 1,
+      "parent_version_id": null
+    }
+  },
+  "max_turns": 15,
+  "expected_prompt_version": "brief-to-draft-v5",
+  "expected_schema_version": "1.0"
+}

@@ -1,0 +1,51 @@
+{
+  "fixture_id": "brief_to_draft_path_v1",
+  "brief": {
+    "source_record_ids": [
+      1
+    ],
+    "creative_intent": "围绕一座被废弃的古代观星台，建立以路径探索为核心的卷宗。观星台内隐藏着一套由天文规律驱动的机械密道系统，玩家需要根据星图、铭文和机械残件找到正确的入口顺序和行动路径。",
+    "reasoning_proposition": "进入观星台最深处密室的正确物品组合与行动顺序是什么？",
+    "resolution_mode": "author_anchored",
+    "author_answer": "需要在冬至日使用三枚黄铜星盘（分别对应心宿、参宿和北斗）依次嵌入观星台上的三处凹槽，然后按天枢→天璇→天玑→天权的顺序旋转星盘，密道才会开启。",
+    "author_anchors": [
+      {
+        "anchor_id": "anchor_benchmark_path_items",
+        "statement": "需要三枚黄铜星盘分别对应心宿、参宿和北斗。"
+      },
+      {
+        "anchor_id": "anchor_benchmark_path_order",
+        "statement": "星盘嵌入后必须按天枢→天璇→天玑→天权的顺序旋转。"
+      }
+    ],
+    "boundary_text": "必须保持路径的唯一正确性；物品类型和顺序不可改变；替代路径可以作为误导存在，但必须标为不可行。",
+    "creative_constraints": [
+      {
+        "constraint_id": "constraint_benchmark_path_unique",
+        "statement": "正确路径必须唯一，不得存在等效替代方案。",
+        "strength": "hard"
+      },
+      {
+        "constraint_id": "constraint_benchmark_path_timing",
+        "statement": "必须在冬至日才能触发，这一时间约束不可更改。",
+        "strength": "hard"
+      }
+    ],
+    "conclusion_mode": "finite_multiple"
+  },
+  "frozen_context": {
+    "casefile_id": "case_benchmark_path",
+    "brief_ref": {
+      "brief_id": "brief_benchmark_path",
+      "version": 1
+    },
+    "version": {
+      "version_id": "draft_benchmark_path",
+      "version_no": 1,
+      "parent_version_id": null
+    }
+  },
+  "max_turns": 15,
+  "expected_prompt_version": "brief-to-draft-v5",
+  "expected_schema_version": "1.0"
+}
