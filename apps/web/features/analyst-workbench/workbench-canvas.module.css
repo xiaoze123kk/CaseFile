@@ -1,0 +1,165 @@
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.graphNode,
+.reasoningNode {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--ink);
+  border: 1px solid rgba(41, 44, 44, 0.28);
+  background: var(--paper-high);
+  cursor: grab;
+}
+.graphNode { padding: 6px 9px; box-shadow: 0 6px 15px rgba(41, 44, 44, 0.08); text-align: left; }
+.reasoningNode { align-items: center; gap: 2px; padding: 7px 9px; box-shadow: 0 2px 6px rgba(41, 44, 44, 0.1); text-align: center; }
+.graphNode:active,
+.reasoningNode:active { cursor: grabbing; }
+.graphNode:hover { border-color: var(--primary); box-shadow: 0 8px 18px rgba(41, 44, 44, 0.14); }
+.reasoningNode:hover { border-color: var(--primary); box-shadow: 0 4px 10px rgba(41, 44, 44, 0.16); }
+.graphNode[data-related="true"],
+.reasoningNode[data-related="true"] { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(199, 139, 60, 0.12); }
+.graphNode[data-selected="true"],
+.graphNode[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--chrome-soft); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.15), 0 8px 18px rgba(41, 44, 44, 0.17); }
+.reasoningNode[data-active="true"] { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.13), 0 6px 14px rgba(41, 44, 44, 0.13); }
+.graphNode::before,
+.reasoningNode::before { position: absolute; top: 0; bottom: 0; left: 0; width: 4px; content: ""; background: var(--canvas-node-accent, var(--relation)); }
+.graphNode small { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
+.graphNode strong { margin-top: 2px; font-size: 10px; font-weight: 650; white-space: nowrap; }
+.graphNode[data-selected="true"] small,
+.graphNode[aria-pressed="true"] small { color: #c8c1b5; }
+.reasoningNode small { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; }
+.reasoningNode strong { margin-top: 2px; font-size: 10px; font-weight: 600; line-height: 1.45; }
+.reasoningNode[data-kind="reason"] { border-color: rgba(39, 122, 131, 0.5); }
+.reasoningNode[data-kind="reason"] small { color: #286e75; font-family: "STSong", "SimSun", serif; font-size: 9px; letter-spacing: 0.14em; }
+.reasoningNode[data-kind="hypothesis"][data-outcome="supported"] { border-color: rgba(53, 164, 111, 0.5); }
+.reasoningNode[data-kind="hypothesis"][data-outcome="contested"] { border-color: rgba(217, 154, 62, 0.55); }
+.reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] { border-color: rgba(217, 92, 89, 0.55); }
+.reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] strong { color: var(--issue); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.graphNode:focus-visible,
+.reasoningNode:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+.canvasKernelShell { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: var(--paper); }
+.canvasKernelShell:fullscreen { width: 100vw; height: 100vh; height: 100dvh; min-height: 100vh; border: 0; background: var(--paper); }
+.canvasKernelShell::backdrop { background: #171a1a; }
+.canvasKernelShell:fullscreen .canvasKernel { height: 100vh; height: 100dvh; }
+.canvasKernel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background:
+    radial-gradient(circle at center, rgba(142, 150, 148, 0.1), transparent 44%),
+    linear-gradient(rgba(41, 44, 44, 0.038) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41, 44, 44, 0.038) 1px, transparent 1px),
+    var(--paper);
+  background-size: auto, 22px 22px, 22px 22px, auto;
+}
+.canvasKernel[data-scene="reasoning"] { background: linear-gradient(rgba(199, 139, 60, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(199, 139, 60, 0.045) 1px, transparent 1px), var(--paper); background-size: 22px 22px; }
+.canvasKernel :global(.react-flow__pane) { cursor: crosshair; }
+.canvasKernel[data-tool="pan"] :global(.react-flow__pane),
+.canvasKernel[data-tool="pan"] :global(.react-flow__node) { cursor: grab; }
+.canvasKernel[data-tool="pan"] :global(.react-flow__pane:active) { cursor: grabbing; }
+.canvasKernel :global(.react-flow__selection),
+.canvasKernel :global(.react-flow__nodesselection-rect) { border: 1px solid var(--primary); background: rgba(199, 139, 60, 0.09); }
+.canvasKernel :global(.react-flow__node.selected) .graphNode,
+.canvasKernel :global(.react-flow__node.selected) .reasoningNode { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.13), 0 8px 18px rgba(41, 44, 44, 0.13); }
+.canvasKernel :global(.react-flow__edge-textwrapper) { pointer-events: none; }
+.canvasEdge,
+.canvasEdgeActive { transition: opacity 120ms ease; }
+.canvasEdgeActive { opacity: 1; }
+.canvasHandle { width: 1px !important; height: 1px !important; opacity: 0; pointer-events: none; }
+
+.canvasOverlayControls {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  min-width: 78px;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(41, 44, 44, 0.2);
+  background: rgba(251, 250, 246, 0.92);
+  box-shadow: 0 5px 14px rgba(41, 44, 44, 0.12);
+  backdrop-filter: blur(4px);
+}
+.canvasOverlayControls .canvasTools,
+.canvasOverlayControls .zoomControls,
+.canvasOverlayControls .canvasActionTools { align-self: flex-end; }
+.canvasTypeLegend,
+.canvasLegend { position: absolute; z-index: 3; display: flex; flex-wrap: wrap; border: 1px solid var(--rule); background: rgba(251, 250, 246, 0.92); box-shadow: 0 4px 12px rgba(41, 44, 44, 0.08); backdrop-filter: blur(4px); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
+.canvasTypeLegend { top: 10px; left: 10px; max-width: calc(100% - 118px); gap: 5px 12px; padding: 7px 10px; color: var(--ink-muted); pointer-events: none; }
+.canvasTypeLegendItem { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.canvasTypeLegendItem::before { width: 5px; height: 14px; content: ""; background: var(--canvas-node-accent, var(--relation)); }
+.canvasLegend { right: 10px; bottom: 9px; max-width: calc(100% - 20px); gap: 4px 12px; padding: 6px 10px; color: var(--ink-faint); letter-spacing: 0.05em; }
+.canvasLegend > span { display: inline-flex; align-items: center; gap: 5px; }
+.canvasLegend > span::before { width: 16px; height: 0; content: ""; border-top: 2px solid var(--relation); }
+.canvasLegend > span[data-kind="focus"]::before { width: 8px; height: 8px; border: 0; border-radius: 1px; background: var(--primary); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.12); transform: rotate(45deg); }
+.canvasLegend > span[data-kind="chain"]::before { border-top-color: var(--primary); }
+.canvasLegend > span[data-kind="supported"]::before { border-top-color: var(--success); }
+.canvasLegend > span[data-kind="contested"]::before,
+.canvasLegend > span[data-kind="eliminated"]::before { border-top-style: dashed; }
+.canvasLegend > span[data-kind="contested"]::before { border-top-color: var(--warning); }
+.canvasLegend > span[data-kind="eliminated"]::before { border-top-color: var(--issue); }
+.canvasStorageNotice { position: absolute; z-index: 5; top: 10px; right: 102px; max-width: min(360px, calc(100% - 128px)); margin: 0; padding: 7px 10px; color: #7a5319; border: 1px solid rgba(217, 154, 62, 0.42); background: rgba(255, 245, 221, 0.95); box-shadow: 0 4px 12px rgba(41, 44, 44, 0.08); font-size: 9px; line-height: 1.45; }
+
+.zoomControls,
+.canvasTools,
+.canvasActionTools { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
+.zoomControls button,
+.canvasActionTools button { display: grid; min-width: 28px; height: 28px; place-items: center; padding: 0 6px; color: var(--ink-muted); border: 1px solid var(--rule); background: var(--paper-high); font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; }
+.zoomControls button { min-width: 30px; font-size: 10px; }
+.canvasTools button { position: relative; display: grid; width: 28px; height: 28px; place-items: center; color: var(--ink-muted); border: 1px solid var(--rule); background: var(--paper-high); }
+.canvasTools button:hover,
+.zoomControls button:hover:not(:disabled),
+.canvasActionTools button:hover:not(:disabled) { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
+.canvasTools button[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--primary); }
+.canvasTools svg { width: 14px; height: 14px; }
+.zoomControls button:disabled,
+.canvasActionTools button:disabled { opacity: 0.38; cursor: default; }
+.canvasTools button,
+.canvasActionTools button,
+.zoomControls button { position: relative; }
+.canvasTools button::after,
+.canvasActionTools button::after,
+.zoomControls button::after { position: absolute; z-index: 8; top: 50%; right: calc(100% + 8px); width: max-content; max-width: 180px; padding: 5px 7px; color: #f5f0e6; content: attr(data-tooltip); border: 1px solid rgba(199, 139, 60, 0.42); background: #292c2c; box-shadow: 0 4px 10px rgba(41, 44, 44, 0.2); font: 500 9px/1.35 "Microsoft YaHei UI", sans-serif; text-align: left; white-space: normal; opacity: 0; pointer-events: none; transform: translateY(-50%) translateX(3px); transition: opacity 120ms ease, transform 120ms ease; }
+.canvasTools button:hover::after,
+.canvasTools button:focus-visible::after,
+.canvasActionTools button:hover::after,
+.canvasActionTools button:focus-visible::after,
+.zoomControls button:hover::after,
+.zoomControls button:focus-visible::after { opacity: 1; transform: translateY(-50%) translateX(0); }
+
+@media (max-width: 700px) {
+  .canvasKernelShell { min-height: 320px; }
+  .canvasOverlayControls { top: 6px; right: 6px; }
+  .canvasTypeLegend { top: 6px; left: 6px; max-width: calc(100% - 104px); gap: 4px 8px; padding: 5px 7px; }
+  .canvasLegend { right: 6px; bottom: 6px; left: 6px; max-width: none; }
+  .canvasStorageNotice { top: 6px; right: 96px; max-width: calc(100% - 108px); }
+}
+
+@media (max-width: 420px) {
+  .graphNode { min-width: 64px; min-height: 40px; }
+  .graphNode strong { max-width: 70px; overflow: hidden; font-size: 9px; text-overflow: ellipsis; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvasEdge,
+  .canvasEdgeActive,
+  .canvasTools button::after,
+  .canvasActionTools button::after,
+  .zoomControls button::after { transition-duration: 0.01ms !important; }
+}

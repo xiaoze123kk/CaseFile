@@ -322,7 +322,10 @@ beforeEach(() => {
   mocks.patchCaseDraftObject.mockReset();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 describe("production analyst workbench", () => {
   it("shows explicit gates for a missing or invalid project id", () => {
@@ -740,6 +743,22 @@ describe("production analyst workbench", () => {
     expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();
   });
 
+  it("renders only the event sequence in the Current Draft timeline", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", {
+      name: "搜索对象名称或编号",
+    });
+    expect(
+      screen.getByRole("heading", { name: "真实测试卷宗" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("application", { name: "事件关系图" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("同步关系图")).not.toBeInTheDocument();
+  });
+
   it("clears stale timeline context for an object without related events", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
@@ -815,10 +834,13 @@ describe("production analyst workbench", () => {
       name: "搜索对象名称或编号",
     });
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
-    const graph = screen.getByRole("group", { name: "事件关系图" });
+    const graph = screen.getByRole("application", { name: "事件关系图" });
     expect(
-      graph.querySelectorAll('g[data-active="true"]').length,
-    ).toBeGreaterThan(0);
+      within(graph).getByRole("button", { name: /真实调查员/ }),
+    ).toHaveAttribute("data-active", "true");
+    expect(
+      within(graph).getByRole("button", { name: /值班员/ }),
+    ).toHaveAttribute("data-related", "true");
 
     fireEvent.click(
       within(graph).getByRole("button", { name: /值班员/ }),

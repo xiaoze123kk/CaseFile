@@ -10,14 +10,23 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildWorkbenchCandidates,
+  defaultWorkbenchSeed,
 } from "@/features/analyst-workbench/analyst-fixture";
 import { AnalystWorkbench } from "@/features/analyst-workbench/analyst-workbench";
+import { WorkbenchCanvasKernel } from "@/features/analyst-workbench/workbench-canvas-kernel";
+import {
+  workbenchCanvasLayoutStorageKey,
+  type WorkbenchCanvasLayoutIdentity,
+} from "@/features/analyst-workbench/workbench-canvas-layout";
 import {
   CaseSessionProvider,
   useCaseSession,
 } from "@/features/case-session/case-session-provider";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 function renderWorkbench(children = <AnalystWorkbench />) {
   return render(<CaseSessionProvider>{children}</CaseSessionProvider>);
@@ -210,20 +219,29 @@ describe("analyst workbench", () => {
     ).toBe(true);
   });
 
-  it("resizes the timeline panel by dragging the split handle", () => {
+  it("keeps the timeline focused on events without a synchronized graph", () => {
     const { container } = renderWorkbench();
 
-    const handle = container.querySelector(
-      '[data-testid="timeline-resize-handle"]',
-    ) as HTMLElement;
-    const overview = handle.parentElement as HTMLElement;
-    expect(overview.style.getPropertyValue("--timeline-width")).toBe("340px");
+    expect(screen.getByRole("heading", { name: "雾港失联前 34 分钟" })).toBeInTheDocument();
+    expect(screen.queryByText("同步关系图")).not.toBeInTheDocument();
+    expect(
+      container.querySelector('[data-testid="timeline-resize-handle"]'),
+    ).not.toBeInTheDocument();
+    expect(
+      container.querySelector('[aria-label="事件关系图"]'),
+    ).not.toBeInTheDocument();
+  });
 
-    fireEvent.pointerDown(handle, { clientX: 100, pointerId: 1 });
-    fireEvent.pointerMove(handle, { clientX: 180, pointerId: 1 });
-    fireEvent.pointerUp(handle, { pointerId: 1 });
+  it("limits ArrowUp and ArrowDown timeline navigation to the timeline view", () => {
+    const { container } = renderWorkbench();
+    const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
+    const selectedBefore = canvas.getAttribute("data-selected-object-id");
 
-    expect(overview.style.getPropertyValue("--timeline-width")).toBe("420px");
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    fireEvent.keyDown(canvas, { key: "ArrowDown" });
+
+    expect(canvas).toHaveAttribute("data-workbench-view", "relations");
+    expect(canvas).toHaveAttribute("data-selected-object-id", selectedBefore);
   });
 
   it("compiles the dossier into novel and script formats with gate gating", () => {
@@ -271,7 +289,7 @@ describe("analyst workbench", () => {
     expect(screen.getByText(/已生成 小说 产物/)).toBeInTheDocument();
   });
 
-  it("pans the relation graph canvas with the hand tool", () => {
+  it("switches the relation canvas into pan mode without activating nodes", () => {
     const { container } = renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
@@ -280,12 +298,10 @@ describe("analyst workbench", () => {
       '[aria-label="事件关系图"]',
     ) as HTMLElement;
 
-    fireEvent.pointerDown(board, { clientX: 100, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(board, { clientX: 160, clientY: 140, pointerId: 1 });
-    fireEvent.pointerUp(board, { pointerId: 1 });
-
-    const panStage = board.parentElement as HTMLElement;
-    expect(panStage.style.transform).toBe("translate(60px, 40px)");
+    expect(board).toHaveAttribute("data-tool", "pan");
+    expect(
+      screen.getByRole("button", { name: "平移工具" }),
+    ).toHaveAttribute("aria-pressed", "true");
 
     // 平移模式下点击节点不触发对象联动
     const node = within(board).getByRole("button", { name: /内部接应者/ });
@@ -317,6 +333,243 @@ describe("analyst workbench", () => {
     expect(
       screen.getByRole("button", { name: "缩放比例 100%" }),
     ).toBeInTheDocument();
+  });
+
+  it("describes every canvas control on hover or keyboard focus", () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+
+    const expectedTooltips = [
+      ["选择工具", "点击切换多选；框选一组节点"],
+      ["平移工具", "拖动画布"],
+      ["适配全部", "适配全部节点"],
+      ["全屏查看画布", "全屏查看画布"],
+      ["重新整理", "重新整理布局"],
+      ["撤销布局修改", "撤销布局修改"],
+      ["重做布局修改", "重做布局修改"],
+      ["缩小", "缩小画布"],
+      ["缩放比例 100%", "恢复为 100%"],
+      ["放大", "放大画布"],
+    ] as const;
+
+    expectedTooltips.forEach(([name, tooltip]) => {
+      expect(screen.getByRole("button", { name })).toHaveAttribute(
+        "data-tooltip",
+        tooltip,
+      );
+    });
+  });
+
+  it("shows distinct node-type colors in a top-left legend", () => {
+    const { container } = renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+
+    const legend = container.querySelector(
+      '[aria-label="节点类型图例"]',
+    ) as HTMLElement;
+    expect(legend).toBeInTheDocument();
+    ["人物", "证据", "事件", "地点", "假设"].forEach((label) => {
+      expect(within(legend).getByText(label)).toBeInTheDocument();
+    });
+
+    const graph = screen.getByRole("application", { name: "事件关系图" });
+    const person = within(graph).getByRole("button", { name: "人物：秦彻" });
+    const evidence = within(graph).getByRole("button", {
+      name: "证据：07 号门禁记录",
+    });
+    const personLegend = within(legend).getByText("人物");
+    const evidenceLegend = within(legend).getByText("证据");
+
+    expect(person.style.getPropertyValue("--canvas-node-accent")).toBe(
+      personLegend.style.getPropertyValue("--canvas-node-accent"),
+    );
+    expect(evidence.style.getPropertyValue("--canvas-node-accent")).toBe(
+      evidenceLegend.style.getPropertyValue("--canvas-node-accent"),
+    );
+    expect(person.style.getPropertyValue("--canvas-node-accent")).not.toBe(
+      evidence.style.getPropertyValue("--canvas-node-accent"),
+    );
+  });
+
+  it("highlights the union of relationships for multiple selected nodes", async () => {
+    render(
+      <div style={{ width: 800, height: 500 }}>
+        <WorkbenchCanvasKernel
+          ariaLabel="多选关系测试画布"
+          direction="LR"
+          edges={[
+            { id: "a-x", source: "a", target: "x", label: "A-X" },
+            { id: "b-y", source: "b", target: "y", label: "B-Y" },
+          ]}
+          externalSelectedNodeIds={[]}
+          identity={{ scope: "test:multi-select", revision: "1", view: "relations" }}
+          nodes={[
+            { id: "a", variant: "relationship", kind: "person", caption: "人物", label: "甲", ariaLabel: "人物：甲", accent: "#4b6fb1", selectableId: "a", width: 120, height: 52 },
+            { id: "b", variant: "relationship", kind: "person", caption: "人物", label: "乙", ariaLabel: "人物：乙", accent: "#4b6fb1", selectableId: "b", width: 120, height: 52 },
+            { id: "x", variant: "relationship", kind: "event", caption: "事件", label: "事件甲", ariaLabel: "事件：事件甲", accent: "#c54b4b", selectableId: "x", width: 120, height: 52 },
+            { id: "y", variant: "relationship", kind: "event", caption: "事件", label: "事件乙", ariaLabel: "事件：事件乙", accent: "#c54b4b", selectableId: "y", width: 120, height: 52 },
+          ]}
+          onActivateNode={() => undefined}
+        />
+      </div>,
+    );
+    const graph = screen.getByRole("application", {
+      name: "多选关系测试画布",
+    });
+    const first = within(graph).getByRole("button", { name: "人物：甲" });
+    const second = within(graph).getByRole("button", { name: "人物：乙" });
+    const firstRelation = within(graph).getByRole("button", {
+      name: "事件：事件甲",
+    });
+    const secondRelation = within(graph).getByRole("button", {
+      name: "事件：事件乙",
+    });
+
+    fireEvent.click(first);
+    fireEvent.click(second);
+
+    await waitFor(() => {
+      expect(first.closest(".react-flow__node")).toHaveClass("selected");
+      expect(second.closest(".react-flow__node")).toHaveClass("selected");
+    });
+    expect(firstRelation).toHaveAttribute("data-related", "true");
+    expect(secondRelation).toHaveAttribute("data-related", "true");
+
+    fireEvent.click(first);
+    await waitFor(() =>
+      expect(first.closest(".react-flow__node")).not.toHaveClass("selected"),
+    );
+    expect(second.closest(".react-flow__node")).toHaveClass("selected");
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    expect(firstRelation).toHaveAttribute("data-related", "false");
+    expect(secondRelation).toHaveAttribute("data-related", "true");
+  });
+
+  it("falls back with a non-blocking message when fullscreen is unavailable", () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    fireEvent.click(screen.getByRole("button", { name: "全屏查看画布" }));
+
+    expect(
+      screen.getByText("当前浏览器不支持画布全屏；仍可使用适配与缩放查看。"),
+    ).toHaveAttribute("role", "status");
+  });
+
+  it("enters and exits canvas fullscreen while keeping the button state in sync", async () => {
+    const fullscreenElementDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      "fullscreenElement",
+    );
+    const exitFullscreenDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      "exitFullscreen",
+    );
+    let fullscreenElement: Element | null = null;
+
+    try {
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        get: () => fullscreenElement,
+      });
+      Object.defineProperty(document, "exitFullscreen", {
+        configurable: true,
+        value: vi.fn(async () => {
+          fullscreenElement = null;
+          document.dispatchEvent(new Event("fullscreenchange"));
+        }),
+      });
+
+      renderWorkbench();
+      fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+      const enterButton = screen.getByRole("button", {
+        name: "全屏查看画布",
+      });
+      const shell = enterButton.closest("[data-layout-key]") as HTMLElement;
+      const requestFullscreen = vi.fn(async () => {
+        fullscreenElement = shell;
+        document.dispatchEvent(new Event("fullscreenchange"));
+      });
+      Object.defineProperty(shell, "requestFullscreen", {
+        configurable: true,
+        value: requestFullscreen,
+      });
+
+      fireEvent.click(enterButton);
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "退出全屏" })).toHaveAttribute(
+          "data-tooltip",
+          "退出全屏",
+        ),
+      );
+      expect(requestFullscreen).toHaveBeenCalledOnce();
+      expect(shell).toHaveAttribute("data-fullscreen", "true");
+
+      fireEvent.click(screen.getByRole("button", { name: "退出全屏" }));
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "全屏查看画布" }),
+        ).toBeInTheDocument(),
+      );
+      expect(document.exitFullscreen).toHaveBeenCalledOnce();
+      expect(shell).toHaveAttribute("data-fullscreen", "false");
+    } finally {
+      if (fullscreenElementDescriptor) {
+        Object.defineProperty(
+          document,
+          "fullscreenElement",
+          fullscreenElementDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(document, "fullscreenElement");
+      }
+      if (exitFullscreenDescriptor) {
+        Object.defineProperty(
+          document,
+          "exitFullscreen",
+          exitFullscreenDescriptor,
+        );
+      } else {
+        Reflect.deleteProperty(document, "exitFullscreen");
+      }
+    }
+  });
+
+  it("treats automatic relayout as one undoable layout command", async () => {
+    const identity: WorkbenchCanvasLayoutIdentity = {
+      scope: `fixture:${defaultWorkbenchSeed.id}:current`,
+      revision: defaultWorkbenchSeed.caseMeta.revision,
+      view: "relations",
+    };
+    localStorage.setItem(
+      workbenchCanvasLayoutStorageKey(identity),
+      JSON.stringify({
+        version: 1,
+        identity,
+        positions: { "PER-001": { x: 999, y: 777 } },
+        viewport: { x: 0, y: 0, zoom: 1 },
+        updatedAt: 1,
+      }),
+    );
+    const { container } = renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    const board = container.querySelector(
+      '[aria-label="事件关系图"]',
+    ) as HTMLElement;
+    const node = within(board).getByRole("button", { name: /秦彻/ });
+    const wrapper = node.closest(".react-flow__node") as HTMLElement;
+
+    await waitFor(() => expect(wrapper.style.transform).toMatch(/999px.*777px/));
+    fireEvent.click(screen.getByRole("button", { name: "重新整理" }));
+    expect(
+      screen.getByRole("button", { name: "撤销布局修改" }),
+    ).not.toBeDisabled();
+    expect(wrapper.style.transform).not.toMatch(/999px.*777px/);
+
+    fireEvent.click(screen.getByRole("button", { name: "撤销布局修改" }));
+    expect(wrapper.style.transform).toMatch(/999px.*777px/);
+    fireEvent.click(screen.getByRole("button", { name: "重做布局修改" }));
+    expect(wrapper.style.transform).not.toMatch(/999px.*777px/);
   });
 
   it("renders the export preview with the gate checklist", () => {
@@ -437,64 +690,39 @@ describe("analyst workbench", () => {
     expect(body.style.getPropertyValue("--rail-width")).toBe("374px");
   });
 
-  it("drags a relation graph node across the canvas", () => {
+  it("enables relation-node dragging only while the select tool is active", () => {
     const { container } = renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
     const board = container.querySelector(
       '[aria-label="事件关系图"]',
     ) as HTMLElement;
-    vi.spyOn(board, "getBoundingClientRect").mockReturnValue({
-      bottom: 400,
-      height: 400,
-      left: 0,
-      right: 500,
-      top: 0,
-      width: 500,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
     const node = within(board).getByRole("button", {
       name: /内部接应者/,
     });
+    const wrapper = node.closest(".react-flow__node") as HTMLElement;
 
-    fireEvent.pointerDown(node, { clientX: 100, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(board, { clientX: 250, clientY: 200, pointerId: 1 });
-    fireEvent.pointerUp(board, { pointerId: 1 });
-
-    expect(node.style.getPropertyValue("--node-x")).toBe("50%");
-    expect(node.style.getPropertyValue("--node-y")).toBe("50%");
+    expect(wrapper).toHaveClass("draggable");
+    fireEvent.click(screen.getByRole("button", { name: "平移工具" }));
+    expect(wrapper).not.toHaveClass("draggable");
   });
 
-  it("drags a reasoning node across the canvas", () => {
+  it("keeps reasoning nodes and edges read-only at the domain level", () => {
     const { container } = renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
     const board = container.querySelector(
       '[aria-label="推理画布"]',
     ) as HTMLElement;
-    vi.spyOn(board, "getBoundingClientRect").mockReturnValue({
-      bottom: 400,
-      height: 400,
-      left: 0,
-      right: 500,
-      top: 0,
-      width: 500,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    } as DOMRect);
     const node = screen.getByRole("button", {
       name: "证据：07 号门禁记录",
     });
 
-    fireEvent.pointerDown(node, { clientX: 100, clientY: 100, pointerId: 1 });
-    fireEvent.pointerMove(board, { clientX: 250, clientY: 200, pointerId: 1 });
-    fireEvent.pointerUp(board, { pointerId: 1 });
-
-    expect(node.style.getPropertyValue("--node-x")).toBe("50%");
-    expect(node.style.getPropertyValue("--node-y")).toBe("50%");
+    node.focus();
+    fireEvent.keyDown(node, { key: "Delete" });
+    fireEvent.keyDown(node, { key: "Backspace" });
+    expect(node).toBeInTheDocument();
+    expect(board.querySelectorAll(".react-flow__handle.connecting")).toHaveLength(0);
   });
 
   it("switches the complete workbench seed and keeps candidate navigation in the title row", () => {

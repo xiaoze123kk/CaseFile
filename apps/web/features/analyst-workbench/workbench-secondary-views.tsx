@@ -1,5 +1,4 @@
 import {
-  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   useRef,
   useState,
@@ -18,13 +17,10 @@ import {
 } from "./workbench-canvas-controls";
 import { clamp } from "./workbench-geometry";
 import { reasoningOutcomeLabels } from "./workbench-presenters";
-import { RelationshipGraph } from "./workbench-relationship-graph";
 import type {
   WorkbenchCoordinateSystem,
   WorkbenchModel,
 } from "./workbench-real-data";
-
-const DEFAULT_TIMELINE_WIDTH = 340;
 
 function timelineClock(value: string) {
   const date = new Date(value);
@@ -39,134 +35,77 @@ function timelineClock(value: string) {
 export function TimelineOverview({
   seed,
   selectedEventId,
-  selectedObjectId,
   issueStatuses,
   onSelectEvent,
-  onSelectObject,
 }: {
   seed: WorkbenchSeed;
   selectedEventId: string | null;
-  selectedObjectId: string | null;
   issueStatuses: Record<string, IssueStatus>;
   onSelectEvent: (eventId: string) => void;
-  onSelectObject: (objectId: string) => void;
 }) {
   const selectedEvent = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
-  const [timelineWidth, setTimelineWidth] = useState<number | null>(null);
-  const timelineResizeRef = useRef<{
-    startX: number;
-    startWidth: number;
-  } | null>(null);
-
-  function startTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
-    timelineResizeRef.current = {
-      startX: event.clientX,
-      startWidth: timelineWidth ?? DEFAULT_TIMELINE_WIDTH,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
-    const resize = timelineResizeRef.current;
-    if (!resize) return;
-    setTimelineWidth(
-      clamp(resize.startWidth + (event.clientX - resize.startX), 240, 560),
-    );
-  }
-
-  function endTimelineResize() {
-    timelineResizeRef.current = null;
-  }
 
   if (!selectedEvent) {
     return null;
   }
 
   return (
-    <div
-      className={styles.timelineOverview}
-      style={
-        {
-          "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
-        } as CSSProperties
-      }
+    <section
+      className={styles.timelinePanel}
+      aria-labelledby="timeline-heading"
     >
-      <div
-        aria-hidden="true"
-        className={styles.timelineResizeHandle}
-        data-testid="timeline-resize-handle"
-        onPointerCancel={endTimelineResize}
-        onPointerDown={startTimelineResize}
-        onPointerMove={moveTimelineResize}
-        onPointerUp={endTimelineResize}
-      />
-      <section
-        className={styles.timelinePanel}
-        aria-labelledby="timeline-heading"
-      >
-        <header className={styles.sectionHeader}>
-          <div>
-            <span>事件序列</span>
-            <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
-          </div>
-          <small>{seed.caseMeta.timelineMeta}</small>
-        </header>
-        <ol className={styles.timelineList}>
-          {seed.timelineEvents.map((event) => {
-            const selected = event.id === selectedEventId;
-            const issue = seed.validationIssues.find((item) =>
-              event.issueIds.includes(item.id),
-            );
-            const issueStatus = issue ? issueStatuses[issue.id] : undefined;
-            return (
-              <li key={event.id}>
-                <button
-                  aria-pressed={selected}
-                  data-selected={selected}
-                  onClick={() => onSelectEvent(event.id)}
-                  type="button"
+      <header className={styles.sectionHeader}>
+        <div>
+          <span>事件序列</span>
+          <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
+        </div>
+        <small>{seed.caseMeta.timelineMeta}</small>
+      </header>
+      <ol className={styles.timelineList}>
+        {seed.timelineEvents.map((event) => {
+          const selected = event.id === selectedEventId;
+          const issue = seed.validationIssues.find((item) =>
+            event.issueIds.includes(item.id),
+          );
+          const issueStatus = issue ? issueStatuses[issue.id] : undefined;
+          return (
+            <li key={event.id}>
+              <button
+                aria-pressed={selected}
+                data-selected={selected}
+                onClick={() => onSelectEvent(event.id)}
+                type="button"
+              >
+                <time
+                  aria-label={event.time}
+                  className={styles.eventTime}
+                  dateTime={event.time}
+                  title={event.time}
                 >
-                  <time
-                    aria-label={event.time}
-                    className={styles.eventTime}
-                    dateTime={event.time}
-                    title={event.time}
+                  {timelineClock(event.time)}
+                </time>
+                <span className={styles.eventMarker} aria-hidden="true" />
+                <span className={styles.eventCopy}>
+                  <strong>{event.label}</strong>
+                  <small>{event.location}</small>
+                  {selected ? <em>{event.summary}</em> : null}
+                </span>
+                {issue ? (
+                  <span
+                    className={styles.eventIssue}
+                    data-status={issueStatus}
                   >
-                    {timelineClock(event.time)}
-                  </time>
-                  <span className={styles.eventMarker} aria-hidden="true" />
-                  <span className={styles.eventCopy}>
-                    <strong>{event.label}</strong>
-                    <small>{event.location}</small>
-                    {selected ? <em>{event.summary}</em> : null}
+                    {issue.severity}
                   </span>
-                  {issue ? (
-                    <span
-                      className={styles.eventIssue}
-                      data-status={issueStatus}
-                    >
-                      {issue.severity}
-                    </span>
-                  ) : (
-                    <span className={styles.eventClear}>通过</span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-      <RelationshipGraph
-        compact
-        onSelectObject={onSelectObject}
-        relatedObjectIds={[
-          selectedEvent.id,
-          ...selectedEvent.relatedObjectIds,
-        ]}
-        seed={seed}
-        selectedObjectId={selectedObjectId}
-      />
-    </div>
+                ) : (
+                  <span className={styles.eventClear}>通过</span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 

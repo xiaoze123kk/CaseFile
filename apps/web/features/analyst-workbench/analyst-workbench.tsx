@@ -746,6 +746,12 @@ function AnalystWorkbenchSurface({
 }) {
   const realData = realDocument !== null;
   const writeLocked = readOnlyPreview;
+  const canvasLayoutScope =
+    projectId === null
+      ? `fixture:${seed.id}:current`
+      : readOnlyPreview && previewCandidate
+        ? `project:${projectId}:candidate:${previewCandidate.task_run_id}`
+        : `project:${projectId}:current`;
   const contextState = realContextState ?? {
     data: null,
     error: null,
@@ -1219,7 +1225,7 @@ function AnalystWorkbenchSurface({
   const matchingPaletteObjects = seed.caseObjects.filter((object) => !normalizedPaletteQuery || `${object.label} ${object.code} ${object.id}`.toLocaleLowerCase("zh-CN").includes(normalizedPaletteQuery)).slice(0, 6);
 
   function handleTimelineKeys(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (!seed.timelineEvents.length) return;
+    if (view !== "timeline" || !seed.timelineEvents.length) return;
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
     const currentIndex = seed.timelineEvents.findIndex((item) => item.id === selectedEventId);
@@ -1513,7 +1519,7 @@ function AnalystWorkbenchSurface({
             {view === "timeline" ? (
               seed.timelineEvents.length ? (
                 selectedEvent ? (
-                  <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedEventId={selectedEventId} selectedObjectId={selectedObjectId} />
+                  <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} />
                 ) : (
                   <section className={styles.realEmptyState}><strong>此对象没有关联事件</strong><p>检查器仍显示当前对象详情；可以从对象树选择其他对象继续核对。</p></section>
                 )
@@ -1522,10 +1528,10 @@ function AnalystWorkbenchSurface({
               )
             ) : null}
             {view === "relations" ? (
-              <RelationshipGraph onSelectObject={(objectId) => selectObject(objectId, true)} relatedObjectIds={eventRelatedObjectIds} seed={seed} selectedObjectId={selectedObjectId} />
+              <RelationshipGraph layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
             ) : null}
             {view === "reasoning" ? (
-              <ReasoningGraphView onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} />
+              <ReasoningGraphView layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
             ) : null}
             {view === "map" ? <MapView onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} /> : null}
             {view === "dossier" ? (

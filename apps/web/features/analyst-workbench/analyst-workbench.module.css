@@ -776,42 +776,7 @@
 .inspectorRestore:hover { color: var(--primary-strong); background: var(--paper); }
 .inspectorRestore svg { width: 13px; height: 13px; transform: rotate(90deg); }
 
-.timelineOverview {
-  position: relative;
-  display: grid;
-  height: 100%;
-  min-height: 0;
-  grid-template-columns: var(--timeline-width, 340px) minmax(320px, 1fr);
-  gap: 0;
-}
-
-.timelineResizeHandle {
-  position: absolute;
-  z-index: 2;
-  top: 0;
-  bottom: 0;
-  left: calc(var(--timeline-width, 340px) + 3px);
-  width: 6px;
-  cursor: col-resize;
-  touch-action: none;
-  user-select: none;
-}
-.timelineResizeHandle::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 2px;
-  width: 2px;
-  content: "";
-  background: transparent;
-}
-.timelineResizeHandle:hover::before,
-.timelineResizeHandle:active::before {
-  background: rgba(199, 139, 60, 0.55);
-}
-
 .timelinePanel,
-.graphPanel,
 .mapView,
 .dossierView,
 .exportView,
@@ -824,17 +789,12 @@
 }
 
 .canvasContent[data-view="timeline"] .timelinePanel,
-.canvasContent[data-view="timeline"] .graphPanel,
 .canvasContent[data-view="relations"] .relationsView,
 .canvasContent[data-view="reasoning"] .reasoningView,
 .canvasContent[data-view="map"] .mapView {
   border: 0;
   border-radius: 0;
   box-shadow: none;
-}
-
-.canvasContent[data-view="timeline"] .graphPanel {
-  border-left: 1px solid var(--rule);
 }
 
 .canvasContent[data-view="relations"] .relationsView,
@@ -844,10 +804,14 @@
   min-height: 0;
 }
 
-.timelinePanel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.timelinePanel {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+}
 
-.sectionHeader,
-.graphHeading {
+.sectionHeader {
   display: flex;
   min-height: 46px;
   align-items: center;
@@ -857,14 +821,10 @@
   border-bottom: 1px solid var(--rule);
 }
 
-.sectionHeader > div:first-child,
-.graphHeading > div:first-child { display: flex; min-width: 0; flex-direction: column; }
-.sectionHeader span,
-.graphHeading span { color: var(--primary-strong); }
-.sectionHeader h2,
-.graphHeading strong { overflow: hidden; margin: 4px 0 0; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.sectionHeader small,
-.graphHeading > small { flex: 0 0 auto; color: var(--ink-faint); }
+.sectionHeader > div:first-child { display: flex; min-width: 0; flex-direction: column; }
+.sectionHeader span { color: var(--primary-strong); }
+.sectionHeader h2 { overflow: hidden; margin: 4px 0 0; font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif; font-size: 14px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.sectionHeader small { flex: 0 0 auto; color: var(--ink-faint); }
 
 .timelineList {
   position: relative;
@@ -917,64 +877,6 @@
 .eventIssue[data-status="resolved"] { color: var(--success); background: rgba(53, 164, 111, 0.09); }
 .eventIssue[data-status="exception"] { color: #946013; background: rgba(217, 154, 62, 0.12); }
 .eventClear { color: var(--success); }
-
-.graphPanel { display: grid; grid-template-rows: auto minmax(260px, 1fr) auto; overflow: hidden; }
-.graphPanel[data-compact="true"] { grid-template-rows: auto minmax(260px, 1fr); }
-.graphHeading span { font-family: "Cascadia Mono", Consolas, monospace; font-size: 9px; letter-spacing: 0.09em; }
-.graphHeading strong { display: block; }
-.graphLegend { display: flex; align-items: center; gap: 6px; color: var(--ink-faint) !important; }
-.graphLegend i { display: block; width: 8px; height: 8px; border-radius: 1px; background: var(--primary); box-shadow: 0 0 0 4px rgba(199, 139, 60, 0.12); transform: rotate(45deg); }
-
-.graphBoard {
-  position: relative;
-  height: 100%;
-  min-height: 260px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at center, rgba(142, 150, 148, 0.11), transparent 42%),
-    linear-gradient(rgba(41, 44, 44, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(41, 44, 44, 0.035) 1px, transparent 1px);
-  background-size: auto, 20px 20px, 20px 20px;
-}
-
-.graphEdges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.graphEdges line { stroke: var(--relation); stroke-opacity: 0.62; stroke-width: 0.35; vector-effect: non-scaling-stroke; }
-.graphEdges g[data-active="true"] line { stroke: var(--primary); stroke-opacity: 1; stroke-width: 0.65; }
-.graphEdges text { fill: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 2.2px; text-anchor: middle; }
-
-.graphNode {
-  position: absolute;
-  left: var(--node-x);
-  top: var(--node-y);
-  display: flex;
-  min-width: 84px;
-  min-height: 44px;
-  justify-content: center;
-  flex-direction: column;
-  padding: 6px 9px;
-  color: var(--ink);
-  border: 1px solid rgba(41, 44, 44, 0.28);
-  background: var(--paper-high);
-  box-shadow: 0 6px 15px rgba(41, 44, 44, 0.08);
-  text-align: left;
-  transform: translate(-50%, -50%);
-}
-
-.graphNode { cursor: grab; }
-.graphNode:active { cursor: grabbing; }
-.graphNode:hover { border-color: var(--primary); transform: translate(-50%, -50%) translateY(-2px); }
-.graphNode[data-related="true"] { border-color: var(--relation); }
-.graphNode[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--chrome-soft); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.15), 0 8px 18px rgba(41, 44, 44, 0.17); }
-.graphNode::before { position: absolute; top: 0; bottom: 0; left: 0; width: 3px; content: ""; background: var(--relation); }
-.graphNode[data-kind="person"]::before { background: #789092; }
-.graphNode[data-kind="evidence"]::before { background: #bf8037; }
-.graphNode[data-kind="event"]::before { background: #ca6658; }
-.graphNode[data-kind="location"]::before { background: #91895c; }
-.graphNode[data-kind="hypothesis"]::before { background: #856b82; }
-.graphNode[aria-pressed="true"]::before { background: var(--primary); }
-.graphNode small { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; }
-.graphNode strong { margin-top: 2px; font-size: 10px; font-weight: 650; white-space: nowrap; }
-.graphNode[aria-pressed="true"] small { color: #c8c1b5; }
 
 .graphAlternative { border-top: 1px solid var(--rule); background: var(--paper-high); }
 .graphAlternative summary { min-height: 38px; padding: 11px 14px; color: var(--ink-muted); cursor: pointer; font-size: 10px; }
@@ -1341,9 +1243,6 @@
   .topbar { grid-template-columns: 220px minmax(170px, 0.7fr) auto minmax(180px, 0.8fr) auto; }
   .workspaceBody { grid-template-columns: 224px minmax(430px, 1fr) 316px; }
   .topStatus button { min-width: 104px; padding: 0 9px; }
-  .timelineOverview { grid-template-columns: minmax(260px, 0.9fr) minmax(280px, 1.1fr); }
-  .graphNode { min-width: 72px; padding-right: 7px; padding-left: 7px; }
-  .graphNode strong { max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
   .knowledgeSequence { grid-template-columns: 1fr 17px 1fr 17px 1fr; padding: 12px; }
   .knowledgeSequence article { padding: 12px; }
   .drawerHeader { grid-template-columns: 224px minmax(0, 1fr) 130px; }
@@ -1355,11 +1254,7 @@
   .workspaceBody { grid-template-columns: 208px minmax(410px, 1fr) 292px; }
   .brandBlock { padding: 0 13px; }
   .globalSearch { min-width: 190px; }
-  .canvasContent[data-view="timeline"] { overflow: auto; }
-  .timelineOverview { height: auto; grid-template-columns: 1fr; gap: 9px; }
-  .timelineResizeHandle { display: none; }
   .timelinePanel { min-height: 340px; }
-  .graphPanel { min-height: 360px; }
   .issueList { grid-template-columns: 1fr; }
   .knowledgeSequence { grid-template-columns: 1fr; gap: 8px; }
   .knowledgeSequence > i { width: 1px; height: 14px; justify-self: center; }
@@ -1439,14 +1334,11 @@
   .viewTabs button { flex: 1 0 auto; justify-content: center; }
   .viewTabs button span { display: none; }
   .canvasContent { padding: 9px; }
-  .timelineOverview { min-height: auto; }
   .timelinePanel,
-  .graphPanel,
   .mapView,
   .dossierView,
   .exportView,
   .evidenceCompare { min-height: 100%; }
-  .graphBoard { min-height: 330px; }
   .dossierSheet,
   .exportSheet { width: calc(100% - 18px); margin: 9px; }
   .dossierSheet { grid-template-columns: 46px minmax(0, 1fr); }
@@ -1457,9 +1349,6 @@
   .exportCover h3 { margin-top: 38px; }
   .knowledgeSequence { padding: 9px; }
   .diffPanel { margin: 0 9px 9px; }
-  .reasoningBoard { min-height: 320px; }
-  .reasoningLegend { right: 6px; bottom: 6px; }
-  .relationsBoard { min-height: 320px; }
 
   .inspector { grid-template-rows: 58px 44px minmax(0, 1fr) 58px; }
   .inspectorTabs button { min-height: 44px; }
@@ -1499,8 +1388,6 @@
   .viewTabs button { padding: 0 9px; font-size: 10px; }
   .sectionHeader { min-height: 46px; padding: 0 10px; }
   .sectionHeader small { display: none; }
-  .graphNode { min-width: 64px; min-height: 40px; }
-  .graphNode strong { max-width: 70px; font-size: 9px; }
   .sheetFields { grid-template-columns: 1fr; }
   .sheetWide { grid-column: auto; }
   .issueActions { grid-template-columns: 1fr; }
@@ -1610,25 +1497,6 @@
 .zoomViewport { position: relative; height: 100%; min-height: 0; overflow: auto; }
 .zoomStage { width: 100%; min-width: 100%; height: 100%; min-height: 100%; zoom: var(--zoom, 1); }
 .panStage { width: 100%; height: 100%; min-height: 100%; }
-.canvasOverlayControls {
-  position: absolute;
-  z-index: 3;
-  top: 10px;
-  right: 10px;
-  display: flex;
-  min-width: 78px;
-  align-items: stretch;
-  flex-direction: column;
-  gap: 6px;
-  padding: 6px;
-  border: 1px solid rgba(41, 44, 44, 0.2);
-  background: rgba(251, 250, 246, 0.92);
-  box-shadow: 0 5px 14px rgba(41, 44, 44, 0.12);
-  backdrop-filter: blur(4px);
-}
-.canvasOverlayControls .canvasTools,
-.canvasOverlayControls .zoomControls { align-self: flex-end; }
-.canvasOverlayControls .graphLegend { justify-content: flex-start; padding: 0 2px 2px; }
 .sectionTrailing { display: flex; min-width: 0; align-items: center; gap: 12px; }
 .mapModeToggle { display: inline-flex; border: 1px solid var(--rule); background: var(--paper); }
 .mapModeToggle button { min-height: 28px; padding: 0 9px; color: var(--ink-muted); border: 0; border-left: 1px solid var(--rule); background: transparent; font-size: 9px; }
@@ -1647,39 +1515,7 @@
 .mapEmpty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; padding: 24px; text-align: center; color: var(--ink-muted); }
 .mapEmpty strong { color: var(--ink); font-family: "Noto Serif SC", "STSong", SimSun, serif; font-size: 16px; }
 .mapEmpty span { max-width: 38ch; font-size: 10px; line-height: 1.6; }
-.zoomControls { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
-.zoomControls button {
-  min-width: 30px;
-  min-height: 28px;
-  padding: 0 6px;
-  color: var(--ink-muted);
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 10px;
-}
-.zoomControls button:hover:not(:disabled) { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
-.zoomControls button:disabled { opacity: 0.4; cursor: default; }
-.canvasTools { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; }
-.canvasTools button {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  color: var(--ink-muted);
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-}
-.canvasTools button:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
-.canvasTools button[aria-pressed="true"] { color: #f5f0e6; border-color: var(--primary); background: var(--primary); }
-.canvasTools svg { width: 14px; height: 14px; }
-.graphBoard[data-tool="pan"],
-.relationsBoard[data-tool="pan"],
-.reasoningBoard[data-tool="pan"],
 .mapBoard[data-tool="pan"] { cursor: grab; }
-.graphBoard[data-tool="pan"]:active,
-.relationsBoard[data-tool="pan"]:active,
-.reasoningBoard[data-tool="pan"]:active,
 .mapBoard[data-tool="pan"]:active { cursor: grabbing; }
 
 /* 编译中心 */
@@ -1844,117 +1680,9 @@
 .agentInput button:hover { background: var(--primary-hover); }
 .agentInput button:disabled { opacity: 0.5; cursor: default; }
 
-/* 推理过程图：铺满主画布的可拖动推理画布 */
+/* 推理过程图与关系图：共享 React Flow 视口，节点仍保持档案卡片语义。 */
 .reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
-.reasoningBoard {
-  position: relative;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  background:
-    linear-gradient(rgba(199, 139, 60, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(199, 139, 60, 0.045) 1px, transparent 1px),
-    var(--paper);
-  background-size: 22px 22px;
-  touch-action: none;
-}
 .relationsView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
-.relationsBoard {
-  position: relative;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at center, rgba(142, 150, 148, 0.11), transparent 42%),
-    linear-gradient(rgba(41, 44, 44, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(41, 44, 44, 0.035) 1px, transparent 1px),
-    var(--paper);
-  background-size: auto, 22px 22px, 22px 22px, auto;
-  touch-action: none;
-}
-.reasoningEdges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.reasoningEdges line {
-  stroke: var(--relation);
-  stroke-opacity: 0.6;
-  stroke-width: 0.35;
-  vector-effect: non-scaling-stroke;
-}
-.reasoningEdges g[data-kind="chain"] line { stroke: var(--primary); stroke-opacity: 0.85; }
-.reasoningEdges g[data-kind="supported"] line { stroke: var(--success); }
-.reasoningEdges g[data-kind="contested"] line { stroke: var(--warning); stroke-dasharray: 2.4 1.6; }
-.reasoningEdges g[data-kind="eliminated"] line { stroke: var(--issue); stroke-dasharray: 2.4 1.6; }
-.reasoningNode {
-  position: absolute;
-  left: var(--node-x);
-  top: var(--node-y);
-  display: flex;
-  max-width: 170px;
-  min-width: 96px;
-  align-items: center;
-  flex-direction: column;
-  gap: 2px;
-  padding: 7px 9px;
-  text-align: center;
-  border: 1px solid var(--rule);
-  background: var(--paper-high);
-  box-shadow: 0 2px 6px rgba(41, 44, 44, 0.1);
-  transform: translate(-50%, -50%);
-}
-.reasoningNode::before {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  content: "";
-  background: var(--relation);
-}
-.reasoningNode small { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; }
-.reasoningNode strong { margin-top: 2px; font-size: 10px; font-weight: 600; line-height: 1.45; }
-.reasoningNode[data-kind="reason"] { min-width: 150px; border-color: rgba(199, 139, 60, 0.4); }
-.reasoningNode[data-kind="reason"]::before { background: var(--primary); }
-.reasoningNode[data-kind="reason"] small { color: var(--primary-strong); font-family: "STSong", "SimSun", serif; font-size: 9px; letter-spacing: 0.14em; }
-.reasoningNode[data-kind="evidence"]::before { background: #bf8037; }
-.reasoningNode[data-kind="hypothesis"]::before { background: #856b82; }
-.reasoningNode[data-kind="hypothesis"][data-outcome="supported"] { border-color: rgba(53, 164, 111, 0.5); }
-.reasoningNode[data-kind="hypothesis"][data-outcome="contested"] { border-color: rgba(217, 154, 62, 0.55); }
-.reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] { border-color: rgba(217, 92, 89, 0.55); }
-.reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] strong { color: var(--issue); text-decoration: line-through; text-decoration-thickness: 1.5px; }
-.reasoningNode { cursor: grab; }
-.reasoningNode:active { cursor: grabbing; }
-button.reasoningNode:hover { border-color: var(--primary); box-shadow: 0 4px 10px rgba(41, 44, 44, 0.16); }
-.reasoningLegend {
-  position: absolute;
-  right: 10px;
-  bottom: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 6px 10px;
-  border: 1px solid var(--rule);
-  background: rgba(251, 250, 246, 0.9);
-}
-.reasoningLegend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--ink-faint);
-  font-family: "Cascadia Mono", Consolas, monospace;
-  font-size: 8px;
-  letter-spacing: 0.06em;
-}
-.reasoningLegend span::before {
-  width: 16px;
-  height: 0;
-  content: "";
-  border-top: 2px solid var(--relation);
-}
-.reasoningLegend span[data-kind="chain"]::before { border-top-color: var(--primary); }
-.reasoningLegend span[data-kind="supported"]::before { border-top-color: var(--success); }
-.reasoningLegend span[data-kind="contested"]::before,
-.reasoningLegend span[data-kind="eliminated"]::before { border-top-style: dashed; }
-.reasoningLegend span[data-kind="contested"]::before { border-top-color: var(--warning); }
-.reasoningLegend span[data-kind="eliminated"]::before { border-top-color: var(--issue); }
 .reasoningTables { max-height: 150px; overflow: auto; border-top: 1px solid var(--rule); }
 .reasoningAlternative { background: var(--paper-high); }
 .reasoningAlternative summary { min-height: 38px; padding: 9px 14px; color: var(--ink-muted); cursor: pointer; font-size: 10px; }

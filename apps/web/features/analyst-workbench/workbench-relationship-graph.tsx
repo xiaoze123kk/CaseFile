@@ -1,10 +1,4 @@
-import {
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useMemo } from "react";
 
 import {
   getObject,
@@ -13,17 +7,13 @@ import {
 } from "./analyst-fixture";
 import styles from "./analyst-workbench.module.css";
 import {
-  type CanvasTool,
-  CanvasTools,
-  ZoomControls,
-} from "./workbench-canvas-controls";
-import { clamp } from "./workbench-geometry";
+  WorkbenchCanvasKernel,
+  type WorkbenchCanvasLegendItem,
+  type WorkbenchCanvasSceneEdge,
+  type WorkbenchCanvasSceneNode,
+} from "./workbench-canvas-kernel";
+import type { WorkbenchCanvasLayoutIdentity } from "./workbench-canvas-layout";
 import type { WorkbenchGraphNode } from "./workbench-real-data";
-
-interface GraphPoint {
-  x: number;
-  y: number;
-}
 
 const graphReferenceLabels: Record<string, string> = {
   casefile: "卷宗",
@@ -42,325 +32,146 @@ const graphReferenceLabels: Record<string, string> = {
   unknown: "引用",
 };
 
+const relationshipNodeAccents: Record<string, string> = {
+  casefile: "#263d42",
+  resolution_spec: "#d07a22",
+  entity: "#2f7891",
+  person: "#4b6fb1",
+  information: "#a84f78",
+  information_unit: "#9b5aa4",
+  evidence: "#c17c12",
+  event: "#c54b4b",
+  location: "#6e862d",
+  hypothesis: "#7f4a92",
+  relationship: "#2e7b67",
+  claim: "#087f8c",
+  reasoning_path: "#5361a5",
+  constraint: "#bd4068",
+  structure_lock: "#465154",
+  source_fragment: "#25849b",
+  unknown: "#747c7b",
+};
+
+function relationshipNodeAccent(kind: string) {
+  return relationshipNodeAccents[kind] ?? relationshipNodeAccents.unknown;
+}
+
 export function RelationshipGraph({
   seed,
   selectedObjectId,
-  relatedObjectIds,
   onSelectObject,
-  compact = false,
+  layoutScope,
 }: {
   seed: WorkbenchSeed;
   selectedObjectId: string | null;
-  relatedObjectIds: string[];
   onSelectObject: (objectId: string) => void;
-  compact?: boolean;
+  layoutScope: string;
 }) {
   const graphNodes = seed.graphNodes;
-  const [zoom, setZoom] = useState(1);
-  const initialPositions = useMemo(
+  const sceneNodes = useMemo<WorkbenchCanvasSceneNode[]>(
     () =>
-      Object.fromEntries(
-        graphNodes.map((node) => [
-          node.objectId,
-          { x: node.x, y: node.y },
-        ]),
-      ),
-    [graphNodes],
-  );
-  // 布局随候选种子变化：渲染期直接调整 state，拖动位置只在同一布局内保留。
-  const [canvasState, setCanvasState] = useState(() => ({
-    graphNodes,
-    positions: initialPositions,
-  }));
-  if (canvasState.graphNodes !== graphNodes) {
-    setCanvasState({ graphNodes, positions: initialPositions });
-  }
-  const positions = canvasState.positions;
-  const selectedGraphNodeIds = useMemo(
-    () =>
-      new Set(
-        graphNodes.flatMap((node) => {
-          const mappedNode = node as typeof node & Partial<WorkbenchGraphNode>;
-          const selectableId =
-            getObject(seed, node.objectId)?.id ??
-            mappedNode.directoryObjectId ??
-            null;
-          return selectableId === selectedObjectId ? [node.objectId] : [];
-        }),
-      ),
-    [graphNodes, seed, selectedObjectId],
-  );
-  const directlyRelatedNodeIds = useMemo(() => {
-    const nodeIds = new Set(selectedGraphNodeIds);
-    for (const edge of seed.graphEdges) {
-      if (selectedGraphNodeIds.has(edge.from)) nodeIds.add(edge.to);
-      if (selectedGraphNodeIds.has(edge.to)) nodeIds.add(edge.from);
-    }
-    return nodeIds;
-  }, [seed.graphEdges, selectedGraphNodeIds]);
-  const setPositions = useMemo(
-    () =>
-      (
-        updater:
-          | Record<string, GraphPoint>
-          | ((previous: Record<string, GraphPoint>) => Record<string, GraphPoint>),
-      ) =>
-        setCanvasState((previous) => ({
-          ...previous,
-          positions:
-            typeof updater === "function"
-              ? updater(previous.positions)
-              : updater,
-        })),
-    [],
-  );
-  const boardRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{
-    mode: "node" | "pan";
-    id?: string;
-    startX: number;
-    startY: number;
-    startPan?: { x: number; y: number };
-    moved: boolean;
-  } | null>(null);
-  const suppressClickRef = useRef(false);
-  const [tool, setTool] = useState<CanvasTool>("select");
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-
-  function startNodeDrag(
-    event: ReactPointerEvent<HTMLElement>,
-    objectId: string,
-  ) {
-    if (tool !== "select") return;
-    dragRef.current = {
-      mode: "node",
-      id: objectId,
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function startPanDrag(event: ReactPointerEvent<HTMLDivElement>) {
-    if (tool !== "pan") return;
-    dragRef.current = {
-      mode: "pan",
-      startX: event.clientX,
-      startY: event.clientY,
-      startPan: pan,
-      moved: false,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveDrag(event: ReactPointerEvent<HTMLDivElement>) {
-    const drag = dragRef.current;
-    const board = boardRef.current;
-    if (!drag || !board) return;
-    if (
-      !drag.moved &&
-      Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 4
-    ) {
-      drag.moved = true;
-    }
-    if (!drag.moved) return;
-    if (drag.mode === "node") {
-      const rect = board.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return;
-      const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 6, 94);
-      const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 6, 94);
-      setPositions((previous) => ({ ...previous, [drag.id!]: { x, y } }));
-    } else if (drag.startPan) {
-      setPan({
-        x: clamp(drag.startPan.x + (event.clientX - drag.startX), -600, 600),
-        y: clamp(drag.startPan.y + (event.clientY - drag.startY), -600, 600),
-      });
-    }
-  }
-
-  function endDrag() {
-    if (dragRef.current?.moved) suppressClickRef.current = true;
-    dragRef.current = null;
-  }
-
-  function selectNode(objectId: string) {
-    if (tool !== "select") return;
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false;
-      return;
-    }
-    onSelectObject(objectId);
-  }
-
-  const visibleNodeIds = new Set(graphNodes.map((node) => node.objectId));
-  const board = (
-    <div
-      aria-describedby="relationship-graph-summary"
-      aria-label="事件关系图"
-      className={compact ? styles.graphBoard : styles.relationsBoard}
-      data-tool={tool}
-      onPointerCancel={endDrag}
-      onPointerDown={startPanDrag}
-      onPointerMove={moveDrag}
-      onPointerUp={endDrag}
-      ref={boardRef}
-      role="group"
-    >
-      <svg
-        aria-hidden="true"
-        className={styles.graphEdges}
-        preserveAspectRatio="none"
-        viewBox="0 0 100 100"
-      >
-        {seed.graphEdges.map((edge, edgeIndex) => {
-          const from = positions[edge.from];
-          const to = positions[edge.to];
-          if (!from || !to) return null;
-          const active = compact
-            ? relatedObjectIds.includes(edge.from) ||
-              relatedObjectIds.includes(edge.to)
-            : selectedGraphNodeIds.has(edge.from) ||
-              selectedGraphNodeIds.has(edge.to);
-          return (
-            <g
-              data-active={active}
-              key={`${(edge as { id?: string }).id ?? `${edge.from}-${edge.to}-${edge.label}`}-${edgeIndex}`}
-            >
-              <line x1={from.x} x2={to.x} y1={from.y} y2={to.y} />
-              {!compact ? (
-                <text
-                  x={(from.x + to.x) / 2}
-                  y={(from.y + to.y) / 2 - 1.5}
-                >
-                  {edge.label}
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-      {graphNodes.map((node) => {
+      graphNodes.map((node) => {
         const mappedNode = node as typeof node & Partial<WorkbenchGraphNode>;
         const object = getObject(seed, node.objectId);
-        const position = positions[node.objectId];
-        if (!position) return null;
-        const selectableId = object?.id ?? mappedNode.directoryObjectId ?? null;
-        const selected = selectableId === selectedObjectId;
-        const related = compact
-          ? relatedObjectIds.includes(node.objectId) ||
-            (selectableId ? relatedObjectIds.includes(selectableId) : false)
-          : directlyRelatedNodeIds.has(node.objectId);
+        const selectableId = object?.id ?? mappedNode.directoryObjectId ?? undefined;
         const kind = object?.kind ?? mappedNode.kind ?? "unknown";
         const label = object?.label ?? mappedNode.label ?? node.objectId;
-        const style = {
-          "--node-x": `${position.x}%`,
-          "--node-y": `${position.y}%`,
-        } as CSSProperties;
-        return (
-          <button
-            aria-pressed={selected}
-            className={styles.graphNode}
-            data-kind={kind}
-            data-related={related}
-            disabled={!selectableId}
-            key={node.objectId}
-            onClick={() => { if (selectableId) selectNode(selectableId); }}
-            onPointerDown={(event) => startNodeDrag(event, node.objectId)}
-            style={style}
-            type="button"
-          >
-            <small>{object ? objectKindLabels[object.kind] : graphReferenceLabels[String(kind)] ?? "引用"}</small>
-            <strong>{label}</strong>
-          </button>
-        );
-      })}
-    </div>
+        const caption = object
+          ? objectKindLabels[object.kind]
+          : (graphReferenceLabels[String(kind)] ?? "引用");
+        return {
+          id: node.objectId,
+          variant: "relationship",
+          kind: String(kind),
+          caption,
+          label,
+          ariaLabel: `${caption}：${label}`,
+          accent: relationshipNodeAccent(String(kind)),
+          selectableId,
+          width: 176,
+          height: 58,
+        };
+      }),
+    [graphNodes, seed],
   );
-  const panStage = (
-    <div
-      className={styles.panStage}
-      style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
-    >
-      {board}
-    </div>
+  const nodeLegend = useMemo<WorkbenchCanvasLegendItem[]>(() => {
+    const seen = new Set<string>();
+    return sceneNodes.flatMap((node) => {
+      if (seen.has(node.kind)) return [];
+      seen.add(node.kind);
+      return [{ id: node.kind, label: node.caption, accent: node.accent }];
+    });
+  }, [sceneNodes]);
+  const sceneEdges = useMemo<WorkbenchCanvasSceneEdge[]>(
+    () =>
+      seed.graphEdges.map((edge, index) => ({
+        id:
+          (edge as { id?: string }).id ??
+          `${edge.from}-${edge.to}-${edge.label}-${index}`,
+        source: edge.from,
+        target: edge.to,
+        label: edge.label,
+        kind: "relationship",
+      })),
+    [seed.graphEdges],
   );
-
-  if (compact) {
-    return (
-      <section className={styles.graphPanel} data-compact="true">
-        <div className={styles.graphHeading}>
-          <div>
-            <span>同步关系图</span>
-            <strong>事件、人物与证据</strong>
-          </div>
-          <small>{visibleNodeIds.size} NODES</small>
-        </div>
-        <p className={styles.srOnly} id="relationship-graph-summary">
-          {seed.caseMeta.relationshipSummary}
-        </p>
-        <div className={styles.zoomViewport}>
-          <div className={styles.zoomStage} style={{ zoom }}>
-            {panStage}
-          </div>
-          <div
-            aria-label="画布控制"
-            className={styles.canvasOverlayControls}
-            role="group"
-          >
-            <span className={styles.graphLegend}>
-              <i /> 当前关联
-            </span>
-            <CanvasTools onToolChange={setTool} tool={tool} />
-            <ZoomControls onZoomChange={setZoom} zoom={zoom} />
-          </div>
-        </div>
-        <span className={styles.srOnly}>
-          {visibleNodeIds.size} 个可访问节点
-        </span>
-      </section>
-    );
-  }
-
+  const visibleNodeIds = new Set(graphNodes.map((node) => node.objectId));
+  const externalSelectedNodeIds = useMemo(
+    () =>
+      graphNodes.flatMap((node) => {
+        const mappedNode = node as typeof node & Partial<WorkbenchGraphNode>;
+        const selectableId =
+          getObject(seed, node.objectId)?.id ?? mappedNode.directoryObjectId;
+        return selectableId === selectedObjectId ? [node.objectId] : [];
+      }),
+    [graphNodes, seed, selectedObjectId],
+  );
+  const identity = useMemo<WorkbenchCanvasLayoutIdentity>(
+    () => ({
+      scope: layoutScope,
+      revision: seed.caseMeta.revision,
+      view: "relations",
+    }),
+    [layoutScope, seed.caseMeta.revision],
+  );
   const graphNodeById = new Map(
-    graphNodes.map((node) => [
-      node.objectId,
-      (node as typeof node & Partial<WorkbenchGraphNode>).label ??
-        getObject(seed, node.objectId)?.label ??
-        node.objectId,
-    ]),
+    sceneNodes.map((node) => [node.id, node.label]),
   );
 
   return (
     <section className={styles.relationsView} aria-labelledby="relations-heading">
       <header className={styles.sectionHeader}>
         <div>
-          <span>同步关系图</span>
+          <span>关系网络</span>
           <h2 id="relations-heading">事件、人物与证据</h2>
         </div>
         <div className={styles.sectionTrailing}>
-          <small>{visibleNodeIds.size} NODES</small>
+          <small>
+            {visibleNodeIds.size} NODES · {sceneEdges.length} EDGES
+          </small>
         </div>
       </header>
       <p className={styles.srOnly} id="relationship-graph-summary">
         {seed.caseMeta.relationshipSummary}
       </p>
-      <div className={styles.zoomViewport}>
-        <div className={styles.zoomStage} style={{ zoom }}>
-          {panStage}
-        </div>
-        <div
-          aria-label="画布控制"
-          className={styles.canvasOverlayControls}
-          role="group"
-        >
-          <span className={styles.graphLegend}>
-            <i /> 当前关联
-          </span>
-          <CanvasTools onToolChange={setTool} tool={tool} />
-          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
-        </div>
-      </div>
+      {sceneNodes.length ? (
+        <WorkbenchCanvasKernel
+          ariaLabel="事件关系图"
+          direction="LR"
+          edges={sceneEdges}
+          externalSelectedNodeIds={externalSelectedNodeIds}
+          identity={identity}
+          key={`${identity.scope}:${identity.revision}:${identity.view}`}
+          legend={
+            <span data-kind="focus">铜色线索表示当前聚焦关系</span>
+          }
+          nodeLegend={nodeLegend}
+          nodes={sceneNodes}
+          onActivateNode={onSelectObject}
+        />
+      ) : (
+        <p className={styles.viewNote}>当前工作稿没有可展示的关系节点。</p>
+      )}
       <details className={styles.graphAlternative}>
         <summary>查看关系表与文字摘要</summary>
         <div className={styles.graphTableWrap}>
