@@ -54,18 +54,58 @@ class IdeaService:
         return idea
 
     def _generate(self, *, regenerate: bool = False, existing_concepts: tuple[str, ...] = ()) -> list[dict[str, Any]]:
-        from casefile.agent_runtime import FakeProvider, IdeaGenerationRequest, IdeaGenerationResult
+        from casefile.agent_runtime import (
+            FakeProvider,
+            OpenAIAgentsProvider,
+            DeepSeekAgentsProvider,
+            IdeaGenerationRequest,
+        )
+        from casefile.agent_runtime.credentials import decrypt_api_key
         from casefile.agent_runtime.prompt_repository import prompt_version_for_task
+        from casefile.data_postgres.models.identity import UserProviderSetting
 
         input_hash = _json_hash({"regenerate": regenerate, "existing_concepts": list(existing_concepts)})
-        provider = FakeProvider()
+        prompt_version = prompt_version_for_task("idea_generation")
 
         def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
             pass
 
+        # Try real provider first, fall back to fake
+        try:
+            setting = self.session.scalar(
+                sa_select(UserProviderSetting).where(
+                    UserProviderSetting.user_id == 1,
+                    UserProviderSetting.credential_status != "deleted",
+                ).order_by(UserProviderSetting.validated_at.desc().nulls_last()).limit(1)
+            )
+            if setting is not None and setting.api_key_encrypted is not None:
+                api_key = decrypt_api_key(setting.api_key_encrypted)
+                request = IdeaGenerationRequest(
+                    task_run_id=0,
+                    prompt_version=prompt_version,
+                    regenerate=regenerate,
+                    existing_concepts=existing_concepts,
+                    input_hash=input_hash,
+                    model_id=setting.model_id or "gpt-4o-mini",
+                    api_key=api_key,
+                    max_turns=8,
+                    emit=emit,
+                    network_retries=1,
+                )
+                if setting.provider == "openai":
+                    result = OpenAIAgentsProvider().generate_ideas(request)
+                else:
+                    result = DeepSeekAgentsProvider().generate_ideas(request)
+                candidates = result.candidate.model_dump(mode="json").get("candidates", [])
+                if len(candidates) == 3:
+                    return candidates
+        except Exception:
+            pass
+
+        # Fallback to FakeProvider
         request = IdeaGenerationRequest(
             task_run_id=0,
-            prompt_version=prompt_version_for_task("idea_generation"),
+            prompt_version=prompt_version,
             regenerate=regenerate,
             existing_concepts=existing_concepts,
             input_hash=input_hash,
@@ -75,7 +115,7 @@ class IdeaService:
             emit=emit,
             network_retries=0,
         )
-        result = provider.generate_ideas(request)
+        result = FakeProvider().generate_ideas(request)
         return result.candidate.model_dump(mode="json").get("candidates", [])
 
     # ── Queries ──────────────────────────────────────────────────────
