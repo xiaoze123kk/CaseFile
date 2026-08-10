@@ -21,6 +21,9 @@
     },
     "casefile_chat": {
       "current_version": "casefile-chat-v1"
+    },
+    "idea_generation": {
+      "current_version": "idea-generation-v1"
     }
   }
 }

@@ -152,7 +152,7 @@ export const intakeRoutes = [
     code: "B",
     label: "帮我想一个",
     summary: "根据偏好生成多个创意方向",
-    state: "planned",
+    state: "available",
   },
   {
     code: "C",
@@ -633,3 +633,36 @@ export function firstMeaningfulLine(value: string): string {
       ?.slice(0, 1000) ?? ""
   );
 }
+
+// ── Path B: Idea Generation ─────────────────────────────────────────────
+
+export interface IdeaCandidateView {
+  id: number;
+  batch_id: string;
+  ordinal: number;
+  content: {
+    concept: string;
+    core_suspense: string;
+    reasoning_type: string;
+    conclusion_mode: string;
+    target_experience: string;
+    design_risk: string;
+    scale_estimate: string;
+  };
+  status: "active" | "bookmarked" | "archived" | "selected";
+  bookmarked: boolean;
+  created_at: string | null;
+}
+
+export const reasoningTypeLabels: Record<string, string> = {
+  deductive: "演绎推理",
+  inductive: "归纳推理",
+  abductive: "溯因推理",
+  hybrid: "混合推理",
+};
+
+export const conclusionModeLabels: Record<string, string> = {
+  author_anchored: "按作者底牌展开",
+  agent_proposed: "Agent 提出候选结论",
+  open: "保持开放",
+};

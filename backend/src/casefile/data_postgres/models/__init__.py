@@ -34,6 +34,7 @@ from casefile.data_postgres.models.content import (
     Relationship,
     Testimony,
 )
+from casefile.data_postgres.models.idea import IdeaCandidate
 from casefile.data_postgres.models.identity import Project, User, UserProviderSetting
 from casefile.data_postgres.models.reasoning import (
     CaseFileConstraint,
@@ -82,6 +83,7 @@ __all__ = [
     "Event",
     "EvidenceItem",
     "Hypothesis",
+    "IdeaCandidate",
     "InformationUnit",
     "KnowledgeState",
     "KnowledgeStateEntry",

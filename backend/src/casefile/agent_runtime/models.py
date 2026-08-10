@@ -342,5 +342,43 @@ class BriefIntakeSynthesizeResult:
     usage: dict[str, Any]
 
 
+class IdeaCandidateModel(StrictAgentOutput):
+    """One creative direction for Path B (帮我想一个)."""
+
+    concept: str = Field(min_length=1, max_length=200)
+    core_suspense: str = Field(min_length=1, max_length=300)
+    reasoning_type: Literal["deductive", "inductive", "abductive", "hybrid"]
+    conclusion_mode: Literal["author_anchored", "agent_proposed", "open"]
+    target_experience: str = Field(min_length=1, max_length=300)
+    design_risk: str = Field(min_length=1, max_length=300)
+    scale_estimate: str = Field(min_length=1, max_length=160)
+
+
+class IdeaCandidateSet(StrictAgentOutput):
+    """Exactly three creative directions."""
+
+    candidates: list[IdeaCandidateModel] = Field(min_length=3, max_length=3)
+
+
+@dataclass(frozen=True, slots=True)
+class IdeaGenerationRequest:
+    task_run_id: int
+    prompt_version: str
+    regenerate: bool
+    existing_concepts: tuple[str, ...]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class IdeaGenerationResult:
+    candidate: IdeaCandidateSet
+    usage: dict[str, Any]
+
+
 def _rate(numerator: int, denominator: int) -> float:
     return 0.0 if denominator == 0 else numerator / denominator

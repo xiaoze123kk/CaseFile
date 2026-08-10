@@ -52,6 +52,10 @@ from casefile.agent_runtime.models import (
     GenerationPlan,
     GenerationRequest,
     GenerationResult,
+    IdeaCandidateModel,
+    IdeaCandidateSet,
+    IdeaGenerationRequest,
+    IdeaGenerationResult,
     StrictAgentOutput,
     ToolMetrics,
 )
@@ -62,6 +66,7 @@ from casefile.agent_runtime.prompt import (
     brief_strategy_options_input,
     casefile_chat_input,
     generation_input,
+    idea_generation_input,
     polish_input,
 )
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
@@ -104,6 +109,10 @@ class AgentProvider(GenerationProvider, Protocol):
     def strategy_options(
         self, request: BriefStrategyOptionsRequest
     ) -> BriefStrategyOptionsResult: ...
+
+    def generate_ideas(
+        self, request: IdeaGenerationRequest
+    ) -> IdeaGenerationResult: ...
 
 
 class ProviderProtocolError(RuntimeError):
@@ -371,6 +380,38 @@ class FakeProvider:
         usage = _zero_usage()
         request.emit("model.completed", "synthesizing", {"usage": usage})
         return BriefIntakeSynthesizeResult(candidate=candidate, usage=usage)
+
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
+        system_prompt_for_task("idea_generation", request.prompt_version)
+        request.emit("model.started", "generating_ideas", {"model_id": request.model_id})
+        # Randomized fake pool: 9 templates, pick 3 at random
+        import random
+        pool = [
+            {"concept": "一位失忆的法医发现自己曾参与过一桩完美犯罪，新案件的证据正指向他自己。", "core_suspense": "主角必须在恢复记忆与毁灭证据之间做出选择，同时破译自己留下的密码线索。", "reasoning_type": "deductive", "conclusion_mode": "author_anchored", "target_experience": "在身份认知的错位中逐渐逼近真相，每一段记忆恢复都是双重冲击。", "design_risk": "记忆恢复节奏需精心控制，过早揭露削弱张力，过晚显得拖沓。", "scale_estimate": "中篇（5-8 小时）"},
+            {"concept": "五个陌生人在一间密室醒来，只有找出其中伪装的凶手才能离开——但每个人都在说谎。", "core_suspense": "参与者需要交叉比对证词、物品与时间线，任何判断失误都会导致全员出局。", "reasoning_type": "inductive", "conclusion_mode": "agent_proposed", "target_experience": "紧张的合作与猜疑博弈，每一次投票都令人手心冒汗。", "design_risk": "五条并行叙事线需独立可信且相互咬合，任何逻辑漏洞都会破坏全局。", "scale_estimate": "短篇（2-4 小时）"},
+            {"concept": "一座小镇每隔十年必有一人失踪，三位调查者用跨越三十年的笔记拼凑出隐藏在民俗背后的真相。", "core_suspense": "跨越三个年代的线索散落在不同笔记中，调查者需要从前人的错误推论中找到真正连接失踪事件的隐线。", "reasoning_type": "abductive", "conclusion_mode": "open", "target_experience": "时代交错带来的沧桑感与解谜成就感交织，读完全篇忍不住重新翻看前面笔记。", "design_risk": "三个年代的风俗、语言和技术细节需还原准确，笔记呼应必须自然不刻意。", "scale_estimate": "长篇（15-25 小时）"},
+            {"concept": "一位小说家发现自己笔下的人物开始在现实中作案，而她每写一段新情节都会改变案件的走向。", "core_suspense": "她必须区分哪些是虚构哪些是现实，同时利用写作能力设局引真凶现身。", "reasoning_type": "hybrid", "conclusion_mode": "author_anchored", "target_experience": "虚实交错的紧张感，读者和主角一样分不清哪边才是真实。", "design_risk": "虚实双重叙事需要精确的边界控制，不能让读者感到被欺骗。", "scale_estimate": "中篇（6-10 小时）"},
+            {"concept": "一名退休警官收到二十年前杀害他搭档的凶手寄来的自白书，但自白书里的时间线被刻意篡改过。", "core_suspense": "他必须在有限时间内找出被篡改的部分，同时判断这是忏悔还是陷阱。", "reasoning_type": "deductive", "conclusion_mode": "agent_proposed", "target_experience": "老年主角的孤独感和执念，读者跟随他翻查旧档案一步步逼近真相。", "design_risk": "旧案证据的连贯性需要仔细编排，不能出现跨年代的逻辑矛盾。", "scale_estimate": "中篇（5-8 小时）"},
+            {"concept": "一家VR游戏公司发现他们开发的探案游戏正在生成一组无法解释的加密数据，而这组数据与三起真实悬案吻合。", "core_suspense": "开发团队需要解译数据、比对真实案件，并决定是否向警方公开这个发现。", "reasoning_type": "inductive", "conclusion_mode": "open", "target_experience": "科技感的悬疑氛围，虚拟与现实的边界模糊带来的不安感。", "design_risk": "需要在不依赖专业知识的前提下让VR概念触达普通读者。", "scale_estimate": "中篇（6-10 小时）"},
+            {"concept": "一位人类学家在偏远部落发现了一套描述工业社会犯罪的壁画，而这些犯罪在未来一周会精确发生。", "core_suspense": "她必须解读壁画的象征体系，在每起预言的犯罪发生前阻止它。", "reasoning_type": "abductive", "conclusion_mode": "author_anchored", "target_experience": "文化碰撞带来双重解读空间，读者和主人公一起学习一种陌生的思维方式。", "design_risk": "异文化创作的准确性非常关键，需要避免刻板印象或魔幻化处理。", "scale_estimate": "中篇（6-10 小时）"},
+            {"concept": "一位拍卖行估价师发现了三件古董之间的联系——它们来自同一场不存在的拍卖会，而每件古董都曾属于失踪的同行。", "core_suspense": "她需要追踪古董的来源链条，同时不被那股试图掩盖真相的力量抢先一步。", "reasoning_type": "deductive", "conclusion_mode": "open", "target_experience": "古董细节和历史事件的交叠带来古典推理的韵味。", "design_risk": "古董学知识需要在娱乐性和准确性间取得平衡。", "scale_estimate": "中篇（5-8 小时）"},
+            {"concept": "一个直播平台内部调查组发现一位人气主播的互动游戏其实在实时操控一栋真实公寓里住户的决策。", "core_suspense": "必须在不惊动数百万观众的前提下切断直播控制，同时找出这场实验的幕后推手。", "reasoning_type": "hybrid", "conclusion_mode": "agent_proposed", "target_experience": "现代媒介恐慌和隐私危机的代入感，每一个点赞都可能改变一个人的命运。", "design_risk": "直播机制与推理逻辑的结合需要精心设计，不能让技术概念抢了故事的风头。", "scale_estimate": "中篇（6-10 小时）"},
+        ]
+        chosen = random.sample(pool, 3)
+        if request.regenerate and request.existing_concepts:
+            fallback = [c for c in pool if c["concept"] not in request.existing_concepts]
+            if len(fallback) >= 3:
+                chosen = random.sample(fallback, 3)
+            else:
+                need = 3 - len(fallback)
+                chosen = random.sample(fallback, len(fallback)) + random.sample(
+                    [c for c in pool if c["concept"] in request.existing_concepts], min(need, len(pool) - len(fallback))
+                )
+                random.shuffle(chosen)
+        candidate = IdeaCandidateSet(candidates=[IdeaCandidateModel.model_validate(c) for c in chosen])
+        usage = _zero_usage()
+        request.emit("model.completed", "generating_ideas", {"usage": usage})
+        return IdeaGenerationResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         system_prompt_for_task("casefile_chat", request.prompt_version)
@@ -693,6 +734,27 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task("idea_generation", request.prompt_version),
+                input_text=idea_generation_input(
+                    request.input_hash,
+                    regenerate=request.regenerate,
+                    existing_concepts=request.existing_concepts,
+                ),
+                output_type=IdeaCandidateSet,
+                stage="generating_ideas",
+            )
+        )
+        return IdeaGenerationResult(
+            candidate=IdeaCandidateSet.model_validate(candidate),
+            usage=usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
@@ -941,6 +1003,27 @@ class DeepSeekAgentsProvider:
         )
         return BriefIntakeSynthesizeResult(
             candidate=BriefIntakeCandidateContract.model_validate(candidate),
+            usage=usage,
+        )
+
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task("idea_generation", request.prompt_version),
+                input_text=idea_generation_input(
+                    request.input_hash,
+                    regenerate=request.regenerate,
+                    existing_concepts=request.existing_concepts,
+                ),
+                output_type=IdeaCandidateSet,
+                stage="generating_ideas",
+            )
+        )
+        return IdeaGenerationResult(
+            candidate=IdeaCandidateSet.model_validate(candidate),
             usage=usage,
         )
 

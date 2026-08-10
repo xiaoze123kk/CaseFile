@@ -30,6 +30,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "brief_strategy_options",
     "brief_to_draft",
     "casefile_chat",
+    "idea_generation",
 )
 
 _VERSION_DIRECTORY = re.compile(r"^v[1-9][0-9]*$")
