@@ -189,6 +189,7 @@ class V1EditingService:
         project_id: int,
         object_id: str,
         *,
+        expected_draft_id: int,
         expected_revision: int,
         changes: dict[str, Any],
     ) -> tuple[dict[str, Any], int]:
@@ -196,7 +197,10 @@ class V1EditingService:
             owned = self.projects.get_owned(actor_user_id, project_id, lock=True)
             if owned is None:
                 raise not_found("Project")
-            if owned.draft.revision != expected_revision:
+            if (
+                owned.draft.id != expected_draft_id
+                or owned.draft.revision != expected_revision
+            ):
                 raise revision_conflict(
                     expected=owned.draft.revision,
                     received=expected_revision,

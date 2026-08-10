@@ -6,12 +6,11 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 import rfc8785
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from casefile.application.errors import ApplicationError
@@ -22,8 +21,8 @@ from casefile.data_postgres.models import (
     CaseFileConstraint,
     CaseFileContractRef,
     CaseFileObject,
-    CaseFileRef,
     Claim,
+    Draft,
     DraftOperation,
     DraftSnapshot,
     Entity,
@@ -71,15 +70,12 @@ def generation_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "title": candidate["title"],
         "content_hash": casefile_content_hash(candidate),
         "object_counts": {
-            collection: len(candidate[collection])
-            for collection, _object_type in COLLECTION_TYPES
+            collection: len(candidate[collection]) for collection, _object_type in COLLECTION_TYPES
         },
         "reasoning_questions": [
             item["reasoning_question"] for item in candidate["resolution_specs"]
         ],
-        "constraint_statements": [
-            item["statement"] for item in candidate["constraints"]
-        ],
+        "constraint_statements": [item["statement"] for item in candidate["constraints"]],
     }
 
 
@@ -98,156 +94,116 @@ def validate_generation_candidate_context(
 
 def adopt_generation_candidate(
     session: Session,
-    owned: OwnedDraft,
+    source: OwnedDraft,
+    current: OwnedDraft,
     *,
     candidate: dict[str, Any],
     brief: Brief,
     brief_version: BriefVersion,
     task_run_id: int,
     actor_user_id: int,
-    expected_draft_revision: int,
+    expected_current_draft_id: int,
 ) -> DraftSnapshot:
-    """Atomically replace the current mutable Draft with one validated candidate."""
+    """Materialize a candidate as an independent Draft and select it atomically."""
 
     validate_generation_candidate_context(
-        owned,
+        source,
         candidate,
         brief=brief,
         brief_version=brief_version,
     )
-    if owned.draft.revision != expected_draft_revision:
+    if current.casefile.current_draft_id != expected_current_draft_id:
         raise ApplicationError(
-            "draft_revision_conflict",
-            "草稿已被更新，请刷新后重新提交。",
+            "current_draft_changed",
+            "当前工作稿已在其他位置切换，请刷新后重试。",
             status_code=409,
-            details={"current_revision": owned.draft.revision},
+            details={"current_draft_id": current.casefile.current_draft_id},
         )
-    if owned.project.status == "archived" or owned.casefile.status == "archived":
+    if current.project.status == "archived" or current.casefile.status == "archived":
         raise ApplicationError(
             "project_archived",
             "已归档的项目不能修改。",
             status_code=409,
         )
-    if owned.draft.status != "active":
+    if source.draft.status != "active":
         raise ApplicationError(
             "draft_locked",
-            "已锁定的草稿不能修改。",
+            "候选来源工作稿已锁定，不能采用该候选。",
             status_code=409,
         )
 
-    incoming_ids = {
-        item["id"]
-        for collection, _object_type in COLLECTION_TYPES
-        for item in candidate[collection]
-    }
-    used_ids = set(
-        session.scalars(
-            select(CaseFileObject.object_id).where(
-                CaseFileObject.casefile_id == owned.casefile.id,
-                CaseFileObject.object_id.in_(incoming_ids),
-            )
+    pristine_current = (
+        source.draft.id == current.draft.id
+        and source.draft.id == expected_current_draft_id
+        and current.draft.brief_version_id is None
+        and current.draft.revision == 1
+        and session.scalar(
+            select(func.count(CaseFileObject.id)).where(CaseFileObject.draft_id == current.draft.id)
         )
+        == 0
+        and session.scalar(
+            select(func.count(DraftOperation.id)).where(DraftOperation.draft_id == current.draft.id)
+        )
+        == 0
     )
-    if used_ids:
-        raise ApplicationError(
-            "candidate_object_ids_used",
-            "该候选已经被采用，或重复使用了历史对象 ID。",
-            status_code=409,
-            details={"object_ids": sorted(used_ids)},
+    if pristine_current:
+        target = current
+    else:
+        target_draft = Draft(
+            project_id=current.project.id,
+            casefile_id=current.casefile.id,
+            revision=1,
+            title=candidate["title"],
+            document_status=candidate["status"],
+            version_id=candidate["version"]["version_id"],
+            version_no=candidate["version"]["version_no"],
+            parent_version_id=candidate["version"]["parent_version_id"],
+            brief_version_id=brief_version.id,
+            schema_version=candidate["schema_version"],
+            status="active",
+            content_notices_jsonb=candidate["content_notices"],
+            extensions_jsonb=candidate["extensions"],
         )
-
-    active_objects = list(
-        session.scalars(
-            select(CaseFileObject)
-            .where(
-                CaseFileObject.draft_id == owned.draft.id,
-                CaseFileObject.deleted_at.is_(None),
-            )
-            .order_by(CaseFileObject.object_type, CaseFileObject.contract_ordinal)
-            .with_for_update()
-        )
-    )
-    old_content_hash = None
-    if active_objects:
-        old_content_hash = casefile_content_hash(build_casefile_document(session, owned))
-
-    if active_objects:
-        all_ordinals = session.execute(
-            select(CaseFileObject.object_type, func.max(CaseFileObject.contract_ordinal))
-            .where(CaseFileObject.draft_id == owned.draft.id)
-            .group_by(CaseFileObject.object_type)
-        ).all()
-        next_archive_ordinal = {
-            object_type: int(max_ordinal) + 1
-            for object_type, max_ordinal in all_ordinals
-        }
-        now = datetime.now(UTC)
-        active_ids: list[int] = []
-        for registry in active_objects:
-            archive_ordinal = next_archive_ordinal[registry.object_type]
-            next_archive_ordinal[registry.object_type] = archive_ordinal + 1
-            registry.contract_ordinal = archive_ordinal
-            registry.deleted_at = now
-            registry.revision += 1
-            active_ids.append(registry.id)
-        session.execute(
-            delete(CaseFileContractRef).where(
-                CaseFileContractRef.draft_id == owned.draft.id,
-                CaseFileContractRef.from_object_id.in_(active_ids),
-            )
-        )
-        session.execute(
-            delete(CaseFileRef).where(
-                CaseFileRef.draft_id == owned.draft.id,
-                or_(
-                    CaseFileRef.from_object_id.in_(active_ids),
-                    CaseFileRef.to_object_id.in_(active_ids),
-                ),
-            )
-        )
+        session.add(target_draft)
         session.flush()
+        target = OwnedDraft(current.project, current.casefile, target_draft)
 
-    registry_by_object_id = _create_registries(session, owned, candidate)
-    _create_content_rows(session, owned, candidate, registry_by_object_id)
-    _create_contract_refs(session, owned, candidate, registry_by_object_id)
+    target.draft.title = candidate["title"]
+    target.draft.document_status = candidate["status"]
+    target.draft.schema_version = candidate["schema_version"]
+    target.draft.version_id = candidate["version"]["version_id"]
+    target.draft.version_no = candidate["version"]["version_no"]
+    target.draft.parent_version_id = candidate["version"]["parent_version_id"]
+    target.draft.brief_version_id = brief_version.id
+    target.draft.content_notices_jsonb = candidate["content_notices"]
+    target.draft.extensions_jsonb = candidate["extensions"]
 
-    base_revision = owned.draft.revision
-    owned.project.title = candidate["title"]
-    owned.casefile.title = candidate["title"]
-    owned.casefile.status = candidate["status"]
-    owned.casefile.schema_version = candidate["schema_version"]
-    owned.draft.schema_version = candidate["schema_version"]
-    owned.draft.version_id = candidate["version"]["version_id"]
-    owned.draft.version_no = candidate["version"]["version_no"]
-    owned.draft.parent_version_id = candidate["version"]["parent_version_id"]
-    owned.draft.brief_version_id = brief_version.id
-    owned.draft.content_notices_jsonb = candidate["content_notices"]
-    owned.draft.extensions_jsonb = candidate["extensions"]
+    registry_by_object_id = _create_registries(session, target, candidate)
+    _create_content_rows(session, target, candidate, registry_by_object_id)
+    _create_contract_refs(session, target, candidate, registry_by_object_id)
+
+    base_revision = target.draft.revision
 
     content_hash = casefile_content_hash(candidate)
     sequence_no = int(
         session.scalar(
             select(func.coalesce(func.max(DraftOperation.sequence_no), 0) + 1).where(
-                DraftOperation.draft_id == owned.draft.id
+                DraftOperation.draft_id == target.draft.id
             )
         )
         or 1
     )
     session.add(
         DraftOperation(
-            project_id=owned.project.id,
-            casefile_id=owned.casefile.id,
-            draft_id=owned.draft.id,
+            project_id=target.project.id,
+            casefile_id=target.casefile.id,
+            draft_id=target.draft.id,
             casefile_object_id=None,
             sequence_no=sequence_no,
             operation_group_no=sequence_no,
             operation_type="agent_adopt_brief_candidate",
             field_path="",
-            old_value_jsonb=(
-                None
-                if old_content_hash is None
-                else {"content_hash": old_content_hash}
-            ),
+            old_value_jsonb=None,
             new_value_jsonb={
                 "brief_version_id": brief_version.id,
                 "content_hash": content_hash,
@@ -260,10 +216,11 @@ def adopt_generation_candidate(
             actor_ref=None,
         )
     )
+    current.casefile.current_draft_id = target.draft.id
     session.flush()
-    session.refresh(owned.draft)
+    session.refresh(target.draft)
 
-    projected = build_casefile_document(session, owned)
+    projected = build_casefile_document(session, target)
     projected_hash = casefile_content_hash(projected)
     if projected != candidate or projected_hash != content_hash:
         raise ApplicationError(
@@ -274,11 +231,11 @@ def adopt_generation_candidate(
         )
 
     snapshot = DraftSnapshot(
-        project_id=owned.project.id,
-        casefile_id=owned.casefile.id,
-        draft_id=owned.draft.id,
-        snapshot_revision=owned.draft.revision,
-        schema_version=owned.draft.schema_version,
+        project_id=target.project.id,
+        casefile_id=target.casefile.id,
+        draft_id=target.draft.id,
+        snapshot_revision=target.draft.revision,
+        schema_version=target.draft.schema_version,
         snapshot_jsonb=projected,
         content_hash=content_hash,
         created_by_user_id=actor_user_id,
@@ -331,10 +288,10 @@ def build_casefile_document(session: Session, owned: OwnedDraft) -> dict[str, An
         )
 
     document: dict[str, Any] = {
-        "schema_version": owned.casefile.schema_version,
+        "schema_version": owned.draft.schema_version,
         "casefile_id": owned.casefile.object_id,
-        "title": owned.casefile.title,
-        "status": owned.casefile.status,
+        "title": owned.draft.title,
+        "status": owned.draft.document_status,
         "version": {
             "version_id": owned.draft.version_id,
             "version_no": owned.draft.version_no,
@@ -386,6 +343,8 @@ def _validate_generation_context(
     failures: dict[str, Any] = {}
     if candidate["casefile_id"] != owned.casefile.object_id:
         failures["casefile_id"] = owned.casefile.object_id
+    if candidate["schema_version"] != owned.draft.schema_version:
+        failures["schema_version"] = owned.draft.schema_version
     if candidate["brief_ref"] != expected_brief_ref:
         failures["brief_ref"] = expected_brief_ref
     if candidate["version"] != expected_version:
@@ -508,9 +467,7 @@ def _create_content_rows(
                 # ObjectRef values live in CaseFileContractRef. Retain the
                 # complete nested-list shape here so an all-empty state does
                 # not disappear during a normalized round trip.
-                attributes_jsonb={
-                    KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(item["knowledge_states"])
-                },
+                attributes_jsonb={KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(item["knowledge_states"])},
             )
         )
     for item in candidate["relationships"]:

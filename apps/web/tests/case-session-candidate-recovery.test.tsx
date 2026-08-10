@@ -324,7 +324,7 @@ describe("draft candidate project recovery", () => {
       .mockResolvedValueOnce(brief)
       .mockRejectedValueOnce(new Error("Brief refresh unavailable"));
     mocks.fetchLatestTask.mockResolvedValue(null);
-    mocks.fetchCaseDraft.mockResolvedValue({ revision: 4 });
+    mocks.fetchCaseDraft.mockResolvedValue({ draft_id: 9, revision: 4 });
     mocks.fetchDraftCandidates.mockResolvedValue([
       candidate(103, "当前简报待采用稿", 2, {
         is_current_brief: true,
@@ -334,6 +334,7 @@ describe("draft candidate project recovery", () => {
       }),
     ]);
     mocks.adoptDraftCandidateWithReconciliation.mockResolvedValue({
+      adoption: { draft_id: 9 },
       facts: null,
       error: null,
     });
@@ -356,7 +357,7 @@ describe("draft candidate project recovery", () => {
     expect(mocks.adoptDraftCandidateWithReconciliation).toHaveBeenCalledWith(
       7,
       103,
-      4,
+      9,
     );
     expect(mocks.fetchBrief).toHaveBeenCalledTimes(2);
   });
@@ -448,7 +449,7 @@ describe("draft candidate project recovery", () => {
     mocks.fetchCaseIntake.mockResolvedValue(intake);
     mocks.fetchBrief.mockResolvedValue(brief);
     mocks.fetchLatestTask.mockResolvedValue(null);
-    mocks.fetchCaseDraft.mockResolvedValue({ revision: 4 });
+    mocks.fetchCaseDraft.mockResolvedValue({ draft_id: 9, revision: 4 });
     mocks.fetchDraftCandidates.mockResolvedValue([]);
     mocks.startDraftGenerationTask.mockResolvedValue(generationTask("running"));
     mocks.runTaskWithProviderFallback.mockImplementation(async (operation) => ({

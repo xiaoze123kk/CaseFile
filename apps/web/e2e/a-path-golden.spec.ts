@@ -24,15 +24,27 @@ interface DraftCandidateView {
 
 interface DraftView {
   project_id: number;
+  draft_id: number;
+  title: string;
   revision: number;
   status: string;
   content: null | {
     [field: string]: unknown;
     casefile_id: string;
     title: string;
+    entities: Array<{ id: string; name: string }>;
     resolution_specs: Array<{ reasoning_question: string }>;
     constraints: Array<{ statement: string }>;
   };
+}
+
+interface DraftSummaryView {
+  draft_id: number;
+  title: string;
+  revision: number;
+  brief_version_no: number | null;
+  has_content: boolean;
+  is_current: boolean;
 }
 
 interface APathMetricsView {
@@ -118,6 +130,7 @@ async function expectNarrowViewportItem(locator: Locator) {
 }
 
 test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", async ({ page, request }, testInfo) => {
+  test.setTimeout(300_000);
   const configured = await request.put(`${apiRoot}/settings/provider`, {
     headers: actorHeaders,
     data: {
@@ -194,6 +207,22 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
 
   const candidatesUrl = `${apiRoot}/projects/${projectId}/draft-candidates`;
   const draftUrl = `${apiRoot}/projects/${projectId}/draft`;
+  const draftsUrl = `${apiRoot}/projects/${projectId}/drafts`;
+
+  async function editCurrentEntity(name: string) {
+    const editor = page.getByRole("region", { name: "对象详情与编辑" });
+    await editor.getByRole("textbox", { name: "名称" }).fill(name);
+    await editor.getByRole("button", { name: "保存到当前工作稿" }).click();
+    await expect(editor.getByRole("status")).toContainText("修改已写入当前工作稿");
+    await expect
+      .poll(async () => {
+        const draft = await responseJson<DraftView>(
+          await request.get(draftUrl, { headers: actorHeaders }),
+        );
+        return draft.content?.entities[0]?.name ?? null;
+      })
+      .toBe(name);
+  }
 
   const candidatesBeforeGeneration = await responseJson<DraftCandidateView[]>(
     await request.get(candidatesUrl, { headers: actorHeaders }),
@@ -442,6 +471,119 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(page.getByText("已与服务端同步", { exact: true })).toBeVisible();
   await attachPageEvidence(testInfo, page, "09-real-workbench");
 
+  const draftAId = currentDraft!.draft_id;
+  const draftAEntityName = `工作稿 A 独立人物 ${projectId}`;
+  await editCurrentEntity(draftAEntityName);
+  const draftAAfterEdit = await responseJson<DraftView>(
+    await request.get(draftUrl, { headers: actorHeaders }),
+  );
+  expect(draftAAfterEdit.draft_id).toBe(draftAId);
+
+  await page.locator('button[data-kind="draft"]').click();
+  await page.getByRole("menuitem", { name: /生成新工作稿/u }).click();
+  await expect(page).toHaveURL(new RegExp(`/\\?project=${projectId}$`));
+  await expect(
+    page.getByRole("heading", {
+      name: "先选定创作策略，再生成一份完整深稿。",
+    }),
+  ).toBeVisible();
+
+  const strategyFan = page.getByLabel("三种策略并列比较");
+  await strategyFan.getByRole("button", { name: /氛围优先/u }).click();
+  await page.getByRole("button", { name: /生成氛围优先完整深稿/u }).click();
+
+  let candidatesAfterSecondGeneration: DraftCandidateView[] = [];
+  await expect
+    .poll(async () => {
+      candidatesAfterSecondGeneration = await responseJson<DraftCandidateView[]>(
+        await request.get(candidatesUrl, { headers: actorHeaders }),
+      );
+      return candidatesAfterSecondGeneration.length;
+    })
+    .toBe(2);
+  const generatedCandidateB = candidatesAfterSecondGeneration.find(
+    (candidate) => candidate.task_run_id !== generatedCandidate.task_run_id,
+  );
+  expect(generatedCandidateB).toBeDefined();
+  expect(generatedCandidateB).toMatchObject({
+    is_adopted: false,
+    is_current: false,
+    can_adopt: true,
+  });
+
+  const candidateBCard = page
+    .getByRole("region", { name: "当前简报完整深稿" })
+    .locator("article")
+    .filter({ hasText: "氛围优先" });
+  await candidateBCard.getByRole("button").first().click();
+  await expect(
+    candidateBCard.getByTestId(
+      `candidate-completed-at-${generatedCandidateB!.task_run_id}`,
+    ),
+  ).toBeVisible();
+  await candidateBCard
+    .getByRole("button", { name: /采用为当前工作稿/u })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/workbench\\?project=${projectId}$`),
+  );
+
+  let draftB: DraftView | null = null;
+  await expect
+    .poll(async () => {
+      draftB = await responseJson<DraftView>(
+        await request.get(draftUrl, { headers: actorHeaders }),
+      );
+      return draftB.draft_id;
+    })
+    .not.toBe(draftAId);
+  const draftBId = draftB!.draft_id;
+  const draftBEntityName = `工作稿 B 独立人物 ${projectId}`;
+  await editCurrentEntity(draftBEntityName);
+
+  const materializedDrafts = await responseJson<DraftSummaryView[]>(
+    await request.get(draftsUrl, { headers: actorHeaders }),
+  );
+  expect(materializedDrafts.filter((draft) => draft.has_content)).toHaveLength(2);
+  expect(materializedDrafts.filter((draft) => draft.is_current)).toEqual([
+    expect.objectContaining({ draft_id: draftBId }),
+  ]);
+
+  await page.locator('button[data-kind="draft"]').click();
+  await page
+    .getByRole("menuitem", { name: new RegExp(`工作稿 #${draftAId}`) })
+    .click();
+  await expect
+    .poll(async () =>
+      responseJson<DraftView>(
+        await request.get(draftUrl, { headers: actorHeaders }),
+      ).then((draft) => draft.draft_id),
+    )
+    .toBe(draftAId);
+  await expect(
+    page
+      .getByRole("region", { name: "对象详情与编辑" })
+      .getByRole("textbox", { name: "名称" }),
+  ).toHaveValue(draftAEntityName);
+
+  await page.locator('button[data-kind="draft"]').click();
+  await page
+    .getByRole("menuitem", { name: new RegExp(`工作稿 #${draftBId}`) })
+    .click();
+  await expect
+    .poll(async () =>
+      responseJson<DraftView>(
+        await request.get(draftUrl, { headers: actorHeaders }),
+      ).then((draft) => draft.draft_id),
+    )
+    .toBe(draftBId);
+  await expect(
+    page
+      .getByRole("region", { name: "对象详情与编辑" })
+      .getByRole("textbox", { name: "名称" }),
+  ).toHaveValue(draftBEntityName);
+  await attachPageEvidence(testInfo, page, "10-two-drafts-isolated");
+
   const metricsResponse = await request.get(
     `${apiRoot}/projects/${projectId}/a-path-metrics`,
     { headers: actorHeaders },
@@ -450,26 +592,26 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   expect(metrics).toMatchObject({
     version: "a-path-funnel-v1",
     funnel: {
-      task_runs: 1,
-      generated_candidates: 1,
-      adopted_candidates: 1,
-      post_adoption_edited_candidates: 0,
+      task_runs: 2,
+      generated_candidates: 2,
+      adopted_candidates: 2,
+      post_adoption_edited_candidates: 2,
       generation_success_rate: 1,
       adoption_rate: 1,
-      post_adoption_edit_rate: 0,
+      post_adoption_edit_rate: 1,
     },
-    task_statuses: { succeeded: 1 },
-    durable_events: { "candidate.adopted": 1 },
+    task_statuses: { succeeded: 2 },
+    durable_events: { "candidate.adopted": 2 },
     post_adoption: {
-      adoption_operations: 1,
-      edit_operations: 0,
-      edited_adoptions: 0,
-      operation_types: {},
+      adoption_operations: 2,
+      edit_operations: 2,
+      edited_adoptions: 2,
+      operation_types: { replace: 2 },
     },
   });
-  expect(metrics.usage_observations.task_attempts).toBeGreaterThanOrEqual(1);
+  expect(metrics.usage_observations.task_attempts).toBeGreaterThanOrEqual(2);
   expect(metrics.usage_observations.task_run_fallbacks).toBe(0);
-  expect(metrics.completion_latency_ms.observed_tasks).toBe(1);
+  expect(metrics.completion_latency_ms.observed_tasks).toBe(2);
   expect(metrics.unobservable_stages).toContainEqual(
     expect.objectContaining({ stage: "candidate_previewed" }),
   );

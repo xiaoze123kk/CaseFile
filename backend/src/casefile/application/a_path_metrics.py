@@ -141,8 +141,8 @@ class APathMetricsService:
             operation_rows = list(
                 self.session.scalars(
                     select(DraftOperation)
-                    .where(DraftOperation.draft_id == owned.draft.id)
-                    .order_by(DraftOperation.sequence_no)
+                    .where(DraftOperation.project_id == owned.project.id)
+                    .order_by(DraftOperation.id)
                 )
             )
             return derive_a_path_metrics(
@@ -185,7 +185,9 @@ class APathMetricsService:
                 ],
                 operations=[
                     APathOperationFact(
-                        sequence_no=operation.sequence_no,
+                        # Draft sequence numbers restart for every working Draft;
+                        # the project funnel needs the append-only global order.
+                        sequence_no=operation.id,
                         operation_type=operation.operation_type,
                         new_value=operation.new_value_jsonb,
                     )

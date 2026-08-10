@@ -17,10 +17,8 @@ import {
   ApiError,
   errorMessage,
   fetchWorkbenchContext,
-  listProjects,
   type DraftCandidatePreviewView,
   type DraftView,
-  type ProjectView,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -49,6 +47,10 @@ import styles from "./analyst-workbench.module.css";
 import { AgentPanel } from "./workbench-agent-panel";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
+import {
+  DraftSwitcher,
+  ProjectSwitcher,
+} from "./workbench-scope-switcher";
 import {
   type DirectoryObjectKind,
   directoryObjectKind,
@@ -479,7 +481,8 @@ export function AnalystWorkbench({
   const contextRevisionMismatch = Boolean(
     currentContextLoad?.context &&
       draft &&
-      currentContextLoad.context.draft_revision !== draft.revision,
+      (currentContextLoad.context.draft_id !== draft.draft_id ||
+        currentContextLoad.context.draft_revision !== draft.revision),
   );
   const realContextState: WorkbenchContextState = {
     data: contextRevisionMismatch ? null : currentContextLoad?.context ?? null,
@@ -579,7 +582,15 @@ export function AnalystWorkbench({
     );
   }
   if (currentDraftLoad === null) {
-    return <WorkbenchGate title="正在读取当前工作稿" detail={`项目 ${projectId} · 连接服务端 Draft`} loading />;
+    return (
+      <WorkbenchGate
+        detail={`项目 ${projectId} · 连接服务端 Draft`}
+        loading
+        projectId={projectId}
+        projectTitle={`项目 ${projectId}`}
+        title="正在读取当前工作稿"
+      />
+    );
   }
   if (draftError) {
     return (
@@ -589,12 +600,23 @@ export function AnalystWorkbench({
           setDraftLoad(null);
           setReloadDraft((value) => value + 1);
         }}
+        projectId={projectId}
+        projectTitle={`项目 ${projectId}`}
         title="当前工作稿加载失败"
       />
     );
   }
   if (!draft?.content) {
-    return <WorkbenchGate title="这个项目尚无当前工作稿" detail="请先返回建案中心生成三份候选，并采用其中一份。" />;
+    return (
+      <WorkbenchGate
+        actionHref={`/?project=${projectId}`}
+        actionLabel="返回建案中心生成工作稿"
+        detail="请先选择创作策略并采用一份候选；已有项目与 Brief 会继续保留。"
+        projectId={projectId}
+        projectTitle={draft?.title ?? `项目 ${projectId}`}
+        title="这个项目还没有已生成的工作稿"
+      />
+    );
   }
 
   const loadedProjectId = projectId;
@@ -608,7 +630,13 @@ export function AnalystWorkbench({
     saveInFlightRef.current = true;
     setSavingObject(true);
     try {
-      await patchCaseDraftObject(loadedProjectId, objectId, draft.revision, changes);
+      await patchCaseDraftObject(
+        loadedProjectId,
+        objectId,
+        draft.draft_id,
+        draft.revision,
+        changes,
+      );
       const latest = await fetchCaseDraft(loadedProjectId);
       setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
       refreshContext();
@@ -634,13 +662,22 @@ export function AnalystWorkbench({
     }
   }
 
+  async function handleDraftActivated(activated: DraftView) {
+    setDraftLoad({ projectId: loadedProjectId, draft: activated, error: null });
+    setContextLoad(null);
+    setReloadContext((value) => value + 1);
+    await loadProject(loadedProjectId).catch(() => undefined);
+  }
+
   return (
     <AnalystWorkbenchSurface
       activeCandidate={activeCandidate}
       activeCandidateStatus={activeCandidateStatus}
       adoptCandidate={adoptCandidate}
+      currentDraft={draft}
       draftRevision={draft.revision}
-      key={`project-${projectId}`}
+      key={`project-${projectId}-draft-${draft.draft_id}`}
+      onDraftActivated={handleDraftActivated}
       onSaveObject={saveObject}
       projectId={projectId}
       realDocument={draft.content}
@@ -657,22 +694,52 @@ function WorkbenchGate({
   detail,
   loading = false,
   onRetry,
+  actionHref = "/",
+  actionLabel = "返回建案中心",
+  projectId = null,
+  projectTitle = "载入项目",
 }: {
   title: string;
   detail: string;
   loading?: boolean;
   onRetry?: () => void;
+  actionHref?: string;
+  actionLabel?: string;
+  projectId?: number | null;
+  projectTitle?: string;
 }) {
-  return (
+  const gate = (
     <main className={styles.workbenchGate}>
       <article aria-busy={loading}>
         <span>{loading ? "LOADING DRAFT" : "CURRENT DRAFT"}</span>
         <h1>{title}</h1>
         <p>{detail}</p>
         {onRetry ? <button onClick={onRetry} type="button">重新读取</button> : null}
-        <Link href="/">返回建案中心</Link>
+        <Link href={actionHref}>{actionLabel}</Link>
       </article>
     </main>
+  );
+  if (projectId === null) return gate;
+
+  return (
+    <div className={`${styles.workbench} ${styles.gatedWorkbench}`}>
+      <header className={styles.topbar}>
+        <div className={styles.brandBlock}>
+          <span className={styles.brandMark} aria-hidden="true" />
+          <div><strong>CaseFile</strong><small>推理卷宗</small></div>
+        </div>
+        <ProjectSwitcher
+          currentProjectId={projectId}
+          fallbackTitle={projectTitle}
+        />
+        <div className={styles.topStatus} aria-hidden="true" />
+        <div className={styles.globalSearch} aria-hidden="true" />
+        <div className={styles.topActions}>
+          <Link href={`/?project=${projectId}`}>建案中心</Link>
+        </div>
+      </header>
+      {gate}
+    </div>
   );
 }
 
@@ -721,24 +788,28 @@ function AnalystWorkbenchSurface({
   readOnlyPreview = false,
   realDocument = null,
   realContextState,
+  currentDraft = null,
   draftRevision = null,
   savingObject = false,
   onReloadContext,
+  onDraftActivated,
   onSaveObject,
 }: {
   seed: WorkbenchSeed;
   activeCandidate: WorkbenchCandidate | null;
   activeCandidateStatus: WorkbenchCandidateStatus | null;
-  adoptCandidate: (candidateId: string) => Promise<boolean>;
+  adoptCandidate: (candidateId: string) => Promise<number | false>;
   projectId?: number | null;
   previewCandidate?: DraftCandidatePreviewView | null;
   previewProjectId?: number | null;
   readOnlyPreview?: boolean;
   realDocument?: CaseFile | null;
   realContextState?: WorkbenchContextState;
+  currentDraft?: DraftView | null;
   draftRevision?: number | null;
   savingObject?: boolean;
   onReloadContext?: () => void;
+  onDraftActivated?: (draft: DraftView) => Promise<void> | void;
   onSaveObject?: (
     objectId: string,
     changes: Record<string, unknown>,
@@ -751,7 +822,7 @@ function AnalystWorkbenchSurface({
       ? `fixture:${seed.id}:current`
       : readOnlyPreview && previewCandidate
         ? `project:${projectId}:candidate:${previewCandidate.task_run_id}`
-        : `project:${projectId}:current`;
+        : `project:${projectId}:draft:${currentDraft?.draft_id ?? "current"}`;
   const contextState = realContextState ?? {
     data: null,
     error: null,
@@ -794,11 +865,6 @@ function AnalystWorkbenchSurface({
     ...seed.initialAuditEntries,
   ]);
   const [railWidth, setRailWidth] = useState<number | null>(null);
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
-  const [projectOptions, setProjectOptions] = useState<ProjectView[] | null>(null);
-  const [projectMenuError, setProjectMenuError] = useState<string | null>(null);
-  const projectSelectorRef = useRef<HTMLDivElement>(null);
-  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const railResizeRef = useRef<{
     startX: number;
     startWidth: number;
@@ -816,79 +882,6 @@ function AnalystWorkbenchSurface({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
 
-  useEffect(() => {
-    if (!projectMenuOpen) return;
-
-    function closeOnOutsidePointer(event: PointerEvent) {
-      if (!projectSelectorRef.current?.contains(event.target as Node)) {
-        setProjectMenuOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: globalThis.KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      setProjectMenuOpen(false);
-      projectTriggerRef.current?.focus();
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePointer);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [projectMenuOpen]);
-
-  useEffect(() => {
-    if (
-      !projectMenuOpen ||
-      projectId === null ||
-      projectOptions !== null ||
-      projectMenuError !== null
-    ) {
-      return;
-    }
-    let active = true;
-    void listProjects(LOCAL_ACTOR_ID)
-      .then((projects) => {
-        if (!active) return;
-        setProjectOptions(projects);
-      })
-      .catch((caught: unknown) => {
-        if (!active) return;
-        setProjectMenuError(workbenchErrorMessage(caught));
-      });
-    return () => {
-      active = false;
-    };
-  }, [projectId, projectMenuError, projectMenuOpen, projectOptions]);
-
-  const selectedProjectIndex =
-    projectId !== null
-      ? projectOptions
-          ?.filter((project) => project.status !== "archived" || project.id === projectId)
-          .findIndex((project) => project.id === projectId) ?? -1
-      : -1;
-  const switchableProjects = projectOptions?.filter(
-    (project) => project.status !== "archived" || project.id === projectId,
-  );
-  const projectPosition =
-    projectOptions && selectedProjectIndex >= 0
-      ? `${String(selectedProjectIndex + 1).padStart(2, "0")} / ${String(projectOptions.length).padStart(2, "0")}`
-      : "01 / 03";
-
-  function toggleProjectMenu() {
-    if (!projectMenuOpen && projectId !== null && projectOptions === null) {
-      setProjectMenuError(null);
-    }
-    setProjectMenuOpen((open) => !open);
-  }
-
-  const projectMenuLoading =
-    projectMenuOpen &&
-    projectId !== null &&
-    projectOptions === null &&
-    projectMenuError === null;
 
   function startRailResize(event: ReactPointerEvent<HTMLDivElement>) {
     railResizeRef.current = {
@@ -1259,39 +1252,46 @@ function AnalystWorkbenchSurface({
             <span className={settingsStyles.settingsLabel}>模型</span>
           </button>
         </div>
-        <div className={styles.caseIdentity}>
-          <span>{writeLocked ? "候选预览" : "当前卷宗"}</span>
-          <div className={styles.caseIdentityTitleRow}>
-            <strong>{seed.caseMeta.title}</strong>
-            {activeCandidate ? (
-              <>
-                <Link className={styles.candidateBackLink} href="/">← 返回候选卷</Link>
-                {!realData && activeCandidateStatus === "pending" ? (
-                  <button
-                    className={styles.candidateAdoptButton}
-                    onClick={() => {
-                      void adoptCandidate(activeCandidate.id)
-                        .then((ok) => {
-                          if (ok) announce("该候选已采用为当前工作稿。");
-                        })
-                        .catch((caught) => {
-                          announce(
-                            caught instanceof Error
-                              ? caught.message
-                              : "采用未完成，请稍后重试。",
-                          );
-                        });
-                    }}
-                    type="button"
-                  >
-                    采用为当前工作稿
-                  </button>
-                ) : null}
-              </>
-            ) : null}
+        {projectId === null ? (
+          <div className={styles.caseIdentity}>
+            <span>本地项目预览</span>
+            <div className={styles.caseIdentityTitleRow}>
+              <strong>{seed.caseMeta.title}</strong>
+              {activeCandidate ? (
+                <>
+                  <Link className={styles.candidateBackLink} href="/">← 返回候选卷</Link>
+                  {!realData && activeCandidateStatus === "pending" ? (
+                    <button
+                      className={styles.candidateAdoptButton}
+                      onClick={() => {
+                        void adoptCandidate(activeCandidate.id)
+                          .then((draftId) => {
+                            if (draftId) announce("该候选已采用为当前工作稿。");
+                          })
+                          .catch((caught) => {
+                            announce(
+                              caught instanceof Error
+                                ? caught.message
+                                : "采用未完成，请稍后重试。",
+                            );
+                          });
+                      }}
+                      type="button"
+                    >
+                      采用为当前工作稿
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            <small>{seed.caseMeta.revision}</small>
           </div>
-          <small>{seed.caseMeta.revision}</small>
-        </div>
+        ) : (
+          <ProjectSwitcher
+            currentProjectId={projectId}
+            fallbackTitle={seed.caseMeta.title}
+          />
+        )}
         <div className={styles.topStatus} aria-label="卷宗状态">
           <button data-tone={writeLocked ? "success" : realData ? contextState.error || unresolvedCount > 0 ? "danger" : contextState.data?.validation.status === "passed" ? "success" : "muted" : unresolvedCount > 0 ? "danger" : "success"} onClick={() => { showInspectorTab("issues"); setMobileRegion("inspector"); }} type="button">
             <WorkbenchIcon name="validate" />
@@ -1388,75 +1388,22 @@ function AnalystWorkbenchSurface({
           onPointerMove={moveInspectorResize}
           onPointerUp={endInspectorResize}
         />
-        <aside aria-label="项目与对象导航" className={styles.objectRail}>
+        <aside aria-label="卷宗对象导航" className={styles.objectRail}>
           <section className={styles.projectTree}>
-            <div className={styles.railEyebrow}><span>项目树</span><b>{projectPosition}</b></div>
-            <div className={styles.projectSelectorShell} ref={projectSelectorRef}>
-              <button
-                aria-controls="workbench-project-menu"
-                aria-expanded={projectMenuOpen}
-                aria-haspopup="menu"
-                aria-label={`切换项目：${seed.caseMeta.title}`}
-                className={styles.projectSelector}
-                onClick={toggleProjectMenu}
-                ref={projectTriggerRef}
-                type="button"
-              >
-                <span className={styles.projectMonogram}>{seed.caseMeta.monogram}</span>
-                <span><strong>{seed.caseMeta.title}</strong><small>主卷宗 · {seed.caseMeta.revision}</small></span>
-                <WorkbenchIcon name="chevron" />
-              </button>
-              {projectMenuOpen ? (
-                <div aria-label="切换项目" className={styles.projectMenu} id="workbench-project-menu" role="menu">
-                  <div className={styles.projectMenuHeader}>
-                    <span>切换项目</span>
-                    <small>{projectId === null ? "本地预览" : "仅显示未归档项目"}</small>
-                  </div>
-                  {projectId === null ? (
-                    <>
-                      <div className={styles.projectMenuEmpty}>
-                        <strong>当前为本地工作台预览</strong>
-                        <small>真实项目请从项目历史进入。</small>
-                      </div>
-                      <Link
-                        className={styles.projectMenuLink}
-                        href="/"
-                        onClick={() => setProjectMenuOpen(false)}
-                        role="menuitem"
-                      >
-                        返回候选卷
-                      </Link>
-                    </>
-                  ) : projectMenuLoading ? (
-                    <div className={styles.projectMenuEmpty} role="status">正在读取项目列表…</div>
-                  ) : projectMenuError ? (
-                    <div className={styles.projectMenuEmpty}>
-                      <strong>项目列表读取失败</strong>
-                      <small>{projectMenuError}</small>
-                    </div>
-                  ) : switchableProjects?.length ? (
-                    switchableProjects.map((project) => (
-                      <Link
-                        aria-current={project.id === projectId ? "page" : undefined}
-                        className={styles.projectMenuLink}
-                        data-current={project.id === projectId}
-                        href={`/workbench?project=${project.id}`}
-                        key={project.id}
-                        onClick={() => setProjectMenuOpen(false)}
-                        role="menuitem"
-                      >
-                        <span>
-                          <strong>{project.title}</strong>
-                          <small>{project.archived_at ? "已归档" : `当前修订 R${project.draft.revision}`}</small>
-                        </span>
-                        {project.id === projectId ? <b>当前</b> : null}
-                      </Link>
-                    ))
-                  ) : (
-                    <div className={styles.projectMenuEmpty} role="status">暂无可切换的项目。</div>
-                  )}
-                </div>
-              ) : null}
+            <div className={styles.railEyebrow}>
+              <span>卷宗对象导航</span>
+              <b>{seed.caseObjects.length}</b>
+            </div>
+            <div className={styles.objectNavTitle}>
+              <span className={styles.projectMonogram}>{seed.caseMeta.monogram}</span>
+              <span>
+                <strong>{seed.caseMeta.branchLabel}</strong>
+                <small>
+                  {currentDraft
+                    ? `工作稿 #${currentDraft.draft_id} · R${currentDraft.revision}`
+                    : seed.caseMeta.revision}
+                </small>
+              </span>
             </div>
             <div className={styles.treeBranches}>
               <button data-active="true" type="button"><i />{seed.caseMeta.branchLabel} <b>{seed.timelineEvents.length}</b></button>
@@ -1496,6 +1443,13 @@ function AnalystWorkbenchSurface({
           tabIndex={-1}
         >
           <header className={styles.canvasToolbar}>
+            {projectId !== null && currentDraft && onDraftActivated && !writeLocked ? (
+              <DraftSwitcher
+                currentDraft={currentDraft}
+                onActivated={onDraftActivated}
+                projectId={projectId}
+              />
+            ) : null}
             <div className={styles.viewTabs} aria-label="主画布视图" role="tablist">
               {workbenchViewOptions.map((option) => (
                 <button aria-selected={view === option.id} disabled={writeLocked && (option.id === "export" || option.id === "compile")} key={option.id} onClick={() => { setView(option.id); announce(`主画布已切换到${option.label}。`); }} role="tab" type="button">

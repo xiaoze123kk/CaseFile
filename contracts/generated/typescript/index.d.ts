@@ -527,6 +527,7 @@ export interface TaskEvent {
 export interface AgentGenerateRequest {
   project_id: number;
   brief_version_id: number;
+  expected_draft_id: number;
   expected_draft_revision: number;
   provider: "openai" | "deepseek";
 }

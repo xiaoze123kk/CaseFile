@@ -191,6 +191,7 @@ describe("case session provider fallback", () => {
     await expect(
       adoptDraftCandidateWithReconciliation(7, 31, 4),
     ).resolves.toEqual({
+      adoption: null,
       facts: { candidates, draft, targetIsCurrent: true },
       error: null,
     });
@@ -199,7 +200,7 @@ describe("case session provider fallback", () => {
       "/projects/7/draft-candidates/31/adopt",
       expect.objectContaining({
         method: "POST",
-        body: { expected_draft_revision: 4 },
+        body: { expected_current_draft_id: 4 },
       }),
     );
     expect(apiRequestMock).toHaveBeenNthCalledWith(

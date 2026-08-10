@@ -22,7 +22,8 @@ from casefile.application.task_events import append_task_event
 from casefile.data_postgres.models import (
     Brief,
     BriefVersion,
-    DraftOperation,
+    Draft,
+    DraftSnapshot,
     TaskAttempt,
     TaskRun,
 )
@@ -30,7 +31,7 @@ from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
 
 
 class DraftCandidateService:
-    """Transactional boundary for candidate history and explicit Draft replacement."""
+    """Transactional boundary for candidate history and explicit Draft creation."""
 
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -44,7 +45,6 @@ class DraftCandidateService:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)
             brief = self._brief(owned)
-            current_task_run_id = self._current_generation_task_run_id(owned)
             tasks = list(
                 self.session.scalars(
                     select(TaskRun)
@@ -66,7 +66,7 @@ class DraftCandidateService:
                         task,
                         attempt=attempt,
                         current_brief_version_id=brief.current_version_id,
-                        current_task_run_id=current_task_run_id,
+                        current_draft_id=owned.casefile.current_draft_id,
                     )
                 )
             return candidates
@@ -95,11 +95,11 @@ class DraftCandidateService:
                 task,
                 attempt=attempt,
                 current_brief_version_id=brief.current_version_id,
-                current_task_run_id=self._current_generation_task_run_id(owned),
+                current_draft_id=owned.casefile.current_draft_id,
             )
             # The successful attempt is the immutable source of truth for preview.
             # Returning it here must never project it into the mutable Draft; adoption
-            # remains an explicit POST guarded by Brief and Draft revisions.
+            # remains an explicit POST guarded by the server Current Draft pointer.
             return {
                 **view,
                 "preview": True,
@@ -113,15 +113,22 @@ class DraftCandidateService:
         project_id: int,
         task_run_id: int,
         *,
-        expected_draft_revision: int,
+        expected_current_draft_id: int,
     ) -> dict[str, Any]:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id, lock=True)
+            current = self._owned(actor_user_id, project_id, lock=True)
+            if current.casefile.current_draft_id != expected_current_draft_id:
+                raise ApplicationError(
+                    "current_draft_changed",
+                    "当前工作稿已在其他位置切换，请刷新后重试。",
+                    status_code=409,
+                    details={"current_draft_id": current.casefile.current_draft_id},
+                )
             task = self.session.scalar(
                 select(TaskRun)
                 .where(
                     TaskRun.id == task_run_id,
-                    TaskRun.project_id == owned.project.id,
+                    TaskRun.project_id == current.project.id,
                 )
                 .with_for_update()
             )
@@ -146,7 +153,15 @@ class DraftCandidateService:
                     "生成成功的任务没有可用的已校验候选。",
                     status_code=409,
                 )
-            brief = self._brief(owned, lock=True)
+            source = self.projects.get_owned_draft(
+                actor_user_id,
+                project_id,
+                task.draft_id,
+                lock=True,
+            )
+            if source is None:
+                raise not_found("Draft")
+            brief = self._brief(current, lock=True)
             if task.brief_version_id is None:
                 raise ApplicationError(
                     "candidate_brief_missing",
@@ -163,21 +178,33 @@ class DraftCandidateService:
             brief_version = self.session.scalar(
                 select(BriefVersion).where(
                     BriefVersion.id == task.brief_version_id,
-                    BriefVersion.project_id == owned.project.id,
+                    BriefVersion.project_id == current.project.id,
                     BriefVersion.brief_id == brief.id,
                 )
             )
             if brief_version is None:
                 raise not_found("BriefVersion")
+            if source.draft.revision != task.input_draft_revision:
+                raise ApplicationError(
+                    "candidate_source_draft_changed",
+                    "生成该候选后，来源工作稿已更新，请重新生成候选。",
+                    status_code=409,
+                    details={
+                        "source_draft_id": source.draft.id,
+                        "source_revision": source.draft.revision,
+                        "task_revision": task.input_draft_revision,
+                    },
+                )
             snapshot = project_generation_candidate(
                 self.session,
-                owned,
+                source,
+                current,
                 candidate=attempt.candidate_jsonb,
                 brief=brief,
                 brief_version=brief_version,
                 task_run_id=task.id,
                 actor_user_id=actor_user_id,
-                expected_draft_revision=expected_draft_revision,
+                expected_current_draft_id=expected_current_draft_id,
             )
             task.result_snapshot_id = snapshot.id
             append_task_event(
@@ -188,12 +215,15 @@ class DraftCandidateService:
                 {
                     "message": "候选草稿已采用为当前工作稿",
                     "content_hash": snapshot.content_hash,
+                    "draft_id": snapshot.draft_id,
                 },
             )
             self.session.flush()
             return {
                 "task_run_id": task.id,
-                "title": owned.casefile.title,
+                "draft_id": snapshot.draft_id,
+                "revision": snapshot.snapshot_revision,
+                "title": attempt.candidate_jsonb["title"],
                 "content_hash": snapshot.content_hash,
                 "adopted": True,
             }
@@ -233,36 +263,13 @@ class DraftCandidateService:
             .limit(1)
         )
 
-    def _current_generation_task_run_id(self, owned: OwnedDraft) -> int | None:
-        operations = self.session.scalars(
-            select(DraftOperation)
-            .where(
-                DraftOperation.draft_id == owned.draft.id,
-                DraftOperation.operation_type.in_(
-                    (
-                        "agent_generate_from_brief",
-                        "agent_adopt_brief_candidate",
-                    )
-                ),
-            )
-            .order_by(DraftOperation.sequence_no.desc())
-        )
-        for operation in operations:
-            payload = operation.new_value_jsonb
-            if not isinstance(payload, dict):
-                continue
-            task_run_id = payload.get("task_run_id")
-            if isinstance(task_run_id, int) and not isinstance(task_run_id, bool):
-                return task_run_id
-        return None
-
     def _candidate_view(
         self,
         task: TaskRun,
         *,
         attempt: TaskAttempt,
         current_brief_version_id: int | None,
-        current_task_run_id: int | None,
+        current_draft_id: int,
     ) -> dict[str, Any]:
         if (
             task.task_type != "brief_to_draft"
@@ -292,15 +299,26 @@ class DraftCandidateService:
             "candidate_strategy_version",
             CANDIDATE_STRATEGY_VERSION,
         )
+        result_draft_id = None
+        if task.result_snapshot_id is not None:
+            snapshot = self.session.get(DraftSnapshot, task.result_snapshot_id)
+            result_draft_id = snapshot.draft_id if snapshot is not None else None
+        source_draft = self.session.get(Draft, task.draft_id)
+        source_is_eligible = bool(
+            source_draft is not None
+            and source_draft.status == "active"
+            and source_draft.revision == task.input_draft_revision
+        )
         return {
             "task_run_id": task.id,
             "brief_version_no": brief_version.version_no,
             "is_current_brief": task.brief_version_id == current_brief_version_id,
-            "is_current": task.id == current_task_run_id,
+            "is_current": result_draft_id == current_draft_id,
             "is_adopted": task.result_snapshot_id is not None,
             "can_adopt": (
                 task.brief_version_id == current_brief_version_id
                 and task.result_snapshot_id is None
+                and source_is_eligible
             ),
             "provider": task.provider,
             "model_id": task.model_id,
@@ -316,6 +334,7 @@ class DraftCandidateService:
             "created_at": _time(task.created_at),
             "completed_at": _time(task.completed_at),
         }
+
 
 def _time(value: datetime | None) -> str | None:
     return None if value is None else value.astimezone(UTC).isoformat()

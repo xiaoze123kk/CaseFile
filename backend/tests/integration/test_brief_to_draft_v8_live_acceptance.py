@@ -22,11 +22,6 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, func, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, sessionmaker
-
 from casefile.api.app import create_app
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
@@ -39,6 +34,10 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = [
     pytest.mark.postgres,
@@ -423,6 +422,7 @@ def _queue_generation_task(
         headers=headers,
         json={
             "brief_version_id": confirmed.json()["brief_version_id"],
+            "expected_draft_id": created.json()["current_draft_id"],
             "expected_draft_revision": 1,
             "provider": provider,
             "candidate_strategy": strategy,

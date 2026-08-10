@@ -19,10 +19,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from casefile.api.brief_intake import brief_intake_router
 from casefile.api.dependencies import (
     ActorDependency,
+    DraftIdentityDependency,
     RevisionDependency,
     SessionDependency,
 )
 from casefile.api.schemas import (
+    DraftActivateRequest,
     ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
@@ -296,6 +298,32 @@ def _api_router() -> APIRouter:
         _set_revision(response, result["revision"])
         return result
 
+    @router.get("/projects/{project_id}/drafts")
+    def list_drafts(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> list[dict[str, Any]]:
+        return CaseFileService(session).list_drafts(actor, project_id)
+
+    @router.post("/projects/{project_id}/drafts/{draft_id}/activate")
+    def activate_draft(
+        project_id: int,
+        draft_id: int,
+        payload: DraftActivateRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = CaseFileService(session).activate_draft(
+            actor,
+            project_id,
+            draft_id,
+            expected_current_draft_id=payload.expected_current_draft_id,
+        )
+        _set_revision(response, result["revision"])
+        return result
+
     @router.patch("/projects/{project_id}/draft/objects/{object_id}")
     def patch_v1_object(
         project_id: int,
@@ -309,6 +337,7 @@ def _api_router() -> APIRouter:
             actor,
             project_id,
             object_id,
+            expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
             changes=payload.changes,
         )
@@ -320,10 +349,16 @@ def _api_router() -> APIRouter:
         project_id: int,
         response: Response,
         actor: ActorDependency,
+        draft_id: DraftIdentityDependency,
         revision: RevisionDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        result, created = CaseFileService(session).create_snapshot(actor, project_id, revision)
+        result, created = CaseFileService(session).create_snapshot(
+            actor,
+            project_id,
+            draft_id,
+            revision,
+        )
         response.status_code = 201 if created else 200
         _set_revision(response, result["revision"])
         return result

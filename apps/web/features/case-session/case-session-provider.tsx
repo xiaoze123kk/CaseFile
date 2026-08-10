@@ -464,7 +464,7 @@ interface CaseSessionContextValue {
   analyzeStrategies: (refresh?: boolean) => Promise<boolean>;
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
   previewCandidate: (candidateId: string | null) => void;
-  adoptCandidate: (candidateId: string) => Promise<boolean>;
+  adoptCandidate: (candidateId: string) => Promise<number | false>;
   beginBriefRevision: () => void;
   candidateStatus: (
     candidate: SessionWorkbenchCandidate,
@@ -1169,6 +1169,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
               const task = await startDraftGenerationTask(
                 projectId,
                 brief.current_version_id!,
+                draft.draft_id,
                 draft.revision,
                 provider,
                 firstStrategy,
@@ -1225,6 +1226,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
               const task = await startDraftGenerationTask(
                 projectId,
                 brief.current_version_id!,
+                draft.draft_id,
                 draft.revision,
                 workingProvider!,
                 strategy,
@@ -1317,6 +1319,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
               const task = await startDraftGenerationTask(
                 projectId,
                 brief.current_version_id!,
+                draft.draft_id,
                 draft.revision,
                 workingProvider!,
                 strategy,
@@ -1484,7 +1487,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     if (projectId === null) {
       // 无后端会话（纯 fixture 接力场景）时只在会话内采用。
       dispatch({ type: "adopt_candidate", candidateId });
-      return true;
+      return 1;
     }
     const taskRunId = Number(candidateId.replace(/^draft-/, ""));
     if (!Number.isInteger(taskRunId)) return false;
@@ -1492,7 +1495,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     const outcome = await adoptDraftCandidateWithReconciliation(
       projectId,
       taskRunId,
-      draft.revision,
+      draft.draft_id,
     );
     let reconciled = false;
     if (outcome.facts) {
@@ -1517,7 +1520,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       // Candidate adoption is already durable. A Brief refresh failure must not
       // turn the successful write into an author-facing adoption failure.
     }
-    return true;
+    return outcome.adoption?.draft_id ?? outcome.facts?.draft.draft_id ?? false;
   }, []);
 
   const beginBriefRevision = useCallback(() => {
@@ -1794,6 +1797,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       const resumed = await resumeDraftGenerationTask(
         projectId,
         slot.taskRunId,
+        draft.draft_id,
         draft.revision,
         brief.draft_revision,
       );

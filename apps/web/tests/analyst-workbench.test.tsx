@@ -70,22 +70,15 @@ function CandidateSeedHarness() {
 }
 
 describe("analyst workbench", () => {
-  it("opens the project selector and closes it with Escape", () => {
+  it("keeps the left rail scoped to work-draft objects", () => {
     renderWorkbench();
-
-    const trigger = screen.getByRole("button", { name: /切换项目/u });
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-
-    fireEvent.click(trigger);
-
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("menu", { name: "切换项目" })).toBeInTheDocument();
-    expect(screen.getByText("当前为本地工作台预览")).toBeInTheDocument();
-
-    fireEvent.keyDown(document, { key: "Escape" });
-
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(document.activeElement).toBe(trigger);
+    expect(
+      screen.getByRole("complementary", { name: "卷宗对象导航" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("卷宗对象导航")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /切换项目/u }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps all eight workbench views available, including direct evidence comparison", () => {

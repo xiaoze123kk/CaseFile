@@ -16,9 +16,9 @@
 | `backend/src/casefile/data_postgres/__init__.py` | PostgreSQL 持久化包入口，仅导出共享 `Base`。 |
 | `backend/src/casefile/data_postgres/base.py` | SQLAlchemy Base、约束命名规范、BIGINT Identity 主键和时间戳 Mixin。 |
 | `backend/src/casefile/data_postgres/session.py` | 同步 Engine/Session 工厂、应用支持的唯一数据库 revision 和 API 启动门禁。 |
-| `backend/src/casefile/data_postgres/repositories.py` | 按 Project/Draft/Snapshot 聚合封装所有者过滤、当前态读写、Operation、语义引用和安全软删。 |
+| `backend/src/casefile/data_postgres/repositories.py` | 按 Project/CaseFile/Draft/Snapshot 聚合封装所有者过滤、Current Draft 锁定与切换、全部工作稿枚举、Draft 隔离的 Operation/语义引用和安全软删。 |
 | `backend/src/casefile/data_postgres/models/identity.py` | `users`、单一所有者 `projects` 与用户级密文 `user_provider_settings` ORM。 |
-| `backend/src/casefile/data_postgres/models/casefile.py` | `casefiles`、`drafts`、轻量 `casefile_objects` 注册表、旧语义边 `casefile_refs`、v1 `casefile_contract_refs` 和 `draft_operations` ORM。 |
+| `backend/src/casefile/data_postgres/models/casefile.py` | `casefiles` 的非空 Current Draft 复合指针、多份 `drafts`、Draft 内唯一的轻量 `casefile_objects` 注册表、旧语义边 `casefile_refs`、v1 `casefile_contract_refs` 和 `draft_operations` ORM。 |
 | `backend/src/casefile/data_postgres/models/content.py` | 旧 Narrative Phase 兼容存储、Entity/Person、v1 Relationship/Location、Event、Information Unit/Evidence/Testimony、Claim 与 Knowledge State ORM。 |
 | `backend/src/casefile/data_postgres/models/reasoning.py` | Hypothesis、Reasoning Path/Node/Edge、Resolution Spec/Slot、Constraint 与 Structure Lock ORM。 |
 | `backend/src/casefile/data_postgres/models/versioning.py` | `draft_snapshots`、`canon_versions`、`audit_events` ORM。 |
@@ -36,7 +36,7 @@
 | `backend/src/casefile/application/commands.py` | 与 HTTP 解耦的 Project、Entity 和 Event 类型化写入命令。 |
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
 | `backend/src/casefile/application/snapshot.py` | 从全部规范化当前态投影 CaseFile JSON，稳定排序、契约校验并计算 RFC 8785 SHA-256。 |
-| `backend/src/casefile/application/services.py` | Project、Draft 对象/引用编辑和 Snapshot 的事务边界、并发控制及应用规则。 |
+| `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 v1 CaseFile JSON 与 38 表规范化当前态之间执行原子写入、完整投影、契约引用映射和规范哈希。 |
 | `backend/src/casefile/application/v1_editing.py` | Entity、Location、Event 的有限字段编辑、revision 冲突检查和 v1 契约往返门禁。 |
 | `backend/src/casefile/application/workflow_service.py` | Provider 设置、不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、三类 TaskRun 创建、最近任务恢复与 SSE 事件查询的事务边界。 |
@@ -52,7 +52,7 @@
 | 路径 | 职责 |
 |---|---|
 | `backend/src/casefile/api/schemas.py` | FastAPI 严格请求 DTO 与应用命令转换。 |
-| `backend/src/casefile/api/dependencies.py` | 请求 Session、本地开发身份头和 Draft base revision 依赖。 |
+| `backend/src/casefile/api/dependencies.py` | 请求 Session、本地开发身份头，以及 Current Draft ID + base revision 成对门禁依赖。 |
 | `backend/src/casefile/api/app.py` | 应用工厂、启动数据库门禁、统一错误体、健康检查与 `/api/v1` 路由。 |
 | `backend/src/casefile/api/workflow.py` | Provider、SourceRecord、Brief、润色/拆解/生成 TaskRun、取消/最近任务恢复、TaskEvent/SSE、A 路径只读指标、v1 CaseFile 读取和有限编辑的 HTTP 路由。 |
 | `backend/src/casefile/api/workbench.py` | 分析师工作台验证、来源与审计只读上下文的 HTTP 路由。 |
@@ -89,7 +89,8 @@
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证七段升降级、38 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |
 | `backend/tests/integration/application_services_test_support.py` | 为应用服务集成测试集中提供 `_test` PostgreSQL 生命周期、Provider 与建案 helper；由 integration `conftest.py` 暴露共享 fixture。 |
-| `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、Worker 候选持久化、v1 有限编辑和 Agent 协作闭环。 |
+| `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、Worker 候选持久化、首次/再次采用、A/B 工作稿隔离、v1 有限编辑和 Agent 协作闭环。 |
+| `backend/tests/integration/test_multiple_draft_migration.py`、`test_multiple_drafts.py` | 验证旧数据升级回填 Current Draft、复合外键与 Draft 内对象 ID 唯一，以及并发激活、归档/锁定门禁和编辑/快照/验证/来源/审计隔离。 |
 | `backend/tests/integration/test_application_task_lifecycle.py` | 在真实 `_test` PostgreSQL 验证 TaskRun Prompt 版本、queued/running/orphan 取消、lease 恢复、Provider 配置冻结与不可变事件。 |
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、候选采用、工作台验证/来源/审计读模型、SSE 恢复与完成门禁闭环。 |
 | `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8/v9 验收（默认 v9）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 执行策略轮换任务，检查步骤/模型调用持久化、SSE、诊断和 Draft/Canon 未自动写入边界。 |

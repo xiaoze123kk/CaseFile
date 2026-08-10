@@ -144,6 +144,7 @@ class BriefStrategyOptionsTaskRequest(StrictRequest):
 
 class GenerateTaskRequest(StrictRequest):
     brief_version_id: int = Field(ge=1)
+    expected_draft_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
     provider: Literal["openai", "deepseek"] = "openai"
     candidate_strategy: Literal[
@@ -156,36 +157,49 @@ class GenerateTaskRequest(StrictRequest):
 
 
 class DraftCandidateAdoptRequest(StrictRequest):
-    expected_draft_revision: int = Field(ge=1)
+    expected_current_draft_id: int = Field(ge=1)
+
+
+class DraftActivateRequest(StrictRequest):
+    expected_current_draft_id: int = Field(ge=1)
 
 
 class ResumeGenerationTaskRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
     expected_brief_revision: int = Field(ge=1)
 
 
 class AgentThreadCreateRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=1, max_length=200)
 
 
 class AgentThreadUpdateRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
     title: str | None = Field(default=None, min_length=1, max_length=200)
     is_pinned: bool | None = None
     archived: bool | None = None
 
     @model_validator(mode="after")
     def has_change(self) -> Self:
-        if not self.model_fields_set:
+        concurrency_fields = {"expected_draft_id", "expected_draft_revision"}
+        if not (self.model_fields_set - concurrency_fields):
             raise ValueError("at least one thread field is required")
         return self
 
 
 class AgentMessageCreateRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
     content: str = Field(min_length=1, max_length=100_000)
     provider: Literal["openai", "deepseek"] = "openai"
 
 
 class AgentPatchApplyRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
     operation_ids: list[int] | None = None
 
@@ -199,9 +213,11 @@ class AgentPatchApplyRequest(StrictRequest):
 
 
 class AgentPatchUndoRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
 
 
 class ObjectPatchRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
     changes: dict[str, Any] = Field(min_length=1)

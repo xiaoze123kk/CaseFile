@@ -74,6 +74,7 @@ function buildFakeBackend() {
   let briefContent: BriefContent | null = null;
   let formalBriefReview = false;
   const caseDraftRevision = 17;
+  const caseDraftId = 71;
   let draftCandidates: DraftCandidateView[] = [];
   let taskSeq = 100;
   const taskTypes = new Map<number, string>();
@@ -83,7 +84,8 @@ function buildFakeBackend() {
   let failNextAnchorExtract = false;
   let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
-  const adoptionDraftRevisions: number[] = [];
+  const generationDraftIds: number[] = [];
+  const adoptionCurrentDraftIds: number[] = [];
   let failNextDraftAdoption = false;
   let draftAdoptionGate: Promise<void> | null = null;
   let projects: ProjectView[] = [
@@ -97,7 +99,8 @@ function buildFakeBackend() {
       created_at: new Date(Date.now() - 86400000).toISOString(),
       updated_at: new Date().toISOString(),
       casefile_id: 1,
-      draft: { id: 1, revision: 1, schema_version: "v1", status: "open" },
+      current_draft_id: 1,
+      draft: { id: 1, title: "测试项目", revision: 1, schema_version: "v1", status: "active" },
     },
     {
       id: 2,
@@ -109,7 +112,8 @@ function buildFakeBackend() {
       created_at: new Date(Date.now() - 172800000).toISOString(),
       updated_at: new Date(Date.now() - 3600000).toISOString(),
       casefile_id: 2,
-      draft: { id: 2, revision: 1, schema_version: "v1", status: "open" },
+      current_draft_id: 2,
+      draft: { id: 2, title: "午夜回航旧案", revision: 1, schema_version: "v1", status: "active" },
     },
     {
       id: 3,
@@ -121,7 +125,8 @@ function buildFakeBackend() {
       created_at: new Date(Date.now() - 259200000).toISOString(),
       updated_at: new Date(Date.now() - 3600000).toISOString(),
       casefile_id: 3,
-      draft: { id: 3, revision: 1, schema_version: "v1", status: "open" },
+      current_draft_id: 3,
+      draft: { id: 3, title: "封存的旧卷", revision: 1, schema_version: "v1", status: "active" },
     },
   ];
 
@@ -512,7 +517,8 @@ function buildFakeBackend() {
       draftAdoptionGate = gate;
     },
     getGenerationDraftRevisions: () => generationDraftRevisions,
-    getAdoptionDraftRevisions: () => adoptionDraftRevisions,
+    getGenerationDraftIds: () => generationDraftIds,
+    getAdoptionCurrentDraftIds: () => adoptionCurrentDraftIds,
     listConfiguredProviders: async () => configuredProviders,
     isProviderAuthFailure: isAuthFailure,
     isBriefIntakeRevisionConflict: isRevisionConflict,
@@ -638,18 +644,30 @@ function buildFakeBackend() {
     strategyOptionsResult: (task: TaskView) => task.result,
     fetchCaseDraft: async (): Promise<DraftView> => ({
       project_id: 1,
+      casefile_id: 1,
+      draft_id: caseDraftId,
+      title: "测试工作稿",
       revision: caseDraftRevision,
       schema_version: "v1",
-      status: "open",
+      status: "active",
+      document_status: "draft",
+      brief_version_id: null,
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+      updated_at: new Date().toISOString(),
       content: null,
     }),
     startDraftGenerationTask: async (
       _projectId: number,
       _briefVersionId: number,
+      expectedDraftId: number,
       expectedDraftRevision: number,
     ) => {
+      generationDraftIds.push(expectedDraftId);
       generationDraftRevisions.push(expectedDraftRevision);
-      if (expectedDraftRevision !== caseDraftRevision) {
+      if (
+        expectedDraftId !== caseDraftId ||
+        expectedDraftRevision !== caseDraftRevision
+      ) {
         throw new Error("CaseFile Draft revision is stale");
       }
       return recordTask("brief_to_draft");
@@ -810,9 +828,9 @@ function buildFakeBackend() {
     adoptDraftCandidateWithReconciliation: async (
       _projectId: number,
       taskRunId: number,
-      expectedDraftRevision: number,
+      expectedCurrentDraftId: number,
     ) => {
-      adoptionDraftRevisions.push(expectedDraftRevision);
+      adoptionCurrentDraftIds.push(expectedCurrentDraftId);
       const gate = draftAdoptionGate;
       if (gate) {
         draftAdoptionGate = null;
@@ -822,15 +840,26 @@ function buildFakeBackend() {
         failNextDraftAdoption = false;
         throw new Error("候选采用服务暂不可用。");
       }
-      if (expectedDraftRevision !== caseDraftRevision) {
-        throw new Error("CaseFile Draft revision is stale");
+      if (expectedCurrentDraftId !== caseDraftId) {
+        throw new Error("Current Draft changed");
       }
       draftCandidates = draftCandidates.map((candidate) =>
         candidate.task_run_id === taskRunId
           ? { ...candidate, is_adopted: true, is_current: true }
           : candidate,
       );
-      return { facts: null, error: null };
+      return {
+        adoption: {
+          task_run_id: taskRunId,
+          draft_id: caseDraftId,
+          revision: caseDraftRevision,
+          title: "测试工作稿",
+          content_hash: "a".repeat(64),
+          adopted: true as const,
+        },
+        facts: null,
+        error: null,
+      };
     },
   };
 }
@@ -1102,6 +1131,7 @@ describe("intake center", () => {
     await flush();
 
     expect(fake.backend.getGenerationDraftRevisions().slice(-1)).toEqual([17]);
+    expect(fake.backend.getGenerationDraftIds().slice(-1)).toEqual([71]);
     expect(screen.getByRole("button", { name: /完整深稿已生成/u })).toBeDisabled();
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
@@ -1131,7 +1161,7 @@ describe("intake center", () => {
       }),
     );
     const adoptionCountBeforeRetry =
-      fake.backend.getAdoptionDraftRevisions().length;
+      fake.backend.getAdoptionCurrentDraftIds().length;
     fireEvent.click(
       screen.getByRole("button", { name: /采用为当前工作稿/u }),
     );
@@ -1140,7 +1170,7 @@ describe("intake center", () => {
     const adopting = screen.getByRole("button", { name: "正在采用…" });
     expect(adopting).toBeDisabled();
     fireEvent.click(adopting);
-    expect(fake.backend.getAdoptionDraftRevisions()).toHaveLength(
+    expect(fake.backend.getAdoptionCurrentDraftIds()).toHaveLength(
       adoptionCountBeforeRetry + 1,
     );
 
@@ -1149,7 +1179,7 @@ describe("intake center", () => {
     });
     await flush();
 
-    expect(fake.backend.getAdoptionDraftRevisions().at(-1)).toBe(17);
+    expect(fake.backend.getAdoptionCurrentDraftIds().at(-1)).toBe(71);
     expect(routerPush).toHaveBeenCalledTimes(1);
     expect(routerPush).toHaveBeenLastCalledWith("/workbench?project=1");
     expect(

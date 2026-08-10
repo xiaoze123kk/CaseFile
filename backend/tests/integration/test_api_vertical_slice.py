@@ -13,12 +13,7 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-
+from application_services_test_support import _clear_projects_before_downgrade
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.credentials import generate_master_key
@@ -34,6 +29,11 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -186,6 +186,7 @@ def api_database() -> Iterator[tuple[str, Engine, int, str]]:
         os.environ,
         {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
     ):
+        _clear_projects_before_downgrade(database_url)
         command.downgrade(config, "base")
         command.upgrade(config, "head")
         engine = create_engine(database_url)
@@ -199,6 +200,7 @@ def api_database() -> Iterator[tuple[str, Engine, int, str]]:
             yield database_url, engine, actor_id, master_key
         finally:
             engine.dispose()
+            _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
 
 
@@ -333,9 +335,12 @@ def test_settings_brief_generation_sse_and_completion_gate(
             )
             assert response.status_code == 404, (method, path, response.text)
 
-        empty = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
-        assert empty.status_code == 200
-        assert empty.json()["content"] is None
+        empty_draft = client.get(
+            f"/api/v1/projects/{project_id}/draft",
+            headers=_identity(actor_id),
+        )
+        assert empty_draft.status_code == 200
+        assert empty_draft.json()["content"] is None
 
         source_response = client.post(
             f"/api/v1/projects/{project_id}/sources",
@@ -422,6 +427,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "not_a_strategy",
@@ -434,6 +440,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "structure_first",
@@ -492,6 +499,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "atmosphere_first",
@@ -517,6 +525,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/tasks/{recoverable_task_id}/resume",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "expected_brief_revision": updated.json()["draft_revision"],
             },
@@ -554,6 +563,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "reasoning_first",
@@ -617,7 +627,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         adopted = client.post(
             f"/api/v1/projects/{project_id}/draft-candidates/{task_id}/adopt",
             headers=_identity(actor_id),
-            json={"expected_draft_revision": 1},
+            json={"expected_current_draft_id": empty_draft.json()["draft_id"]},
         )
         assert adopted.status_code == 200
         assert adopted.json()["adopted"] is True
@@ -630,6 +640,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/tasks/{stale_task_id}/resume",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 2,
                 "expected_brief_revision": updated.json()["draft_revision"],
             },
@@ -679,7 +690,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 f"{recoverable_task_id}/adopt"
             ),
             headers=_identity(actor_id),
-            json={"expected_draft_revision": 2},
+            json={"expected_current_draft_id": empty_draft.json()["draft_id"]},
         )
         assert stale_adoption.status_code == 409
         assert stale_adoption.json()["code"] == "candidate_brief_stale"
@@ -738,7 +749,10 @@ def test_settings_brief_generation_sse_and_completion_gate(
         thread_response = client.post(
             f"/api/v1/projects/{project_id}/agent/threads",
             headers=_identity(actor_id),
-            json={},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 2,
+            },
         )
         assert thread_response.status_code == 201
         thread_id = thread_response.json()["thread_id"]
@@ -746,6 +760,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 2,
                 "content": "请通读整个卷宗并给出一条可审阅建议。",
                 "provider": "deepseek",
             },
@@ -784,7 +800,11 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 f"{patch_set['patch_set_id']}/apply"
             ),
             headers=_identity(actor_id),
-            json={"expected_revision": 2, "operation_ids": None},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 2,
+                "operation_ids": None,
+            },
         )
         assert applied.status_code == 200
         assert applied.json()["status"] == "applied"
@@ -796,7 +816,10 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 f"{patch_set['patch_set_id']}/undo"
             ),
             headers=_identity(actor_id),
-            json={"expected_revision": 3},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 3,
+            },
         )
         assert undone.status_code == 200
         assert undone.json()["status"] == "undone"
@@ -826,7 +849,11 @@ def test_settings_brief_generation_sse_and_completion_gate(
         rejected_chat = client.post(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
-            json={"content": "再给一条建议，这次我会整批不采用。"},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 4,
+                "content": "再给一条建议，这次我会整批不采用。",
+            },
         )
         assert rejected_chat.status_code == 202
         assert chat_worker.run_once() is True
@@ -841,7 +868,11 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 f"{rejected_patch['patch_set_id']}/apply"
             ),
             headers=_identity(actor_id),
-            json={"expected_revision": 4, "operation_ids": []},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 4,
+                "operation_ids": [],
+            },
         )
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "rejected"
@@ -851,6 +882,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 4,
                 "title": "午夜回航审阅",
                 "is_pinned": True,
                 "archived": True,
@@ -862,6 +895,10 @@ def test_settings_brief_generation_sse_and_completion_gate(
         archived_send = client.post(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
-            json={"content": "归档线程不能继续发送。"},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 4,
+                "content": "归档线程不能继续发送。",
+            },
         )
         assert archived_send.status_code == 409

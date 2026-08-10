@@ -5,11 +5,12 @@
 ## 归属与所有权
 
 - `projects.owner_user_id` 是唯一所有权根且不可变；后代表通过 `project_id` 和复合外键保持同一 Project/CaseFile/Draft 归属。
-- 一个 Project 只有一个 CaseFile，一个 CaseFile 只有一个当前 Draft。
+- 一个 Project 只有一个 CaseFile；一个 CaseFile 可以拥有多份 Draft，但 `casefiles.current_draft_id` 必须通过 `(project_id, casefile_id, current_draft_id)` 非空复合外键指向本 CaseFile 的唯一 Current Draft。
+- 切换工作稿必须锁定 Project/CaseFile，使用 `expected_current_draft_id` 比较并原子更新当前指针；跨项目 Draft、归档项目、空 Draft 和锁定 Draft 均不得被激活。
 
 ## 对象标识与存储
 
-- `casefile_objects.object_id` 在 CaseFile 内唯一且删除后不复用；注册表不含 `payload_jsonb`。核心对象正文只写对应专用内容表，注册类型、基类类型和 Person/Location/Evidence/Testimony 扩展类型由数据库触发器保持一致。
+- `casefile_objects.object_id` 在 Draft 内唯一且删除后不复用；不同 Draft 可以保存相同稳定对象 ID。注册表不含 `payload_jsonb`。核心对象正文只写对应专用内容表，注册类型、基类类型和 Person/Location/Evidence/Testimony 扩展类型由数据库触发器保持一致。
 - 所有专用当前态表携带 `project_id`、`casefile_id`、`draft_id`；单值关系使用带归属列的复合外键，多值跨类型关系使用 `casefile_refs`。已知 `ref_kind` 的端点类型由数据库触发器验证。
 
 ## 推理与结论
@@ -18,8 +19,14 @@
 
 ## 并发与版本
 
-- Draft 编辑使用乐观并发控制。成功写入 `draft_operations` 时，数据库锁定 Draft、验证 `base_revision` 和连续 `sequence_no`，再原子推进 revision；锁定 Draft 禁止编辑。
+- Current Draft 编辑、Snapshot、生成任务和 Agent 写请求同时携带 `expected_draft_id` 与 revision；服务端先比较 Current Draft 身份，再比较 revision，避免切换到相同 revision 的另一份稿后误写。成功写入 `draft_operations` 时，数据库锁定目标 Draft、验证 `base_revision` 和连续 `sequence_no`，再原子推进 revision；锁定 Draft 禁止编辑。
 - Snapshot 只能固定当前 Draft revision，由项目所有者创建；插入时同时锁定 CaseFile/Draft，并要求 CaseFile、Draft、Snapshot 三层 Schema 版本一致。Snapshot、Operation、Canon 与 Audit 只追加，普通 UPDATE/DELETE 必须被数据库拒绝。
+
+## 候选采用与工作稿隔离
+
+- `brief_to_draft` 成功只产生不可变候选，不自动修改 Current Draft。候选采用以 `expected_current_draft_id` 为指针门禁，并重新校验 TaskRun 冻结的来源 Draft ID/revision、BriefVersion 和候选内容。
+- 初始空 Draft 首次采用时原位物化；已有正文后再次采用会创建新 Draft、Operation 和 Snapshot，并在同一事务中把新 Draft 设为 Current Draft，旧稿的对象、引用、操作与快照保持不变。
+- 候选存在 `result_snapshot_id` 即表示 `is_adopted`；仅当该 Snapshot 的 `draft_id` 等于 `casefiles.current_draft_id` 时才是 `is_current`。旧 Brief 候选始终不可采用。
 
 ## 哈希与 Canon
 

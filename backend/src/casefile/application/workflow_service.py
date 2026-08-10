@@ -142,6 +142,8 @@ class WorkflowService:
         actor_user_id: int,
         project_id: int,
         *,
+        expected_draft_id: int,
+        expected_draft_revision: int,
         title: str | None = None,
     ) -> dict[str, Any]:
         normalized_title = None if title is None else title.strip()
@@ -152,7 +154,12 @@ class WorkflowService:
                 status_code=422,
             )
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            self._require_current_draft(
+                owned,
+                expected_draft_id=expected_draft_id,
+                expected_draft_revision=expected_draft_revision,
+            )
             thread = AgentThread(
                 project_id=owned.project.id,
                 casefile_id=owned.casefile.id,
@@ -175,10 +182,17 @@ class WorkflowService:
         project_id: int,
         thread_id: int,
         *,
+        expected_draft_id: int,
+        expected_draft_revision: int,
         changes: dict[str, Any],
     ) -> dict[str, Any]:
         with self.session.begin():
-            owned = self._owned(actor_user_id, project_id)
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            self._require_current_draft(
+                owned,
+                expected_draft_id=expected_draft_id,
+                expected_draft_revision=expected_draft_revision,
+            )
             thread = self._agent_thread(owned, thread_id, lock=True)
             if "title" in changes:
                 title = changes["title"]
@@ -298,6 +312,8 @@ class WorkflowService:
         project_id: int,
         thread_id: int,
         *,
+        expected_draft_id: int,
+        expected_draft_revision: int,
         content: str,
         provider: str = DEFAULT_PROVIDER,
     ) -> dict[str, Any]:
@@ -311,6 +327,11 @@ class WorkflowService:
             )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
+            self._require_current_draft(
+                owned,
+                expected_draft_id=expected_draft_id,
+                expected_draft_revision=expected_draft_revision,
+            )
             thread = self._agent_thread(owned, thread_id, lock=True)
             if thread.status != "active":
                 raise ApplicationError(
@@ -623,6 +644,7 @@ class WorkflowService:
         project_id: int,
         patch_set_id: int,
         *,
+        expected_draft_id: int,
         expected_revision: int,
         operation_ids: list[int] | None,
     ) -> dict[str, Any]:
@@ -637,7 +659,8 @@ class WorkflowService:
                     details={"status": patch_set.status},
                 )
             if (
-                owned.draft.revision != expected_revision
+                owned.draft.id != expected_draft_id
+                or owned.draft.revision != expected_revision
                 or owned.draft.revision != patch_set.base_draft_revision
             ):
                 raise ApplicationError(
@@ -751,6 +774,7 @@ class WorkflowService:
         project_id: int,
         patch_set_id: int,
         *,
+        expected_draft_id: int,
         expected_revision: int,
     ) -> dict[str, Any]:
         with self.session.begin():
@@ -765,6 +789,7 @@ class WorkflowService:
                 )
             if (
                 patch_set.applied_to_revision is None
+                or owned.draft.id != expected_draft_id
                 or expected_revision != patch_set.applied_to_revision
                 or owned.draft.revision != patch_set.applied_to_revision
             ):
@@ -1177,6 +1202,7 @@ class WorkflowService:
         project_id: int,
         *,
         brief_version_id: int,
+        expected_draft_id: int,
         expected_draft_revision: int,
         provider: str = DEFAULT_PROVIDER,
         candidate_strategy: str = CandidateStrategy.BALANCED.value,
@@ -1200,12 +1226,18 @@ class WorkflowService:
             )
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
-            if owned.draft.revision != expected_draft_revision:
+            if (
+                owned.draft.id != expected_draft_id
+                or owned.draft.revision != expected_draft_revision
+            ):
                 raise ApplicationError(
                     "draft_revision_conflict",
-                    "草稿已被更新，请刷新后重新提交。",
+                    "当前工作稿已切换或更新，请刷新后重新提交。",
                     status_code=409,
-                    details={"current_revision": owned.draft.revision},
+                    details={
+                        "current_draft_id": owned.draft.id,
+                        "current_revision": owned.draft.revision,
+                    },
                 )
             brief = self._brief(owned, lock=True)
             version = self.session.scalar(
@@ -1330,13 +1362,13 @@ class WorkflowService:
         project_id: int,
         task_run_id: int,
         *,
-        expected_draft_revision: int,
+        expected_current_draft_id: int,
     ) -> dict[str, Any]:
         return DraftCandidateService(self.session).adopt_candidate(
             actor_user_id,
             project_id,
             task_run_id,
-            expected_draft_revision=expected_draft_revision,
+            expected_current_draft_id=expected_current_draft_id,
         )
 
     def create_polish_task(
@@ -1534,6 +1566,7 @@ class WorkflowService:
         project_id: int,
         task_run_id: int,
         *,
+        expected_draft_id: int,
         expected_draft_revision: int,
         expected_brief_revision: int,
     ) -> dict[str, Any]:
@@ -1568,7 +1601,9 @@ class WorkflowService:
                 )
             brief = self._brief(owned, lock=True)
             if (
-                owned.draft.revision != expected_draft_revision
+                owned.draft.id != expected_draft_id
+                or task.draft_id != expected_draft_id
+                or owned.draft.revision != expected_draft_revision
                 or task.input_draft_revision != expected_draft_revision
             ):
                 raise ApplicationError(
@@ -1871,6 +1906,28 @@ class WorkflowService:
         if owned is None:
             raise not_found("Project")
         return owned
+
+    @staticmethod
+    def _require_current_draft(
+        owned: OwnedDraft,
+        *,
+        expected_draft_id: int,
+        expected_draft_revision: int,
+    ) -> None:
+        if (
+            owned.draft.id == expected_draft_id
+            and owned.draft.revision == expected_draft_revision
+        ):
+            return
+        raise ApplicationError(
+            "draft_revision_conflict",
+            "当前工作稿已切换或更新，请刷新后重新提交。",
+            status_code=409,
+            details={
+                "current_draft_id": owned.draft.id,
+                "current_revision": owned.draft.revision,
+            },
+        )
 
     def _brief(self, owned: OwnedDraft, *, lock: bool = False) -> Brief:
         statement = select(Brief).where(Brief.project_id == owned.project.id)

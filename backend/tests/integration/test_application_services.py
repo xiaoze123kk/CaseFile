@@ -18,10 +18,6 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
@@ -40,6 +36,9 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -278,7 +277,7 @@ def test_adoption_preserves_reference_free_knowledge_state_slots(
         }
 
 
-def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces_draft(
+def test_same_brief_candidates_create_independent_switchable_drafts(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
@@ -295,10 +294,12 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
         with factory() as session:
             workflow = WorkflowService(session)
             brief = workflow.get_brief(actor_id, project_id)
+            source_draft = CaseFileService(session).get_draft(actor_id, project_id)
             second = workflow.create_generation_task(
                 actor_id,
                 project_id,
                 brief_version_id=brief["current_version_id"],
+                expected_draft_id=source_draft["draft_id"],
                 expected_draft_revision=1,
             )
         second_task_id = int(second["task_run_id"])
@@ -316,20 +317,22 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
         ]
         assert all(item["can_adopt"] for item in candidates)
 
-        _adopt_candidate(
+        adopted_a = _adopt_candidate(
             engine,
             actor_id,
             project_id,
             second_task_id,
-            expected_revision=1,
         )
+        draft_a_id = int(adopted_a["draft_id"])
         with factory() as session:
             workflow = WorkflowService(session)
             brief = workflow.get_brief(actor_id, project_id)
+            current_draft = CaseFileService(session).get_draft(actor_id, project_id)
             third = workflow.create_generation_task(
                 actor_id,
                 project_id,
                 brief_version_id=brief["current_version_id"],
+                expected_draft_id=current_draft["draft_id"],
                 expected_draft_revision=2,
             )
         third_task_id = int(third["task_run_id"])
@@ -340,22 +343,27 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
         assert unchanged["revision"] == 2
         second_resolution_id = unchanged["content"]["resolution_specs"][0]["id"]
 
-        _adopt_candidate(
+        adopted_b = _adopt_candidate(
             engine,
             actor_id,
             project_id,
             third_task_id,
-            expected_revision=2,
         )
+        draft_b_id = int(adopted_b["draft_id"])
         with factory() as session:
             workflow = WorkflowService(session)
-            replaced = CaseFileService(session).get_draft(actor_id, project_id)
+            current_b = CaseFileService(session).get_draft(actor_id, project_id)
+            drafts = CaseFileService(session).list_drafts(actor_id, project_id)
             candidates = workflow.list_generation_candidates(actor_id, project_id)
-            active_count = session.scalar(
-                select(func.count(CaseFileObject.id)).where(
-                    CaseFileObject.project_id == project_id,
-                    CaseFileObject.deleted_at.is_(None),
-                )
+            active_counts = dict(
+                session.execute(
+                    select(CaseFileObject.draft_id, func.count(CaseFileObject.id))
+                    .where(
+                        CaseFileObject.project_id == project_id,
+                        CaseFileObject.deleted_at.is_(None),
+                    )
+                    .group_by(CaseFileObject.draft_id)
+                ).all()
             )
             archived_count = session.scalar(
                 select(func.count(CaseFileObject.id)).where(
@@ -363,27 +371,62 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
                     CaseFileObject.deleted_at.is_not(None),
                 )
             )
-            operation_types = list(
-                session.scalars(
-                    select(DraftOperation.operation_type)
+            operations = list(
+                session.execute(
+                    select(DraftOperation.draft_id, DraftOperation.operation_type)
                     .where(DraftOperation.project_id == project_id)
-                    .order_by(DraftOperation.sequence_no)
+                    .order_by(DraftOperation.draft_id)
                 )
             )
-        assert replaced["revision"] == 3
-        assert replaced["content"]["resolution_specs"][0]["id"] != second_resolution_id
-        assert active_count and active_count > 0
-        assert archived_count and archived_count > 0
-        assert operation_types == [
-            "agent_adopt_brief_candidate",
-            "agent_adopt_brief_candidate",
+        assert draft_b_id != draft_a_id
+        assert current_b["draft_id"] == draft_b_id
+        assert current_b["revision"] == 2
+        assert current_b["content"]["resolution_specs"][0]["id"] != second_resolution_id
+        assert [item["draft_id"] for item in drafts] == [draft_b_id, draft_a_id]
+        assert drafts[0]["is_current"] is True
+        assert all(item["has_content"] for item in drafts)
+        assert active_counts[draft_a_id] > 0
+        assert active_counts[draft_b_id] > 0
+        assert archived_count == 0
+        assert operations == [
+            (draft_a_id, "agent_adopt_brief_candidate"),
+            (draft_b_id, "agent_adopt_brief_candidate"),
         ]
         assert candidates[0]["task_run_id"] == third_task_id
         assert candidates[0]["is_current"] is True
         assert candidates[1]["task_run_id"] == second_task_id
         assert candidates[1]["is_adopted"] is True
         assert candidates[2]["task_run_id"] == first_task_id
-        assert candidates[2]["can_adopt"] is True
+        assert candidates[2]["can_adopt"] is False
+
+        with factory() as session:
+            restored_a = CaseFileService(session).activate_draft(
+                actor_id,
+                project_id,
+                draft_a_id,
+                expected_current_draft_id=draft_b_id,
+            )
+        assert restored_a["draft_id"] == draft_a_id
+        assert restored_a["revision"] == 2
+        assert restored_a["content"] == unchanged["content"]
+
+        with factory() as session:
+            switched_candidates = WorkflowService(session).list_generation_candidates(
+                actor_id,
+                project_id,
+            )
+        assert switched_candidates[0]["is_current"] is False
+        assert switched_candidates[1]["is_current"] is True
+
+        with pytest.raises(ApplicationError) as changed_source:
+            _adopt_candidate(
+                engine,
+                actor_id,
+                project_id,
+                first_task_id,
+                expected_current_draft_id=draft_a_id,
+            )
+        assert changed_source.value.code == "candidate_source_draft_changed"
 
         with engine.begin() as connection, pytest.raises(DBAPIError):
             connection.execute(
@@ -826,6 +869,7 @@ def test_brief_updates_clear_current_version_and_reject_foreign_sources(
                     actor_id,
                     first_id,
                     brief_version_id=confirmed["brief_version_id"],
+                    expected_draft_id=first["current_draft_id"],
                     expected_draft_revision=1,
                 )
         assert stale_version.value.code == "brief_version_not_current"
@@ -854,7 +898,8 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             service = CaseFileService(session)
@@ -894,6 +939,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 changes={
                     "name": "Edited investigator",
@@ -911,6 +957,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 location_id,
+                expected_draft_id=draft_id,
                 expected_revision=3,
                 changes={
                     "name": "Edited laboratory",
@@ -941,6 +988,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 event_id,
+                expected_draft_id=draft_id,
                 expected_revision=4,
                 changes={
                     "title": "Edited restart event",
@@ -956,6 +1004,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 resolution_id,
+                expected_draft_id=draft_id,
                 expected_revision=5,
                 changes={
                     "title": "Edited core resolution",
@@ -980,6 +1029,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=6,
                 changes={"id": "ent_replaced"},
             )
@@ -990,6 +1040,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=4,
                 changes={"name": "Stale edit"},
             )
@@ -1009,7 +1060,8 @@ def test_v1_editing_supports_all_eleven_object_collections(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             content = CaseFileService(session).get_draft(actor_id, project_id)["content"]
@@ -1033,6 +1085,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                     actor_id,
                     project_id,
                     content[collection][0]["id"],
+                    expected_draft_id=draft_id,
                     expected_revision=revision,
                     changes=changes,
                 )
@@ -1048,6 +1101,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                 actor_id,
                 project_id,
                 content["events"][0]["id"],
+                expected_draft_id=draft_id,
                 expected_revision=revision,
                 changes={"participant_refs": entity_refs},
             )
@@ -1060,6 +1114,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                 actor_id,
                 project_id,
                 content["entities"][0]["id"],
+                expected_draft_id=draft_id,
                 expected_revision=revision,
                 changes={"knowledge_states": []},
             )
@@ -1098,15 +1153,24 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert generation_worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             workflow = WorkflowService(session)
-            thread = workflow.create_agent_thread(actor_id, project_id, title=None)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
             queued = workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="请通读整个卷宗并给出可以审阅的修改建议。",
             )
             chat_task_id = int(queued["task"]["task_run_id"])
@@ -1147,6 +1211,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 actor_id,
                 project_id,
                 patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=operation_ids,
             )
@@ -1183,6 +1248,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 actor_id,
                 project_id,
                 patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
                 expected_revision=3,
             )
             assert undone["draft_revision"] == 4
@@ -1221,15 +1287,24 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
             config=WorkerConfig(worker_id="stale-fixture-worker"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             workflow = WorkflowService(session)
-            thread = workflow.create_agent_thread(actor_id, project_id, title="并发编辑")
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title="并发编辑",
+            )
             queued = workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="请在后台分析，我会继续编辑。",
             )
             chat_task_id = int(queued["task"]["task_run_id"])
@@ -1242,6 +1317,7 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=frozen_revision,
                 changes={"description": "用户在 Agent 运行期间补充的说明。"},
             )
@@ -1271,6 +1347,7 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
                     actor_id,
                     project_id,
                     assistant["patch_set"]["patch_set_id"],
+                    expected_draft_id=draft_id,
                     expected_revision=edited_revision,
                     operation_ids=None,
                 )
@@ -1290,14 +1367,23 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
             config=WorkerConfig(worker_id="invalid-fixture-worker"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
         with factory() as session:
             workflow = WorkflowService(session)
-            thread = workflow.create_agent_thread(actor_id, project_id, title=None)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
             workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="提出一条会触发结构门禁的建议。",
             )
         Worker(
@@ -1319,6 +1405,7 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
                     actor_id,
                     project_id,
                     patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
                     expected_revision=2,
                     operation_ids=[operation_id],
                 )
@@ -1352,7 +1439,8 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert generation_worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             generated_task = WorkflowService(session).get_task(
@@ -1376,12 +1464,16 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             thread = workflow.create_agent_thread(
                 actor_id,
                 project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 title="核对关键对象",
             )
             sent = workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="请逐项建议调整研究员、实验室和重启事件。",
             )
         first_chat_task_id = int(sent["task"]["task_run_id"])
@@ -1464,6 +1556,8 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="再给重启事件补一个候选标题。",
             )
         second_chat_task_id = int(second_sent["task"]["task_run_id"])
@@ -1521,6 +1615,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 int(second_patch["patch_set_id"]),
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=[],
             )
@@ -1538,6 +1633,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 first_patch_id,
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=selected_operation_ids,
             )
@@ -1581,6 +1677,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 first_patch_id,
+                expected_draft_id=draft_id,
                 expected_revision=3,
             )
         assert undone["draft_revision"] == 4
@@ -1615,6 +1712,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 int(second_patch["patch_set_id"]),
+                expected_draft_id=draft_id,
                 expected_revision=4,
                 operation_ids=None,
             )

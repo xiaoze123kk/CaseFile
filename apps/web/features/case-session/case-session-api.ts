@@ -13,6 +13,7 @@ import {
   type BriefView,
   type DraftCandidateView,
   type DraftCandidatePreviewView,
+  type DraftCandidateAdoption,
   type DraftView,
   type AnchorExtractMode,
   type PolishMode,
@@ -259,6 +260,7 @@ export async function startAnchorExtractTask(
 export async function startDraftGenerationTask(
   projectId: number,
   briefVersionId: number,
+  draftId: number,
   draftRevision: number,
   provider: ProviderName,
   candidateStrategy: CandidateStrategy = "balanced",
@@ -269,6 +271,7 @@ export async function startDraftGenerationTask(
     method: "POST",
     body: {
       brief_version_id: briefVersionId,
+      expected_draft_id: draftId,
       expected_draft_revision: draftRevision,
       provider,
       candidate_strategy: candidateStrategy,
@@ -301,6 +304,7 @@ export async function cancelTask(projectId: number, taskRunId: number) {
 export async function resumeDraftGenerationTask(
   projectId: number,
   taskRunId: number,
+  draftId: number,
   draftRevision: number,
   briefRevision: number,
 ) {
@@ -310,6 +314,7 @@ export async function resumeDraftGenerationTask(
       actorId: LOCAL_ACTOR_ID,
       method: "POST",
       body: {
+        expected_draft_id: draftId,
         expected_draft_revision: draftRevision,
         expected_brief_revision: briefRevision,
       },
@@ -616,6 +621,7 @@ export function strategyOptionsResult(task: TaskView) {
 export async function patchCaseDraftObject(
   projectId: number,
   objectId: string,
+  expectedDraftId: number,
   expectedRevision: number,
   changes: Record<string, unknown>,
 ) {
@@ -624,7 +630,11 @@ export async function patchCaseDraftObject(
     {
       actorId: LOCAL_ACTOR_ID,
       method: "PATCH",
-      body: { expected_revision: expectedRevision, changes },
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+        changes,
+      },
     },
   );
 }
@@ -632,14 +642,14 @@ export async function patchCaseDraftObject(
 export async function adoptDraftCandidate(
   projectId: number,
   taskRunId: number,
-  draftRevision: number,
+  expectedCurrentDraftId: number,
 ) {
-  return apiRequest<{ task_run_id: number; adopted: true }>(
+  return apiRequest<DraftCandidateAdoption>(
     `/projects/${projectId}/draft-candidates/${taskRunId}/adopt`,
     {
       actorId: LOCAL_ACTOR_ID,
       method: "POST",
-      body: { expected_draft_revision: draftRevision },
+      body: { expected_current_draft_id: expectedCurrentDraftId },
     },
   );
 }
@@ -647,11 +657,15 @@ export async function adoptDraftCandidate(
 export async function adoptDraftCandidateWithReconciliation(
   projectId: number,
   taskRunId: number,
-  draftRevision: number,
+  expectedCurrentDraftId: number,
 ) {
   try {
-    await adoptDraftCandidate(projectId, taskRunId, draftRevision);
-    return { facts: null, error: null };
+    const adoption = await adoptDraftCandidate(
+      projectId,
+      taskRunId,
+      expectedCurrentDraftId,
+    );
+    return { adoption, facts: null, error: null };
   } catch (error) {
     let facts: Awaited<ReturnType<typeof reconcileDraftCandidateAdoption>>;
     try {
@@ -662,6 +676,10 @@ export async function adoptDraftCandidateWithReconciliation(
         "draft_candidate_adoption_unconfirmed",
       );
     }
-    return { facts, error: facts.targetIsCurrent ? null : error };
+    return {
+      adoption: null,
+      facts,
+      error: facts.targetIsCurrent ? null : error,
+    };
   }
 }

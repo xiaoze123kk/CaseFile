@@ -59,7 +59,14 @@ export interface ProjectView {
   created_at: string;
   updated_at: string;
   casefile_id: number;
-  draft: { id: number; revision: number; schema_version: string; status: string };
+  current_draft_id: number;
+  draft: {
+    id: number;
+    title: string;
+    revision: number;
+    schema_version: string;
+    status: string;
+  };
 }
 
 export interface ProviderSettingView {
@@ -421,6 +428,8 @@ export interface DraftCandidatePreviewView extends DraftCandidateView {
 
 export interface DraftCandidateAdoption {
   task_run_id: number;
+  draft_id: number;
+  revision: number;
   title: string;
   content_hash: string;
   adopted: true;
@@ -438,10 +447,32 @@ export interface TaskEventView {
 
 export interface DraftView {
   project_id: number;
+  casefile_id: number;
+  draft_id: number;
+  title: string;
   revision: number;
   schema_version: string;
   status: string;
+  document_status: string;
+  brief_version_id: number | null;
+  created_at: string;
+  updated_at: string;
   content: CaseFile | null;
+}
+
+export interface DraftSummaryView {
+  draft_id: number;
+  title: string;
+  revision: number;
+  schema_version: string;
+  status: string;
+  document_status: string;
+  brief_version_id: number | null;
+  brief_version_no: number | null;
+  has_content: boolean;
+  is_current: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface WorkbenchValidationIssueView {
@@ -596,6 +627,28 @@ export async function listProjects(actorId: number) {
   return apiRequest<ProjectView[]>("/projects", { actorId });
 }
 
+export async function listDrafts(actorId: number, projectId: number) {
+  return apiRequest<DraftSummaryView[]>(`/projects/${projectId}/drafts`, {
+    actorId,
+  });
+}
+
+export async function activateDraft(
+  actorId: number,
+  projectId: number,
+  draftId: number,
+  expectedCurrentDraftId: number,
+) {
+  return apiRequest<DraftView>(
+    `/projects/${projectId}/drafts/${draftId}/activate`,
+    {
+      actorId,
+      method: "POST",
+      body: { expected_current_draft_id: expectedCurrentDraftId },
+    },
+  );
+}
+
 export async function fetchWorkbenchContext(actorId: number, projectId: number) {
   return apiRequest<WorkbenchContextView>(
     `/projects/${projectId}/workbench-context`,
@@ -625,7 +678,13 @@ export function errorMessage(error: unknown) {
       identity_invalid: "当前本地用户身份无效。",
       base_revision_required: "缺少草稿版本信息，请刷新页面后重试。",
       base_revision_invalid: "草稿版本信息无效，请刷新页面后重试。",
+      draft_id_required: "缺少工作稿标识，请刷新页面后重试。",
+      draft_id_invalid: "工作稿标识无效，请刷新页面后重试。",
       draft_revision_conflict: "草稿已被更新，请刷新后重新提交。",
+      current_draft_changed: "当前工作稿已切换，请刷新后重试。",
+      draft_locked: "这份工作稿已锁定，不能执行当前操作。",
+      draft_empty: "这份工作稿尚未生成正文。",
+      project_archived: "项目已归档，不能执行当前操作。",
       brief_revision_conflict: "创作简报已被更新，请刷新后重新提交。",
       resource_conflict: "当前修改与已保存的数据冲突，请刷新后重试。",
       database_unavailable: "数据库暂时不可用，请稍后重试。",

@@ -79,4 +79,31 @@ def get_base_revision(
     return revision
 
 
+def get_draft_id(
+    value: Annotated[str | None, Header(alias="X-CaseFile-Draft-Id")] = None,
+) -> int:
+    if value is None:
+        raise ApplicationError(
+            "draft_id_required",
+            "修改工作稿前必须提供工作稿标识。",
+            status_code=428,
+        )
+    try:
+        draft_id = int(value)
+    except ValueError as error:
+        raise ApplicationError(
+            "draft_id_invalid",
+            "工作稿标识必须是正整数。",
+            status_code=422,
+        ) from error
+    if draft_id < 1:
+        raise ApplicationError(
+            "draft_id_invalid",
+            "工作稿标识必须是正整数。",
+            status_code=422,
+        )
+    return draft_id
+
+
 RevisionDependency = Annotated[int, Depends(get_base_revision)]
+DraftIdentityDependency = Annotated[int, Depends(get_draft_id)]

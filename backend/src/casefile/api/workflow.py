@@ -152,6 +152,8 @@ def workflow_router() -> APIRouter:
         return WorkflowService(session).create_agent_thread(
             actor,
             project_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_draft_revision=payload.expected_draft_revision,
             title=payload.title,
         )
 
@@ -167,7 +169,12 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             thread_id,
-            changes=payload.model_dump(exclude_unset=True),
+            expected_draft_id=payload.expected_draft_id,
+            expected_draft_revision=payload.expected_draft_revision,
+            changes=payload.model_dump(
+                exclude_unset=True,
+                exclude={"expected_draft_id", "expected_draft_revision"},
+            ),
         )
 
     @router.get("/projects/{project_id}/agent/threads/{thread_id}/messages")
@@ -200,6 +207,8 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             thread_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_draft_revision=payload.expected_draft_revision,
             content=payload.content,
             provider=payload.provider,
         )
@@ -216,6 +225,7 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             patch_set_id,
+            expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
             operation_ids=payload.operation_ids,
         )
@@ -232,6 +242,7 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             patch_set_id,
+            expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
         )
 
@@ -246,6 +257,7 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             brief_version_id=payload.brief_version_id,
+            expected_draft_id=payload.expected_draft_id,
             expected_draft_revision=payload.expected_draft_revision,
             provider=payload.provider,
             candidate_strategy=payload.candidate_strategy,
@@ -303,7 +315,7 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             task_run_id,
-            expected_draft_revision=payload.expected_draft_revision,
+            expected_current_draft_id=payload.expected_current_draft_id,
         )
 
     @router.post("/projects/{project_id}/tasks/brief-polish", status_code=202)
@@ -405,6 +417,7 @@ def workflow_router() -> APIRouter:
             actor,
             project_id,
             task_run_id,
+            expected_draft_id=payload.expected_draft_id,
             expected_draft_revision=payload.expected_draft_revision,
             expected_brief_revision=payload.expected_brief_revision,
         )

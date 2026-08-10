@@ -221,9 +221,16 @@ function makeCaseFile(entityName = "真实调查员"): CaseFile {
 function makeDraft(revision: number, entityName?: string): DraftView {
   return {
     project_id: 42,
+    casefile_id: 9,
+    draft_id: 9,
+    title: "真实测试卷宗",
     revision,
     schema_version: "v1",
-    status: "open",
+    status: "active",
+    document_status: "draft",
+    brief_version_id: 4,
+    created_at: "2026-08-09T10:00:00+00:00",
+    updated_at: "2026-08-09T11:00:00+00:00",
     content: makeCaseFile(entityName),
   };
 }
@@ -429,6 +436,56 @@ describe("production analyst workbench", () => {
     expect(mocks.fetchCaseDraft).toHaveBeenCalledWith(42);
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledWith(1, 42);
     expect(screen.getByText("已通过")).toBeInTheDocument();
+  });
+
+  it("keeps project switching available when the project has no materialized Draft", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce({
+      ...makeDraft(1),
+      content: null,
+    });
+
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "这个项目还没有已生成的工作稿",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /项目.*真实测试卷宗/u }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /当前工作稿/u }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "返回建案中心生成工作稿" }),
+    ).toHaveAttribute("href", "/?project=42");
+  });
+
+  it("scopes persisted canvas layouts by project and Draft", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const first = render(<AnalystWorkbench requestedProjectId={42} />);
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/u }));
+    const firstLayoutKey = first.container
+      .querySelector("[data-layout-key]")
+      ?.getAttribute("data-layout-key");
+    expect(firstLayoutKey).toContain("project%3A42%3Adraft%3A9");
+
+    first.unmount();
+    mocks.fetchCaseDraft.mockResolvedValueOnce({
+      ...makeDraft(7),
+      draft_id: 10,
+    });
+    const second = render(<AnalystWorkbench requestedProjectId={42} />);
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/u }));
+    const secondLayoutKey = second.container
+      .querySelector("[data-layout-key]")
+      ?.getAttribute("data-layout-key");
+
+    expect(secondLayoutKey).toContain("project%3A42%3Adraft%3A10");
+    expect(secondLayoutKey).not.toBe(firstLayoutKey);
   });
 
   it("renders real validation, SourceRecord content, trace ids, and audit provenance", async () => {
@@ -887,6 +944,7 @@ describe("production analyst workbench", () => {
       expect(mocks.patchCaseDraftObject).toHaveBeenCalledWith(
         42,
         "ent_real_analyst",
+        9,
         7,
         {
           name: "我的未保存名称",

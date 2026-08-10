@@ -18,6 +18,7 @@ import rfc8785
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
+from application_services_test_support import _clear_projects_before_downgrade
 from sqlalchemy.engine import Connection, Engine, make_url
 
 pytestmark = pytest.mark.postgres
@@ -123,6 +124,7 @@ def migrated_engine() -> Iterator[Engine]:
     engine = sa.create_engine(database_url, poolclass=sa.pool.NullPool)
     try:
         with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+            _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
             assert set(sa.inspect(engine).get_table_names()) <= {"alembic_version"}
             command.upgrade(config, PREVIOUS_REVISION)
@@ -164,6 +166,7 @@ def migrated_engine() -> Iterator[Engine]:
     finally:
         engine.dispose()
         with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+            _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
 
 
@@ -194,6 +197,9 @@ def _insert_user(connection: Connection, label: str) -> int:
 
 
 def _seed_lineage(connection: Connection, label: str) -> Lineage:
+    modern_drafts = "current_draft_id" in {
+        column["name"] for column in sa.inspect(connection).get_columns("casefiles")
+    }
     owner_id = _insert_user(connection, f"Owner {label}")
     project_id = int(
         connection.execute(
@@ -209,9 +215,12 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
     casefile_id = int(
         connection.execute(
             sa.text(
-                """
-                INSERT INTO casefiles (project_id, object_id, title, schema_version)
-                VALUES (:project_id, 'case_test_' || :project_id, :title, '1.0') RETURNING id
+                f"""
+                INSERT INTO casefiles (project_id, object_id, title, schema_version
+                    {', current_draft_id' if modern_drafts else ''})
+                VALUES (:project_id, 'case_test_' || :project_id, :title, '1.0'
+                    {', 0' if modern_drafts else ''})
+                RETURNING id
                 """
             ),
             {"project_id": project_id, "title": f"CaseFile {label}"},
@@ -220,16 +229,37 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
     draft_id = int(
         connection.execute(
             sa.text(
-                """
-                INSERT INTO drafts (project_id, casefile_id, version_id, schema_version)
+                f"""
+                INSERT INTO drafts (project_id, casefile_id
+                    {', title' if modern_drafts else ''}, version_id, schema_version)
                 VALUES (
-                    :project_id, :casefile_id, 'draft_test_' || :project_id, '1.0'
+                    :project_id, :casefile_id {', :title' if modern_drafts else ''},
+                    'draft_test_' || :project_id, '1.0'
                 ) RETURNING id
                 """
             ),
-            {"project_id": project_id, "casefile_id": casefile_id},
+            {
+                "project_id": project_id,
+                "casefile_id": casefile_id,
+                "title": f"Draft {label}",
+            },
         ).scalar_one()
     )
+    if modern_drafts:
+        connection.execute(
+            sa.text(
+                """
+                UPDATE casefiles
+                   SET current_draft_id = :draft_id
+                 WHERE id = :casefile_id AND project_id = :project_id
+                """
+            ),
+            {
+                "project_id": project_id,
+                "casefile_id": casefile_id,
+                "draft_id": draft_id,
+            },
+        )
     return Lineage(owner_id, project_id, casefile_id, draft_id)
 
 

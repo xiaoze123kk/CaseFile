@@ -64,6 +64,9 @@ class ProjectRepository:
             title=title,
             schema_version=schema_version,
             status="draft",
+            # The deferred current-Draft foreign key permits the aggregate's two
+            # rows to be inserted in one transaction before this pointer is fixed.
+            current_draft_id=0,
         )
         self.session.add(casefile)
         self.session.flush()
@@ -71,6 +74,8 @@ class ProjectRepository:
             project_id=project.id,
             casefile_id=casefile.id,
             revision=1,
+            title=title,
+            document_status="draft",
             version_id=f"draft_{secrets.token_hex(12)}",
             version_no=1,
             parent_version_id=None,
@@ -80,6 +85,8 @@ class ProjectRepository:
             extensions_jsonb={},
         )
         self.session.add(draft)
+        self.session.flush()
+        casefile.current_draft_id = draft.id
         self.session.add(
             Brief(
                 project_id=project.id,
@@ -98,7 +105,9 @@ class ProjectRepository:
             .join(CaseFile, CaseFile.project_id == Project.id)
             .join(
                 Draft,
-                (Draft.project_id == Project.id) & (Draft.casefile_id == CaseFile.id),
+                (Draft.project_id == Project.id)
+                & (Draft.casefile_id == CaseFile.id)
+                & (Draft.id == CaseFile.current_draft_id),
             )
             .where(Project.owner_user_id == owner_user_id)
             .order_by(Project.updated_at.desc(), Project.id.desc())
@@ -108,19 +117,83 @@ class ProjectRepository:
     def get_owned(
         self, owner_user_id: int, project_id: int, *, lock: bool = False
     ) -> OwnedDraft | None:
+        if lock:
+            aggregate_row = self.session.execute(
+                select(Project, CaseFile)
+                .join(CaseFile, CaseFile.project_id == Project.id)
+                .where(Project.id == project_id, Project.owner_user_id == owner_user_id)
+                .with_for_update(of=(Project, CaseFile))
+            ).one_or_none()
+            if aggregate_row is None:
+                return None
+            project, casefile = aggregate_row
+            draft = self.session.scalar(
+                select(Draft)
+                .where(
+                    Draft.project_id == project.id,
+                    Draft.casefile_id == casefile.id,
+                    Draft.id == casefile.current_draft_id,
+                )
+                .with_for_update()
+            )
+            return None if draft is None else OwnedDraft(project, casefile, draft)
+
         statement = (
             select(Project, CaseFile, Draft)
             .join(CaseFile, CaseFile.project_id == Project.id)
             .join(
                 Draft,
-                (Draft.project_id == Project.id) & (Draft.casefile_id == CaseFile.id),
+                (Draft.project_id == Project.id)
+                & (Draft.casefile_id == CaseFile.id)
+                & (Draft.id == CaseFile.current_draft_id),
             )
             .where(Project.id == project_id, Project.owner_user_id == owner_user_id)
+        )
+        row = self.session.execute(statement).one_or_none()
+        return None if row is None else OwnedDraft(*row)
+
+    def get_owned_draft(
+        self,
+        owner_user_id: int,
+        project_id: int,
+        draft_id: int,
+        *,
+        lock: bool = False,
+    ) -> OwnedDraft | None:
+        statement = (
+            select(Project, CaseFile, Draft)
+            .join(CaseFile, CaseFile.project_id == Project.id)
+            .join(
+                Draft,
+                (Draft.project_id == Project.id)
+                & (Draft.casefile_id == CaseFile.id),
+            )
+            .where(
+                Project.id == project_id,
+                Project.owner_user_id == owner_user_id,
+                Draft.id == draft_id,
+            )
         )
         if lock:
             statement = statement.with_for_update(of=(Project, CaseFile, Draft))
         row = self.session.execute(statement).one_or_none()
         return None if row is None else OwnedDraft(*row)
+
+    def list_drafts(self, owned: OwnedDraft) -> list[Draft]:
+        return list(
+            self.session.scalars(
+                select(Draft)
+                .where(
+                    Draft.project_id == owned.project.id,
+                    Draft.casefile_id == owned.casefile.id,
+                )
+                .order_by(
+                    (Draft.id == owned.casefile.current_draft_id).desc(),
+                    Draft.updated_at.desc(),
+                    Draft.id.desc(),
+                )
+            )
+        )
 
     def archive(self, owned: OwnedDraft) -> None:
         now = datetime.now(UTC)

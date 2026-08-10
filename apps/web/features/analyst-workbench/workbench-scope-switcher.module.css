@@ -1,0 +1,272 @@
+.projectScope,
+.draftScope {
+  position: relative;
+  min-width: 0;
+}
+
+.projectScope {
+  display: flex;
+  align-items: stretch;
+  border-right: 1px solid var(--rule-dark);
+}
+
+.draftScope {
+  display: flex;
+  width: min(250px, 26vw);
+  flex: 0 0 auto;
+  align-items: stretch;
+  border-right: 1px solid var(--rule);
+  background: rgba(245, 241, 232, 0.72);
+}
+
+.scopeTrigger {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 10px;
+  padding: 8px 16px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.scopeTrigger > span {
+  color: #aaa69c;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.scopeTrigger > strong {
+  min-width: 0;
+  overflow: hidden;
+  margin-top: 3px;
+  color: #f0ede6;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scopeTrigger > i {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: center;
+  color: #d8a862;
+  font-size: 12px;
+  font-style: normal;
+  transition: transform 140ms ease;
+}
+
+.scopeTrigger:hover,
+.scopeTrigger[aria-expanded="true"] {
+  background: rgba(199, 139, 60, 0.1);
+}
+
+.scopeTrigger[aria-expanded="true"] > i {
+  transform: rotate(180deg);
+}
+
+.draftScope .scopeTrigger {
+  padding: 6px 12px;
+}
+
+.draftScope .scopeTrigger > span {
+  color: #77756f;
+}
+
+.draftScope .scopeTrigger > strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.scopeMenu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 8px;
+  display: grid;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(390px, 62vh);
+  overflow-y: auto;
+  padding: 6px;
+  color: #e5e0d7;
+  border: 1px solid rgba(199, 139, 60, 0.58);
+  background: #252726;
+  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
+}
+
+.scopeMenu[data-kind="draft"] {
+  top: calc(100% + 7px);
+  color: var(--ink);
+  border-color: rgba(131, 105, 66, 0.52);
+  background: #f7f4ec;
+  box-shadow: 0 16px 30px rgba(48, 44, 36, 0.2);
+}
+
+.scopeMenu header {
+  display: grid;
+  gap: 3px;
+  padding: 8px 9px 9px;
+  border-bottom: 1px solid rgba(142, 150, 148, 0.22);
+}
+
+.scopeMenu header span {
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.scopeMenu header small,
+.menuItem small,
+.menuState small {
+  color: #92938d;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.menuItem {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 9px;
+  color: inherit;
+  border: 0;
+  border-bottom: 1px solid rgba(142, 150, 148, 0.14);
+  background: transparent;
+  text-align: left;
+  text-decoration: none;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible,
+.menuItem[data-current="true"] {
+  background: rgba(199, 139, 60, 0.12);
+}
+
+.menuItem > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.menuItem strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuItem b {
+  flex: 0 0 auto;
+  color: #d8a862;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.scopeMenu[data-kind="draft"] .menuItem b {
+  color: var(--primary-strong);
+}
+
+.menuState {
+  display: grid;
+  gap: 6px;
+  padding: 14px 9px;
+  color: #aaa69c;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.menuState strong {
+  color: inherit;
+  font-size: 11px;
+}
+
+.menuState button {
+  width: max-content;
+  padding: 5px 8px;
+  color: inherit;
+  border: 1px solid rgba(199, 139, 60, 0.42);
+  background: transparent;
+  font-size: 9px;
+}
+
+.createDraftLink {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 5px;
+  padding: 10px 9px;
+  color: var(--primary-strong);
+  border-top: 1px solid rgba(131, 105, 66, 0.25);
+  text-decoration: none;
+}
+
+.createDraftLink span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid rgba(131, 105, 66, 0.42);
+}
+
+.createDraftLink strong {
+  font-size: 11px;
+}
+
+@media (max-width: 780px) {
+  .projectScope {
+    min-width: 124px;
+  }
+
+  .projectScope .scopeTrigger {
+    padding: 7px 10px;
+  }
+
+  .draftScope {
+    width: min(188px, 48vw);
+  }
+
+  .scopeMenu[data-kind="project"] {
+    right: 8px;
+    left: auto;
+  }
+
+  .scopeMenu[data-kind="draft"] {
+    position: fixed;
+    top: 112px;
+    right: 8px;
+    left: 8px;
+    width: auto;
+  }
+}
+
+@media (max-width: 420px) {
+  .projectScope {
+    min-width: 104px;
+  }
+
+  .scopeTrigger > span {
+    font-size: 8px;
+  }
+
+  .scopeTrigger > strong {
+    font-size: 10px;
+  }
+
+  .draftScope {
+    width: 148px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scopeTrigger > i {
+    transition: none;
+  }
+}

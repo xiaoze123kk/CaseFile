@@ -886,6 +886,7 @@ class AgentGenerateRequest(BaseModel):
     )
     project_id: Annotated[int, Field(ge=1)]
     brief_version_id: Annotated[int, Field(ge=1)]
+    expected_draft_id: Annotated[int, Field(ge=1)]
     expected_draft_revision: Annotated[int, Field(ge=1)]
     provider: Provider
 

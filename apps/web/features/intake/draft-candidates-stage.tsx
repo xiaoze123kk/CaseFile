@@ -121,10 +121,12 @@ export function DraftCandidatesStage() {
     adoptionInFlightRef.current = true;
     setAdoptingCandidateId(candidateId);
     try {
-      if (!(await adoptCandidate(candidateId))) {
+      const adoptedDraftId = await adoptCandidate(candidateId);
+      if (!adoptedDraftId) {
         setGenerationError("这份深稿不属于当前冻结的创作简报，请重新生成。");
         return;
       }
+      setNotice(`工作稿 #${adoptedDraftId} 已设为当前稿，正在进入工作台。`);
       router.push(`/workbench?project=${activeProjectId}`);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "采用深稿失败");
