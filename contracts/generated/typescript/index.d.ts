@@ -84,11 +84,7 @@ export type Event = CoreMetadata & {
   id: string;
   title: string;
   truth_status: "canon_true" | "reported" | "disputed" | "false_belief" | "unknown";
-  time: {
-    start: string;
-    end: string | null;
-    precision: "second" | "minute" | "hour" | "day" | "approximate" | "unknown";
-  };
+  time: TemporalPosition;
   participant_refs: ObjectRefList;
   location_ref: ObjectRef | null;
   cause_refs: ObjectRefList;
@@ -96,6 +92,17 @@ export type Event = CoreMetadata & {
   observed_by_refs: ObjectRefList;
   [k: string]: unknown;
 };
+export type TemporalPosition =
+  | ExactTemporalPosition
+  | ApproximateTemporalPosition
+  | RangeTemporalPosition
+  | RelativeTemporalPosition
+  | UnknownTemporalPosition;
+/**
+ * Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.
+ */
+export type WallClockTime = string;
+export type TemporalPrecision = "second" | "minute" | "hour" | "day";
 export type InformationUnit = CoreMetadata & {
   id: string;
   information_type:
@@ -291,7 +298,7 @@ export interface EditingContracts {
   agent_generate_result: AgentGenerateResult;
 }
 export interface CaseFile {
-  schema_version: "1.0";
+  schema_version: "2.0";
   casefile_id: string;
   title: string;
   status: "draft" | "canon" | "archived";
@@ -348,6 +355,31 @@ export interface Wgs84SpatialPosition {
   latitude: number;
   longitude: number;
 }
+export interface ExactTemporalPosition {
+  kind: "exact";
+  value: WallClockTime;
+  precision: TemporalPrecision;
+}
+export interface ApproximateTemporalPosition {
+  kind: "approximate";
+  value: WallClockTime;
+  precision: TemporalPrecision;
+}
+export interface RangeTemporalPosition {
+  kind: "range";
+  start: WallClockTime;
+  end: WallClockTime;
+  precision: TemporalPrecision;
+}
+export interface RelativeTemporalPosition {
+  kind: "relative";
+  anchor_event_ref: ObjectRef;
+  relation: "before" | "after" | "same_time";
+  offset_minutes: number | null;
+}
+export interface UnknownTemporalPosition {
+  kind: "unknown";
+}
 export interface Extensions {
   [k: string]: unknown;
 }
@@ -395,7 +427,7 @@ export interface BriefIntakeQuestion {
   suggestions: string[];
 }
 export interface ValidationIssue {
-  schema_version: "1.0";
+  schema_version: "2.0";
   issue_id: string;
   rule_id: string;
   severity: "S0" | "S1" | "S2";
@@ -414,7 +446,7 @@ export interface ValidationIssue {
   extensions: Extensions;
 }
 export interface PatchCandidate {
-  schema_version: "1.0";
+  schema_version: "2.0";
   patch_id: string;
   base_version_id: string;
   reason_summary: string;

@@ -20,6 +20,7 @@
 ## 并发与版本
 
 - Current Draft 编辑、Snapshot、生成任务和 Agent 写请求同时携带 `expected_draft_id` 与 revision；服务端先比较 Current Draft 身份，再比较 revision，避免切换到相同 revision 的另一份稿后误写。成功写入 `draft_operations` 时，数据库锁定目标 Draft、验证 `base_revision` 和连续 `sequence_no`，再原子推进 revision；锁定 Draft 禁止编辑。
+- Exposure Plan 先校验 `expected_draft_id`，再单独比较 Plan revision；成功重排只追加计划修订/条目/引用和审计，不创建 Draft Operation，不推进 Draft revision，也不修改 Event.time 或 Canon。
 - Snapshot 只能固定当前 Draft revision，由项目所有者创建；插入时同时锁定 CaseFile/Draft，并要求 CaseFile、Draft、Snapshot 三层 Schema 版本一致。Snapshot、Operation、Canon 与 Audit 只追加，普通 UPDATE/DELETE 必须被数据库拒绝。
 
 ## 候选采用与工作稿隔离

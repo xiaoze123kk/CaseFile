@@ -1,4 +1,4 @@
-"""Load and validate the generated runtime mirror of the CaseFile v1 contract."""
+"""Load and validate versioned runtime mirrors of the CaseFile contract."""
 
 from __future__ import annotations
 
@@ -13,7 +13,11 @@ from typing import Any, cast
 from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
-CASEFILE_SCHEMA_VERSION = "1.0"
+CASEFILE_SCHEMA_VERSION = "2.0"
+LEGACY_CASEFILE_SCHEMA_VERSIONS = frozenset({"1.0"})
+SUPPORTED_CASEFILE_SCHEMA_VERSIONS = frozenset(
+    {CASEFILE_SCHEMA_VERSION, *LEGACY_CASEFILE_SCHEMA_VERSIONS}
+)
 
 COLLECTION_OBJECT_TYPES = {
     "resolution_specs": "resolution_spec",
@@ -43,6 +47,9 @@ _PUBLIC_INTEGRITY_MESSAGES = {
     "reference_type_mismatch": "引用类型不匹配",
     "self_reference": "对象不能引用自身",
     "invalid_time_range": "结束时间不能早于开始时间",
+    "invalid_wall_clock_time": "作品内时间格式无效",
+    "time_precision_mismatch": "时间值与精度不一致",
+    "invalid_relative_time": "相对时间约束无效",
     "duplicate_key": "同一集合中存在重复键",
 }
 
@@ -55,23 +62,33 @@ class ContractValidationError(ValueError):
         self.errors = errors
 
 
-@lru_cache(maxsize=1)
-def load_casefile_schema() -> dict[str, Any]:
-    """Load the generated mirror of the root CaseFile v1 entry schema."""
+@lru_cache(maxsize=2)
+def load_casefile_schema(
+    schema_version: str = CASEFILE_SCHEMA_VERSION,
+) -> dict[str, Any]:
+    """Load one generated CaseFile entry schema by document version."""
 
-    return _load_schema("casefile.schema.json")
+    return _load_schema(schema_version, "casefile.schema.json")
 
 
-@lru_cache(maxsize=1)
-def _validator() -> Draft202012Validator:
-    schemas = [_load_schema(name) for name in _schema_names()]
+@lru_cache(maxsize=2)
+def _validator(schema_version: str) -> Draft202012Validator:
+    schemas = [_load_schema(schema_version, name) for name in _schema_names()]
     resources = [(cast(str, schema["$id"]), Resource.from_contents(schema)) for schema in schemas]
     registry: Registry[Any] = Registry().with_resources(resources)
-    return Draft202012Validator(load_casefile_schema(), registry=registry)
+    return Draft202012Validator(load_casefile_schema(schema_version), registry=registry)
 
 
 def validate_casefile(document: dict[str, Any]) -> None:
-    """Validate v1 JSON shape and deterministic cross-object invariants."""
+    """Validate one supported JSON shape and deterministic cross-object invariants."""
+
+    raw_schema_version = document.get("schema_version")
+    schema_version = (
+        raw_schema_version
+        if isinstance(raw_schema_version, str)
+        and raw_schema_version in SUPPORTED_CASEFILE_SCHEMA_VERSIONS
+        else CASEFILE_SCHEMA_VERSION
+    )
 
     schema_errors = [
         {
@@ -79,12 +96,15 @@ def validate_casefile(document: dict[str, Any]) -> None:
             "path": _json_pointer(list(error.absolute_path)),
             "message": error.message,
         }
-        for error in sorted(_validator().iter_errors(document), key=lambda item: list(item.path))
+        for error in sorted(
+            _validator(schema_version).iter_errors(document),
+            key=lambda item: list(item.path),
+        )
     ]
     if schema_errors:
         raise ContractValidationError(schema_errors)
 
-    integrity_errors = _validate_integrity(document)
+    integrity_errors = _validate_integrity(document, schema_version=schema_version)
     if integrity_errors:
         raise ContractValidationError(integrity_errors)
 
@@ -141,7 +161,11 @@ def _public_validation_message(code: str, message: str) -> str:
     return "字段不符合 CaseFile 结构约束"
 
 
-def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
+def _validate_integrity(
+    document: dict[str, Any],
+    *,
+    schema_version: str,
+) -> list[dict[str, Any]]:
     errors: list[dict[str, Any]] = []
     registry: dict[str, str] = {document["casefile_id"]: "casefile"}
 
@@ -220,16 +244,19 @@ def _validate_integrity(document: dict[str, Any]) -> list[dict[str, Any]]:
         )
         for field in ("participant_refs", "observed_by_refs"):
             _require_list_type(errors, event[field], "entity", f"/events/{event_index}/{field}")
-        start = datetime.fromisoformat(event["time"]["start"])
-        end_value = event["time"]["end"]
-        if end_value is not None and datetime.fromisoformat(end_value) < start:
-            errors.append(
-                _error(
-                    "invalid_time_range",
-                    f"/events/{event_index}/time/end",
-                    "event end cannot be before start",
+        if schema_version == "1.0":
+            start = datetime.fromisoformat(event["time"]["start"])
+            end_value = event["time"]["end"]
+            if end_value is not None and datetime.fromisoformat(end_value) < start:
+                errors.append(
+                    _error(
+                        "invalid_time_range",
+                        f"/events/{event_index}/time/end",
+                        "event end cannot be before start",
+                    )
                 )
-            )
+        else:
+            _validate_temporal_position_v2(errors, event, event_index)
     for entity_index, entity in enumerate(document["entities"]):
         for state_index, state in enumerate(entity["knowledge_states"]):
             base = f"/entities/{entity_index}/knowledge_states/{state_index}"
@@ -314,6 +341,107 @@ def _require_list_type(
         _require_declared_type(errors, reference, expected_type, f"{path}/{index}")
 
 
+def _validate_temporal_position_v2(
+    errors: list[dict[str, Any]],
+    event: dict[str, Any],
+    event_index: int,
+) -> None:
+    time = event["time"]
+    base = f"/events/{event_index}/time"
+    kind = time["kind"]
+    if kind in {"exact", "approximate"}:
+        _validate_wall_clock_value(
+            errors,
+            time["value"],
+            time["precision"],
+            f"{base}/value",
+        )
+        return
+    if kind == "range":
+        start = _validate_wall_clock_value(
+            errors,
+            time["start"],
+            time["precision"],
+            f"{base}/start",
+        )
+        end = _validate_wall_clock_value(
+            errors,
+            time["end"],
+            time["precision"],
+            f"{base}/end",
+        )
+        if start is not None and end is not None and end < start:
+            errors.append(
+                _error(
+                    "invalid_time_range",
+                    f"{base}/end",
+                    "event end cannot be before start",
+                )
+            )
+        return
+    if kind == "relative":
+        anchor = time["anchor_event_ref"]
+        _require_declared_type(errors, anchor, "event", f"{base}/anchor_event_ref")
+        if anchor["object_id"] == event["id"]:
+            errors.append(
+                _error(
+                    "self_reference",
+                    f"{base}/anchor_event_ref",
+                    "an event cannot use itself as a relative-time anchor",
+                )
+            )
+        if time["relation"] == "same_time" and time["offset_minutes"] not in {None, 0}:
+            errors.append(
+                _error(
+                    "invalid_relative_time",
+                    f"{base}/offset_minutes",
+                    "same_time cannot carry a non-zero offset",
+                )
+            )
+
+
+def _validate_wall_clock_value(
+    errors: list[dict[str, Any]],
+    value: str,
+    precision: str,
+    path: str,
+) -> datetime | None:
+    actual_precision = _wall_clock_precision(value)
+    if actual_precision != precision:
+        errors.append(
+            _error(
+                "time_precision_mismatch",
+                path,
+                f"expected {precision} precision, got {actual_precision or 'invalid'}",
+            )
+        )
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        errors.append(_error("invalid_wall_clock_time", path, "invalid wall-clock value"))
+        return None
+    if parsed.tzinfo is not None:
+        errors.append(
+            _error("invalid_wall_clock_time", path, "wall-clock time must not include timezone")
+        )
+        return None
+    return parsed
+
+
+def _wall_clock_precision(value: str) -> str | None:
+    if "T" not in value:
+        return "day"
+    clock = value.split("T", 1)[1]
+    colon_count = clock.count(":")
+    if colon_count == 0:
+        return "hour"
+    if colon_count == 1:
+        return "minute"
+    if colon_count == 2:
+        return "second"
+    return None
+
+
 def _optional_declared_type(
     errors: list[dict[str, Any]],
     reference: dict[str, str] | None,
@@ -380,8 +508,11 @@ def _schema_names() -> tuple[str, ...]:
     return ("casefile.schema.json", "common.schema.json", "objects.schema.json")
 
 
-def _load_schema(name: str) -> dict[str, Any]:
-    resource = files("casefile.contracts.schemas").joinpath("v1", "casefile", name)
+def _load_schema(schema_version: str, name: str) -> dict[str, Any]:
+    if schema_version not in SUPPORTED_CASEFILE_SCHEMA_VERSIONS:
+        raise ValueError(f"Unsupported CaseFile schema version: {schema_version}")
+    directory = "v1" if schema_version == "1.0" else "v2"
+    resource = files("casefile.contracts.schemas").joinpath(directory, "casefile", name)
     return cast(dict[str, Any], json.loads(resource.read_text(encoding="utf-8")))
 
 

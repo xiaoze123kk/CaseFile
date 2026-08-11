@@ -1,4 +1,4 @@
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFileDocument } from "@/lib/api-client";
 
 import type {
   SourceItem,
@@ -39,11 +39,11 @@ export type WorkbenchSpatialMode = "geographic" | "scene" | "topology";
 export type WorkbenchPositionSource = "wgs84" | "schematic" | "inferred";
 
 export type WorkbenchContractObject =
-  | CaseFile["entities"][number]
-  | CaseFile["information_units"][number]
-  | CaseFile["events"][number]
-  | CaseFile["locations"][number]
-  | CaseFile["hypotheses"][number];
+  | CaseFileDocument["entities"][number]
+  | CaseFileDocument["information_units"][number]
+  | CaseFileDocument["events"][number]
+  | CaseFileDocument["locations"][number]
+  | CaseFileDocument["hypotheses"][number];
 
 export interface WorkbenchCaseObject {
   id: string;
@@ -78,13 +78,13 @@ export interface WorkbenchTimelineEvent {
   summary: string;
   relatedObjectIds: string[];
   issueIds: string[];
-  start: string;
+  start: string | null;
   end: string | null;
   precision: string;
   truthStatus: string;
-  sortKey: number | null;
+  sortKey: string | null;
   refs: WorkbenchTimelineReferences;
-  source: CaseFile["events"][number] | null;
+  source: CaseFileDocument["events"][number] | null;
 }
 
 export interface WorkbenchGraphNode {
@@ -161,7 +161,7 @@ export interface WorkbenchReasoningPath {
   resolutionSpecId: string | null;
   requiredForResolution: boolean;
   alternativePathIds: string[];
-  source: CaseFile["reasoning_paths"][number] | null;
+  source: CaseFileDocument["reasoning_paths"][number] | null;
 }
 
 export type WorkbenchSpatialPosition =
@@ -251,7 +251,7 @@ export interface WorkbenchModel extends WorkbenchSeed {
   id: string;
   origin: "contract" | "fixture";
   draftRevision: number | null;
-  caseFile: CaseFile | null;
+  caseFile: CaseFileDocument | null;
   caseMeta: WorkbenchCaseMeta;
   caseObjects: WorkbenchCaseObject[];
   objectCounts: Record<WorkbenchObjectKind, number>;

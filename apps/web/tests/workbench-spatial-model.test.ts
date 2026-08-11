@@ -44,7 +44,7 @@ function location(
 
 function caseFile(locations: CaseFile["locations"]): CaseFile {
   return {
-    schema_version: "1.0",
+    schema_version: "2.0",
     casefile_id: "case_spatial_test",
     title: "空间测试卷宗",
     status: "draft",

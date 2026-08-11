@@ -1,4 +1,6 @@
-import type { CaseFile, ObjectRef } from "@casefile/contracts";
+import type { ObjectRef } from "@casefile/contracts";
+
+import type { CaseFileDocument } from "@/lib/api-client";
 
 import type { WorkbenchSeed } from "./analyst-fixture";
 import type {
@@ -10,7 +12,7 @@ import type {
   WorkbenchTimelineEvent,
 } from "./workbench-real-data-types";
 
-type ContractLocation = CaseFile["locations"][number];
+type ContractLocation = CaseFileDocument["locations"][number];
 
 type ContractSpatialPosition =
   | { kind: "schematic"; x: number; y: number }
@@ -233,7 +235,7 @@ function emptyView(mode: WorkbenchSpatialMode) {
 }
 
 export function buildWorkbenchSpatialModel(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   timelineEvents: WorkbenchTimelineEvent[],
 ): WorkbenchMapModel {
   const positions = new Map(

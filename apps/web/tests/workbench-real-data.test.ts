@@ -2,6 +2,7 @@ import type { CaseFile, CoreMetadata, ObjectRef } from "@casefile/contracts";
 import { describe, expect, it } from "vitest";
 
 import { defaultWorkbenchSeed } from "@/features/analyst-workbench/analyst-fixture";
+import type { WorkbenchValidationView } from "@/lib/api-client";
 import {
   mapCaseFileToWorkbenchModel,
   mapFixtureToWorkbenchModel,
@@ -30,7 +31,7 @@ function metadata(
 
 function makeCaseFile(): CaseFile {
   return {
-    schema_version: "1.0",
+    schema_version: "2.0",
     casefile_id: "case_real_workbench",
     title: "真实卷宗",
     status: "draft",
@@ -158,8 +159,8 @@ function makeCaseFile(): CaseFile {
         title: "后发生事件",
         truth_status: "canon_true",
         time: {
-          start: "2026-08-07T10:00:00Z",
-          end: null,
+          kind: "exact",
+          value: "2026-08-07T10:00",
           precision: "minute",
         },
         participant_refs: [ref("entity", "ent_operator")],
@@ -174,8 +175,9 @@ function makeCaseFile(): CaseFile {
         title: "先发生事件",
         truth_status: "reported",
         time: {
-          start: "2026-08-07T09:00:00Z",
-          end: "2026-08-07T09:05:00Z",
+          kind: "range",
+          start: "2026-08-07T09:00",
+          end: "2026-08-07T09:05",
           precision: "minute",
         },
         participant_refs: [ref("entity", "ent_analyst")],
@@ -189,7 +191,7 @@ function makeCaseFile(): CaseFile {
         id: "evt_unknown_time",
         title: "时间未定事件",
         truth_status: "unknown",
-        time: { start: "unknown", end: null, precision: "unknown" },
+        time: { kind: "unknown" },
         participant_refs: [],
         location_ref: ref("location", "loc_schematic_room"),
         cause_refs: [],
@@ -464,6 +466,51 @@ describe("real workbench data mapper", () => {
     expect(model.defaultEventId).toBeNull();
     expect(model.defaultObjectId).toBeNull();
     expect(model.defaultIssueId).toBeNull();
+  });
+
+  it("maps validator targets to stable event ids before timeline time sorting", () => {
+    const validation: WorkbenchValidationView = {
+      status: "failed",
+      validator: "casefile.contracts.validate_casefile",
+      schema_version: "1.0",
+      issue_count: 1,
+      issues: [
+        {
+          issue_id: "validator:stable-event",
+          code: "missing_reference",
+          path: "/events/0/location_ref",
+          message: "引用的对象不存在",
+          severity: "error",
+          target: {
+            object_ref: { object_type: "event", object_id: "evt_late" },
+            field_path: "/location_ref",
+          },
+        },
+      ],
+      reason: null,
+    };
+
+    const model = mapCaseFileToWorkbenchModel(makeCaseFile(), 7, validation);
+
+    expect(model.timelineEvents.map((event) => event.id)).toEqual([
+      "evt_early",
+      "evt_late",
+      "evt_unknown_time",
+    ]);
+    expect(
+      model.timelineEvents.find((event) => event.id === "evt_late")?.issueIds,
+    ).toEqual(["validator:stable-event"]);
+    expect(
+      model.timelineEvents.find((event) => event.id === "evt_early")?.issueIds,
+    ).toEqual([]);
+    expect(model.validationIssues[0]).toMatchObject({
+      id: "validator:stable-event",
+      eventId: "evt_late",
+      source: "validator",
+      evidenceIds: [],
+      patchBefore: "",
+      patchAfter: "",
+    });
   });
 
   it("keeps the existing fixture model available through an explicit adapter", () => {

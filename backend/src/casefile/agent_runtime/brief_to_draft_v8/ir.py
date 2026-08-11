@@ -20,7 +20,6 @@ from casefile_contracts import (
     Materiality,
     Operation,
     PathType,
-    Precision,
     QuestionType,
     Reliability,
     Status,
@@ -35,6 +34,7 @@ from casefile.agent_runtime.models import StrictAgentOutput
 
 LocalKey = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")]
 JsonPointer = Annotated[str, Field(pattern=r"^(?:/(?:[^~/]|~[01])*)*$")]
+Precision = Literal["second", "minute", "hour", "day", "approximate", "unknown"]
 
 
 class DraftContextPackV1(StrictAgentOutput):

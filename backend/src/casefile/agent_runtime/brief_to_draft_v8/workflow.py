@@ -537,10 +537,11 @@ def _link_step(
 
 
 def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str, Any]:
+    schema_id = f"casefile-v{request.schema_version.split('.', 1)[0]}"
     request.emit(
         "agent.step.started",
         "compiling",
-        {"component_id": "casefile_compiler", "schema_id": "casefile-v1"},
+        {"component_id": "casefile_compiler", "schema_id": schema_id},
     )
     try:
         candidate = compile_casefile(
@@ -551,6 +552,7 @@ def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str
             version_id=request.version_id,
             version_no=request.version_no,
             parent_version_id=request.parent_version_id,
+            schema_version=request.schema_version,
         )
     except ContractValidationError as error:
         request.emit(
@@ -558,7 +560,7 @@ def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str
             "compiling",
             {
                 "component_id": "casefile_compiler",
-                "schema_id": "casefile-v1",
+                "schema_id": schema_id,
                 "failure_layer": "casefile_schema",
                 "error_code": "casefile_compile_failed",
                 "issues": [_diagnostic_issue(issue) for issue in error.errors[:50]],
@@ -571,7 +573,7 @@ def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str
         "compiling",
         {
             "component_id": "casefile_compiler",
-            "schema_id": "casefile-v1",
+            "schema_id": schema_id,
             "output_hash": _json_hash(candidate),
             "_artifact": candidate,
         },
@@ -580,10 +582,11 @@ def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str
 
 
 def _quality_gate(request: GenerationRequest, candidate: dict[str, Any]) -> None:
+    schema_id = f"casefile-v{request.schema_version.split('.', 1)[0]}"
     request.emit(
         "agent.step.started",
         "quality_gate",
-        {"component_id": "quality_repair_gate", "schema_id": "casefile-v1"},
+        {"component_id": "quality_repair_gate", "schema_id": schema_id},
     )
     validate_casefile(candidate)
     description_issues: list[dict[str, Any]] = []
@@ -599,7 +602,7 @@ def _quality_gate(request: GenerationRequest, candidate: dict[str, Any]) -> None
                             "message": "Agent 生成的对象必须填写非空描述。",
                             "component_id": component_id,
                             "failure_layer": "description_gate",
-                            "schema_id": "casefile-v1",
+                            "schema_id": schema_id,
                         }
                     )
     if description_issues:

@@ -55,6 +55,10 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.12"
 files = ["src"]
-exclude = ["src/casefile_contracts/"]
+exclude = "casefile_contracts"
 strict = true
 warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["casefile_contracts", "casefile_contracts.*"]
+ignore_errors = true

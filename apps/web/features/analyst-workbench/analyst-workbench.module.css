@@ -907,6 +907,8 @@
 .eventIssue[data-status="resolved"] { color: var(--success); background: rgba(53, 164, 111, 0.09); }
 .eventIssue[data-status="exception"] { color: #946013; background: rgba(217, 154, 62, 0.12); }
 .eventClear { color: var(--success); }
+.eventClear:not([data-status="passed"]) { color: var(--ink-faint); background: rgba(41, 44, 44, 0.04); }
+.eventClear[data-status="failed"] { color: #946013; background: rgba(217, 154, 62, 0.12); }
 
 .graphAlternative { border-top: 1px solid var(--rule); background: var(--paper-high); }
 .graphAlternative summary { min-height: 38px; padding: 11px 14px; color: var(--ink-muted); cursor: pointer; font-size: 10px; }

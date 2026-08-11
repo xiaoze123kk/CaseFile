@@ -1,5 +1,6 @@
 param(
-    [string]$OutputRoot
+    [string]$OutputRoot,
+    [string]$PythonExecutable
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,7 +9,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendRoot = Join-Path $repoRoot "backend"
 $schemaRoot = Join-Path $repoRoot "contracts\schemas"
 $schemaEntry = Join-Path $schemaRoot "editing-contracts.schema.json"
-$runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v1"
+$runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v2"
 $runtimePythonRoot = Join-Path $backendRoot "src\casefile_contracts"
 $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -55,7 +56,13 @@ foreach ($target in @($pythonRoot, $typescriptRoot)) {
 New-Item -ItemType Directory -Path (Split-Path -Parent $pythonPackage) -Force | Out-Null
 New-Item -ItemType Directory -Path $typescriptRoot -Force | Out-Null
 
-$python = if (Test-Path -LiteralPath $venvPython) {
+$python = if (-not [string]::IsNullOrWhiteSpace($PythonExecutable)) {
+    $resolvedPython = [System.IO.Path]::GetFullPath($PythonExecutable)
+    if (-not (Test-Path -LiteralPath $resolvedPython -PathType Leaf)) {
+        throw "Python executable does not exist: $resolvedPython"
+    }
+    $resolvedPython
+} elseif (Test-Path -LiteralPath $venvPython) {
     $venvPython
 } else {
     (Get-Command python -ErrorAction Stop).Source
@@ -156,7 +163,7 @@ Write-GeneratedFile -Path (Join-Path $pythonPackage "py.typed") -Content ""
 $pythonPackageMetadata = @'
 [project]
 name = "casefile-contracts"
-version = "1.0.0"
+version = "2.0.0"
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.9,<3"]
 
@@ -172,7 +179,7 @@ Write-GeneratedFile -Path (Join-Path $pythonRoot "pyproject.toml") -Content $pyt
 $typescriptPackageMetadata = @'
 {
   "name": "@casefile/contracts",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "types": "./index.d.ts",
@@ -220,7 +227,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     Copy-Item -LiteralPath $schemaEntry -Destination $runtimeSchemaFullPath
     Write-GeneratedFile `
         -Path (Join-Path $runtimeSchemaFullPath "GENERATED_FROM_ROOT_SCHEMAS.txt") `
-        -Content "Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.`n"
+        -Content "Generated from current v2 contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand. The adjacent v1 mirror is retained for historical reads.`n"
 
     $runtimePythonFullPath = [System.IO.Path]::GetFullPath($runtimePythonRoot)
     $backendSourceRoot = [System.IO.Path]::GetFullPath((Join-Path $backendRoot "src")).TrimEnd('\')

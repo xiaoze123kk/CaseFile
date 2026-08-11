@@ -253,6 +253,7 @@ class GenerationRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
+    schema_version: str = "2.0"
     network_retries: int = 2
     repair_feedback: tuple[dict[str, Any], ...] = ()
     candidate_strategy: CandidateStrategy = CandidateStrategy.BALANCED

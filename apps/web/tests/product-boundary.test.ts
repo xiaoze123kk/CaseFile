@@ -91,7 +91,7 @@ describe("official two-page product boundary", () => {
     expect(workbench).toContain("mapCaseFileToWorkbenchModel");
     expect(workbench).toContain("requestedProjectId");
     expect(mapper).toContain("mapFixtureToWorkbenchModel");
-    expect(apiClient).toContain("content: CaseFile | null");
+    expect(apiClient).toContain("content: CaseFileDocument | null");
     expect(fixture).toContain("buildWorkbenchCandidates");
     expect(workbench).not.toContain("@/store/workflow-store");
   });

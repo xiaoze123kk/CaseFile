@@ -1,4 +1,4 @@
-"""Deterministic local-key linker and CaseFile v1 compiler."""
+"""Deterministic local-key linker and current CaseFile compiler."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     ResolutionGovernanceIRV1,
     SemanticObjectIR,
     StoryWorldIRV1,
+    TimeIR,
 )
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
@@ -150,9 +151,10 @@ def compile_casefile(
     version_id: str,
     version_no: int,
     parent_version_id: str | None,
+    schema_version: str = "2.0",
     updated_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Compile linked semantic IR into a complete, contract-valid CaseFile v1."""
+    """Compile linked v1 semantic IR into a current contract-valid CaseFile."""
 
     timestamp = (updated_at or datetime.now(UTC)).isoformat().replace("+00:00", "Z")
     directory = linked.id_directory
@@ -163,6 +165,40 @@ def compile_casefile(
 
     def refs(keys: Iterable[str]) -> list[dict[str, str]]:
         return [ref(key) for key in keys]
+
+    def temporal_position(value: TimeIR) -> dict[str, Any]:
+        precision = str(value.precision)
+        if precision == "unknown":
+            return {"kind": "unknown"}
+        wall_precision = (
+            precision if precision in {"day", "hour", "minute", "second"} else "second"
+        )
+
+        def wall_clock(moment: datetime) -> str:
+            local = moment.replace(tzinfo=None)
+            if wall_precision == "day":
+                return local.date().isoformat()
+            if wall_precision == "hour":
+                return local.strftime("%Y-%m-%dT%H")
+            if wall_precision == "minute":
+                return local.strftime("%Y-%m-%dT%H:%M")
+            return local.isoformat(timespec="seconds")
+
+        start = wall_clock(value.start)
+        if value.end is not None:
+            return {
+                "kind": "range",
+                "start": start,
+                "end": wall_clock(value.end),
+                "precision": wall_precision,
+            }
+        if precision == "approximate":
+            return {
+                "kind": "approximate",
+                "value": start,
+                "precision": wall_precision,
+            }
+        return {"kind": "exact", "value": start, "precision": wall_precision}
 
     def metadata(item: SemanticObjectIR) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -185,7 +221,7 @@ def compile_casefile(
     evidence = linked.evidence
     governance = linked.governance
     document: dict[str, Any] = {
-        "schema_version": "1.0",
+        "schema_version": schema_version,
         "casefile_id": casefile_id,
         "title": linked.blueprint.title,
         "status": "draft",
@@ -285,7 +321,7 @@ def compile_casefile(
                 "id": directory[item.local_key].object_id,
                 "title": item.title,
                 "truth_status": item.truth_status,
-                "time": item.time.model_dump(mode="json"),
+                "time": temporal_position(item.time),
                 "participant_refs": refs(item.participant_keys),
                 "location_ref": None if item.location_key is None else ref(item.location_key),
                 "cause_refs": refs(item.cause_keys),
@@ -463,7 +499,7 @@ def _restore_required_nullable_fields(candidate: dict[str, Any]) -> None:
             continue
         event.setdefault("location_ref", None)
         time = event.get("time")
-        if isinstance(time, dict):
+        if isinstance(time, dict) and "kind" not in time:
             time.setdefault("end", None)
 
     for information in candidate.get("information_units", []):

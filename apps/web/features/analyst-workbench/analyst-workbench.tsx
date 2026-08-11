@@ -1,6 +1,5 @@
 "use client";
 
-import type { CaseFile } from "@casefile/contracts";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -20,6 +19,9 @@ import {
   fetchWorkbenchContext,
   type DraftCandidatePreviewView,
   type DraftView,
+  type CaseFileDocument,
+  type TimelineTemporalPosition,
+  type TimelineTimePreviewView,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -42,6 +44,7 @@ import {
   fetchCaseDraft,
   fetchDraftCandidatePreview,
   patchCaseDraftObject,
+  previewCaseDraftEventTime,
 } from "@/features/case-session/case-session-api";
 import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
@@ -74,11 +77,11 @@ import {
 } from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
+import { TimelineOverview } from "./timeline/timeline-overview";
 import {
   CompileCenterView,
   DossierView,
   ExportView,
-  TimelineOverview,
 } from "./workbench-secondary-views";
 import {
   workbenchViewOptions,
@@ -640,7 +643,13 @@ export function AnalystWorkbench({
   }
 
   const loadedProjectId = projectId;
-  const seed = mapCaseFileToWorkbenchModel(draft.content, draft.revision);
+  const loadedDraft = draft;
+  const loadedDocument = draft.content;
+  const seed = mapCaseFileToWorkbenchModel(
+    loadedDocument,
+    loadedDraft.revision,
+    realContextState.data?.validation ?? null,
+  );
 
   async function saveObject(
     objectId: string,
@@ -682,6 +691,32 @@ export function AnalystWorkbench({
     }
   }
 
+  async function previewEventTime(
+    eventId: string,
+    proposedTime: TimelineTemporalPosition,
+  ): Promise<TimelineTimePreviewView> {
+    try {
+      return await previewCaseDraftEventTime(
+        loadedProjectId,
+        eventId,
+        loadedDraft.draft_id,
+        loadedDraft.revision,
+        proposedTime,
+      );
+    } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        (caught.status === 409 || caught.body.code === "draft_revision_conflict")
+      ) {
+        const latest = await fetchCaseDraft(loadedProjectId);
+        setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
+        refreshContext();
+        throw new Error("Current Draft 已更新，请基于最新时间轴重新预览。");
+      }
+      throw caught;
+    }
+  }
+
   async function handleDraftActivated(activated: DraftView) {
     setDraftLoad({ projectId: loadedProjectId, draft: activated, error: null });
     setContextLoad(null);
@@ -703,9 +738,10 @@ export function AnalystWorkbench({
       key={`project-${projectId}-draft-${draft.draft_id}`}
       onCurrentDraftChanged={handleCurrentDraftChanged}
       onDraftActivated={handleDraftActivated}
+      onPreviewEventTime={previewEventTime}
       onSaveObject={saveObject}
       projectId={projectId}
-      realDocument={draft.content}
+      realDocument={loadedDocument}
       realContextState={realContextState}
       onReloadContext={refreshContext}
       savingObject={savingObject}
@@ -819,6 +855,7 @@ function AnalystWorkbenchSurface({
   onReloadContext,
   onCurrentDraftChanged,
   onDraftActivated,
+  onPreviewEventTime,
   onSaveObject,
 }: {
   seed: WorkbenchModel;
@@ -829,7 +866,7 @@ function AnalystWorkbenchSurface({
   previewCandidate?: DraftCandidatePreviewView | null;
   previewProjectId?: number | null;
   readOnlyPreview?: boolean;
-  realDocument?: CaseFile | null;
+  realDocument?: CaseFileDocument | null;
   realContextState?: WorkbenchContextState;
   currentDraft?: DraftView | null;
   draftRevision?: number | null;
@@ -837,6 +874,10 @@ function AnalystWorkbenchSurface({
   onReloadContext?: () => void;
   onCurrentDraftChanged?: () => Promise<void>;
   onDraftActivated?: (draft: DraftView) => Promise<void> | void;
+  onPreviewEventTime?: (
+    eventId: string,
+    proposedTime: TimelineTemporalPosition,
+  ) => Promise<TimelineTimePreviewView>;
   onSaveObject?: (
     objectId: string,
     changes: Record<string, unknown>,
@@ -954,11 +995,22 @@ function AnalystWorkbenchSurface({
 
   const selectedEvent = getEvent(seed, selectedEventId);
   const selectedObject = getObject(seed, selectedObjectId);
+  const visibleSelectedIssueId = seed.validationIssues.some(
+    (issue) => issue.id === selectedIssueId,
+  )
+    ? selectedIssueId
+    : seed.defaultIssueId;
+  const visibleIssueStatuses = Object.fromEntries(
+    seed.validationIssues.map((issue) => [
+      issue.id,
+      issueStatuses[issue.id] ?? "open",
+    ]),
+  ) as Record<string, IssueStatus>;
   const selectedIssue =
-    seed.validationIssues.find((item) => item.id === selectedIssueId) ??
+    seed.validationIssues.find((item) => item.id === visibleSelectedIssueId) ??
     seed.validationIssues[0];
   const selectedStatus = selectedIssue
-    ? issueStatuses[selectedIssue.id] ?? "open"
+    ? visibleIssueStatuses[selectedIssue.id] ?? "open"
     : "open";
   const eventRelatedObjectIds = selectedEvent
     ? [selectedEvent.id, ...selectedEvent.relatedObjectIds]
@@ -972,7 +1024,7 @@ function AnalystWorkbenchSurface({
   const unresolvedCount = realData
     ? contextState.data?.validation.issue_count ?? 0
     : seed.validationIssues.filter((issue) => {
-        const status = issueStatuses[issue.id];
+        const status = visibleIssueStatuses[issue.id];
         return status === "open" || status === "patch-ready";
       }).length;
   const realValidationLabel = contextState.loading
@@ -986,6 +1038,14 @@ function AnalystWorkbenchSurface({
           : contextState.data?.validation.status === "failed"
             ? `${unresolvedCount} 个问题`
             : "暂不可用";
+
+  const timelineValidationStatus = !realData || writeLocked
+    ? "passed"
+    : contextState.loading
+      ? "loading"
+      : contextState.error
+        ? "error"
+        : contextState.data?.validation.status ?? "unavailable";
 
   function schedule(callback: () => void, delay: number) {
     const timer = window.setTimeout(callback, delay);
@@ -1139,10 +1199,10 @@ function AnalystWorkbenchSurface({
 
   function openIssue(issueId: string) {
     const issue = seed.validationIssues.find((item) => item.id === issueId);
-    if (!issue || blockDirtyObjectNavigation(issue.eventId)) return;
+    if (!issue || (issue.eventId && blockDirtyObjectNavigation(issue.eventId))) return;
     setSelectedIssueId(issue.id);
-    setSelectedEventId(issue.eventId);
-    setSelectedObjectId(issue.eventId);
+    if (issue.eventId) setSelectedEventId(issue.eventId);
+    setSelectedObjectId(issue.targetObjectId ?? issue.eventId);
     setObjectQuery("");
     setKindFilter("event");
     setSubtypeFilter("all");
@@ -1526,7 +1586,38 @@ function AnalystWorkbenchSurface({
             {view === "timeline" ? (
               seed.timelineEvents.length ? (
                 selectedEvent ? (
-                  <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} />
+                  <TimelineOverview
+                    editable={Boolean(
+                      realData &&
+                        !writeLocked &&
+                        realDocument?.schema_version === "2.0" &&
+                        onPreviewEventTime &&
+                        onSaveObject,
+                    )}
+                    draftId={
+                      realData && !writeLocked && currentDraft
+                        ? currentDraft.draft_id
+                        : undefined
+                    }
+                    exposurePlanEditable={Boolean(
+                      realData && !writeLocked && currentDraft,
+                    )}
+                    issueStatuses={visibleIssueStatuses}
+                    onConfirmTime={(eventId, time) =>
+                      onSaveObject?.(eventId, { time }) ?? Promise.resolve("error")
+                    }
+                    onPreviewTime={onPreviewEventTime}
+                    onSelectEvent={selectEvent}
+                    projectId={
+                      realData && !writeLocked && currentDraft && projectId !== null
+                        ? projectId
+                        : undefined
+                    }
+                    saving={savingObject}
+                    seed={seed}
+                    selectedEventId={selectedEventId}
+                    validationStatus={timelineValidationStatus}
+                  />
                 ) : (
                   <section className={styles.realEmptyState}><strong>此对象没有关联事件</strong><p>检查器仍显示当前对象详情；可以从对象树选择其他对象继续核对。</p></section>
                 )
@@ -1567,7 +1658,7 @@ function AnalystWorkbenchSurface({
             {view === "evidence" ? (
               <EvidenceComparison
                 editing={manualEditing}
-                issueId={selectedIssueId}
+                issueId={visibleSelectedIssueId}
                 manualValue={manualValue}
                 onManualValueChange={setManualValue}
                 onSaveManual={() => resolveIssue("manual")}
@@ -1645,9 +1736,9 @@ function AnalystWorkbenchSurface({
               ) : selectedIssue ? <div className={styles.issueInspector}>
                 <div className={styles.issueList}>
                   {seed.validationIssues.map((issue) => {
-                    const status = issueStatuses[issue.id] ?? "open";
+                    const status = visibleIssueStatuses[issue.id] ?? "open";
                     return (
-                      <button aria-pressed={issue.id === selectedIssueId} data-status={status} key={issue.id} onClick={() => openIssue(issue.id)} type="button">
+                      <button aria-pressed={issue.id === visibleSelectedIssueId} data-status={status} key={issue.id} onClick={() => openIssue(issue.id)} type="button">
                         <span data-severity={issue.severity}>{issue.severity}</span>
                         <span><strong>{issue.title}</strong><small>{statusLabel(status)}</small></span>
                       </button>

@@ -1,4 +1,30 @@
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFile, CoreMetadata } from "@casefile/contracts";
+
+export interface LegacyTemporalPositionV1 {
+  start: string;
+  end: string | null;
+  precision: "second" | "minute" | "hour" | "day" | "approximate" | "unknown";
+}
+
+export type LegacyCaseFileEventV1 = CoreMetadata & {
+  id: CaseFile["events"][number]["id"];
+  title: CaseFile["events"][number]["title"];
+  truth_status: CaseFile["events"][number]["truth_status"];
+  time: LegacyTemporalPositionV1;
+  participant_refs: CaseFile["events"][number]["participant_refs"];
+  location_ref: CaseFile["events"][number]["location_ref"];
+  cause_refs: CaseFile["events"][number]["cause_refs"];
+  effect_refs: CaseFile["events"][number]["effect_refs"];
+  observed_by_refs: CaseFile["events"][number]["observed_by_refs"];
+};
+
+export type LegacyCaseFileV1 = Omit<CaseFile, "schema_version" | "events"> & {
+  schema_version: "1.0";
+  events: LegacyCaseFileEventV1[];
+};
+
+export type CaseFileDocument = CaseFile | LegacyCaseFileV1;
+export type TimelineTemporalPosition = CaseFile["events"][number]["time"];
 
 const API_ROOT =
   process.env.NEXT_PUBLIC_CASEFILE_API_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -423,7 +449,7 @@ export interface DraftCandidateView extends GenerationCandidateSummary {
 export interface DraftCandidatePreviewView extends DraftCandidateView {
   preview: true;
   read_only: true;
-  content: CaseFile;
+  content: CaseFileDocument;
 }
 
 export interface DraftCandidateAdoption {
@@ -457,7 +483,53 @@ export interface DraftView {
   brief_version_id: number | null;
   created_at: string;
   updated_at: string;
-  content: CaseFile | null;
+  content: CaseFileDocument | null;
+}
+
+export interface TimelineTimePreviewView {
+  draft_id: number;
+  base_revision: number;
+  event_id: string;
+  before_time: TimelineTemporalPosition;
+  proposed_time: TimelineTemporalPosition;
+  can_confirm: boolean;
+  order_change: {
+    from_index: number | null;
+    to_index: number | null;
+    crossed_event_ids: string[];
+  };
+  relative_dependent_event_ids: string[];
+  affected_event_ids: string[];
+  validation: {
+    status: "passed" | "failed";
+    issue_count: number;
+    issues: Array<{
+      code: string;
+      path: string;
+      message: string;
+    }>;
+  };
+}
+
+export interface ExposurePlanRefView {
+  object_type: string;
+  object_id: string;
+}
+
+export interface ExposurePlanEntryView {
+  entry_key: string;
+  sequence_no: number;
+  title: string;
+  note: string | null;
+  refs: ExposurePlanRefView[];
+}
+
+export interface ExposurePlanView {
+  plan_id: number;
+  draft_id: number;
+  revision: number;
+  updated_at: string;
+  entries: ExposurePlanEntryView[];
 }
 
 export interface DraftSummaryView {
@@ -481,6 +553,13 @@ export interface WorkbenchValidationIssueView {
   path: string;
   message: string;
   severity: "error";
+  target: {
+    object_ref: {
+      object_type: string;
+      object_id: string;
+    } | null;
+    field_path: string;
+  };
 }
 
 export interface WorkbenchValidationView {
@@ -697,6 +776,8 @@ export function errorMessage(error: unknown) {
       provider_setting_required: "请先配置当前模型服务。",
       provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
+      draft_schema_upgrade_required:
+        "当前工作稿仍使用历史时间契约，请先完成契约升级再重新生成。",
       brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
       brief_extraction_input_empty: "请先填写作者答案或创作规则。",
       source_content_blank: "来源原稿不能为空。",

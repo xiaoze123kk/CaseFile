@@ -1,6 +1,6 @@
 "use client";
 
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFileDocument } from "@/lib/api-client";
 import { useMemo, useState } from "react";
 
 import type { TimelineEvent } from "./analyst-fixture";
@@ -13,7 +13,7 @@ type EditableCollection =
   | "locations"
   | "hypotheses";
 
-type EditableObject = CaseFile[EditableCollection][number];
+type EditableObject = CaseFileDocument[EditableCollection][number];
 type SaveResult = "saved" | "conflict" | "error";
 
 const collections: EditableCollection[] = [
@@ -40,7 +40,7 @@ const truthStatuses = [
   "unknown",
 ] as const;
 
-function findObject(document: CaseFile, objectId: string | null) {
+function findObject(document: CaseFileDocument, objectId: string | null) {
   if (!objectId) return null;
   for (const collection of collections) {
     const object = document[collection].find((item) => item.id === objectId);
@@ -106,10 +106,6 @@ function valuesForSelected(
 ): Record<string, string> {
   if (!selected) return {};
   const object = selected.object as Record<string, unknown>;
-  const time =
-    selected.collection === "events"
-      ? (object.time as Record<string, unknown>)
-      : null;
   const position =
     selected.collection === "locations" ? positionOf(selected.object) : null;
   return {
@@ -120,9 +116,6 @@ function valuesForSelected(
     reliability: String(object.reliability ?? "unknown"),
     truth_status: String(object.truth_status ?? "unknown"),
     classification: String(object.classification ?? "background"),
-    time_start: String(time?.start ?? ""),
-    time_end: String(time?.end ?? ""),
-    time_precision: String(time?.precision ?? "unknown"),
     proposition: String(object.proposition ?? ""),
     hypothesis_status: String(object.status ?? "undetermined"),
     score:
@@ -156,7 +149,7 @@ export function WorkbenchObjectEditor({
   onSave,
   readOnly = false,
 }: {
-  document: CaseFile;
+  document: CaseFileDocument;
   selectedObjectId: string | null;
   revision: number;
   revisionLabel?: string;
@@ -260,11 +253,6 @@ export function WorkbenchObjectEditor({
         title: values.title,
         description: values.description,
         truth_status: values.truth_status,
-        time: {
-          start: values.time_start,
-          end: values.time_end.trim() || null,
-          precision: values.time_precision,
-        },
       };
     }
     if (collection === "locations") {
@@ -316,14 +304,6 @@ export function WorkbenchObjectEditor({
 
   function invalidMessage() {
     if (coordinateInvalid()) return "坐标超出允许范围，请检查后再保存。";
-    if (collection === "events") {
-      if (!values.time_start.trim() || Number.isNaN(Date.parse(values.time_start))) {
-        return "开始时间必须是有效的 ISO 8601 日期时间。";
-      }
-      if (values.time_end.trim() && Number.isNaN(Date.parse(values.time_end))) {
-        return "结束时间必须是有效的 ISO 8601 日期时间。";
-      }
-    }
     if (collection === "hypotheses" && values.score.trim()) {
       const score = Number(values.score);
       if (!Number.isFinite(score) || score < 0 || score > 1) {
@@ -381,9 +361,7 @@ export function WorkbenchObjectEditor({
           <>
             {field("标题", "title")}
             {field("说明", "description", true)}
-            {field("开始时间", "time_start")}
-            {field("结束时间", "time_end")}
-            <label><span>时间精度</span><select disabled={readOnly} onChange={(event) => change("time_precision", event.target.value)} value={values.time_precision}>{["second", "minute", "hour", "day", "approximate", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
+            <label className={styles.objectEditorWide}><span>事件时间（在时间线编辑）</span><textarea readOnly rows={3} value={JSON.stringify(metadata.time, null, 2)} /></label>
             <label><span>真值状态</span><select disabled={readOnly} onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
           </>
         ) : null}

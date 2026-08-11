@@ -691,6 +691,213 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/draft/events/{event_id}/time-preview": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Preview Event Time",
+        "operationId": "preview_event_time_api_v1_projects__project_id__draft_events__event_id__time_preview_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimelineTimePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Preview Event Time Api V1 Projects  Project Id  Draft Events  Event Id  Time Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/exposure-plan": {
+      "get": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Get Exposure Plan",
+        "operationId": "get_exposure_plan_api_v1_projects__project_id__draft_exposure_plan_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Exposure Plan Api V1 Projects  Project Id  Draft Exposure Plan Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Put Exposure Plan",
+        "operationId": "put_exposure_plan_api_v1_projects__project_id__draft_exposure_plan_put",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExposurePlanPutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Put Exposure Plan Api V1 Projects  Project Id  Draft Exposure Plan Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/draft/snapshots": {
       "post": {
         "tags": [
@@ -4303,6 +4510,113 @@
         ],
         "title": "DraftCandidateAdoptRequest"
       },
+      "ExposurePlanEntryRequest": {
+        "properties": {
+          "entry_key": {
+            "type": "string",
+            "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$",
+            "title": "Entry Key"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "refs": {
+            "items": {
+              "$ref": "#/components/schemas/ExposurePlanRefRequest"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Refs"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "entry_key",
+          "title",
+          "refs"
+        ],
+        "title": "ExposurePlanEntryRequest"
+      },
+      "ExposurePlanPutRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/ExposurePlanEntryRequest"
+            },
+            "type": "array",
+            "maxItems": 2000,
+            "title": "Entries"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_revision",
+          "entries"
+        ],
+        "title": "ExposurePlanPutRequest"
+      },
+      "ExposurePlanRefRequest": {
+        "properties": {
+          "object_type": {
+            "type": "string",
+            "enum": [
+              "entity",
+              "relationship",
+              "location",
+              "event",
+              "information_unit",
+              "claim",
+              "hypothesis",
+              "reasoning_path",
+              "resolution_spec",
+              "constraint",
+              "structure_lock"
+            ],
+            "title": "Object Type"
+          },
+          "object_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{1,127}$",
+            "title": "Object Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "object_type",
+          "object_id"
+        ],
+        "title": "ExposurePlanRefRequest"
+      },
       "GenerateTaskRequest": {
         "properties": {
           "brief_version_id": {
@@ -4572,6 +4886,34 @@
           "content_text"
         ],
         "title": "SourceRecordCreateRequest"
+      },
+      "TimelineTimePreviewRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          },
+          "proposed_time": {
+            "additionalProperties": true,
+            "type": "object",
+            "minProperties": 1,
+            "title": "Proposed Time"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_revision",
+          "proposed_time"
+        ],
+        "title": "TimelineTimePreviewRequest"
       },
       "ValidationError": {
         "properties": {

@@ -55,6 +55,7 @@ from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.application.brief_intake_service import BriefIntakeService
 from casefile.application.casefile_v1 import (
     generation_candidate_summary,
+    prepare_generation_candidate,
     validate_generation_candidate_context,
 )
 from casefile.application.task_cancellation import finalize_task_cancellation
@@ -592,6 +593,7 @@ class Worker:
                 task_run_id=task.id,
                 prompt_version=task.prompt_version,
                 brief=frozen_brief,
+                schema_version=str(task.input_jsonb.get("schema_version", "1.0")),
                 casefile_id=_required_string(task.input_jsonb, "casefile_id"),
                 brief_id=_required_string(task.input_jsonb, "brief_public_id"),
                 brief_version=_required_integer(
@@ -909,6 +911,7 @@ class Worker:
             brief = session.get(Brief, brief_version.brief_id)
             if brief is None:
                 raise RuntimeError("Brief disappeared")
+            candidate = prepare_generation_candidate(owned, candidate)
             validate_generation_candidate_context(
                 owned,
                 candidate,

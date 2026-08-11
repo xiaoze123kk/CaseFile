@@ -1,4 +1,4 @@
-"""Static contracts for the 47-table personal-product database metadata."""
+"""Static contracts for the 51-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -35,6 +35,10 @@ EXPECTED_TABLES = {
     "entities",
     "events",
     "evidence_items",
+    "exposure_plan_entries",
+    "exposure_plan_entry_refs",
+    "exposure_plan_revisions",
+    "exposure_plans",
     "hypotheses",
     "information_units",
     "knowledge_state_entries",
@@ -183,6 +187,11 @@ EXPECTED_UNIQUES = {
     "uq_resolution_slots_spec_key",
     "uq_source_records_project_id_id",
     "uq_draft_snapshots_draft_id_snapshot_revision",
+    "uq_exposure_plan_entries_revision_entry_key",
+    "uq_exposure_plan_entries_revision_sequence_no",
+    "uq_exposure_plan_entry_refs_entry_object_registry",
+    "uq_exposure_plan_revisions_plan_id_revision_no",
+    "uq_exposure_plans_draft_id",
     "uq_canon_versions_source_snapshot_id",
     "uq_briefs_project_id",
     "uq_task_events_run_sequence_no",
@@ -208,6 +217,12 @@ EXPECTED_FOREIGN_KEYS = {
     "fk_brief_intakes_project_current_source_source_records",
     "fk_casefiles_project_casefile_current_draft_drafts",
     "fk_casefile_objects_project_casefile_draft_drafts",
+    "fk_exposure_plan_entries_lineage_revision_revisions",
+    "fk_exposure_plan_entry_refs_lineage_entry_entries",
+    "fk_exposure_plan_entry_refs_lineage_object_casefile_objects",
+    "fk_exposure_plan_revisions_lineage_plan_exposure_plans",
+    "fk_exposure_plans_lineage_current_revision_revisions",
+    "fk_exposure_plans_project_casefile_draft_drafts",
     "fk_casefile_refs_from_object",
     "fk_casefile_refs_to_object",
     "fk_entities_object",
@@ -247,10 +262,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_47_personal_tables() -> None:
+def test_metadata_contains_exactly_the_51_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 47
+    assert len(models.__all__) == 51
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns
@@ -320,10 +335,7 @@ def test_core_unique_and_foreign_key_constraints_are_present() -> None:
         for constraint in Base.metadata.tables["draft_operations"].constraints
         if isinstance(constraint, sa.CheckConstraint)
     }
-    assert any(
-        "agent_adopt_brief_candidate" in expression
-        for expression in operation_checks
-    )
+    assert any("agent_adopt_brief_candidate" in expression for expression in operation_checks)
 
 
 def test_tracked_responsibility_docs_list_the_same_tables() -> None:
