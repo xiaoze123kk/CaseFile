@@ -376,10 +376,73 @@ describe("real workbench data mapper", () => {
     });
     expect(path.steps[0]).toMatchObject({
       id: "step_log_to_claim",
+      verb: "推断",
       operation: "infer",
       inputIds: ["info_gate_log"],
       outputId: "claim_record_changed",
     });
+  });
+
+  it("groups competing hypotheses in contract order and reads only explicit evidence assessments", () => {
+    const caseFile = makeCaseFile();
+    caseFile.hypotheses = [
+      {
+        ...caseFile.hypotheses[0],
+        evidence_assessments: [
+          {
+            information_ref: ref("information_unit", "info_gate_log"),
+            effect: "supports",
+            strength: "strong",
+            rationale: "改写时间与值班记录一致。",
+          },
+        ],
+      },
+      {
+        ...caseFile.hypotheses[0],
+        id: "hyp_external_changed_record",
+        title: "外部人员改写记录",
+        proposition: "外部人员在事件后修改了门禁记录。",
+        evidence_assessments: [],
+      },
+    ];
+
+    const model = mapCaseFileToWorkbenchModel(caseFile, 7);
+
+    expect(model.reasoningGroups).toEqual([
+      {
+        resolutionSpecId: "res_core_question",
+        question: "是谁改写了记录？",
+        hypotheses: [
+          expect.objectContaining({ id: "hyp_operator_changed_record" }),
+          expect.objectContaining({ id: "hyp_external_changed_record" }),
+        ],
+        information: [
+          { id: "info_gate_log", title: "门禁记录", reliability: "high" },
+        ],
+        assessments: [
+          {
+            hypothesisId: "hyp_operator_changed_record",
+            informationId: "info_gate_log",
+            effect: "supports",
+            strength: "strong",
+            rationale: "改写时间与值班记录一致。",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to a stable question title when the resolution has no title", () => {
+    const caseFile = makeCaseFile();
+    caseFile.resolution_specs[0] = {
+      ...caseFile.resolution_specs[0],
+      title: "",
+      reasoning_question: "",
+    };
+
+    expect(mapCaseFileToWorkbenchModel(caseFile, 7).reasoningGroups[0]?.question).toBe(
+      "未命名待解问题",
+    );
   });
 
   it("separates geographic, scene, and deterministic topology data", () => {

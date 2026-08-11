@@ -70,6 +70,52 @@ def test_runtime_rejects_deterministic_semantic_invariants() -> None:
     assert "invalid_time_range" in _error_codes(invalid_time)
 
 
+def test_evidence_assessments_are_backward_compatible_and_semantically_checked() -> None:
+    legacy = _load("restart_loop.casefile.json")
+    validate_casefile(legacy)
+
+    sparse = _load("restart_loop.casefile.json")
+    sparse["hypotheses"][0]["evidence_assessments"] = [
+        {
+            "information_ref": {
+                "object_type": "information_unit",
+                "object_id": "info_restart_log",
+            },
+            "effect": "supports",
+            "strength": "strong",
+            "rationale": "重启日志直接记录了触发条件。",
+        }
+    ]
+    validate_casefile(sparse)
+
+    wrong_type = copy.deepcopy(sparse)
+    wrong_type["hypotheses"][0]["evidence_assessments"][0]["information_ref"] = {
+        "object_type": "claim",
+        "object_id": "claim_backup_trigger",
+    }
+    assert "reference_type_mismatch" in _error_codes(wrong_type)
+
+    missing_information = copy.deepcopy(sparse)
+    missing_information["hypotheses"][0]["evidence_assessments"][0]["information_ref"][
+        "object_id"
+    ] = "info_missing"
+    assert "missing_reference" in _error_codes(missing_information)
+
+    duplicate = copy.deepcopy(sparse)
+    duplicate["hypotheses"][0]["evidence_assessments"].append(
+        copy.deepcopy(duplicate["hypotheses"][0]["evidence_assessments"][0])
+    )
+    assert "duplicate_key" in _error_codes(duplicate)
+
+    illegal_enum = copy.deepcopy(sparse)
+    illegal_enum["hypotheses"][0]["evidence_assessments"][0]["effect"] = "maybe"
+    assert "schema_invalid" in _error_codes(illegal_enum)
+
+    empty_rationale = copy.deepcopy(sparse)
+    empty_rationale["hypotheses"][0]["evidence_assessments"][0]["rationale"] = ""
+    assert "schema_invalid" in _error_codes(empty_rationale)
+
+
 def test_rfc8785_hash_is_stable_across_object_key_order() -> None:
     document = _load("restart_loop.casefile.json")
     reordered = json.loads(json.dumps(document, ensure_ascii=False, sort_keys=True))

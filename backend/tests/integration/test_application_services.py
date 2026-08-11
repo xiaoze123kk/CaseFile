@@ -27,6 +27,7 @@ from casefile.application.v1_editing import V1EditingService
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
+    CaseFileContractRef,
     CaseFileObject,
     DraftOperation,
     DraftSnapshot,
@@ -242,6 +243,72 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
         assert b"sk-test-workflow-secret" not in bytes(ciphertext)
         assert snapshot_json == draft["content"]
         assert snapshot_hash == casefile_content_hash(draft["content"])
+
+
+def test_adoption_roundtrips_evidence_assessment_reference_metadata(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    class AssessedFixtureProvider(RichFixtureProvider):
+        def generate(self, request):  # type: ignore[no-untyped-def]
+            result = super().generate(request)
+            result.candidate["hypotheses"][0]["evidence_assessments"] = [
+                {
+                    "information_ref": {
+                        "object_type": "information_unit",
+                        "object_id": "info_restart_log",
+                    },
+                    "effect": "supports",
+                    "strength": "strong",
+                    "rationale": "重启日志直接记录了触发条件。",
+                }
+            ]
+            validate_casefile(result.candidate)
+            return result
+
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="assessed-fixture-worker"),
+            provider_factory=lambda _task: AssessedFixtureProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            candidate = session.scalar(
+                select(TaskAttempt.candidate_jsonb).where(TaskAttempt.task_run_id == task_run_id)
+            )
+        assert isinstance(candidate, dict)
+        assert candidate["hypotheses"][0]["evidence_assessments"]
+
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+
+        with factory() as session:
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            ref = session.scalar(
+                select(CaseFileContractRef).where(
+                    CaseFileContractRef.field_path
+                    == "/evidence_assessments/0/information_ref"
+                )
+            )
+            snapshot = session.scalar(
+                select(DraftSnapshot).where(DraftSnapshot.draft_id == draft["draft_id"])
+            )
+
+        assert ref is not None
+        assert ref.object_type == "information_unit"
+        assert ref.object_id == "info_restart_log"
+        assert ref.metadata_jsonb == {
+            "effect": "supports",
+            "strength": "strong",
+            "rationale": "重启日志直接记录了触发条件。",
+        }
+        assert draft["content"] == candidate
+        assert snapshot is not None
+        assert snapshot.snapshot_jsonb == candidate
+        assert snapshot.content_hash == casefile_content_hash(candidate)
 
 
 def test_adoption_preserves_reference_free_knowledge_state_slots(

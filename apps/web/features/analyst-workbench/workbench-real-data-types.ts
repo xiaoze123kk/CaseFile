@@ -5,6 +5,7 @@ import type {
   ValidationIssue,
   WorkbenchAuditEntry,
   WorkbenchDrawerCopy,
+  WorkbenchReasoningGroup,
   WorkbenchSeed,
 } from "./analyst-fixture";
 
@@ -265,6 +266,7 @@ export interface WorkbenchModel extends WorkbenchSeed {
     edges: WorkbenchGraphEdge[];
   };
   reasoningPaths: WorkbenchReasoningPath[];
+  reasoningGroups: WorkbenchReasoningGroup[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   map: WorkbenchMapModel;

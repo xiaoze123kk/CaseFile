@@ -353,6 +353,21 @@
             "required_claim_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
             "falsifier_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
             "competing_hypothesis_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+            "evidence_assessments": {
+              "type": "array",
+              "default": [],
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["information_ref", "effect", "strength", "rationale"],
+                "properties": {
+                  "information_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
+                  "effect": {"type": "string", "enum": ["supports", "contradicts", "neutral"]},
+                  "strength": {"type": "string", "enum": ["weak", "moderate", "strong"]},
+                  "rationale": {"type": "string", "minLength": 1}
+                }
+              }
+            },
             "status": {"type": "string", "enum": ["active", "supported", "eliminated", "accepted", "rejected", "undetermined"]},
             "score": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
           }

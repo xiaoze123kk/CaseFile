@@ -114,7 +114,7 @@ export function CanvasKernelControls({
           onClick={onFit}
           type="button"
         >
-          FIT
+          适配
         </button>
         <button
           aria-label={isFullscreen ? "退出全屏" : "全屏查看画布"}

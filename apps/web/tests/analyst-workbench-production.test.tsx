@@ -833,7 +833,7 @@ describe("production analyst workbench", () => {
     const views = [
       ["时间线", "timeline"],
       ["关系图", "relations"],
-      ["推理图", "reasoning"],
+      ["推理分析", "reasoning"],
       ["地图", "map"],
       ["卷宗编辑器", "dossier"],
       ["导出预览", "export"],

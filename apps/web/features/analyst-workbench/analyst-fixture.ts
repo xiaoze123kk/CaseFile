@@ -17,6 +17,38 @@ export interface ReasoningPath {
   hypothesisId: string;
 }
 
+export type ReasoningAssessmentEffect =
+  | "supports"
+  | "contradicts"
+  | "neutral"
+  | "unassessed";
+
+export type ReasoningAssessmentStrength = "weak" | "moderate" | "strong";
+
+export interface WorkbenchReasoningAssessment {
+  hypothesisId: string;
+  informationId: string;
+  effect: Exclude<ReasoningAssessmentEffect, "unassessed">;
+  strength: ReasoningAssessmentStrength;
+  rationale: string;
+}
+
+export interface WorkbenchReasoningGroup {
+  resolutionSpecId: string;
+  question: string;
+  hypotheses: Array<{
+    id: string;
+    title: string;
+    outcome: ReasoningOutcome;
+  }>;
+  information: Array<{
+    id: string;
+    title: string;
+    reliability: string;
+  }>;
+  assessments: WorkbenchReasoningAssessment[];
+}
+
 export type InspectorTab = "object" | "issues" | "sources" | "patch" | "audit";
 
 export type ObjectKind =
@@ -147,6 +179,7 @@ export interface WorkbenchSeed {
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
   reasoningPaths: ReasoningPath[];
+  reasoningGroups?: WorkbenchReasoningGroup[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   drawer: WorkbenchDrawerCopy;

@@ -30,6 +30,7 @@ from pydantic import BaseModel, create_model
 
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
+from casefile.agent_runtime.brief_to_draft_v10.workflow import run_v10_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -393,7 +394,11 @@ class FakeProvider:
         return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
-        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        if request.prompt_version in {
+            "brief-to-draft-v8",
+            "brief-to-draft-v9",
+            "brief-to-draft-v10",
+        }:
 
             async def call_component(
                 _instructions: str,
@@ -416,6 +421,8 @@ class FakeProvider:
                     },
                 )
                 output = _fake_v8_output(output_type)
+                if request.prompt_version == "brief-to-draft-v10":
+                    _add_fake_v10_matrix_plan(output_type, output)
                 if output_type.__name__ == "ResolutionGovernanceIRV1":
                     output["resolution_specs"][0]["conclusion_mode"] = request.brief[
                         "conclusion_mode"
@@ -439,7 +446,9 @@ class FakeProvider:
                 return output, usage
 
             runner = (
-                run_v9_generation
+                run_v10_generation
+                if request.prompt_version == "brief-to-draft-v10"
+                else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
                 else run_v8_generation
             )
@@ -724,7 +733,11 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        if request.prompt_version in {
+            "brief-to-draft-v8",
+            "brief-to-draft-v9",
+            "brief-to-draft-v10",
+        }:
 
             async def call_component(
                 instructions: str,
@@ -754,7 +767,9 @@ class OpenAIAgentsProvider:
                 )
 
             runner = (
-                run_v9_generation
+                run_v10_generation
+                if request.prompt_version == "brief-to-draft-v10"
+                else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
                 else run_v8_generation
             )
@@ -971,7 +986,11 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
-        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        if request.prompt_version in {
+            "brief-to-draft-v8",
+            "brief-to-draft-v9",
+            "brief-to-draft-v10",
+        }:
 
             async def call_component(
                 instructions: str,
@@ -997,7 +1016,9 @@ class DeepSeekAgentsProvider:
                 )
 
             runner = (
-                run_v9_generation
+                run_v10_generation
+                if request.prompt_version == "brief-to-draft-v10"
+                else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
                 else run_v8_generation
             )
@@ -1491,8 +1512,8 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 }
             ],
         }
-    if output_type.__name__ == "EvidenceLogicIRV1":
-        return {
+    if output_type.__name__ in {"EvidenceLogicIRV1", "EvidenceLogicIRV2"}:
+        output = {
             "information_units": [
                 {
                     "local_key": "record",
@@ -1561,6 +1582,87 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 }
             ],
         }
+        if output_type.__name__ == "EvidenceLogicIRV2":
+            output["schema_id"] = "evidence-logic-ir-v2"
+            output["hypotheses"] = [
+                {
+                    "local_key": "hypothesis",
+                    **common,
+                    "title": "记录解释",
+                    "proposition": "记录内容对应真实发生的事件。",
+                    "target_resolution_key": "resolution",
+                    "required_claim_keys": ["claim"],
+                    "falsifier_keys": [],
+                    "competing_hypothesis_keys": ["alternative_hypothesis"],
+                    "evidence_assessments": [
+                        {
+                            "information_key": "record",
+                            "effect": "supports",
+                            "strength": "strong",
+                            "rationale": "关键记录与已知发现时间一致。",
+                        }
+                    ],
+                    "status": "supported",
+                    "score": 0.9,
+                },
+                {
+                    "local_key": "alternative_hypothesis",
+                    **common,
+                    "title": "记录误导",
+                    "proposition": "记录内容经过事后篡改，不能直接说明事件真实经过。",
+                    "target_resolution_key": "resolution",
+                    "required_claim_keys": ["claim"],
+                    "falsifier_keys": [],
+                    "competing_hypothesis_keys": ["hypothesis"],
+                    "evidence_assessments": [
+                        {
+                            "information_key": "record",
+                            "effect": "contradicts",
+                            "strength": "moderate",
+                            "rationale": "记录来源尚未独立验证，存在篡改可能。",
+                        }
+                    ],
+                    "status": "undetermined",
+                    "score": 0.4,
+                },
+            ]
+            output["reasoning_paths"] = [
+                {
+                    "local_key": "path",
+                    **common,
+                    "title": "记录支持路径",
+                    "path_type": "proof",
+                    "target_key": "hypothesis",
+                    "steps": [
+                        {
+                            "step_key": "verify_record",
+                            "input_keys": ["record"],
+                            "operation": "infer",
+                            "output_key": "claim",
+                        }
+                    ],
+                    "required_for_resolution": True,
+                    "alternative_path_keys": ["alternative_path"],
+                },
+                {
+                    "local_key": "alternative_path",
+                    **common,
+                    "title": "记录冲突路径",
+                    "path_type": "proof",
+                    "target_key": "alternative_hypothesis",
+                    "steps": [
+                        {
+                            "step_key": "challenge_record",
+                            "input_keys": ["record"],
+                            "operation": "compare",
+                            "output_key": "claim",
+                        }
+                    ],
+                    "required_for_resolution": True,
+                    "alternative_path_keys": ["path"],
+                },
+            ]
+        return output
     if output_type.__name__ == "ResolutionGovernanceIRV1":
         return {
             "resolution_specs": [
@@ -1603,6 +1705,31 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             "content_notices": [],
         }
     raise ProviderProtocolError(f"Fake v8 component is unsupported: {output_type.__name__}")
+
+
+def _add_fake_v10_matrix_plan(
+    output_type: type[BaseModel], output: dict[str, Any]
+) -> None:
+    """Keep the FakeProvider plan aligned with v10's two explicit competitors."""
+
+    if output_type.__name__ != "CaseBlueprintV1":
+        return
+    output["hypotheses"].append(
+        {
+            "local_key": "alternative_hypothesis",
+            "title": "记录误导",
+            "purpose": "与记录解释竞争的可检验替代假设。",
+            "dependency_keys": ["resolution", "claim"],
+        }
+    )
+    output["reasoning_paths"].append(
+        {
+            "local_key": "alternative_path",
+            "title": "记录冲突路径",
+            "purpose": "验证记录是否可能被事后篡改。",
+            "dependency_keys": ["record", "claim", "alternative_hypothesis"],
+        }
+    )
 
 
 async def _run_partitioned_generation(

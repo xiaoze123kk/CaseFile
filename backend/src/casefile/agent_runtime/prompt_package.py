@@ -14,6 +14,7 @@ from pydantic import BaseModel, ValidationError
 from casefile.agent_runtime.brief_to_draft_v8.ir import (
     CaseBlueprintV1,
     EvidenceLogicIRV1,
+    EvidenceLogicIRV2,
     ResolutionGovernanceIRV1,
     StoryWorldIRV1,
 )
@@ -83,6 +84,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "case-blueprint-v1": CaseBlueprintV1,
         "story-world-ir-v1": StoryWorldIRV1,
         "evidence-logic-ir-v1": EvidenceLogicIRV1,
+        "evidence-logic-ir-v2": EvidenceLogicIRV2,
         "resolution-governance-ir-v1": ResolutionGovernanceIRV1,
     }
 )
@@ -90,7 +92,10 @@ TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
     {"no-tools-v1": frozenset()}
 )
 RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
-    {("brief-to-draft-pipeline-v9", TOOLSET_VERSION)}
+    {
+        ("brief-to-draft-pipeline-v9", TOOLSET_VERSION),
+        ("brief-to-draft-pipeline-v10", TOOLSET_VERSION),
+    }
 )
 
 

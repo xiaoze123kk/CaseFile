@@ -173,8 +173,12 @@ def _live_config() -> LiveAcceptanceConfig:
     prompt_version = os.getenv(
         "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v9"
     ).strip()
-    if prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
-        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8 or v9.")
+    if prompt_version not in {
+        "brief-to-draft-v8",
+        "brief-to-draft-v9",
+        "brief-to-draft-v10",
+    }:
+        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8, v9, or v10.")
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
         test_database_url=test_database_url,

@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
+from casefile.agent_runtime.prompt import V10_GENERATION_AGENT_VERSION
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package
 from casefile.agent_runtime.prompt_repository import (
     PromptRepository,
@@ -145,3 +146,39 @@ def test_fake_provider_runs_v9_package_pipeline() -> None:
     assert len(started) == 4
     assert {payload["package_version"] for payload in started} == {"brief-to-draft-v9"}
     assert {payload["tool_policy_id"] for payload in started} == {"no-tools-v1"}
+
+
+def test_v10_package_generates_explicit_competing_evidence_assessments() -> None:
+    request = GenerationRequest(
+        task_run_id=322,
+        prompt_version="brief-to-draft-v10",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v10",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v10",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v10",
+        api_key=None,
+        max_turns=3,
+        emit=lambda _event_type, _stage, _payload: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V10_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    hypotheses = result.candidate["hypotheses"]
+    assert len(hypotheses) == 2
+    assert all(
+        hypothesis["evidence_assessments"]
+        for hypothesis in hypotheses
+    )
+    assert {
+        assessment["effect"]
+        for hypothesis in hypotheses
+        for assessment in hypothesis["evidence_assessments"]
+    } == {"supports", "contradicts"}
