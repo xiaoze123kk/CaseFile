@@ -252,6 +252,16 @@ function makeDraft(revision: number, entityName?: string): DraftView {
   };
 }
 
+function makeDraftWithScenePosition(revision: number, x: number, y = 36): DraftView {
+  const draft = makeDraft(revision);
+  const location = draft.content?.locations.find(
+    (candidate) => candidate.id === "loc_archive_gate",
+  );
+  if (!location) throw new Error("测试工作稿缺少档案馆门禁地点");
+  location.spatial_position = { coordinate_system: "schematic", x, y };
+  return draft;
+}
+
 function makeProject(id: number, title: string): ProjectView {
   return {
     id,
@@ -891,9 +901,11 @@ describe("production analyst workbench", () => {
 
     await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
-    const marker = await screen.findByRole("button", {
-      name: /档案馆门禁，场景坐标，1 个事件/u,
-    });
+    const marker = await screen.findByRole(
+      "button",
+      { name: /档案馆门禁，场景坐标，1 个事件/u },
+      { timeout: 3000 },
+    );
     fireEvent.click(marker);
 
     const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
@@ -917,18 +929,157 @@ describe("production analyst workbench", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("routes map marker selection through the unsaved-edit guard", async () => {
+  it("saves only a scene spatial position and keeps selection, view, and revision linked", async () => {
+    mocks.fetchCaseDraft
+      .mockResolvedValueOnce(makeDraftWithScenePosition(7, 42))
+      .mockResolvedValueOnce(makeDraftWithScenePosition(8, 42.5));
+    mocks.patchCaseDraftObject.mockResolvedValueOnce({});
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: /档案馆门禁，场景坐标，1 个事件/u },
+        { timeout: 3000 },
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑位置" }));
+    fireEvent.keyDown(
+      await screen.findByRole("button", { name: /位置可编辑/u }),
+      { key: "ArrowRight" },
+    );
+
+    expect(
+      screen.getByRole("region", { name: "对象详情（只读）" }),
+    ).toHaveTextContent("先保存或取消地图位置预览");
+    fireEvent.click(screen.getByRole("tab", { name: /时间线/ }));
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存位置" }));
+    await waitFor(() =>
+      expect(mocks.patchCaseDraftObject).toHaveBeenCalledWith(
+        42,
+        "loc_archive_gate",
+        9,
+        7,
+        {
+          spatial_position: {
+            coordinate_system: "schematic",
+            x: 42.5,
+            y: 36,
+          },
+        },
+      ),
+    );
+    await waitFor(() =>
+      expect(container.querySelector("#analyst-canvas")).toHaveAttribute(
+        "data-draft-revision",
+        "R8",
+      ),
+    );
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(container.querySelector("#analyst-canvas")).toHaveAttribute(
+      "data-selected-object-id",
+      "loc_archive_gate",
+    );
+  });
+
+  it("retains a map preview through a 409 and retries against the reviewed revision", async () => {
+    mocks.fetchCaseDraft
+      .mockResolvedValueOnce(makeDraftWithScenePosition(7, 42))
+      .mockResolvedValueOnce(makeDraftWithScenePosition(8, 48))
+      .mockResolvedValueOnce(makeDraftWithScenePosition(9, 42.5));
+    mocks.patchCaseDraftObject
+      .mockRejectedValueOnce(
+        new ApiError(409, {
+          code: "draft_revision_conflict",
+          message: "CaseFile Draft revision is stale",
+          details: {},
+        }),
+      )
+      .mockResolvedValueOnce({});
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: /档案馆门禁，场景坐标，1 个事件/u },
+        { timeout: 3000 },
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑位置" }));
+    fireEvent.keyDown(
+      await screen.findByRole("button", { name: /位置可编辑/u }),
+      { key: "ArrowRight" },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存位置" }));
+
+    expect(await screen.findByRole("button", { name: "核对最新版" })).toBeInTheDocument();
+    expect(mocks.fetchCaseDraft).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "核对最新版" }));
+    expect(await screen.findByText(/最新版已修改此地点坐标/u)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存位置" }));
+
+    await waitFor(() => expect(mocks.patchCaseDraftObject).toHaveBeenCalledTimes(2));
+    expect(mocks.patchCaseDraftObject).toHaveBeenLastCalledWith(
+      42,
+      "loc_archive_gate",
+      9,
+      8,
+      {
+        spatial_position: {
+          coordinate_system: "schematic",
+          x: 42.5,
+          y: 36,
+        },
+      },
+    );
+  }, 10_000);
+
+  it("keeps candidate map positions read-only and isolated from Current Draft writes", async () => {
+    mocks.fetchDraftCandidatePreview.mockResolvedValueOnce(makePreview());
+    render(
+      <AnalystWorkbench
+        requestedPreviewTaskRunId={73}
+        requestedProjectId={42}
+      />,
+    );
+
+    await screen.findByRole("status", { name: "候选预览只读提示" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: /档案馆门禁，场景坐标/u },
+        { timeout: 3000 },
+      ),
+    );
+
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "候选预览只读；采用为 Current Draft 后才能编辑位置。",
+    );
+    expect(screen.queryByRole("button", { name: "编辑位置" })).toBeNull();
+    expect(mocks.patchCaseDraftObject).not.toHaveBeenCalled();
+    expect(mocks.fetchCaseDraft).not.toHaveBeenCalled();
+  });
+
+  it("blocks entering the map while object fields have unsaved edits", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
     const name = await screen.findByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /档案馆门禁，场景坐标，1 个事件/u,
-      }),
-    );
 
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "未保存的调查员名称",
@@ -942,6 +1093,11 @@ describe("production analyst workbench", () => {
       "data-selected-object-id",
       "ent_real_analyst",
     );
+    expect(screen.getByRole("tab", { name: /时间线/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.queryByTestId("spatial-map-canvas")).toBeNull();
   });
 
   it("renders only the event sequence in the Current Draft timeline", async () => {

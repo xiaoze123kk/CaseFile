@@ -39,6 +39,26 @@ export type WorkbenchSpatialMode = "geographic" | "scene" | "topology";
 
 export type WorkbenchPositionSource = "wgs84" | "schematic" | "inferred";
 
+export type SpatialPositionPayload = NonNullable<
+  CaseFileDocument["locations"][number]["spatial_position"]
+>;
+
+export type SpatialPositionSaveResult = "saved" | "conflict" | "error";
+
+export interface ReloadedSpatialLocation {
+  found: boolean;
+  position: SpatialPositionPayload | null;
+  revision: number;
+}
+
+export type SpatialLayerId =
+  | "locations"
+  | "events"
+  | "relations"
+  | "unconfirmed";
+
+export type SpatialLayerVisibility = Record<SpatialLayerId, boolean>;
+
 export type WorkbenchContractObject =
   | CaseFileDocument["entities"][number]
   | CaseFileDocument["information_units"][number]
@@ -194,9 +214,20 @@ export interface WorkbenchSpatialLocation {
   relatedObjectIds: string[];
 }
 
+export interface WorkbenchSpatialRelation {
+  relationId: string;
+  kind: "adjacency" | "travel";
+  fromLocationId: string;
+  toLocationId: string;
+  direction: "directed" | "undirected";
+  label: string;
+  minutes: number | null;
+}
+
 export interface WorkbenchSpatialView {
   mode: WorkbenchSpatialMode;
   locations: WorkbenchSpatialLocation[];
+  relations: WorkbenchSpatialRelation[];
 }
 
 export interface WorkbenchMapModel {
@@ -204,6 +235,7 @@ export interface WorkbenchMapModel {
   defaultMode: WorkbenchSpatialMode | null;
   views: Record<WorkbenchSpatialMode, WorkbenchSpatialView>;
   unlocatedLocationIds: string[];
+  unlocatedLocations: Array<{ locationId: string; label: string }>;
   counts: {
     locations: number;
     events: number;

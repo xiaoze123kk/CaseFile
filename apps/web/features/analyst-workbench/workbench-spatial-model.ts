@@ -5,10 +5,13 @@ import type { CaseFileDocument } from "@/lib/api-client";
 import type { WorkbenchSeed } from "./analyst-fixture";
 import type {
   WorkbenchMapModel,
+  SpatialLayerVisibility,
   WorkbenchSpatialEvent,
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
   WorkbenchSpatialPosition,
+  WorkbenchSpatialRelation,
+  WorkbenchSpatialView,
   WorkbenchTimelineEvent,
 } from "./workbench-real-data-types";
 
@@ -231,7 +234,98 @@ function makeSpatialLocation(input: {
 }
 
 function emptyView(mode: WorkbenchSpatialMode) {
-  return { mode, locations: [] } satisfies WorkbenchMapModel["views"][WorkbenchSpatialMode];
+  return {
+    mode,
+    locations: [],
+    relations: [],
+  } satisfies WorkbenchMapModel["views"][WorkbenchSpatialMode];
+}
+
+function buildSpatialRelations(
+  locations: ContractLocation[],
+): WorkbenchSpatialRelation[] {
+  const locationIds = new Set(locations.map((location) => location.id));
+  const relations = new Map<string, WorkbenchSpatialRelation>();
+
+  for (const location of [...locations].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  )) {
+    for (const reference of location.adjacency_refs) {
+      const adjacentId = readReferenceId(reference);
+      if (!adjacentId || adjacentId === location.id || !locationIds.has(adjacentId)) {
+        continue;
+      }
+      const [fromLocationId, toLocationId] = [location.id, adjacentId].sort();
+      const relationId = `adjacency:${fromLocationId}:${toLocationId}`;
+      relations.set(relationId, {
+        relationId,
+        kind: "adjacency",
+        fromLocationId,
+        toLocationId,
+        direction: "undirected",
+        label: "相邻",
+        minutes: null,
+      });
+    }
+    for (const travelTime of location.travel_times) {
+      const targetId = readReferenceId(travelTime.to_ref);
+      if (!targetId || targetId === location.id || !locationIds.has(targetId)) {
+        continue;
+      }
+      const relationId = `travel:${location.id}:${targetId}:${travelTime.minutes}`;
+      relations.set(relationId, {
+        relationId,
+        kind: "travel",
+        fromLocationId: location.id,
+        toLocationId: targetId,
+        direction: "directed",
+        label: `${travelTime.minutes} 分钟`,
+        minutes: travelTime.minutes,
+      });
+    }
+  }
+  return [...relations.values()].sort((left, right) =>
+    left.relationId.localeCompare(right.relationId),
+  );
+}
+
+function relationsForLocations(
+  relations: WorkbenchSpatialRelation[],
+  locations: WorkbenchSpatialLocation[],
+): WorkbenchSpatialRelation[] {
+  const visibleIds = new Set(
+    locations.flatMap((location) =>
+      location.locationId ? [location.locationId] : [],
+    ),
+  );
+  return relations.filter(
+    (relation) =>
+      visibleIds.has(relation.fromLocationId) &&
+      visibleIds.has(relation.toLocationId),
+  );
+}
+
+export const defaultSpatialLayerVisibility: SpatialLayerVisibility = {
+  locations: true,
+  events: true,
+  relations: false,
+  unconfirmed: false,
+};
+
+export function filterWorkbenchSpatialView(
+  view: WorkbenchSpatialView,
+  layers: SpatialLayerVisibility,
+): WorkbenchSpatialView {
+  const locations = view.locations.filter((location) =>
+    location.source === "inferred" ? layers.unconfirmed : layers.locations,
+  );
+  return {
+    ...view,
+    locations,
+    relations: layers.relations
+      ? relationsForLocations(view.relations, locations)
+      : [],
+  };
 }
 
 export function buildWorkbenchSpatialModel(
@@ -241,6 +335,7 @@ export function buildWorkbenchSpatialModel(
   const positions = new Map(
     caseFile.locations.map((location) => [location.id, readSpatialPosition(location)]),
   );
+  const spatialRelations = buildSpatialRelations(caseFile.locations);
   const eventMap = eventsByLocation(timelineEvents);
   const geographicLocations = caseFile.locations
     .flatMap((location) => {
@@ -327,11 +422,22 @@ export function buildWorkbenchSpatialModel(
     .sort((left, right) => left.spatialId.localeCompare(right.spatialId));
 
   const views: WorkbenchMapModel["views"] = {
-    geographic: { mode: "geographic", locations: geographicLocations },
-    scene: { mode: "scene", locations: sceneLocations },
+    geographic: {
+      mode: "geographic",
+      locations: geographicLocations,
+      relations: relationsForLocations(spatialRelations, geographicLocations),
+    },
+    scene: {
+      mode: "scene",
+      locations: sceneLocations,
+      relations: relationsForLocations(spatialRelations, sceneLocations),
+    },
     topology: {
       mode: "topology",
       locations: inferredIds.length ? topologyLocations : [],
+      relations: inferredIds.length
+        ? relationsForLocations(spatialRelations, topologyLocations)
+        : [],
     },
   };
   const availableModes = spatialModeOrder.filter(
@@ -346,6 +452,10 @@ export function buildWorkbenchSpatialModel(
     defaultMode: availableModes[0] ?? null,
     views,
     unlocatedLocationIds,
+    unlocatedLocations: caseFile.locations
+      .filter((location) => unlocatedLocationIds.includes(location.id))
+      .map((location) => ({ locationId: location.id, label: location.name }))
+      .sort((left, right) => left.locationId.localeCompare(right.locationId)),
     counts: {
       locations: caseFile.locations.length,
       events: locatedEventCount,
@@ -404,7 +514,7 @@ export function buildFixtureSpatialModel(seed: WorkbenchSeed): WorkbenchMapModel
   const locations = [...locationsByPoint.values()];
   const views: WorkbenchMapModel["views"] = {
     geographic: emptyView("geographic"),
-    scene: { mode: "scene", locations },
+    scene: { mode: "scene", locations, relations: [] },
     topology: emptyView("topology"),
   };
   return {
@@ -412,6 +522,7 @@ export function buildFixtureSpatialModel(seed: WorkbenchSeed): WorkbenchMapModel
     defaultMode: locations.length ? "scene" : null,
     views,
     unlocatedLocationIds: [],
+    unlocatedLocations: [],
     counts: {
       locations: locations.length,
       events: seed.mapMarkers.length,

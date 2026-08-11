@@ -894,7 +894,9 @@ function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath
   });
 }
 
-function buildReasoningGroups(caseFile: CaseFile): WorkbenchReasoningGroup[] {
+function buildReasoningGroups(
+  caseFile: CaseFileDocument,
+): WorkbenchReasoningGroup[] {
   const resolutions = new Map(caseFile.resolution_specs.map((item) => [item.id, item]));
   const information = new Map(caseFile.information_units.map((item) => [item.id, item]));
   const groups = new Map<

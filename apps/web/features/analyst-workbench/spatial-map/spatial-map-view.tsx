@@ -2,11 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  defaultSpatialLayerVisibility,
+  filterWorkbenchSpatialView,
+} from "../workbench-spatial-model";
 import type {
+  ReloadedSpatialLocation,
+  SpatialLayerId,
+  SpatialLayerVisibility,
+  SpatialPositionPayload,
+  SpatialPositionSaveResult,
   WorkbenchMapModel,
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
+  WorkbenchSpatialPosition,
 } from "../workbench-real-data-types";
+import {
+  SpatialAuditPanel,
+  SpatialStatusStrip,
+} from "./spatial-map-controls";
+import {
+  SpatialMapPreviewCard,
+  type SpatialEditSession,
+} from "./spatial-map-preview-card";
 import {
   createSpatialRenderer,
   resolveMapTileConfiguration,
@@ -21,11 +39,17 @@ const modeLabels: Record<WorkbenchSpatialMode, string> = {
   topology: "自动布局",
 };
 
-const sourceLabels: Record<WorkbenchSpatialLocation["source"], string> = {
-  wgs84: "WGS84 地理坐标",
-  schematic: "明确场景坐标",
-  inferred: "关系推算位置",
-};
+function cloneDefaultLayers(): SpatialLayerVisibility {
+  return { ...defaultSpatialLayerVisibility };
+}
+
+function initialLayerState(): Record<WorkbenchSpatialMode, SpatialLayerVisibility> {
+  return {
+    geographic: cloneDefaultLayers(),
+    scene: cloneDefaultLayers(),
+    topology: cloneDefaultLayers(),
+  };
+}
 
 function relatedLocation(
   location: WorkbenchSpatialLocation,
@@ -39,10 +63,57 @@ function relatedLocation(
   );
 }
 
-function coordinateLabel(location: WorkbenchSpatialLocation): string {
-  return location.position.kind === "wgs84"
-    ? `${location.position.latitude.toFixed(5)}, ${location.position.longitude.toFixed(5)}`
-    : `X ${location.position.x.toFixed(1)} / Y ${location.position.y.toFixed(1)}`;
+function findLocation(
+  map: WorkbenchMapModel,
+  locationId: string,
+  preferredMode: WorkbenchSpatialMode | null,
+): WorkbenchSpatialLocation | null {
+  const modes = preferredMode
+    ? [preferredMode, ...map.availableModes.filter((mode) => mode !== preferredMode)]
+    : map.availableModes;
+  for (const mode of modes) {
+    const location = map.views[mode].locations.find(
+      (candidate) => candidate.locationId === locationId,
+    );
+    if (location) return location;
+  }
+  return null;
+}
+
+function positionsEqual(
+  left: WorkbenchSpatialPosition,
+  right: WorkbenchSpatialPosition,
+): boolean {
+  if (left.kind !== right.kind) return false;
+  return left.kind === "wgs84" && right.kind === "wgs84"
+    ? left.latitude === right.latitude && left.longitude === right.longitude
+    : left.kind === "planar" && right.kind === "planar"
+      ? left.x === right.x && left.y === right.y
+      : false;
+}
+
+function payloadToPosition(
+  payload: SpatialPositionPayload,
+): WorkbenchSpatialPosition {
+  return payload.coordinate_system === "wgs84"
+    ? {
+        kind: "wgs84",
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+      }
+    : { kind: "planar", x: payload.x, y: payload.y };
+}
+
+function positionToPayload(
+  position: WorkbenchSpatialPosition,
+): SpatialPositionPayload {
+  return position.kind === "wgs84"
+    ? {
+        coordinate_system: "wgs84",
+        latitude: position.latitude,
+        longitude: position.longitude,
+      }
+    : { coordinate_system: "schematic", x: position.x, y: position.y };
 }
 
 export interface SpatialMapViewProps {
@@ -52,9 +123,20 @@ export interface SpatialMapViewProps {
   note: string;
   selectedObjectId: string | null;
   selectedEventId: string | null;
+  readOnlyReason?: string | null;
   onSelectLocation: (locationId: string) => boolean;
   onSelectEvent: (eventId: string) => boolean;
   onClearSelection: () => boolean;
+  onOpenLocationDetails: (locationId: string) => boolean;
+  onRequestPositionEdit?: (locationId: string) => boolean;
+  onPositionEditStateChange?: (active: boolean, dirty: boolean) => void;
+  onReloadSpatialLocation?: (
+    locationId: string,
+  ) => Promise<ReloadedSpatialLocation>;
+  onSaveSpatialPosition?: (
+    locationId: string,
+    position: SpatialPositionPayload,
+  ) => Promise<SpatialPositionSaveResult>;
 }
 
 export function SpatialMapView({
@@ -64,9 +146,15 @@ export function SpatialMapView({
   note,
   selectedObjectId,
   selectedEventId,
+  readOnlyReason = null,
   onSelectLocation,
   onSelectEvent,
   onClearSelection,
+  onOpenLocationDetails,
+  onRequestPositionEdit,
+  onPositionEditStateChange,
+  onReloadSpatialLocation,
+  onSaveSpatialPosition,
 }: SpatialMapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SpatialRenderer | null>(null);
@@ -77,6 +165,7 @@ export function SpatialMapView({
     mode: WorkbenchSpatialMode;
     viewport: SpatialViewport | null;
   } | null>(null);
+  const [layersByMode, setLayersByMode] = useState(initialLayerState);
   const [requestedMode, setRequestedMode] = useState<WorkbenchSpatialMode | null>(
     map.defaultMode,
   );
@@ -84,6 +173,9 @@ export function SpatialMapView({
     null,
   );
   const [openedSpatialId, setOpenedSpatialId] = useState<string | null>(null);
+  const [editSession, setEditSession] = useState<SpatialEditSession | null>(null);
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [interactionNotice, setInteractionNotice] = useState<string | null>(null);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [tileUnavailable, setTileUnavailable] = useState(false);
   const tileConfiguration = useMemo(
@@ -94,6 +186,7 @@ export function SpatialMapView({
       ),
     [],
   );
+
   const selectionKey = `${selectedObjectId ?? ""}:${selectedEventId ?? ""}`;
   const availableRequestedMode =
     requestedMode && map.availableModes.includes(requestedMode)
@@ -119,6 +212,8 @@ export function SpatialMapView({
     requestedModeHasSelection
       ? availableRequestedMode
       : selectedMode;
+  const controlMode = mode ?? "topology";
+  const layers = layersByMode[controlMode];
   const currentView = mode ? map.views[mode] : null;
   const selectedLocation =
     currentView?.locations.find((location) =>
@@ -127,8 +222,39 @@ export function SpatialMapView({
   const openedLocation =
     currentView?.locations.find((location) => location.spatialId === openedSpatialId) ??
     null;
-  const activeLocation = openedLocation ?? selectedLocation;
-  const activeSpatialId = activeLocation?.spatialId ?? null;
+  const editedLocation = editSession
+    ? findLocation(map, editSession.locationId, mode)
+    : null;
+  const activeBaseLocation = editedLocation ?? openedLocation ?? selectedLocation;
+  const activeLocation =
+    activeBaseLocation &&
+    editSession?.locationId === activeBaseLocation.locationId
+      ? { ...activeBaseLocation, position: editSession.preview }
+      : activeBaseLocation;
+  const activeSpatialId = activeBaseLocation?.spatialId ?? null;
+  const visibleView = useMemo(() => {
+    if (!currentView) return null;
+    const filtered = filterWorkbenchSpatialView(currentView, layers);
+    return {
+      ...filtered,
+      locations: filtered.locations.map((location) =>
+        editSession?.locationId === location.locationId
+          ? { ...location, position: editSession.preview }
+          : location,
+      ),
+    };
+  }, [currentView, editSession, layers]);
+
+  useEffect(() => {
+    if (selectedLocation?.source !== "inferred" || layers.unconfirmed) return;
+    const revealSelection = window.setTimeout(() => {
+      setLayersByMode((current) => ({
+        ...current,
+        [controlMode]: { ...current[controlMode], unconfirmed: true },
+      }));
+    }, 0);
+    return () => window.clearTimeout(revealSelection);
+  }, [controlMode, layers.unconfirmed, selectedLocation?.source]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -159,14 +285,14 @@ export function SpatialMapView({
 
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer || !currentView) return;
+    if (!renderer || !visibleView) return;
     renderer.render(
-      currentView,
+      visibleView,
       {
         activeSpatialId,
         selectedEventId,
         selectedLocationId:
-          currentView.locations.find(
+          currentView?.locations.find(
             (location) => location.locationId === selectedObjectId,
           )?.locationId ?? null,
         selectedObjectId,
@@ -185,9 +311,26 @@ export function SpatialMapView({
         onClearSelection() {
           if (onClearSelection()) setOpenedSpatialId(null);
         },
+        onPreviewPosition(location, position) {
+          if (!editSession || editSession.locationId !== location.locationId) return;
+          const dirty = !positionsEqual(editSession.baseline, position);
+          setEditSession({
+            ...editSession,
+            preview: position,
+            dirty,
+            latestChanged: false,
+            notice: dirty ? "本地预览尚未写入 Current Draft。" : null,
+            status: "idle",
+          });
+          onPositionEditStateChange?.(true, dirty);
+        },
         onTileError() {
           setTileUnavailable(true);
         },
+      },
+      {
+        editableLocationId: editSession?.locationId ?? null,
+        layers,
       },
     );
     const pendingViewport = pendingViewportRef.current;
@@ -201,12 +344,16 @@ export function SpatialMapView({
   }, [
     activeSpatialId,
     currentView,
+    editSession,
+    layers,
     mode,
     onClearSelection,
+    onPositionEditStateChange,
     onSelectEvent,
     onSelectLocation,
     selectedEventId,
     selectedObjectId,
+    visibleView,
   ]);
 
   useEffect(() => {
@@ -224,15 +371,182 @@ export function SpatialMapView({
 
   function selectMode(nextMode: WorkbenchSpatialMode) {
     if (nextMode === mode) return;
+    if (editSession) {
+      setEditSession((current) =>
+        current
+          ? {
+              ...current,
+              notice: "请先保存或取消位置预览，再切换地图模式。",
+            }
+          : current,
+      );
+      return;
+    }
     setManualModeSelectionKey(selectionKey);
     setOpenedSpatialId(null);
+    setInteractionNotice(null);
     setInitializationError(null);
     setTileUnavailable(false);
     setRequestedMode(nextMode);
   }
 
+  function toggleLayer(layer: SpatialLayerId) {
+    const editingLayer =
+      editSession && activeBaseLocation?.source === "inferred"
+        ? "unconfirmed"
+        : editSession
+          ? "locations"
+          : null;
+    if (layer === editingLayer && layers[layer]) {
+      setEditSession((current) =>
+        current
+          ? { ...current, notice: "编辑中的地点图层不能隐藏，请先保存或取消。" }
+          : current,
+      );
+      return;
+    }
+    setLayersByMode((current) => ({
+      ...current,
+      [controlMode]: {
+        ...current[controlMode],
+        [layer]: !current[controlMode][layer],
+      },
+    }));
+  }
+
   function clearSelection() {
     if (onClearSelection()) setOpenedSpatialId(null);
+  }
+
+  function startPositionEdit() {
+    if (!activeBaseLocation?.locationId || readOnlyReason) return;
+    if (!onSaveSpatialPosition || !onReloadSpatialLocation) {
+      setInteractionNotice("当前空间卷宗没有可用的 Current Draft 写入通道。");
+      return;
+    }
+    if (onRequestPositionEdit && !onRequestPositionEdit(activeBaseLocation.locationId)) {
+      setInteractionNotice("对象详情有未保存修改，请先保存或取消后再编辑位置。");
+      return;
+    }
+    const nextMode =
+      mode === "topology" && activeBaseLocation.source === "schematic"
+        ? "scene"
+        : mode;
+    if (nextMode && nextMode !== mode) {
+      setManualModeSelectionKey(selectionKey);
+      setRequestedMode(nextMode);
+    }
+    const layer = activeBaseLocation.source === "inferred" ? "unconfirmed" : "locations";
+    setLayersByMode((current) => ({
+      ...current,
+      [nextMode ?? controlMode]: {
+        ...current[nextMode ?? controlMode],
+        [layer]: true,
+      },
+    }));
+    setOpenedSpatialId(activeBaseLocation.spatialId);
+    setInteractionNotice(null);
+    setEditSession({
+      locationId: activeBaseLocation.locationId,
+      baseline: activeBaseLocation.position,
+      preview: activeBaseLocation.position,
+      dirty: false,
+      latestChanged: false,
+      notice:
+        activeBaseLocation.source === "inferred"
+          ? "保存后将把关系推算位置确认为场景坐标。"
+          : "拖动只更新本地预览，保存前不会修改 Current Draft。",
+      status: "idle",
+    });
+    onPositionEditStateChange?.(true, false);
+  }
+
+  function cancelPositionEdit() {
+    setEditSession(null);
+    setInteractionNotice(null);
+    onPositionEditStateChange?.(false, false);
+  }
+
+  async function savePositionEdit() {
+    if (
+      !editSession?.dirty ||
+      editSession.baseline.kind !== editSession.preview.kind ||
+      !onSaveSpatialPosition
+    ) return;
+    setEditSession((current) =>
+      current ? { ...current, notice: "正在写入 Current Draft…", status: "saving" } : current,
+    );
+    const result = await onSaveSpatialPosition(
+      editSession.locationId,
+      positionToPayload(editSession.preview),
+    );
+    if (result === "saved") {
+      setEditSession(null);
+      onPositionEditStateChange?.(false, false);
+      return;
+    }
+    setEditSession((current) =>
+      current
+        ? {
+            ...current,
+            notice:
+              result === "conflict"
+                ? "Current Draft 已更新。本地预览已保留，请先核对最新版。"
+                : "位置未保存，请检查字段或服务状态后重试。",
+            status: result === "conflict" ? "conflict" : "error",
+          }
+        : current,
+    );
+  }
+
+  async function reviewLatestPosition() {
+    if (!editSession || !onReloadSpatialLocation) return;
+    setEditSession((current) =>
+      current ? { ...current, notice: "正在读取最新版…", status: "reviewing" } : current,
+    );
+    try {
+      const latest = await onReloadSpatialLocation(editSession.locationId);
+      if (!latest.found) {
+        setEditSession((current) =>
+          current
+            ? {
+                ...current,
+                latestChanged: true,
+                notice: "最新版已不存在此地点，不能继续保存；可取消本地预览。",
+                status: "error",
+              }
+            : current,
+        );
+        return;
+      }
+      const latestPosition = latest.position
+        ? payloadToPosition(latest.position)
+        : editSession.baseline;
+      const coordinateSystemChanged = latestPosition.kind !== editSession.preview.kind;
+      const latestChanged = !positionsEqual(editSession.baseline, latestPosition);
+      setEditSession((current) =>
+        current
+          ? {
+              ...current,
+              baseline: latestPosition,
+              dirty: !positionsEqual(latestPosition, current.preview),
+              latestChanged,
+              notice: coordinateSystemChanged
+                ? "最新版已改变坐标系统；请取消预览后在对应模式重新编辑。"
+                : latestChanged
+                  ? "已载入最新版。请核对坐标差异后再次保存。"
+                  : "最新版坐标未变，可以重新保存本地预览。",
+              status: coordinateSystemChanged ? "error" : "idle",
+            }
+          : current,
+      );
+    } catch {
+      setEditSession((current) =>
+        current
+          ? { ...current, notice: "最新版读取失败，请检查连接后重试。", status: "conflict" }
+          : current,
+      );
+    }
   }
 
   const statusMessage =
@@ -240,7 +554,18 @@ export function SpatialMapView({
       ? tileConfiguration.message
       : mode === "geographic" && tileUnavailable
         ? "底图暂不可用；真实坐标点仍可核对。"
-        : initializationError;
+        : initializationError ?? interactionNotice;
+  const effectiveReadOnlyReason =
+    readOnlyReason ??
+    (!onSaveSpatialPosition
+      ? "此视图只读；只有 Current Draft 可以编辑位置。"
+      : null);
+  const editActionLabel =
+    mode === "topology" && activeBaseLocation?.source === "schematic"
+      ? "转到场景图编辑"
+      : activeBaseLocation?.source === "inferred"
+        ? "确认推算位置"
+        : "编辑位置";
 
   return (
     <section className={styles.spatialView} aria-labelledby="spatial-map-heading">
@@ -266,98 +591,87 @@ export function SpatialMapView({
         </div>
       </header>
 
-      {map.availableModes.length ? (
-        <div className={styles.mapFrame} data-mode={mode}>
+      <SpatialStatusStrip counts={map.counts} />
+
+      <div className={styles.mapFrame} data-mode={mode ?? "empty"}>
+        {mode ? (
           <div
-            aria-label={`${mode ? modeLabels[mode] : "空间"}画布`}
+            aria-label={`${modeLabels[mode]}画布`}
             className={styles.mapCanvas}
             data-testid="spatial-map-canvas"
             ref={containerRef}
           />
-          {statusMessage ? (
-            <div className={styles.mapStatus} data-tone="warning" role="status">
-              <span aria-hidden="true">!</span>
-              <p>{statusMessage}</p>
-            </div>
-          ) : null}
+        ) : (
+          <div className={styles.emptyState}>
+            <span aria-hidden="true" />
+            <strong>当前工作稿没有可呈现的位置</strong>
+            <p>地点缺少明确坐标，也没有可用于确定性布局的父级、邻接或移动关系。</p>
+          </div>
+        )}
+        {mode && currentView?.locations.length && !visibleView?.locations.length ? (
+          <div className={styles.layerEmptyState} role="status">
+            当前图层组合没有可见地点；可在空间核验中开启地点或待确认位置。
+          </div>
+        ) : null}
+        {statusMessage ? (
+          <div className={styles.mapStatus} data-tone="warning" role="status">
+            <span aria-hidden="true">!</span>
+            <p>{statusMessage}</p>
+          </div>
+        ) : null}
+        <SpatialAuditPanel
+          layers={layers}
+          mobileOpen={auditOpen}
+          onMobileOpenChange={setAuditOpen}
+          onOpenUnlocated={onOpenLocationDetails}
+          onToggleLayer={toggleLayer}
+          relations={visibleView?.relations ?? []}
+          unlocatedLocations={map.unlocatedLocations}
+        />
+        {mode ? (
           <div aria-label="地图缩放控制" className={styles.mapControls} role="group">
             <button aria-label="放大地图" onClick={() => rendererRef.current?.zoomIn()} type="button">+</button>
             <button aria-label="缩小地图" onClick={() => rendererRef.current?.zoomOut()} type="button">−</button>
             <button onClick={() => rendererRef.current?.fitAll()} type="button">适合全部</button>
           </div>
-          {mode !== "geographic" ? (
-            <div className={styles.planarLegend}>
-              <span>无比例测绘底板</span>
-              <small>仅表达卷宗中的位置与拓扑，不代表真实道路或边界</small>
-            </div>
-          ) : null}
-          {activeLocation ? (
-            <aside
-              aria-labelledby="spatial-preview-title"
-              className={styles.previewCard}
-              role="dialog"
-            >
-              <header>
-                <div>
-                  <span>{activeLocation.locationId ?? "FIXTURE LOCATION"}</span>
-                  <h3 id="spatial-preview-title">{activeLocation.label}</h3>
-                </div>
-                <button aria-label="关闭地点快览" onClick={clearSelection} type="button">×</button>
-              </header>
-              <dl>
-                <div><dt>坐标来源</dt><dd data-source={activeLocation.source}>{sourceLabels[activeLocation.source]}</dd></div>
-                <div><dt>坐标</dt><dd>{coordinateLabel(activeLocation)}</dd></div>
-                <div><dt>关联对象</dt><dd>{activeLocation.relatedObjectIds.length}</dd></div>
-                <div><dt>地点事件</dt><dd>{activeLocation.events.length}</dd></div>
-              </dl>
-              {activeLocation.events.length ? (
-                <ol aria-label="地点关联事件">
-                  {activeLocation.events.slice(0, 4).map((event) => (
-                    <li key={event.eventId}>
-                      <button
-                        aria-pressed={selectedEventId === event.eventId}
-                        onClick={() => onSelectEvent(event.eventId)}
-                        onKeyDown={(keyboardEvent) => {
-                          if (
-                            keyboardEvent.key !== "Enter" &&
-                            keyboardEvent.key !== " "
-                          ) {
-                            return;
-                          }
-                          keyboardEvent.preventDefault();
-                          onSelectEvent(event.eventId);
-                        }}
-                        type="button"
-                      >
-                        <time>{event.time}</time>
-                        <span>{event.label}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className={styles.noEvents}>这个地点尚未关联事件。</p>
-              )}
-              {activeLocation.events.length > 4 ? (
-                <small className={styles.moreEvents}>另有 {activeLocation.events.length - 4} 个事件</small>
-              ) : null}
-            </aside>
-          ) : null}
-        </div>
-      ) : (
-        <div className={styles.emptyState}>
-          <span aria-hidden="true" />
-          <strong>当前工作稿没有可呈现的位置</strong>
-          <p>地点缺少明确坐标，也没有可用于确定性布局的父级、邻接或移动关系。</p>
-        </div>
-      )}
+        ) : null}
+        {mode && mode !== "geographic" ? (
+          <div className={styles.planarLegend}>
+            <span>无比例测绘底板</span>
+            <small>仅表达卷宗中的位置与拓扑，不代表真实道路或边界</small>
+          </div>
+        ) : null}
+        {activeLocation ? (
+          <SpatialMapPreviewCard
+            activeLocation={activeLocation}
+            editActionLabel={editActionLabel}
+            editSession={editSession}
+            onCancelEdit={cancelPositionEdit}
+            onClear={clearSelection}
+            onReviewLatest={() => void reviewLatestPosition()}
+            onSaveEdit={() => void savePositionEdit()}
+            onSelectEvent={onSelectEvent}
+            onStartEdit={startPositionEdit}
+            readOnlyReason={effectiveReadOnlyReason}
+            selectedEventId={selectedEventId}
+            showEvents={layers.events}
+          />
+        ) : null}
+      </div>
 
       <footer className={styles.footer}>
         <p>{note}</p>
         {map.counts.unlocated ? (
-          <span className={styles.unlocatedStatus}>
+          <button
+            className={styles.unlocatedStatus}
+            onClick={() => {
+              if (!layers.unconfirmed) toggleLayer("unconfirmed");
+              setAuditOpen(true);
+            }}
+            type="button"
+          >
             <i aria-hidden="true" />{map.counts.unlocated} 个地点未定位
-          </span>
+          </button>
         ) : null}
       </footer>
     </section>

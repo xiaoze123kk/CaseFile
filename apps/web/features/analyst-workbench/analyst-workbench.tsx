@@ -43,7 +43,6 @@ import {
 import {
   fetchCaseDraft,
   fetchDraftCandidatePreview,
-  patchCaseDraftObject,
   previewCaseDraftEventTime,
 } from "@/features/case-session/case-session-api";
 import settingsStyles from "@/components/settings-entry.module.css";
@@ -87,6 +86,12 @@ import {
   workbenchViewOptions,
   type WorkbenchView,
 } from "./workbench-views";
+import { useWorkbenchObjectPersistence } from "./workbench-object-persistence";
+import type {
+  ReloadedSpatialLocation,
+  SpatialPositionPayload,
+  SpatialPositionSaveResult,
+} from "./workbench-real-data-types";
 
 const SpatialMapView = dynamic(
   () =>
@@ -356,8 +361,6 @@ export function AnalystWorkbench({
     error: string | null;
   } | null>(null);
   const [reloadContext, setReloadContext] = useState(0);
-  const [savingObject, setSavingObject] = useState(false);
-  const saveInFlightRef = useRef(false);
 
   useEffect(() => {
     if (
@@ -521,6 +524,20 @@ export function AnalystWorkbench({
     setReloadContext((value) => value + 1);
   }
 
+  const {
+    reloadSpatialLocation,
+    saveObject,
+    saveSpatialPosition,
+    savingObject,
+  } = useWorkbenchObjectPersistence({
+    draft,
+    projectId,
+    onDraftLoaded(latest) {
+      setDraftLoad({ projectId: latest.project_id, draft: latest, error: null });
+    },
+    onRefreshContext: refreshContext,
+  });
+
   if (fixtureMode) {
     return (
       <AnalystWorkbenchSurface
@@ -651,46 +668,6 @@ export function AnalystWorkbench({
     realContextState.data?.validation ?? null,
   );
 
-  async function saveObject(
-    objectId: string,
-    changes: Record<string, unknown>,
-  ): Promise<"saved" | "conflict" | "error"> {
-    if (!draft || saveInFlightRef.current) return "error";
-    saveInFlightRef.current = true;
-    setSavingObject(true);
-    try {
-      await patchCaseDraftObject(
-        loadedProjectId,
-        objectId,
-        draft.draft_id,
-        draft.revision,
-        changes,
-      );
-      const latest = await fetchCaseDraft(loadedProjectId);
-      setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
-      refreshContext();
-      return "saved";
-    } catch (caught) {
-      if (
-        caught instanceof ApiError &&
-        (caught.status === 409 || caught.body.code === "draft_revision_conflict")
-      ) {
-        try {
-          const latest = await fetchCaseDraft(loadedProjectId);
-          setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
-          refreshContext();
-          return "conflict";
-        } catch {
-          return "error";
-        }
-      }
-      return "error";
-    } finally {
-      saveInFlightRef.current = false;
-      setSavingObject(false);
-    }
-  }
-
   async function previewEventTime(
     eventId: string,
     proposedTime: TimelineTemporalPosition,
@@ -739,7 +716,9 @@ export function AnalystWorkbench({
       onCurrentDraftChanged={handleCurrentDraftChanged}
       onDraftActivated={handleDraftActivated}
       onPreviewEventTime={previewEventTime}
+      onReloadSpatialLocation={reloadSpatialLocation}
       onSaveObject={saveObject}
+      onSaveSpatialPosition={saveSpatialPosition}
       projectId={projectId}
       realDocument={loadedDocument}
       realContextState={realContextState}
@@ -856,7 +835,9 @@ function AnalystWorkbenchSurface({
   onCurrentDraftChanged,
   onDraftActivated,
   onPreviewEventTime,
+  onReloadSpatialLocation,
   onSaveObject,
+  onSaveSpatialPosition,
 }: {
   seed: WorkbenchModel;
   activeCandidate: WorkbenchCandidate | null;
@@ -878,10 +859,17 @@ function AnalystWorkbenchSurface({
     eventId: string,
     proposedTime: TimelineTemporalPosition,
   ) => Promise<TimelineTimePreviewView>;
+  onReloadSpatialLocation?: (
+    locationId: string,
+  ) => Promise<ReloadedSpatialLocation>;
   onSaveObject?: (
     objectId: string,
     changes: Record<string, unknown>,
   ) => Promise<"saved" | "conflict" | "error">;
+  onSaveSpatialPosition?: (
+    locationId: string,
+    position: SpatialPositionPayload,
+  ) => Promise<SpatialPositionSaveResult>;
 }) {
   const realData = realDocument !== null;
   const writeLocked = readOnlyPreview;
@@ -912,6 +900,8 @@ function AnalystWorkbenchSurface({
   const [subtypeFilter, setSubtypeFilter] = useState<string | "all">("all");
   const [objectQuery, setObjectQuery] = useState("");
   const [objectEditorDirty, setObjectEditorDirty] = useState(false);
+  const [spatialEditActive, setSpatialEditActive] = useState(false);
+  const [spatialEditDirty, setSpatialEditDirty] = useState(false);
   const [objectEditorNavigationNotice, setObjectEditorNavigationNotice] =
     useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -1106,16 +1096,21 @@ function AnalystWorkbenchSurface({
   }
 
   function blockDirtyObjectNavigation(nextObjectId?: string | null) {
-    if (
-      !realData ||
-      !objectEditorDirty ||
-      (nextObjectId !== undefined && nextObjectId === selectedObjectId)
-    ) {
+    if (!realData || (nextObjectId !== undefined && nextObjectId === selectedObjectId)) {
       return false;
     }
-    const message = "有未保存修改。请先保存或取消修改，再切换项目、工作稿或对象。";
-    setInspectorTab("object");
-    setMobileRegion("inspector");
+    if (!objectEditorDirty && !spatialEditActive) return false;
+    const message = spatialEditActive
+      ? spatialEditDirty
+        ? "地图中有未保存的位置预览。请先保存或取消，再切换项目、工作稿、对象或视图。"
+        : "地图位置编辑仍在进行。请先取消编辑，再切换项目、工作稿、对象或视图。"
+      : "有未保存修改。请先保存或取消修改，再切换项目、工作稿或对象。";
+    if (objectEditorDirty) {
+      setInspectorTab("object");
+      setMobileRegion("inspector");
+    } else {
+      setMobileRegion("canvas");
+    }
     setObjectEditorNavigationNotice(message);
     announce(message);
     return true;
@@ -1129,6 +1124,13 @@ function AnalystWorkbenchSurface({
   function showInspectorTab(tab: InspectorTab) {
     if (tab !== "object" && blockDirtyObjectNavigation()) return;
     setInspectorTab(tab);
+  }
+
+  function switchWorkbenchView(nextView: WorkbenchView, label: string) {
+    if (nextView !== view && blockDirtyObjectNavigation()) return;
+    setView(nextView);
+    setMobileRegion("canvas");
+    announce(`主画布已切换到${label}。`);
   }
 
   function appendAudit(actor: string, action: string, detail: string) {
@@ -1301,13 +1303,13 @@ function AnalystWorkbenchSurface({
       id: "view-timeline",
       label: "打开事件时间线",
       meta: "视图",
-      action: () => { setView("timeline"); setMobileRegion("canvas"); announce("主画布已切换到事件时间线。"); },
+      action: () => switchWorkbenchView("timeline", "事件时间线"),
     },
     {
       id: "view-relations",
       label: "打开人物与证据关系图",
       meta: "视图",
-      action: () => { setView("relations"); setMobileRegion("canvas"); announce("主画布已切换到关系图。"); },
+      action: () => switchWorkbenchView("relations", "关系图"),
     },
     ...(realData ? [] : [{
       id: "open-issue",
@@ -1408,7 +1410,7 @@ function AnalystWorkbenchSurface({
             <WorkbenchIcon name="validate" />
             <span><small>验证</small><strong>{realData ? realValidationLabel : unresolvedCount > 0 ? `${unresolvedCount} 个问题` : "已通过"}</strong></span>
           </button>
-          <button disabled={writeLocked} data-tone="muted" onClick={() => { setView("export"); setMobileRegion("canvas"); }} type="button">
+          <button disabled={writeLocked} data-tone="muted" onClick={() => switchWorkbenchView("export", "导出预览")} type="button">
             <WorkbenchIcon name="export" />
             <span><small>导出</small><strong>{writeLocked ? "预览锁定" : realData ? "开发预览" : unresolvedCount > 0 ? "门禁阻断" : "可以导出"}</strong></span>
           </button>
@@ -1565,7 +1567,7 @@ function AnalystWorkbenchSurface({
             ) : null}
             <div className={styles.viewTabs} aria-label="主画布视图" role="tablist">
               {workbenchViewOptions.map((option) => (
-                <button aria-selected={view === option.id} disabled={writeLocked && (option.id === "export" || option.id === "compile")} key={option.id} onClick={() => { setView(option.id); announce(`主画布已切换到${option.label}。`); }} role="tab" type="button">
+                <button aria-selected={view === option.id} disabled={writeLocked && (option.id === "export" || option.id === "compile")} key={option.id} onClick={() => switchWorkbenchView(option.id, option.label)} role="tab" type="button">
                   <span>{option.shortLabel}</span>{option.label}
                 </button>
               ))}
@@ -1637,6 +1639,25 @@ function AnalystWorkbenchSurface({
                 meta={seed.caseMeta.mapMeta}
                 note={seed.caseMeta.mapNote}
                 onClearSelection={clearMapSelection}
+                onOpenLocationDetails={(locationId) =>
+                  selectObject(locationId, false, false)
+                }
+                onPositionEditStateChange={(active, dirty) => {
+                  setSpatialEditActive(active);
+                  setSpatialEditDirty(dirty);
+                  if (!active) setObjectEditorNavigationNotice(null);
+                }}
+                onReloadSpatialLocation={onReloadSpatialLocation}
+                onRequestPositionEdit={() => {
+                  if (!objectEditorDirty) return true;
+                  const message = "对象详情有未保存修改，请先保存或取消后再编辑位置。";
+                  setInspectorTab("object");
+                  setMobileRegion("inspector");
+                  setObjectEditorNavigationNotice(message);
+                  announce(message);
+                  return false;
+                }}
+                onSaveSpatialPosition={onSaveSpatialPosition}
                 onSelectEvent={(eventId) =>
                   selectEvent(eventId, { preserveView: true })
                 }
@@ -1645,6 +1666,15 @@ function AnalystWorkbenchSurface({
                 }
                 selectedEventId={selectedEventId}
                 selectedObjectId={selectedObjectId}
+                readOnlyReason={
+                  writeLocked
+                    ? "候选预览只读；采用为 Current Draft 后才能编辑位置。"
+                    : !realData
+                      ? "本地样例只读，不写入持久化位置。"
+                      : !onSaveSpatialPosition
+                        ? "当前工作稿没有可用的位置写入通道。"
+                        : null
+                }
                 title={seed.caseMeta.mapTitle}
               />
             ) : null}
@@ -1711,7 +1741,12 @@ function AnalystWorkbenchSurface({
                   onSave={onSaveObject}
                   onSelectRelatedEvent={selectEvent}
                   relatedEvents={selectedRelatedEvents}
-                  readOnly={writeLocked || !onSaveObject}
+                  readOnly={writeLocked || !onSaveObject || spatialEditActive}
+                  readOnlyReason={
+                    spatialEditActive
+                      ? "先保存或取消地图位置预览，再编辑对象字段。"
+                      : undefined
+                  }
                   revision={draftRevision ?? 0}
                   revisionLabel={
                     writeLocked
