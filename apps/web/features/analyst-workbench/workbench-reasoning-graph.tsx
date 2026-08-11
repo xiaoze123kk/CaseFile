@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   type ReasoningOutcome,
   type ReasoningPath,
+  type WorkbenchReasoningAssessment,
+  type WorkbenchReasoningGroup,
   type WorkbenchSeed,
 } from "./analyst-fixture";
 import styles from "./analyst-workbench.module.css";
@@ -51,6 +53,248 @@ interface ReasoningCanvasEdge {
 interface ReasoningCanvasScene {
   nodes: ReasoningCanvasNode[];
   edges: ReasoningCanvasEdge[];
+}
+
+type ReasoningMode = "graph" | "matrix";
+
+interface MatrixSelection {
+  group: WorkbenchReasoningGroup;
+  hypothesis: WorkbenchReasoningGroup["hypotheses"][number];
+  information: WorkbenchReasoningGroup["information"][number];
+  assessment: WorkbenchReasoningAssessment | null;
+}
+
+const assessmentEffectLabels = {
+  supports: "支持",
+  contradicts: "冲突",
+  neutral: "不区分",
+  unassessed: "未评估",
+} as const;
+
+const assessmentStrengthLabels = {
+  weak: "弱",
+  moderate: "中",
+  strong: "强",
+} as const;
+
+function matrixSelectionFor(
+  group: WorkbenchReasoningGroup,
+  hypothesis: WorkbenchReasoningGroup["hypotheses"][number],
+  information: WorkbenchReasoningGroup["information"][number],
+): MatrixSelection {
+  return {
+    group,
+    hypothesis,
+    information,
+    assessment:
+      group.assessments.find(
+        (assessment) =>
+          assessment.hypothesisId === hypothesis.id &&
+          assessment.informationId === information.id,
+      ) ?? null,
+  };
+}
+
+function ReasoningMatrix({
+  groups,
+  onSelectObject,
+  selectedObjectId,
+}: {
+  groups: WorkbenchReasoningGroup[];
+  onSelectObject: (objectId: string) => void;
+  selectedObjectId: string | null;
+}) {
+  const [activeResolutionId, setActiveResolutionId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<MatrixSelection | null>(null);
+  const selectedGroup =
+    groups.find((group) => group.resolutionSpecId === activeResolutionId) ??
+    groups.find((group) => group.hypotheses.some((item) => item.id === selectedObjectId)) ??
+    groups.find((group) => group.information.some((item) => item.id === selectedObjectId)) ??
+    groups[0];
+
+  if (!selectedGroup) {
+    return (
+      <section className={styles.reasoningMatrixEmpty}>
+        <strong>当前工作稿还没有可比较的假设。</strong>
+        <p>推理过程图仍会保留已有路径；竞争矩阵只读取 Current Draft 的显式假设。</p>
+      </section>
+    );
+  }
+
+  if (selectedGroup.hypotheses.length < 2) {
+    return (
+      <section className={styles.reasoningMatrixEmpty}>
+        <strong>当前问题只有一个假设，至少需要两个解释才能比较。</strong>
+        <p>{selectedGroup.question}</p>
+      </section>
+    );
+  }
+
+  const selectCell = (
+    hypothesis: WorkbenchReasoningGroup["hypotheses"][number],
+    information: WorkbenchReasoningGroup["information"][number],
+  ) => {
+    const nextSelection = matrixSelectionFor(selectedGroup, hypothesis, information);
+    setSelection(nextSelection);
+    onSelectObject(information.id);
+  };
+
+  if (!selectedGroup.information.length) {
+    return (
+      <section className={styles.reasoningMatrixEmpty}>
+        <strong>已有竞争解释，但尚未生成显式证据评估。</strong>
+        <p>{selectedGroup.question}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className={styles.reasoningMatrix} aria-labelledby="reasoning-matrix-heading">
+      <div className={styles.reasoningMatrixHeader}>
+        <div>
+          <span>竞争解释矩阵</span>
+          <h3 id="reasoning-matrix-heading">{selectedGroup.question}</h3>
+        </div>
+        {groups.length > 1 ? (
+          <label className={styles.reasoningGroupPicker}>
+            <span>待解问题</span>
+            <select
+              aria-label="选择待解问题"
+              onChange={(event) => {
+                setActiveResolutionId(event.target.value);
+                setSelection(null);
+              }}
+              value={selectedGroup.resolutionSpecId}
+            >
+              {groups.map((group) => (
+                <option key={group.resolutionSpecId} value={group.resolutionSpecId}>
+                  {group.question}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+      <div className={styles.reasoningMatrixDesktop}>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">信息</th>
+              {selectedGroup.hypotheses.map((hypothesis) => (
+                <th key={hypothesis.id} scope="col">
+                  <button
+                    aria-label={`定位假设：${hypothesis.title}`}
+                    onClick={() => onSelectObject(hypothesis.id)}
+                    type="button"
+                  >
+                    <span>{hypothesis.title}</span>
+                    <small>{reasoningOutcomeLabels[hypothesis.outcome]}</small>
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {selectedGroup.information.map((information) => (
+              <tr key={information.id}>
+                <th scope="row">
+                  <button
+                    aria-label={`定位信息：${information.title}`}
+                    onClick={() => onSelectObject(information.id)}
+                    type="button"
+                  >
+                    <span>{information.title}</span>
+                    <small>可靠性 · {information.reliability}</small>
+                  </button>
+                </th>
+                {selectedGroup.hypotheses.map((hypothesis) => {
+                  const assessment = selectedGroup.assessments.find(
+                    (item) =>
+                      item.hypothesisId === hypothesis.id &&
+                      item.informationId === information.id,
+                  );
+                  const effect = assessment?.effect ?? "unassessed";
+                  return (
+                    <td key={hypothesis.id}>
+                      <button
+                        aria-label={`${information.title} 对 ${hypothesis.title}：${assessmentEffectLabels[effect]}`}
+                        data-effect={effect}
+                        onClick={() => selectCell(hypothesis, information)}
+                        type="button"
+                      >
+                        <span>{assessmentEffectLabels[effect]}</span>
+                        {assessment ? (
+                          <small>{assessmentStrengthLabels[assessment.strength]}</small>
+                        ) : null}
+                      </button>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className={styles.reasoningMatrixMobile}>
+        {selectedGroup.information.map((information) => (
+          <article key={information.id}>
+            <button
+              aria-label={`定位信息：${information.title}`}
+              className={styles.reasoningMatrixInformationButton}
+              onClick={() => onSelectObject(information.id)}
+              type="button"
+            >
+              <span>{information.title}</span>
+              <small>可靠性 · {information.reliability}</small>
+            </button>
+            <ul>
+              {selectedGroup.hypotheses.map((hypothesis) => {
+                const assessment = selectedGroup.assessments.find(
+                  (item) =>
+                    item.hypothesisId === hypothesis.id &&
+                    item.informationId === information.id,
+                );
+                const effect = assessment?.effect ?? "unassessed";
+                return (
+                  <li key={hypothesis.id}>
+                    <button
+                      aria-label={`${information.title} 对 ${hypothesis.title}：${assessmentEffectLabels[effect]}`}
+                      data-effect={effect}
+                      onClick={() => selectCell(hypothesis, information)}
+                      type="button"
+                    >
+                      <span>{hypothesis.title}</span>
+                      <b>{assessmentEffectLabels[effect]}</b>
+                      {assessment ? <small>{assessmentStrengthLabels[assessment.strength]}</small> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </article>
+        ))}
+      </div>
+      <aside className={styles.reasoningAssessmentDetail} aria-live="polite">
+        {selection ? (
+          <>
+            <span>判定依据 · {selection.hypothesis.title}</span>
+            <strong>{selection.information.title}</strong>
+            {selection.assessment ? (
+              <p>
+                {assessmentEffectLabels[selection.assessment.effect]} ·
+                {assessmentStrengthLabels[selection.assessment.strength]} ·
+                {selection.assessment.rationale}
+              </p>
+            ) : (
+              <p>该信息与此假设尚未评估；系统不会根据其他引用推断结论。</p>
+            )}
+          </>
+        ) : (
+          <p>选择一个单元格，查看判定依据并同步定位信息对象。</p>
+        )}
+      </aside>
+    </section>
+  );
 }
 
 export function buildReasoningCanvas(
@@ -132,6 +376,7 @@ export function ReasoningGraphView({
   onSelectObject: (objectId: string) => void;
   layoutScope: string;
 }) {
+  const [mode, setMode] = useState<ReasoningMode>("graph");
   const scene = useMemo(
     () => buildReasoningCanvas(seed.reasoningPaths),
     [seed.reasoningPaths],
@@ -209,10 +454,28 @@ export function ReasoningGraphView({
           <h2 id="reasoning-heading">证据如何收束到假设</h2>
         </div>
         <div className={styles.sectionTrailing}>
-          <small>{seed.reasoningPaths.length} PATHS</small>
+          <div aria-label="推理分析模式" className={styles.reasoningModeSwitch} role="tablist">
+            <button
+              aria-selected={mode === "graph"}
+              onClick={() => setMode("graph")}
+              role="tab"
+              type="button"
+            >
+              过程图
+            </button>
+            <button
+              aria-selected={mode === "matrix"}
+              onClick={() => setMode("matrix")}
+              role="tab"
+              type="button"
+            >
+              竞争矩阵
+            </button>
+          </div>
+          <small>{seed.reasoningPaths.length} 条路径</small>
         </div>
       </header>
-      {sceneNodes.length ? (
+      {mode === "graph" && sceneNodes.length ? (
         <WorkbenchCanvasKernel
           ariaLabel="推理画布"
           direction="BT"
@@ -233,10 +496,16 @@ export function ReasoningGraphView({
           nodes={sceneNodes}
           onActivateNode={onSelectObject}
         />
-      ) : (
+      ) : mode === "graph" ? (
         <p className={styles.viewNote}>候选没有可展示的推理路径。</p>
+      ) : (
+        <ReasoningMatrix
+          groups={seed.reasoningGroups ?? []}
+          onSelectObject={onSelectObject}
+          selectedObjectId={selectedObjectId}
+        />
       )}
-      <div className={styles.reasoningTables}>
+      {mode === "graph" ? <div className={styles.reasoningTables}>
         {seed.reasoningPaths.map((path) => {
           const summary = path.steps
             .map((step) => `${step.verb}：${step.claim}`)
@@ -273,7 +542,7 @@ export function ReasoningGraphView({
             </details>
           );
         })}
-      </div>
+      </div> : null}
     </section>
   );
 }

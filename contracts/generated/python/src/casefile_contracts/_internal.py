@@ -542,6 +542,29 @@ class Claim(CoreMetadata):
     materiality: Materiality
 
 
+class Effect(StrEnum):
+    supports = 'supports'
+    contradicts = 'contradicts'
+    neutral = 'neutral'
+
+
+class Strength(StrEnum):
+    weak = 'weak'
+    moderate = 'moderate'
+    strong = 'strong'
+
+
+class EvidenceAssessment(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    information_ref: ObjectRef
+    effect: Effect
+    strength: Strength
+    rationale: Annotated[str, Field(min_length=1)]
+
+
 class Status1(StrEnum):
     active = 'active'
     supported = 'supported'
@@ -563,6 +586,9 @@ class Hypothesis(CoreMetadata):
     required_claim_refs: list[ObjectRef]
     falsifier_refs: list[ObjectRef]
     competing_hypothesis_refs: list[ObjectRef]
+    evidence_assessments: Annotated[
+        list[EvidenceAssessment], Field(validate_default=True)
+    ] = []
     status: Status1
     score: Annotated[float | None, Field(ge=0.0, le=1.0)]
 
@@ -685,7 +711,7 @@ class Category(StrEnum):
     other = 'other'
 
 
-class Strength(StrEnum):
+class Strength1(StrEnum):
     hard = 'hard'
     soft = 'soft'
 
@@ -700,7 +726,7 @@ class BriefIntakeConstraint(BaseModel):
     ]
     category: Category
     statement: Annotated[str, Field(max_length=1000, min_length=1)]
-    strength: Strength
+    strength: Strength1
     confirmed: bool
     source: BriefIntakeFieldSource
 
@@ -893,7 +919,7 @@ class Strategy(StrEnum):
     reasoning_first = 'reasoning_first'
 
 
-class Strength1(RootModel[str]):
+class Strength2(RootModel[str]):
     root: Annotated[str, Field(max_length=240, min_length=1)]
 
 
@@ -909,7 +935,7 @@ class BriefStrategyOption(BaseModel):
     strategy: Strategy
     direction: Annotated[str, Field(max_length=600, min_length=1)]
     focus: Annotated[str, Field(max_length=300, min_length=1)]
-    strengths: Annotated[list[Strength1], Field(max_length=3, min_length=2)]
+    strengths: Annotated[list[Strength2], Field(max_length=3, min_length=2)]
     tradeoffs: Annotated[list[Tradeoff], Field(max_length=2, min_length=1)]
     brief_fit: Annotated[str, Field(max_length=400, min_length=1)]
 

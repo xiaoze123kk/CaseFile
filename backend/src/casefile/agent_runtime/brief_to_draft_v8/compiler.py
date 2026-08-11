@@ -14,7 +14,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     BLUEPRINT_COLLECTIONS,
     DOMAIN_COLLECTIONS,
     CaseBlueprintV1,
-    EvidenceLogicIRV1,
+    EvidenceLogicIR,
     ResolutionGovernanceIRV1,
     SemanticObjectIR,
     StoryWorldIRV1,
@@ -56,7 +56,7 @@ class SourceLocation:
 class LinkedDraftV1:
     blueprint: CaseBlueprintV1
     story: StoryWorldIRV1
-    evidence: EvidenceLogicIRV1
+    evidence: EvidenceLogicIR
     governance: ResolutionGovernanceIRV1
     id_directory: dict[str, DirectoryEntry]
     source_map: dict[str, SourceLocation]
@@ -69,7 +69,7 @@ class LinkerValidationError(ContractValidationError):
 def link_draft(
     blueprint: CaseBlueprintV1,
     story: StoryWorldIRV1,
-    evidence: EvidenceLogicIRV1,
+    evidence: EvidenceLogicIR,
     governance: ResolutionGovernanceIRV1,
     *,
     task_run_id: int,
@@ -378,6 +378,15 @@ def compile_casefile(
                 "required_claim_refs": refs(item.required_claim_keys),
                 "falsifier_refs": refs(item.falsifier_keys),
                 "competing_hypothesis_refs": refs(item.competing_hypothesis_keys),
+                "evidence_assessments": [
+                    {
+                        "information_ref": ref(assessment.information_key),
+                        "effect": assessment.effect,
+                        "strength": assessment.strength,
+                        "rationale": assessment.rationale,
+                    }
+                    for assessment in getattr(item, "evidence_assessments", [])
+                ],
                 "status": item.status,
                 "score": item.score,
             }
@@ -745,6 +754,14 @@ def _reference_rules(
             ("required_claim_keys", item.required_claim_keys, {"claims"}),
             ("falsifier_keys", item.falsifier_keys, {"information_units", "claims"}),
             ("competing_hypothesis_keys", item.competing_hypothesis_keys, {"hypotheses"}),
+            (
+                "evidence_assessments/information_key",
+                [
+                    assessment.information_key
+                    for assessment in getattr(item, "evidence_assessments", [])
+                ],
+                {"information_units"},
+            ),
         ]
     if collection == "reasoning_paths":
         steps = item.steps

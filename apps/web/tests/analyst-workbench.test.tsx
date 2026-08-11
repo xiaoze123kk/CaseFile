@@ -14,6 +14,7 @@ import {
 } from "@/features/analyst-workbench/analyst-fixture";
 import { AnalystWorkbench } from "@/features/analyst-workbench/analyst-workbench";
 import { WorkbenchCanvasKernel } from "@/features/analyst-workbench/workbench-canvas-kernel";
+import { ReasoningGraphView } from "@/features/analyst-workbench/workbench-reasoning-graph";
 import {
   workbenchCanvasLayoutStorageKey,
   type WorkbenchCanvasLayoutIdentity,
@@ -169,7 +170,7 @@ describe("analyst workbench", () => {
   it("renders the reasoning canvas with evidence steps, outcome, and table alternative", () => {
     renderWorkbench();
 
-    fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /推理分析/ }));
     expect(screen.getByText("证据如何收束到假设")).toBeInTheDocument();
     expect(
       screen.getByText(/推理表 · 第五人权限如何进入码头/),
@@ -187,7 +188,7 @@ describe("analyst workbench", () => {
   it("exposes three competing reasoning paths and links evidence to the object rail", () => {
     const { container } = renderWorkbench(<CandidateSeedHarness />);
     fireEvent.click(screen.getByRole("button", { name: "载入推理候选" }));
-    fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /推理分析/ }));
 
     expect(screen.getByText(/推理表 · 第七码由谁写入/)).toBeInTheDocument();
     expect(screen.getByText(/推理表 · 黎衡能否被完全排除/)).toBeInTheDocument();
@@ -210,6 +211,124 @@ describe("analyst workbench", () => {
         (button) => button.getAttribute("aria-pressed") === "true",
       ),
     ).toBe(true);
+  });
+
+  it("switches to the explicit competition matrix and keeps object selection shared", () => {
+    const onSelectObject = vi.fn();
+    const seed = {
+      ...defaultWorkbenchSeed,
+      reasoningGroups: [
+        {
+          resolutionSpecId: "res_access",
+          question: "谁进入了受限区域？",
+          hypotheses: [
+            { id: "hyp_insider", title: "内部人员进入", outcome: "supported" as const },
+            { id: "hyp_outsider", title: "外部人员闯入", outcome: "contested" as const },
+          ],
+          information: [
+            { id: "info_gate", title: "门禁记录", reliability: "high" },
+          ],
+          assessments: [
+            {
+              hypothesisId: "hyp_insider",
+              informationId: "info_gate",
+              effect: "supports" as const,
+              strength: "strong" as const,
+              rationale: "刷卡权限与进入时间一致。",
+            },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <ReasoningGraphView
+        layoutScope="matrix-test"
+        onSelectObject={onSelectObject}
+        seed={seed}
+        selectedObjectId={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "竞争矩阵" }));
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getAllByText("支持").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("未评估").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "定位假设：内部人员进入" }));
+    expect(onSelectObject).toHaveBeenLastCalledWith("hyp_insider");
+
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: "门禁记录 对 内部人员进入：支持",
+      })[0],
+    );
+    expect(onSelectObject).toHaveBeenLastCalledWith("info_gate");
+    expect(screen.getByText(/判定依据 · 内部人员进入/)).toBeInTheDocument();
+    expect(screen.getByText(/刷卡权限与进入时间一致/)).toBeInTheDocument();
+  });
+
+  it("renders the three honest matrix empty states without fixture inference", () => {
+    const onSelectObject = vi.fn();
+    const baseProps = {
+      layoutScope: "matrix-empty",
+      onSelectObject,
+      selectedObjectId: null,
+    };
+
+    const { rerender } = render(
+      <ReasoningGraphView
+        {...baseProps}
+        seed={{ ...defaultWorkbenchSeed, reasoningGroups: [] }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "竞争矩阵" }));
+    expect(screen.getByText("当前工作稿还没有可比较的假设。")).toBeInTheDocument();
+
+    rerender(
+      <ReasoningGraphView
+        {...baseProps}
+        seed={{
+          ...defaultWorkbenchSeed,
+          reasoningGroups: [
+            {
+              resolutionSpecId: "res_single",
+              question: "单一解释",
+              hypotheses: [{ id: "hyp_one", title: "唯一假设", outcome: "supported" }],
+              information: [],
+              assessments: [],
+            },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "竞争矩阵" }));
+    expect(
+      screen.getByText("当前问题只有一个假设，至少需要两个解释才能比较。"),
+    ).toBeInTheDocument();
+
+    rerender(
+      <ReasoningGraphView
+        {...baseProps}
+        seed={{
+          ...defaultWorkbenchSeed,
+          reasoningGroups: [
+            {
+              resolutionSpecId: "res_missing",
+              question: "尚无评估",
+              hypotheses: [
+                { id: "hyp_one", title: "假设一", outcome: "supported" },
+                { id: "hyp_two", title: "假设二", outcome: "contested" },
+              ],
+              information: [],
+              assessments: [],
+            },
+          ],
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "竞争矩阵" }));
+    expect(screen.getByText("已有竞争解释，但尚未生成显式证据评估。")).toBeInTheDocument();
   });
 
   it("keeps the timeline focused on events without a synchronized graph", () => {
@@ -703,7 +822,7 @@ describe("analyst workbench", () => {
   it("keeps reasoning nodes and edges read-only at the domain level", () => {
     const { container } = renderWorkbench();
 
-    fireEvent.click(screen.getByRole("tab", { name: /推理图/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /推理分析/ }));
     const board = container.querySelector(
       '[aria-label="推理画布"]',
     ) as HTMLElement;

@@ -56,6 +56,7 @@ COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
 )
 
 KNOWLEDGE_STATE_COUNT_ATTRIBUTE = "_casefile_v1_knowledge_state_count"
+EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE = "_casefile_v1_evidence_assessments_present"
 
 
 def casefile_content_hash(document: dict[str, Any]) -> str:
@@ -631,7 +632,13 @@ def _create_content_rows(
                 summary=item["proposition"],
                 status=item["status"],
                 score=_decimal(item["score"]),
-                exclusion_rule_jsonb={},
+                # An all-empty optional list has no ContractRef row. Preserve
+                # its presence separately so legacy snapshots that omitted
+                # the field and newer candidates that explicitly supplied []
+                # both round trip exactly without a schema migration.
+                exclusion_rule_jsonb={
+                    EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE: "evidence_assessments" in item
+                },
             )
         )
     for item in candidate["reasoning_paths"]:
@@ -724,9 +731,11 @@ def _walk_object_refs(
     parent: dict[str, Any] | None = None,
 ) -> Iterator[tuple[str, int, dict[str, str], dict[str, Any]]]:
     if _is_object_ref(value):
-        metadata = {}
-        if parent is not None and "minutes" in parent:
-            metadata["minutes"] = parent["minutes"]
+        metadata: dict[str, Any] = {}
+        if parent is not None:
+            for key in ("minutes", "effect", "strength", "rationale"):
+                if key in parent:
+                    metadata[key] = parent[key]
         yield path, 1, value, metadata
         return
     if isinstance(value, dict):
@@ -1001,24 +1010,44 @@ def _project_hypotheses(
     for registry in registries:
         row = session.scalar(select(Hypothesis).where(Hypothesis.object_registry_id == registry.id))
         if row is not None:
-            result.append(
-                {
-                    **_common(registry, refs),
-                    "id": registry.object_id,
-                    "title": row.title,
-                    "proposition": row.summary,
-                    "target_resolution_ref": _single_ref(
-                        refs[registry.id], "/target_resolution_ref"
-                    ),
-                    "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
-                    "falsifier_refs": _ref_values(refs[registry.id], "/falsifier_refs"),
-                    "competing_hypothesis_refs": _ref_values(
-                        refs[registry.id], "/competing_hypothesis_refs"
-                    ),
-                    "status": row.status,
-                    "score": _number(row.score),
-                }
+            assessment_indices = _path_indices(
+                refs[registry.id], r"^/evidence_assessments/(\d+)/information_ref$"
             )
+            evidence_assessments = []
+            for index in assessment_indices:
+                ref_row = _single_ref_row(
+                    refs[registry.id], f"/evidence_assessments/{index}/information_ref"
+                )
+                evidence_assessments.append(
+                    {
+                        "information_ref": _ref_value(ref_row),
+                        "effect": ref_row.metadata_jsonb["effect"],
+                        "strength": ref_row.metadata_jsonb["strength"],
+                        "rationale": ref_row.metadata_jsonb["rationale"],
+                    }
+                )
+            hypothesis = {
+                **_common(registry, refs),
+                "id": registry.object_id,
+                "title": row.title,
+                "proposition": row.summary,
+                "target_resolution_ref": _single_ref(
+                    refs[registry.id], "/target_resolution_ref"
+                ),
+                "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
+                "falsifier_refs": _ref_values(refs[registry.id], "/falsifier_refs"),
+                "competing_hypothesis_refs": _ref_values(
+                    refs[registry.id], "/competing_hypothesis_refs"
+                ),
+                "status": row.status,
+                "score": _number(row.score),
+            }
+            if (
+                row.exclusion_rule_jsonb.get(EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE) is True
+                or evidence_assessments
+            ):
+                hypothesis["evidence_assessments"] = evidence_assessments
+            result.append(hypothesis)
     return result
 
 

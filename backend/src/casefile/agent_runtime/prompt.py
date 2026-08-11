@@ -14,6 +14,7 @@ from casefile.agent_runtime.models import (
 AGENT_VERSION = "casefile-single-agent-v2"
 V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
 V9_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v9"
+V10_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v10"
 
 
 def agent_version_for_task(task_type: str, prompt_version: str) -> str:
@@ -23,6 +24,8 @@ def agent_version_for_task(task_type: str, prompt_version: str) -> str:
         return V8_GENERATION_AGENT_VERSION
     if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v9":
         return V9_GENERATION_AGENT_VERSION
+    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v10":
+        return V10_GENERATION_AGENT_VERSION
     return AGENT_VERSION
 
 
@@ -163,6 +166,7 @@ __all__ = [
     "AGENT_VERSION",
     "V8_GENERATION_AGENT_VERSION",
     "V9_GENERATION_AGENT_VERSION",
+    "V10_GENERATION_AGENT_VERSION",
     "agent_version_for_task",
     "anchor_extract_input",
     "brief_intake_questions_input",

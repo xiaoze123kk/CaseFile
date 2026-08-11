@@ -11,6 +11,7 @@ from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
+    V10_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -98,6 +99,16 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "fcb5de2bf8ee2c4068907226f16f4cf985b9bd5b4713ad6b3da8ca4823a0647a",
         "fragment:governance": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146",
     },
+    ("brief_to_draft", "brief-to-draft-v10"): {
+        "fragment:common": "91f8417d301c2b8a2c8cf6ae19ebe3f5e0b8aa9850bd016bd406b1b3efc10f99",
+        "fragment:planner": "945e81789befcb0e8294ccb27ac3de99097e62e294cc0bef2215bb3a5e7fbb18",
+        "fragment:domain_common": (
+            "0d20f4fe4b60668f1c19c7277d93ea29c0ee43e0939d08ee577d731c41747c82"
+        ),
+        "fragment:story": "b62c800d4f62b1c39fd075416b8401de1161059753450c85984efda87f0bc46e",
+        "fragment:evidence": "db01f58b7d655e123c5a0c2f67a99c23ae1c1adcd9a156f57b273f72c832dbc9",
+        "fragment:governance": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -123,6 +134,10 @@ def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v9")
         == V9_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v10")
+        == V10_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
@@ -188,6 +203,10 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "EvidenceLogicIRV1" in v8.component_prompts["evidence"]
     assert "ResolutionGovernanceIRV1" in v8.component_prompts["governance"]
     assert all("local_key" in prompt for prompt in v8.component_prompts.values())
+    v10 = load_prompt("brief_to_draft", "brief-to-draft-v10")
+    assert "EvidenceLogicIRV2" in v10.component_prompts["evidence"]
+    assert v10.package is not None
+    assert v10.package.components["evidence"].output_schema_id == "evidence-logic-ir-v2"
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]

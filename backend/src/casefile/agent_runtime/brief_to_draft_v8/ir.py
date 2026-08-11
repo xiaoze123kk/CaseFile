@@ -231,6 +231,17 @@ class HypothesisIR(SemanticObjectIR):
     score: float | None = Field(default=None, ge=0, le=1)
 
 
+class EvidenceAssessmentIR(StrictAgentOutput):
+    information_key: LocalKey
+    effect: Literal["supports", "contradicts", "neutral"]
+    strength: Literal["weak", "moderate", "strong"]
+    rationale: str = Field(min_length=1)
+
+
+class HypothesisIRV2(HypothesisIR):
+    evidence_assessments: list[EvidenceAssessmentIR] = Field(default_factory=list)
+
+
 class ReasoningStepIR(StrictAgentOutput):
     step_key: LocalKey
     input_keys: list[LocalKey]
@@ -247,12 +258,23 @@ class ReasoningPathIR(SemanticObjectIR):
     alternative_path_keys: list[LocalKey] = Field(default_factory=list)
 
 
-class EvidenceLogicIRV1(StrictAgentOutput):
-    schema_id: Literal["evidence-logic-ir-v1"] = "evidence-logic-ir-v1"
+class EvidenceLogicIRBase(StrictAgentOutput):
     information_units: list[InformationUnitIR] = Field(default_factory=list)
     claims: list[ClaimIR] = Field(default_factory=list)
-    hypotheses: list[HypothesisIR] = Field(default_factory=list)
     reasoning_paths: list[ReasoningPathIR] = Field(default_factory=list)
+
+
+class EvidenceLogicIRV1(EvidenceLogicIRBase):
+    schema_id: Literal["evidence-logic-ir-v1"] = "evidence-logic-ir-v1"
+    hypotheses: list[HypothesisIR] = Field(default_factory=list)
+
+
+class EvidenceLogicIRV2(EvidenceLogicIRBase):
+    schema_id: Literal["evidence-logic-ir-v2"] = "evidence-logic-ir-v2"
+    hypotheses: list[HypothesisIRV2] = Field(default_factory=list)
+
+
+EvidenceLogicIR = EvidenceLogicIRV1 | EvidenceLogicIRV2
 
 
 class RequiredSlotIR(StrictAgentOutput):

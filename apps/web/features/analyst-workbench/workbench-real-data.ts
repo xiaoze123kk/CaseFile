@@ -4,7 +4,12 @@ import type {
   WorkbenchValidationView,
 } from "@/lib/api-client";
 
-import type { ValidationIssue, WorkbenchSeed } from "./analyst-fixture";
+import type {
+  ValidationIssue,
+  WorkbenchReasoningGroup,
+  WorkbenchSeed,
+} from "./analyst-fixture";
+import { reasoningOperationLabel } from "./workbench-presenters";
 import {
   buildFixtureSpatialModel,
   buildWorkbenchSpatialModel,
@@ -858,7 +863,7 @@ function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath
       const outputLabel = labelFor(outputId);
       return {
         id: step.step_id,
-        verb: step.operation,
+        verb: reasoningOperationLabel(step.operation),
         claim: `${inputLabels.join("、")}${inputLabels.length ? " → " : ""}${outputLabel}`,
         evidenceIds: inputIds.filter((id) => informationIds.has(id)),
         operation: step.operation,
@@ -886,6 +891,72 @@ function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath
       alternativePathIds: readReferenceIds(path.alternative_path_refs),
       source: path,
     };
+  });
+}
+
+function buildReasoningGroups(caseFile: CaseFile): WorkbenchReasoningGroup[] {
+  const resolutions = new Map(caseFile.resolution_specs.map((item) => [item.id, item]));
+  const information = new Map(caseFile.information_units.map((item) => [item.id, item]));
+  const groups = new Map<
+    string,
+    {
+      hypotheses: ContractHypothesis[];
+      assessments: WorkbenchReasoningGroup["assessments"];
+      informationIds: Set<string>;
+    }
+  >();
+
+  for (const hypothesis of caseFile.hypotheses) {
+    const resolutionId = readReference(hypothesis.target_resolution_ref)?.id;
+    if (!resolutionId || !resolutions.has(resolutionId)) {
+      continue;
+    }
+    const group = groups.get(resolutionId) ?? {
+      hypotheses: [],
+      assessments: [],
+      informationIds: new Set<string>(),
+    };
+    group.hypotheses.push(hypothesis);
+    for (const assessment of hypothesis.evidence_assessments ?? []) {
+      const informationId = readReference(assessment.information_ref)?.id;
+      if (!informationId || !information.has(informationId)) {
+        continue;
+      }
+      group.informationIds.add(informationId);
+      group.assessments.push({
+        hypothesisId: hypothesis.id,
+        informationId,
+        effect: assessment.effect,
+        strength: assessment.strength,
+        rationale: assessment.rationale,
+      });
+    }
+    groups.set(resolutionId, group);
+  }
+
+  return caseFile.resolution_specs.flatMap((resolution) => {
+    const group = groups.get(resolution.id);
+    if (!group) {
+      return [];
+    }
+    return [
+      {
+        resolutionSpecId: resolution.id,
+        question:
+          resolution.reasoning_question || resolution.title || "未命名待解问题",
+        hypotheses: group.hypotheses.map((hypothesis) => ({
+          id: hypothesis.id,
+          title: hypothesis.title,
+          outcome: outcomeForHypothesis(hypothesis),
+        })),
+        information: caseFile.information_units.flatMap((item) =>
+          group.informationIds.has(item.id)
+            ? [{ id: item.id, title: item.title, reliability: item.reliability }]
+            : [],
+        ),
+        assessments: group.assessments,
+      },
+    ];
   });
 }
 
@@ -960,6 +1031,7 @@ export function mapCaseFileToWorkbenchModel(
   const timelineEvents = buildTimeline(caseFile, caseObjects, validationIssues);
   const relationshipGraph = buildRelationshipGraph(caseFile, caseObjects);
   const reasoningPaths = buildReasoningPaths(caseFile);
+  const reasoningGroups = buildReasoningGroups(caseFile);
   const map = buildWorkbenchSpatialModel(caseFile, timelineEvents);
   const caseMeta = buildCaseMeta({
     caseFile,
@@ -984,6 +1056,7 @@ export function mapCaseFileToWorkbenchModel(
     graphEdges: relationshipGraph.edges,
     relationshipGraph,
     reasoningPaths,
+    reasoningGroups,
     mapMarkers: [],
     mapLabels: [],
     map,
@@ -1096,6 +1169,7 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     graphEdges,
     relationshipGraph: { nodes: graphNodes, edges: graphEdges },
     reasoningPaths,
+    reasoningGroups: seed.reasoningGroups ?? [],
     mapMarkers: seed.mapMarkers,
     mapLabels: seed.mapLabels,
     map,

@@ -142,6 +142,12 @@ export type Hypothesis = CoreMetadata & {
   required_claim_refs: ObjectRefList;
   falsifier_refs: ObjectRefList;
   competing_hypothesis_refs: ObjectRefList;
+  evidence_assessments?: {
+    information_ref: ObjectRef;
+    effect: "supports" | "contradicts" | "neutral";
+    strength: "weak" | "moderate" | "strong";
+    rationale: string;
+  }[];
   status: "active" | "supported" | "eliminated" | "accepted" | "rejected" | "undetermined";
   score: number | null;
   [k: string]: unknown;

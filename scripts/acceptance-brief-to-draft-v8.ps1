@@ -1,7 +1,7 @@
 param(
     [ValidateRange(1, 100)][int]$Repeats = 30,
     [ValidateSet("deepseek", "openai")][string]$Provider = "deepseek",
-    [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9")][string]$PromptVersion = "brief-to-draft-v9",
+    [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v10")][string]$PromptVersion = "brief-to-draft-v9",
     [string]$ReportPath = ""
 )
 

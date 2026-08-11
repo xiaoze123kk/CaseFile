@@ -314,6 +314,28 @@ def _validate_integrity(
             "hypothesis",
             f"{base}/competing_hypothesis_refs",
         )
+        assessment_information_ids: set[str] = set()
+        for assessment_index, assessment in enumerate(
+            hypothesis.get("evidence_assessments", [])
+        ):
+            assessment_path = f"{base}/evidence_assessments/{assessment_index}"
+            information_ref = assessment["information_ref"]
+            _require_declared_type(
+                errors,
+                information_ref,
+                "information_unit",
+                f"{assessment_path}/information_ref",
+            )
+            information_id = information_ref["object_id"]
+            if information_id in assessment_information_ids:
+                errors.append(
+                    _error(
+                        "duplicate_key",
+                        f"{assessment_path}/information_ref",
+                        "同一假设不能重复评估同一信息。",
+                    )
+                )
+            assessment_information_ids.add(information_id)
     for path_index, reasoning_path in enumerate(document["reasoning_paths"]):
         _unique_string(
             errors,

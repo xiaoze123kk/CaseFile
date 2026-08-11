@@ -22,7 +22,9 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     DOMAIN_COLLECTIONS,
     CaseBlueprintV1,
     DraftContextPackV1,
+    EvidenceLogicIR,
     EvidenceLogicIRV1,
+    EvidenceLogicIRV2,
     ResolutionGovernanceIRV1,
     StoryWorldIRV1,
 )
@@ -55,6 +57,7 @@ _STEP_SCHEMA = {
     "quality_repair_gate": "casefile-v1",
 }
 _V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
+_PACKAGE_PROMPT_VERSIONS = frozenset({"brief-to-draft-v9", "brief-to-draft-v10"})
 
 _DOMAIN_REFERENCE_CONTRACTS = {
     "story_world": {
@@ -86,6 +89,7 @@ _DOMAIN_REFERENCE_CONTRACTS = {
         "hypotheses.required_claim_keys": ["claims"],
         "hypotheses.falsifier_keys": ["information_units", "claims"],
         "hypotheses.competing_hypothesis_keys": ["hypotheses"],
+        "hypotheses.evidence_assessments[].information_key": ["information_units"],
         "reasoning_paths.target_key": ["resolution_specs", "claims", "hypotheses"],
         "reasoning_paths.steps[].input_keys": list(BLUEPRINT_COLLECTIONS),
         "reasoning_paths.steps[].output_key": ["claims", "hypotheses"],
@@ -182,9 +186,14 @@ async def run_v8_generation(
         )
         return output_type.model_validate(output), usage
 
+    evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
+        EvidenceLogicIRV2
+        if request.prompt_version == "brief-to-draft-v10"
+        else EvidenceLogicIRV1
+    )
     domain_results = await asyncio.gather(
         draft_domain("story_world", "story", StoryWorldIRV1),
-        draft_domain("evidence_logic", "evidence", EvidenceLogicIRV1),
+        draft_domain("evidence_logic", "evidence", evidence_output_type),
         draft_domain(
             "resolution_governance",
             "governance",
@@ -192,13 +201,23 @@ async def run_v8_generation(
         ),
     )
     story = StoryWorldIRV1.model_validate(domain_results[0][0])
-    evidence = EvidenceLogicIRV1.model_validate(domain_results[1][0])
+    evidence: EvidenceLogicIR = (
+        EvidenceLogicIRV2.model_validate(domain_results[1][0])
+        if request.prompt_version == "brief-to-draft-v10"
+        else EvidenceLogicIRV1.model_validate(domain_results[1][0])
+    )
     governance = ResolutionGovernanceIRV1.model_validate(domain_results[2][0])
     usage_records.extend(result[1] for result in domain_results)
 
     repaired_components: set[str] = set()
     for gate_attempt in range(2):
         try:
+            if request.prompt_version == "brief-to-draft-v10":
+                if not isinstance(evidence, EvidenceLogicIRV2):
+                    raise RuntimeError("brief-to-draft-v10 must use EvidenceLogicIRV2")
+                matrix_issues = _evidence_assessment_issues(evidence)
+                if matrix_issues:
+                    raise LinkerValidationError(matrix_issues)
             linked = _link_step(request, blueprint, story, evidence, governance)
             candidate = _compile_step(request, linked)
             _quality_gate(request, candidate)
@@ -233,7 +252,7 @@ async def run_v8_generation(
             repair_order: list[str] = []
             for component_id, prompt_component, output_type in (
                 ("story_world", "story", StoryWorldIRV1),
-                ("evidence_logic", "evidence", EvidenceLogicIRV1),
+                ("evidence_logic", "evidence", evidence_output_type),
                 (
                     "resolution_governance",
                     "governance",
@@ -258,23 +277,91 @@ async def run_v8_generation(
                 if component_id == "story_world":
                     story = StoryWorldIRV1.model_validate(value)
                 elif component_id == "evidence_logic":
-                    evidence = EvidenceLogicIRV1.model_validate(value)
+                    evidence = (
+                        EvidenceLogicIRV2.model_validate(value)
+                        if request.prompt_version == "brief-to-draft-v10"
+                        else EvidenceLogicIRV1.model_validate(value)
+                    )
                 else:
                     governance = ResolutionGovernanceIRV1.model_validate(value)
     raise RuntimeError("brief-to-draft v8 quality gate exhausted")
+
+
+def _evidence_assessment_issues(evidence: EvidenceLogicIRV2) -> list[dict[str, Any]]:
+    """Require v10 to assess every path-used information item across competitors."""
+
+    hypotheses_by_key = {item.local_key: item for item in evidence.hypotheses}
+    information_keys = {item.local_key for item in evidence.information_units}
+    used_information_by_hypothesis: dict[str, set[str]] = {
+        key: set() for key in hypotheses_by_key
+    }
+    for path in evidence.reasoning_paths:
+        if path.target_key not in hypotheses_by_key:
+            continue
+        used_information_by_hypothesis[path.target_key].update(
+            key for step in path.steps for key in step.input_keys if key in information_keys
+        )
+
+    hypotheses_by_resolution: dict[str, list[Any]] = {}
+    for hypothesis in evidence.hypotheses:
+        hypotheses_by_resolution.setdefault(hypothesis.target_resolution_key, []).append(
+            hypothesis
+        )
+
+    issues: list[dict[str, Any]] = []
+    for competitors in hypotheses_by_resolution.values():
+        if len(competitors) < 2:
+            continue
+        required_information = set().union(
+            *(used_information_by_hypothesis[item.local_key] for item in competitors)
+        )
+        for hypothesis in competitors:
+            assessments = list(getattr(hypothesis, "evidence_assessments", []))
+            assessed_information = [item.information_key for item in assessments]
+            for index, information_key in enumerate(assessed_information):
+                if assessed_information.count(information_key) > 1:
+                    issues.append(
+                        {
+                            "code": "duplicate_evidence_assessment",
+                            "path": (
+                                f"/hypotheses/{hypothesis.local_key}/"
+                                f"evidence_assessments/{index}/information_key"
+                            ),
+                            "message": "同一假设不能重复评估同一信息。",
+                            "component_id": "evidence_logic",
+                            "failure_layer": "evidence_matrix",
+                            "schema_id": "evidence-logic-ir-v2",
+                            "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                        }
+                    )
+            for information_key in sorted(required_information - set(assessed_information)):
+                issues.append(
+                    {
+                        "code": "missing_evidence_assessment",
+                        "path": f"/hypotheses/{hypothesis.local_key}/evidence_assessments",
+                        "message": f"竞争假设缺少对信息 {information_key!r} 的显式评估。",
+                        "component_id": "evidence_logic",
+                        "failure_layer": "evidence_matrix",
+                        "schema_id": "evidence-logic-ir-v2",
+                        "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                    }
+                )
+    return issues
 
 
 def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
     """Fail before resume reuse when the frozen Bundle or Package is unavailable."""
 
     definition = load_prompt("brief_to_draft", request.prompt_version)
-    if request.prompt_version == "brief-to-draft-v9":
+    if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
         package = definition.package
         if package is None:
-            raise PromptRepositoryError("Prompt Package brief-to-draft-v9 is unavailable")
+            raise PromptRepositoryError(
+                f"Prompt Package {request.prompt_version} is unavailable"
+            )
         if set(package.components) != _V8_PROMPT_COMPONENTS:
             raise PromptRepositoryError(
-                "Prompt Package brief-to-draft-v9 must define "
+                f"Prompt Package {request.prompt_version} must define "
                 "planner, story, evidence, and governance components"
             )
         if request.agent_version != package.runtime_agent_version:
@@ -330,12 +417,18 @@ async def _model_step(
     output_type: type[BaseModel],
     input_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    schema_id = _STEP_SCHEMA[component_id]
+    schema_id = (
+        "evidence-logic-ir-v2"
+        if component_id == "evidence_logic" and request.prompt_version == "brief-to-draft-v10"
+        else _STEP_SCHEMA[component_id]
+    )
     package_metadata: dict[str, str] = {}
-    if request.prompt_version == "brief-to-draft-v9":
+    if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
         definition = load_prompt("brief_to_draft", request.prompt_version)
         if definition.package is None:
-            raise PromptRepositoryError("Prompt Package brief-to-draft-v9 is unavailable")
+            raise PromptRepositoryError(
+                f"Prompt Package {request.prompt_version} is unavailable"
+            )
         try:
             rendered = render_prompt_package(
                 definition.package,
@@ -474,7 +567,7 @@ def _link_step(
     request: GenerationRequest,
     blueprint: CaseBlueprintV1,
     story: StoryWorldIRV1,
-    evidence: EvidenceLogicIRV1,
+    evidence: EvidenceLogicIR,
     governance: ResolutionGovernanceIRV1,
 ) -> LinkedDraftV1:
     request.emit(
