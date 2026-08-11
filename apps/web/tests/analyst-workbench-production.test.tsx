@@ -25,12 +25,14 @@ const mocks = vi.hoisted(() => ({
   candidateStatus: vi.fn(),
   fetchCaseDraft: vi.fn(),
   fetchDraftCandidatePreview: vi.fn(),
+  fetchExposurePlan: vi.fn(),
   fetchWorkbenchContext: vi.fn(),
   listDrafts: vi.fn(),
   listProjects: vi.fn(),
   loadProject: vi.fn(),
   patchCaseDraftObject: vi.fn(),
   previewCaseDraftEventTime: vi.fn(),
+  putExposurePlan: vi.fn(),
 }));
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
@@ -57,8 +59,10 @@ vi.mock("@/features/case-session/case-session-provider", () => ({
 vi.mock("@/features/case-session/case-session-api", () => ({
   fetchCaseDraft: mocks.fetchCaseDraft,
   fetchDraftCandidatePreview: mocks.fetchDraftCandidatePreview,
+  fetchExposurePlan: mocks.fetchExposurePlan,
   patchCaseDraftObject: mocks.patchCaseDraftObject,
   previewCaseDraftEventTime: mocks.previewCaseDraftEventTime,
+  putExposurePlan: mocks.putExposurePlan,
 }));
 
 function metadata(description: string): CoreMetadata {
@@ -381,6 +385,13 @@ beforeEach(() => {
   mocks.candidateStatus.mockReset();
   mocks.fetchCaseDraft.mockReset();
   mocks.fetchDraftCandidatePreview.mockReset();
+  mocks.fetchExposurePlan.mockReset().mockResolvedValue({
+    plan_id: 17,
+    draft_id: 9,
+    revision: 0,
+    updated_at: "2026-08-11T13:30:00+08:00",
+    entries: [],
+  });
   mocks.fetchWorkbenchContext.mockReset().mockResolvedValue(makeContext());
   mocks.listDrafts.mockReset().mockResolvedValue([
     makeDraftSummary(9, "真实测试卷宗", true),
@@ -393,6 +404,7 @@ beforeEach(() => {
   mocks.loadProject.mockReset().mockResolvedValue(undefined);
   mocks.patchCaseDraftObject.mockReset();
   mocks.previewCaseDraftEventTime.mockReset();
+  mocks.putExposurePlan.mockReset();
 });
 
 afterEach(() => {

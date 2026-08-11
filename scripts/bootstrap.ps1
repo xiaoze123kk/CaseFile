@@ -115,7 +115,7 @@ try {
 import os
 from sqlalchemy import create_engine, text
 
-expected_revision = "20260809224245"
+expected_revision = "20260811131444"
 expected_tables = {
     "agent_model_calls", "agent_step_runs",
     "users", "user_provider_settings", "projects", "casefiles", "drafts", "briefs",
@@ -124,6 +124,8 @@ expected_tables = {
     "agent_patch_sets", "agent_patch_operations", "casefile_objects", "casefile_refs",
     "casefile_contract_refs", "draft_operations", "narrative_phases", "entities",
     "people", "locations", "events", "information_units", "evidence_items",
+    "exposure_plans", "exposure_plan_revisions", "exposure_plan_entries",
+    "exposure_plan_entry_refs",
     "testimonies", "claims", "knowledge_states", "knowledge_state_entries",
     "hypotheses", "reasoning_paths", "reasoning_nodes", "reasoning_edges",
     "relationships", "resolution_specs", "resolution_slots", "casefile_constraints",

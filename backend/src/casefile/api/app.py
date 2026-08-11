@@ -25,6 +25,7 @@ from casefile.api.dependencies import (
 )
 from casefile.api.schemas import (
     DraftActivateRequest,
+    ExposurePlanPutRequest,
     ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
@@ -33,6 +34,7 @@ from casefile.api.schemas import (
 from casefile.api.workbench import workbench_router
 from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
+from casefile.application.exposure_plan import ExposurePlanService
 from casefile.application.services import CaseFileService
 from casefile.application.timeline import TimelineService
 from casefile.application.v1_editing import V1EditingService
@@ -109,9 +111,7 @@ def _cors_origins() -> list[str]:
             or parsed.query
             or parsed.fragment
         ):
-            raise RuntimeError(
-                "CASEFILE_CORS_ORIGINS must contain comma-separated HTTP(S) origins"
-            )
+            raise RuntimeError("CASEFILE_CORS_ORIGINS must contain comma-separated HTTP(S) origins")
         if origin not in origins:
             origins.append(origin)
     return origins
@@ -362,6 +362,35 @@ def _api_router() -> APIRouter:
             expected_revision=payload.expected_revision,
             proposed_time=payload.proposed_time,
         )
+
+    @router.get("/projects/{project_id}/draft/exposure-plan")
+    def get_exposure_plan(
+        project_id: int,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = ExposurePlanService(session).get(actor, project_id)
+        response.headers["X-CaseFile-Exposure-Plan-Revision"] = str(result["revision"])
+        return result
+
+    @router.put("/projects/{project_id}/draft/exposure-plan")
+    def put_exposure_plan(
+        project_id: int,
+        payload: ExposurePlanPutRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = ExposurePlanService(session).put(
+            actor,
+            project_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+            entries=[entry.model_dump() for entry in payload.entries],
+        )
+        response.headers["X-CaseFile-Exposure-Plan-Revision"] = str(result["revision"])
+        return result
 
     @router.post("/projects/{project_id}/draft/snapshots")
     def create_snapshot(

@@ -19,6 +19,7 @@ import {
   type IssueStatus,
   type WorkbenchSeed,
 } from "../analyst-fixture";
+import { ExposurePlanEditor } from "./exposure-plan-editor";
 import styles from "./timeline.module.css";
 import {
   buildTimelineCertaintySummary,
@@ -224,6 +225,9 @@ export function TimelineOverview({
   onSelectEvent,
   validationStatus,
   editable = false,
+  exposurePlanEditable = false,
+  projectId,
+  draftId,
   saving = false,
   onPreviewTime,
   onConfirmTime,
@@ -234,6 +238,9 @@ export function TimelineOverview({
   onSelectEvent: (eventId: string) => void;
   validationStatus: TimelineValidationStatus;
   editable?: boolean;
+  exposurePlanEditable?: boolean;
+  projectId?: number;
+  draftId?: number;
   saving?: boolean;
   onPreviewTime?: (
     eventId: string,
@@ -831,9 +838,26 @@ export function TimelineOverview({
 
       <footer className={styles.timelineFooter}>
         <p role="status">{notice ?? (editable ? "拖动菱形或区间带，松开后先查看影响。" : "历史与候选内容保持只读。")}</p>
-        <button disabled={!editable} onClick={() => openEditor(selectedEvent)} type="button">
-          编辑所选时间
-        </button>
+        <div className={styles.timelineFooterActions}>
+          <button
+            className={styles.timeEditTrigger}
+            disabled={!editable}
+            onClick={() => openEditor(selectedEvent)}
+            type="button"
+          >
+            编辑所选时间
+          </button>
+          {projectId !== undefined && draftId !== undefined ? (
+            <ExposurePlanEditor
+              draftId={draftId}
+              editable={exposurePlanEditable}
+              events={events}
+              onSelectEvent={onSelectEvent}
+              projectId={projectId}
+              selectedEventId={selectedEventId}
+            />
+          ) : null}
+        </div>
       </footer>
 
       {editor && editorEventId ? (

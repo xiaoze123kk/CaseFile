@@ -511,6 +511,27 @@ export interface TimelineTimePreviewView {
   };
 }
 
+export interface ExposurePlanRefView {
+  object_type: string;
+  object_id: string;
+}
+
+export interface ExposurePlanEntryView {
+  entry_key: string;
+  sequence_no: number;
+  title: string;
+  note: string | null;
+  refs: ExposurePlanRefView[];
+}
+
+export interface ExposurePlanView {
+  plan_id: number;
+  draft_id: number;
+  revision: number;
+  updated_at: string;
+  entries: ExposurePlanEntryView[];
+}
+
 export interface DraftSummaryView {
   draft_id: number;
   title: string;

@@ -17,11 +17,13 @@
 | `backend/src/casefile/data_postgres/base.py` | SQLAlchemy Base、约束命名规范、BIGINT Identity 主键和时间戳 Mixin。 |
 | `backend/src/casefile/data_postgres/session.py` | 同步 Engine/Session 工厂、应用支持的唯一数据库 revision 和 API 启动门禁。 |
 | `backend/src/casefile/data_postgres/repositories.py` | 按 Project/CaseFile/Draft/Snapshot 聚合封装所有者过滤、Current Draft 锁定与切换、全部工作稿枚举、Draft 隔离的 Operation/语义引用和安全软删。 |
+| `backend/src/casefile/data_postgres/exposure_repository.py` | 按 Draft 读取/锁定单一 Exposure Plan，解析同 Draft 稳定对象引用，并原子追加完整计划修订、线性条目与引用。 |
 | `backend/src/casefile/data_postgres/models/identity.py` | `users`、单一所有者 `projects` 与用户级密文 `user_provider_settings` ORM。 |
 | `backend/src/casefile/data_postgres/models/casefile.py` | `casefiles` 的非空 Current Draft 复合指针、多份 `drafts`、Draft 内唯一的轻量 `casefile_objects` 注册表、旧语义边 `casefile_refs`、v1 `casefile_contract_refs` 和 `draft_operations` ORM。 |
 | `backend/src/casefile/data_postgres/models/content.py` | 旧 Narrative Phase 兼容存储、Entity/Person、v1 Relationship/Location、Event、Information Unit/Evidence/Testimony、Claim 与 Knowledge State ORM。 |
 | `backend/src/casefile/data_postgres/models/reasoning.py` | Hypothesis、Reasoning Path/Node/Edge、Resolution Spec/Slot、Constraint 与 Structure Lock ORM。 |
 | `backend/src/casefile/data_postgres/models/versioning.py` | `draft_snapshots`、`canon_versions`、`audit_events` ORM。 |
+| `backend/src/casefile/data_postgres/models/exposure.py` | `exposure_plans`、不可变 `exposure_plan_revisions`、线性 `exposure_plan_entries` 与规范化 `exposure_plan_entry_refs` ORM。 |
 | `backend/src/casefile/data_postgres/models/workflow.py` | `briefs`、不可变 `brief_versions`、不可变 `source_records`、三类 `task_runs`、`task_attempts` 与不可变 `task_events` ORM。 |
 | `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8/v9 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
 | `backend/src/casefile/data_postgres/models/__init__.py` | 汇总导入全部 ORM，供 Alembic metadata 发现。 |
@@ -37,7 +39,7 @@
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
 | `backend/src/casefile/application/snapshot.py` | 从全部规范化当前态投影 CaseFile JSON，稳定排序、契约校验并计算 RFC 8785 SHA-256。 |
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
-| `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 v1 CaseFile JSON 与 38 表规范化当前态之间执行原子写入、完整投影、契约引用映射和规范哈希。 |
+| `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 v1 CaseFile JSON 与规范化当前态之间执行原子写入、完整投影、契约引用映射和规范哈希。 |
 | `backend/src/casefile/application/v1_editing.py` | Entity、Location、Event 的有限字段编辑、revision 冲突检查和 v1 契约往返门禁。 |
 | `backend/src/casefile/application/workflow_service.py` | Provider 设置、不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、三类 TaskRun 创建、最近任务恢复与 SSE 事件查询的事务边界。 |
 | `backend/src/casefile/application/workflow_brief_validation.py` | Workflow 使用的 Brief 契约、语义与已确认原子项门禁。 |
@@ -46,6 +48,7 @@
 | `backend/src/casefile/application/task_cancellation.py` | 统一 queued/running TaskRun 的取消终态、Attempt 收敛与 CaseFile Chat pending 消息失败回填。 |
 | `backend/src/casefile/application/workbench_read_model.py` | 按当前 Draft 只读汇总 CaseFile 确定性验证、冻结 Brief 所引用的 SourceRecord 正文与可追溯标识，以及 `audit_events`/`draft_operations` 审计事实。 |
 | `backend/src/casefile/application/timeline.py` | 对 Current Draft 事件时间修改执行只读影响预览，报告事实顺序跨越、相对时间依赖和完整契约验证结果；不得写入 Draft。 |
+| `backend/src/casefile/application/exposure_plan.py` | 读取与修订 Current Draft 的单一线性 Exposure Plan，执行独立 revision 门禁、同 Draft 引用校验和审计；不得推进 Draft revision 或写入 Canon/Event.time。 |
 | `backend/src/casefile/application/a_path_metrics.py` | 只读地从 Brief-to-Draft `AgentModelCall`/`TaskAttempt`/`TaskRun` 分层用量、`TaskEvent` 与采用后的 `draft_operations` 推导 A 路径漏斗、完整重试用量和人工续编指标；同一 Attempt 只消费一个权威层级，不新增分析表。 |
 
 ## API 与 Worker
@@ -79,7 +82,7 @@
 | 路径 | 职责 |
 |---|---|
 | `backend/tests/contract/` | 根目录跨语言契约和编辑闭环 Fixture 的契约测试。 |
-| `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 38 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
+| `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 51 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
 | `backend/tests/unit/test_casefile_contract.py` | 验证 v1 CaseFile Schema、自身合法性、三类产品 Fixture、确定性语义错误和规范哈希。 |
 | `backend/tests/unit/test_agent_providers.py` | 验证 OpenAI/DeepSeek Provider 路由、DeepSeek 官方兼容端点和无 Key 网络调用门禁。 |
 | `backend/tests/unit/test_structured_output.py` | 验证 DeepSeek strict transport Schema、Beta 强制工具协议、正式 JSON 自动降级、OpenAI 原生结构输出与最多三次的有限修复状态机。 |
@@ -88,7 +91,9 @@
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
-| `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证七段升降级、38 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon 门禁和不可变触发器。 |
+| `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证完整升降级、51 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon/Exposure Plan 门禁和不可变触发器。 |
+| `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 51 表清单，避免主迁移测试文件继续膨胀。 |
+| `backend/tests/integration/test_exposure_plan_migration.py` | 在真实 `_test` PostgreSQL 验证新 Draft 自动创建空 Exposure Plan，以及计划修订、条目和引用不可更新/删除。 |
 | `backend/tests/integration/application_services_test_support.py` | 为应用服务集成测试集中提供 `_test` PostgreSQL 生命周期、Provider 与建案 helper；由 integration `conftest.py` 暴露共享 fixture。 |
 | `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、Worker 候选持久化、首次/再次采用、A/B 工作稿隔离、v1 有限编辑和 Agent 协作闭环。 |
 | `backend/tests/integration/test_multiple_draft_migration.py`、`test_multiple_drafts.py` | 验证旧数据升级回填 Current Draft、复合外键与 Draft 内对象 ID 唯一，以及并发激活、归档/锁定门禁和编辑/快照/验证/来源/审计隔离。 |
@@ -96,14 +101,15 @@
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、候选采用、工作台验证/来源/审计读模型、SSE 恢复与完成门禁闭环。 |
 | `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8/v9 验收（默认 v9）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 执行策略轮换任务，检查步骤/模型调用持久化、SSE、诊断和 Draft/Canon 未自动写入边界。 |
 
-## 47 表清单
+## 51 表清单
 
-当前正式业务表恰好为 47 张：
+当前正式业务表恰好为 51 张：
 
 - 身份、输入与任务：`users`、`projects`、`user_provider_settings`、`source_records`、`briefs`、`brief_versions`、`task_runs`、`task_attempts`、`task_events`、`agent_step_runs`、`agent_model_calls`。
 - 编辑与契约映射：`casefiles`、`drafts`、`casefile_objects`、`casefile_refs`、`casefile_contract_refs`、`draft_operations`。
 - 叙事与内容：`narrative_phases`、`entities`、`relationships`、`people`、`locations`、`events`、`information_units`、`evidence_items`、`testimonies`、`claims`、`knowledge_states`、`knowledge_state_entries`。
 - 推理与结论：`hypotheses`、`reasoning_paths`、`reasoning_nodes`、`reasoning_edges`、`resolution_specs`、`resolution_slots`、`casefile_constraints`、`structure_locks`。
+- 展示设计：`exposure_plans`、`exposure_plan_revisions`、`exposure_plan_entries`、`exposure_plan_entry_refs`。
 - 版本与审计：`draft_snapshots`、`canon_versions`、`audit_events`。
 
 新增或删除表必须同步更新 ORM、迁移、两份数据库说明、元数据测试和本文。

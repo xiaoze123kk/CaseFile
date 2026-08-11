@@ -10,7 +10,7 @@
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
-| `contracts/openapi.json` | 从 FastAPI 应用导出的完整 OpenAPI 3.1 快照，包含多工作稿列表/激活以及 Draft ID + revision 并发请求契约。 |
+| `contracts/openapi.json` | 从 FastAPI 应用导出的完整 OpenAPI 3.1 快照，包含多工作稿列表/激活、事件时间影响预览，以及 Draft ID + 独立 Plan revision 的 Exposure Plan 读写契约。 |
 
 ## 契约变更顺序
 

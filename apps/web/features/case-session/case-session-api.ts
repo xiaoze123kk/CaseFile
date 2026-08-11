@@ -15,6 +15,8 @@ import {
   type DraftCandidatePreviewView,
   type DraftCandidateAdoption,
   type DraftView,
+  type ExposurePlanEntryView,
+  type ExposurePlanView,
   type AnchorExtractMode,
   type PolishMode,
   type ProjectView,
@@ -658,6 +660,35 @@ export async function previewCaseDraftEventTime(
         expected_draft_id: expectedDraftId,
         expected_revision: expectedRevision,
         proposed_time: proposedTime,
+      },
+    },
+  );
+}
+
+/** 读取 Current Draft 独立版本化的单一线性披露计划。 */
+export async function fetchExposurePlan(projectId: number) {
+  return apiRequest<ExposurePlanView>(
+    `/projects/${projectId}/draft/exposure-plan`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
+/** 以计划自身 revision 保存完整线性顺序；不推进 Draft revision。 */
+export async function putExposurePlan(
+  projectId: number,
+  expectedDraftId: number,
+  expectedRevision: number,
+  entries: Omit<ExposurePlanEntryView, "sequence_no">[],
+) {
+  return apiRequest<ExposurePlanView>(
+    `/projects/${projectId}/draft/exposure-plan`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "PUT",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+        entries,
       },
     },
   );

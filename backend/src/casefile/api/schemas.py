@@ -227,3 +227,52 @@ class TimelineTimePreviewRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
     proposed_time: dict[str, Any] = Field(min_length=1)
+
+
+ExposureObjectType = Literal[
+    "entity",
+    "relationship",
+    "location",
+    "event",
+    "information_unit",
+    "claim",
+    "hypothesis",
+    "reasoning_path",
+    "resolution_spec",
+    "constraint",
+    "structure_lock",
+]
+
+
+class ExposurePlanRefRequest(StrictRequest):
+    object_type: ExposureObjectType
+    object_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,127}$")
+
+
+class ExposurePlanEntryRequest(StrictRequest):
+    entry_key: str = Field(
+        pattern=r"^exposure_[a-z0-9][a-z0-9_]{0,150}$",
+    )
+    title: str = Field(min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=4_000)
+    refs: list[ExposurePlanRefRequest] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_refs(self) -> Self:
+        keys = [(item.object_type, item.object_id) for item in self.refs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("refs must be unique within one entry")
+        return self
+
+
+class ExposurePlanPutRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_revision: int = Field(ge=0)
+    entries: list[ExposurePlanEntryRequest] = Field(max_length=2_000)
+
+    @model_validator(mode="after")
+    def unique_entry_keys(self) -> Self:
+        keys = [item.entry_key for item in self.entries]
+        if len(keys) != len(set(keys)):
+            raise ValueError("entry_key must be unique within one revision")
+        return self

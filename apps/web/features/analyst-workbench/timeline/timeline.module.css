@@ -568,6 +568,13 @@
   font-size: 9px;
 }
 
+.timelineFooterActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+}
+
 .timelineFooter button,
 .timeEditor button,
 .previewSheet button {
@@ -1036,7 +1043,7 @@
     white-space: nowrap;
   }
 
-  .timelineFooter button {
+  .timelineFooter .timeEditTrigger {
     display: none;
   }
 

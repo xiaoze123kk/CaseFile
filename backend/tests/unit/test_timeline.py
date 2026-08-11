@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from casefile.application.errors import ApplicationError
 from casefile.application.timeline import build_time_change_preview
 

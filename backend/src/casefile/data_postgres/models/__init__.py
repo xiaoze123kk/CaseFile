@@ -34,6 +34,12 @@ from casefile.data_postgres.models.content import (
     Relationship,
     Testimony,
 )
+from casefile.data_postgres.models.exposure import (
+    ExposurePlan,
+    ExposurePlanEntry,
+    ExposurePlanEntryRef,
+    ExposurePlanRevision,
+)
 from casefile.data_postgres.models.identity import Project, User, UserProviderSetting
 from casefile.data_postgres.models.reasoning import (
     CaseFileConstraint,
@@ -81,6 +87,10 @@ __all__ = [
     "Entity",
     "Event",
     "EvidenceItem",
+    "ExposurePlan",
+    "ExposurePlanEntry",
+    "ExposurePlanEntryRef",
+    "ExposurePlanRevision",
     "Hypothesis",
     "InformationUnit",
     "KnowledgeState",

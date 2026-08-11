@@ -1551,12 +1551,25 @@ function AnalystWorkbenchSurface({
                         onPreviewEventTime &&
                         onSaveObject,
                     )}
+                    draftId={
+                      realData && !writeLocked && currentDraft
+                        ? currentDraft.draft_id
+                        : undefined
+                    }
+                    exposurePlanEditable={Boolean(
+                      realData && !writeLocked && currentDraft,
+                    )}
                     issueStatuses={visibleIssueStatuses}
                     onConfirmTime={(eventId, time) =>
                       onSaveObject?.(eventId, { time }) ?? Promise.resolve("error")
                     }
                     onPreviewTime={onPreviewEventTime}
                     onSelectEvent={selectEvent}
+                    projectId={
+                      realData && !writeLocked && currentDraft && projectId !== null
+                        ? projectId
+                        : undefined
+                    }
                     saving={savingObject}
                     seed={seed}
                     selectedEventId={selectedEventId}

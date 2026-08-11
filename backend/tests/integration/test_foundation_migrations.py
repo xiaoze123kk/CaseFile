@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 47-table personal foundation."""
+"""Disposable PostgreSQL verification for the 51-table personal foundation."""
 
 from __future__ import annotations
 
@@ -19,61 +19,13 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from foundation_migration_tables import BUSINESS_TABLES
 from sqlalchemy.engine import Connection, Engine, make_url
 
 pytestmark = pytest.mark.postgres
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "20260728084832"
-BUSINESS_TABLES = {
-    "agent_model_calls",
-    "agent_messages",
-    "agent_patch_operations",
-    "agent_patch_sets",
-    "agent_threads",
-    "agent_step_runs",
-    "audit_events",
-    "brief_versions",
-    "briefs",
-    "brief_intake_candidates",
-    "brief_intake_questions",
-    "brief_intakes",
-    "canon_versions",
-    "casefile_constraints",
-    "casefile_contract_refs",
-    "casefile_objects",
-    "casefile_refs",
-    "casefiles",
-    "claims",
-    "draft_operations",
-    "draft_snapshots",
-    "drafts",
-    "entities",
-    "events",
-    "evidence_items",
-    "hypotheses",
-    "information_units",
-    "knowledge_state_entries",
-    "knowledge_states",
-    "locations",
-    "narrative_phases",
-    "people",
-    "projects",
-    "reasoning_edges",
-    "reasoning_nodes",
-    "reasoning_paths",
-    "relationships",
-    "resolution_slots",
-    "resolution_specs",
-    "source_records",
-    "structure_locks",
-    "task_attempts",
-    "task_events",
-    "task_runs",
-    "testimonies",
-    "user_provider_settings",
-    "users",
-}
 
 
 @dataclass(frozen=True)
@@ -217,9 +169,9 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
             sa.text(
                 f"""
                 INSERT INTO casefiles (project_id, object_id, title, schema_version
-                    {', current_draft_id' if modern_drafts else ''})
+                    {", current_draft_id" if modern_drafts else ""})
                 VALUES (:project_id, 'case_test_' || :project_id, :title, '1.0'
-                    {', 0' if modern_drafts else ''})
+                    {", 0" if modern_drafts else ""})
                 RETURNING id
                 """
             ),
@@ -231,9 +183,9 @@ def _seed_lineage(connection: Connection, label: str) -> Lineage:
             sa.text(
                 f"""
                 INSERT INTO drafts (project_id, casefile_id
-                    {', title' if modern_drafts else ''}, version_id, schema_version)
+                    {", title" if modern_drafts else ""}, version_id, schema_version)
                 VALUES (
-                    :project_id, :casefile_id {', :title' if modern_drafts else ''},
+                    :project_id, :casefile_id {", :title" if modern_drafts else ""},
                     'draft_test_' || :project_id, '1.0'
                 ) RETURNING id
                 """
@@ -699,10 +651,7 @@ def _assert_forward_migration_documents(
         {"object_type": "casefile", "object_id": "case_migration_compat"}
     ]
     assert snapshot_document["structure_locks"] == []
-    assert (
-        snapshot_document["extensions"]["casefile.migration_20260728171649"]["kind"]
-        == "legacy"
-    )
+    assert snapshot_document["extensions"]["casefile.migration_20260728171649"]["kind"] == "legacy"
     assert snapshot_hash == _canonical_hash(snapshot_document)
     assert canon_document == snapshot_document
     assert canon_hash == snapshot_hash
@@ -855,7 +804,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_47_identity_tables_without_team_columns(
+def test_database_has_51_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -869,7 +818,7 @@ def test_database_has_47_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 47
+    assert len(identity_rows) == 51
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
