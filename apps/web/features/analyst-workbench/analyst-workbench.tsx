@@ -317,7 +317,7 @@ function EvidenceComparison({
 }
 
 const DEFAULT_RAIL_WIDTH = 254;
-const DEFAULT_INSPECTOR_WIDTH = 350;
+const DEFAULT_INSPECTOR_WIDTH = 400;
 
 export function AnalystWorkbench({
   requestedProjectId,
@@ -973,7 +973,7 @@ function AnalystWorkbenchSurface({
     if (!resize) return;
     const width = clamp(
       resize.startWidth + resize.startX - event.clientX,
-      250,
+      340,
       520,
     );
     setInspectorWidth(width);
@@ -1705,7 +1705,6 @@ function AnalystWorkbenchSurface({
           <header className={styles.inspectorHeader}>
             <div><span>上下文检查器</span><strong>{getObject(seed, selectedObjectId)?.label ?? selectedEvent?.label ?? "尚未选择对象"}</strong></div>
             <div className={styles.inspectorHeaderActions}>
-              <small>{selectedObjectId ?? selectedEvent?.id ?? "—"}</small>
               <button
                 aria-label="收起上下文检查器"
                 aria-expanded={inspectorOpen}
@@ -1739,6 +1738,7 @@ function AnalystWorkbenchSurface({
                   navigationNotice={objectEditorNavigationNotice}
                   onDirtyChange={updateObjectEditorDirty}
                   onSave={onSaveObject}
+                  onSelectObject={selectObject}
                   onSelectRelatedEvent={selectEvent}
                   relatedEvents={selectedRelatedEvents}
                   readOnly={writeLocked || !onSaveObject || spatialEditActive}

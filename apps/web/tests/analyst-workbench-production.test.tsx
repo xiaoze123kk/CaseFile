@@ -81,6 +81,10 @@ function metadata(description: string): CoreMetadata {
   };
 }
 
+async function beginQuickEdit() {
+  fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+}
+
 function makeCaseFile(entityName = "真实调查员"): CaseFile {
   return {
     schema_version: "2.0",
@@ -484,12 +488,9 @@ describe("production analyst workbench", () => {
     expect(mocks.loadProject).not.toHaveBeenCalled();
 
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
-    expect(within(editor).getByRole("textbox", { name: "名称" })).toHaveAttribute(
-      "readonly",
-    );
-    expect(
-      within(editor).getByRole("button", { name: "采用后才能编辑" }),
-    ).toBeDisabled();
+    expect(within(editor).getByText("候选预览，只读")).toBeInTheDocument();
+    expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "候选预览不可使用 Agent" }),
     ).toBeDisabled();
@@ -512,7 +513,7 @@ describe("production analyst workbench", () => {
     ).toBeInTheDocument();
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("真实测试卷宗").length).toBeGreaterThan(0);
-    expect(screen.getByText("Draft R7 · 对象 R1")).toBeInTheDocument();
+    expect(screen.getByText("工作稿 R7")).toBeInTheDocument();
     const directory = screen.getByRole("region", { name: "对象目录结果" });
     const analystRow = within(directory).getByRole("button", {
       name: /真实调查员/,
@@ -823,23 +824,23 @@ describe("production analyst workbench", () => {
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
 
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "门禁记录",
-    );
-    const relatedEvents = screen.getByRole("region", { name: "关联事件" });
-    const eventLink = within(relatedEvents).getByRole("button", {
+    expect(screen.getByRole("heading", { name: "门禁记录" })).toBeInTheDocument();
+    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
+    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
+      name: "关联事件",
+    }).parentElement as HTMLElement;
+    const eventLink = within(relatedEventArticle).getByRole("button", {
       name: /门禁开启/,
     });
-    expect(eventLink).toHaveTextContent("evt_gate_opened");
+    expect(eventLink).toHaveTextContent("2026年8月7日 09:00");
+    expect(eventLink).not.toHaveTextContent("evt_gate_opened");
 
     fireEvent.click(eventLink);
     expect(screen.getByRole("tab", { name: /时间线/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "门禁开启",
-    );
+    expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "事件，1 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -1077,7 +1078,8 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const name = await screen.findByRole("textbox", { name: "名称" });
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
     fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
 
@@ -1128,20 +1130,17 @@ describe("production analyst workbench", () => {
       within(directory).getByRole("button", { name: /记录曾被改写/ }),
     );
 
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "记录曾被改写",
-    );
+    expect(screen.getByRole("heading", { name: "记录曾被改写" })).toBeInTheDocument();
     expect(screen.getByText("此对象没有关联事件")).toBeInTheDocument();
-    expect(
-      screen.getByText("此对象尚未关联事件，时间线不会沿用上一次选择。"),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "关联事件" })).not.toBeInTheDocument();
   });
 
   it("blocks object and related-event navigation until edits are saved or cancelled", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const name = await screen.findByRole("textbox", { name: "名称" });
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
     const directory = screen.getByRole("region", { name: "对象目录结果" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
     fireEvent.click(
@@ -1161,11 +1160,15 @@ describe("production analyst workbench", () => {
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
+    await beginQuickEdit();
     const content = screen.getByRole("textbox", { name: "正文" });
     fireEvent.change(content, { target: { value: "未保存的门禁正文" } });
-    const relatedEvents = screen.getByRole("region", { name: "关联事件" });
+    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
+    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
+      name: "关联事件",
+    }).parentElement as HTMLElement;
     fireEvent.click(
-      within(relatedEvents).getByRole("button", { name: /门禁开启/ }),
+      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
     );
     expect(screen.getByRole("textbox", { name: "正文" })).toHaveValue(
       "未保存的门禁正文",
@@ -1173,18 +1176,17 @@ describe("production analyst workbench", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "取消修改" }));
     fireEvent.click(
-      within(relatedEvents).getByRole("button", { name: /门禁开启/ }),
+      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
     );
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "门禁开启",
-    );
+    expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
   });
 
   it("keeps unsaved object edits in place when project or Draft switching is requested", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const name = await screen.findByRole("textbox", { name: "名称" });
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "尚未保存的调查员" } });
 
     fireEvent.click(
@@ -1242,9 +1244,7 @@ describe("production analyst workbench", () => {
         name: /当前工作稿.*服务端当前工作稿/u,
       }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "服务端当前稿人物",
-    );
+    expect(screen.getByRole("heading", { name: "服务端当前稿人物" })).toBeInTheDocument();
     expect(mocks.loadProject).toHaveBeenCalledTimes(2);
   });
 
@@ -1270,9 +1270,7 @@ describe("production analyst workbench", () => {
     fireEvent.click(
       within(graph).getByRole("button", { name: /值班员/ }),
     );
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "值班员",
-    );
+    expect(screen.getByRole("heading", { name: "值班员" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "实体，2 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -1302,10 +1300,11 @@ describe("production analyst workbench", () => {
 
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const name = await screen.findByRole("textbox", { name: "名称" });
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "我的未保存名称" } });
     fireEvent.click(
-      screen.getByRole("button", { name: "保存到当前工作稿" }),
+      screen.getByRole("button", { name: "保存修改" }),
     );
 
     await waitFor(() =>
@@ -1325,13 +1324,13 @@ describe("production analyst workbench", () => {
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "我的未保存名称",
     );
-    expect(screen.getByText("Draft R8 · 对象 R1")).toBeInTheDocument();
+    expect(screen.getByText("工作稿 R8")).toBeInTheDocument();
     const editor = screen.getByRole("region", { name: "对象详情与编辑" });
     expect(within(editor).getByRole("status")).toHaveTextContent(
       "工作稿已更新。你的输入已保留，请核对最新版后再次保存。",
     );
     expect(
-      screen.getByRole("button", { name: "保存到当前工作稿" }),
+      screen.getByRole("button", { name: "保存修改" }),
     ).toBeEnabled();
   });
 });

@@ -211,8 +211,9 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
 
   async function editCurrentEntity(name: string) {
     const editor = page.getByRole("region", { name: "对象详情与编辑" });
+    await editor.getByRole("button", { name: "编辑" }).click();
     await editor.getByRole("textbox", { name: "名称" }).fill(name);
-    await editor.getByRole("button", { name: "保存到当前工作稿" }).click();
+    await editor.getByRole("button", { name: "保存修改" }).click();
     await expect(editor.getByRole("status")).toContainText("修改已写入当前工作稿");
     await expect
       .poll(async () => {
@@ -563,8 +564,8 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(
     page
       .getByRole("region", { name: "对象详情与编辑" })
-      .getByRole("textbox", { name: "名称" }),
-  ).toHaveValue(draftAEntityName);
+      .getByRole("heading", { name: draftAEntityName }),
+  ).toBeVisible();
 
   await page.locator('button[data-kind="draft"]').click();
   await page
@@ -580,8 +581,8 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(
     page
       .getByRole("region", { name: "对象详情与编辑" })
-      .getByRole("textbox", { name: "名称" }),
-  ).toHaveValue(draftBEntityName);
+      .getByRole("heading", { name: draftBEntityName }),
+  ).toBeVisible();
   await attachPageEvidence(testInfo, page, "10-two-drafts-isolated");
 
   const metricsResponse = await request.get(

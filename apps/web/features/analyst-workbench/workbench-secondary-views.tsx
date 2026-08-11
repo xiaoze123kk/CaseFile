@@ -6,18 +6,8 @@ import {
   type WorkbenchSeed,
 } from "./analyst-fixture";
 import styles from "./analyst-workbench.module.css";
-import { reasoningOutcomeLabels } from "./workbench-presenters";
+import { formatCaseClock, reasoningOutcomeLabels } from "./workbench-presenters";
 import type { WorkbenchModel } from "./workbench-real-data";
-
-function timelineClock(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
 
 export function TimelineOverview({
   seed,
@@ -69,7 +59,7 @@ export function TimelineOverview({
                   dateTime={event.time}
                   title={event.time}
                 >
-                  {timelineClock(event.time)}
+                  {formatCaseClock(event.time)}
                 </time>
                 <span className={styles.eventMarker} aria-hidden="true" />
                 <span className={styles.eventCopy}>

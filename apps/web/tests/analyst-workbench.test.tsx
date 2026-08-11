@@ -754,14 +754,20 @@ describe("analyst workbench", () => {
       '[data-testid="inspector-resize-handle"]',
     ) as HTMLElement;
     const body = handle.parentElement as HTMLElement;
-    expect(body.style.getPropertyValue("--inspector-width")).toBe("350px");
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("400px");
 
     // 检查器在右侧：向右拖 80px → 宽度减小
     fireEvent.pointerDown(handle, { clientX: 200, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientX: 280, pointerId: 1 });
     fireEvent.pointerUp(handle, { pointerId: 1 });
 
-    expect(body.style.getPropertyValue("--inspector-width")).toBe("270px");
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("340px");
+
+    fireEvent.pointerDown(handle, { clientX: 200, pointerId: 2 });
+    fireEvent.pointerMove(handle, { clientX: -200, pointerId: 2 });
+    fireEvent.pointerUp(handle, { pointerId: 2 });
+
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("520px");
   });
 
   it("collapses and restores the context inspector", () => {
@@ -783,7 +789,7 @@ describe("analyst workbench", () => {
       screen.getByRole("button", { name: "展开上下文检查器" }),
     );
     expect(body).toHaveAttribute("data-inspector-open", "true");
-    expect(body.style.getPropertyValue("--inspector-width")).toBe("350px");
+    expect(body.style.getPropertyValue("--inspector-width")).toBe("400px");
   });
 
   it("resizes the object rail by dragging the split handle", () => {

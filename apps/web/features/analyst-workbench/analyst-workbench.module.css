@@ -418,7 +418,7 @@
   min-width: 0;
   min-height: 0;
   grid-row: 3;
-  grid-template-columns: var(--rail-width, 254px) minmax(480px, 1fr) var(--inspector-width, 350px);
+  grid-template-columns: var(--rail-width, 254px) minmax(480px, 1fr) var(--inspector-width, 400px);
   overflow: hidden;
 }
 
@@ -459,7 +459,7 @@
   z-index: 3;
   top: 0;
   bottom: 0;
-  left: calc(100% - var(--inspector-width, 350px) - 3px);
+  left: calc(100% - var(--inspector-width, 400px) - 3px);
   width: 6px;
   cursor: col-resize;
   touch-action: none;
@@ -1034,7 +1034,6 @@
 .inspectorHeader span { color: var(--primary-strong); }
 .inspectorHeader strong { overflow: hidden; margin-top: 4px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .inspectorHeaderActions { display: flex !important; align-items: center; flex-direction: row !important; gap: 8px; }
-.inspectorHeaderActions > small { flex: 0 0 auto; color: var(--ink-faint); }
 .inspectorToggle {
   display: grid;
   width: 28px;
@@ -1048,22 +1047,27 @@
 .inspectorToggle svg { width: 14px; height: 14px; transform: rotate(-90deg); }
 
 .inspectorTabs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
   border-bottom: 1px solid var(--rule);
   background: var(--paper-high);
 }
 
 .inspectorTabs button {
   position: relative;
-  min-width: 0;
+  min-width: max-content;
   min-height: 40px;
-  padding: 0 4px;
+  overflow: hidden;
+  padding: 0 12px;
   color: var(--ink-muted);
   border: 0;
   border-right: 1px solid var(--rule);
   background: transparent;
-  font-size: 9.5px;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inspectorTabs button:last-child { border-right: 0; }
