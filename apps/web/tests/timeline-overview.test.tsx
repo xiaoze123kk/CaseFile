@@ -62,6 +62,45 @@ function preview(
 }
 
 describe("editable proportional timeline", () => {
+  it("switches between person and location lanes with certainty and issue overlays", () => {
+    const seed = timelineSeed();
+    const onSelectEvent = vi.fn();
+    const { container } = render(
+      <TimelineOverview
+        issueStatuses={{ "ISSUE-TIME-006": "open" }}
+        onSelectEvent={onSelectEvent}
+        seed={seed}
+        selectedEventId="EV-1812"
+        validationStatus="failed"
+      />,
+    );
+
+    expect(screen.getByRole("list", { name: "时间确定性诊断" })).toHaveTextContent(
+      "准确4",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "人物泳道" }));
+
+    const personLane = screen.getByTestId("timeline-lane-PER-004");
+    expect(personLane).toHaveAttribute("data-selected", "true");
+    expect(personLane).toHaveTextContent("林岚");
+    expect(
+      container.querySelector('[data-issue="ISSUE-TIME-006"]'),
+    ).not.toBeNull();
+    fireEvent.click(
+      within(personLane).getByRole("button", { name: /林岚，林岚进入检修通道/ }),
+    );
+    expect(onSelectEvent).toHaveBeenCalledWith("EV-1812");
+
+    fireEvent.click(screen.getByRole("button", { name: "地点泳道" }));
+    expect(screen.getByTestId("timeline-lane-LOC-007")).toHaveTextContent(
+      "07 号检修通道",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "确定性叠层" }));
+    expect(
+      screen.queryByRole("list", { name: "时间确定性诊断" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("previews a keyboard move before confirming the Current Draft write", async () => {
     const seed = timelineSeed();
     const selected = seed.timelineEvents[0];

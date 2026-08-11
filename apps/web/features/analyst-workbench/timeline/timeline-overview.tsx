@@ -17,11 +17,17 @@ import type {
 import {
   getEvent,
   type IssueStatus,
-  type TimelineEvent,
   type WorkbenchSeed,
 } from "../analyst-fixture";
-import type { WorkbenchTimelineEvent } from "../workbench-real-data-types";
 import styles from "./timeline.module.css";
+import {
+  buildTimelineCertaintySummary,
+  buildTimelineLanes,
+  timelineCertainty,
+  timelineCertaintyLabel,
+  type TimelineDisplayEvent,
+  type TimelineLaneMode,
+} from "./timeline-lanes";
 import {
   absoluteTemporalBounds,
   formatAxisTime,
@@ -34,7 +40,6 @@ import {
 } from "./timeline-time";
 
 type SaveResult = "saved" | "conflict" | "error";
-type TimelineDisplayEvent = TimelineEvent & Partial<WorkbenchTimelineEvent>;
 type TimelineValidationStatus =
   | "passed"
   | "failed"
@@ -67,6 +72,25 @@ const PLOT_RIGHT = 1036;
 const AXIS_Y = 50;
 const ROW_TOP = 88;
 const ROW_HEIGHT = 62;
+
+function displayBounds(
+  event: TimelineDisplayEvent,
+  proposedTime: TimelineTemporalPosition | null = null,
+) {
+  if (proposedTime) return absoluteTemporalBounds(proposedTime);
+  const normalized = absoluteTemporalBounds(event.source?.time);
+  if (normalized) return normalized;
+  if (!event.start) return null;
+  const start = parseWallClock(
+    event.start.replace(/(?:Z|[+-]\d{2}:\d{2})$/, ""),
+  );
+  const end = event.end
+    ? parseWallClock(event.end.replace(/(?:Z|[+-]\d{2}:\d{2})$/, ""))
+    : start;
+  return start === null || end === null
+    ? null
+    : { start, end, precision: "minute" as const };
+}
 
 function editableTime(event: TimelineDisplayEvent) {
   const time = event.source?.time;
@@ -234,28 +258,30 @@ export function TimelineOverview({
   const [editor, setEditor] = useState<EditorDraft | null>(null);
   const [pending, setPending] = useState<PendingPreview | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<TimelineLaneMode>("events");
+  const [diagnosticsVisible, setDiagnosticsVisible] = useState(true);
+
+  const lanes = useMemo(
+    () =>
+      viewMode === "events"
+        ? []
+        : buildTimelineLanes(seed, events, viewMode),
+    [events, seed, viewMode],
+  );
+  const certaintySummary = useMemo(
+    () => buildTimelineCertaintySummary(events),
+    [events],
+  );
+  const eventById = useMemo(
+    () => new Map(events.map((event) => [event.id, event])),
+    [events],
+  );
+  const rowCount = viewMode === "events" ? events.length : lanes.length;
 
   const axis = useMemo(() => {
     const plotted = events.flatMap((event) => {
       const ghostTime = dragGhost?.eventId === event.id ? dragGhost.time : null;
-      const bounds = ghostTime
-        ? absoluteTemporalBounds(ghostTime)
-        : absoluteTemporalBounds(event.source?.time) ??
-          (event.start
-            ? (() => {
-                const start = parseWallClock(
-                  event.start.replace(/(?:Z|[+-]\d{2}:\d{2})$/, ""),
-                );
-                const end = event.end
-                  ? parseWallClock(
-                      event.end.replace(/(?:Z|[+-]\d{2}:\d{2})$/, ""),
-                    )
-                  : start;
-                return start === null || end === null
-                  ? null
-                  : { start, end, precision: "minute" as const };
-              })()
-            : null);
+      const bounds = displayBounds(event, ghostTime);
       return bounds ? [{ event, bounds }] : [];
     });
     if (!plotted.length) return null;
@@ -440,25 +466,68 @@ export function TimelineOverview({
 
   return (
     <section className={styles.timelinePanel} aria-labelledby="timeline-heading">
-      <header className={styles.timelineHeader}>
-        <div>
-          <span>发生时间 · 比例轴</span>
-          <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
+      <div className={styles.timelineChrome}>
+        <header className={styles.timelineHeader}>
+          <div>
+            <span>发生时间 · 比例轴</span>
+            <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
+          </div>
+          <div className={styles.timelineMeta}>
+            <small>{seed.caseMeta.timelineMeta}</small>
+            <i data-status={validationStatus}>
+              {validationStatus === "passed"
+                ? "验证通过"
+                : validationStatus === "failed"
+                  ? "待复核"
+                  : validationStatus === "loading"
+                    ? "验证中"
+                    : "待验证"}
+            </i>
+            <b data-editable={editable}>{editable ? "可编辑" : "只读"}</b>
+          </div>
+        </header>
+        <div className={styles.timelineControls}>
+          <div aria-label="时间线展示方式" className={styles.modeSwitch} role="group">
+            <span>展示</span>
+            {(
+              [
+                ["events", "事件"],
+                ["people", "人物泳道"],
+                ["locations", "地点泳道"],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                aria-pressed={viewMode === mode}
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            aria-pressed={diagnosticsVisible}
+            className={styles.diagnosticsToggle}
+            onClick={() => setDiagnosticsVisible((visible) => !visible)}
+            type="button"
+          >
+            <span aria-hidden="true" />
+            确定性叠层
+          </button>
         </div>
-        <div className={styles.timelineMeta}>
-          <small>{seed.caseMeta.timelineMeta}</small>
-          <i data-status={validationStatus}>
-            {validationStatus === "passed"
-              ? "验证通过"
-              : validationStatus === "failed"
-                ? "待复核"
-                : validationStatus === "loading"
-                  ? "验证中"
-                  : "待验证"}
-          </i>
-          <b data-editable={editable}>{editable ? "可编辑" : "只读"}</b>
-        </div>
-      </header>
+        {diagnosticsVisible ? (
+          <ul aria-label="时间确定性诊断" className={styles.certaintyLedger}>
+            {certaintySummary.map((item) => (
+              <li data-axis={item.axis} data-certainty={item.kind} key={item.kind}>
+                <span aria-hidden="true" />
+                <b>{item.label}</b>
+                <small>{item.count}</small>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
 
       <div className={styles.axisViewport} data-testid="timeline-proportional-axis">
         {axis ? (
@@ -467,7 +536,7 @@ export function TimelineOverview({
             aria-label="按作品内时间等比例排列的事件轴"
             className={styles.axisSvg}
             role="group"
-            viewBox={`0 0 ${VIEW_WIDTH} ${ROW_TOP + events.length * ROW_HEIGHT + 26}`}
+            viewBox={`0 0 ${VIEW_WIDTH} ${ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT + 26}`}
           >
             <g aria-hidden="true">
               <line className={styles.axisLine} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={AXIS_Y} y2={AXIS_Y} />
@@ -475,7 +544,7 @@ export function TimelineOverview({
                 const x = axis.scale(tick);
                 return (
                   <g key={tick.valueOf()}>
-                    <line className={styles.axisGrid} x1={x} x2={x} y1={AXIS_Y} y2={ROW_TOP + events.length * ROW_HEIGHT} />
+                    <line className={styles.axisGrid} x1={x} x2={x} y1={AXIS_Y} y2={ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT} />
                     <text className={styles.axisTick} textAnchor="middle" x={x} y={31}>
                       {formatAxisTime(tick.valueOf(), axis.includeDate)}
                     </text>
@@ -483,7 +552,7 @@ export function TimelineOverview({
                 );
               })}
             </g>
-            {events.map((timelineEvent, index) => {
+            {viewMode === "events" ? events.map((timelineEvent, index) => {
               const selected = timelineEvent.id === selectedEventId;
               const issue = seed.validationIssues.find((item) =>
                 timelineEvent.issueIds.includes(item.id),
@@ -491,24 +560,7 @@ export function TimelineOverview({
               const issueStatus = issue ? issueStatuses[issue.id] : undefined;
               const ghostTime =
                 dragGhost?.eventId === timelineEvent.id ? dragGhost.time : null;
-              const bounds = ghostTime
-                ? absoluteTemporalBounds(ghostTime)
-                : absoluteTemporalBounds(timelineEvent.source?.time) ??
-                  (timelineEvent.start
-                    ? (() => {
-                        const start = parseWallClock(
-                          timelineEvent.start.replace(/(?:Z|[+-]\d{2}:\d{2})$/, ""),
-                        );
-                        const end = timelineEvent.end
-                          ? parseWallClock(
-                              timelineEvent.end.replace(/(?:Z|[+-]\d{2}:\d{2})$/, ""),
-                            )
-                          : start;
-                        return start === null || end === null
-                          ? null
-                          : { start, end, precision: "minute" as const };
-                      })()
-                    : null);
+              const bounds = displayBounds(timelineEvent, ghostTime);
               const y = ROW_TOP + index * ROW_HEIGHT;
               const startX = bounds ? axis.scale(new Date(bounds.start)) : PLOT_LEFT - 34;
               const endX = bounds ? axis.scale(new Date(bounds.end)) : startX;
@@ -545,6 +597,17 @@ export function TimelineOverview({
                   <text className={styles.rowLocation} x={92} y={y + 13}>
                     {timelineEvent.location}
                   </text>
+                  {diagnosticsVisible ? (
+                    <text
+                      className={styles.certaintyTag}
+                      data-certainty={timelineCertainty(timelineEvent)}
+                      textAnchor="end"
+                      x={PLOT_RIGHT - 28}
+                      y={y - 10}
+                    >
+                      {timelineCertaintyLabel(timelineEvent)}
+                    </text>
+                  ) : null}
                   <line className={styles.rowRule} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} />
                   {bounds ? (
                     isRange ? (
@@ -575,8 +638,103 @@ export function TimelineOverview({
                   {issue ? (
                     <g className={styles.issuePin} data-status={issueStatus}>
                       <circle cx={PLOT_RIGHT - 8} cy={y} r={8} />
-                      <text textAnchor="middle" x={PLOT_RIGHT - 8} y={y + 3}>!</text>
+                      <text textAnchor="middle" x={PLOT_RIGHT - 8} y={y + 3}>{timelineEvent.issueIds.length > 1 ? timelineEvent.issueIds.length : "!"}</text>
                     </g>
+                  ) : null}
+                </g>
+              );
+            }) : lanes.map((lane, index) => {
+              const y = ROW_TOP + index * ROW_HEIGHT;
+              const laneSelected = lane.eventIds.includes(selectedEventId ?? "");
+              const offAxisCount = lane.eventIds.filter((eventId) => {
+                const timelineEvent = eventById.get(eventId);
+                return timelineEvent ? !displayBounds(timelineEvent) : false;
+              }).length;
+              return (
+                <g
+                  className={styles.laneRow}
+                  data-selected={laneSelected}
+                  data-testid={`timeline-lane-${lane.id}`}
+                  key={lane.id}
+                >
+                  <rect className={styles.laneHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
+                  <text className={styles.laneKind} x={28} y={y - 8}>
+                    {lane.kind === "person" ? "人物" : "地点"}
+                  </text>
+                  <text className={styles.laneLabel} x={28} y={y + 9}>
+                    {lane.label}
+                  </text>
+                  <text className={styles.laneCount} textAnchor="end" x={PLOT_LEFT - 18} y={y + 9}>
+                    {lane.eventIds.length} EVENT{lane.eventIds.length === 1 ? "" : "S"}
+                  </text>
+                  <line className={styles.rowRule} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={y} y2={y} />
+                  {lane.eventIds.map((eventId, markerIndex) => {
+                    const timelineEvent = eventById.get(eventId);
+                    if (!timelineEvent) return null;
+                    const bounds = displayBounds(timelineEvent);
+                    const certainty = timelineCertainty(timelineEvent);
+                    const selected = timelineEvent.id === selectedEventId;
+                    const issue = seed.validationIssues.find((item) =>
+                      timelineEvent.issueIds.includes(item.id),
+                    );
+                    const issueStatus = issue ? issueStatuses[issue.id] : undefined;
+                    const x = bounds
+                      ? axis.scale(new Date(bounds.start))
+                      : PLOT_LEFT - 34 - markerIndex * 11;
+                    const endX = bounds ? axis.scale(new Date(bounds.end)) : x;
+                    return (
+                      <g
+                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineEvent.time}`}
+                        aria-pressed={selected}
+                        className={styles.laneMarker}
+                        data-certainty={certainty}
+                        data-selected={selected}
+                        key={eventId}
+                        onClick={() => onSelectEvent(eventId)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelectEvent(eventId);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <title>{`${timelineEvent.label} · ${timelineEvent.time}`}</title>
+                        {bounds && bounds.end > bounds.start ? (
+                          <rect
+                            className={styles.laneRange}
+                            height={8}
+                            rx={4}
+                            width={Math.max(10, endX - x)}
+                            x={x}
+                            y={y - 4}
+                          />
+                        ) : (
+                          <>
+                            {diagnosticsVisible && certainty === "approximate" ? (
+                              <circle className={styles.laneHalo} cx={x} cy={y} r={12} />
+                            ) : null}
+                            <circle className={styles.lanePoint} cx={x} cy={y} r={6} />
+                          </>
+                        )}
+                        {issue ? (
+                          <circle
+                            className={styles.laneIssueRing}
+                            cx={x}
+                            cy={y}
+                            data-issue={issue.id}
+                            data-status={issueStatus}
+                            r={10}
+                          />
+                        ) : null}
+                      </g>
+                    );
+                  })}
+                  {offAxisCount ? (
+                    <text className={styles.laneOffAxis} textAnchor="end" x={PLOT_RIGHT} y={y + 18}>
+                      轴外 {offAxisCount}
+                    </text>
                   ) : null}
                 </g>
               );
@@ -590,35 +748,86 @@ export function TimelineOverview({
         )}
       </div>
 
-      <ol className={styles.mobileList} aria-label="窄屏事件时间清单">
-        {events.map((timelineEvent) => {
-          const selected = timelineEvent.id === selectedEventId;
-          const issue = seed.validationIssues.find((item) =>
-            timelineEvent.issueIds.includes(item.id),
-          );
-          return (
-            <li key={timelineEvent.id}>
-              <button
-                aria-pressed={selected}
-                data-selected={selected}
-                onClick={() => onSelectEvent(timelineEvent.id)}
-                type="button"
-              >
-                <time>{timelineEvent.time}</time>
-                <span><strong>{timelineEvent.label}</strong><small>{timelineEvent.location}</small></span>
-                <i data-issue={Boolean(issue)}>{issue ? "!" : "·"}</i>
-              </button>
-              <button
-                disabled={!editable}
-                onClick={() => openEditor(timelineEvent)}
-                type="button"
-              >
-                编辑时间
-              </button>
+      {viewMode === "events" ? (
+        <ol className={styles.mobileList} aria-label="窄屏事件时间清单">
+          {events.map((timelineEvent) => {
+            const selected = timelineEvent.id === selectedEventId;
+            const issue = seed.validationIssues.find((item) =>
+              timelineEvent.issueIds.includes(item.id),
+            );
+            return (
+              <li key={timelineEvent.id}>
+                <button
+                  aria-pressed={selected}
+                  data-selected={selected}
+                  onClick={() => onSelectEvent(timelineEvent.id)}
+                  type="button"
+                >
+                  <time>{timelineEvent.time}</time>
+                  <span>
+                    <strong>{timelineEvent.label}</strong>
+                    <small>{timelineEvent.location}</small>
+                  </span>
+                  {diagnosticsVisible ? (
+                    <em data-certainty={timelineCertainty(timelineEvent)}>
+                      {timelineCertaintyLabel(timelineEvent)}
+                    </em>
+                  ) : null}
+                  <i data-issue={Boolean(issue)}>{issue ? timelineEvent.issueIds.length : "·"}</i>
+                </button>
+                <button
+                  disabled={!editable}
+                  onClick={() => openEditor(timelineEvent)}
+                  type="button"
+                >
+                  编辑时间
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <ol
+          aria-label={viewMode === "people" ? "窄屏人物泳道" : "窄屏地点泳道"}
+          className={styles.mobileLaneList}
+        >
+          {lanes.map((lane) => (
+            <li data-selected={lane.eventIds.includes(selectedEventId ?? "")} key={lane.id}>
+              <header>
+                <span>{lane.kind === "person" ? "人物" : "地点"}</span>
+                <strong>{lane.label}</strong>
+                <small>{lane.eventIds.length} 个事件</small>
+              </header>
+              <div>
+                {lane.eventIds.map((eventId) => {
+                  const timelineEvent = eventById.get(eventId);
+                  if (!timelineEvent) return null;
+                  return (
+                    <button
+                      aria-pressed={eventId === selectedEventId}
+                      data-selected={eventId === selectedEventId}
+                      key={eventId}
+                      onClick={() => onSelectEvent(eventId)}
+                      type="button"
+                    >
+                      <time>{timelineEvent.time}</time>
+                      <span>
+                        <strong>{timelineEvent.label}</strong>
+                        <small>
+                          {timelineCertaintyLabel(timelineEvent)}
+                          {timelineEvent.issueIds.length
+                            ? ` · ${timelineEvent.issueIds.length} 个问题`
+                            : ""}
+                        </small>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </li>
-          );
-        })}
-      </ol>
+          ))}
+        </ol>
+      )}
 
       <footer className={styles.timelineFooter}>
         <p role="status">{notice ?? (editable ? "拖动菱形或区间带，松开后先查看影响。" : "历史与候选内容保持只读。")}</p>
