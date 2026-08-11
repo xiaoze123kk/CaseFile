@@ -31,6 +31,7 @@ from pydantic import BaseModel, create_model
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
 from casefile.agent_runtime.brief_to_draft_v10.workflow import run_v10_generation
+from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -57,6 +58,7 @@ from casefile.agent_runtime.models import (
     ToolMetrics,
 )
 from casefile.agent_runtime.prompt import (
+    COMPONENT_GENERATION_PROMPT_VERSIONS,
     anchor_extract_input,
     brief_intake_questions_input,
     brief_intake_synthesize_input,
@@ -394,11 +396,7 @@ class FakeProvider:
         return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
-        if request.prompt_version in {
-            "brief-to-draft-v8",
-            "brief-to-draft-v9",
-            "brief-to-draft-v10",
-        }:
+        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
             async def call_component(
                 _instructions: str,
@@ -421,7 +419,7 @@ class FakeProvider:
                     },
                 )
                 output = _fake_v8_output(output_type)
-                if request.prompt_version == "brief-to-draft-v10":
+                if request.prompt_version in {"brief-to-draft-v10", "brief-to-draft-v11"}:
                     _add_fake_v10_matrix_plan(output_type, output)
                 if output_type.__name__ == "ResolutionGovernanceIRV1":
                     output["resolution_specs"][0]["conclusion_mode"] = request.brief[
@@ -446,7 +444,9 @@ class FakeProvider:
                 return output, usage
 
             runner = (
-                run_v10_generation
+                run_v11_generation
+                if request.prompt_version == "brief-to-draft-v11"
+                else run_v10_generation
                 if request.prompt_version == "brief-to-draft-v10"
                 else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
@@ -733,11 +733,7 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        if request.prompt_version in {
-            "brief-to-draft-v8",
-            "brief-to-draft-v9",
-            "brief-to-draft-v10",
-        }:
+        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
             async def call_component(
                 instructions: str,
@@ -767,7 +763,9 @@ class OpenAIAgentsProvider:
                 )
 
             runner = (
-                run_v10_generation
+                run_v11_generation
+                if request.prompt_version == "brief-to-draft-v11"
+                else run_v10_generation
                 if request.prompt_version == "brief-to-draft-v10"
                 else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
@@ -986,11 +984,7 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
-        if request.prompt_version in {
-            "brief-to-draft-v8",
-            "brief-to-draft-v9",
-            "brief-to-draft-v10",
-        }:
+        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
             async def call_component(
                 instructions: str,
@@ -1016,7 +1010,9 @@ class DeepSeekAgentsProvider:
                 )
 
             runner = (
-                run_v10_generation
+                run_v11_generation
+                if request.prompt_version == "brief-to-draft-v11"
+                else run_v10_generation
                 if request.prompt_version == "brief-to-draft-v10"
                 else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
@@ -1463,8 +1459,8 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             "constraints": [node("constraint", "作者边界", ["resolution"])],
             "structure_locks": [node("lock", "事件标题锁", ["discovery"])],
         }
-    if output_type.__name__ == "StoryWorldIRV1":
-        return {
+    if output_type.__name__ in {"StoryWorldIRV1", "StoryWorldIRV2"}:
+        output = {
             "entities": [
                 {
                     "local_key": "author",
@@ -1499,11 +1495,19 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                     **common,
                     "title": "发现关键记录",
                     "truth_status": "canon_true",
-                    "time": {
-                        "start": "2026-08-08T08:00:00Z",
-                        "end": None,
-                        "precision": "minute",
-                    },
+                    "time": (
+                        {
+                            "kind": "exact",
+                            "value": "2026-08-08T08:00",
+                            "precision": "minute",
+                        }
+                        if output_type.__name__ == "StoryWorldIRV2"
+                        else {
+                            "start": "2026-08-08T08:00:00Z",
+                            "end": None,
+                            "precision": "minute",
+                        }
+                    ),
                     "participant_keys": ["author"],
                     "location_key": "archive",
                     "cause_keys": [],
@@ -1512,6 +1516,9 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 }
             ],
         }
+        if output_type.__name__ == "StoryWorldIRV2":
+            output["schema_id"] = "story-world-ir-v2"
+        return output
     if output_type.__name__ in {"EvidenceLogicIRV1", "EvidenceLogicIRV2"}:
         output = {
             "information_units": [

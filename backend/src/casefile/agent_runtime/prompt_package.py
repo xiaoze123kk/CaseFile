@@ -22,6 +22,11 @@ from casefile.agent_runtime.brief_to_draft_v9.contracts import (
     DomainDraftInputV1,
     PlannerInputV1,
 )
+from casefile.agent_runtime.brief_to_draft_v11.contracts import (
+    DomainDraftInputV2,
+    PlannerInputV2,
+    StoryWorldIRV2,
+)
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 
@@ -77,12 +82,15 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
     {
         "brief-to-draft-planner-input-v1": PlannerInputV1,
         "brief-to-draft-domain-input-v1": DomainDraftInputV1,
+        "brief-to-draft-planner-input-v2": PlannerInputV2,
+        "brief-to-draft-domain-input-v2": DomainDraftInputV2,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
     {
         "case-blueprint-v1": CaseBlueprintV1,
         "story-world-ir-v1": StoryWorldIRV1,
+        "story-world-ir-v2": StoryWorldIRV2,
         "evidence-logic-ir-v1": EvidenceLogicIRV1,
         "evidence-logic-ir-v2": EvidenceLogicIRV2,
         "resolution-governance-ir-v1": ResolutionGovernanceIRV1,
@@ -95,6 +103,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
     {
         ("brief-to-draft-pipeline-v9", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v10", TOOLSET_VERSION),
+        ("brief-to-draft-pipeline-v11", TOOLSET_VERSION),
     }
 )
 

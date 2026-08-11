@@ -17,7 +17,10 @@ from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     CandidateStrategy,
 )
-from casefile.agent_runtime.prompt import agent_version_for_task
+from casefile.agent_runtime.prompt import (
+    COMPONENT_GENERATION_PROMPT_VERSIONS,
+    agent_version_for_task,
+)
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.agent_collaboration import (
@@ -1595,13 +1598,13 @@ class WorkflowService:
             )
             if task is None:
                 raise not_found("TaskRun")
-            if task.task_type != "brief_to_draft" or task.prompt_version not in {
-                "brief-to-draft-v8",
-                "brief-to-draft-v9",
-            }:
+            if (
+                task.task_type != "brief_to_draft"
+                or task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS
+            ):
                 raise ApplicationError(
                     "task_resume_not_supported",
-                    "只有 v8 或 v9 深稿生成任务支持从失败阶段恢复。",
+                    "只有部件化深稿生成任务支持从失败阶段恢复。",
                     status_code=409,
                 )
             if task.status != "failed":

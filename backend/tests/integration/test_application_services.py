@@ -24,6 +24,7 @@ from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
 from casefile.application.snapshot import casefile_content_hash
 from casefile.application.v1_editing import V1EditingService
+from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
@@ -243,6 +244,61 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
         assert b"sk-test-workflow-secret" not in bytes(ciphertext)
         assert snapshot_json == draft["content"]
         assert snapshot_hash == casefile_content_hash(draft["content"])
+
+
+def test_v11_worker_candidate_adopts_into_workbench_ready_current_draft(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v11",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="v11-workbench-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+
+        assert worker.run_once() is True
+        with factory() as session:
+            workflow = WorkflowService(session)
+            task = workflow.get_task(actor_id, project_id, task_run_id)
+            draft_before = CaseFileService(session).get_draft(actor_id, project_id)
+
+        assert task["status"] == "succeeded"
+        assert task["prompt_version"] == "brief-to-draft-v11"
+        assert task["result_snapshot_id"] is None
+        assert draft_before["content"] is None
+        assert {step["component_id"] for step in task["component_steps"]} == {
+            "context_pack_builder",
+            "case_blueprint_planner",
+            "story_world",
+            "evidence_logic",
+            "resolution_governance",
+            "reference_linker",
+            "casefile_compiler",
+            "quality_repair_gate",
+        }
+
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+
+        with factory() as session:
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            context = WorkbenchReadModel(session).get_context(actor_id, project_id)
+        content = draft["content"]
+        assert content["events"][0]["time"]["kind"] == "exact"
+        assert content["locations"][0]["spatial_position"]["coordinate_system"] == (
+            "schematic"
+        )
+        assert len(content["hypotheses"]) == 2
+        assert all(item["evidence_assessments"] for item in content["hypotheses"])
+        assert context["draft_id"] == draft["draft_id"]
+        assert context["draft_revision"] == 2
+        assert context["validation"]["status"] == "passed"
 
 
 def test_adoption_roundtrips_evidence_assessment_reference_metadata(

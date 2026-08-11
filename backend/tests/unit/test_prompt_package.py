@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
-from casefile.agent_runtime.prompt import V10_GENERATION_AGENT_VERSION
+from casefile.agent_runtime.prompt import (
+    V10_GENERATION_AGENT_VERSION,
+    V11_GENERATION_AGENT_VERSION,
+)
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package
 from casefile.agent_runtime.prompt_repository import (
     PromptRepository,
@@ -182,3 +185,53 @@ def test_v10_package_generates_explicit_competing_evidence_assessments() -> None
         for hypothesis in hypotheses
         for assessment in hypothesis["evidence_assessments"]
     } == {"supports", "contradicts"}
+
+
+def test_v11_package_generates_workbench_ready_candidate() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=323,
+        prompt_version="brief-to-draft-v11",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v11",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v11",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v11",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V11_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    assert result.candidate["events"][0]["time"] == {
+        "kind": "exact",
+        "value": "2026-08-08T08:00",
+        "precision": "minute",
+    }
+    assert result.candidate["locations"][0]["spatial_position"] == {
+        "coordinate_system": "schematic",
+        "x": 50.0,
+        "y": 50.0,
+    }
+    assert len(result.candidate["hypotheses"]) == 2
+    started = [
+        payload
+        for event_type, _stage, payload in events
+        if event_type == "agent.step.started"
+    ]
+    assert any(item["schema_id"] == "draft-context-pack-v2" for item in started)
+    assert any(item["schema_id"] == "story-world-ir-v2" for item in started)
+    assert {
+        item["package_version"]
+        for item in started
+        if "package_version" in item
+    } == {"brief-to-draft-v11"}

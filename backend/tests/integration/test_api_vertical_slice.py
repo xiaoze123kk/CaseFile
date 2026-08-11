@@ -16,6 +16,7 @@ from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
+from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
@@ -24,7 +25,7 @@ from casefile.agent_runtime.models import (
     GenerationRequest,
     GenerationResult,
 )
-from casefile.agent_runtime.providers import _fake_v8_output
+from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
@@ -115,6 +116,8 @@ class RecoverableV8Provider(FakeProvider):
                 )
                 raise ContractValidationError([issue])
             output = _fake_v8_output(output_type)
+            if request.prompt_version in {"brief-to-draft-v10", "brief-to-draft-v11"}:
+                _add_fake_v10_matrix_plan(output_type, output)
             if component_id == "resolution_governance":
                 output["resolution_specs"][0]["conclusion_mode"] = request.brief["conclusion_mode"]
             request.emit(
@@ -130,7 +133,12 @@ class RecoverableV8Provider(FakeProvider):
             )
             return output, {}
 
-        return asyncio.run(run_v8_generation(request, call_component=call_component))
+        runner = (
+            run_v11_generation
+            if request.prompt_version == "brief-to-draft-v11"
+            else run_v8_generation
+        )
+        return asyncio.run(runner(request, call_component=call_component))
 
 
 def _brief(source_record_id: int) -> dict[str, object]:
@@ -500,17 +508,21 @@ def test_settings_brief_generation_sse_and_completion_gate(
             config=WorkerConfig(worker_id="api-recovery-worker"),
             provider_factory=lambda _task: recoverable_provider,
         )
-        recoverable_queued = client.post(
-            f"/api/v1/projects/{project_id}/tasks/generate",
-            headers=_identity(actor_id),
-            json={
-                "brief_version_id": confirmed.json()["brief_version_id"],
-                "expected_draft_id": empty_draft.json()["draft_id"],
-                "expected_draft_revision": 1,
-                "provider": "deepseek",
-                "candidate_strategy": "atmosphere_first",
-            },
-        )
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v11",
+        ):
+            recoverable_queued = client.post(
+                f"/api/v1/projects/{project_id}/tasks/generate",
+                headers=_identity(actor_id),
+                json={
+                    "brief_version_id": confirmed.json()["brief_version_id"],
+                    "expected_draft_id": empty_draft.json()["draft_id"],
+                    "expected_draft_revision": 1,
+                    "provider": "deepseek",
+                    "candidate_strategy": "atmosphere_first",
+                },
+            )
         assert recoverable_queued.status_code == 202
         recoverable_task_id = recoverable_queued.json()["task_run_id"]
         assert recovery_worker.run_once() is True
@@ -545,6 +557,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         ).json()
         assert recovered_task["status"] == "succeeded"
         assert recovered_task["attempt_count"] == 2
+        assert recovered_task["prompt_version"] == "brief-to-draft-v11"
         second_attempt_steps = [
             step for step in recovered_task["component_steps"] if step["attempt_no"] == 2
         ]

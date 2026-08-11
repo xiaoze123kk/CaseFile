@@ -20,6 +20,15 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     StoryWorldIRV1,
     TimeIR,
 )
+from casefile.agent_runtime.brief_to_draft_v11.contracts import (
+    ApproximateTemporalPositionIRV2,
+    ExactTemporalPositionIRV2,
+    RangeTemporalPositionIRV2,
+    RelativeTemporalPositionIRV2,
+    StoryWorldIRV2,
+    TemporalPositionIRV2,
+    UnknownTemporalPositionIRV2,
+)
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
 
@@ -55,7 +64,7 @@ class SourceLocation:
 @dataclass(frozen=True, slots=True)
 class LinkedDraftV1:
     blueprint: CaseBlueprintV1
-    story: StoryWorldIRV1
+    story: StoryWorldIRV1 | StoryWorldIRV2
     evidence: EvidenceLogicIR
     governance: ResolutionGovernanceIRV1
     id_directory: dict[str, DirectoryEntry]
@@ -68,7 +77,7 @@ class LinkerValidationError(ContractValidationError):
 
 def link_draft(
     blueprint: CaseBlueprintV1,
-    story: StoryWorldIRV1,
+    story: StoryWorldIRV1 | StoryWorldIRV2,
     evidence: EvidenceLogicIR,
     governance: ResolutionGovernanceIRV1,
     *,
@@ -166,7 +175,20 @@ def compile_casefile(
     def refs(keys: Iterable[str]) -> list[dict[str, str]]:
         return [ref(key) for key in keys]
 
-    def temporal_position(value: TimeIR) -> dict[str, Any]:
+    def temporal_position(value: TimeIR | TemporalPositionIRV2) -> dict[str, Any]:
+        if isinstance(value, (ExactTemporalPositionIRV2, ApproximateTemporalPositionIRV2)):
+            return value.model_dump(mode="json")
+        if isinstance(value, RangeTemporalPositionIRV2):
+            return value.model_dump(mode="json")
+        if isinstance(value, RelativeTemporalPositionIRV2):
+            return {
+                "kind": "relative",
+                "anchor_event_ref": ref(value.anchor_event_key),
+                "relation": value.relation,
+                "offset_minutes": value.offset_minutes,
+            }
+        if isinstance(value, UnknownTemporalPositionIRV2):
+            return {"kind": "unknown"}
         precision = str(value.precision)
         if precision == "unknown":
             return {"kind": "unknown"}
@@ -476,7 +498,7 @@ def compile_casefile(
 
 
 def _restore_required_nullable_fields(candidate: dict[str, Any]) -> None:
-    """Restore only the CaseFile v1 fields that are both required and nullable."""
+    """Restore only current CaseFile fields that are both required and nullable."""
 
     version = candidate.get("version")
     if isinstance(version, dict):
@@ -510,6 +532,8 @@ def _restore_required_nullable_fields(candidate: dict[str, Any]) -> None:
         time = event.get("time")
         if isinstance(time, dict) and "kind" not in time:
             time.setdefault("end", None)
+        elif isinstance(time, dict) and time.get("kind") == "relative":
+            time.setdefault("offset_minutes", None)
 
     for information in candidate.get("information_units", []):
         if isinstance(information, dict):
@@ -721,13 +745,18 @@ def _reference_rules(
         ]
     if collection == "events":
         location = item.location_key
-        return [
+        rules = [
             ("participant_keys", item.participant_keys, {"entities"}),
             ("location_key", [] if location is None else [location], {"locations"}),
             ("cause_keys", item.cause_keys, {"events"}),
             ("effect_keys", item.effect_keys, {"events"}),
             ("observed_by_keys", item.observed_by_keys, {"entities"}),
         ]
+        if isinstance(item.time, RelativeTemporalPositionIRV2):
+            rules.append(
+                ("time/anchor_event_key", [item.time.anchor_event_key], {"events"})
+            )
+        return rules
     if collection == "information_units":
         source = item.source_event_key
         availability = item.availability

@@ -28,7 +28,18 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     ResolutionGovernanceIRV1,
     StoryWorldIRV1,
 )
+from casefile.agent_runtime.brief_to_draft_v11.contracts import (
+    CoordinatePairV1,
+    DraftContextPackV2,
+    RelativeTemporalPositionIRV2,
+    StoryWorldIRV2,
+    Wgs84SpatialPositionIRV2,
+)
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
+from casefile.agent_runtime.prompt import (
+    COMPETITION_MATRIX_PROMPT_VERSIONS,
+    PROMPT_PACKAGE_GENERATION_VERSIONS,
+)
 from casefile.agent_runtime.prompt_package import (
     PromptPackageError,
     output_type_for_component,
@@ -57,7 +68,7 @@ _STEP_SCHEMA = {
     "quality_repair_gate": "casefile-v1",
 }
 _V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
-_PACKAGE_PROMPT_VERSIONS = frozenset({"brief-to-draft-v9", "brief-to-draft-v10"})
+_PACKAGE_PROMPT_VERSIONS = PROMPT_PACKAGE_GENERATION_VERSIONS
 
 _DOMAIN_REFERENCE_CONTRACTS = {
     "story_world": {
@@ -104,6 +115,33 @@ _DOMAIN_REFERENCE_CONTRACTS = {
     },
 }
 
+_V11_STORY_REFERENCE_CONTRACT = {
+    **_DOMAIN_REFERENCE_CONTRACTS["story_world"],
+    "events.time.anchor_event_key": ["events"],
+}
+_LABELED_COORDINATE_PATTERNS = (
+    re.compile(
+        r"(?:latitude|lat|纬度|北纬)\s*[:=：]?\s*"
+        r"(?P<lat>-?\d{1,2}(?:\.\d+)?)\s*(?:°|度)?\s*[,，;；/\s]+"
+        r"(?:longitude|lon|经度|东经)\s*[:=：]?\s*"
+        r"(?P<lon>-?\d{1,3}(?:\.\d+)?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:longitude|lon|经度|东经)\s*[:=：]?\s*"
+        r"(?P<lon>-?\d{1,3}(?:\.\d+)?)\s*(?:°|度)?\s*[,，;；/\s]+"
+        r"(?:latitude|lat|纬度|北纬)\s*[:=：]?\s*"
+        r"(?P<lat>-?\d{1,2}(?:\.\d+)?)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:coordinates?|坐标)\s*[:=：]?\s*[（(]?\s*"
+        r"(?P<lat>-?\d{1,2}(?:\.\d+)?)\s*[,，]\s*"
+        r"(?P<lon>-?\d{1,3}(?:\.\d+)?)",
+        re.IGNORECASE,
+    ),
+)
+
 
 async def run_v8_generation(
     request: GenerationRequest,
@@ -113,6 +151,8 @@ async def run_v8_generation(
     """Run the six business stages with one bounded targeted domain repair."""
 
     _validate_frozen_prompt_release(request)
+    is_v11 = request.prompt_version == "brief-to-draft-v11"
+    uses_competition_matrix = request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
     context = _build_context_pack(request)
@@ -121,6 +161,7 @@ async def run_v8_generation(
         "context_pack_builder",
         "context_building",
         context.model_dump(mode="json"),
+        schema_id="draft-context-pack-v2" if is_v11 else "draft-context-pack-v1",
     )
 
     planner_output, planner_usage = await _model_step(
@@ -141,14 +182,26 @@ async def run_v8_generation(
         output_type: type[BaseModel],
         repair_issues: list[dict[str, Any]] | None = None,
     ) -> tuple[BaseModel, dict[str, Any]]:
+        reference_contract = (
+            _V11_STORY_REFERENCE_CONTRACT
+            if is_v11 and component_id == "story_world"
+            else _DOMAIN_REFERENCE_CONTRACTS[component_id]
+        )
         input_payload: dict[str, Any] = {
             "context_pack": context.model_dump(mode="json"),
             "blueprint": blueprint.model_dump(mode="json"),
             "reference_directory": _reference_directory(blueprint),
-            "reference_contract": _DOMAIN_REFERENCE_CONTRACTS[component_id],
-            "allowed_reference_values": _allowed_reference_values(blueprint, component_id),
+            "reference_contract": reference_contract,
+            "allowed_reference_values": _allowed_reference_values(
+                blueprint, reference_contract
+            ),
             **({"targeted_repair_issues": repair_issues} if repair_issues else {}),
         }
+        if is_v11:
+            input_payload["allowed_wgs84_coordinates"] = [
+                item.model_dump(mode="json")
+                for item in _extract_allowed_wgs84_coordinates(request.brief)
+            ]
         if request.prompt_version == "brief-to-draft-v8":
             input_payload.update(
                 {
@@ -188,11 +241,14 @@ async def run_v8_generation(
 
     evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
         EvidenceLogicIRV2
-        if request.prompt_version == "brief-to-draft-v10"
+        if uses_competition_matrix
         else EvidenceLogicIRV1
     )
+    story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] = (
+        StoryWorldIRV2 if is_v11 else StoryWorldIRV1
+    )
     domain_results = await asyncio.gather(
-        draft_domain("story_world", "story", StoryWorldIRV1),
+        draft_domain("story_world", "story", story_output_type),
         draft_domain("evidence_logic", "evidence", evidence_output_type),
         draft_domain(
             "resolution_governance",
@@ -200,10 +256,12 @@ async def run_v8_generation(
             ResolutionGovernanceIRV1,
         ),
     )
-    story = StoryWorldIRV1.model_validate(domain_results[0][0])
+    story: StoryWorldIRV1 | StoryWorldIRV2 = story_output_type.model_validate(
+        domain_results[0][0]
+    )
     evidence: EvidenceLogicIR = (
         EvidenceLogicIRV2.model_validate(domain_results[1][0])
-        if request.prompt_version == "brief-to-draft-v10"
+        if uses_competition_matrix
         else EvidenceLogicIRV1.model_validate(domain_results[1][0])
     )
     governance = ResolutionGovernanceIRV1.model_validate(domain_results[2][0])
@@ -212,12 +270,24 @@ async def run_v8_generation(
     repaired_components: set[str] = set()
     for gate_attempt in range(2):
         try:
-            if request.prompt_version == "brief-to-draft-v10":
+            if uses_competition_matrix:
                 if not isinstance(evidence, EvidenceLogicIRV2):
-                    raise RuntimeError("brief-to-draft-v10 must use EvidenceLogicIRV2")
-                matrix_issues = _evidence_assessment_issues(evidence)
+                    raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
+                matrix_issues = _evidence_assessment_issues(
+                    evidence,
+                    strict_competition=is_v11,
+                )
                 if matrix_issues:
                     raise LinkerValidationError(matrix_issues)
+            if is_v11:
+                if not isinstance(story, StoryWorldIRV2):
+                    raise RuntimeError("brief-to-draft-v11 must use StoryWorldIRV2")
+                story_issues = _v11_story_issues(
+                    story,
+                    _extract_allowed_wgs84_coordinates(request.brief),
+                )
+                if story_issues:
+                    raise LinkerValidationError(story_issues)
             linked = _link_step(request, blueprint, story, evidence, governance)
             candidate = _compile_step(request, linked)
             _quality_gate(request, candidate)
@@ -251,7 +321,7 @@ async def run_v8_generation(
             repair_tasks = []
             repair_order: list[str] = []
             for component_id, prompt_component, output_type in (
-                ("story_world", "story", StoryWorldIRV1),
+                ("story_world", "story", story_output_type),
                 ("evidence_logic", "evidence", evidence_output_type),
                 (
                     "resolution_governance",
@@ -275,11 +345,11 @@ async def run_v8_generation(
                 usage_records.append(usage)
                 repaired_components.add(component_id)
                 if component_id == "story_world":
-                    story = StoryWorldIRV1.model_validate(value)
+                    story = story_output_type.model_validate(value)
                 elif component_id == "evidence_logic":
                     evidence = (
                         EvidenceLogicIRV2.model_validate(value)
-                        if request.prompt_version == "brief-to-draft-v10"
+                        if uses_competition_matrix
                         else EvidenceLogicIRV1.model_validate(value)
                     )
                 else:
@@ -287,8 +357,12 @@ async def run_v8_generation(
     raise RuntimeError("brief-to-draft v8 quality gate exhausted")
 
 
-def _evidence_assessment_issues(evidence: EvidenceLogicIRV2) -> list[dict[str, Any]]:
-    """Require v10 to assess every path-used information item across competitors."""
+def _evidence_assessment_issues(
+    evidence: EvidenceLogicIRV2,
+    *,
+    strict_competition: bool = False,
+) -> list[dict[str, Any]]:
+    """Require a complete path-grounded matrix across competing hypotheses."""
 
     hypotheses_by_key = {item.local_key: item for item in evidence.hypotheses}
     information_keys = {item.local_key for item in evidence.information_units}
@@ -310,12 +384,45 @@ def _evidence_assessment_issues(evidence: EvidenceLogicIRV2) -> list[dict[str, A
 
     issues: list[dict[str, Any]] = []
     for competitors in hypotheses_by_resolution.values():
+        competitor_keys = {item.local_key for item in competitors}
+        if strict_competition:
+            for hypothesis in competitors:
+                expected_competitors = competitor_keys - {hypothesis.local_key}
+                actual_competitors = set(hypothesis.competing_hypothesis_keys)
+                if actual_competitors != expected_competitors:
+                    issues.append(
+                        {
+                            "code": "competing_hypothesis_group_incomplete",
+                            "path": (
+                                f"/hypotheses/{hypothesis.local_key}/"
+                                "competing_hypothesis_keys"
+                            ),
+                            "message": "竞争假设引用必须准确包含同一待解问题的全部其他假设。",
+                            "component_id": "evidence_logic",
+                            "failure_layer": "evidence_matrix",
+                            "schema_id": "evidence-logic-ir-v2",
+                            "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                        }
+                    )
         if len(competitors) < 2:
             continue
         required_information = set().union(
             *(used_information_by_hypothesis[item.local_key] for item in competitors)
         )
         for hypothesis in competitors:
+            if strict_competition:
+                if not used_information_by_hypothesis[hypothesis.local_key]:
+                    issues.append(
+                        {
+                            "code": "competing_hypothesis_path_missing",
+                            "path": f"/reasoning_paths/{hypothesis.local_key}",
+                            "message": "每个竞争假设必须有一条使用信息输入的对应推理路径。",
+                            "component_id": "evidence_logic",
+                            "failure_layer": "evidence_matrix",
+                            "schema_id": "evidence-logic-ir-v2",
+                            "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                        }
+                    )
             assessments = list(getattr(hypothesis, "evidence_assessments", []))
             assessed_information = [item.information_key for item in assessments]
             for index, information_key in enumerate(assessed_information):
@@ -346,7 +453,155 @@ def _evidence_assessment_issues(evidence: EvidenceLogicIRV2) -> list[dict[str, A
                         "ir_path": f"/hypotheses/{hypothesis.local_key}",
                     }
                 )
+            if strict_competition:
+                for information_key in sorted(
+                    set(assessed_information) - required_information
+                ):
+                    issues.append(
+                        {
+                            "code": "unscoped_evidence_assessment",
+                            "path": (
+                                f"/hypotheses/{hypothesis.local_key}/"
+                                "evidence_assessments"
+                            ),
+                            "message": (
+                                f"信息 {information_key!r} 未被竞争组推理路径使用，"
+                                "不应进入比较矩阵。"
+                            ),
+                            "component_id": "evidence_logic",
+                            "failure_layer": "evidence_matrix",
+                            "schema_id": "evidence-logic-ir-v2",
+                            "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                        }
+                    )
     return issues
+
+
+def _v11_story_issues(
+    story: StoryWorldIRV2,
+    allowed_wgs84_coordinates: list[CoordinatePairV1],
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    allowed = {(item.latitude, item.longitude) for item in allowed_wgs84_coordinates}
+    for location in story.locations:
+        position = location.spatial_position
+        if isinstance(position, Wgs84SpatialPositionIRV2) and (
+            position.latitude,
+            position.longitude,
+        ) not in allowed:
+            issues.append(
+                {
+                    "code": "wgs84_not_explicit_in_brief",
+                    "path": f"/locations/{location.local_key}/spatial_position",
+                    "message": "WGS84 坐标必须逐值命中冻结 Brief 的显式坐标白名单。",
+                    "component_id": "story_world",
+                    "failure_layer": "spatial_grounding",
+                    "schema_id": "story-world-ir-v2",
+                    "ir_path": f"/locations/{location.local_key}",
+                }
+            )
+
+    relative_anchors: dict[str, str] = {}
+    event_keys = {item.local_key for item in story.events}
+    for event in story.events:
+        if not isinstance(event.time, RelativeTemporalPositionIRV2):
+            continue
+        anchor = event.time.anchor_event_key
+        relative_anchors[event.local_key] = anchor
+        if anchor not in event_keys:
+            issues.append(
+                {
+                    "code": "relative_time_anchor_unknown",
+                    "path": f"/events/{event.local_key}/time/anchor_event_key",
+                    "message": "相对时间锚点必须引用本 Story 输出中的事件。",
+                    "component_id": "story_world",
+                    "failure_layer": "temporal_grounding",
+                    "schema_id": "story-world-ir-v2",
+                    "ir_path": f"/events/{event.local_key}/time",
+                }
+            )
+        elif anchor == event.local_key:
+            issues.append(
+                {
+                    "code": "relative_time_self_anchor",
+                    "path": f"/events/{event.local_key}/time/anchor_event_key",
+                    "message": "事件不能把自身作为相对时间锚点。",
+                    "component_id": "story_world",
+                    "failure_layer": "temporal_grounding",
+                    "schema_id": "story-world-ir-v2",
+                    "ir_path": f"/events/{event.local_key}/time",
+                }
+            )
+
+    for start in sorted(relative_anchors):
+        seen: set[str] = set()
+        current = start
+        while current in relative_anchors:
+            if current in seen:
+                issues.append(
+                    {
+                        "code": "relative_time_cycle",
+                        "path": f"/events/{start}/time/anchor_event_key",
+                        "message": "相对事件时间不能形成循环锚定。",
+                        "component_id": "story_world",
+                        "failure_layer": "temporal_grounding",
+                        "schema_id": "story-world-ir-v2",
+                        "ir_path": f"/events/{start}/time",
+                    }
+                )
+                break
+            seen.add(current)
+            current = relative_anchors[current]
+    return issues
+
+
+def _extract_allowed_wgs84_coordinates(brief: dict[str, Any]) -> list[CoordinatePairV1]:
+    coordinates: set[tuple[float, float]] = set()
+
+    def add(latitude: object, longitude: object) -> None:
+        if (
+            isinstance(latitude, bool)
+            or isinstance(longitude, bool)
+            or not isinstance(latitude, (int, float, str))
+            or not isinstance(longitude, (int, float, str))
+        ):
+            return
+        try:
+            pair = CoordinatePairV1(latitude=float(latitude), longitude=float(longitude))
+        except (TypeError, ValueError):
+            return
+        coordinates.add((pair.latitude, pair.longitude))
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            latitude = next(
+                (value[key] for key in ("latitude", "lat", "纬度") if key in value),
+                None,
+            )
+            longitude = next(
+                (value[key] for key in ("longitude", "lon", "lng", "经度") if key in value),
+                None,
+            )
+            if latitude is not None and longitude is not None:
+                add(latitude, longitude)
+            for nested in value.values():
+                visit(nested)
+            return
+        if isinstance(value, list):
+            for nested in value:
+                visit(nested)
+            return
+        if not isinstance(value, str):
+            return
+        for pattern in _LABELED_COORDINATE_PATTERNS:
+            for match in pattern.finditer(value):
+                add(match.group("lat"), match.group("lon"))
+
+    visit(brief)
+    return [
+        CoordinatePairV1(latitude=latitude, longitude=longitude)
+        for latitude, longitude in sorted(coordinates)
+    ]
 
 
 def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
@@ -380,14 +635,19 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
         )
 
 
-def _build_context_pack(request: GenerationRequest) -> DraftContextPackV1:
-    return DraftContextPackV1(
-        task_run_id=request.task_run_id,
-        prompt_bundle_version=request.prompt_version,
-        candidate_strategy=request.candidate_strategy.value,
-        candidate_strategy_version=request.candidate_strategy_version,
-        brief=request.brief,
-        frozen_context={
+def _build_context_pack(request: GenerationRequest) -> DraftContextPackV1 | DraftContextPackV2:
+    context_type: type[DraftContextPackV1] | type[DraftContextPackV2] = (
+        DraftContextPackV2
+        if request.prompt_version == "brief-to-draft-v11"
+        else DraftContextPackV1
+    )
+    payload = {
+        "task_run_id": request.task_run_id,
+        "prompt_bundle_version": request.prompt_version,
+        "candidate_strategy": request.candidate_strategy.value,
+        "candidate_strategy_version": request.candidate_strategy_version,
+        "brief": request.brief,
+        "frozen_context": {
             "casefile_id": request.casefile_id,
             "brief_ref": {
                 "brief_id": request.brief_id,
@@ -400,11 +660,12 @@ def _build_context_pack(request: GenerationRequest) -> DraftContextPackV1:
             },
             "status": "draft",
         },
-        budget={
+        "budget": {
             "model_attempts_per_call": 3,
             "targeted_domain_repairs": 1,
         },
-    )
+    }
+    return context_type.model_validate(payload)
 
 
 async def _model_step(
@@ -417,11 +678,15 @@ async def _model_step(
     output_type: type[BaseModel],
     input_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    schema_id = (
-        "evidence-logic-ir-v2"
-        if component_id == "evidence_logic" and request.prompt_version == "brief-to-draft-v10"
-        else _STEP_SCHEMA[component_id]
-    )
+    if component_id == "story_world" and request.prompt_version == "brief-to-draft-v11":
+        schema_id = "story-world-ir-v2"
+    elif (
+        component_id == "evidence_logic"
+        and request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
+    ):
+        schema_id = "evidence-logic-ir-v2"
+    else:
+        schema_id = _STEP_SCHEMA[component_id]
     package_metadata: dict[str, str] = {}
     if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
         definition = load_prompt("brief_to_draft", request.prompt_version)
@@ -542,13 +807,16 @@ def _deterministic_step(
     component_id: str,
     stage: str,
     output: dict[str, Any],
+    *,
+    schema_id: str | None = None,
 ) -> None:
+    resolved_schema_id = schema_id or _STEP_SCHEMA[component_id]
     request.emit(
         "agent.step.started",
         stage,
         {
             "component_id": component_id,
-            "schema_id": _STEP_SCHEMA[component_id],
+            "schema_id": resolved_schema_id,
         },
     )
     request.emit(
@@ -556,7 +824,7 @@ def _deterministic_step(
         stage,
         {
             "component_id": component_id,
-            "schema_id": _STEP_SCHEMA[component_id],
+            "schema_id": resolved_schema_id,
             "output_hash": _json_hash(output),
             "_artifact": output,
         },
@@ -566,7 +834,7 @@ def _deterministic_step(
 def _link_step(
     request: GenerationRequest,
     blueprint: CaseBlueprintV1,
-    story: StoryWorldIRV1,
+    story: StoryWorldIRV1 | StoryWorldIRV2,
     evidence: EvidenceLogicIR,
     governance: ResolutionGovernanceIRV1,
 ) -> LinkedDraftV1:
@@ -771,7 +1039,8 @@ def _reference_directory(blueprint: CaseBlueprintV1) -> dict[str, list[str]]:
 
 
 def _allowed_reference_values(
-    blueprint: CaseBlueprintV1, component_id: str
+    blueprint: CaseBlueprintV1,
+    reference_contract: dict[str, list[str]],
 ) -> dict[str, list[str]]:
     """Flatten the exact local-key choices for every domain reference field.
 
@@ -787,9 +1056,7 @@ def _allowed_reference_values(
             for collection in allowed_collections
             for local_key in directory[collection]
         ]
-        for field_name, allowed_collections in _DOMAIN_REFERENCE_CONTRACTS[
-            component_id
-        ].items()
+        for field_name, allowed_collections in reference_contract.items()
     }
 
 

@@ -65,6 +65,85 @@ _STRUCTURAL_FAILURE_LAYERS = {
     "description_gate",
     "frozen_context",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptanceScenario:
+    scenario_id: str
+    source_text: str
+    creative_intent: str
+    reasoning_proposition: str
+    author_answer: str
+    boundary_text: str
+
+
+_LEGACY_SCENARIO = AcceptanceScenario(
+    scenario_id="legacy_runtime",
+    source_text="一艘渡轮每晚都会返回同一座码头，航海记录在事故前被人修改。",
+    creative_intent="围绕午夜回航建立可验证的目标无关推理卷宗。",
+    reasoning_proposition="是谁修改了航海记录，回航保护机制为何触发？",
+    author_answer="大副修改了记录，欠压保护触发了回航。",
+    boundary_text="必须保持唯一因果答案。",
+)
+_V11_SCENARIOS = (
+    AcceptanceScenario(
+        scenario_id="time_exact_range",
+        source_text=(
+            "调查在2026-08-08T20:00准时开始；监控中断发生在"
+            "2026-08-08T20:15至2026-08-08T20:25之间。"
+        ),
+        creative_intent="保留精确到分钟的开始时间和同精度时间区间。",
+        reasoning_proposition="谁在监控中断区间进入了档案室？",
+        author_answer="管理员在该区间进入档案室并取走记录。",
+        boundary_text="时间不得添加时区，也不得把区间压缩为单点。",
+    ),
+    AcceptanceScenario(
+        scenario_id="time_uncertain_relative",
+        source_text=(
+            "警报大约在2026-08-08T21时响起；停电发生在警报之后约10分钟；"
+            "备用门何时开启完全未知。"
+        ),
+        creative_intent="同时保留 approximate、relative 和 unknown 三类时间确定性。",
+        reasoning_proposition="停电是否利用警报后的窗口触发？",
+        author_answer="停电在警报后十分钟触发，备用门时间仍未知。",
+        boundary_text="未知时间不得伪造日期；相对时间必须锚定警报事件。",
+    ),
+    AcceptanceScenario(
+        scenario_id="spatial_scene_topology",
+        source_text=(
+            "控制室位于档案室北侧，两室相邻，步行约3分钟；"
+            "控制室在场景示意图左上，档案室在右下。事件发生在档案室。"
+        ),
+        creative_intent="用示意坐标表达场景布局，并保留邻接和通行关系供拓扑视图使用。",
+        reasoning_proposition="嫌疑人如何从控制室抵达档案室？",
+        author_answer="嫌疑人沿相邻通道步行三分钟抵达档案室。",
+        boundary_text="不得添加真实地理坐标。",
+    ),
+    AcceptanceScenario(
+        scenario_id="spatial_wgs84",
+        source_text=(
+            "外部信标的显式坐标为 坐标：31.2304, 121.4737；"
+            "内部仓库没有可靠坐标。"
+        ),
+        creative_intent="仅把外部信标结构化为明确给出的 WGS84 坐标。",
+        reasoning_proposition="信标记录是否能证明人员到达外部位置？",
+        author_answer="信标记录证明人员到达外部位置。",
+        boundary_text="只能使用31.2304,121.4737；仓库必须保持未定位或纯拓扑。",
+    ),
+    AcceptanceScenario(
+        scenario_id="competition_matrix",
+        source_text=(
+            "门禁记录可能是真实刷卡，也可能是事后伪造。摄像头只拍到门被打开，"
+            "终端日志显示记录写入时间晚于开门时间。"
+        ),
+        creative_intent="建立真实刷卡与事后伪造两个可检验竞争解释。",
+        reasoning_proposition="门禁记录应解释为真实刷卡还是事后伪造？",
+        author_answer="记录由事后伪造，但两个解释都必须接受同一信息矩阵检验。",
+        boundary_text="每个竞争解释必须逐项评价摄像头和终端日志。",
+    ),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class LiveAcceptanceConfig:
     source_database_url: str
@@ -131,6 +210,7 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
                     provider=config.provider,
                     model_id=model_id,
                     repeats=config.repeats,
+                    prompt_version=config.prompt_version,
                     report=report,
                 )
         _summarize_execution_metrics(report)
@@ -177,8 +257,9 @@ def _live_config() -> LiveAcceptanceConfig:
         "brief-to-draft-v8",
         "brief-to-draft-v9",
         "brief-to-draft-v10",
+        "brief-to-draft-v11",
     }:
-        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8, v9, or v10.")
+        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8, v9, v10, or v11.")
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
         test_database_url=test_database_url,
@@ -291,17 +372,21 @@ def _run_acceptance_suite(
     provider: str,
     model_id: str,
     repeats: int,
+    prompt_version: str,
     report: dict[str, Any],
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
+    scenarios = _V11_SCENARIOS if prompt_version == "brief-to-draft-v11" else (_LEGACY_SCENARIO,)
     for run_index in range(repeats):
         strategy = _STRATEGIES[run_index % len(_STRATEGIES)]
+        scenario = scenarios[run_index % len(scenarios)]
         task_id, project_id = _queue_generation_task(
             client,
             headers=headers,
             run_index=run_index,
             strategy=strategy,
             provider=provider,
+            scenario=scenario,
         )
         started = time.perf_counter()
         did_run = worker.run_once()
@@ -312,6 +397,7 @@ def _run_acceptance_suite(
                 {
                     "run": run_index + 1,
                     "strategy": strategy,
+                    "scenario": scenario.scenario_id,
                     "task_run_id": task_id,
                     "failure_class": "worker_no_claim",
                 }
@@ -327,6 +413,7 @@ def _run_acceptance_suite(
                 {
                     "run": run_index + 1,
                     "strategy": strategy,
+                    "scenario": scenario.scenario_id,
                     "task_run_id": task_id,
                     "failure_class": "task_read_failed",
                     "http_status": task_response.status_code,
@@ -338,6 +425,7 @@ def _run_acceptance_suite(
         task_record = {
             "run": run_index + 1,
             "strategy": strategy,
+            "scenario": scenario.scenario_id,
             "task_run_id": task_id,
             "status": task["status"],
             "latency_ms": latency_ms,
@@ -346,17 +434,26 @@ def _run_acceptance_suite(
         }
         if task["status"] == "succeeded":
             report["successful_runs"] = int(report["successful_runs"]) + 1
-            report["successful_run_details"].append(task_record)
             violations = _successful_task_violations(
                 client,
                 factory,
                 headers=headers,
                 project_id=project_id,
                 task=task,
+                scenario=scenario,
             )
-            if violations:
+            scenario_violations = [
+                item for item in violations if item.startswith("scenario_")
+            ]
+            invariant_violations = [
+                item for item in violations if not item.startswith("scenario_")
+            ]
+            task_record["scenario_passed"] = not scenario_violations
+            task_record["scenario_violations"] = scenario_violations
+            report["successful_run_details"].append(task_record)
+            if invariant_violations:
                 report["invariant_violations"].extend(
-                    [{**task_record, "violation": item} for item in violations]
+                    [{**task_record, "violation": item} for item in invariant_violations]
                 )
             continue
         failure = {
@@ -374,7 +471,6 @@ def _run_acceptance_suite(
         if failure["failure_class"] in {
             "provider_authentication",
             "provider_rate_limited",
-            "provider_unavailable",
         }:
             report["status"] = "blocked"
             break
@@ -387,6 +483,7 @@ def _queue_generation_task(
     run_index: int,
     strategy: str,
     provider: str,
+    scenario: AcceptanceScenario,
 ) -> tuple[int, int]:
     created = client.post(
         "/api/v1/projects",
@@ -404,7 +501,7 @@ def _queue_generation_task(
         headers=headers,
         json={
             "source_kind": "human_original",
-            "content_text": "一艘渡轮每晚都会返回同一座码头，航海记录在事故前被人修改。",
+            "content_text": scenario.source_text,
         },
     )
     assert source.status_code == 201, source.text
@@ -412,7 +509,7 @@ def _queue_generation_task(
     brief = client.put(
         f"/api/v1/projects/{project_id}/brief",
         headers=headers,
-        json={"expected_revision": 1, "content": _brief(source_record_id)},
+        json={"expected_revision": 1, "content": _brief(source_record_id, scenario)},
     )
     assert brief.status_code == 200, brief.text
     confirmed = client.post(
@@ -436,18 +533,23 @@ def _queue_generation_task(
     return int(queued.json()["task_run_id"]), project_id
 
 
-def _brief(source_record_id: int) -> dict[str, object]:
+def _brief(
+    source_record_id: int,
+    scenario: AcceptanceScenario = _LEGACY_SCENARIO,
+) -> dict[str, object]:
     return {
         "source_record_ids": [source_record_id],
-        "creative_intent": "围绕午夜回航建立可验证的目标无关推理卷宗。",
-        "reasoning_proposition": "是谁修改了航海记录，回航保护机制为何触发？",
+        # GenerationRequest freezes the Brief payload, not SourceRecord正文；把本轮
+        # 验收事实同时放进 Brief，确保模型与 WGS84 白名单门禁看到同一冻结输入。
+        "creative_intent": f"{scenario.creative_intent}\n冻结原稿事实：{scenario.source_text}",
+        "reasoning_proposition": scenario.reasoning_proposition,
         "resolution_mode": "author_anchored",
         "conclusion_mode": "unique",
-        "author_answer": "大副修改了记录，欠压保护触发了回航。",
+        "author_answer": scenario.author_answer,
         "author_anchors": [
-            {"anchor_id": "anchor_live_first_officer", "statement": "大副修改了航海记录。"}
+            {"anchor_id": "anchor_live_answer", "statement": scenario.author_answer}
         ],
-        "boundary_text": "必须保持唯一因果答案。",
+        "boundary_text": scenario.boundary_text,
         "creative_constraints": [
             {
                 "constraint_id": "constraint_live_unique",
@@ -465,6 +567,7 @@ def _successful_task_violations(
     headers: dict[str, str],
     project_id: int,
     task: dict[str, Any],
+    scenario: AcceptanceScenario = _LEGACY_SCENARIO,
 ) -> list[str]:
     violations: list[str] = []
     if task.get("result_snapshot_id") is not None:
@@ -512,6 +615,10 @@ def _successful_task_violations(
             validate_casefile(attempt.candidate_jsonb)
         except Exception:
             violations.append("persisted_candidate_failed_casefile_validation")
+        else:
+            violations.extend(
+                _scenario_candidate_violations(attempt.candidate_jsonb, scenario)
+            )
     if {step.component_id for step in steps} != _EXPECTED_COMPONENTS:
         violations.append("agent_step_runs_not_persisted")
     if len(calls) < 4 or not any(call.status == "succeeded" for call in calls):
@@ -527,6 +634,78 @@ def _successful_task_violations(
     ):
         violations.append("component_events_not_projected_to_sse")
     return violations
+
+
+def _scenario_candidate_violations(
+    candidate: dict[str, Any],
+    scenario: AcceptanceScenario,
+) -> list[str]:
+    if scenario.scenario_id == "legacy_runtime":
+        return []
+    if scenario.scenario_id == "time_exact_range":
+        kinds = {item.get("time", {}).get("kind") for item in candidate.get("events", [])}
+        return [] if {"exact", "range"}.issubset(kinds) else ["scenario_time_exact_range_missing"]
+    if scenario.scenario_id == "time_uncertain_relative":
+        kinds = {item.get("time", {}).get("kind") for item in candidate.get("events", [])}
+        required = {"approximate", "relative", "unknown"}
+        return [] if required.issubset(kinds) else ["scenario_uncertain_time_semantics_missing"]
+    if scenario.scenario_id == "spatial_scene_topology":
+        locations = candidate.get("locations", [])
+        has_schematic = any(
+            item.get("spatial_position", {}).get("coordinate_system") == "schematic"
+            for item in locations
+            if isinstance(item, dict)
+        )
+        has_topology = any(
+            item.get("parent_ref") is not None
+            or bool(item.get("adjacency_refs"))
+            or bool(item.get("travel_times"))
+            for item in locations
+            if isinstance(item, dict)
+        )
+        return [] if has_schematic and has_topology else ["scenario_scene_topology_missing"]
+    if scenario.scenario_id == "spatial_wgs84":
+        wgs84 = [
+            item["spatial_position"]
+            for item in candidate.get("locations", [])
+            if isinstance(item, dict)
+            and isinstance(item.get("spatial_position"), dict)
+            and item["spatial_position"].get("coordinate_system") == "wgs84"
+        ]
+        expected = {(31.2304, 121.4737)}
+        actual = {
+            (float(item["latitude"]), float(item["longitude"])) for item in wgs84
+        }
+        return [] if actual == expected else ["scenario_explicit_wgs84_not_preserved"]
+    if scenario.scenario_id == "competition_matrix":
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for hypothesis in candidate.get("hypotheses", []):
+            target = hypothesis.get("target_resolution_ref")
+            if isinstance(target, dict) and isinstance(target.get("object_id"), str):
+                groups.setdefault(target["object_id"], []).append(hypothesis)
+        competitors = next((group for group in groups.values() if len(group) >= 2), None)
+        if competitors is None:
+            return ["scenario_competing_hypotheses_missing"]
+        hypothesis_ids = {item["id"] for item in competitors}
+        columns: list[set[str]] = []
+        for hypothesis in competitors:
+            peer_ids = {
+                ref.get("object_id")
+                for ref in hypothesis.get("competing_hypothesis_refs", [])
+                if isinstance(ref, dict)
+            }
+            if peer_ids != hypothesis_ids - {hypothesis["id"]}:
+                return ["scenario_competing_peer_refs_incomplete"]
+            assessed = {
+                assessment.get("information_ref", {}).get("object_id")
+                for assessment in hypothesis.get("evidence_assessments", [])
+                if isinstance(assessment, dict)
+            }
+            columns.append({item for item in assessed if isinstance(item, str)})
+        if len(columns[0]) < 2 or any(column != columns[0] for column in columns[1:]):
+            return ["scenario_competition_matrix_incomplete"]
+        return []
+    return ["scenario_unknown"]
 
 
 def _failed_task_write_boundary_violations(
@@ -705,6 +884,32 @@ def _summarize_execution_metrics(report: dict[str, Any]) -> None:
         "component_steps": _aggregate_metric_group(details, "component_steps"),
     }
     report["execution_metrics"] = summary
+    scenario_summary: dict[str, dict[str, int]] = {}
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        scenario = str(item.get("scenario") or "legacy_runtime")
+        counter = scenario_summary.setdefault(
+            scenario,
+            {"attempted": 0, "task_succeeded": 0, "scenario_passed": 0},
+        )
+        counter["attempted"] += 1
+        counter["task_succeeded"] += 1
+        if item.get("scenario_passed", True):
+            counter["scenario_passed"] += 1
+    for item in report.get("failed_runs", []):
+        if not isinstance(item, dict):
+            continue
+        scenario = str(item.get("scenario") or "legacy_runtime")
+        counter = scenario_summary.setdefault(
+            scenario,
+            {"attempted": 0, "task_succeeded": 0, "scenario_passed": 0},
+        )
+        counter["attempted"] += 1
+    report["scenario_summary"] = scenario_summary
+    report["scenario_passed_runs"] = sum(
+        counter["scenario_passed"] for counter in scenario_summary.values()
+    )
 
 
 def _latency_summary(values: list[float]) -> dict[str, float | int]:
@@ -902,6 +1107,18 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
         return "failed"
     if any(not item["diagnostics_complete"] for item in report["failed_runs"]):
         return "failed"
+    if expected_runs == 30 and report.get("suite") == "brief_to_draft_v11":
+        summary = report.get("scenario_summary", {})
+        if set(summary) != {item.scenario_id for item in _V11_SCENARIOS}:
+            return "failed"
+        if int(report.get("scenario_passed_runs", 0)) < 27:
+            return "failed"
+        if any(
+            int(counter.get("attempted", 0)) != 6
+            or int(counter.get("scenario_passed", 0)) < 5
+            for counter in summary.values()
+        ):
+            return "failed"
     return "passed"
 
 
