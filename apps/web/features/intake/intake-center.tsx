@@ -10,6 +10,15 @@ import {
 } from "react";
 
 import { useCaseSession } from "@/features/case-session/case-session-provider";
+import {
+  generateIdeas,
+  fetchIdeas,
+  selectIdea,
+  bookmarkIdea,
+  archiveIdea,
+  regenerateIdea,
+  createCaseProject,
+} from "@/features/case-session/case-session-api";
 
 import {
   candidateOriginLabels,
@@ -31,10 +40,12 @@ import {
   type ConclusionMode,
   type ResolutionMode,
   type IntakeStep,
+  type IdeaCandidateView,
 } from "./intake-model";
 import { BriefReviewStage } from "./brief-review-stage";
 import { CaseHistoryDrawer } from "./case-history-drawer";
 import { DraftCandidatesStage } from "./draft-candidates-stage";
+import IdeaCandidatesStage from "./idea-candidates-stage";
 import {
   OutlineStagesEditor,
   SellingPointsEditor,
@@ -225,6 +236,122 @@ export function IntakeCenter() {
     Parameters<typeof retryTask>[0] | null
   >(null);
   const [, setNotice] = useState("建案数据写入开发库；当前项目可通过 URL 恢复。");
+
+  // ── Path B: Idea Generation ───────────────────────────────────────────
+  const [showIdeaGeneration, setShowIdeaGeneration] = useState(false);
+  const [ideaProjectId, setIdeaProjectId] = useState<number | null>(null);
+  const [ideaCandidates, setIdeaCandidates] = useState<IdeaCandidateView[]>([]);
+  const [pastBatches, setPastBatches] = useState<Record<string, IdeaCandidateView[]>>({});
+  const [ideaGenerating, setIdeaGenerating] = useState(false);
+
+  const handlePathB = async () => {
+    if (showIdeaGeneration) return;
+    setIdeaGenerating(true);
+    setError(null);
+    try {
+      const project = activeProjectId
+        ? { id: activeProjectId }
+        : await createCaseProject("帮我想一个");
+      setIdeaProjectId(project.id);
+
+      // Fetch past ideas for inspiration browsing
+      try {
+        const past = await fetchIdeas(project.id);
+        const castIdea = (i: any): IdeaCandidateView => ({
+          id: i.id as number,
+          batch_id: i.batch_id as string,
+          ordinal: i.ordinal as number,
+          content: i.content as IdeaCandidateView["content"],
+          status: (i.status ?? "active") as IdeaCandidateView["status"],
+          bookmarked: (i.bookmarked ?? false) as boolean,
+          created_at: (i.created_at ?? null) as string | null,
+        });
+        const pastMap: Record<string, IdeaCandidateView[]> = {};
+        for (const [key, val] of Object.entries(past.batches ?? {})) {
+          pastMap[key] = (val as any[]).map(castIdea);
+        }
+        setPastBatches(pastMap);
+      } catch { /* silently ignore */ }
+
+      const result = await generateIdeas(project.id);
+      const cast = (idea: Record<string, unknown>): IdeaCandidateView => ({
+        id: idea.id as number,
+        batch_id: idea.batch_id as string,
+        ordinal: idea.ordinal as number,
+        content: idea.content as IdeaCandidateView["content"],
+        status: (idea.status ?? "active") as IdeaCandidateView["status"],
+        bookmarked: (idea.bookmarked ?? false) as boolean,
+        created_at: (idea.created_at ?? null) as string | null,
+      });
+      setIdeaCandidates((result.ideas ?? []).map(cast));
+      setShowIdeaGeneration(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "生成创意失败。");
+    } finally {
+      setIdeaGenerating(false);
+    }
+  };
+
+  const handleSelectIdea = async (ideaId: number) => {
+    if (!ideaProjectId) return;
+    try {
+      await selectIdea(ideaProjectId, ideaId);
+      setIdeaCandidates((prev) =>
+        prev.map((i) => (i.id === ideaId ? { ...i, status: "selected" as const } : i)),
+      );
+      await loadProject(ideaProjectId);
+      setShowIdeaGeneration(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "选择失败。");
+    }
+  };
+
+  const refetchIdeas = async () => {
+    if (!ideaProjectId) return;
+    try {
+      const past = await fetchIdeas(ideaProjectId);
+      const castIdea = (i: any): IdeaCandidateView => ({
+        id: i.id as number, batch_id: i.batch_id as string, ordinal: i.ordinal as number,
+        content: i.content as IdeaCandidateView["content"],
+        status: (i.status ?? "active") as IdeaCandidateView["status"],
+        bookmarked: (i.bookmarked ?? false) as boolean,
+        created_at: (i.created_at ?? null) as string | null,
+      });
+      const all: Record<string, IdeaCandidateView[]> = {};
+      for (const [key, val] of Object.entries(past.batches ?? {})) {
+        all[key] = (val as any[]).map(castIdea);
+      }
+      setPastBatches(all);
+      setIdeaCandidates((prev) => {
+        const latestBatchId = prev[0]?.batch_id;
+        return latestBatchId ? (all[latestBatchId] ?? prev) : prev;
+      });
+    } catch { /* noop */ }
+  };
+
+  const handleBookmarkIdea = async (ideaId: number) => {
+    if (!ideaProjectId) return;
+    try {
+      await bookmarkIdea(ideaProjectId, ideaId);
+      await refetchIdeas();
+    } catch { /* noop */ }
+  };
+
+  const handleArchiveIdea = async (ideaId: number) => {
+    if (!ideaProjectId) return;
+    try {
+      await archiveIdea(ideaProjectId, ideaId);
+      await refetchIdeas();
+    } catch { /* noop */ }
+  };
+
+  const handleRegenerateIdea = async (ideaId: number) => {
+    if (!ideaProjectId) return;
+    try {
+      await regenerateIdea(ideaProjectId, ideaId);
+      await refetchIdeas();
+    } catch { /* noop */ }
+  };
 
   useEffect(() => {
     if (!state.review?.dirty) return;
@@ -856,20 +983,32 @@ export function IntakeCenter() {
           <div className={styles.routeList}>
             {intakeRoutes.map((route) => {
               const available = route.state === "available";
+              const isActive = route.code === "A"
+                ? !showIdeaGeneration
+                : route.code === "B"
+                  ? showIdeaGeneration
+                  : false;
               return (
                 <button
-                  aria-current={available ? "step" : undefined}
+                  aria-current={isActive ? "step" : undefined}
                   data-available={available}
                   disabled={!available}
                   key={route.code}
                   type="button"
+                  onClick={
+                    route.code === "B"
+                      ? handlePathB
+                      : route.code === "A"
+                        ? () => setShowIdeaGeneration(false)
+                        : undefined
+                  }
                 >
                   <span>{route.code}</span>
                   <div>
                     <b>{route.label}</b>
                     <small>{route.summary}</small>
                   </div>
-                  <em>{available ? "当前路径" : "后续开放"}</em>
+                  <em>{isActive ? "当前路径" : available ? "" : "后续开放"}</em>
                 </button>
               );
             })}
@@ -883,7 +1022,18 @@ export function IntakeCenter() {
         </aside>
 
         <main className={styles.focusPlane}>
-          {step === "idea" ? (
+          {showIdeaGeneration ? (
+            <IdeaCandidatesStage
+              ideas={ideaCandidates}
+              pastBatches={pastBatches}
+              generating={ideaGenerating}
+              onSelect={handleSelectIdea}
+              onBookmark={handleBookmarkIdea}
+              onArchive={handleArchiveIdea}
+              onRegenerate={handleRegenerateIdea}
+              onGenerateAll={handlePathB}
+            />
+          ) : step === "idea" ? (
             <section className={stageStyles.stepView} aria-labelledby="idea-step-title">
               <header className={stageStyles.stepHero}>
                 <div>

@@ -52,6 +52,10 @@ from casefile.agent_runtime.models import (
     GenerationPlan,
     GenerationRequest,
     GenerationResult,
+    IdeaCandidateModel,
+    IdeaCandidateSet,
+    IdeaGenerationRequest,
+    IdeaGenerationResult,
     StrictAgentOutput,
     ToolMetrics,
 )
@@ -62,6 +66,7 @@ from casefile.agent_runtime.prompt import (
     brief_strategy_options_input,
     casefile_chat_input,
     generation_input,
+    idea_generation_input,
     polish_input,
 )
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
@@ -104,6 +109,10 @@ class AgentProvider(GenerationProvider, Protocol):
     def strategy_options(
         self, request: BriefStrategyOptionsRequest
     ) -> BriefStrategyOptionsResult: ...
+
+    def generate_ideas(
+        self, request: IdeaGenerationRequest
+    ) -> IdeaGenerationResult: ...
 
 
 class ProviderProtocolError(RuntimeError):
@@ -371,6 +380,76 @@ class FakeProvider:
         usage = _zero_usage()
         request.emit("model.completed", "synthesizing", {"usage": usage})
         return BriefIntakeSynthesizeResult(candidate=candidate, usage=usage)
+
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
+        system_prompt_for_task("idea_generation", request.prompt_version)
+        request.emit("model.started", "generating_ideas", {"model_id": request.model_id})
+        import random
+
+        PROFESSIONS = [
+            "法医", "退休警官", "调查记者", "档案管理员", "心理治疗师",
+            "黑客", "保险理赔员", "古董估价师", "人类学家", "图书管理员",
+            "前情报人员", "AI工程师", "天文台研究员", "海事调查员", "语言学教授",
+            "游戏设计师", "刑辩律师", "气象学家", "策展人", "遗传学家",
+        ]
+        SETTINGS = [
+            "小镇档案馆", "废弃的地下实验室", "远洋科考船", "百年图书馆",
+            "私人侦探事务所", "无人机物流中心", "极地研究站", "古城遗址",
+            "直播公司后台", "老式胶片放映厅", "虚拟现实服务器机房",
+        ]
+        PREMISES = [
+            "发现一组无法解释的加密数据与未破悬案吻合",
+            "收到已故之人的信件声称知道真相",
+            "无意间目睹本应不存在的监控录像片段",
+            "在一次例行检查中发现的异常引发了连锁追问",
+            "多份看似无关的官方记录在时间线上形成闭合冲突",
+            "一段被遗忘的往事因偶然事件重新浮出水面",
+            "两个完全互斥的目击证词同时具有铁证支持",
+            "一份遗物中的密码笔记指向跨越数十年的秘密",
+        ]
+        REASONING_TYPES: list[str] = ["deductive", "inductive", "abductive", "hybrid"]
+        CONCLUSION_MODES: list[str] = ["author_anchored", "agent_proposed", "open"]
+        EXPERIENCES = [
+            "在碎片信息中逐一拼合真相的沉浸感",
+            "时间压力下步步紧逼的紧迫感",
+            "细碎线索汇聚成清晰逻辑链的解谜快感",
+            "在看似无关的细节中发现隐秘联系的顿悟体验",
+            "场景氛围与心理张力叠加的深度沉浸",
+        ]
+        RISKS = [
+            "多条线索之间需要精确的时间与逻辑衔接",
+            "关键信息揭露的时机直接影响叙事张力",
+            "需要在专业准确性和叙事可读性之间取得平衡",
+            "多视角叙述需要保持各信息源的可信度和差异性",
+        ]
+        SCALES = ["短篇（2-4 小时）", "中篇（5-8 小时）", "中篇（6-10 小时）", "长篇（15-25 小时）"]
+
+        chosen = []
+        for i in range(3):
+            prof = random.choice(PROFESSIONS)
+            sett = random.choice(SETTINGS)
+            prem = random.choice(PREMISES)
+            chosen.append({
+                "concept": f"{prof}在{sett}——{prem}。",
+                "core_suspense": f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。",
+                "reasoning_type": REASONING_TYPES[i % len(REASONING_TYPES)],
+                "conclusion_mode": CONCLUSION_MODES[i % len(CONCLUSION_MODES)],
+                "target_experience": random.choice(EXPERIENCES),
+                "design_risk": random.choice(RISKS),
+                "scale_estimate": random.choice(SCALES),
+            })
+
+        if request.regenerate and request.existing_concepts:
+            for c in chosen:
+                while c["concept"] in request.existing_concepts:
+                    c["concept"] = f"{random.choice(PROFESSIONS)}在{random.choice(SETTINGS)}——{random.choice(PREMISES)}（新方向）。"
+
+        candidate = IdeaCandidateSet(
+            candidates=[IdeaCandidateModel.model_validate(c) for c in chosen]
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "generating_ideas", {"usage": usage})
+        return IdeaGenerationResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         system_prompt_for_task("casefile_chat", request.prompt_version)
@@ -693,6 +772,27 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task("idea_generation", request.prompt_version),
+                input_text=idea_generation_input(
+                    request.input_hash,
+                    regenerate=request.regenerate,
+                    existing_concepts=request.existing_concepts,
+                ),
+                output_type=IdeaCandidateSet,
+                stage="generating_ideas",
+            )
+        )
+        return IdeaGenerationResult(
+            candidate=IdeaCandidateSet.model_validate(candidate),
+            usage=usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
@@ -941,6 +1041,27 @@ class DeepSeekAgentsProvider:
         )
         return BriefIntakeSynthesizeResult(
             candidate=BriefIntakeCandidateContract.model_validate(candidate),
+            usage=usage,
+        )
+
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task("idea_generation", request.prompt_version),
+                input_text=idea_generation_input(
+                    request.input_hash,
+                    regenerate=request.regenerate,
+                    existing_concepts=request.existing_concepts,
+                ),
+                output_type=IdeaCandidateSet,
+                stage="generating_ideas",
+            )
+        )
+        return IdeaGenerationResult(
+            candidate=IdeaCandidateSet.model_validate(candidate),
             usage=usage,
         )
 

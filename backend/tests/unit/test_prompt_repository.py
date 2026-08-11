@@ -34,6 +34,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_strategy_options": "brief-strategy-options-v1",
     "brief_to_draft": "brief-to-draft-v9",
     "casefile_chat": "casefile-chat-v1",
+    "idea_generation": "idea-generation-v1",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
@@ -101,6 +102,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
+    },
+    ("idea_generation", "idea-generation-v1"): {
+        "system": "2cf1e5fadf31f06d8e39ef023dba579b0b1e95fba421d3fdb39ba07631a37c2a"
     },
 }
 

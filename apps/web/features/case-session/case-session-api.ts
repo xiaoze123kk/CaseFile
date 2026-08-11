@@ -665,3 +665,47 @@ export async function adoptDraftCandidateWithReconciliation(
     return { facts, error: facts.targetIsCurrent ? null : error };
   }
 }
+
+// ── Idea Generation (Path B: "帮我想一个") ──────────────────────────────
+
+export async function generateIdeas(projectId: number) {
+  return apiRequest<{ project_id: number; batch_id: string; ideas: Record<string, unknown>[] }>(
+    `/projects/${projectId}/ideas/generate`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+  );
+}
+
+export async function fetchIdeas(projectId: number) {
+  return apiRequest<{ project_id: number; batches: Record<string, unknown[]> }>(
+    `/projects/${projectId}/ideas`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
+export async function selectIdea(projectId: number, ideaId: number) {
+  return apiRequest<{ stage: string }>(
+    `/projects/${projectId}/ideas/${ideaId}/select`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+  );
+}
+
+export async function bookmarkIdea(projectId: number, ideaId: number) {
+  return apiRequest<{ status: string }>(
+    `/projects/${projectId}/ideas/${ideaId}/bookmark`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+  );
+}
+
+export async function archiveIdea(projectId: number, ideaId: number) {
+  return apiRequest<{ status: string }>(
+    `/projects/${projectId}/ideas/${ideaId}/archive`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+  );
+}
+
+export async function regenerateIdea(projectId: number, ideaId: number) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/ideas/${ideaId}/regenerate`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST", body: { keep_idea_ids: [] } },
+  );
+}
