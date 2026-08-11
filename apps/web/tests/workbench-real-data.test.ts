@@ -382,48 +382,53 @@ describe("real workbench data mapper", () => {
     });
   });
 
-  it("separates WGS84 and schematic maps, keeps north up, and lays out missing coordinates deterministically", () => {
+  it("separates geographic, scene, and deterministic topology data", () => {
     const caseFile = makeCaseFile();
     const model = mapCaseFileToWorkbenchModel(caseFile, 7);
 
-    expect(model.map.availableModes).toEqual(["wgs84", "schematic"]);
-    expect(model.map.defaultMode).toBe("wgs84");
-    const north = model.map.groups.wgs84.locations.find(
+    expect(model.map.availableModes).toEqual([
+      "geographic",
+      "scene",
+      "topology",
+    ]);
+    expect(model.map.defaultMode).toBe("geographic");
+    const north = model.map.views.geographic.locations.find(
       (location) => location.locationId === "loc_geo_north",
     );
-    const south = model.map.groups.wgs84.locations.find(
+    const south = model.map.views.geographic.locations.find(
       (location) => location.locationId === "loc_geo_south",
     );
-    expect(north).toMatchObject({ x: 100, y: 0, latitude: 31, longitude: 121 });
-    expect(south).toMatchObject({ x: 0, y: 100, latitude: 30, longitude: 120 });
-    expect(model.map.groups.wgs84.eventMarkers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          eventId: "evt_late",
-          locationId: "loc_geo_north",
-        }),
-      ]),
+    expect(north).toMatchObject({
+      source: "wgs84",
+      position: { kind: "wgs84", latitude: 31, longitude: 121 },
+    });
+    expect(north?.position).not.toHaveProperty("x");
+    expect(south).toMatchObject({
+      position: { kind: "wgs84", latitude: 30, longitude: 120 },
+    });
+    expect(north?.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ eventId: "evt_late" })]),
     );
 
-    const explicit = model.map.groups.schematic.locations.find(
+    const explicit = model.map.views.scene.locations.find(
       (location) => location.locationId === "loc_schematic_gate",
     );
-    const fallback = model.map.groups.schematic.locations.find(
+    const inferred = model.map.views.topology.locations.find(
       (location) => location.locationId === "loc_schematic_room",
     );
-    expect(explicit).toMatchObject({ x: 10, y: 20, isFallback: false });
-    expect(fallback?.isFallback).toBe(true);
-    expect(model.map.fallbackLocationIds).toEqual(["loc_schematic_room"]);
-    expect(model.map.groups.schematic.eventMarkers).toEqual(
+    expect(explicit).toMatchObject({
+      source: "schematic",
+      position: { kind: "planar", x: 10, y: 20 },
+    });
+    expect(model.map.views.scene.locations).toHaveLength(1);
+    expect(inferred).toMatchObject({ source: "inferred" });
+    expect(model.map.unlocatedLocationIds).toEqual([]);
+    expect(
+      model.map.views.topology.locations.flatMap((location) => location.events),
+    ).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          eventId: "evt_early",
-          locationId: "loc_schematic_gate",
-        }),
-        expect.objectContaining({
-          eventId: "evt_unknown_time",
-          locationId: "loc_schematic_room",
-        }),
+        expect.objectContaining({ eventId: "evt_early" }),
+        expect.objectContaining({ eventId: "evt_unknown_time" }),
       ]),
     );
     expect(model.map).toEqual(mapCaseFileToWorkbenchModel(caseFile, 7).map);

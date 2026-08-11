@@ -19,7 +19,10 @@ const graphReferenceLabels: Record<string, string> = {
   casefile: "卷宗",
   resolution_spec: "核心问题",
   entity: "实体",
+  person: "人物",
   information_unit: "信息",
+  information: "信息",
+  evidence: "证据",
   event: "事件",
   location: "地点",
   hypothesis: "假设",
@@ -68,17 +71,24 @@ export function RelationshipGraph({
   layoutScope: string;
 }) {
   const graphNodes = seed.graphNodes;
+  const mappedSeed = seed as WorkbenchSeed & Partial<{ origin: "contract" | "fixture" }>;
   const sceneNodes = useMemo<WorkbenchCanvasSceneNode[]>(
     () =>
       graphNodes.map((node) => {
         const mappedNode = node as typeof node & Partial<WorkbenchGraphNode>;
         const object = getObject(seed, node.objectId);
         const selectableId = object?.id ?? mappedNode.directoryObjectId ?? undefined;
-        const kind = object?.kind ?? mappedNode.kind ?? "unknown";
+        const kind =
+          mappedSeed.origin === "fixture"
+            ? mappedNode.kind ?? object?.kind ?? "unknown"
+            : object?.kind ?? mappedNode.kind ?? "unknown";
         const label = object?.label ?? mappedNode.label ?? node.objectId;
-        const caption = object
-          ? objectKindLabels[object.kind]
-          : (graphReferenceLabels[String(kind)] ?? "引用");
+        const caption =
+          mappedSeed.origin === "fixture"
+            ? (graphReferenceLabels[String(kind)] ?? "引用")
+            : object
+              ? objectKindLabels[object.kind]
+              : (graphReferenceLabels[String(kind)] ?? "引用");
         return {
           id: node.objectId,
           variant: "relationship",
@@ -92,7 +102,7 @@ export function RelationshipGraph({
           height: 58,
         };
       }),
-    [graphNodes, seed],
+    [graphNodes, mappedSeed.origin, seed],
   );
   const nodeLegend = useMemo<WorkbenchCanvasLegendItem[]>(() => {
     const seen = new Set<string>();

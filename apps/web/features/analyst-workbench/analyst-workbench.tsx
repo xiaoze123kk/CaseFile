@@ -1,6 +1,7 @@
 "use client";
 
 import type { CaseFile } from "@casefile/contracts";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   type CSSProperties,
@@ -66,20 +67,37 @@ import {
   WorkbenchSourcesPanel,
   WorkbenchValidationPanel,
 } from "./workbench-context-panels";
-import { mapCaseFileToWorkbenchModel } from "./workbench-real-data";
+import {
+  mapCaseFileToWorkbenchModel,
+  mapFixtureToWorkbenchModel,
+  type WorkbenchModel,
+} from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
 import {
   CompileCenterView,
   DossierView,
   ExportView,
-  MapView,
   TimelineOverview,
 } from "./workbench-secondary-views";
 import {
   workbenchViewOptions,
   type WorkbenchView,
 } from "./workbench-views";
+
+const SpatialMapView = dynamic(
+  () =>
+    import("./spatial-map/spatial-map-view").then((module) => module.SpatialMapView),
+  {
+    ssr: false,
+    loading: () => (
+      <section aria-busy="true" className={styles.realEmptyState}>
+        <strong>正在载入空间卷宗</strong>
+        <p>地图渲染器只在进入地图视图后加载。</p>
+      </section>
+    ),
+  },
+);
 
 type MobileRegion = "objects" | "canvas" | "inspector" | "sources";
 type DrawerTab = "audio" | "transcript" | "logs" | "retrieval";
@@ -459,7 +477,9 @@ export function AnalystWorkbench({
     reloadContext,
   ]);
 
-  const fixtureSeed = activeCandidate?.workbenchSeed ?? defaultWorkbenchSeed;
+  const fixtureSeed = mapFixtureToWorkbenchModel(
+    activeCandidate?.workbenchSeed ?? defaultWorkbenchSeed,
+  );
   const activeCandidateStatus = activeCandidate
     ? candidateStatus(activeCandidate)
     : null;
@@ -801,7 +821,7 @@ function AnalystWorkbenchSurface({
   onDraftActivated,
   onSaveObject,
 }: {
-  seed: WorkbenchSeed;
+  seed: WorkbenchModel;
   activeCandidate: WorkbenchCandidate | null;
   activeCandidateStatus: WorkbenchCandidateStatus | null;
   adoptCandidate: (candidateId: string) => Promise<number | false>;
@@ -1025,7 +1045,7 @@ function AnalystWorkbenchSurface({
     setLiveMessage(message);
   }
 
-  function blockDirtyObjectNavigation(nextObjectId?: string) {
+  function blockDirtyObjectNavigation(nextObjectId?: string | null) {
     if (
       !realData ||
       !objectEditorDirty ||
@@ -1058,9 +1078,12 @@ function AnalystWorkbenchSurface({
     ]);
   }
 
-  function selectEvent(eventId: string) {
+  function selectEvent(
+    eventId: string,
+    options: { preserveView?: boolean } = {},
+  ): boolean {
     const event = getEvent(seed, eventId);
-    if (!event || blockDirtyObjectNavigation(event.id)) return;
+    if (!event || blockDirtyObjectNavigation(event.id)) return false;
     setSelectedEventId(event.id);
     setSelectedObjectId(event.id);
     setObjectEditorNavigationNotice(null);
@@ -1069,15 +1092,24 @@ function AnalystWorkbenchSurface({
     setObjectQuery("");
     setKindFilter("event");
     setSubtypeFilter("all");
-    setView("timeline");
+    if (!options.preserveView) setView("timeline");
     if (realData) setInspectorTab("object");
     setMobileRegion("canvas");
-    announce(`已选择事件“${event.label}”，关系图和检查器已同步定位。`);
+    announce(
+      options.preserveView
+        ? `已在空间卷宗中选择事件“${event.label}”。`
+        : `已选择事件“${event.label}”，关系图和检查器已同步定位。`,
+    );
+    return true;
   }
 
-  function selectObject(objectId: string, revealInDirectory = false) {
+  function selectObject(
+    objectId: string,
+    revealInDirectory = false,
+    preserveCanvas = false,
+  ): boolean {
     const object = getObject(seed, objectId);
-    if (!object || blockDirtyObjectNavigation(object.id)) return;
+    if (!object || blockDirtyObjectNavigation(object.id)) return false;
     setSelectedObjectId(object.id);
     const eventId = object.kind === "event" ? object.id : object.relatedEventIds[0];
     setSelectedEventId(eventId ?? null);
@@ -1089,9 +1121,20 @@ function AnalystWorkbenchSurface({
     }
     if (realData) {
       setInspectorTab("object");
-      setMobileRegion("inspector");
+      if (!preserveCanvas) setMobileRegion("inspector");
     }
     announce(`已选择${objectKindLabels[object.kind]}“${object.label}”，相关事件已高亮。`);
+    return true;
+  }
+
+  function clearMapSelection(): boolean {
+    if (blockDirtyObjectNavigation(null)) return false;
+    setSelectedEventId(null);
+    setSelectedObjectId(null);
+    setSelectedIssueId(null);
+    setObjectEditorNavigationNotice(null);
+    announce("已清除空间卷宗选择。");
+    return true;
   }
 
   function openIssue(issueId: string) {
@@ -1497,7 +1540,23 @@ function AnalystWorkbenchSurface({
             {view === "reasoning" ? (
               <ReasoningGraphView layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
             ) : null}
-            {view === "map" ? <MapView onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} /> : null}
+            {view === "map" ? (
+              <SpatialMapView
+                map={seed.map}
+                meta={seed.caseMeta.mapMeta}
+                note={seed.caseMeta.mapNote}
+                onClearSelection={clearMapSelection}
+                onSelectEvent={(eventId) =>
+                  selectEvent(eventId, { preserveView: true })
+                }
+                onSelectLocation={(locationId) =>
+                  selectObject(locationId, false, true)
+                }
+                selectedEventId={selectedEventId}
+                selectedObjectId={selectedObjectId}
+                title={seed.caseMeta.mapTitle}
+              />
+            ) : null}
             {view === "dossier" ? (
               selectedEvent ? <DossierView seed={seed} selectedEventId={selectedEventId} /> : <section className={styles.realEmptyState}><strong>没有可编辑的事件卷宗</strong><p>可以从右侧“对象详情”编辑实体、信息、地点或假设。</p></section>
             ) : null}

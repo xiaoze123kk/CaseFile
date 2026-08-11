@@ -9,8 +9,8 @@ v1 机器契约，以及 SourceRecord、Core Brief、推理对象、引用和 Sn
 
 `apps/web` 是 React 19 + Next.js 16 App Router + TypeScript 实现的本地前端，正式开发基线只有
 建案中心与分析师工作台两个页面。建案、Agent 任务、Brief 审阅、候选生成和显式采用直接使用
-PostgreSQL、HTTP/SSE、Provider 设置与 Worker；分析师工作台当前仍使用确定性 Fixture，等待后续
-逐区接入真实 CaseFile 与 Agent 能力。
+PostgreSQL、HTTP/SSE、Provider 设置与 Worker；分析师工作台的八种主画布统一读取同一份
+Current Draft，Fixture 仅保留给显式本地演示模式。
 
 首次运行先安装 workspace 依赖：
 
@@ -41,7 +41,12 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 浏览器访问 `http://127.0.0.1:3000`。正式路由为：
 
 - `/`：五阶段建案中心，完成最初想法、关键追问、简报生成、Brief 审阅/冻结和三份候选的比较与显式采用
-- `/workbench`：分析师工作台；画布、对象和交互继续使用确定性 Fixture，但候选接力与采用动作保持真实后端边界
+- `/workbench`：分析师工作台；对象、时间线、关系、推理与空间卷宗共享 Current Draft、revision 和选择状态
+
+空间卷宗的真实地图默认使用 OpenStreetMap 标准瓦片并保留法定署名。自定义瓦片服务时，
+必须同时设置 `NEXT_PUBLIC_CASEFILE_MAP_TILE_URL` 与
+`NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION`；只设置一项时前端不会发出瓦片请求，并显示中文配置错误。
+瓦片网络失败不会改变或隐藏 WGS84 地点。
 
 旧地址仅提供非永久兼容跳转：`/demo/intake`、`/brief` 跳转到 `/`；`/demo`、
 `/demo/*`、`/reasoning`、`/quality` 跳转到 `/workbench`。正式页面和内部导航不再产生 `/demo` URL。

@@ -1,0 +1,470 @@
+.spatialView {
+  --spatial-paper: #fafaf5;
+  --spatial-ink: #1a1c19;
+  --spatial-red: #a92609;
+  --spatial-survey: #2f5d62;
+  --spatial-warning: #a27321;
+  --spatial-inferred: #70706a;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--spatial-ink);
+  border: 1px solid rgba(26, 28, 25, 0.22);
+  background: var(--spatial-paper);
+  box-shadow: 0 12px 28px rgba(26, 28, 25, 0.06);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  min-width: 0;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid rgba(26, 28, 25, 0.2);
+  background:
+    linear-gradient(90deg, rgba(169, 38, 9, 0.06), transparent 30%),
+    var(--spatial-paper);
+}
+
+.heading { min-width: 0; }
+.heading > span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--spatial-red);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+.heading h2 {
+  overflow: hidden;
+  margin: 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headerMeta {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.headerMeta > small {
+  overflow: hidden;
+  max-width: 28ch;
+  color: #6b6c67;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modeTabs {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid rgba(26, 28, 25, 0.28);
+  background: #f3f2eb;
+}
+.modeTabs button {
+  min-height: 44px;
+  padding: 0 11px;
+  color: #595b56;
+  border: 0;
+  border-left: 1px solid rgba(26, 28, 25, 0.2);
+  background: transparent;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.modeTabs button:first-child { border-left: 0; }
+.modeTabs button:hover { color: var(--spatial-red); background: #fff; }
+.modeTabs button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--spatial-ink);
+  box-shadow: inset 0 -3px var(--spatial-red);
+}
+.modeTabs button:focus-visible,
+.mapControls button:focus-visible,
+.previewCard button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--spatial-red);
+  outline-offset: 2px;
+}
+
+.mapFrame {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: #e8e8e1;
+}
+.mapCanvas { width: 100%; height: 100%; min-height: 260px; }
+.mapFrame[data-mode="scene"] .mapCanvas,
+.mapFrame[data-mode="topology"] .mapCanvas {
+  background-color: #eeeee7;
+  background-image:
+    linear-gradient(rgba(47, 93, 98, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 93, 98, 0.08) 1px, transparent 1px),
+    linear-gradient(rgba(47, 93, 98, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 93, 98, 0.045) 1px, transparent 1px);
+  background-position: -1px -1px;
+  background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px;
+}
+
+.emptyState {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  text-align: center;
+}
+.emptyState strong {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 16px;
+}
+.mapStatus {
+  position: absolute;
+  z-index: 610;
+  top: 12px;
+  left: 50%;
+  display: flex;
+  max-width: min(520px, calc(100% - 180px));
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: #5d450f;
+  border: 1px solid rgba(162, 115, 33, 0.55);
+  background: rgba(250, 250, 245, 0.96);
+  box-shadow: 0 5px 16px rgba(26, 28, 25, 0.12);
+  transform: translateX(-50%);
+}
+.mapStatus > span {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #fff;
+  background: var(--spatial-warning);
+  font: 700 11px/1 "Cascadia Mono", Consolas, monospace;
+}
+.mapStatus p { margin: 0; font-size: 10px; line-height: 1.45; }
+
+.mapControls {
+  position: absolute;
+  z-index: 620;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  overflow: hidden;
+  border: 1px solid rgba(26, 28, 25, 0.35);
+  background: rgba(250, 250, 245, 0.96);
+  box-shadow: 0 5px 16px rgba(26, 28, 25, 0.14);
+  grid-template-columns: 44px 44px auto;
+}
+.mapControls button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 11px;
+  color: var(--spatial-ink);
+  border: 0;
+  border-left: 1px solid rgba(26, 28, 25, 0.2);
+  background: transparent;
+  font: 650 11px/1 "Microsoft YaHei", sans-serif;
+}
+.mapControls button:first-child { border-left: 0; }
+.mapControls button:nth-child(-n + 2) { font: 500 22px/1 "Bahnschrift", sans-serif; }
+.mapControls button:hover { color: #fff; background: var(--spatial-ink); }
+
+.planarLegend {
+  position: absolute;
+  z-index: 400;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  max-width: min(420px, calc(100% - 240px));
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  color: #4d6264;
+  border-left: 3px solid var(--spatial-survey);
+  background: rgba(250, 250, 245, 0.88);
+}
+.planarLegend span {
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.planarLegend small { font-size: 9px; line-height: 1.4; }
+
+.previewCard {
+  position: absolute;
+  z-index: 650;
+  top: 12px;
+  right: 12px;
+  width: min(326px, calc(100% - 24px));
+  max-height: calc(100% - 78px);
+  overflow: auto;
+  color: var(--spatial-ink);
+  border: 1px solid rgba(26, 28, 25, 0.42);
+  border-top: 4px solid var(--spatial-red);
+  background: rgba(250, 250, 245, 0.98);
+  box-shadow: 0 14px 34px rgba(26, 28, 25, 0.2);
+}
+.previewCard > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid rgba(26, 28, 25, 0.18);
+}
+.previewCard header span {
+  color: var(--spatial-red);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+.previewCard h3 {
+  margin: 3px 0 0;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 17px;
+}
+.previewCard header button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  margin: -8px -8px 0 0;
+  place-items: center;
+  color: #5f605b;
+  border: 0;
+  background: transparent;
+  font: 300 22px/1 "Bahnschrift", sans-serif;
+}
+.previewCard header button:hover { color: #fff; background: var(--spatial-red); }
+.previewCard dl {
+  display: grid;
+  margin: 0;
+  padding: 8px 12px;
+  grid-template-columns: 1fr 1fr;
+}
+.previewCard dl > div { min-width: 0; padding: 7px 4px; border-bottom: 1px dotted rgba(26, 28, 25, 0.2); }
+.previewCard dt { color: #73746f; font-size: 8px; }
+.previewCard dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  font: 600 9px/1.35 "Cascadia Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.previewCard dd[data-source="wgs84"] { color: var(--spatial-survey); }
+.previewCard dd[data-source="schematic"] { color: var(--spatial-red); }
+.previewCard dd[data-source="inferred"] { color: var(--spatial-inferred); }
+.previewCard ol { margin: 0; padding: 3px 8px 9px; list-style: none; }
+.previewCard li + li { border-top: 1px solid rgba(26, 28, 25, 0.12); }
+.previewCard li button {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 7px;
+  color: var(--spatial-ink);
+  border: 0;
+  background: transparent;
+  grid-template-columns: auto minmax(0, 1fr);
+  text-align: left;
+}
+.previewCard li button:hover,
+.previewCard li button[aria-pressed="true"] { background: rgba(169, 38, 9, 0.08); }
+.previewCard time { color: #6b6c67; font: 8px/1.3 "Cascadia Mono", Consolas, monospace; }
+.previewCard li span { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.noEvents { margin: 0; padding: 8px 12px 14px; color: #6b6c67; font-size: 10px; }
+.moreEvents { display: block; padding: 0 12px 12px; color: #6b6c67; font-size: 9px; }
+
+.emptyState {
+  min-height: 260px;
+  gap: 8px;
+  padding: 28px;
+  color: #646560;
+  background:
+    linear-gradient(rgba(47, 93, 98, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 93, 98, 0.06) 1px, transparent 1px),
+    #eeeee7;
+  background-size: 32px 32px;
+}
+.emptyState > span {
+  width: 0;
+  height: 0;
+  border-right: 13px solid transparent;
+  border-bottom: 24px solid var(--spatial-warning);
+  border-left: 13px solid transparent;
+}
+.emptyState p { max-width: 48ch; margin: 0; font-size: 10px; line-height: 1.65; }
+
+.footer {
+  display: flex;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 12px;
+  border-top: 1px solid rgba(26, 28, 25, 0.2);
+  background: var(--spatial-paper);
+}
+.footer p {
+  overflow: hidden;
+  margin: 0;
+  color: #656661;
+  font-size: 9px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.unlocatedStatus {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: #6e5318;
+  font-size: 9px;
+  font-weight: 650;
+}
+.unlocatedStatus i {
+  width: 0;
+  height: 0;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid var(--spatial-warning);
+  border-left: 5px solid transparent;
+}
+
+:global(.casefile-spatial-marker) {
+  display: flex !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  align-items: center;
+  border: 0 !important;
+  background: transparent !important;
+}
+:global(.casefile-spatial-marker:focus-visible) {
+  outline: 3px solid var(--spatial-ink);
+  outline-offset: 3px;
+}
+:global(.casefile-spatial-marker__body) {
+  display: inline-flex;
+  height: 44px;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+:global(.casefile-spatial-marker__stamp) {
+  display: block;
+  box-sizing: border-box;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  margin-left: 14px;
+  border: 2px solid var(--spatial-paper);
+  border-radius: 50%;
+  background: var(--spatial-survey);
+  box-shadow: 0 0 0 1px var(--spatial-survey);
+}
+:global(.casefile-spatial-marker--schematic .casefile-spatial-marker__stamp) {
+  border-radius: 1px;
+  background: var(--spatial-red);
+  box-shadow: 0 0 0 1px var(--spatial-red);
+  transform: rotate(45deg);
+}
+:global(.casefile-spatial-marker--inferred .casefile-spatial-marker__stamp) {
+  border: 2px dashed var(--spatial-inferred);
+  background: var(--spatial-paper);
+  box-shadow: none;
+}
+:global(.casefile-spatial-marker.is-selected .casefile-spatial-marker__stamp) {
+  outline: 3px solid var(--spatial-paper);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--spatial-ink);
+}
+:global(.casefile-spatial-marker__label) {
+  overflow: hidden;
+  max-width: 136px;
+  padding: 5px 7px;
+  color: var(--spatial-ink);
+  border: 1px solid rgba(26, 28, 25, 0.28);
+  background: rgba(250, 250, 245, 0.94);
+  box-shadow: 0 2px 7px rgba(26, 28, 25, 0.12);
+  font: 650 10px/1.25 "Microsoft YaHei", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:global(.casefile-spatial-marker.is-selected .casefile-spatial-marker__label) {
+  color: #fff;
+  border-color: var(--spatial-ink);
+  background: var(--spatial-ink);
+}
+:global(.casefile-spatial-marker__count) {
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  margin-left: -12px;
+  place-items: center;
+  color: #fff;
+  border: 2px solid var(--spatial-paper);
+  border-radius: 50%;
+  background: var(--spatial-red);
+  font: 700 8px/1 "Cascadia Mono", Consolas, monospace;
+}
+:global(.leaflet-control-attribution) {
+  color: #565752;
+  background: rgba(250, 250, 245, 0.88) !important;
+  font-size: 8px !important;
+}
+:global(.leaflet-control-attribution a) { color: var(--spatial-survey); }
+
+@media (max-width: 700px) {
+  .spatialView { border: 0; }
+  .header {
+    min-height: 90px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 5px;
+    padding: 8px;
+  }
+  .heading h2 { font-size: 13px; }
+  .headerMeta { justify-content: space-between; gap: 7px; }
+  .headerMeta > small { display: none; }
+  .modeTabs { width: 100%; }
+  .modeTabs button { min-width: 0; min-height: 44px; flex: 1 1 0; padding: 0 5px; }
+  .mapCanvas { min-height: 210px; }
+  .mapStatus { top: 8px; max-width: calc(100% - 16px); }
+  .previewCard {
+    top: auto;
+    right: 8px;
+    bottom: 62px;
+    left: 8px;
+    width: auto;
+    max-height: min(310px, calc(100% - 76px));
+  }
+  .previewCard dl { grid-template-columns: 1fr 1fr; }
+  .mapControls { right: 8px; bottom: 8px; }
+  .planarLegend { display: none; }
+  .footer { padding: 6px 8px; }
+  .footer p { display: none; }
+  .unlocatedStatus { margin-left: auto; }
+}

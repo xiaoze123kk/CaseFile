@@ -1,17 +1,17 @@
 import type { CaseFile, ObjectRef } from "@casefile/contracts";
 
 import type { WorkbenchSeed } from "./analyst-fixture";
+import {
+  buildFixtureSpatialModel,
+  buildWorkbenchSpatialModel,
+} from "./workbench-spatial-model";
 import type {
   WorkbenchCaseMeta,
   WorkbenchCaseObject,
   WorkbenchContractObject,
-  WorkbenchCoordinateSystem,
   WorkbenchGraphEdge,
   WorkbenchGraphEdgeKind,
   WorkbenchGraphNode,
-  WorkbenchMapGroup,
-  WorkbenchMapLocation,
-  WorkbenchMapMarker,
   WorkbenchMapModel,
   WorkbenchModel,
   WorkbenchObjectKind,
@@ -24,7 +24,6 @@ import type {
 
 export type * from "./workbench-real-data-types";
 
-type ContractLocation = CaseFile["locations"][number];
 type ContractHypothesis = CaseFile["hypotheses"][number];
 
 interface ParsedReference {
@@ -36,20 +35,6 @@ interface ReferenceCatalogEntry extends ParsedReference {
   label: string;
 }
 
-interface SchematicPosition {
-  x: number;
-  y: number;
-  isFallback: boolean;
-}
-
-type SpatialPosition =
-  | { coordinateSystem: "schematic"; x: number; y: number }
-  | {
-      coordinateSystem: "wgs84";
-      latitude: number;
-      longitude: number;
-    };
-
 const objectKindOrder: WorkbenchObjectKind[] = [
   "entity",
   "information",
@@ -60,7 +45,10 @@ const objectKindOrder: WorkbenchObjectKind[] = [
 
 const referenceKindOrder: WorkbenchReferenceKind[] = [
   "entity",
+  "person",
   "information_unit",
+  "information",
+  "evidence",
   "event",
   "location",
   "hypothesis",
@@ -126,41 +114,6 @@ function readReferenceIds(refs: ObjectRef[]): string[] {
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
-}
-
-function finiteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function readSpatialPosition(location: ContractLocation): SpatialPosition | null {
-  const raw = (location as Record<string, unknown>).spatial_position;
-  if (!isRecord(raw)) {
-    return null;
-  }
-  if (raw.coordinate_system === "schematic") {
-    const x = finiteNumber(raw.x);
-    const y = finiteNumber(raw.y);
-    return x !== null && y !== null && x >= 0 && x <= 100 && y >= 0 && y <= 100
-      ? { coordinateSystem: "schematic", x, y }
-      : null;
-  }
-  if (raw.coordinate_system === "wgs84") {
-    const latitude = finiteNumber(raw.latitude);
-    const longitude = finiteNumber(raw.longitude);
-    return latitude !== null &&
-      longitude !== null &&
-      latitude >= -90 &&
-      latitude <= 90 &&
-      longitude >= -180 &&
-      longitude <= 180
-      ? { coordinateSystem: "wgs84", latitude, longitude }
-      : null;
-  }
-  return null;
 }
 
 function parseTime(value: string): number | null {
@@ -271,9 +224,9 @@ function buildCaseObjects(caseFile: CaseFile): WorkbenchCaseObject[] {
       id: location.id,
       kind: "location",
       label: location.name,
-      code: readSpatialPosition(location)?.coordinateSystem ?? "topology",
+      code: location.spatial_position?.coordinate_system ?? "topology",
       meta: objectMeta(location),
-      subtype: readSpatialPosition(location)?.coordinateSystem ?? "topology",
+      subtype: location.spatial_position?.coordinate_system ?? "topology",
       ...metadataForObject(location),
       relatedEventIds: related(location.id),
       source: location,
@@ -834,230 +787,6 @@ function buildReasoningPaths(caseFile: CaseFile): WorkbenchReasoningPath[] {
   });
 }
 
-function initialGrid(ids: string[]): Map<string, { x: number; y: number }> {
-  const sorted = [...ids].sort();
-  const columns = Math.max(1, Math.ceil(Math.sqrt(sorted.length || 1)));
-  const rows = Math.max(1, Math.ceil(sorted.length / columns));
-  return new Map(
-    sorted.map((id, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      return [
-        id,
-        {
-          x: columns === 1 ? 50 : 12 + (column / (columns - 1)) * 76,
-          y: rows === 1 ? 50 : 12 + (row / (rows - 1)) * 76,
-        },
-      ];
-    }),
-  );
-}
-
-function buildSchematicPositions(
-  locations: ContractLocation[],
-  spatialById: Map<string, SpatialPosition | null>,
-): Map<string, SchematicPosition> {
-  const candidates = locations
-    .filter((location) => spatialById.get(location.id)?.coordinateSystem !== "wgs84")
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const initial = initialGrid(candidates.map((location) => location.id));
-  const positions = new Map<string, SchematicPosition>();
-  const fallbackIds = new Set<string>();
-  for (const location of candidates) {
-    const spatial = spatialById.get(location.id);
-    if (spatial?.coordinateSystem === "schematic") {
-      positions.set(location.id, { x: spatial.x, y: spatial.y, isFallback: false });
-    } else {
-      const point = initial.get(location.id) ?? { x: 50, y: 50 };
-      positions.set(location.id, { ...point, isFallback: true });
-      fallbackIds.add(location.id);
-    }
-  }
-
-  const candidateIds = new Set(candidates.map((location) => location.id));
-  const neighborWeights = new Map<string, Map<string, number>>();
-  const connect = (left: string, right: string | null, weight: number) => {
-    if (!right || left === right || !candidateIds.has(left) || !candidateIds.has(right)) {
-      return;
-    }
-    const add = (from: string, to: string) => {
-      const neighbors = neighborWeights.get(from) ?? new Map<string, number>();
-      neighbors.set(to, Math.max(neighbors.get(to) ?? 0, weight));
-      neighborWeights.set(from, neighbors);
-    };
-    add(left, right);
-    add(right, left);
-  };
-
-  for (const location of candidates) {
-    connect(location.id, readReference(location.parent_ref)?.id ?? null, 3);
-    for (const ref of location.adjacency_refs) {
-      connect(location.id, readReference(ref)?.id ?? null, 2);
-    }
-    for (const travel of location.travel_times) {
-      const weight = clamp(120 / Math.max(1, travel.minutes), 0.25, 4);
-      connect(location.id, readReference(travel.to_ref)?.id ?? null, weight);
-    }
-  }
-
-  for (let iteration = 0; iteration < 24; iteration += 1) {
-    const next = new Map(positions);
-    for (const id of [...fallbackIds].sort()) {
-      const neighbors = neighborWeights.get(id);
-      if (!neighbors || neighbors.size === 0) {
-        continue;
-      }
-      let totalWeight = 0;
-      let weightedX = 0;
-      let weightedY = 0;
-      for (const [neighborId, weight] of [...neighbors.entries()].sort()) {
-        const neighbor = positions.get(neighborId);
-        if (!neighbor) {
-          continue;
-        }
-        totalWeight += weight;
-        weightedX += neighbor.x * weight;
-        weightedY += neighbor.y * weight;
-      }
-      if (totalWeight === 0) {
-        continue;
-      }
-      const anchor = initial.get(id) ?? { x: 50, y: 50 };
-      const angle = ((hashString(id) % 360) * Math.PI) / 180;
-      const targetX = weightedX / totalWeight + Math.cos(angle) * 4;
-      const targetY = weightedY / totalWeight + Math.sin(angle) * 4;
-      next.set(id, {
-        x: clamp(targetX * 0.76 + anchor.x * 0.24, 3, 97),
-        y: clamp(targetY * 0.76 + anchor.y * 0.24, 3, 97),
-        isFallback: true,
-      });
-    }
-    for (const [id, point] of next) {
-      positions.set(id, point);
-    }
-  }
-  return positions;
-}
-
-function eventMarkersForGroup(
-  coordinateSystem: WorkbenchCoordinateSystem,
-  timelineEvents: WorkbenchTimelineEvent[],
-  locations: WorkbenchMapLocation[],
-): WorkbenchMapMarker[] {
-  const points = new Map(
-    locations.flatMap((location) =>
-      location.locationId ? [[location.locationId, location] as const] : [],
-    ),
-  );
-  return timelineEvents.flatMap((event) => {
-    const locationId = event.refs.locationId;
-    const point = locationId ? points.get(locationId) : undefined;
-    return point
-      ? [
-          {
-            eventId: event.id,
-            locationId,
-            label: event.label,
-            coordinateSystem,
-            x: point.x,
-            y: point.y,
-          } satisfies WorkbenchMapMarker,
-        ]
-      : [];
-  });
-}
-
-function buildMap(
-  caseFile: CaseFile,
-  timelineEvents: WorkbenchTimelineEvent[],
-): WorkbenchMapModel {
-  const spatialById = new Map(
-    caseFile.locations.map((location) => [location.id, readSpatialPosition(location)]),
-  );
-  const schematicPositions = buildSchematicPositions(caseFile.locations, spatialById);
-  const locationNames = new Map(
-    caseFile.locations.map((location) => [location.id, location.name]),
-  );
-  const schematicLocations = [...schematicPositions.entries()]
-    .map(([locationId, point]): WorkbenchMapLocation => ({
-      locationId,
-      label: locationNames.get(locationId) ?? locationId,
-      coordinateSystem: "schematic",
-      x: point.x,
-      y: point.y,
-      isFallback: point.isFallback,
-    }))
-    .sort((left, right) => (left.locationId ?? "").localeCompare(right.locationId ?? ""));
-
-  const geographic = caseFile.locations
-    .flatMap((location) => {
-      const spatial = spatialById.get(location.id);
-      return spatial?.coordinateSystem === "wgs84"
-        ? [{ location, spatial }]
-        : [];
-    })
-    .sort((left, right) => left.location.id.localeCompare(right.location.id));
-  const latitudes = geographic.map(({ spatial }) => spatial.latitude);
-  const longitudes = geographic.map(({ spatial }) => spatial.longitude);
-  const bounds = geographic.length
-    ? {
-        minLatitude: Math.min(...latitudes),
-        maxLatitude: Math.max(...latitudes),
-        minLongitude: Math.min(...longitudes),
-        maxLongitude: Math.max(...longitudes),
-      }
-    : null;
-  const wgs84Locations = geographic.map(({ location, spatial }): WorkbenchMapLocation => {
-    const x =
-      bounds && bounds.maxLongitude !== bounds.minLongitude
-        ? ((spatial.longitude - bounds.minLongitude) /
-            (bounds.maxLongitude - bounds.minLongitude)) *
-          100
-        : 50;
-    const y =
-      bounds && bounds.maxLatitude !== bounds.minLatitude
-        ? ((bounds.maxLatitude - spatial.latitude) /
-            (bounds.maxLatitude - bounds.minLatitude)) *
-          100
-        : 50;
-    return {
-      locationId: location.id,
-      label: location.name,
-      coordinateSystem: "wgs84",
-      x,
-      y,
-      isFallback: false,
-      latitude: spatial.latitude,
-      longitude: spatial.longitude,
-    };
-  });
-
-  const schematic: WorkbenchMapGroup = {
-    coordinateSystem: "schematic",
-    locations: schematicLocations,
-    eventMarkers: eventMarkersForGroup("schematic", timelineEvents, schematicLocations),
-    bounds: null,
-  };
-  const wgs84: WorkbenchMapGroup = {
-    coordinateSystem: "wgs84",
-    locations: wgs84Locations,
-    eventMarkers: eventMarkersForGroup("wgs84", timelineEvents, wgs84Locations),
-    bounds,
-  };
-  const availableModes: WorkbenchCoordinateSystem[] = [
-    ...(wgs84.locations.length ? (["wgs84"] as const) : []),
-    ...(schematic.locations.length ? (["schematic"] as const) : []),
-  ];
-  return {
-    availableModes,
-    defaultMode: availableModes[0] ?? null,
-    groups: { schematic, wgs84 },
-    fallbackLocationIds: schematicLocations
-      .filter((location) => location.isFallback && location.locationId)
-      .map((location) => location.locationId as string),
-  };
-}
-
 function countObjects(
   objects: WorkbenchCaseObject[],
 ): Record<WorkbenchObjectKind, number> {
@@ -1079,7 +808,13 @@ function buildCaseMeta(input: {
   const firstTime = input.timeline.find((event) => event.sortKey !== null)?.start;
   const lastTime = [...input.timeline].reverse().find((event) => event.sortKey !== null)?.start;
   const modeLabel = input.map.availableModes
-    .map((mode) => (mode === "wgs84" ? "地理坐标" : "空间示意"))
+    .map((mode) =>
+      mode === "geographic"
+        ? "真实地图"
+        : mode === "scene"
+          ? "场景图"
+          : "自动布局",
+    )
     .join(" / ");
   const realObjects = [
     ...input.caseFile.entities,
@@ -1102,7 +837,7 @@ function buildCaseMeta(input: {
       : "0 EVENTS",
     mapTitle: `${input.caseFile.title} / 空间图`,
     mapMeta: modeLabel || "0 LOCATIONS",
-    mapNote: `${input.map.groups.schematic.locations.filter((item) => !item.isFallback).length} 个示意坐标 · ${input.map.groups.wgs84.locations.length} 个地理坐标 · ${input.map.fallbackLocationIds.length} 个拓扑回退`,
+    mapNote: `${input.map.counts.geographic} 个地理坐标 · ${input.map.counts.scene} 个场景坐标 · ${input.map.counts.inferred} 个推算位置 · ${input.map.counts.unlocated} 个未定位`,
     relationshipSummary: `${input.graph.nodes.length} 个节点 · ${input.graph.edges.length} 条边`,
     exportTitle: input.caseFile.title,
     exportCode: input.caseFile.casefile_id,
@@ -1121,8 +856,7 @@ export function mapCaseFileToWorkbenchModel(
   const timelineEvents = buildTimeline(caseFile, caseObjects);
   const relationshipGraph = buildRelationshipGraph(caseFile, caseObjects);
   const reasoningPaths = buildReasoningPaths(caseFile);
-  const map = buildMap(caseFile, timelineEvents);
-  const activeMapGroup = map.defaultMode ? map.groups[map.defaultMode] : null;
+  const map = buildWorkbenchSpatialModel(caseFile, timelineEvents);
   const caseMeta = buildCaseMeta({
     caseFile,
     draftRevision,
@@ -1146,16 +880,8 @@ export function mapCaseFileToWorkbenchModel(
     graphEdges: relationshipGraph.edges,
     relationshipGraph,
     reasoningPaths,
-    mapMarkers: activeMapGroup?.eventMarkers ?? [],
-    mapLabels:
-      activeMapGroup?.locations.map((location) => ({
-        locationId: location.locationId,
-        label: location.label,
-        coordinateSystem: location.coordinateSystem,
-        x: location.x,
-        y: location.y,
-        isFallback: location.isFallback,
-      })) ?? [],
+    mapMarkers: [],
+    mapLabels: [],
     map,
     drawer: emptyDrawer,
     initialAuditEntries: [],
@@ -1188,6 +914,9 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     source: null,
   }));
   const objectById = new Map(caseObjects.map((object) => [object.id, object]));
+  const fixtureKindById = new Map(
+    seed.caseObjects.map((object) => [object.id, object.kind]),
+  );
   const timelineEvents = seed.timelineEvents.map((event): WorkbenchTimelineEvent => ({
     ...event,
     start: event.time,
@@ -1210,7 +939,9 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
   const graphNodes = seed.graphNodes.map((node): WorkbenchGraphNode => ({
       ...node,
       id: node.objectId,
-      kind: referenceKindForDirectoryKind(objectById.get(node.objectId)?.kind),
+      kind:
+        fixtureKindById.get(node.objectId) ??
+        referenceKindForDirectoryKind(objectById.get(node.objectId)?.kind),
       label: objectById.get(node.objectId)?.label ?? node.objectId,
       directoryObjectId: objectById.has(node.objectId) ? node.objectId : null,
     }));
@@ -1244,39 +975,7 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
       outputLabel: path.conclusion,
     })),
   }));
-  const schematicLocations = seed.mapLabels.map((label): WorkbenchMapLocation => ({
-    locationId: null,
-    label: label.label,
-    coordinateSystem: "schematic",
-    x: label.x,
-    y: label.y,
-    isFallback: false,
-  }));
-  const schematicMarkers = seed.mapMarkers.map((marker): WorkbenchMapMarker => ({
-    ...marker,
-    locationId: null,
-    coordinateSystem: "schematic",
-  }));
-  const hasMapData = schematicLocations.length > 0 || schematicMarkers.length > 0;
-  const map: WorkbenchMapModel = {
-    availableModes: hasMapData ? ["schematic"] : [],
-    defaultMode: hasMapData ? "schematic" : null,
-    groups: {
-      schematic: {
-        coordinateSystem: "schematic",
-        locations: schematicLocations,
-        eventMarkers: schematicMarkers,
-        bounds: null,
-      },
-      wgs84: {
-        coordinateSystem: "wgs84",
-        locations: [],
-        eventMarkers: [],
-        bounds: null,
-      },
-    },
-    fallbackLocationIds: [],
-  };
+  const map = buildFixtureSpatialModel({ ...seed, timelineEvents });
 
   return {
     id: seed.id,
@@ -1293,15 +992,8 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     graphEdges,
     relationshipGraph: { nodes: graphNodes, edges: graphEdges },
     reasoningPaths,
-    mapMarkers: schematicMarkers,
-    mapLabels: schematicLocations.map((location) => ({
-      locationId: location.locationId,
-      label: location.label,
-      coordinateSystem: location.coordinateSystem,
-      x: location.x,
-      y: location.y,
-      isFallback: location.isFallback,
-    })),
+    mapMarkers: seed.mapMarkers,
+    mapLabels: seed.mapLabels,
     map,
     drawer: seed.drawer,
     initialAuditEntries: seed.initialAuditEntries,

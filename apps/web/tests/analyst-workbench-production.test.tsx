@@ -863,6 +863,65 @@ describe("production analyst workbench", () => {
     expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();
   });
 
+  it("keeps location and event selection inside the Current Draft map view", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    const marker = await screen.findByRole("button", {
+      name: /档案馆门禁，场景坐标，1 个事件/u,
+    });
+    fireEvent.click(marker);
+
+    const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(canvas).toHaveAttribute("data-selected-object-id", "loc_archive_gate");
+    expect(await screen.findByRole("dialog")).toHaveTextContent("档案馆门禁");
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: /门禁开启/u,
+      }),
+    );
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(canvas).toHaveAttribute("data-selected-object-id", "evt_gate_opened");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("routes map marker selection through the unsaved-edit guard", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const name = await screen.findByRole("textbox", { name: "名称" });
+    fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /档案馆门禁，场景坐标，1 个事件/u,
+      }),
+    );
+
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
+      "未保存的调查员名称",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "对象详情与编辑" })).getByRole(
+        "status",
+      ),
+    ).toHaveTextContent("请先保存或取消修改");
+    expect(container.querySelector("#analyst-canvas")).toHaveAttribute(
+      "data-selected-object-id",
+      "ent_real_analyst",
+    );
+  });
+
   it("renders only the event sequence in the Current Draft timeline", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);

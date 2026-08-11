@@ -19,7 +19,10 @@ export type WorkbenchReferenceKind =
   | "casefile"
   | "resolution_spec"
   | "entity"
+  | "person"
   | "information_unit"
+  | "information"
+  | "evidence"
   | "event"
   | "location"
   | "hypothesis"
@@ -31,7 +34,9 @@ export type WorkbenchReferenceKind =
   | "source_fragment"
   | "unknown";
 
-export type WorkbenchCoordinateSystem = "schematic" | "wgs84";
+export type WorkbenchSpatialMode = "geographic" | "scene" | "topology";
+
+export type WorkbenchPositionSource = "wgs84" | "schematic" | "inferred";
 
 export type WorkbenchContractObject =
   | CaseFile["entities"][number]
@@ -159,54 +164,68 @@ export interface WorkbenchReasoningPath {
   source: CaseFile["reasoning_paths"][number] | null;
 }
 
-export interface WorkbenchMapLocation {
-  locationId: string | null;
-  label: string;
-  coordinateSystem: WorkbenchCoordinateSystem;
-  x: number;
-  y: number;
-  isFallback: boolean;
-  latitude?: number;
-  longitude?: number;
-}
+export type WorkbenchSpatialPosition =
+  | {
+      kind: "wgs84";
+      latitude: number;
+      longitude: number;
+    }
+  | {
+      kind: "planar";
+      x: number;
+      y: number;
+    };
 
-export interface WorkbenchMapMarker {
+export interface WorkbenchSpatialEvent {
   eventId: string;
+  label: string;
+  time: string;
+  relatedObjectIds: string[];
+}
+
+export interface WorkbenchSpatialLocation {
+  spatialId: string;
   locationId: string | null;
   label: string;
-  coordinateSystem: WorkbenchCoordinateSystem;
-  x: number;
-  y: number;
+  source: WorkbenchPositionSource;
+  position: WorkbenchSpatialPosition;
+  events: WorkbenchSpatialEvent[];
+  relatedObjectIds: string[];
 }
 
-export interface WorkbenchMapBounds {
-  minLatitude: number;
-  maxLatitude: number;
-  minLongitude: number;
-  maxLongitude: number;
-}
-
-export interface WorkbenchMapGroup {
-  coordinateSystem: WorkbenchCoordinateSystem;
-  locations: WorkbenchMapLocation[];
-  eventMarkers: WorkbenchMapMarker[];
-  bounds: WorkbenchMapBounds | null;
+export interface WorkbenchSpatialView {
+  mode: WorkbenchSpatialMode;
+  locations: WorkbenchSpatialLocation[];
 }
 
 export interface WorkbenchMapModel {
-  availableModes: WorkbenchCoordinateSystem[];
-  defaultMode: WorkbenchCoordinateSystem | null;
-  groups: Record<WorkbenchCoordinateSystem, WorkbenchMapGroup>;
-  fallbackLocationIds: string[];
+  availableModes: WorkbenchSpatialMode[];
+  defaultMode: WorkbenchSpatialMode | null;
+  views: Record<WorkbenchSpatialMode, WorkbenchSpatialView>;
+  unlocatedLocationIds: string[];
+  counts: {
+    locations: number;
+    events: number;
+    geographic: number;
+    scene: number;
+    inferred: number;
+    unlocated: number;
+  };
 }
 
-export interface WorkbenchMapLabel {
-  locationId: string | null;
+/** Fixture compatibility fields. Production map rendering consumes `WorkbenchMapModel`. */
+export interface WorkbenchMapMarker {
+  eventId: string;
   label: string;
-  coordinateSystem: WorkbenchCoordinateSystem;
   x: number;
   y: number;
-  isFallback: boolean;
+}
+
+/** Fixture compatibility fields. Production map rendering consumes `WorkbenchMapModel`. */
+export interface WorkbenchMapLabel {
+  label: string;
+  x: number;
+  y: number;
 }
 
 export interface WorkbenchCaseMeta {
