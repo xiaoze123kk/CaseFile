@@ -10,10 +10,6 @@ from application_services_test_support import (
     _draft_revision_and_content,
     _prepare_task,
 )
-from sqlalchemy import Engine, select, text
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult
 from casefile.application.a_path_metrics import APathMetricsService
@@ -27,6 +23,9 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select, text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

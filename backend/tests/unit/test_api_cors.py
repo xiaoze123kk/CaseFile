@@ -5,9 +5,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
-
 from casefile.api.app import _cors_origins, create_app
+from fastapi.testclient import TestClient
 
 
 def test_custom_cors_origin_is_exactly_allowed_for_preflight() -> None:

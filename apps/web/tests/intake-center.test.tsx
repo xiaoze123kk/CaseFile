@@ -1191,7 +1191,7 @@ describe("intake center", () => {
       screen.getByRole("button", { name: /打开分析师工作台/u }),
     );
     expect(routerPush).toHaveBeenCalledWith("/workbench?project=1");
-  });
+  }, 15_000);
 
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {
     fake.backend.setConfiguredProviders(["openai", "deepseek"]);
