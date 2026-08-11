@@ -1,6 +1,5 @@
 "use client";
 
-import type { CaseFile } from "@casefile/contracts";
 import Link from "next/link";
 import {
   type CSSProperties,
@@ -19,6 +18,7 @@ import {
   fetchWorkbenchContext,
   type DraftCandidatePreviewView,
   type DraftView,
+  type CaseFileDocument,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -620,7 +620,11 @@ export function AnalystWorkbench({
   }
 
   const loadedProjectId = projectId;
-  const seed = mapCaseFileToWorkbenchModel(draft.content, draft.revision);
+  const seed = mapCaseFileToWorkbenchModel(
+    draft.content,
+    draft.revision,
+    realContextState.data?.validation ?? null,
+  );
 
   async function saveObject(
     objectId: string,
@@ -809,7 +813,7 @@ function AnalystWorkbenchSurface({
   previewCandidate?: DraftCandidatePreviewView | null;
   previewProjectId?: number | null;
   readOnlyPreview?: boolean;
-  realDocument?: CaseFile | null;
+  realDocument?: CaseFileDocument | null;
   realContextState?: WorkbenchContextState;
   currentDraft?: DraftView | null;
   draftRevision?: number | null;
@@ -934,11 +938,22 @@ function AnalystWorkbenchSurface({
 
   const selectedEvent = getEvent(seed, selectedEventId);
   const selectedObject = getObject(seed, selectedObjectId);
+  const visibleSelectedIssueId = seed.validationIssues.some(
+    (issue) => issue.id === selectedIssueId,
+  )
+    ? selectedIssueId
+    : seed.defaultIssueId;
+  const visibleIssueStatuses = Object.fromEntries(
+    seed.validationIssues.map((issue) => [
+      issue.id,
+      issueStatuses[issue.id] ?? "open",
+    ]),
+  ) as Record<string, IssueStatus>;
   const selectedIssue =
-    seed.validationIssues.find((item) => item.id === selectedIssueId) ??
+    seed.validationIssues.find((item) => item.id === visibleSelectedIssueId) ??
     seed.validationIssues[0];
   const selectedStatus = selectedIssue
-    ? issueStatuses[selectedIssue.id] ?? "open"
+    ? visibleIssueStatuses[selectedIssue.id] ?? "open"
     : "open";
   const eventRelatedObjectIds = selectedEvent
     ? [selectedEvent.id, ...selectedEvent.relatedObjectIds]
@@ -952,7 +967,7 @@ function AnalystWorkbenchSurface({
   const unresolvedCount = realData
     ? contextState.data?.validation.issue_count ?? 0
     : seed.validationIssues.filter((issue) => {
-        const status = issueStatuses[issue.id];
+        const status = visibleIssueStatuses[issue.id];
         return status === "open" || status === "patch-ready";
       }).length;
   const realValidationLabel = contextState.loading
@@ -966,6 +981,14 @@ function AnalystWorkbenchSurface({
           : contextState.data?.validation.status === "failed"
             ? `${unresolvedCount} 个问题`
             : "暂不可用";
+
+  const timelineValidationStatus = !realData || writeLocked
+    ? "passed"
+    : contextState.loading
+      ? "loading"
+      : contextState.error
+        ? "error"
+        : contextState.data?.validation.status ?? "unavailable";
 
   function schedule(callback: () => void, delay: number) {
     const timer = window.setTimeout(callback, delay);
@@ -1096,10 +1119,10 @@ function AnalystWorkbenchSurface({
 
   function openIssue(issueId: string) {
     const issue = seed.validationIssues.find((item) => item.id === issueId);
-    if (!issue || blockDirtyObjectNavigation(issue.eventId)) return;
+    if (!issue || (issue.eventId && blockDirtyObjectNavigation(issue.eventId))) return;
     setSelectedIssueId(issue.id);
-    setSelectedEventId(issue.eventId);
-    setSelectedObjectId(issue.eventId);
+    if (issue.eventId) setSelectedEventId(issue.eventId);
+    setSelectedObjectId(issue.targetObjectId ?? issue.eventId);
     setObjectQuery("");
     setKindFilter("event");
     setSubtypeFilter("all");
@@ -1483,7 +1506,7 @@ function AnalystWorkbenchSurface({
             {view === "timeline" ? (
               seed.timelineEvents.length ? (
                 selectedEvent ? (
-                  <TimelineOverview issueStatuses={issueStatuses} onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} />
+                  <TimelineOverview issueStatuses={visibleIssueStatuses} onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} validationStatus={timelineValidationStatus} />
                 ) : (
                   <section className={styles.realEmptyState}><strong>此对象没有关联事件</strong><p>检查器仍显示当前对象详情；可以从对象树选择其他对象继续核对。</p></section>
                 )
@@ -1508,7 +1531,7 @@ function AnalystWorkbenchSurface({
             {view === "evidence" ? (
               <EvidenceComparison
                 editing={manualEditing}
-                issueId={selectedIssueId}
+                issueId={visibleSelectedIssueId}
                 manualValue={manualValue}
                 onManualValueChange={setManualValue}
                 onSaveManual={() => resolveIssue("manual")}
@@ -1586,9 +1609,9 @@ function AnalystWorkbenchSurface({
               ) : selectedIssue ? <div className={styles.issueInspector}>
                 <div className={styles.issueList}>
                   {seed.validationIssues.map((issue) => {
-                    const status = issueStatuses[issue.id] ?? "open";
+                    const status = visibleIssueStatuses[issue.id] ?? "open";
                     return (
-                      <button aria-pressed={issue.id === selectedIssueId} data-status={status} key={issue.id} onClick={() => openIssue(issue.id)} type="button">
+                      <button aria-pressed={issue.id === visibleSelectedIssueId} data-status={status} key={issue.id} onClick={() => openIssue(issue.id)} type="button">
                         <span data-severity={issue.severity}>{issue.severity}</span>
                         <span><strong>{issue.title}</strong><small>{statusLabel(status)}</small></span>
                       </button>

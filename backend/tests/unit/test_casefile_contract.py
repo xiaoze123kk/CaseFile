@@ -1,13 +1,15 @@
-"""Runtime CaseFile v1 schema, reference, and canonical-hash tests."""
+"""Runtime versioned CaseFile schema, reference, and canonical-hash tests."""
 
 from __future__ import annotations
 
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from casefile.application.casefile_v1 import prepare_generation_candidate
 from casefile.application.snapshot import casefile_content_hash
 from casefile.contracts import (
     ContractValidationError,
@@ -41,6 +43,40 @@ def test_schema_is_valid_and_all_three_product_shapes_pass() -> None:
         validate_casefile(_load(fixture))
 
 
+def test_historical_v1_document_remains_readable() -> None:
+    legacy = _load("restart_loop.casefile.json")
+    legacy["schema_version"] = "1.0"
+    legacy["events"][0]["time"] = {
+        "start": "2042-06-01T20:00:00+08:00",
+        "end": "2042-06-01T20:03:00+08:00",
+        "precision": "minute",
+    }
+
+    Draft202012Validator.check_schema(load_casefile_schema("1.0"))
+    validate_casefile(legacy)
+
+
+def test_v1_candidate_upgrade_does_not_mutate_historical_payload() -> None:
+    legacy = _load("restart_loop.casefile.json")
+    legacy["schema_version"] = "1.0"
+    legacy["events"][0]["time"] = {
+        "start": "2042-06-01T20:00:00+08:00",
+        "end": None,
+        "precision": "unknown",
+    }
+    frozen = copy.deepcopy(legacy)
+
+    upgraded = prepare_generation_candidate(
+        SimpleNamespace(draft=SimpleNamespace(schema_version="2.0")),  # type: ignore[arg-type]
+        legacy,
+    )
+
+    assert legacy == frozen
+    assert upgraded["schema_version"] == "2.0"
+    assert upgraded["events"][0]["time"] == {"kind": "unknown"}
+    validate_casefile(upgraded)
+
+
 def test_runtime_rejects_dangling_and_wrong_type_references() -> None:
     missing = _load("restart_loop.casefile.json")
     missing["events"][0]["location_ref"]["object_id"] = "loc_missing"
@@ -66,8 +102,70 @@ def test_runtime_rejects_deterministic_semantic_invariants() -> None:
     assert "self_reference" in _error_codes(self_adjacent)
 
     invalid_time = _load("restart_loop.casefile.json")
-    invalid_time["events"][0]["time"]["end"] = "2042-06-01T19:59:00+08:00"
+    invalid_time["events"][0]["time"]["end"] = "2042-06-01T19:59"
     assert "invalid_time_range" in _error_codes(invalid_time)
+
+
+def test_temporal_position_v2_supports_all_five_semantics() -> None:
+    document = _load("restart_loop.casefile.json")
+    event = document["events"][0]
+
+    for time in (
+        {"kind": "exact", "value": "2042-06-01T20:00", "precision": "minute"},
+        {
+            "kind": "approximate",
+            "value": "2042-06-01T20",
+            "precision": "hour",
+        },
+        {
+            "kind": "range",
+            "start": "2042-06-01T20:00",
+            "end": "2042-06-01T20:03",
+            "precision": "minute",
+        },
+        {"kind": "unknown"},
+    ):
+        candidate = copy.deepcopy(document)
+        candidate["events"][0]["time"] = time
+        validate_casefile(candidate)
+
+    relative = copy.deepcopy(document)
+    anchor = copy.deepcopy(event)
+    anchor["id"] = "evt_restart_anchor"
+    anchor["time"] = {"kind": "exact", "value": "2042-06-01T19:00", "precision": "minute"}
+    relative["events"].append(anchor)
+    relative["events"][0]["time"] = {
+        "kind": "relative",
+        "anchor_event_ref": {"object_type": "event", "object_id": "evt_restart_anchor"},
+        "relation": "after",
+        "offset_minutes": 60,
+    }
+    validate_casefile(relative)
+
+
+def test_temporal_position_v2_rejects_fabricated_unknown_and_timezone_values() -> None:
+    fabricated_unknown = _load("restart_loop.casefile.json")
+    fabricated_unknown["events"][0]["time"] = {
+        "kind": "unknown",
+        "value": "2042-06-01T20:00",
+    }
+    assert "schema_invalid" in _error_codes(fabricated_unknown)
+
+    timezone_value = _load("restart_loop.casefile.json")
+    timezone_value["events"][0]["time"] = {
+        "kind": "exact",
+        "value": "2042-06-01T20:00+08:00",
+        "precision": "minute",
+    }
+    assert "schema_invalid" in _error_codes(timezone_value)
+
+    precision_mismatch = _load("restart_loop.casefile.json")
+    precision_mismatch["events"][0]["time"] = {
+        "kind": "exact",
+        "value": "2042-06-01T20:00",
+        "precision": "hour",
+    }
+    assert "time_precision_mismatch" in _error_codes(precision_mismatch)
 
 
 def test_rfc8785_hash_is_stable_across_object_key_order() -> None:

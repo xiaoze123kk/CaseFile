@@ -1239,6 +1239,16 @@ class WorkflowService:
                         "current_revision": owned.draft.revision,
                     },
                 )
+            if owned.draft.schema_version != CASEFILE_SCHEMA_VERSION:
+                raise ApplicationError(
+                    "draft_schema_upgrade_required",
+                    "这份工作稿仍使用历史 CaseFile 契约；请先升级时间契约再重新生成。",
+                    status_code=409,
+                    details={
+                        "draft_schema_version": owned.draft.schema_version,
+                        "required_schema_version": CASEFILE_SCHEMA_VERSION,
+                    },
+                )
             brief = self._brief(owned, lock=True)
             version = self.session.scalar(
                 select(BriefVersion).where(
@@ -1278,6 +1288,7 @@ class WorkflowService:
                 input_hash=version.content_hash,
                 input_jsonb={
                     "brief": content,
+                    "schema_version": owned.draft.schema_version,
                     "casefile_id": owned.casefile.object_id,
                     "brief_public_id": brief.public_id,
                     "brief_version_no": version.version_no,

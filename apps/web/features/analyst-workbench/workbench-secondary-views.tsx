@@ -23,13 +23,8 @@ import type {
 } from "./workbench-real-data";
 
 function timelineClock(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
+  const match = value.match(/^\d{4}-\d{2}-\d{2}T(\d{2})(?::(\d{2}))?/);
+  return match ? `${match[1]}:${match[2] ?? "00"}` : value;
 }
 
 export function TimelineOverview({
@@ -37,11 +32,13 @@ export function TimelineOverview({
   selectedEventId,
   issueStatuses,
   onSelectEvent,
+  validationStatus,
 }: {
   seed: WorkbenchSeed;
   selectedEventId: string | null;
   issueStatuses: Record<string, IssueStatus>;
   onSelectEvent: (eventId: string) => void;
+  validationStatus: "passed" | "failed" | "unavailable" | "loading" | "error";
 }) {
   const selectedEvent = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
 
@@ -95,10 +92,19 @@ export function TimelineOverview({
                     className={styles.eventIssue}
                     data-status={issueStatus}
                   >
-                    {issue.severity}
+                    {issue.severity === "error" ? "错误" : issue.severity}
                   </span>
                 ) : (
-                  <span className={styles.eventClear}>通过</span>
+                  <span
+                    className={styles.eventClear}
+                    data-status={validationStatus}
+                  >
+                    {validationStatus === "passed"
+                      ? "通过"
+                      : validationStatus === "failed"
+                        ? "待复核"
+                        : "待验证"}
+                  </span>
                 )}
               </button>
             </li>

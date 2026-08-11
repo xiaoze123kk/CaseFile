@@ -52,10 +52,10 @@ export interface TimelineEvent {
 
 export interface ValidationIssue {
   id: string;
-  severity: "S0" | "S1";
+  severity: "S0" | "S1" | "error";
   title: string;
   summary: string;
-  eventId: string;
+  eventId: string | null;
   rule: string;
   evidenceIds: string[];
   beforeKnowledge: string;
@@ -63,6 +63,10 @@ export interface ValidationIssue {
   afterKnowledge: string;
   patchBefore: string;
   patchAfter: string;
+  source?: "fixture" | "validator";
+  targetObjectId?: string | null;
+  targetObjectType?: string | null;
+  fieldPath?: string;
 }
 
 export interface SourceItem {
@@ -1042,7 +1046,9 @@ export function validateWorkbenchSeed(seed: WorkbenchSeed) {
     }
   }
   for (const issue of seed.validationIssues) {
-    if (!eventIds.has(issue.eventId)) errors.push(`${issue.id} 引用未知事件 ${issue.eventId}`);
+    if (issue.eventId && !eventIds.has(issue.eventId)) {
+      errors.push(`${issue.id} 引用未知事件 ${issue.eventId}`);
+    }
     for (const evidenceId of issue.evidenceIds) {
       if (!objectIds.has(evidenceId)) errors.push(`${issue.id} 引用未知证据 ${evidenceId}`);
     }

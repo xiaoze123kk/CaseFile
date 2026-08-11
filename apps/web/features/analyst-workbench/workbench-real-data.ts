@@ -1,6 +1,10 @@
-import type { CaseFile, ObjectRef } from "@casefile/contracts";
+import type { ObjectRef } from "@casefile/contracts";
+import type {
+  CaseFileDocument,
+  WorkbenchValidationView,
+} from "@/lib/api-client";
 
-import type { WorkbenchSeed } from "./analyst-fixture";
+import type { ValidationIssue, WorkbenchSeed } from "./analyst-fixture";
 import type {
   WorkbenchCaseMeta,
   WorkbenchCaseObject,
@@ -24,8 +28,8 @@ import type {
 
 export type * from "./workbench-real-data-types";
 
-type ContractLocation = CaseFile["locations"][number];
-type ContractHypothesis = CaseFile["hypotheses"][number];
+type ContractLocation = CaseFileDocument["locations"][number];
+type ContractHypothesis = CaseFileDocument["hypotheses"][number];
 
 interface ParsedReference {
   id: string;
@@ -163,9 +167,74 @@ function readSpatialPosition(location: ContractLocation): SpatialPosition | null
   return null;
 }
 
-function parseTime(value: string): number | null {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function parseTime(value: string): string | null {
+  const match = value.match(
+    /^(\d{4}-\d{2}-\d{2})(?:T(\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?)?(?:Z|[+-]\d{2}:\d{2})?$/,
+  );
+  if (!match) return null;
+  const [, date, hour = "00", minute = "00", second = "00", fraction = ""] = match;
+  return `${date}T${hour}:${minute}:${second}.${fraction.padEnd(6, "0")}`;
+}
+
+function temporalSummary(
+  time: CaseFileDocument["events"][number]["time"],
+): {
+  label: string;
+  start: string | null;
+  end: string | null;
+  precision: string;
+  sortKey: string | null;
+} {
+  if (!("kind" in time)) {
+    const start = time.precision === "unknown" ? null : time.start;
+    return {
+      label: start ?? "时间未定",
+      start,
+      end: time.end,
+      precision: time.precision,
+      sortKey: start ? parseTime(start) : null,
+    };
+  }
+  if (time.kind === "unknown") {
+    return {
+      label: "时间未定",
+      start: null,
+      end: null,
+      precision: "unknown",
+      sortKey: null,
+    };
+  }
+  if (time.kind === "relative") {
+    const relation = {
+      before: "之前",
+      after: "之后",
+      same_time: "同时",
+    }[time.relation];
+    const offset = time.offset_minutes === null ? "" : ` ${time.offset_minutes} 分钟`;
+    return {
+      label: `相对 ${time.anchor_event_ref.object_id}${offset}${relation}`,
+      start: null,
+      end: null,
+      precision: "relative",
+      sortKey: null,
+    };
+  }
+  if (time.kind === "range") {
+    return {
+      label: `${time.start} – ${time.end}`,
+      start: time.start,
+      end: time.end,
+      precision: time.precision,
+      sortKey: parseTime(time.start),
+    };
+  }
+  return {
+    label: time.kind === "approximate" ? `约 ${time.value}` : time.value,
+    start: time.value,
+    end: null,
+    precision: time.precision,
+    sortKey: parseTime(time.value),
+  };
 }
 
 function confidenceText(value: number | null): string {
@@ -186,7 +255,7 @@ function objectMeta(object: WorkbenchContractObject): string {
   return `${confidenceText(object.confidence)} · ${object.confirmation_status}`;
 }
 
-function buildRelatedEventIds(caseFile: CaseFile): Map<string, Set<string>> {
+function buildRelatedEventIds(caseFile: CaseFileDocument): Map<string, Set<string>> {
   const result = new Map<string, Set<string>>();
   const directoryIds = new Set(
     [
@@ -229,7 +298,7 @@ function buildRelatedEventIds(caseFile: CaseFile): Map<string, Set<string>> {
   return result;
 }
 
-function buildCaseObjects(caseFile: CaseFile): WorkbenchCaseObject[] {
+function buildCaseObjects(caseFile: CaseFileDocument): WorkbenchCaseObject[] {
   const relatedEvents = buildRelatedEventIds(caseFile);
   const related = (id: string) => [...(relatedEvents.get(id) ?? [])].sort();
 
@@ -260,7 +329,7 @@ function buildCaseObjects(caseFile: CaseFile): WorkbenchCaseObject[] {
       id: event.id,
       kind: "event",
       label: event.title,
-      code: `${event.truth_status} · ${event.time.precision}`,
+      code: `${event.truth_status} · ${temporalSummary(event.time).precision}`,
       meta: objectMeta(event),
       subtype: event.truth_status,
       ...metadataForObject(event),
@@ -293,8 +362,9 @@ function buildCaseObjects(caseFile: CaseFile): WorkbenchCaseObject[] {
 }
 
 function buildTimeline(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   objects: WorkbenchCaseObject[],
+  validationIssues: ValidationIssue[],
 ): WorkbenchTimelineEvent[] {
   const objectIds = new Set(objects.map((object) => object.id));
   const locationNames = new Map(
@@ -318,21 +388,23 @@ function buildTimeline(
         ...observerIds,
         ...sourceIds,
       ]).filter((id) => objectIds.has(id));
-      const sortKey = parseTime(event.time.start);
+      const temporal = temporalSummary(event.time);
       return {
         event: {
           id: event.id,
-          time: event.time.start || "时间未定",
+          time: temporal.label,
           label: event.title,
           location: locationId ? locationNames.get(locationId) ?? locationId : "未指定地点",
           summary: typeof event.description === "string" ? event.description : "",
           relatedObjectIds,
-          issueIds: [],
-          start: event.time.start,
-          end: event.time.end,
-          precision: event.time.precision,
+          issueIds: validationIssues
+            .filter((issue) => issue.eventId === event.id)
+            .map((issue) => issue.id),
+          start: temporal.start,
+          end: temporal.end,
+          precision: temporal.precision,
           truthStatus: event.truth_status,
-          sortKey,
+          sortKey: temporal.sortKey,
           refs: {
             participantIds,
             locationId,
@@ -354,7 +426,7 @@ function buildTimeline(
         return -1;
       }
       if (left.event.sortKey !== null && right.event.sortKey !== null) {
-        const byTime = left.event.sortKey - right.event.sortKey;
+        const byTime = left.event.sortKey.localeCompare(right.event.sortKey);
         if (byTime !== 0) {
           return byTime;
         }
@@ -364,7 +436,37 @@ function buildTimeline(
     .map(({ event }) => event);
 }
 
-function buildReferenceCatalog(caseFile: CaseFile): Map<string, ReferenceCatalogEntry> {
+function buildValidationIssues(
+  validation: WorkbenchValidationView | null,
+): ValidationIssue[] {
+  if (validation?.status !== "failed") {
+    return [];
+  }
+  return validation.issues.map((issue) => {
+    const objectRef = issue.target.object_ref;
+    const eventId = objectRef?.object_type === "event" ? objectRef.object_id : null;
+    return {
+      id: issue.issue_id,
+      severity: issue.severity,
+      title: issue.message,
+      summary: issue.message,
+      eventId,
+      rule: `${issue.code} · ${issue.path}`,
+      evidenceIds: [],
+      beforeKnowledge: "",
+      eventClaim: "",
+      afterKnowledge: "",
+      patchBefore: "",
+      patchAfter: "",
+      source: "validator",
+      targetObjectId: objectRef?.object_id ?? null,
+      targetObjectType: objectRef?.object_type ?? null,
+      fieldPath: issue.target.field_path,
+    };
+  });
+}
+
+function buildReferenceCatalog(caseFile: CaseFileDocument): Map<string, ReferenceCatalogEntry> {
   const entries: ReferenceCatalogEntry[] = [
     { id: caseFile.casefile_id, kind: "casefile", label: caseFile.title },
     ...caseFile.resolution_specs.map((item) => ({
@@ -458,7 +560,7 @@ function layoutGraphNodes(nodes: WorkbenchGraphNode[]): WorkbenchGraphNode[] {
 }
 
 function buildRelationshipGraph(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   objects: WorkbenchCaseObject[],
 ): { nodes: WorkbenchGraphNode[]; edges: WorkbenchGraphEdge[] } {
   const catalog = buildReferenceCatalog(caseFile);
@@ -773,7 +875,7 @@ function outcomeForHypothesis(
   return "contested";
 }
 
-function buildReasoningPaths(caseFile: CaseFile): WorkbenchReasoningPath[] {
+function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath[] {
   const catalog = buildReferenceCatalog(caseFile);
   const hypotheses = new Map(caseFile.hypotheses.map((item) => [item.id, item]));
   const resolutions = new Map(caseFile.resolution_specs.map((item) => [item.id, item]));
@@ -968,7 +1070,7 @@ function eventMarkersForGroup(
 }
 
 function buildMap(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   timelineEvents: WorkbenchTimelineEvent[],
 ): WorkbenchMapModel {
   const spatialById = new Map(
@@ -1070,7 +1172,7 @@ function countObjects(
 }
 
 function buildCaseMeta(input: {
-  caseFile: CaseFile;
+  caseFile: CaseFileDocument;
   draftRevision: number;
   timeline: WorkbenchTimelineEvent[];
   graph: { nodes: WorkbenchGraphNode[]; edges: WorkbenchGraphEdge[] };
@@ -1114,11 +1216,13 @@ function buildCaseMeta(input: {
 }
 
 export function mapCaseFileToWorkbenchModel(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   draftRevision: number,
+  validation: WorkbenchValidationView | null = null,
 ): WorkbenchModel {
   const caseObjects = buildCaseObjects(caseFile);
-  const timelineEvents = buildTimeline(caseFile, caseObjects);
+  const validationIssues = buildValidationIssues(validation);
+  const timelineEvents = buildTimeline(caseFile, caseObjects, validationIssues);
   const relationshipGraph = buildRelationshipGraph(caseFile, caseObjects);
   const reasoningPaths = buildReasoningPaths(caseFile);
   const map = buildMap(caseFile, timelineEvents);
@@ -1140,7 +1244,7 @@ export function mapCaseFileToWorkbenchModel(
     caseObjects,
     objectCounts: countObjects(caseObjects),
     timelineEvents,
-    validationIssues: [],
+    validationIssues,
     sourceItems: [],
     graphNodes: relationshipGraph.nodes,
     graphEdges: relationshipGraph.edges,
@@ -1161,7 +1265,7 @@ export function mapCaseFileToWorkbenchModel(
     initialAuditEntries: [],
     defaultEventId: timelineEvents[0]?.id ?? null,
     defaultObjectId: caseObjects[0]?.id ?? null,
-    defaultIssueId: null,
+    defaultIssueId: validationIssues[0]?.id ?? null,
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFileDocument } from "@/lib/api-client";
 import { useMemo, useState } from "react";
 
 import type { TimelineEvent } from "./analyst-fixture";
@@ -13,7 +13,7 @@ type EditableCollection =
   | "locations"
   | "hypotheses";
 
-type EditableObject = CaseFile[EditableCollection][number];
+type EditableObject = CaseFileDocument[EditableCollection][number];
 type SaveResult = "saved" | "conflict" | "error";
 
 const collections: EditableCollection[] = [
@@ -40,7 +40,7 @@ const truthStatuses = [
   "unknown",
 ] as const;
 
-function findObject(document: CaseFile, objectId: string | null) {
+function findObject(document: CaseFileDocument, objectId: string | null) {
   if (!objectId) return null;
   for (const collection of collections) {
     const object = document[collection].find((item) => item.id === objectId);
@@ -156,7 +156,7 @@ export function WorkbenchObjectEditor({
   onSave,
   readOnly = false,
 }: {
-  document: CaseFile;
+  document: CaseFileDocument;
   selectedObjectId: string | null;
   revision: number;
   revisionLabel?: string;

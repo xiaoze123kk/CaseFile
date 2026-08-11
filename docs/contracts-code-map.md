@@ -16,7 +16,7 @@
 
 修改 `schemas/` → 重新生成 Python/TypeScript → 导出 OpenAPI → 跑跨语言 fixture 测试。破坏性变更必须提升 Schema 版本并提供迁移策略。
 
-根目录 `contracts/schemas/` 是 CaseFile v1、Brief、Task 和编辑契约的唯一人工维护事实源。`scripts/generate-contracts.ps1` 同步生成跨语言包、后端 Pydantic 模型和 `backend/src/casefile/contracts/schemas/v1/` 运行时镜像；生成物禁止手改，`check:contracts` 必须拒绝漂移。
+根目录 `contracts/schemas/` 是当前 CaseFile v2、Brief、Task 和编辑契约的唯一人工维护事实源。`scripts/generate-contracts.ps1` 同步生成跨语言包、后端 Pydantic 模型和 `backend/src/casefile/contracts/schemas/v2/` 当前运行时镜像；`backend/src/casefile/contracts/schemas/v1/` 作为历史只读镜像保留，生成器不得删除或覆盖。生成物禁止手改，`check:contracts` 必须拒绝漂移。
 
 ## Fixture
 

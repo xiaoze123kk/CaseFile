@@ -6,7 +6,8 @@ $venvPython = Join-Path $backendRoot ".venv\Scripts\python.exe"
 $generatedRoot = Join-Path $repoRoot "contracts\generated"
 $rootSchemaRoot = Join-Path $repoRoot "contracts\schemas"
 $runtimePythonRoot = Join-Path $backendRoot "src\casefile_contracts"
-$runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v1"
+$runtimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v2"
+$legacyRuntimeSchemaRoot = Join-Path $backendRoot "src\casefile\contracts\schemas\v1"
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("casefile-contracts-" + [Guid]::NewGuid().ToString("N"))
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
@@ -95,10 +96,16 @@ try {
         -Destination $temporaryRuntimeSchemaRoot
     [System.IO.File]::WriteAllText(
         (Join-Path $temporaryRuntimeSchemaRoot "GENERATED_FROM_ROOT_SCHEMAS.txt"),
-        "Generated from contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand.`n",
+        "Generated from current v2 contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand. The adjacent v1 mirror is retained for historical reads.`n",
         $utf8NoBom
     )
     Compare-GeneratedTree -Expected $temporaryRuntimeSchemaRoot -Actual $runtimeSchemaRoot
+    foreach ($legacySchema in @("casefile.schema.json", "common.schema.json", "objects.schema.json")) {
+        $legacyPath = Join-Path $legacyRuntimeSchemaRoot "casefile\$legacySchema"
+        if (-not (Test-Path -LiteralPath $legacyPath -PathType Leaf)) {
+            throw "Historical v1 runtime schema is missing: $legacyPath"
+        }
+    }
 
     Write-Host "Running Python contract tests..."
     & $python -m pytest backend/tests/contract

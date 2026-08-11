@@ -486,7 +486,7 @@ class FakeProvider:
         }
         strategy_title = strategy_titles.get(candidate_strategy)
         candidate: dict[str, Any] = {
-            "schema_version": "1.0",
+            "schema_version": request.schema_version,
             "casefile_id": request.casefile_id,
             "title": (
                 request.brief["creative_intent"]
@@ -1622,7 +1622,7 @@ async def _run_partitioned_generation(
         else str(request.candidate_strategy)
     )
     frozen_context = {
-        "schema_version": "1.0",
+        "schema_version": request.schema_version,
         "casefile_id": request.casefile_id,
         "brief_ref": {"brief_id": request.brief_id, "version": request.brief_version},
         "version": {
@@ -1944,7 +1944,7 @@ def _assemble_partitioned_candidate(
     partitions: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     candidate: dict[str, Any] = {
-        "schema_version": "1.0",
+        "schema_version": request.schema_version,
         "casefile_id": request.casefile_id,
         "title": title,
         "status": "draft",

@@ -1415,7 +1415,7 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
             assert unchanged["revision"] == 2
             assert (
                 unchanged["content"]["events"][0]["time"]["end"]
-                == "2042-06-01T20:03:00+08:00"
+                == "2042-06-01T20:03"
             )
             messages = WorkflowService(session).list_agent_messages(
                 actor_id,

@@ -181,7 +181,7 @@ def test_all_fixtures_pass_fake_benchmark() -> None:
         assert report["status"] == "completed"
         assert report["dimension"] == "ai_model"
         assert report["prompt_version"].startswith("brief-to-draft-v")
-        assert report["schema_version"] == "1.0"
+        assert report["schema_version"] == "2.0"
 
         svr = _metric_value(report, "structure_validity_rate")
         assert svr == 1.0, f"{fixture_name}: structure_validity_rate={svr}"

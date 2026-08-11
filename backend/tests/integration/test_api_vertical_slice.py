@@ -715,7 +715,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
 
         draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert draft.json()["revision"] == 2
-        assert draft.json()["content"]["schema_version"] == "1.0"
+        assert draft.json()["content"]["schema_version"] == "2.0"
 
         workbench_context = client.get(
             f"/api/v1/projects/{project_id}/workbench-context",
@@ -727,7 +727,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert context["validation"] == {
             "status": "passed",
             "validator": "casefile.contracts.validate_casefile",
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "issue_count": 0,
             "issues": [],
             "reason": None,

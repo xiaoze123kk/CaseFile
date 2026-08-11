@@ -487,6 +487,7 @@ def _request(
         task_run_id=task_run_id,
         prompt_version=resolved_prompt_version,
         brief=fixture["brief"],
+        schema_version=str(fixture.get("expected_schema_version", "2.0")),
         casefile_id=context["casefile_id"],
         brief_id=brief_ref["brief_id"],
         brief_version=brief_ref["version"],

@@ -6,6 +6,7 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterator
+from copy import deepcopy
 from decimal import Decimal
 from typing import Any
 
@@ -93,6 +94,63 @@ def validate_generation_candidate_context(
     _validate_generation_context(owned, candidate, brief, brief_version)
 
 
+def prepare_generation_candidate(
+    owned: OwnedDraft,
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a candidate in the target Draft schema without mutating stored history."""
+
+    if candidate.get("schema_version") == owned.draft.schema_version:
+        return candidate
+    if candidate.get("schema_version") == "1.0" and owned.draft.schema_version == "2.0":
+        upgraded = _upgrade_casefile_v1_to_v2(candidate)
+        validate_casefile(upgraded)
+        return upgraded
+    return candidate
+
+
+def _upgrade_casefile_v1_to_v2(candidate: dict[str, Any]) -> dict[str, Any]:
+    upgraded = deepcopy(candidate)
+    upgraded["schema_version"] = "2.0"
+    for event in upgraded["events"]:
+        legacy = event["time"]
+        precision = legacy["precision"]
+        if precision == "unknown":
+            event["time"] = {"kind": "unknown"}
+            continue
+        wall_precision = (
+            precision if precision in {"day", "hour", "minute", "second"} else "second"
+        )
+        start = _legacy_wall_clock(legacy["start"], wall_precision)
+        end = legacy["end"]
+        if end is not None:
+            event["time"] = {
+                "kind": "range",
+                "start": start,
+                "end": _legacy_wall_clock(end, wall_precision),
+                "precision": wall_precision,
+            }
+        elif precision == "approximate":
+            event["time"] = {
+                "kind": "approximate",
+                "value": start,
+                "precision": wall_precision,
+            }
+        else:
+            event["time"] = {
+                "kind": "exact",
+                "value": start,
+                "precision": wall_precision,
+            }
+    return upgraded
+
+
+def _legacy_wall_clock(value: str, precision: str) -> str:
+    local = re.sub(r"(?:Z|[+-][0-9]{2}:[0-9]{2})$", "", value)
+    lengths = {"day": 10, "hour": 13, "minute": 16}
+    return local[: lengths[precision]] if precision in lengths else local
+
+
 def adopt_generation_candidate(
     session: Session,
     source: OwnedDraft,
@@ -107,6 +165,7 @@ def adopt_generation_candidate(
 ) -> DraftSnapshot:
     """Materialize a candidate as an independent Draft and select it atomically."""
 
+    candidate = prepare_generation_candidate(source, candidate)
     validate_generation_candidate_context(
         source,
         candidate,

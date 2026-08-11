@@ -163,6 +163,123 @@ class Wgs84SpatialPosition(BaseModel):
     longitude: Annotated[float, Field(ge=-180.0, le=180.0)]
 
 
+class WallClockTime(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+
+
+class TemporalPrecision(StrEnum):
+    second = 'second'
+    minute = 'minute'
+    hour = 'hour'
+    day = 'day'
+
+
+class TemporalPosition1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['exact']
+    value: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    precision: TemporalPrecision
+
+
+class TemporalPosition2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['approximate']
+    value: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    precision: TemporalPrecision
+
+
+class TemporalPosition3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['range']
+    start: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    end: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    precision: TemporalPrecision
+
+
+class Relation(StrEnum):
+    before = 'before'
+    after = 'after'
+    same_time = 'same_time'
+
+
+class TemporalPosition4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['relative']
+    anchor_event_ref: ObjectRef
+    relation: Relation
+    offset_minutes: Annotated[float | None, Field(ge=0.0)]
+
+
+class TemporalPosition5(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['unknown']
+
+
+class TemporalPosition(
+    RootModel[
+        TemporalPosition1
+        | TemporalPosition2
+        | TemporalPosition3
+        | TemporalPosition4
+        | TemporalPosition5
+    ]
+):
+    root: Annotated[
+        TemporalPosition1 | TemporalPosition2 | TemporalPosition3 | TemporalPosition4 | TemporalPosition5,
+        Field(title='TemporalPosition'),
+    ]
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -303,25 +420,6 @@ class Location(CoreMetadata):
     visibility_rules: list[VisibilityRule]
 
 
-class Precision(StrEnum):
-    second = 'second'
-    minute = 'minute'
-    hour = 'hour'
-    day = 'day'
-    approximate = 'approximate'
-    unknown = 'unknown'
-
-
-class Time(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    start: AwareDatetime
-    end: AwareDatetime | None
-    precision: Precision
-
-
 class Event(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -330,7 +428,10 @@ class Event(CoreMetadata):
     id: Annotated[str, Field(pattern='^evt_[a-z0-9][a-z0-9_]{0,56}$')]
     title: Annotated[str, Field(min_length=1)]
     truth_status: TruthStatus
-    time: Time
+    time: Annotated[
+        TemporalPosition1 | TemporalPosition2 | TemporalPosition3 | TemporalPosition4 | TemporalPosition5,
+        Field(title='TemporalPosition'),
+    ]
     participant_refs: list[ObjectRef]
     location_ref: ObjectRef | None
     cause_refs: list[ObjectRef]
@@ -1028,7 +1129,7 @@ class Schema_1(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    schema_version: Literal['1.0']
+    schema_version: Literal['2.0']
     casefile_id: Annotated[str, Field(pattern='^case_[a-z0-9][a-z0-9_]{0,55}$')]
     title: Annotated[str, Field(min_length=1)]
     status: Status_1
@@ -1068,7 +1169,7 @@ class Schema_2(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    schema_version: Literal['1.0']
+    schema_version: Literal['2.0']
     patch_id: Annotated[str, Field(pattern='^patch_[a-z0-9][a-z0-9_]{0,54}$')]
     base_version_id: Annotated[
         str, Field(pattern='^(?:draft|snapshot|cv)_[a-z0-9][a-z0-9_]{0,54}$')
@@ -1112,7 +1213,7 @@ class Schema_3(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    schema_version: Literal['1.0']
+    schema_version: Literal['2.0']
     issue_id: Annotated[str, Field(pattern='^issue_[a-z0-9][a-z0-9_]{0,54}$')]
     rule_id: Annotated[
         str, Field(pattern='^CF-S[012]-[A-Z0-9]+(?:-[A-Z0-9]+)*-[0-9]{3}$')
