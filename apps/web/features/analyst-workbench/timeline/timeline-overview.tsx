@@ -37,6 +37,8 @@ import {
   parseWallClock,
   shiftTemporalPosition,
   timelineClock,
+  timelineEventTime,
+  type TimelineAxisLabelMode,
   type TimelinePrecision,
 } from "./timeline-time";
 
@@ -210,8 +212,10 @@ function timeLabel(time: TimelineTemporalPosition) {
     const offset = time.offset_minutes === null ? "" : `${time.offset_minutes} 分钟`;
     return `${time.anchor_event_ref.object_id} ${offset}${relation}`;
   }
-  if (time.kind === "range") return `${time.start} → ${time.end}`;
-  return `${time.kind === "approximate" ? "约 " : ""}${time.value}`;
+  if (time.kind === "range") {
+    return `${timelineClock(time.start)} → ${timelineClock(time.end)}`;
+  }
+  return `${time.kind === "approximate" ? "约 " : ""}${timelineClock(time.value)}`;
 }
 
 function eventName(seed: WorkbenchSeed, eventId: string) {
@@ -301,12 +305,28 @@ export function TimelineOverview({
     const scale = scaleUtc()
       .domain([new Date(domainStart), new Date(domainEnd)])
       .range([PLOT_LEFT, PLOT_RIGHT]);
+    const ticks = scale.ticks(8);
+    const startDate = new Date(domainStart);
+    const endDate = new Date(domainEnd);
+    const includeDate =
+      startDate.getUTCFullYear() !== endDate.getUTCFullYear() ||
+      startDate.getUTCMonth() !== endDate.getUTCMonth() ||
+      startDate.getUTCDate() !== endDate.getUTCDate();
+    const labelMode: TimelineAxisLabelMode = includeDate
+      ? ticks.every(
+          (tick) =>
+            tick.getUTCHours() === 0 &&
+            tick.getUTCMinutes() === 0 &&
+            tick.getUTCSeconds() === 0,
+        )
+        ? "date"
+        : "date-time"
+      : "time";
     return {
       plotted,
       scale,
-      ticks: scale.ticks(8),
-      includeDate:
-        new Date(domainStart).getUTCDate() !== new Date(domainEnd).getUTCDate(),
+      ticks,
+      labelMode,
     };
   }, [dragGhost, events]);
 
@@ -546,14 +566,26 @@ export function TimelineOverview({
             viewBox={`0 0 ${VIEW_WIDTH} ${ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT + 26}`}
           >
             <g aria-hidden="true">
+              <text className={styles.axisCaption} x={28} y={31}>
+                事件发生时间
+              </text>
+              <text className={styles.axisCaption} x={PLOT_LEFT} y={16}>
+                故事发生时间轴
+              </text>
               <line className={styles.axisLine} x1={PLOT_LEFT} x2={PLOT_RIGHT} y1={AXIS_Y} y2={AXIS_Y} />
               {axis.ticks.map((tick) => {
                 const x = axis.scale(tick);
                 return (
                   <g key={tick.valueOf()}>
                     <line className={styles.axisGrid} x1={x} x2={x} y1={AXIS_Y} y2={ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT} />
-                    <text className={styles.axisTick} textAnchor="middle" x={x} y={31}>
-                      {formatAxisTime(tick.valueOf(), axis.includeDate)}
+                    <text
+                      className={styles.axisTick}
+                      data-testid="timeline-axis-tick"
+                      textAnchor="middle"
+                      x={x}
+                      y={31}
+                    >
+                      {formatAxisTime(tick.valueOf(), axis.labelMode)}
                     </text>
                   </g>
                 );
@@ -580,7 +612,7 @@ export function TimelineOverview({
               return (
                 <g
                   key={timelineEvent.id}
-                  aria-label={`${timelineEvent.label}，${timelineEvent.time}${canDrag ? "，可拖动调整" : ""}`}
+                  aria-label={`${timelineEvent.label}，${timelineClock(timelineEvent.time)}${canDrag ? "，可拖动调整" : ""}`}
                   aria-pressed={selected}
                   className={styles.eventRow}
                   data-draggable={canDrag}
@@ -596,7 +628,7 @@ export function TimelineOverview({
                 >
                   <rect className={styles.rowHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
                   <text className={styles.rowTime} textAnchor="end" x={78} y={y - 4}>
-                    {timelineClock(timelineEvent.time)}
+                    {timelineEventTime(timelineEvent.time)}
                   </text>
                   <text className={styles.rowLabel} x={92} y={y - 5}>
                     {timelineEvent.label}
@@ -691,7 +723,7 @@ export function TimelineOverview({
                     const endX = bounds ? axis.scale(new Date(bounds.end)) : x;
                     return (
                       <g
-                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineEvent.time}`}
+                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineClock(timelineEvent.time)}`}
                         aria-pressed={selected}
                         className={styles.laneMarker}
                         data-certainty={certainty}
@@ -707,7 +739,7 @@ export function TimelineOverview({
                         role="button"
                         tabIndex={0}
                       >
-                        <title>{`${timelineEvent.label} · ${timelineEvent.time}`}</title>
+                        <title>{`${timelineEvent.label} · ${timelineClock(timelineEvent.time)}`}</title>
                         {bounds && bounds.end > bounds.start ? (
                           <rect
                             className={styles.laneRange}
@@ -770,7 +802,9 @@ export function TimelineOverview({
                   onClick={() => onSelectEvent(timelineEvent.id)}
                   type="button"
                 >
-                  <time>{timelineEvent.time}</time>
+                  <time dateTime={timelineEvent.start ?? undefined}>
+                    {timelineEventTime(timelineEvent.time)}
+                  </time>
                   <span>
                     <strong>{timelineEvent.label}</strong>
                     <small>{timelineEvent.location}</small>
@@ -817,7 +851,9 @@ export function TimelineOverview({
                       onClick={() => onSelectEvent(eventId)}
                       type="button"
                     >
-                      <time>{timelineEvent.time}</time>
+                      <time dateTime={timelineEvent.start ?? undefined}>
+                        {timelineEventTime(timelineEvent.time)}
+                      </time>
                       <span>
                         <strong>{timelineEvent.label}</strong>
                         <small>

@@ -14,6 +14,7 @@ import {
   buildFixtureSpatialModel,
   buildWorkbenchSpatialModel,
 } from "./workbench-spatial-model";
+import { timelineClock } from "./timeline/timeline-time";
 import type {
   WorkbenchCaseMeta,
   WorkbenchCaseObject,
@@ -1008,7 +1009,7 @@ function buildCaseMeta(input: {
     revision: `R${input.draftRevision}`,
     timelineTitle: input.caseFile.title,
     timelineMeta: input.timeline.length
-      ? `${input.timeline.length} EVENTS${firstTime && lastTime ? ` · ${firstTime} → ${lastTime}` : ""}`
+      ? `${input.timeline.length} EVENTS${firstTime && lastTime ? ` · ${timelineClock(firstTime)} → ${timelineClock(lastTime)}` : ""}`
       : "0 EVENTS",
     mapTitle: `${input.caseFile.title} / 空间图`,
     mapMeta: modeLabel || "0 LOCATIONS",

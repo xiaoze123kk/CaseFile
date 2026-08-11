@@ -14,6 +14,10 @@ export type TimelinePrecision = Extract<
 const wallClockPattern =
   /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?)?$/;
 
+const displayClockPattern =
+  /^(?:(\d{4})-(\d{2})-(\d{2})T)?(\d{2})(?::(\d{2})(?::\d{2}(?:\.\d{1,6})?)?)?(?:Z|[+-]\d{2}:\d{2})?$/;
+const displayDatePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 const wallClockFormats: Record<TimelinePrecision, (date: Date) => string> = {
   day: utcFormat("%Y-%m-%d"),
   hour: utcFormat("%Y-%m-%dT%H"),
@@ -54,13 +58,83 @@ export function formatWallClock(value: number, precision: TimelinePrecision) {
   return wallClockFormats[precision](new Date(value));
 }
 
-export function formatAxisTime(value: number, includeDate: boolean) {
-  return utcFormat(includeDate ? "%m-%d %H:%M" : "%H:%M")(new Date(value));
+export type TimelineAxisLabelMode = "time" | "date" | "date-time";
+
+export function formatAxisTime(value: number, mode: TimelineAxisLabelMode) {
+  const pattern = {
+    time: "%H:%M",
+    date: "%m-%d",
+    "date-time": "%m-%d %H:%M",
+  }[mode];
+  return utcFormat(pattern)(new Date(value));
+}
+
+function displayTimeParts(value: string) {
+  const normalized = value.trim();
+  const dateMatch = normalized.match(displayDatePattern);
+  if (dateMatch) {
+    return {
+      date: `${dateMatch[2]}-${dateMatch[3]}`,
+      clock: null,
+    };
+  }
+  const match = normalized.match(displayClockPattern);
+  if (!match) return null;
+  return {
+    date: match[2] && match[3] ? `${match[2]}-${match[3]}` : null,
+    clock: match[5] ? `${match[4]}:${match[5]}` : `${match[4]}时`,
+  };
+}
+
+function formatDisplayClock(value: string) {
+  const parts = displayTimeParts(value);
+  return parts?.clock ?? parts?.date ?? null;
+}
+
+function formatEventTimeValue(value: string, omitDate = false) {
+  const parts = displayTimeParts(value);
+  if (!parts) return null;
+  if (!parts.date || omitDate) return parts.clock ?? parts.date;
+  return parts.clock ? `${parts.date} ${parts.clock}` : parts.date;
 }
 
 export function timelineClock(value: string) {
-  const parsed = parseWallClock(value);
-  return parsed === null ? value : utcFormat("%H:%M")(new Date(parsed));
+  const normalized = value.trim();
+  const approximate = normalized.match(/^约\s+(.+)$/);
+  if (approximate) {
+    const formatted = formatDisplayClock(approximate[1]);
+    return formatted ? `约 ${formatted}` : normalized;
+  }
+  const range = normalized.split(/\s+[–—]\s+/);
+  if (range.length === 2) {
+    const start = formatDisplayClock(range[0]);
+    const end = formatDisplayClock(range[1]);
+    if (start && end) return `${start}–${end}`;
+  }
+  return formatDisplayClock(normalized) ?? normalized;
+}
+
+export function timelineEventTime(value: string) {
+  const normalized = value.trim();
+  const approximate = normalized.match(/^约\s+(.+)$/);
+  if (approximate) {
+    const formatted = formatEventTimeValue(approximate[1]);
+    return formatted ? `约 ${formatted}` : normalized;
+  }
+  const range = normalized.split(/\s+[–—]\s+/);
+  if (range.length === 2) {
+    const startParts = displayTimeParts(range[0]);
+    const endParts = displayTimeParts(range[1]);
+    if (startParts && endParts) {
+      const start = formatEventTimeValue(range[0]);
+      const end = formatEventTimeValue(
+        range[1],
+        Boolean(startParts.date && startParts.date === endParts.date),
+      );
+      if (start && end) return `${start}–${end}`;
+    }
+  }
+  return formatEventTimeValue(normalized) ?? normalized;
 }
 
 export function isV2TemporalPosition(
