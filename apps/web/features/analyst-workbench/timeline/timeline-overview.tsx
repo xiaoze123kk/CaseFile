@@ -612,7 +612,7 @@ export function TimelineOverview({
               return (
                 <g
                   key={timelineEvent.id}
-                  aria-label={`${timelineEvent.label}，${timelineClock(timelineEvent.time)}${canDrag ? "，可拖动调整" : ""}`}
+                  aria-label={`${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}${canDrag ? "，可拖动调整" : ""}`}
                   aria-pressed={selected}
                   className={styles.eventRow}
                   data-draggable={canDrag}
@@ -626,6 +626,7 @@ export function TimelineOverview({
                   role="button"
                   tabIndex={0}
                 >
+                  <title>{`${timelineEvent.label} · ${timelineEventTime(timelineEvent.time)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
                   <rect className={styles.rowHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
                   <text className={styles.rowTime} textAnchor="end" x={78} y={y - 4}>
                     {timelineEventTime(timelineEvent.time)}
@@ -723,7 +724,7 @@ export function TimelineOverview({
                     const endX = bounds ? axis.scale(new Date(bounds.end)) : x;
                     return (
                       <g
-                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineClock(timelineEvent.time)}`}
+                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}`}
                         aria-pressed={selected}
                         className={styles.laneMarker}
                         data-certainty={certainty}
@@ -739,7 +740,7 @@ export function TimelineOverview({
                         role="button"
                         tabIndex={0}
                       >
-                        <title>{`${timelineEvent.label} · ${timelineClock(timelineEvent.time)}`}</title>
+                        <title>{`${timelineEvent.label} · ${timelineEventTime(timelineEvent.time)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
                         {bounds && bounds.end > bounds.start ? (
                           <rect
                             className={styles.laneRange}

@@ -122,6 +122,17 @@ describe("editable proportional timeline", () => {
     expect(screen.queryByText(/09:00:00\+08:00/)).not.toBeInTheDocument();
     expect(screen.getByText("事件发生时间")).toBeInTheDocument();
     expect(screen.getByText("故事发生时间轴")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("timeline-proportional-axis")).getByRole(
+        "button",
+        { name: new RegExp(`${seed.timelineEvents[0].label}，11-18 09:00`, "u") },
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        new RegExp(`${seed.timelineEvents[0].label} · 11-18 09:00 ·`, "u"),
+      ),
+    ).toBeInTheDocument();
   });
 
   it("uses date-only ticks when a multi-day axis lands on midnight", () => {
