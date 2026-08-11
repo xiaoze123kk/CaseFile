@@ -264,10 +264,18 @@
 .mapControls button:nth-child(-n + 2) { font: 500 22px/1 "Bahnschrift", sans-serif; }
 .mapControls button:hover { color: #fff; background: var(--spatial-ink); }
 
+.auditDock {
+  position: absolute;
+  z-index: 640;
+  inset: 0;
+  pointer-events: none;
+}
+.auditDock > .auditToggle,
+.auditDock > .auditPanel { pointer-events: auto; }
 .auditToggle { display: none; }
 .auditPanel {
   position: absolute;
-  z-index: 640;
+  z-index: 1;
   top: 12px;
   left: 12px;
   width: 248px;
@@ -278,6 +286,28 @@
   border-top: 4px solid var(--spatial-survey);
   background: rgba(250, 250, 245, 0.97);
   box-shadow: 0 10px 26px rgba(26, 28, 25, 0.16);
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+  transition: transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1), visibility 0s linear;
+}
+.auditPanel[data-collapsed="true"] {
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-105%);
+  transition: transform 160ms ease-out, visibility 0s linear 160ms;
+}
+.auditDock[data-collapsed="true"] .auditToggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: block;
+  min-height: 40px;
+  padding: 0 12px;
+  color: #fff;
+  border: 1px solid var(--spatial-ink);
+  background: var(--spatial-ink);
+  font: 650 9px/1 "Microsoft YaHei", sans-serif;
 }
 .auditPanel > header {
   display: flex;
@@ -299,7 +329,8 @@
   font-size: 12px;
 }
 .auditPanel > header button {
-  display: none;
+  display: grid;
+  place-items: center;
   width: 44px;
   height: 44px;
   flex: 0 0 auto;
@@ -307,6 +338,10 @@
   border: 0;
   background: transparent;
   font: 300 22px/1 "Bahnschrift", sans-serif;
+}
+.auditPanel > header button:hover {
+  color: var(--spatial-survey);
+  background: rgba(47, 93, 98, 0.08);
 }
 .auditPanel fieldset {
   display: grid;
@@ -792,12 +827,15 @@
     transform: translateY(105%);
     transition: transform 160ms ease-out;
   }
+  .auditPanel[data-collapsed="true"] {
+    transform: translateY(105%);
+    transition: transform 160ms ease-out;
+  }
   .auditPanel[data-open="true"] {
     visibility: visible;
     pointer-events: auto;
     transform: translateY(0);
   }
-  .auditPanel > header button { display: grid; place-items: center; }
   .auditPanel fieldset { grid-template-columns: 1fr 1fr; }
   .auditPanel fieldset label { min-width: 0; }
   .auditPanel label span { align-items: flex-start; flex-direction: column; gap: 2px; }
@@ -815,4 +853,9 @@
   .footer { padding: 6px 8px; }
   .footer p { display: none; }
   .unlocatedStatus { margin-left: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auditPanel,
+  .auditPanel[data-collapsed="true"] { transition: none; }
 }

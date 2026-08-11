@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type {
   SpatialLayerId,
   SpatialLayerVisibility,
@@ -53,13 +55,25 @@ export function SpatialAuditPanel({
   onOpenUnlocated: (locationId: string) => void;
   onToggleLayer: (layer: SpatialLayerId) => void;
 }) {
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
+
+  function closeAuditPanel() {
+    setDesktopCollapsed(true);
+    onMobileOpenChange(false);
+  }
+
+  function toggleAuditPanel() {
+    setDesktopCollapsed(false);
+    onMobileOpenChange(!mobileOpen);
+  }
+
   return (
-    <>
+    <div className={styles.auditDock} data-collapsed={desktopCollapsed}>
       <button
         aria-controls="spatial-audit-panel"
         aria-expanded={mobileOpen}
         className={styles.auditToggle}
-        onClick={() => onMobileOpenChange(!mobileOpen)}
+        onClick={toggleAuditPanel}
         type="button"
       >
         空间核验
@@ -67,21 +81,22 @@ export function SpatialAuditPanel({
       <aside
         aria-label="空间核验工具"
         className={styles.auditPanel}
+        data-collapsed={desktopCollapsed}
         data-open={mobileOpen}
         id="spatial-audit-panel"
       >
         <header>
           <div><span>COORDINATE AUDIT</span><strong>图层与待确认项</strong></div>
           <button
-            aria-label="关闭空间核验工具"
-            onClick={() => onMobileOpenChange(false)}
+            aria-label="收起空间核验工具"
+            onClick={closeAuditPanel}
             onKeyDown={(event) => {
               if (event.key !== "Enter" && event.key !== " ") return;
               event.preventDefault();
-              onMobileOpenChange(false);
+              closeAuditPanel();
             }}
             type="button"
-          >×</button>
+          >−</button>
         </header>
         <fieldset>
           <legend>图层</legend>
@@ -136,6 +151,6 @@ export function SpatialAuditPanel({
           </section>
         ) : null}
       </aside>
-    </>
+    </div>
   );
 }

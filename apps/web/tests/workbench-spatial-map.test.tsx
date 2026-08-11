@@ -361,13 +361,29 @@ describe("spatial map view", () => {
     expect(onOpenLocationDetails).toHaveBeenCalledWith("loc_missing");
   });
 
+  it("collapses and reopens the coordinate audit panel", () => {
+    renderMap();
+
+    const toggle = screen.getByRole("button", { name: "空间核验" });
+    const panel = screen.getByRole("complementary", { name: "空间核验工具" });
+    expect(panel).toHaveAttribute("data-collapsed", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: "收起空间核验工具" }));
+    expect(panel).toHaveAttribute("data-collapsed", "true");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggle);
+    expect(panel).toHaveAttribute("data-collapsed", "false");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("closes the mobile audit drawer from the keyboard", () => {
     renderMap();
 
     const toggle = screen.getByRole("button", { name: "空间核验" });
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    fireEvent.keyDown(screen.getByRole("button", { name: "关闭空间核验工具" }), {
+    fireEvent.keyDown(screen.getByRole("button", { name: "收起空间核验工具" }), {
       key: "Enter",
     });
 
