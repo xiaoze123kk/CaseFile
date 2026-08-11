@@ -12,6 +12,7 @@ from casefile.agent_runtime.prompt import (
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
     V10_GENERATION_AGENT_VERSION,
+    V11_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -32,7 +33,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v9",
+    "brief_to_draft": "brief-to-draft-v11",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -109,6 +110,16 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "db01f58b7d655e123c5a0c2f67a99c23ae1c1adcd9a156f57b273f72c832dbc9",
         "fragment:governance": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146",
     },
+    ("brief_to_draft", "brief-to-draft-v11"): {
+        "fragment:common": "1471bea245e0a6f082ec34570c6e215f1ae8f39d0f669920730d4b79e2a4e0c6",
+        "fragment:planner": "196f2fc74293971660670edb84cbabc1d10fb47930d8adf0c268973d9cfe15ef",
+        "fragment:domain_common": (
+            "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"
+        ),
+        "fragment:story": "de327598d8b221a36e62728f39b6e49d4b563e7ded345142bc73cbfcd4cda128",
+        "fragment:evidence": "7e1d49fbce53f1bfada49f1c1b5ab3b089d221a62fce0a0ab87fcb02ce6df646",
+        "fragment:governance": "4413b0e36adf04856360c7278079185427cf71a327181234272e94de61ed1c98",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -138,6 +149,10 @@ def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v10")
         == V10_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v11")
+        == V11_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
@@ -207,6 +222,12 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "EvidenceLogicIRV2" in v10.component_prompts["evidence"]
     assert v10.package is not None
     assert v10.package.components["evidence"].output_schema_id == "evidence-logic-ir-v2"
+    v11 = load_prompt("brief_to_draft", "brief-to-draft-v11")
+    assert "StoryWorldIRV2" in v11.component_prompts["story"]
+    assert "EvidenceLogicIRV2" in v11.component_prompts["evidence"]
+    assert v11.package is not None
+    assert v11.package.components["story"].output_schema_id == "story-world-ir-v2"
+    assert v11.package.components["planner"].input_contract_id.endswith("input-v2")
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]

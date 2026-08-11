@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v11",
+  "previous_version": "brief-to-draft-v10",
+  "change_summary": "适配时间线、空间卷宗与竞争解释矩阵，并绑定 CaseFile v2 语义输入。",
+  "runtime": {
+    "agent_version": "brief-to-draft-pipeline-v11",
+    "toolset_version": "casefile-generation-tools-v2"
+  },
+  "fragments": {
+    "common": {"file": "fragments/common.md", "sha256": "1471bea245e0a6f082ec34570c6e215f1ae8f39d0f669920730d4b79e2a4e0c6"},
+    "planner": {"file": "fragments/planner.md", "sha256": "196f2fc74293971660670edb84cbabc1d10fb47930d8adf0c268973d9cfe15ef"},
+    "domain_common": {"file": "fragments/domain_common.md", "sha256": "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"},
+    "story": {"file": "fragments/story.md", "sha256": "de327598d8b221a36e62728f39b6e49d4b563e7ded345142bc73cbfcd4cda128"},
+    "evidence": {"file": "fragments/evidence.md", "sha256": "7e1d49fbce53f1bfada49f1c1b5ab3b089d221a62fce0a0ab87fcb02ce6df646"},
+    "governance": {"file": "fragments/governance.md", "sha256": "4413b0e36adf04856360c7278079185427cf71a327181234272e94de61ed1c98"}
+  },
+  "components": {
+    "planner": {"instruction_fragments": ["common", "planner"], "input_contract_id": "brief-to-draft-planner-input-v2", "output_schema_id": "case-blueprint-v1", "tool_policy_id": "no-tools-v1"},
+    "story": {"instruction_fragments": ["common", "domain_common", "story"], "input_contract_id": "brief-to-draft-domain-input-v2", "output_schema_id": "story-world-ir-v2", "tool_policy_id": "no-tools-v1"},
+    "evidence": {"instruction_fragments": ["common", "domain_common", "evidence"], "input_contract_id": "brief-to-draft-domain-input-v2", "output_schema_id": "evidence-logic-ir-v2", "tool_policy_id": "no-tools-v1"},
+    "governance": {"instruction_fragments": ["common", "domain_common", "governance"], "input_contract_id": "brief-to-draft-domain-input-v2", "output_schema_id": "resolution-governance-ir-v1", "tool_policy_id": "no-tools-v1"}
+  }
+}

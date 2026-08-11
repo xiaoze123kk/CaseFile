@@ -15,17 +15,27 @@ AGENT_VERSION = "casefile-single-agent-v2"
 V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
 V9_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v9"
 V10_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v10"
+V11_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v11"
+BRIEF_TO_DRAFT_AGENT_VERSIONS = {
+    "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v10": V10_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v11": V11_GENERATION_AGENT_VERSION,
+}
+COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
+PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
+    {"brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11"}
+)
+COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
+    {"brief-to-draft-v10", "brief-to-draft-v11"}
+)
 
 
 def agent_version_for_task(task_type: str, prompt_version: str) -> str:
     """Return the runtime topology frozen alongside a TaskRun."""
 
-    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v8":
-        return V8_GENERATION_AGENT_VERSION
-    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v9":
-        return V9_GENERATION_AGENT_VERSION
-    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v10":
-        return V10_GENERATION_AGENT_VERSION
+    if task_type == "brief_to_draft" and prompt_version in BRIEF_TO_DRAFT_AGENT_VERSIONS:
+        return BRIEF_TO_DRAFT_AGENT_VERSIONS[prompt_version]
     return AGENT_VERSION
 
 
@@ -164,9 +174,14 @@ def casefile_chat_input(request: CaseFileChatRequest) -> str:
 
 __all__ = [
     "AGENT_VERSION",
+    "BRIEF_TO_DRAFT_AGENT_VERSIONS",
+    "COMPETITION_MATRIX_PROMPT_VERSIONS",
+    "COMPONENT_GENERATION_PROMPT_VERSIONS",
+    "PROMPT_PACKAGE_GENERATION_VERSIONS",
     "V8_GENERATION_AGENT_VERSION",
     "V9_GENERATION_AGENT_VERSION",
     "V10_GENERATION_AGENT_VERSION",
+    "V11_GENERATION_AGENT_VERSION",
     "agent_version_for_task",
     "anchor_extract_input",
     "brief_intake_questions_input",

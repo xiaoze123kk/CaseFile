@@ -51,6 +51,7 @@ from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
 )
+from casefile.agent_runtime.prompt import COMPONENT_GENERATION_PROMPT_VERSIONS
 from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.application.brief_intake_service import BriefIntakeService
 from casefile.application.casefile_v1 import (
@@ -87,9 +88,6 @@ from casefile.data_postgres.models import (
 from casefile.data_postgres.repositories import ProjectRepository
 
 ProviderFactory = Callable[[TaskRun], AgentProvider]
-_COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(
-    {"brief-to-draft-v8", "brief-to-draft-v9"}
-)
 
 
 def provider_for_task(task: TaskRun) -> AgentProvider:
@@ -1052,10 +1050,10 @@ class Worker:
                 return
             safe_message = _safe_error_message(error, sensitive_values)
             underlying_error_code = error_code
-            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
+            if task.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
                 error_code = "agent_component_failed"
             failure_issues = _failure_validation_issues(validation_errors)
-            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
+            if task.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
                 coordinator_issue = {
                     "component_id": "run_coordinator",
                     "failure_layer": "frozen_context",
@@ -1174,7 +1172,7 @@ def _persist_agent_execution_event(
 ) -> None:
     """Project component execution events into queryable step/call audit rows."""
 
-    if task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS:
+    if task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS:
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
@@ -1371,7 +1369,7 @@ def _optional_hash(value: object) -> str | None:
 
 def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
     if (
-        task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS
+        task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS
         or task.attempt_count < 2
     ):
         return {}
