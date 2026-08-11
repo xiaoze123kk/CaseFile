@@ -201,12 +201,14 @@ class ProjectRepository:
         owned.project.archived_at = now
         owned.casefile.status = "archived"
         owned.casefile.archived_at = now
+        owned.draft.document_status = "archived"
 
     def unarchive(self, owned: OwnedDraft) -> None:
         owned.project.status = "active"
         owned.project.archived_at = None
         owned.casefile.status = "draft"
         owned.casefile.archived_at = None
+        owned.draft.document_status = "draft"
 
 
 class DraftRepository:

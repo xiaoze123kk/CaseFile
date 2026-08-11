@@ -13,23 +13,34 @@ import { AnalystWorkbench } from "@/features/analyst-workbench/analyst-workbench
 import {
   ApiError,
   type DraftCandidatePreviewView,
+  type DraftSummaryView,
   type DraftView,
+  type ProjectView,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({
+  activateDraft: vi.fn(),
   adoptCandidate: vi.fn(),
   candidateStatus: vi.fn(),
   fetchCaseDraft: vi.fn(),
   fetchDraftCandidatePreview: vi.fn(),
   fetchWorkbenchContext: vi.fn(),
+  listDrafts: vi.fn(),
+  listProjects: vi.fn(),
   loadProject: vi.fn(),
   patchCaseDraftObject: vi.fn(),
 }));
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();
-  return { ...actual, fetchWorkbenchContext: mocks.fetchWorkbenchContext };
+  return {
+    ...actual,
+    activateDraft: mocks.activateDraft,
+    fetchWorkbenchContext: mocks.fetchWorkbenchContext,
+    listDrafts: mocks.listDrafts,
+    listProjects: mocks.listProjects,
+  };
 });
 
 vi.mock("@/features/case-session/case-session-provider", () => ({
@@ -235,6 +246,49 @@ function makeDraft(revision: number, entityName?: string): DraftView {
   };
 }
 
+function makeProject(id: number, title: string): ProjectView {
+  return {
+    id,
+    title,
+    description: null,
+    profile: {},
+    status: "active",
+    archived_at: null,
+    created_at: "2026-08-09T10:00:00+00:00",
+    updated_at: "2026-08-09T11:00:00+00:00",
+    casefile_id: id,
+    current_draft_id: id === 42 ? 9 : 19,
+    draft: {
+      id: id === 42 ? 9 : 19,
+      title,
+      revision: 7,
+      schema_version: "v1",
+      status: "active",
+    },
+  };
+}
+
+function makeDraftSummary(
+  draftId: number,
+  title: string,
+  isCurrent: boolean,
+): DraftSummaryView {
+  return {
+    draft_id: draftId,
+    title,
+    revision: 7,
+    schema_version: "v1",
+    status: "active",
+    document_status: "draft",
+    brief_version_id: 4,
+    brief_version_no: 4,
+    has_content: true,
+    is_current: isCurrent,
+    created_at: "2026-08-09T10:00:00+00:00",
+    updated_at: "2026-08-09T11:00:00+00:00",
+  };
+}
+
 function makePreview(): DraftCandidatePreviewView {
   return {
     task_run_id: 73,
@@ -320,11 +374,20 @@ function makeContext(
 }
 
 beforeEach(() => {
+  mocks.activateDraft.mockReset();
   mocks.adoptCandidate.mockReset().mockResolvedValue(false);
   mocks.candidateStatus.mockReset();
   mocks.fetchCaseDraft.mockReset();
   mocks.fetchDraftCandidatePreview.mockReset();
   mocks.fetchWorkbenchContext.mockReset().mockResolvedValue(makeContext());
+  mocks.listDrafts.mockReset().mockResolvedValue([
+    makeDraftSummary(9, "真实测试卷宗", true),
+    makeDraftSummary(10, "第二工作稿", false),
+  ]);
+  mocks.listProjects.mockReset().mockResolvedValue([
+    makeProject(42, "真实测试卷宗"),
+    makeProject(43, "另一卷宗"),
+  ]);
   mocks.loadProject.mockReset().mockResolvedValue(undefined);
   mocks.patchCaseDraftObject.mockReset();
 });
@@ -878,6 +941,74 @@ describe("production analyst workbench", () => {
     expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
       "门禁开启",
     );
+  });
+
+  it("keeps unsaved object edits in place when project or Draft switching is requested", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const name = await screen.findByRole("textbox", { name: "名称" });
+    fireEvent.change(name, { target: { value: "尚未保存的调查员" } });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /项目.*真实测试卷宗/u }),
+    );
+    const otherProject = screen.getByRole("menuitem", { name: /另一卷宗/u });
+    expect(fireEvent.click(otherProject)).toBe(false);
+    expect(name).toHaveValue("尚未保存的调查员");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /当前工作稿.*真实测试卷宗/u }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /第二工作稿/u }),
+    );
+
+    expect(mocks.activateDraft).not.toHaveBeenCalled();
+    expect(name).toHaveValue("尚未保存的调查员");
+    expect(
+      within(screen.getByRole("region", { name: "对象详情与编辑" })).getByRole(
+        "status",
+      ),
+    ).toHaveTextContent("请先保存或取消修改");
+  });
+
+  it("reloads the authoritative Current Draft after a concurrent activation", async () => {
+    const authoritative = {
+      ...makeDraft(8, "服务端当前稿人物"),
+      draft_id: 13,
+      title: "服务端当前工作稿",
+    };
+    mocks.fetchCaseDraft
+      .mockResolvedValueOnce(makeDraft(7))
+      .mockResolvedValueOnce(authoritative);
+    mocks.activateDraft.mockRejectedValueOnce(
+      new ApiError(409, {
+        code: "current_draft_changed",
+        message: "当前工作稿已在其他位置切换。",
+        details: { current_draft_id: 13 },
+      }),
+    );
+
+    render(<AnalystWorkbench requestedProjectId={42} />);
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(
+      screen.getByRole("button", { name: /当前工作稿.*真实测试卷宗/u }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /第二工作稿/u }),
+    );
+
+    await waitFor(() => expect(mocks.fetchCaseDraft).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByRole("button", {
+        name: /当前工作稿.*服务端当前工作稿/u,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
+      "服务端当前稿人物",
+    );
+    expect(mocks.loadProject).toHaveBeenCalledTimes(2);
   });
 
   it("reveals graph selections in the directory and highlights direct relations", async () => {

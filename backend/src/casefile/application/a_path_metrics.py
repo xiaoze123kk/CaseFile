@@ -69,6 +69,7 @@ class APathModelCallFact:
 
 @dataclass(frozen=True, slots=True)
 class APathOperationFact:
+    draft_id: int
     sequence_no: int
     operation_type: str
     new_value: Any
@@ -185,6 +186,7 @@ class APathMetricsService:
                 ],
                 operations=[
                     APathOperationFact(
+                        draft_id=operation.draft_id,
                         # Draft sequence numbers restart for every working Draft;
                         # the project funnel needs the append-only global order.
                         sequence_no=operation.id,
@@ -218,30 +220,28 @@ def derive_a_path_metrics(
     )
 
     ordered_operations = sorted(operations, key=lambda operation: operation.sequence_no)
-    adoption_indexes: list[int] = []
-    for index, operation in enumerate(ordered_operations):
-        if operation.operation_type != "agent_adopt_brief_candidate":
-            continue
-        adoption_indexes.append(index)
-        task_run_id = _operation_task_run_id(operation)
-        if task_run_id in task_ids:
-            adopted_task_ids.add(task_run_id)
-
-    edited_adoptions = 0
+    adoption_operation_count = 0
+    latest_adoption_by_draft: dict[int, int] = {}
+    adoption_has_edits: list[bool] = []
     post_adoption_edits: list[APathOperationFact] = []
-    for adoption_position, operation_index in enumerate(adoption_indexes):
-        next_index = (
-            adoption_indexes[adoption_position + 1]
-            if adoption_position + 1 < len(adoption_indexes)
-            else len(ordered_operations)
-        )
-        edits = [
-            operation
-            for operation in ordered_operations[operation_index + 1 : next_index]
-            if operation.operation_type in _POST_ADOPTION_EDIT_TYPES
-        ]
-        edited_adoptions += int(bool(edits))
-        post_adoption_edits.extend(edits)
+    for operation in ordered_operations:
+        if operation.operation_type == "agent_adopt_brief_candidate":
+            latest_adoption_by_draft[operation.draft_id] = adoption_operation_count
+            adoption_has_edits.append(False)
+            adoption_operation_count += 1
+            task_run_id = _operation_task_run_id(operation)
+            if task_run_id in task_ids:
+                adopted_task_ids.add(task_run_id)
+            continue
+        if operation.operation_type not in _POST_ADOPTION_EDIT_TYPES:
+            continue
+        adoption_position = latest_adoption_by_draft.get(operation.draft_id)
+        if adoption_position is None:
+            continue
+        adoption_has_edits[adoption_position] = True
+        post_adoption_edits.append(operation)
+
+    edited_adoptions = sum(adoption_has_edits)
 
     attempt_facts = [attempt for attempt in attempts or [] if attempt.task_run_id in task_ids]
     attempt_by_id = {attempt.attempt_id: attempt for attempt in attempt_facts}
@@ -301,7 +301,6 @@ def derive_a_path_metrics(
     ]
     generated_count = len(succeeded_task_ids)
     adopted_count = len(adopted_task_ids & succeeded_task_ids)
-    adoption_operation_count = len(adoption_indexes)
     return {
         "version": A_PATH_METRICS_VERSION,
         "funnel": {

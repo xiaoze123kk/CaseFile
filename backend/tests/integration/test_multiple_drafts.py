@@ -8,9 +8,6 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import PROFILE, _adopt_candidate, _prepare_task
-from sqlalchemy import Engine, select, update
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
@@ -18,8 +15,16 @@ from casefile.application.services import CaseFileService
 from casefile.application.v1_editing import V1EditingService
 from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_service import WorkflowService
-from casefile.data_postgres.models import Draft
+from casefile.data_postgres.models import (
+    AuditEvent,
+    CanonVersion,
+    Draft,
+    DraftSnapshot,
+    TaskRun,
+)
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select, update
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -118,6 +123,10 @@ def test_activation_is_atomic_and_rejects_stale_foreign_archived_or_locked_targe
 
         with factory() as session:
             CaseFileService(session).archive_project(actor_id, project_id)
+        with factory() as session:
+            archived_draft = CaseFileService(session).get_draft(actor_id, project_id)
+        assert archived_draft["document_status"] == "archived"
+        assert archived_draft["content"]["status"] == "archived"
         with factory() as session, pytest.raises(ApplicationError) as archived:
             CaseFileService(session).activate_draft(
                 actor_id,
@@ -130,6 +139,10 @@ def test_activation_is_atomic_and_rejects_stale_foreign_archived_or_locked_targe
 
         with factory() as session:
             CaseFileService(session).unarchive_project(actor_id, project_id)
+        with factory() as session:
+            unarchived_draft = CaseFileService(session).get_draft(actor_id, project_id)
+        assert unarchived_draft["document_status"] == "draft"
+        assert unarchived_draft["content"]["status"] == "draft"
         with factory() as session, session.begin():
             session.execute(update(Draft).where(Draft.id == draft_a_id).values(status="locked"))
         with factory() as session, pytest.raises(ApplicationError) as locked:
@@ -141,6 +154,88 @@ def test_activation_is_atomic_and_rejects_stale_foreign_archived_or_locked_targe
             )
         assert locked.value.code == "draft_locked"
         assert "已锁定" in locked.value.message
+
+
+def test_candidate_branch_inherits_canon_base_and_audits_current_switch(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    worker = Worker(
+        factory,
+        config=WorkerConfig(worker_id="canon-branch-worker"),
+        provider_factory=lambda _task: FakeProvider(),
+    )
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, first_task_id = _prepare_task(engine, actor_id)
+        assert worker.run_once() is True
+        adopted_a = _adopt_candidate(engine, actor_id, project_id, first_task_id)
+        draft_a_id = int(adopted_a["draft_id"])
+
+        with factory() as session, session.begin():
+            task = session.get(TaskRun, first_task_id)
+            assert task is not None and task.result_snapshot_id is not None
+            snapshot = session.get(DraftSnapshot, task.result_snapshot_id)
+            assert snapshot is not None
+            canon = CanonVersion(
+                project_id=snapshot.project_id,
+                casefile_id=snapshot.casefile_id,
+                parent_canon_version_id=None,
+                source_snapshot_id=snapshot.id,
+                version_no=1,
+                schema_version=snapshot.schema_version,
+                content_jsonb=snapshot.snapshot_jsonb,
+                content_hash=snapshot.content_hash,
+                confirmed_by_user_id=actor_id,
+            )
+            session.add(canon)
+            session.flush()
+            canon_id = canon.id
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            brief = workflow.get_brief(actor_id, project_id)
+            source = CaseFileService(session).get_draft(actor_id, project_id)
+            assert source["draft_id"] == draft_a_id
+            assert source["document_status"] == "canon"
+            second_task = workflow.create_generation_task(
+                actor_id,
+                project_id,
+                brief_version_id=int(brief["current_version_id"]),
+                expected_draft_id=draft_a_id,
+                expected_draft_revision=int(source["revision"]),
+            )
+        assert worker.run_once() is True
+        adopted_b = _adopt_candidate(
+            engine,
+            actor_id,
+            project_id,
+            int(second_task["task_run_id"]),
+            expected_current_draft_id=draft_a_id,
+        )
+        draft_b_id = int(adopted_b["draft_id"])
+
+        with factory() as session:
+            draft_b = session.get(Draft, draft_b_id)
+            activation_events = list(
+                session.scalars(
+                    select(AuditEvent)
+                    .where(
+                        AuditEvent.project_id == project_id,
+                        AuditEvent.action == "draft.activated",
+                    )
+                    .order_by(AuditEvent.id)
+                )
+            )
+        assert draft_b is not None
+        assert draft_b.base_canon_version_id == canon_id
+        assert len(activation_events) == 1
+        assert activation_events[0].target_type == "draft"
+        assert activation_events[0].target_id == draft_b_id
+        assert activation_events[0].details_jsonb == {
+            "previous_draft_id": draft_a_id,
+            "task_run_id": int(second_task["task_run_id"]),
+        }
 
 
 def test_switching_isolates_edits_snapshots_validation_sources_and_audit(

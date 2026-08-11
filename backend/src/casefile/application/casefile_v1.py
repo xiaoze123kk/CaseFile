@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from casefile.application.errors import ApplicationError
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
+    AuditEvent,
     Brief,
     BriefVersion,
     CaseFileConstraint,
@@ -152,6 +153,7 @@ def adopt_generation_candidate(
         target_draft = Draft(
             project_id=current.project.id,
             casefile_id=current.casefile.id,
+            base_canon_version_id=source.draft.base_canon_version_id,
             revision=1,
             title=candidate["title"],
             document_status=candidate["status"],
@@ -216,7 +218,26 @@ def adopt_generation_candidate(
             actor_ref=None,
         )
     )
+    previous_draft_id = current.casefile.current_draft_id
     current.casefile.current_draft_id = target.draft.id
+    if target.draft.id != previous_draft_id:
+        session.add(
+            AuditEvent(
+                project_id=current.project.id,
+                casefile_id=current.casefile.id,
+                actor_kind="user",
+                actor_user_id=actor_user_id,
+                actor_ref=None,
+                action="draft.activated",
+                target_type="draft",
+                target_id=target.draft.id,
+                trace_id=None,
+                details_jsonb={
+                    "previous_draft_id": previous_draft_id,
+                    "task_run_id": task_run_id,
+                },
+            )
+        )
     session.flush()
     session.refresh(target.draft)
 

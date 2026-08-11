@@ -31,10 +31,7 @@ def upgrade() -> None:
         """
         UPDATE drafts AS draft
         SET title = casefile.title,
-            document_status = CASE
-                WHEN casefile.status = 'archived' THEN 'archived'
-                ELSE 'draft'
-            END
+            document_status = casefile.status
         FROM casefiles AS casefile
         WHERE casefile.id = draft.casefile_id
           AND casefile.project_id = draft.project_id
@@ -244,6 +241,22 @@ def downgrade() -> None:
             END IF;
         END;
         $$
+        """
+    )
+    op.execute(
+        """
+        UPDATE casefiles AS casefile
+        SET title = draft.title,
+            status = draft.document_status,
+            archived_at = CASE
+                WHEN draft.document_status = 'archived'
+                    THEN COALESCE(casefile.archived_at, CURRENT_TIMESTAMP)
+                ELSE NULL
+            END
+        FROM drafts AS draft
+        WHERE draft.project_id = casefile.project_id
+          AND draft.casefile_id = casefile.id
+          AND draft.id = casefile.current_draft_id
         """
     )
     op.execute(

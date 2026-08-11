@@ -1,14 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   DraftSwitcher,
   ProjectSwitcher,
 } from "@/features/analyst-workbench/workbench-scope-switcher";
-import type {
-  DraftSummaryView,
-  DraftView,
-  ProjectView,
+import {
+  ApiError,
+  type DraftSummaryView,
+  type DraftView,
+  type ProjectView,
 } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({
@@ -70,6 +72,7 @@ function summary(
   id: number,
   title: string,
   current: boolean,
+  overrides: Partial<DraftSummaryView> = {},
 ): DraftSummaryView {
   return {
     draft_id: id,
@@ -86,6 +89,7 @@ function summary(
     updated_at: current
       ? "2026-08-09T11:00:00+00:00"
       : "2026-08-09T12:00:00+00:00",
+    ...overrides,
   };
 }
 
@@ -201,6 +205,134 @@ describe("workbench scope switchers", () => {
       }),
     ).toHaveAttribute("aria-current", "page");
     expect(mocks.listDrafts).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks project navigation when the parent reports unsaved edits", async () => {
+    mocks.listProjects.mockResolvedValue([
+      project(42, "午夜回航"),
+      project(43, "封存室缺页"),
+    ]);
+    const onBeforeSwitch = vi.fn(() => false);
+    render(
+      <ProjectSwitcher
+        currentProjectId={42}
+        fallbackTitle="午夜回航"
+        onBeforeSwitch={onBeforeSwitch}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /项目.*午夜回航/u }),
+    );
+    const target = screen.getByRole("menuitem", { name: /封存室缺页/u });
+
+    expect(fireEvent.click(target)).toBe(false);
+    expect(onBeforeSwitch).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 43 }),
+    );
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it("blocks Draft activation when the parent reports unsaved edits", async () => {
+    mocks.listDrafts.mockResolvedValue([
+      summary(11, "缺页校准稿", true),
+      summary(12, "潮汐证词稿", false),
+    ]);
+    const onBeforeSwitch = vi.fn(() => false);
+    render(
+      <DraftSwitcher
+        currentDraft={draft(11, "缺页校准稿")}
+        onActivated={vi.fn()}
+        onBeforeSwitch={onBeforeSwitch}
+        projectId={42}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", {
+      name: /当前工作稿.*缺页校准稿/u,
+    });
+    fireEvent.click(trigger);
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /潮汐证词稿/u }),
+    );
+
+    expect(onBeforeSwitch).toHaveBeenCalledWith(
+      expect.objectContaining({ draft_id: 12 }),
+    );
+    expect(mocks.activateDraft).not.toHaveBeenCalled();
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("refreshes the authoritative Current Draft after an activation race", async () => {
+    const refreshed = draft(13, "服务端已切换稿");
+    const onCurrentDraftChanged = vi.fn();
+    mocks.listDrafts.mockResolvedValue([
+      summary(11, "缺页校准稿", true),
+      summary(12, "潮汐证词稿", false),
+      summary(13, "服务端已切换稿", false),
+    ]);
+    mocks.activateDraft.mockRejectedValueOnce(
+      new ApiError(409, {
+        code: "current_draft_changed",
+        message: "当前工作稿已在其他位置切换。",
+        details: { current_draft_id: 13 },
+      }),
+    );
+
+    function ConflictHarness() {
+      const [current, setCurrent] = useState(draft(11, "缺页校准稿"));
+      return (
+        <DraftSwitcher
+          currentDraft={current}
+          onActivated={setCurrent}
+          onCurrentDraftChanged={async () => {
+            onCurrentDraftChanged();
+            setCurrent(refreshed);
+          }}
+          projectId={42}
+        />
+      );
+    }
+
+    render(<ConflictHarness />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /当前工作稿.*缺页校准稿/u }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /潮汐证词稿/u }),
+    );
+
+    expect(
+      await screen.findByRole("button", {
+        name: /当前工作稿.*服务端已切换稿/u,
+      }),
+    ).toBeInTheDocument();
+    expect(onCurrentDraftChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks locked Drafts as unavailable before activation", async () => {
+    mocks.listDrafts.mockResolvedValue([
+      summary(11, "缺页校准稿", true),
+      summary(12, "已封存工作稿", false, { status: "locked" }),
+    ]);
+    render(
+      <DraftSwitcher
+        currentDraft={draft(11, "缺页校准稿")}
+        onActivated={vi.fn()}
+        projectId={42}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /当前工作稿.*缺页校准稿/u }),
+    );
+    const locked = await screen.findByRole("menuitem", {
+      name: /已封存工作稿.*已锁定/u,
+    });
+
+    expect(locked).toBeDisabled();
+    fireEvent.click(locked);
+    expect(mocks.activateDraft).not.toHaveBeenCalled();
   });
 
   it("renders both scope entrances at a mobile viewport", () => {

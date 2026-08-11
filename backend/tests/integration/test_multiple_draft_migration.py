@@ -180,3 +180,117 @@ def test_upgrade_backfills_current_draft_and_allows_draft_scoped_object_ids() ->
         with patch.dict(os.environ, {"DATABASE_URL": database_url}):
             _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
+
+
+@pytest.mark.parametrize("legacy_status", ["canon", "archived"])
+def test_single_draft_roundtrip_preserves_document_identity(legacy_status: str) -> None:
+    database_url = _test_database_url()
+    config = _alembic_config(database_url)
+    engine = create_engine(database_url)
+    try:
+        with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+            _clear_projects_before_downgrade(database_url)
+            command.downgrade(config, "base")
+            command.upgrade(config, PREVIOUS_REVISION)
+
+            with engine.begin() as connection:
+                owner_id = int(
+                    connection.scalar(
+                        text(
+                            "INSERT INTO users (display_name) "
+                            "VALUES ('Roundtrip Owner') RETURNING id"
+                        )
+                    )
+                )
+                project_id = int(
+                    connection.scalar(
+                        text(
+                            "INSERT INTO projects (owner_user_id, title) "
+                            "VALUES (:owner_id, 'Roundtrip Project') RETURNING id"
+                        ),
+                        {"owner_id": owner_id},
+                    )
+                )
+                casefile_id = int(
+                    connection.scalar(
+                        text(
+                            "INSERT INTO casefiles "
+                            "(project_id, object_id, title, schema_version, status, archived_at) "
+                            "VALUES (:project_id, 'case_roundtrip', 'Legacy Document', '1.0', "
+                            ":status, CASE WHEN CAST(:status AS VARCHAR) = 'archived' "
+                            "THEN CURRENT_TIMESTAMP ELSE NULL END) RETURNING id"
+                        ),
+                        {"project_id": project_id, "status": legacy_status},
+                    )
+                )
+                draft_id = int(
+                    connection.scalar(
+                        text(
+                            "INSERT INTO drafts "
+                            "(project_id, casefile_id, version_id, schema_version) "
+                            "VALUES (:project_id, :casefile_id, 'draft_roundtrip', '1.0') "
+                            "RETURNING id"
+                        ),
+                        {"project_id": project_id, "casefile_id": casefile_id},
+                    )
+                )
+
+            command.upgrade(config, "head")
+
+            with engine.begin() as connection:
+                migrated = connection.execute(
+                    text(
+                        "SELECT title, document_status FROM drafts "
+                        "WHERE id = :draft_id"
+                    ),
+                    {"draft_id": draft_id},
+                ).one()
+                assert migrated == ("Legacy Document", legacy_status)
+
+                connection.execute(
+                    text(
+                        "UPDATE drafts SET title = 'Independent Draft' "
+                        "WHERE id = :draft_id"
+                    ),
+                    {"draft_id": draft_id},
+                )
+                # Exercise both archive consistency paths during downgrade: the
+                # Current Draft document is authoritative over this stale shell.
+                if legacy_status == "archived":
+                    connection.execute(
+                        text(
+                            "UPDATE casefiles SET status = 'draft', archived_at = NULL "
+                            "WHERE id = :casefile_id"
+                        ),
+                        {"casefile_id": casefile_id},
+                    )
+                else:
+                    connection.execute(
+                        text(
+                            "UPDATE casefiles SET status = 'archived', "
+                            "archived_at = CURRENT_TIMESTAMP WHERE id = :casefile_id"
+                        ),
+                        {"casefile_id": casefile_id},
+                    )
+
+            command.downgrade(config, PREVIOUS_REVISION)
+
+            with engine.connect() as connection:
+                restored = connection.execute(
+                    text(
+                        "SELECT title, status, archived_at FROM casefiles "
+                        "WHERE id = :casefile_id"
+                    ),
+                    {"casefile_id": casefile_id},
+                ).one()
+            assert restored.title == "Independent Draft"
+            assert restored.status == legacy_status
+            if legacy_status == "archived":
+                assert restored.archived_at is not None
+            else:
+                assert restored.archived_at is None
+    finally:
+        engine.dispose()
+        with patch.dict(os.environ, {"DATABASE_URL": database_url}):
+            _clear_projects_before_downgrade(database_url)
+            command.downgrade(config, "base")

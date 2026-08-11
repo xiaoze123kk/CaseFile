@@ -11,6 +11,7 @@ import {
 
 import {
   activateDraft,
+  ApiError,
   errorMessage,
   listDrafts,
   listProjects,
@@ -53,9 +54,11 @@ function useDismissibleMenu(
 export function ProjectSwitcher({
   currentProjectId,
   fallbackTitle,
+  onBeforeSwitch,
 }: {
   currentProjectId: number | null;
   fallbackTitle: string;
+  onBeforeSwitch?: (project: ProjectView) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectView[] | null>(null);
@@ -141,7 +144,21 @@ export function ProjectSwitcher({
                 data-current={project.id === currentProjectId}
                 href={`/workbench?project=${project.id}`}
                 key={project.id}
-                onClick={close}
+                onClick={(event) => {
+                  if (project.id === currentProjectId) {
+                    event.preventDefault();
+                    close();
+                    window.setTimeout(() => triggerRef.current?.focus(), 0);
+                    return;
+                  }
+                  if (onBeforeSwitch && !onBeforeSwitch(project)) {
+                    event.preventDefault();
+                    close();
+                    window.setTimeout(() => triggerRef.current?.focus(), 0);
+                    return;
+                  }
+                  close();
+                }}
                 role="menuitem"
               >
                 <span>
@@ -166,10 +183,14 @@ export function DraftSwitcher({
   projectId,
   currentDraft,
   onActivated,
+  onBeforeSwitch,
+  onCurrentDraftChanged,
 }: {
   projectId: number;
   currentDraft: DraftView;
   onActivated: (draft: DraftView) => Promise<void> | void;
+  onBeforeSwitch?: (draft: DraftSummaryView) => boolean;
+  onCurrentDraftChanged?: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [drafts, setDrafts] = useState<DraftSummaryView[] | null>(null);
@@ -207,6 +228,11 @@ export function DraftSwitcher({
       triggerRef.current?.focus();
       return;
     }
+    if (onBeforeSwitch && !onBeforeSwitch(draft)) {
+      close();
+      window.setTimeout(() => triggerRef.current?.focus(), 0);
+      return;
+    }
     setActivatingId(draft.draft_id);
     setError(null);
     try {
@@ -226,6 +252,21 @@ export function DraftSwitcher({
       close();
       window.setTimeout(() => triggerRef.current?.focus(), 0);
     } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        caught.body.code === "current_draft_changed" &&
+        onCurrentDraftChanged
+      ) {
+        try {
+          await onCurrentDraftChanged();
+          return;
+        } catch {
+          setError(
+            "当前工作稿已切换，但最新内容读取失败。请刷新页面后重试。",
+          );
+          return;
+        }
+      }
       setError(errorMessage(caught));
     } finally {
       setActivatingId(null);
@@ -276,31 +317,41 @@ export function DraftSwitcher({
               <button onClick={() => void load()} type="button">重新读取</button>
             </div>
           ) : orderedDrafts.length ? (
-            orderedDrafts.map((draft) => (
-              <button
-                aria-current={draft.draft_id === currentDraft.draft_id ? "page" : undefined}
-                className={styles.menuItem}
-                data-current={draft.draft_id === currentDraft.draft_id}
-                disabled={activatingId !== null}
-                key={draft.draft_id}
-                onClick={() => void selectDraft(draft)}
-                role="menuitem"
-                type="button"
-              >
-                <span>
-                  <strong>{draft.title}</strong>
-                  <small>
-                    工作稿 #{draft.draft_id} · Brief V{draft.brief_version_no ?? "—"} · R
-                    {draft.revision}
-                  </small>
-                </span>
-                {activatingId === draft.draft_id ? (
-                  <b>切换中…</b>
-                ) : draft.draft_id === currentDraft.draft_id ? (
-                  <b>当前</b>
-                ) : null}
-              </button>
-            ))
+            orderedDrafts.map((draft) => {
+              const locked = draft.status !== "active";
+              return (
+                <button
+                  aria-current={draft.draft_id === currentDraft.draft_id ? "page" : undefined}
+                  className={styles.menuItem}
+                  data-current={draft.draft_id === currentDraft.draft_id}
+                  data-locked={locked}
+                  disabled={activatingId !== null || locked}
+                  key={draft.draft_id}
+                  onClick={() => void selectDraft(draft)}
+                  role="menuitem"
+                  type="button"
+                >
+                  <span>
+                    <strong>{draft.title}</strong>
+                    <small>
+                      工作稿 #{draft.draft_id} · Brief V{draft.brief_version_no ?? "—"} · R
+                      {draft.revision}
+                    </small>
+                  </span>
+                  {locked ? (
+                    <b>
+                      {draft.draft_id === currentDraft.draft_id
+                        ? "当前 · 已锁定"
+                        : "已锁定"}
+                    </b>
+                  ) : activatingId === draft.draft_id ? (
+                    <b>切换中…</b>
+                  ) : draft.draft_id === currentDraft.draft_id ? (
+                    <b>当前</b>
+                  ) : null}
+                </button>
+              );
+            })
           ) : (
             <div className={styles.menuState}>
               <strong>还没有已生成的工作稿</strong>

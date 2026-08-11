@@ -669,6 +669,10 @@ export function AnalystWorkbench({
     await loadProject(loadedProjectId).catch(() => undefined);
   }
 
+  async function handleCurrentDraftChanged() {
+    await handleDraftActivated(await fetchCaseDraft(loadedProjectId));
+  }
+
   return (
     <AnalystWorkbenchSurface
       activeCandidate={activeCandidate}
@@ -677,6 +681,7 @@ export function AnalystWorkbench({
       currentDraft={draft}
       draftRevision={draft.revision}
       key={`project-${projectId}-draft-${draft.draft_id}`}
+      onCurrentDraftChanged={handleCurrentDraftChanged}
       onDraftActivated={handleDraftActivated}
       onSaveObject={saveObject}
       projectId={projectId}
@@ -792,6 +797,7 @@ function AnalystWorkbenchSurface({
   draftRevision = null,
   savingObject = false,
   onReloadContext,
+  onCurrentDraftChanged,
   onDraftActivated,
   onSaveObject,
 }: {
@@ -809,6 +815,7 @@ function AnalystWorkbenchSurface({
   draftRevision?: number | null;
   savingObject?: boolean;
   onReloadContext?: () => void;
+  onCurrentDraftChanged?: () => Promise<void>;
   onDraftActivated?: (draft: DraftView) => Promise<void> | void;
   onSaveObject?: (
     objectId: string,
@@ -1026,7 +1033,7 @@ function AnalystWorkbenchSurface({
     ) {
       return false;
     }
-    const message = "有未保存修改。请先保存或取消修改，再切换对象。";
+    const message = "有未保存修改。请先保存或取消修改，再切换项目、工作稿或对象。";
     setInspectorTab("object");
     setMobileRegion("inspector");
     setObjectEditorNavigationNotice(message);
@@ -1290,6 +1297,7 @@ function AnalystWorkbenchSurface({
           <ProjectSwitcher
             currentProjectId={projectId}
             fallbackTitle={seed.caseMeta.title}
+            onBeforeSwitch={() => !blockDirtyObjectNavigation()}
           />
         )}
         <div className={styles.topStatus} aria-label="卷宗状态">
@@ -1447,6 +1455,8 @@ function AnalystWorkbenchSurface({
               <DraftSwitcher
                 currentDraft={currentDraft}
                 onActivated={onDraftActivated}
+                onBeforeSwitch={() => !blockDirtyObjectNavigation()}
+                onCurrentDraftChanged={onCurrentDraftChanged}
                 projectId={projectId}
               />
             ) : null}
