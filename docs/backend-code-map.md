@@ -45,6 +45,7 @@
 | `backend/src/casefile/application/task_events.py` | 在调用方事务中追加单调序号的不可变 TaskEvent。 |
 | `backend/src/casefile/application/task_cancellation.py` | 统一 queued/running TaskRun 的取消终态、Attempt 收敛与 CaseFile Chat pending 消息失败回填。 |
 | `backend/src/casefile/application/workbench_read_model.py` | 按当前 Draft 只读汇总 CaseFile 确定性验证、冻结 Brief 所引用的 SourceRecord 正文与可追溯标识，以及 `audit_events`/`draft_operations` 审计事实。 |
+| `backend/src/casefile/application/timeline.py` | 对 Current Draft 事件时间修改执行只读影响预览，报告事实顺序跨越、相对时间依赖和完整契约验证结果；不得写入 Draft。 |
 | `backend/src/casefile/application/a_path_metrics.py` | 只读地从 Brief-to-Draft `AgentModelCall`/`TaskAttempt`/`TaskRun` 分层用量、`TaskEvent` 与采用后的 `draft_operations` 推导 A 路径漏斗、完整重试用量和人工续编指标；同一 Attempt 只消费一个权威层级，不新增分析表。 |
 
 ## API 与 Worker

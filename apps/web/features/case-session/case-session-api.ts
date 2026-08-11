@@ -22,6 +22,8 @@ import {
   type ProviderSettingView,
   type TaskView,
   type TaskType,
+  type TimelineTemporalPosition,
+  type TimelineTimePreviewView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
@@ -634,6 +636,28 @@ export async function patchCaseDraftObject(
         expected_draft_id: expectedDraftId,
         expected_revision: expectedRevision,
         changes,
+      },
+    },
+  );
+}
+
+/** 只读预演事件时间变化；不会推进 Draft revision。 */
+export async function previewCaseDraftEventTime(
+  projectId: number,
+  eventId: string,
+  expectedDraftId: number,
+  expectedRevision: number,
+  proposedTime: TimelineTemporalPosition,
+) {
+  return apiRequest<TimelineTimePreviewView>(
+    `/projects/${projectId}/draft/events/${encodeURIComponent(eventId)}/time-preview`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+        proposed_time: proposedTime,
       },
     },
   );

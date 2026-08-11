@@ -19,6 +19,8 @@ import {
   type DraftCandidatePreviewView,
   type DraftView,
   type CaseFileDocument,
+  type TimelineTemporalPosition,
+  type TimelineTimePreviewView,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -41,6 +43,7 @@ import {
   fetchCaseDraft,
   fetchDraftCandidatePreview,
   patchCaseDraftObject,
+  previewCaseDraftEventTime,
 } from "@/features/case-session/case-session-api";
 import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
@@ -69,12 +72,12 @@ import {
 import { mapCaseFileToWorkbenchModel } from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
+import { TimelineOverview } from "./timeline/timeline-overview";
 import {
   CompileCenterView,
   DossierView,
   ExportView,
   MapView,
-  TimelineOverview,
 } from "./workbench-secondary-views";
 import {
   workbenchViewOptions,
@@ -620,9 +623,11 @@ export function AnalystWorkbench({
   }
 
   const loadedProjectId = projectId;
+  const loadedDraft = draft;
+  const loadedDocument = draft.content;
   const seed = mapCaseFileToWorkbenchModel(
-    draft.content,
-    draft.revision,
+    loadedDocument,
+    loadedDraft.revision,
     realContextState.data?.validation ?? null,
   );
 
@@ -666,6 +671,32 @@ export function AnalystWorkbench({
     }
   }
 
+  async function previewEventTime(
+    eventId: string,
+    proposedTime: TimelineTemporalPosition,
+  ): Promise<TimelineTimePreviewView> {
+    try {
+      return await previewCaseDraftEventTime(
+        loadedProjectId,
+        eventId,
+        loadedDraft.draft_id,
+        loadedDraft.revision,
+        proposedTime,
+      );
+    } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        (caught.status === 409 || caught.body.code === "draft_revision_conflict")
+      ) {
+        const latest = await fetchCaseDraft(loadedProjectId);
+        setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
+        refreshContext();
+        throw new Error("Current Draft 已更新，请基于最新时间轴重新预览。");
+      }
+      throw caught;
+    }
+  }
+
   async function handleDraftActivated(activated: DraftView) {
     setDraftLoad({ projectId: loadedProjectId, draft: activated, error: null });
     setContextLoad(null);
@@ -687,9 +718,10 @@ export function AnalystWorkbench({
       key={`project-${projectId}-draft-${draft.draft_id}`}
       onCurrentDraftChanged={handleCurrentDraftChanged}
       onDraftActivated={handleDraftActivated}
+      onPreviewEventTime={previewEventTime}
       onSaveObject={saveObject}
       projectId={projectId}
-      realDocument={draft.content}
+      realDocument={loadedDocument}
       realContextState={realContextState}
       onReloadContext={refreshContext}
       savingObject={savingObject}
@@ -803,6 +835,7 @@ function AnalystWorkbenchSurface({
   onReloadContext,
   onCurrentDraftChanged,
   onDraftActivated,
+  onPreviewEventTime,
   onSaveObject,
 }: {
   seed: WorkbenchSeed;
@@ -821,6 +854,10 @@ function AnalystWorkbenchSurface({
   onReloadContext?: () => void;
   onCurrentDraftChanged?: () => Promise<void>;
   onDraftActivated?: (draft: DraftView) => Promise<void> | void;
+  onPreviewEventTime?: (
+    eventId: string,
+    proposedTime: TimelineTemporalPosition,
+  ) => Promise<TimelineTimePreviewView>;
   onSaveObject?: (
     objectId: string,
     changes: Record<string, unknown>,
@@ -1506,7 +1543,25 @@ function AnalystWorkbenchSurface({
             {view === "timeline" ? (
               seed.timelineEvents.length ? (
                 selectedEvent ? (
-                  <TimelineOverview issueStatuses={visibleIssueStatuses} onSelectEvent={selectEvent} seed={seed} selectedEventId={selectedEventId} validationStatus={timelineValidationStatus} />
+                  <TimelineOverview
+                    editable={Boolean(
+                      realData &&
+                        !writeLocked &&
+                        realDocument?.schema_version === "2.0" &&
+                        onPreviewEventTime &&
+                        onSaveObject,
+                    )}
+                    issueStatuses={visibleIssueStatuses}
+                    onConfirmTime={(eventId, time) =>
+                      onSaveObject?.(eventId, { time }) ?? Promise.resolve("error")
+                    }
+                    onPreviewTime={onPreviewEventTime}
+                    onSelectEvent={selectEvent}
+                    saving={savingObject}
+                    seed={seed}
+                    selectedEventId={selectedEventId}
+                    validationStatus={timelineValidationStatus}
+                  />
                 ) : (
                   <section className={styles.realEmptyState}><strong>此对象没有关联事件</strong><p>检查器仍显示当前对象详情；可以从对象树选择其他对象继续核对。</p></section>
                 )

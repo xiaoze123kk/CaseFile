@@ -30,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
   loadProject: vi.fn(),
   patchCaseDraftObject: vi.fn(),
+  previewCaseDraftEventTime: vi.fn(),
 }));
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
@@ -57,6 +58,7 @@ vi.mock("@/features/case-session/case-session-api", () => ({
   fetchCaseDraft: mocks.fetchCaseDraft,
   fetchDraftCandidatePreview: mocks.fetchDraftCandidatePreview,
   patchCaseDraftObject: mocks.patchCaseDraftObject,
+  previewCaseDraftEventTime: mocks.previewCaseDraftEventTime,
 }));
 
 function metadata(description: string): CoreMetadata {
@@ -390,6 +392,7 @@ beforeEach(() => {
   ]);
   mocks.loadProject.mockReset().mockResolvedValue(undefined);
   mocks.patchCaseDraftObject.mockReset();
+  mocks.previewCaseDraftEventTime.mockReset();
 });
 
 afterEach(() => {

@@ -28,11 +28,13 @@ from casefile.api.schemas import (
     ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
+    TimelineTimePreviewRequest,
 )
 from casefile.api.workbench import workbench_router
 from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
+from casefile.application.timeline import TimelineService
 from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
@@ -343,6 +345,23 @@ def _api_router() -> APIRouter:
         )
         _set_revision(response, revision)
         return result
+
+    @router.post("/projects/{project_id}/draft/events/{event_id}/time-preview")
+    def preview_event_time(
+        project_id: int,
+        event_id: str,
+        payload: TimelineTimePreviewRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return TimelineService(session).preview_event_time(
+            actor,
+            project_id,
+            event_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+            proposed_time=payload.proposed_time,
+        )
 
     @router.post("/projects/{project_id}/draft/snapshots")
     def create_snapshot(

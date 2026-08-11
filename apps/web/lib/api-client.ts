@@ -24,6 +24,7 @@ export type LegacyCaseFileV1 = Omit<CaseFile, "schema_version" | "events"> & {
 };
 
 export type CaseFileDocument = CaseFile | LegacyCaseFileV1;
+export type TimelineTemporalPosition = CaseFile["events"][number]["time"];
 
 const API_ROOT =
   process.env.NEXT_PUBLIC_CASEFILE_API_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -483,6 +484,31 @@ export interface DraftView {
   created_at: string;
   updated_at: string;
   content: CaseFileDocument | null;
+}
+
+export interface TimelineTimePreviewView {
+  draft_id: number;
+  base_revision: number;
+  event_id: string;
+  before_time: TimelineTemporalPosition;
+  proposed_time: TimelineTemporalPosition;
+  can_confirm: boolean;
+  order_change: {
+    from_index: number | null;
+    to_index: number | null;
+    crossed_event_ids: string[];
+  };
+  relative_dependent_event_ids: string[];
+  affected_event_ids: string[];
+  validation: {
+    status: "passed" | "failed";
+    issue_count: number;
+    issues: Array<{
+      code: string;
+      path: string;
+      message: string;
+    }>;
+  };
 }
 
 export interface DraftSummaryView {

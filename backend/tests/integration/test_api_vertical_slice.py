@@ -14,6 +14,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.credentials import generate_master_key
@@ -29,11 +35,6 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -716,6 +717,48 @@ def test_settings_brief_generation_sse_and_completion_gate(
         draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert draft.json()["revision"] == 2
         assert draft.json()["content"]["schema_version"] == "2.0"
+
+        event_id = draft.json()["content"]["events"][0]["id"]
+        time_preview = client.post(
+            f"/api/v1/projects/{project_id}/draft/events/{event_id}/time-preview",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 2,
+                "proposed_time": {
+                    "kind": "exact",
+                    "value": "2042-06-01T20:15",
+                    "precision": "minute",
+                },
+            },
+        )
+        assert time_preview.status_code == 200
+        assert time_preview.json()["can_confirm"] is True
+        assert time_preview.json()["draft_id"] == adopted.json()["draft_id"]
+        assert time_preview.json()["base_revision"] == 2
+        assert client.get(
+            f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id)
+        ).json()["revision"] == 2
+
+        invalid_time_preview = client.post(
+            f"/api/v1/projects/{project_id}/draft/events/{event_id}/time-preview",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 2,
+                "proposed_time": {
+                    "kind": "range",
+                    "start": "2042-06-01T20:20",
+                    "end": "2042-06-01T20:10",
+                    "precision": "minute",
+                },
+            },
+        )
+        assert invalid_time_preview.status_code == 200
+        assert invalid_time_preview.json()["can_confirm"] is False
+        assert invalid_time_preview.json()["validation"]["issues"][0]["code"] == (
+            "invalid_time_range"
+        )
 
         workbench_context = client.get(
             f"/api/v1/projects/{project_id}/workbench-context",

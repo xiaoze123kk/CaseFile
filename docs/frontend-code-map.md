@@ -40,6 +40,7 @@
 | `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 工作台内卷宗统筹 Agent 对话、预设指令和本地响应编排。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-kernel.tsx`、`workbench-canvas-layout.ts`、`workbench-canvas.module.css` | 关系图与推理图共享的 React Flow 只读画布内核、确定性 Dagre 布局、按 `project:{projectId}:draft:{draftId}` 隔离的浏览器布局偏好、选择/平移/多选/全屏交互和专属视觉样式；不得表达或触发领域写入。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-controls.tsx`、`workbench-icon.tsx`、`workbench-geometry.ts`、`workbench-presenters.ts` | 工作台内部复用的画布控件、悬浮提示、图标、几何边界和展示标签；不承载跨功能业务状态。 |
+| `apps/web/features/analyst-workbench/timeline/` | 时间线专属的无时区时间解析、React+D3 比例轴、点/整段区间拖动、窄屏编辑清单与写入前影响预览；不绕过 Current Draft revision 门禁。 |
 | `apps/web/features/workflow/` | 原稿建案、独立润色候选审阅、Brief 原子拆解/人工确认、Brief → Draft 和工作台的唯一产品实现，以及设置弹窗、SSE 可恢复安全审计轨迹、完成门禁、目标无关对象展示与有限编辑；直接接真实 API/Workflow Store。 |
 | `apps/web/features/workflow/task-recovery.ts` | 三类真实 TaskRun 共用的最近任务/本地指针恢复、轮询、事件积压合并和按游标重连 SSE。 |
 | `apps/web/features/reasoning/` | 推理实验室的整卷生成态、与真实进度绑定的因果点火动效、路径总览、React Flow 静态因果画布、候选审阅器，以及实验室内来源快速查看与显式工作台定位交互。 |
