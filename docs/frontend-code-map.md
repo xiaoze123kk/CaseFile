@@ -32,11 +32,11 @@
 |---|---|
 | `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts`、`workbench-views.ts` | 分析师工作台页面编排、跨面板共享状态、Current Draft 全量重载与本地 Fixture 数据模型；`workbench-views.ts` 是八种生产主画布视图的唯一注册表，真实证据对比缺少验证数据时由工作台显示当前对象的明确空态。 |
 | `apps/web/features/analyst-workbench/workbench-scope-switcher.tsx`、`workbench-scope-switcher.module.css` | 顶部全局项目切换与标题栏工作稿切换；负责真实列表、加载/失败/空态、指针并发激活、键盘关闭/焦点恢复和返回建案中心生成新稿。 |
-| `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts`、`workbench-spatial-model.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和空间卷宗工作台模型；空间纯数据层负责 WGS84、场景坐标、确定性拓扑、未定位地点和地点级事件聚合，Fixture 只通过显式适配器进入。 |
-| `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数，以及真实对象详情、关联事件、有限编辑和未保存切换保护。 |
+| `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts`、`workbench-spatial-model.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和空间卷宗工作台模型；空间纯数据层负责 WGS84、场景坐标、确定性拓扑、未定位地点、地点级事件聚合、空间关系规范化和图层可见性过滤，Fixture 只通过显式适配器进入。 |
+| `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css`、`workbench-object-persistence.ts` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数，以及真实对象详情、关联事件、有限编辑和未保存切换保护；持久化 Hook 统一对象/空间位置 PATCH、Current Draft 重载和 revision 冲突结果，不依赖 client-only 地图组件。 |
 | `apps/web/features/analyst-workbench/workbench-context-panels.tsx`、`workbench-context-panels.module.css` | 展示当前 Draft 的真实确定性验证、冻结 Brief 来源正文/追溯标识和只追加审计事实，并统一加载、空态、错误、重试与专属面板样式。 |
 | `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、卷宗编辑、导出预览与编译中心等次级主画布视图。 |
-| `apps/web/features/analyst-workbench/spatial-map/` | client-only 空间卷宗边界；React 视图管理模式、快览和共享选择，Leaflet renderer 分别使用地理 CRS 与 `CRS.Simple`，样式集中表达坐标来源、未定位状态和测绘底板。 |
+| `apps/web/features/analyst-workbench/spatial-map/` | client-only 空间卷宗边界；React 视图管理模式、分模式图层/视口、状态核验、未定位抽屉、快览与显式位置编辑，独立 controls/preview-card 避免主视图膨胀；Leaflet renderer 分别使用地理 CRS 与 `CRS.Simple`，只产生关系覆盖层及拖动坐标预览，不负责 PATCH 或 revision。 |
 | `apps/web/features/analyst-workbench/workbench-relationship-graph.tsx`、`workbench-reasoning-graph.tsx` | 将关系与推理读模型适配为只读画布场景，声明节点类型颜色、图例、详情选择和无障碍替代表。 |
 | `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 工作台内卷宗统筹 Agent 对话、预设指令和本地响应编排。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-kernel.tsx`、`workbench-canvas-layout.ts`、`workbench-canvas.module.css` | 关系图与推理图共享的 React Flow 只读画布内核、确定性 Dagre 布局、按 `project:{projectId}:draft:{draftId}` 隔离的浏览器布局偏好、选择/平移/多选/全屏交互和专属视觉样式；不得表达或触发领域写入。 |

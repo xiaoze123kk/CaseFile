@@ -1,7 +1,11 @@
 import type { CaseFile, CoreMetadata, ObjectRef } from "@casefile/contracts";
 import { describe, expect, it } from "vitest";
 
-import { buildWorkbenchSpatialModel } from "@/features/analyst-workbench/workbench-spatial-model";
+import {
+  buildWorkbenchSpatialModel,
+  defaultSpatialLayerVisibility,
+  filterWorkbenchSpatialView,
+} from "@/features/analyst-workbench/workbench-spatial-model";
 import type { WorkbenchTimelineEvent } from "@/features/analyst-workbench/workbench-real-data-types";
 
 function ref(object_type: string, object_id: string): ObjectRef {
@@ -27,6 +31,7 @@ function location(
     position?: CaseFile["locations"][number]["spatial_position"];
     parentId?: string;
     adjacentIds?: string[];
+    travelTimes?: Array<{ toId: string; minutes: number }>;
   } = {},
 ): CaseFile["locations"][number] {
   return {
@@ -36,7 +41,10 @@ function location(
     parent_ref: input.parentId ? ref("location", input.parentId) : null,
     adjacency_refs: (input.adjacentIds ?? []).map((id) => ref("location", id)),
     access_rules: [],
-    travel_times: [],
+    travel_times: (input.travelTimes ?? []).map((travelTime) => ({
+      to_ref: ref("location", travelTime.toId),
+      minutes: travelTime.minutes,
+    })),
     visibility_rules: [],
     ...(input.position ? { spatial_position: input.position } : {}),
   };
@@ -254,5 +262,110 @@ describe("workbench spatial model", () => {
     expect(scene.defaultMode).toBe("scene");
     expect(topology.availableModes).toEqual(["topology"]);
     expect(topology.defaultMode).toBe("topology");
+  });
+
+  it("deduplicates undirected adjacency, preserves directed travel, and separates relations by mode", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile([
+        location("loc_geo_a", {
+          adjacentIds: ["loc_geo_b"],
+          travelTimes: [
+            { toId: "loc_geo_b", minutes: 6 },
+            { toId: "loc_geo_b", minutes: 6 },
+          ],
+          position: {
+            coordinate_system: "wgs84",
+            latitude: 31,
+            longitude: 121,
+          },
+        }),
+        location("loc_geo_b", {
+          adjacentIds: ["loc_geo_a"],
+          travelTimes: [{ toId: "loc_geo_a", minutes: 8 }],
+          position: {
+            coordinate_system: "wgs84",
+            latitude: 31.1,
+            longitude: 121.1,
+          },
+        }),
+        location("loc_scene_a", {
+          adjacentIds: ["loc_scene_b"],
+          position: { coordinate_system: "schematic", x: 20, y: 20 },
+        }),
+        location("loc_scene_b", {
+          adjacentIds: ["loc_scene_a"],
+          position: { coordinate_system: "schematic", x: 70, y: 70 },
+        }),
+      ]),
+      [],
+    );
+
+    expect(model.views.geographic.relations).toEqual([
+      expect.objectContaining({
+        relationId: "adjacency:loc_geo_a:loc_geo_b",
+        direction: "undirected",
+      }),
+      expect.objectContaining({
+        relationId: "travel:loc_geo_a:loc_geo_b:6",
+        direction: "directed",
+        label: "6 分钟",
+      }),
+      expect.objectContaining({
+        relationId: "travel:loc_geo_b:loc_geo_a:8",
+        direction: "directed",
+        label: "8 分钟",
+      }),
+    ]);
+    expect(model.views.scene.relations).toEqual([
+      expect.objectContaining({ relationId: "adjacency:loc_scene_a:loc_scene_b" }),
+    ]);
+    expect(model.views.geographic.relations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ toLocationId: "loc_scene_b" }),
+      ]),
+    );
+  });
+
+  it("filters explicit, inferred, and relationship layers without changing model facts", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile([
+        location("loc_anchor", {
+          adjacentIds: ["loc_inferred"],
+          position: { coordinate_system: "schematic", x: 35, y: 40 },
+        }),
+        location("loc_inferred", { adjacentIds: ["loc_anchor"] }),
+      ]),
+      [timelineEvent("evt_anchor", "loc_anchor")],
+    );
+    const relationsOn = {
+      ...defaultSpatialLayerVisibility,
+      relations: true,
+    };
+    const explicitOnly = filterWorkbenchSpatialView(
+      model.views.topology,
+      relationsOn,
+    );
+    const withInferred = filterWorkbenchSpatialView(model.views.topology, {
+      ...relationsOn,
+      unconfirmed: true,
+    });
+    const inferredOnly = filterWorkbenchSpatialView(model.views.topology, {
+      ...relationsOn,
+      locations: false,
+      unconfirmed: true,
+    });
+
+    expect(explicitOnly.locations.map((location) => location.locationId)).toEqual([
+      "loc_anchor",
+    ]);
+    expect(explicitOnly.relations).toEqual([]);
+    expect(withInferred.locations).toHaveLength(2);
+    expect(withInferred.relations).toHaveLength(1);
+    expect(inferredOnly.locations.map((location) => location.locationId)).toEqual([
+      "loc_inferred",
+    ]);
+    expect(inferredOnly.relations).toEqual([]);
+    expect(model.views.topology.locations).toHaveLength(2);
+    expect(model.counts.events).toBe(1);
   });
 });

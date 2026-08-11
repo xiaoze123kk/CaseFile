@@ -155,6 +155,7 @@ export function WorkbenchObjectEditor({
   onSelectRelatedEvent,
   onSave,
   readOnly = false,
+  readOnlyReason,
 }: {
   document: CaseFile;
   selectedObjectId: string | null;
@@ -170,6 +171,7 @@ export function WorkbenchObjectEditor({
     changes: Record<string, unknown>,
   ) => Promise<SaveResult>;
   readOnly?: boolean;
+  readOnlyReason?: string;
 }) {
   const selected = useMemo(
     () => findObject(document, selectedObjectId),
@@ -448,7 +450,7 @@ export function WorkbenchObjectEditor({
         </p>
       ) : null}
       <footer>
-        <span>{readOnly ? "候选预览只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
+        <span>{readOnly ? readOnlyReason ?? "候选预览只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
         <div className={styles.footerActions}>
           <button
             className={styles.cancelButton}
@@ -459,7 +461,7 @@ export function WorkbenchObjectEditor({
             取消修改
           </button>
           <button disabled={readOnly || !dirty || saving} onClick={() => void save()} type="button">
-            {readOnly ? "采用后才能编辑" : saving ? "正在保存…" : "保存到当前工作稿"}
+            {readOnly ? readOnlyReason ? "位置编辑进行中" : "采用后才能编辑" : saving ? "正在保存…" : "保存到当前工作稿"}
           </button>
         </div>
       </footer>

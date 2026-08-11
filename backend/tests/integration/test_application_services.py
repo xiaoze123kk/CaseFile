@@ -1046,6 +1046,58 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             )
         assert conflict.value.code == "draft_revision_conflict"
 
+        with factory() as session:
+            before_location = next(
+                item
+                for item in CaseFileService(session).get_draft(actor_id, project_id)[
+                    "content"
+                ]["locations"]
+                if item["id"] == location_id
+            )
+
+        saved_position = {
+            "coordinate_system": "schematic",
+            "x": 55,
+            "y": 61,
+        }
+        with factory() as session:
+            saved_location, revision = V1EditingService(session).patch_object(
+                actor_id,
+                project_id,
+                location_id,
+                expected_draft_id=draft_id,
+                expected_revision=6,
+                changes={"spatial_position": saved_position},
+            )
+            assert revision == 7
+            assert saved_location["spatial_position"] == saved_position
+            assert saved_location["revision"] == before_location["revision"] + 1
+            assert {
+                key: value
+                for key, value in saved_location.items()
+                if key not in {"spatial_position", "revision", "updated_at"}
+            } == {
+                key: value
+                for key, value in before_location.items()
+                if key not in {"spatial_position", "revision", "updated_at"}
+            }
+
+        with factory() as session:
+            final = CaseFileService(session).get_draft(actor_id, project_id)
+            position_operations = list(
+                session.scalars(
+                    select(DraftOperation).where(
+                        DraftOperation.draft_id == draft_id,
+                        DraftOperation.result_revision == 7,
+                    )
+                )
+            )
+            assert final["revision"] == 7
+            assert len(position_operations) == 1
+            assert position_operations[0].field_path == f"/locations/{location_id}"
+            assert position_operations[0].old_value_jsonb == before_location
+            assert position_operations[0].new_value_jsonb == saved_location
+
 
 def test_v1_editing_supports_all_eleven_object_collections(
     workflow_database: tuple[Engine, int, str],

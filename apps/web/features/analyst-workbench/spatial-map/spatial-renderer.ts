@@ -1,8 +1,10 @@
 import * as L from "leaflet";
 
 import type {
+  SpatialLayerVisibility,
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
+  WorkbenchSpatialPosition,
   WorkbenchSpatialView,
 } from "../workbench-real-data-types";
 
@@ -33,7 +35,16 @@ export interface SpatialRenderSelection {
 export interface SpatialRenderCallbacks {
   onActivateLocation: (location: WorkbenchSpatialLocation) => void;
   onClearSelection: () => void;
+  onPreviewPosition: (
+    location: WorkbenchSpatialLocation,
+    position: WorkbenchSpatialPosition,
+  ) => void;
   onTileError: () => void;
+}
+
+export interface SpatialRenderOptions {
+  editableLocationId: string | null;
+  layers: SpatialLayerVisibility;
 }
 
 export interface SpatialRenderer {
@@ -41,6 +52,7 @@ export interface SpatialRenderer {
     view: WorkbenchSpatialView,
     selection: SpatialRenderSelection,
     callbacks: SpatialRenderCallbacks,
+    options: SpatialRenderOptions,
   ) => void;
   fitAll: () => void;
   focusLocation: (spatialId: string) => void;
@@ -98,7 +110,63 @@ function markerCoordinate(
   return null;
 }
 
-function markerLabel(location: WorkbenchSpatialLocation): string {
+function positionFromCoordinate(
+  mode: WorkbenchSpatialMode,
+  coordinate: L.LatLng,
+): WorkbenchSpatialPosition {
+  return mode === "geographic"
+    ? {
+        kind: "wgs84",
+        latitude: Math.min(90, Math.max(-90, coordinate.lat)),
+        longitude: Math.min(180, Math.max(-180, coordinate.lng)),
+      }
+    : {
+        kind: "planar",
+        x: Math.min(100, Math.max(0, coordinate.lng)),
+        y: Math.min(100, Math.max(0, 100 - coordinate.lat)),
+      };
+}
+
+function nudgePosition(
+  position: WorkbenchSpatialPosition,
+  key: string,
+  largeStep: boolean,
+): WorkbenchSpatialPosition {
+  if (position.kind === "wgs84") {
+    const step = largeStep ? 0.001 : 0.0001;
+    return {
+      kind: "wgs84",
+      latitude: Math.min(
+        90,
+        Math.max(
+          -90,
+          position.latitude + (key === "ArrowUp" ? step : key === "ArrowDown" ? -step : 0),
+        ),
+      ),
+      longitude: Math.min(
+        180,
+        Math.max(
+          -180,
+          position.longitude + (key === "ArrowRight" ? step : key === "ArrowLeft" ? -step : 0),
+        ),
+      ),
+    };
+  }
+  const step = largeStep ? 2 : 0.5;
+  return {
+    kind: "planar",
+    x: Math.min(
+      100,
+      Math.max(0, position.x + (key === "ArrowRight" ? step : key === "ArrowLeft" ? -step : 0)),
+    ),
+    y: Math.min(
+      100,
+      Math.max(0, position.y + (key === "ArrowDown" ? step : key === "ArrowUp" ? -step : 0)),
+    ),
+  };
+}
+
+function markerLabel(location: WorkbenchSpatialLocation, editable: boolean): string {
   const source =
     location.source === "wgs84"
       ? "地理坐标"
@@ -108,10 +176,14 @@ function markerLabel(location: WorkbenchSpatialLocation): string {
   const eventCount = location.events.length
     ? `，${location.events.length} 个事件`
     : "，没有关联事件";
-  return `${location.label}，${source}${eventCount}`;
+  return `${location.label}，${source}${eventCount}${editable ? "，位置可编辑，可拖动或使用方向键微调" : ""}`;
 }
 
-function markerHtml(location: WorkbenchSpatialLocation): HTMLElement {
+function markerHtml(
+  location: WorkbenchSpatialLocation,
+  showEvents: boolean,
+  editable: boolean,
+): HTMLElement {
   const body = document.createElement("span");
   body.className = "casefile-spatial-marker__body";
 
@@ -125,12 +197,19 @@ function markerHtml(location: WorkbenchSpatialLocation): HTMLElement {
   label.textContent = location.label;
   body.append(label);
 
-  if (location.events.length) {
+  if (showEvents && location.events.length) {
     const count = document.createElement("span");
     count.className = "casefile-spatial-marker__count";
     count.textContent = String(location.events.length);
     count.setAttribute("aria-hidden", "true");
     body.append(count);
+  }
+  if (editable) {
+    const editFlag = document.createElement("span");
+    editFlag.className = "casefile-spatial-marker__edit";
+    editFlag.textContent = "编辑中";
+    editFlag.setAttribute("aria-hidden", "true");
+    body.append(editFlag);
   }
   return body;
 }
@@ -168,6 +247,7 @@ export function createSpatialRenderer(input: {
     zoomControl: false,
   });
   const markers = L.layerGroup().addTo(map);
+  const relations = L.layerGroup().addTo(map);
   const markerById = new Map<string, L.Marker>();
   let callbacks: SpatialRenderCallbacks | null = null;
   let tileErrorReported = false;
@@ -212,20 +292,60 @@ export function createSpatialRenderer(input: {
     view: WorkbenchSpatialView,
     selection: SpatialRenderSelection,
     nextCallbacks: SpatialRenderCallbacks,
+    options: SpatialRenderOptions,
   ) {
     callbacks = nextCallbacks;
     markers.clearLayers();
+    relations.clearLayers();
     markerById.clear();
+
+    const locationById = new Map(
+      view.locations.flatMap((location) =>
+        location.locationId ? [[location.locationId, location] as const] : [],
+      ),
+    );
+    for (const relation of view.relations) {
+      const from = locationById.get(relation.fromLocationId);
+      const to = locationById.get(relation.toLocationId);
+      if (!from || !to) continue;
+      const fromCoordinate = markerCoordinate(input.mode, from);
+      const toCoordinate = markerCoordinate(input.mode, to);
+      if (!fromCoordinate || !toCoordinate) continue;
+      const line = L.polyline([fromCoordinate, toCoordinate], {
+        bubblingMouseEvents: false,
+        className: `casefile-spatial-relation casefile-spatial-relation--${relation.kind}`,
+        color: relation.kind === "travel" ? "#a27321" : "#2f5d62",
+        dashArray: relation.kind === "travel" ? "7 7" : undefined,
+        interactive: false,
+        opacity: 0.86,
+        weight: relation.kind === "travel" ? 2 : 2.5,
+      });
+      line.bindTooltip(
+        relation.kind === "travel" ? `→ ${relation.label}` : relation.label,
+        {
+          className: `casefile-spatial-relation-label casefile-spatial-relation-label--${relation.kind}`,
+          direction: "center",
+          interactive: false,
+          permanent: true,
+        },
+      );
+      line.addTo(relations);
+    }
+
     for (const location of view.locations) {
       const coordinate = markerCoordinate(input.mode, location);
       if (!coordinate) continue;
       const selected = isSelected(location, selection);
+      const editable =
+        Boolean(location.locationId) &&
+        options.editableLocationId === location.locationId;
       const marker = L.marker(coordinate, {
-        alt: markerLabel(location),
+        alt: markerLabel(location, editable),
         bubblingMouseEvents: false,
+        draggable: editable,
         icon: L.divIcon({
-          className: `casefile-spatial-marker casefile-spatial-marker--${location.source}${selected ? " is-selected" : ""}`,
-          html: markerHtml(location),
+          className: `casefile-spatial-marker casefile-spatial-marker--${location.source}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`,
+          html: markerHtml(location, options.layers.events, editable),
           iconAnchor: [22, 22],
           iconSize: [220, 44],
         }),
@@ -234,15 +354,35 @@ export function createSpatialRenderer(input: {
         title: location.label,
       });
       marker.on("click", () => callbacks?.onActivateLocation(location));
+      marker.on("dragend", () => {
+        if (!editable) return;
+        callbacks?.onPreviewPosition(
+          location,
+          positionFromCoordinate(input.mode, marker.getLatLng()),
+        );
+      });
       marker.on("add", () => {
         const element = marker.getElement();
         if (!element) return;
-        element.setAttribute("aria-label", markerLabel(location));
+        element.setAttribute("aria-label", markerLabel(location, editable));
         element.setAttribute("aria-pressed", String(selected));
+        element.setAttribute("aria-grabbed", String(editable));
         element.setAttribute("data-source", location.source);
         element.setAttribute("data-spatial-id", location.spatialId);
         element.setAttribute("role", "button");
         element.addEventListener("keydown", (event) => {
+          if (
+            editable &&
+            ["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft"].includes(event.key)
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            callbacks?.onPreviewPosition(
+              location,
+              nudgePosition(location.position, event.key, event.shiftKey),
+            );
+            return;
+          }
           if (event.key !== "Enter" && event.key !== " ") return;
           event.preventDefault();
           callbacks?.onActivateLocation(location);
