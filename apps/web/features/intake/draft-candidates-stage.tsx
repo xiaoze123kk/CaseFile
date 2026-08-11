@@ -16,6 +16,35 @@ const strategyLabels: Record<CandidateSlotStrategy, string> = {
   reasoning_first: "推理优先",
 };
 
+const internalBriefFieldLabels = {
+  source_record_ids: "原稿来源",
+  creative_intent: "创作意图",
+  reasoning_proposition: "推理目标",
+  resolution_mode: "答案来源",
+  conclusion_mode: "结论模式",
+  author_answer: "作者答案",
+  author_anchors: "作者确认要点",
+  boundary_text: "创作边界",
+  creative_constraints: "创作约束",
+  core_selling_points: "核心卖点",
+  content_outline: "内容骨架",
+  scope_estimate: "篇幅预估",
+  risk_notes: "风险提示",
+} as const;
+
+const internalBriefFieldPattern = new RegExp(
+  `(^|[^A-Za-z0-9_])\`?(${Object.keys(internalBriefFieldLabels).join("|")})\`?(?=$|[^A-Za-z0-9_])`,
+  "gu",
+);
+
+export function presentStrategyText(value: string) {
+  return value.replace(
+    internalBriefFieldPattern,
+    (_match, prefix: string, field: keyof typeof internalBriefFieldLabels) =>
+      `${prefix}${internalBriefFieldLabels[field]}`,
+  );
+}
+
 const statusLabels = {
   pending: "待采用",
   current: "当前工作稿",
@@ -325,16 +354,16 @@ export function DraftCandidatesStage() {
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
                       <small>{recommended ? "Agent 建议 · " : ""}{strategyLabels[option.strategy]}</small>
-                      <strong>{option.focus}</strong>
-                      <p>{option.direction}</p>
+                      <strong>{presentStrategyText(option.focus)}</strong>
+                      <p>{presentStrategyText(option.direction)}</p>
                     </div>
                     <em>{selected ? "已选择" : "选择"}</em>
                   </button>
                   <div className={styles.candidateDetail}>
-                    <section><span>适配依据</span><p>{option.brief_fit}</p></section>
+                    <section><span>适配依据</span><p>{presentStrategyText(option.brief_fit)}</p></section>
                     <div className={styles.candidateComparison}>
-                      <section><span>主要收益</span><ul>{option.strengths.map((item) => <li key={item}>{item}</li>)}</ul></section>
-                      <section><span>需要接受</span><ul>{option.tradeoffs.map((item) => <li key={item}>{item}</li>)}</ul></section>
+                      <section><span>主要收益</span><ul>{option.strengths.map((item) => <li key={item}>{presentStrategyText(item)}</li>)}</ul></section>
+                      <section><span>需要接受</span><ul>{option.tradeoffs.map((item) => <li key={item}>{presentStrategyText(item)}</li>)}</ul></section>
                     </div>
                   </div>
                 </article>
@@ -350,7 +379,7 @@ export function DraftCandidatesStage() {
 
         {analysis.recommendationReason ? (
           <p className={styles.generationCurrentAction}>
-            Agent 建议：{strategyLabels[analysis.recommendedStrategy!]}。{analysis.recommendationReason}
+            Agent 建议：{strategyLabels[analysis.recommendedStrategy!]}。{presentStrategyText(analysis.recommendationReason)}
           </p>
         ) : null}
 

@@ -372,29 +372,29 @@ function buildFakeBackend() {
               strategy: "structure_first",
               direction: "先建立事件、对象和因果骨架。",
               focus: "让结构首先清晰可审阅",
-              strengths: ["结构稳定", "引用易校验"],
+              strengths: ["结构稳定", "符合boundary_text中的创作边界"],
               tradeoffs: ["氛围细节稍后深化"],
-              brief_fit: "当前 Brief 已有明确事件边界。",
+              brief_fit: "直接对应Brief中的content_outline，并满足boundary_text中的要求。",
             },
             {
               strategy: "atmosphere_first",
               direction: "先建立场景质感与人物张力。",
               focus: "让氛围成为线索载体",
-              strengths: ["场景鲜明", "人物有记忆点"],
+              strengths: ["场景鲜明", "呼应core_selling_points"],
               tradeoffs: ["需要继续核对推理密度"],
-              brief_fit: "封存室与夜班具有明确氛围潜力。",
+              brief_fit: "引用creative_intent中的封存室与夜班设定。",
             },
             {
               strategy: "reasoning_first",
               direction: "先建立证据、反证和解答链。",
               focus: "让核心命题可验证",
-              strengths: ["证据链清晰", "假设边界明确"],
+              strengths: ["证据链清晰", "符合risk_notes"],
               tradeoffs: ["场景铺陈稍后深化"],
-              brief_fit: "当前 Brief 已给出明确推理命题。",
+              brief_fit: "直接围绕reasoning_proposition展开。",
             },
           ],
           recommended_strategy: "reasoning_first",
-          recommendation_reason: "明确的推理命题适合先建立证据闭环。",
+          recommendation_reason: "reasoning_proposition适合先建立证据闭环。",
         },
       };
     }
@@ -1126,6 +1126,18 @@ describe("intake center", () => {
     });
     const strategyComparison = screen.getByLabelText("三种策略并列比较");
     expect(within(strategyComparison).getAllByRole("button")).toHaveLength(3);
+    expect(strategyComparison).toHaveTextContent("内容骨架");
+    expect(strategyComparison).toHaveTextContent("创作边界");
+    expect(strategyComparison).toHaveTextContent("核心卖点");
+    expect(strategyComparison).toHaveTextContent("创作意图");
+    expect(strategyComparison).toHaveTextContent("推理目标");
+    expect(strategyComparison).toHaveTextContent("风险提示");
+    expect(strategyComparison).not.toHaveTextContent(
+      /content_outline|boundary_text|core_selling_points|creative_intent|reasoning_proposition|risk_notes/u,
+    );
+    const recommendation = screen.getByText(/Agent 建议：推理优先/u);
+    expect(recommendation).toHaveTextContent("推理目标适合先建立证据闭环。");
+    expect(recommendation).not.toHaveTextContent("reasoning_proposition");
     fireEvent.click(screen.getByRole("button", { name: /让结构首先清晰可审阅/u }));
     fireEvent.click(screen.getByRole("button", { name: /生成结构优先完整深稿/u }));
     await flush();
