@@ -101,6 +101,61 @@ describe("editable proportional timeline", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows complete event readings without exposing timezone or seconds", () => {
+    const seed = timelineSeed();
+    seed.timelineEvents[0] = {
+      ...seed.timelineEvents[0],
+      time: "2034-11-18T09:00:00+08:00",
+    };
+
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[0].id}
+        validationStatus="passed"
+      />,
+    );
+
+    expect(screen.getAllByText("11-18 09:00").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/09:00:00\+08:00/)).not.toBeInTheDocument();
+    expect(screen.getByText("事件发生时间")).toBeInTheDocument();
+    expect(screen.getByText("故事发生时间轴")).toBeInTheDocument();
+  });
+
+  it("uses date-only ticks when a multi-day axis lands on midnight", () => {
+    const seed = timelineSeed();
+    seed.timelineEvents = seed.timelineEvents.map((event, index) => {
+      const value = `2034-11-${String(18 + index * 3).padStart(2, "0")}T00:00`;
+      return {
+        ...event,
+        time: value,
+        start: value,
+        sortKey: `${value}:00.000000`,
+        source: {
+          time: { kind: "exact", value, precision: "minute" },
+        },
+      } as never;
+    });
+
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[0].id}
+        validationStatus="passed"
+      />,
+    );
+
+    const ticks = screen.getAllByTestId("timeline-axis-tick");
+    expect(ticks.length).toBeGreaterThan(1);
+    expect(ticks.every((tick) => /^11-\d{2}$/.test(tick.textContent ?? ""))).toBe(
+      true,
+    );
+  });
+
   it("previews a keyboard move before confirming the Current Draft write", async () => {
     const seed = timelineSeed();
     const selected = seed.timelineEvents[0];
