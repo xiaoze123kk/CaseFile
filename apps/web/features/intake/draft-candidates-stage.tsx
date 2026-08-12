@@ -109,6 +109,8 @@ export function DraftCandidatesStage() {
   const recoveryAvailable = Boolean(
     taskFailure?.retryable || failedComponent?.recoverable,
   );
+  const pipeline = pipelineRows(latestComponentSteps);
+  const pipelineProgress = pipelineProgressFor(pipeline, componentSteps.length === 0);
   const coordinatorFallback = failedComponent?.component_id === "run_coordinator";
   const failureIssues = coordinatorFallback && taskFailure?.issues.length
     ? taskFailure.issues
@@ -446,12 +448,30 @@ export function DraftCandidatesStage() {
             <div><span>{selectedSlot.latestTask?.prompt_version ?? "正在创建任务"}</span><strong>六步生成流水线</strong></div>
             <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
           </header>
+          <div className={styles.pipelineProgressSummary}>
+            <div className={styles.pipelineProgressCopy}>
+              <strong>{pipelineProgress.label}</strong>
+              <span>已完成 {pipelineProgress.completedCount} / 6 步</span>
+            </div>
+            <div
+              className={styles.pipelineProgressBar}
+              role="progressbar"
+              aria-label="六步生成进度"
+              aria-valuemin={0}
+              aria-valuemax={6}
+              aria-valuenow={pipelineProgress.completedCount}
+            >
+              <span style={{ width: `${(pipelineProgress.completedCount / 6) * 100}%` }} />
+            </div>
+          </div>
           <ol>
-            {pipelineRows(latestComponentSteps).map((row, index) => (
+            {pipeline.map((row, index) => (
               <li data-status={row.status} key={row.id}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <div>
-                  <strong>{row.label}</strong>
+                  <strong>{row.id === "domain_drafters" && row.children
+                    ? `${row.label} · 已完成 ${row.children.filter((child) => child.status === "succeeded" || child.status === "reused").length} / 4`
+                    : row.label}</strong>
                   <small>{stepStatusLabel(row.status)}</small>
                   {row.children ? (
                     <ul>{row.children.map((child) => (
@@ -556,6 +576,19 @@ function pipelineRows(steps: Map<string, { status: PipelineStatus }>) {
     { id: "casefile_compiler", label: "CaseFile 编译", status: direct("casefile_compiler") },
     { id: "quality_repair_gate", label: "质量与修复门禁", status: direct("quality_repair_gate") },
   ];
+}
+
+function pipelineProgressFor(rows: ReturnType<typeof pipelineRows>, creatingTask: boolean) {
+  const completedCount = rows.filter((row) => row.status === "succeeded" || row.status === "reused").length;
+  if (creatingTask) return { completedCount, label: "正在创建任务" };
+  const failedIndex = rows.findIndex((row) => row.status === "failed");
+  const runningIndex = rows.findIndex((row) => row.status === "running");
+  const nextIndex = rows.findIndex((row) => row.status === "pending");
+  if (failedIndex >= 0) return { completedCount, label: `第 ${failedIndex + 1} 步失败：${rows[failedIndex].label}` };
+  if (runningIndex >= 0) return { completedCount, label: `正在进行第 ${runningIndex + 1} 步：${rows[runningIndex].label}` };
+  if (completedCount === rows.length) return { completedCount, label: "六步生成已完成" };
+  if (nextIndex >= 0) return { completedCount, label: `下一步：第 ${nextIndex + 1} 步 ${rows[nextIndex].label}` };
+  return { completedCount, label: "正在创建任务" };
 }
 
 function stepStatusLabel(status: PipelineStatus) {

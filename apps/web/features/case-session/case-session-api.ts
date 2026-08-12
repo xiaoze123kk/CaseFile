@@ -375,28 +375,56 @@ export async function waitForTask(
     const remaining = Math.max(1, deadline - Date.now());
     const timeoutId = window.setTimeout(abortStream, remaining);
     try {
-      await streamTaskEvents(
-        `/projects/${projectId}/tasks/${taskRunId}/stream`,
-        LOCAL_ACTOR_ID,
-        (event) => {
-          lastEventId = Math.max(lastEventId, event.sequence_no);
-          const eventStatus: Partial<Record<string, TaskView["status"]>> = {
-            "task.started": "running",
-            "task.cancel_requested": "cancelling",
-            "task.cancelled": "cancelled",
-            "task.succeeded": "succeeded",
-            "task.failed": "failed",
-          };
-          task = {
-            ...task,
-            status: eventStatus[event.event_type] ?? task.status,
-            stage: event.stage,
-          };
-          onTick?.(task);
-        },
-        streamController.signal,
-        lastEventId,
-      );
+      let authoritativeRefresh = Promise.resolve();
+      let refreshRunning = false;
+      let refreshRequested = false;
+      const queueAuthoritativeRefresh = () => {
+        refreshRequested = true;
+        if (refreshRunning) return;
+        refreshRunning = true;
+        authoritativeRefresh = authoritativeRefresh.then(async () => {
+          while (refreshRequested) {
+            refreshRequested = false;
+            await Promise.resolve();
+            const latest = await fetchTask(projectId, taskRunId, signal);
+            task = latest;
+            onTick?.(latest);
+          }
+          refreshRunning = false;
+        });
+      };
+      let streamError: unknown = null;
+      try {
+        await streamTaskEvents(
+          `/projects/${projectId}/tasks/${taskRunId}/stream`,
+          LOCAL_ACTOR_ID,
+          (event) => {
+            lastEventId = Math.max(lastEventId, event.sequence_no);
+            const eventStatus: Partial<Record<string, TaskView["status"]>> = {
+              "task.started": "running",
+              "task.cancel_requested": "cancelling",
+              "task.cancelled": "cancelled",
+              "task.succeeded": "succeeded",
+              "task.failed": "failed",
+            };
+            task = {
+              ...task,
+              status: eventStatus[event.event_type] ?? task.status,
+              stage: event.stage,
+            };
+            onTick?.(task);
+            if (event.event_type.startsWith("agent.step.")) {
+              queueAuthoritativeRefresh();
+            }
+          },
+          streamController.signal,
+          lastEventId,
+        );
+      } catch (error) {
+        streamError = error;
+      }
+      await authoritativeRefresh;
+      if (streamError) throw streamError;
     } catch (error) {
       if (signal?.aborted) {
         throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");

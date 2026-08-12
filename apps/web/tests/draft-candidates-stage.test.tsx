@@ -42,6 +42,9 @@ describe("draft candidate cancellation feedback", () => {
 
     const pipeline = screen.getByLabelText("深稿生成部件进度");
     expect(within(pipeline).getByText("六步生成流水线")).toBeInTheDocument();
+    expect(within(pipeline).getAllByText("正在创建任务")).toHaveLength(2);
+    expect(within(pipeline).getByText("已完成 0 / 6 步")).toBeInTheDocument();
+    expect(within(pipeline).getByRole("progressbar", { name: "六步生成进度" })).toHaveAttribute("aria-valuenow", "0");
     expect(pipeline.querySelectorAll(":scope > ol > li")).toHaveLength(6);
     expect(
       Array.from(
@@ -50,6 +53,45 @@ describe("draft candidate cancellation feedback", () => {
       ),
     ).toEqual(Array(6).fill("等待"));
     expect(within(pipeline).getByText("时间结构规划 · 等待")).toBeInTheDocument();
+  });
+
+  it.each([
+    [1, ["context_pack_builder"], "正在进行第 2 步：案件蓝图规划"],
+    [3, ["context_pack_builder", "case_blueprint_planner", "story_world", "evidence_logic", "temporal_structure_planner", "resolution_governance"], "正在进行第 4 步：引用链接"],
+    [5, ["context_pack_builder", "case_blueprint_planner", "story_world", "evidence_logic", "temporal_structure_planner", "resolution_governance", "reference_linker", "casefile_compiler"], "正在进行第 6 步：质量与修复门禁"],
+  ] as const)("shows %i completed top-level steps from real component state", (completed, componentIds, currentLabel) => {
+    const state = generatingState();
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = componentIds.map((componentId, index) => componentStep(componentId, "succeeded", index + 1));
+    const runningComponent = completed === 1 ? "case_blueprint_planner" : completed === 3 ? "reference_linker" : "quality_repair_gate";
+    task.component_steps.push(componentStep(runningComponent, "running", 20));
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    const pipeline = screen.getByLabelText("深稿生成部件进度");
+    expect(within(pipeline).getByText(`已完成 ${completed} / 6 步`)).toBeInTheDocument();
+    expect(within(pipeline).getByText(currentLabel)).toBeInTheDocument();
+    expect(within(pipeline).getByRole("progressbar")).toHaveAttribute("aria-valuenow", String(completed));
+  });
+
+  it("counts all four domain drafters before completing the third step", () => {
+    const state = generatingState();
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = [
+      componentStep("context_pack_builder", "succeeded", 1),
+      componentStep("case_blueprint_planner", "succeeded", 2),
+      componentStep("story_world", "succeeded", 3),
+      componentStep("evidence_logic", "succeeded", 4),
+      componentStep("temporal_structure_planner", "succeeded", 5),
+      componentStep("resolution_governance", "running", 6),
+    ];
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByText("三域创作 · 已完成 3 / 4")).toBeInTheDocument();
+    expect(screen.getByText("已完成 2 / 6 步")).toBeInTheDocument();
   });
 
   it("shows the newest failed execution instead of an earlier repaired gate", () => {
@@ -402,6 +444,30 @@ function failedStep({
       },
     ],
     recoverable: true,
+    resumed_from_step_run_id: null,
+  };
+}
+
+function componentStep(
+  componentId: string,
+  status: TaskView["component_steps"][number]["status"],
+  stepRunId: number,
+): TaskView["component_steps"][number] {
+  return {
+    step_run_id: stepRunId,
+    attempt_no: 1,
+    component_id: componentId,
+    parent_component_id: ["story_world", "evidence_logic", "temporal_structure_planner", "resolution_governance"].includes(componentId)
+      ? "domain_drafters"
+      : null,
+    execution_no: 1,
+    status,
+    schema_id: "test-schema-v1",
+    input_hash: `input-${componentId}`,
+    output_hash: status === "succeeded" ? `output-${componentId}` : null,
+    failure_layer: null,
+    issues: [],
+    recoverable: false,
     resumed_from_step_run_id: null,
   };
 }

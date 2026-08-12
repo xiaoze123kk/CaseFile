@@ -1189,6 +1189,44 @@
 .agentPipeline > header strong { display: block; }
 .agentPipeline > header span { color: var(--red); font: 11px "Cascadia Mono", monospace; }
 .agentPipeline > header b { font: 12px "Cascadia Mono", monospace; }
+.pipelineProgressSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 42%);
+  align-items: center;
+  gap: 18px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper-low) 90%, var(--ink) 10%);
+}
+.pipelineProgressCopy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+.pipelineProgressCopy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pipelineProgressCopy span { flex: 0 0 auto; color: var(--ink-muted); font: 11px "Cascadia Mono", monospace; }
+.pipelineProgressBar {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+.pipelineProgressBar::after {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(16.666% - 1px), color-mix(in srgb, var(--ink) 34%, transparent) calc(16.666% - 1px), color-mix(in srgb, var(--ink) 34%, transparent) 16.666%);
+  content: "";
+  pointer-events: none;
+}
+.pipelineProgressBar > span {
+  display: block;
+  height: 100%;
+  background: #356548;
+  transition: width 220ms ease-out;
+}
 .agentPipeline > ol { display: grid; grid-template-columns: repeat(6, 1fr); margin: 0; padding: 0; list-style: none; }
 .agentPipeline > ol > li { display: grid; grid-template-columns: 28px 1fr; gap: 8px; min-height: 86px; padding: 12px; border-right: 1px solid var(--rule); }
 .agentPipeline > ol > li:last-child { border-right: 0; }
@@ -1289,6 +1327,10 @@
   .oldCandidates > div { grid-template-columns: 1fr; }
 
   .candidateSummary { min-height: 132px; }
+
+  .agentPipeline > ol { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .agentPipeline > ol > li:nth-child(3) { border-right: 0; }
+  .agentPipeline > ol > li:nth-child(-n + 3) { border-bottom: 1px solid var(--rule); }
 }
 
 @container candidate-stage (max-width: 780px) {
@@ -1333,14 +1375,22 @@
   .generationSlots { border-top: 1px solid var(--rule); }
   .generationProgress { min-height: 88px; }
   .candidateArchive,
+  .agentPipeline,
   .oldCandidates,
   .candidatesFooter { margin-right: 10px; margin-left: 10px; }
+  .pipelineProgressSummary { grid-template-columns: minmax(0, 1fr); gap: 9px; }
+  .pipelineProgressCopy { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .pipelineProgressCopy strong { white-space: normal; }
+  .agentPipeline > ol { grid-template-columns: minmax(0, 1fr); }
+  .agentPipeline > ol > li { min-height: 0; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .agentPipeline > ol > li:last-child { border-bottom: 0; }
   .candidateDetail footer > div { display: grid; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .generationProgress li[data-active="true"] b,
   .generationMeter > span,
+  .pipelineProgressBar > span,
   .candidateCard {
     animation: none;
     transition: none;
