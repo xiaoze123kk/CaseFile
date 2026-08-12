@@ -15,6 +15,15 @@ from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -23,6 +32,7 @@ from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
 from casefile.agent_runtime.brief_to_draft_v10.workflow import run_v10_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
+from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -74,15 +84,6 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 
 
 class GenerationProvider(Protocol):
@@ -419,7 +420,11 @@ class FakeProvider:
                     },
                 )
                 output = _fake_v8_output(output_type)
-                if request.prompt_version in {"brief-to-draft-v10", "brief-to-draft-v11"}:
+                if request.prompt_version in {
+                    "brief-to-draft-v10",
+                    "brief-to-draft-v11",
+                    "brief-to-draft-v12",
+                }:
                     _add_fake_v10_matrix_plan(output_type, output)
                 if output_type.__name__ == "ResolutionGovernanceIRV1":
                     output["resolution_specs"][0]["conclusion_mode"] = request.brief[
@@ -444,7 +449,9 @@ class FakeProvider:
                 return output, usage
 
             runner = (
-                run_v11_generation
+                run_v12_generation
+                if request.prompt_version == "brief-to-draft-v12"
+                else run_v11_generation
                 if request.prompt_version == "brief-to-draft-v11"
                 else run_v10_generation
                 if request.prompt_version == "brief-to-draft-v10"
@@ -763,7 +770,9 @@ class OpenAIAgentsProvider:
                 )
 
             runner = (
-                run_v11_generation
+                run_v12_generation
+                if request.prompt_version == "brief-to-draft-v12"
+                else run_v11_generation
                 if request.prompt_version == "brief-to-draft-v11"
                 else run_v10_generation
                 if request.prompt_version == "brief-to-draft-v10"
@@ -1010,7 +1019,9 @@ class DeepSeekAgentsProvider:
                 )
 
             runner = (
-                run_v11_generation
+                run_v12_generation
+                if request.prompt_version == "brief-to-draft-v12"
+                else run_v11_generation
                 if request.prompt_version == "brief-to-draft-v11"
                 else run_v10_generation
                 if request.prompt_version == "brief-to-draft-v10"
@@ -1112,9 +1123,7 @@ async def _run_auxiliary_agent(
     deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
-        "native_json_schema"
-        if structured_output
-        else deepseek_output_protocol or "strict_tool"
+        "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
     )
     usage_records: list[dict[str, Any]] = []
     repaired = False
@@ -1455,14 +1464,12 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             "information_units": [node("record", "关键记录", ["discovery", "claim"])],
             "claims": [node("claim", "记录可信", ["record"])],
             "hypotheses": [node("hypothesis", "记录解释", ["resolution", "claim"])],
-            "reasoning_paths": [
-                node("path", "验证路径", ["record", "claim", "hypothesis"])
-            ],
+            "reasoning_paths": [node("path", "验证路径", ["record", "claim", "hypothesis"])],
             "constraints": [node("constraint", "作者边界", ["resolution"])],
             "structure_locks": [node("lock", "事件标题锁", ["discovery"])],
         }
-    if output_type.__name__ in {"StoryWorldIRV1", "StoryWorldIRV2"}:
-        output = {
+    if output_type.__name__ in {"StoryWorldIRV1", "StoryWorldIRV2", "StoryWorldIRV3"}:
+        output: dict[str, Any] = {
             "entities": [
                 {
                     "local_key": "author",
@@ -1497,19 +1504,6 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                     **common,
                     "title": "发现关键记录",
                     "truth_status": "canon_true",
-                    "time": (
-                        {
-                            "kind": "exact",
-                            "value": "2026-08-08T08:00",
-                            "precision": "minute",
-                        }
-                        if output_type.__name__ == "StoryWorldIRV2"
-                        else {
-                            "start": "2026-08-08T08:00:00Z",
-                            "end": None,
-                            "precision": "minute",
-                        }
-                    ),
                     "participant_keys": ["author"],
                     "location_key": "archive",
                     "cause_keys": [],
@@ -1518,9 +1512,38 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 }
             ],
         }
-        if output_type.__name__ == "StoryWorldIRV2":
+        if output_type.__name__ == "StoryWorldIRV3":
+            output["schema_id"] = "story-world-ir-v3"
+        elif output_type.__name__ == "StoryWorldIRV2":
             output["schema_id"] = "story-world-ir-v2"
+        if output_type.__name__ == "StoryWorldIRV2":
+            output["events"][0]["time"] = {
+                "kind": "exact",
+                "value": "2026-08-08T08:00",
+                "precision": "minute",
+            }
+        elif output_type.__name__ == "StoryWorldIRV1":
+            output["events"][0]["time"] = {
+                "start": "2026-08-08T08:00:00Z",
+                "end": None,
+                "precision": "minute",
+            }
         return output
+    if output_type.__name__ == "TemporalPlanV1":
+        return {
+            "assignments": [
+                {
+                    "event_key": "discovery",
+                    "time": {
+                        "kind": "exact",
+                        "value": "2026-08-08T08:00",
+                        "precision": "minute",
+                    },
+                    "basis": "design_anchor",
+                    "basis_refs": [],
+                }
+            ]
+        }
     if output_type.__name__ in {"EvidenceLogicIRV1", "EvidenceLogicIRV2"}:
         output = {
             "information_units": [
@@ -1716,9 +1739,7 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
     raise ProviderProtocolError(f"Fake v8 component is unsupported: {output_type.__name__}")
 
 
-def _add_fake_v10_matrix_plan(
-    output_type: type[BaseModel], output: dict[str, Any]
-) -> None:
+def _add_fake_v10_matrix_plan(output_type: type[BaseModel], output: dict[str, Any]) -> None:
     """Keep the FakeProvider plan aligned with v10's two explicit competitors."""
 
     if output_type.__name__ != "CaseBlueprintV1":

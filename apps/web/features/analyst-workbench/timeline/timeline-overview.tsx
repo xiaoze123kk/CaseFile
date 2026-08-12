@@ -95,6 +95,10 @@ function displayBounds(
     : { start, end, precision: "minute" as const };
 }
 
+function isRelativeProjection(event: TimelineDisplayEvent) {
+  return event.timeProjection === "relative-resolved";
+}
+
 function editableTime(event: TimelineDisplayEvent) {
   const time = event.source?.time;
   return isV2TemporalPosition(time) ? time : null;
@@ -331,6 +335,10 @@ export function TimelineOverview({
   }, [dragGhost, events]);
 
   if (!selectedEvent) return null;
+
+  const unresolvedEvents = events.filter(
+    (event) => event.timeProjection === "unresolved",
+  );
 
   async function requestPreview(
     eventId: string,
@@ -606,6 +614,7 @@ export function TimelineOverview({
               const isRange = Boolean(bounds && bounds.end > bounds.start);
               const isApproximate =
                 (ghostTime ?? editableTime(timelineEvent))?.kind === "approximate";
+              const projectedRelative = isRelativeProjection(timelineEvent);
               const canDrag = Boolean(
                 editable && editableTime(timelineEvent) && bounds,
               );
@@ -617,6 +626,7 @@ export function TimelineOverview({
                   className={styles.eventRow}
                   data-draggable={canDrag}
                   data-dragging={dragGhost?.eventId === timelineEvent.id}
+                  data-projection={projectedRelative ? "relative" : "absolute"}
                   data-selected={selected}
                   onKeyDown={(event) => handleMarkerKey(event, timelineEvent)}
                   onPointerCancel={cancelDrag}
@@ -666,6 +676,14 @@ export function TimelineOverview({
                     ) : (
                       <>
                         {isApproximate ? <circle className={styles.approximateHalo} cx={startX} cy={y} r={14} /> : null}
+                        {projectedRelative ? (
+                          <circle
+                            className={styles.relativeProjectionHalo}
+                            cx={startX}
+                            cy={y}
+                            r={14}
+                          />
+                        ) : null}
                         <path className={styles.pointMarker} d={`M ${startX} ${y - 8} L ${startX + 8} ${y} L ${startX} ${y + 8} L ${startX - 8} ${y} Z`} />
                       </>
                     )
@@ -713,6 +731,7 @@ export function TimelineOverview({
                     if (!timelineEvent) return null;
                     const bounds = displayBounds(timelineEvent);
                     const certainty = timelineCertainty(timelineEvent);
+                    const projectedRelative = isRelativeProjection(timelineEvent);
                     const selected = timelineEvent.id === selectedEventId;
                     const issue = seed.validationIssues.find((item) =>
                       timelineEvent.issueIds.includes(item.id),
@@ -728,6 +747,7 @@ export function TimelineOverview({
                         aria-pressed={selected}
                         className={styles.laneMarker}
                         data-certainty={certainty}
+                        data-projection={projectedRelative ? "relative" : "absolute"}
                         data-selected={selected}
                         key={eventId}
                         onClick={() => onSelectEvent(eventId)}
@@ -754,6 +774,14 @@ export function TimelineOverview({
                           <>
                             {diagnosticsVisible && certainty === "approximate" ? (
                               <circle className={styles.laneHalo} cx={x} cy={y} r={12} />
+                            ) : null}
+                            {projectedRelative ? (
+                              <circle
+                                className={styles.laneRelativeProjection}
+                                cx={x}
+                                cy={y}
+                                r={11}
+                              />
                             ) : null}
                             <circle className={styles.lanePoint} cx={x} cy={y} r={6} />
                           </>
@@ -783,7 +811,18 @@ export function TimelineOverview({
         ) : (
           <div className={styles.axisEmpty}>
             <strong>没有可放入比例轴的绝对时间</strong>
-            <p>相对时间与未知时间仍保留在下方事件清单中。</p>
+            <p>当前工作稿缺少可解析到作品内壁钟时间的锚点；请补充时间后再生成完整时间线。</p>
+            <ol aria-label="未解析事件清单" className={styles.axisEmptyList}>
+              {events.map((event) => (
+                <li key={event.id}>
+                  <button onClick={() => onSelectEvent(event.id)} type="button">
+                    <time>{timelineEventTime(event.time)}</time>
+                    <span>{event.label}</span>
+                    <small>{event.location}</small>
+                  </button>
+                </li>
+              ))}
+            </ol>
           </div>
         )}
       </div>
@@ -874,7 +913,7 @@ export function TimelineOverview({
       )}
 
       <footer className={styles.timelineFooter}>
-        <p role="status">{notice ?? (editable ? "拖动菱形或区间带，松开后先查看影响。" : "历史与候选内容保持只读。")}</p>
+        <p role="status">{notice ?? (unresolvedEvents.length ? `有 ${unresolvedEvents.length} 个事件尚不能解析到时间轴。` : editable ? "拖动菱形或区间带，松开后先查看影响。" : "历史与候选内容保持只读。")}</p>
         <div className={styles.timelineFooterActions}>
           <button
             className={styles.timeEditTrigger}

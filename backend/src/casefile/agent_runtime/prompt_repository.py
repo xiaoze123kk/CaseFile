@@ -75,6 +75,9 @@ _PACKAGE_COMPONENT_KEYS = frozenset(
         "tool_policy_id",
     }
 )
+_PACKAGE_COMPONENT_IDS_BY_VERSION = {
+    "brief-to-draft-v12": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
+}
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")
 _PACKAGE_FILE = re.compile(r"^[a-z0-9][a-z0-9_/-]*\.(?:md|json)$")
@@ -201,12 +204,12 @@ class PromptRepository:
                         _VERSION_RESOURCE_FILES
                         if "components" not in manifest
                         else frozenset(
-                        {"manifest.json"}
-                        | {
-                            _require_non_empty_string(value["file"], "bundle file")
-                            for value in _bundle_entries(manifest).values()
-                        }
-                    )
+                            {"manifest.json"}
+                            | {
+                                _require_non_empty_string(value["file"], "bundle file")
+                                for value in _bundle_entries(manifest).values()
+                            }
+                        )
                     )
                 if version_resources != expected_resources:
                     raise PromptRepositoryError(
@@ -513,9 +516,7 @@ class PromptRepository:
     ) -> PromptDefinition:
         _require_exact_keys(manifest, _PACKAGE_MANIFEST_KEYS, manifest_label)
         if manifest["schema_version"] != _PACKAGE_SCHEMA_VERSION:
-            raise PromptRepositoryError(
-                f"{manifest_label} has unsupported schema_version"
-            )
+            raise PromptRepositoryError(f"{manifest_label} has unsupported schema_version")
         manifest_agent_id = _require_non_empty_string(
             manifest["agent_id"], f"{manifest_label} agent_id"
         )
@@ -545,9 +546,7 @@ class PromptRepository:
         )
 
         version_root = self._root.joinpath(agent_id, version_directory)
-        raw_fragments = _require_object(
-            manifest["fragments"], f"{manifest_label} fragments"
-        )
+        raw_fragments = _require_object(manifest["fragments"], f"{manifest_label} fragments")
         if not raw_fragments:
             raise PromptRepositoryError(f"{manifest_label} fragments must not be empty")
         fragments: dict[str, PromptFragment] = {}
@@ -588,11 +587,15 @@ class PromptRepository:
                 sha256=actual_hash,
             )
 
-        raw_components = _require_object(
-            manifest["components"], f"{manifest_label} components"
-        )
+        raw_components = _require_object(manifest["components"], f"{manifest_label} components")
         if not raw_components:
             raise PromptRepositoryError(f"{manifest_label} components must not be empty")
+        expected_component_ids = _PACKAGE_COMPONENT_IDS_BY_VERSION.get(version)
+        if expected_component_ids is not None and set(raw_components) != expected_component_ids:
+            raise PromptRepositoryError(
+                f"{manifest_label} components must define exactly "
+                f"{sorted(expected_component_ids)!r}"
+            )
         components: dict[str, PromptComponent] = {}
         referenced_fragments: set[str] = set()
         for component_id, raw_entry in raw_components.items():
@@ -724,9 +727,7 @@ def _resource_files_relative(root: Traversable) -> set[str]:
             elif child.is_file():
                 resources.add(relative)
             else:
-                raise PromptRepositoryError(
-                    f"Unexpected Prompt Repository resource: {relative}"
-                )
+                raise PromptRepositoryError(f"Unexpected Prompt Repository resource: {relative}")
 
     visit(root, "")
     return resources
@@ -813,9 +814,7 @@ def _optional_previous_version(
 ) -> str | None:
     if value is None:
         return None
-    previous_version = _require_non_empty_string(
-        value, f"{manifest_label} previous_version"
-    )
+    previous_version = _require_non_empty_string(value, f"{manifest_label} previous_version")
     _version_directory(agent_id, previous_version)
     if previous_version == version:
         raise PromptRepositoryError(f"{manifest_label} cannot supersede itself")

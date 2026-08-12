@@ -104,6 +104,7 @@ export interface WorkbenchTimelineEvent {
   precision: string;
   truthStatus: string;
   sortKey: string | null;
+  timeProjection: "absolute" | "relative-resolved" | "unresolved";
   refs: WorkbenchTimelineReferences;
   source: CaseFileDocument["events"][number] | null;
 }

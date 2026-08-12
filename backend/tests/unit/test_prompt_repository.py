@@ -13,6 +13,7 @@ from casefile.agent_runtime.prompt import (
     V9_GENERATION_AGENT_VERSION,
     V10_GENERATION_AGENT_VERSION,
     V11_GENERATION_AGENT_VERSION,
+    V12_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -120,6 +121,17 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "7e1d49fbce53f1bfada49f1c1b5ab3b089d221a62fce0a0ab87fcb02ce6df646",
         "fragment:governance": "4413b0e36adf04856360c7278079185427cf71a327181234272e94de61ed1c98",
     },
+    ("brief_to_draft", "brief-to-draft-v12"): {
+        "fragment:common": "5a2a325867caa00779022d6a18e0cb0467ad881efd76af793ce85af065d13fca",
+        "fragment:planner": "bbb57f4bd968f066467345b86ba788e5087d5b15d79561a71d0b9f08925f9ba4",
+        "fragment:temporal": "434a5321dc7e114df23ec42d50fe92c4e0c4f149fa76ba7fa8d325ddc5574f6a",
+        "fragment:domain_common": (
+            "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"
+        ),
+        "fragment:story": "ebb727a0b54af0e80cfd7473bbeedce9385790d1a856e8611c7e076363751f58",
+        "fragment:evidence": "6207f57a035dd69369e91e290c904eb50541256f26a29b50e9f850b69a9e070c",
+        "fragment:governance": "e8308618584c0ae881fb7a4185078493afa58cd125cdc242511bbca952cd79d5",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -132,19 +144,16 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     assert set(SUPPORTED_AGENT_IDS) == contract_task_types
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
     assert {
-        agent_id: prompt_version_for_task(agent_id)
-        for agent_id in SUPPORTED_AGENT_IDS
+        agent_id: prompt_version_for_task(agent_id) for agent_id in SUPPORTED_AGENT_IDS
     } == EXPECTED_CURRENT_VERSIONS
 
 
 def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
-        agent_version_for_task("brief_to_draft", "brief-to-draft-v8")
-        == V8_GENERATION_AGENT_VERSION
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v8") == V8_GENERATION_AGENT_VERSION
     )
     assert (
-        agent_version_for_task("brief_to_draft", "brief-to-draft-v9")
-        == V9_GENERATION_AGENT_VERSION
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v9") == V9_GENERATION_AGENT_VERSION
     )
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v10")
@@ -153,6 +162,10 @@ def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v11")
         == V11_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v12")
+        == V12_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
@@ -167,8 +180,7 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
                 for fragment_id, fragment in definition.package.fragments.items()
             }
             if definition.package is not None
-            else definition.component_sha256
-            or {"system": definition.system_prompt_sha256}
+            else definition.component_sha256 or {"system": definition.system_prompt_sha256}
         )
         for definition in definitions
     }
@@ -176,10 +188,13 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
     assert actual_hashes == EXPECTED_RELEASE_HASHES
     for definition in definitions:
         assert definition.system_prompt.endswith("\n")
-        assert system_prompt_for_task(
-            definition.agent_id,
-            definition.version,
-        ) == definition.system_prompt
+        assert (
+            system_prompt_for_task(
+                definition.agent_id,
+                definition.version,
+            )
+            == definition.system_prompt
+        )
         assert all(prompt.endswith("\n") for prompt in definition.component_prompts.values())
 
 
@@ -204,12 +219,8 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "最多一项 `required=true`" in prompts["brief_intake_questions"]
     assert "`mode=additional`" in prompts["brief_intake_questions"]
     assert "不得重新增加必答门槛" in prompts["brief_intake_questions"]
-    assert "存在 `base_candidate` 与 `instruction`" in prompts[
-        "brief_intake_synthesize"
-    ]
-    assert "`content_outline` 的每一项必须是一个完整字符串" in prompts[
-        "brief_intake_synthesize"
-    ]
+    assert "存在 `base_candidate` 与 `instruction`" in prompts["brief_intake_synthesize"]
+    assert "`content_outline` 的每一项必须是一个完整字符串" in prompts["brief_intake_synthesize"]
     assert "不得出现没有 `：` 的条目" in prompts["brief_intake_synthesize"]
     v8 = load_prompt("brief_to_draft", "brief-to-draft-v8")
     assert set(v8.component_prompts) == {"planner", "story", "evidence", "governance"}
@@ -228,6 +239,19 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert v11.package is not None
     assert v11.package.components["story"].output_schema_id == "story-world-ir-v2"
     assert v11.package.components["planner"].input_contract_id.endswith("input-v2")
+    v12 = load_prompt("brief_to_draft", "brief-to-draft-v12")
+    assert v12.package is not None
+    assert set(v12.package.components) == {
+        "planner",
+        "temporal",
+        "story",
+        "evidence",
+        "governance",
+    }
+    assert v12.package.components["temporal"].output_schema_id == "temporal-plan-v1"
+    assert v12.package.components["story"].output_schema_id == "story-world-ir-v3"
+    assert "不得输出 kind=unknown" in v12.component_prompts["temporal"]
+    assert "严禁输出 time" in v12.component_prompts["story"]
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
@@ -255,10 +279,13 @@ def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path
         "brief-polish-v1",
         "brief-polish-v2",
     ]
-    assert repository.load(
-        "brief_polish",
-        "brief-polish-v1",
-    ).system_prompt == "Role: historical prompt.\n"
+    assert (
+        repository.load(
+            "brief_polish",
+            "brief-polish-v1",
+        ).system_prompt
+        == "Role: historical prompt.\n"
+    )
     assert repository.load("brief_polish").version == "brief-polish-v2"
 
 

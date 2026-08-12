@@ -14,7 +14,11 @@ import {
   buildFixtureSpatialModel,
   buildWorkbenchSpatialModel,
 } from "./workbench-spatial-model";
-import { timelineClock } from "./timeline/timeline-time";
+import {
+  formatWallClock,
+  parseWallClock,
+  timelineClock,
+} from "./timeline/timeline-time";
 import type {
   WorkbenchCaseMeta,
   WorkbenchCaseObject,
@@ -196,6 +200,61 @@ function temporalSummary(
   };
 }
 
+interface ResolvedTimelineBounds {
+  start: string;
+  end: string | null;
+  sortKey: string;
+}
+
+function resolvedTemporalBounds(
+  events: CaseFileDocument["events"],
+): Map<string, ResolvedTimelineBounds> {
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  const resolved = new Map<string, ResolvedTimelineBounds>();
+  const resolving = new Set<string>();
+
+  const resolve = (eventId: string): ResolvedTimelineBounds | null => {
+    const cached = resolved.get(eventId);
+    if (cached) return cached;
+    if (resolving.has(eventId)) return null;
+    const event = eventById.get(eventId);
+    if (!event) return null;
+    const temporal = temporalSummary(event.time);
+    if (temporal.start && temporal.sortKey) {
+      const value = {
+        start: temporal.start,
+        end: temporal.end,
+        sortKey: temporal.sortKey,
+      };
+      resolved.set(eventId, value);
+      return value;
+    }
+    if (!("kind" in event.time) || event.time.kind !== "relative") return null;
+    resolving.add(eventId);
+    const anchorRef = readReference(event.time.anchor_event_ref);
+    const anchor = anchorRef?.kind === "event" ? resolve(anchorRef.id) : null;
+    resolving.delete(eventId);
+    if (!anchor || event.time.offset_minutes === null) return null;
+    const anchorStart = parseWallClock(anchor.start);
+    const anchorEnd = parseWallClock(anchor.end ?? anchor.start);
+    if (anchorStart === null || anchorEnd === null) return null;
+    const offsetMilliseconds = event.time.offset_minutes * 60 * 1000;
+    const value =
+      event.time.relation === "before"
+        ? anchorStart - offsetMilliseconds
+        : event.time.relation === "after"
+          ? anchorEnd + offsetMilliseconds
+          : anchorStart;
+    const projected = formatWallClock(value, "second");
+    const result = { start: projected, end: null, sortKey: projected };
+    resolved.set(eventId, result);
+    return result;
+  };
+
+  for (const event of events) resolve(event.id);
+  return resolved;
+}
+
 function confidenceText(value: number | null): string {
   return value === null ? "置信度未标注" : `置信度 ${Math.round(value * 100)}%`;
 }
@@ -329,6 +388,7 @@ function buildTimeline(
   const locationNames = new Map(
     caseFile.locations.map((location) => [location.id, location.name]),
   );
+  const temporalBounds = resolvedTemporalBounds(caseFile.events);
 
   return caseFile.events
     .map((event, originalIndex) => {
@@ -348,6 +408,8 @@ function buildTimeline(
         ...sourceIds,
       ]).filter((id) => objectIds.has(id));
       const temporal = temporalSummary(event.time);
+      const projection = temporalBounds.get(event.id);
+      const isRelative = "kind" in event.time && event.time.kind === "relative";
       return {
         event: {
           id: event.id,
@@ -359,11 +421,18 @@ function buildTimeline(
           issueIds: validationIssues
             .filter((issue) => issue.eventId === event.id)
             .map((issue) => issue.id),
-          start: temporal.start,
-          end: temporal.end,
+          start: projection?.start ?? temporal.start,
+          end: projection?.end ?? temporal.end,
           precision: temporal.precision,
           truthStatus: event.truth_status,
-          sortKey: temporal.sortKey,
+          sortKey: projection?.sortKey ?? temporal.sortKey,
+          timeProjection: isRelative
+            ? projection
+              ? "relative-resolved"
+              : "unresolved"
+            : temporal.sortKey
+              ? "absolute"
+              : "unresolved",
           refs: {
             participantIds,
             locationId,
@@ -1104,6 +1173,7 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     precision: "unknown",
     truthStatus: "unknown",
     sortKey: parseTime(event.time),
+    timeProjection: parseTime(event.time) ? "absolute" : "unresolved",
     refs: {
       participantIds: event.relatedObjectIds.filter(
         (id) => objectById.get(id)?.kind === "entity",

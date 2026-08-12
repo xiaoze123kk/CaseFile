@@ -157,10 +157,7 @@ class Worker:
                         TaskRun.status == "queued",
                         (TaskRun.status == "running") & (TaskRun.lease_expires_at < now),
                         (TaskRun.status == "cancelling")
-                        & (
-                            TaskRun.lease_expires_at.is_(None)
-                            | (TaskRun.lease_expires_at < now)
-                        ),
+                        & (TaskRun.lease_expires_at.is_(None) | (TaskRun.lease_expires_at < now)),
                     )
                 )
                 .order_by(TaskRun.created_at, TaskRun.id)
@@ -1371,13 +1368,11 @@ def _optional_hash(value: object) -> str | None:
 
 
 def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
-    if (
-        task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS
-        or task.attempt_count < 2
-    ):
+    if task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS or task.attempt_count < 2:
         return {}
     reusable_components = (
         "case_blueprint_planner",
+        "temporal_structure_planner",
         "story_world",
         "evidence_logic",
         "resolution_governance",
@@ -1404,6 +1399,8 @@ def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict
             return {}
         if "case_blueprint_planner" in invalidated:
             invalidated = set(reusable_components)
+        elif "temporal_structure_planner" in invalidated:
+            invalidated.add("story_world")
 
     rows = session.scalars(
         select(AgentStepRun)
@@ -1518,9 +1515,7 @@ def _terminal_attempt_usage(
     for snapshot in snapshots:
         requests = snapshot.get("requests")
         merged["requests"] += (
-            requests
-            if isinstance(requests, int) and not isinstance(requests, bool)
-            else 1
+            requests if isinstance(requests, int) and not isinstance(requests, bool) else 1
         )
         for key in usage_keys[1:]:
             value = snapshot.get(key)

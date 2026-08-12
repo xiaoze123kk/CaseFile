@@ -7,8 +7,6 @@ import json
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, ValidationError
-
 from casefile.agent_runtime import CandidateStrategy, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8.compiler import compile_casefile, link_draft
 from casefile.agent_runtime.brief_to_draft_v8.ir import (
@@ -38,6 +36,7 @@ from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8
 from casefile.agent_runtime.structured_output import compile_deepseek_strict_schema
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.contracts import ContractValidationError, validate_casefile
+from pydantic import BaseModel, ValidationError
 
 
 def _v11_parts() -> tuple[

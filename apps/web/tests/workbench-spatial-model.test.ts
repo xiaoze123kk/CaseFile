@@ -96,6 +96,7 @@ function timelineEvent(
     precision: "minute",
     truthStatus: "reported",
     sortKey: null,
+    timeProjection: "unresolved",
     refs: {
       participantIds: [],
       locationId,

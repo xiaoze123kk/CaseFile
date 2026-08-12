@@ -31,9 +31,17 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
 from casefile.agent_runtime.brief_to_draft_v11.contracts import (
     CoordinatePairV1,
     DraftContextPackV2,
+    EventIRV2,
     RelativeTemporalPositionIRV2,
     StoryWorldIRV2,
     Wgs84SpatialPositionIRV2,
+)
+from casefile.agent_runtime.brief_to_draft_v12.contracts import (
+    DraftContextPackV3,
+    StoryWorldIRV3,
+    TemporalPlanV1,
+    temporal_plan_issues,
+    temporal_story_issues,
 )
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.prompt import (
@@ -65,6 +73,7 @@ class _PersistedQualityGateError(ContractValidationError):
 _STEP_SCHEMA = {
     "context_pack_builder": "draft-context-pack-v1",
     "case_blueprint_planner": "case-blueprint-v1",
+    "temporal_structure_planner": "temporal-plan-v1",
     "story_world": "story-world-ir-v1",
     "evidence_logic": "evidence-logic-ir-v1",
     "resolution_governance": "resolution-governance-ir-v1",
@@ -73,6 +82,7 @@ _STEP_SCHEMA = {
     "quality_repair_gate": "casefile-v1",
 }
 _V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
+_V12_PROMPT_COMPONENTS = frozenset({"planner", "temporal", "story", "evidence", "governance"})
 _PACKAGE_PROMPT_VERSIONS = PROMPT_PACKAGE_GENERATION_VERSIONS
 
 _DOMAIN_REFERENCE_CONTRACTS = {
@@ -157,6 +167,8 @@ async def run_v8_generation(
 
     _validate_frozen_prompt_release(request)
     is_v11 = request.prompt_version == "brief-to-draft-v11"
+    is_v12 = request.prompt_version == "brief-to-draft-v12"
+    uses_v2_context = is_v11 or is_v12
     uses_competition_matrix = request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
@@ -167,11 +179,17 @@ async def run_v8_generation(
         "context_pack_builder",
         "context_building",
         context.model_dump(mode="json"),
-        schema_id="draft-context-pack-v2" if is_v11 else "draft-context-pack-v1",
+        schema_id=(
+            "draft-context-pack-v3"
+            if is_v12
+            else "draft-context-pack-v2"
+            if is_v11
+            else "draft-context-pack-v1"
+        ),
     )
 
     planner_input: dict[str, Any] = {"context_pack": context.model_dump(mode="json")}
-    if is_v11:
+    if uses_v2_context:
         planner_repairs = [
             issue
             for issue in prior_repair_issues
@@ -190,10 +208,43 @@ async def run_v8_generation(
     )
     usage_records.append(planner_usage)
     blueprint = CaseBlueprintV1.model_validate(planner_output)
-    if is_v11:
+    if uses_v2_context:
         blueprint_issues = _v11_blueprint_issues(blueprint)
         if blueprint_issues:
             error = ContractValidationError(blueprint_issues)
+            _emit_quality_gate_failure(request, error)
+            raise error
+
+    temporal_plan: TemporalPlanV1 | None = None
+    if is_v12:
+        temporal_output, temporal_usage = await _model_step(
+            request,
+            call_component,
+            component_id="temporal_structure_planner",
+            prompt_component="temporal",
+            stage="temporal_planning",
+            output_type=TemporalPlanV1,
+            input_payload={
+                "context_pack": context.model_dump(mode="json"),
+                "blueprint": blueprint.model_dump(mode="json"),
+                **(
+                    {
+                        "targeted_repair_issues": _repair_issues_for_component(
+                            prior_repair_issues, "temporal_structure_planner"
+                        )
+                    }
+                    if _repair_issues_for_component(
+                        prior_repair_issues, "temporal_structure_planner"
+                    )
+                    else {}
+                ),
+            },
+        )
+        usage_records.append(temporal_usage)
+        temporal_plan = TemporalPlanV1.model_validate(temporal_output)
+        plan_issues = temporal_plan_issues(temporal_plan, blueprint)
+        if plan_issues:
+            error = ContractValidationError(plan_issues)
             _emit_quality_gate_failure(request, error)
             raise error
 
@@ -205,7 +256,7 @@ async def run_v8_generation(
     ) -> tuple[BaseModel, dict[str, Any]]:
         reference_contract = (
             _V11_STORY_REFERENCE_CONTRACT
-            if is_v11 and component_id == "story_world"
+            if uses_v2_context and component_id == "story_world"
             else _DOMAIN_REFERENCE_CONTRACTS[component_id]
         )
         input_payload: dict[str, Any] = {
@@ -213,12 +264,14 @@ async def run_v8_generation(
             "blueprint": blueprint.model_dump(mode="json"),
             "reference_directory": _reference_directory(blueprint),
             "reference_contract": reference_contract,
-            "allowed_reference_values": _allowed_reference_values(
-                blueprint, reference_contract
-            ),
+            "allowed_reference_values": _allowed_reference_values(blueprint, reference_contract),
             **({"targeted_repair_issues": repair_issues} if repair_issues else {}),
         }
-        if is_v11:
+        if is_v12:
+            if temporal_plan is None:
+                raise RuntimeError("brief-to-draft-v12 requires a temporal plan")
+            input_payload["temporal_plan"] = temporal_plan.model_dump(mode="json")
+        if uses_v2_context:
             input_payload["allowed_wgs84_coordinates"] = [
                 item.model_dump(mode="json")
                 for item in _extract_allowed_wgs84_coordinates(request.brief)
@@ -261,12 +314,10 @@ async def run_v8_generation(
         return output_type.model_validate(output), usage
 
     evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
-        EvidenceLogicIRV2
-        if uses_competition_matrix
-        else EvidenceLogicIRV1
+        EvidenceLogicIRV2 if uses_competition_matrix else EvidenceLogicIRV1
     )
-    story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] = (
-        StoryWorldIRV2 if is_v11 else StoryWorldIRV1
+    story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3] = (
+        StoryWorldIRV3 if is_v12 else StoryWorldIRV2 if is_v11 else StoryWorldIRV1
     )
     domain_results = await asyncio.gather(
         draft_domain(
@@ -288,9 +339,18 @@ async def run_v8_generation(
             _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
         ),
     )
-    story: StoryWorldIRV1 | StoryWorldIRV2 = story_output_type.model_validate(
-        domain_results[0][0]
+    story_output: StoryWorldIRV1 | StoryWorldIRV2 | StoryWorldIRV3 = (
+        story_output_type.model_validate(domain_results[0][0])
     )
+    story: StoryWorldIRV1 | StoryWorldIRV2
+    if is_v12:
+        if not isinstance(story_output, StoryWorldIRV3) or temporal_plan is None:
+            raise RuntimeError("brief-to-draft-v12 must use StoryWorldIRV3 and TemporalPlanV1")
+        story = _with_temporal_plan(story_output, temporal_plan)
+    else:
+        if not isinstance(story_output, (StoryWorldIRV1, StoryWorldIRV2)):
+            raise RuntimeError("legacy brief-to-draft must use a compiler-compatible Story IR")
+        story = story_output
     evidence: EvidenceLogicIR = (
         EvidenceLogicIRV2.model_validate(domain_results[1][0])
         if uses_competition_matrix
@@ -307,20 +367,26 @@ async def run_v8_generation(
                     raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
                 matrix_issues = _evidence_assessment_issues(
                     evidence,
-                    strict_competition=is_v11,
+                    strict_competition=uses_v2_context,
                     blueprint=blueprint,
                 )
                 if matrix_issues:
                     raise LinkerValidationError(matrix_issues)
-            if is_v11:
+            if uses_v2_context:
                 if not isinstance(story, StoryWorldIRV2):
-                    raise RuntimeError("brief-to-draft-v11 must use StoryWorldIRV2")
+                    raise RuntimeError("v11 and v12 must compile through StoryWorldIRV2")
                 story_issues = _v11_story_issues(
                     story,
                     _extract_allowed_wgs84_coordinates(request.brief),
                 )
                 if story_issues:
                     raise LinkerValidationError(story_issues)
+            if is_v12:
+                if not isinstance(story_output, StoryWorldIRV3) or temporal_plan is None:
+                    raise RuntimeError("brief-to-draft-v12 requires a temporal plan")
+                temporal_issues = temporal_story_issues(story_output, temporal_plan)
+                if temporal_issues:
+                    raise LinkerValidationError(temporal_issues)
             linked = _link_step(request, blueprint, story, evidence, governance)
             candidate = _compile_step(request, linked)
             _quality_gate(
@@ -328,7 +394,7 @@ async def run_v8_generation(
                 candidate,
                 recoverable=gate_attempt == 0,
             )
-            tools.calls = 4 + len(repaired_components)
+            tools.calls = (5 if is_v12 else 4) + len(repaired_components)
             tools.valid_calls = tools.calls
             tools.successful_calls = tools.calls
             tools.planned_object_ids = {entry.object_id for entry in linked.id_directory.values()}
@@ -378,7 +444,20 @@ async def run_v8_generation(
                 usage_records.append(usage)
                 repaired_components.add(component_id)
                 if component_id == "story_world":
-                    story = story_output_type.model_validate(value)
+                    repaired_story = story_output_type.model_validate(value)
+                    if is_v12:
+                        if not isinstance(repaired_story, StoryWorldIRV3) or temporal_plan is None:
+                            raise RuntimeError(
+                                "brief-to-draft-v12 repair lost temporal plan"
+                            ) from error
+                        story_output = repaired_story
+                        story = _with_temporal_plan(repaired_story, temporal_plan)
+                    else:
+                        if not isinstance(repaired_story, (StoryWorldIRV1, StoryWorldIRV2)):
+                            raise RuntimeError(
+                                "legacy brief-to-draft repair returned an incompatible Story IR"
+                            ) from error
+                        story = repaired_story
                 elif component_id == "evidence_logic":
                     evidence = (
                         EvidenceLogicIRV2.model_validate(value)
@@ -448,9 +527,7 @@ def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
     hypotheses_by_resolution: dict[str, set[str]] = {}
     for hypothesis in blueprint.hypotheses:
         for resolution_key in set(hypothesis.dependency_keys) & resolution_keys:
-            hypotheses_by_resolution.setdefault(resolution_key, set()).add(
-                hypothesis.local_key
-            )
+            hypotheses_by_resolution.setdefault(resolution_key, set()).add(hypothesis.local_key)
     for values in hypotheses_by_resolution.values():
         add_group(values)
 
@@ -477,9 +554,7 @@ def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
     return issues
 
 
-def _blueprint_has_hypothesis_path(
-    blueprint: CaseBlueprintV1 | None, hypothesis_key: str
-) -> bool:
+def _blueprint_has_hypothesis_path(blueprint: CaseBlueprintV1 | None, hypothesis_key: str) -> bool:
     if blueprint is None:
         return True
     hypothesis_keys = {item.local_key for item in blueprint.hypotheses}
@@ -499,9 +574,7 @@ def _evidence_assessment_issues(
 
     hypotheses_by_key = {item.local_key: item for item in evidence.hypotheses}
     information_keys = {item.local_key for item in evidence.information_units}
-    used_information_by_hypothesis: dict[str, set[str]] = {
-        key: set() for key in hypotheses_by_key
-    }
+    used_information_by_hypothesis: dict[str, set[str]] = {key: set() for key in hypotheses_by_key}
     for path in evidence.reasoning_paths:
         if path.target_key not in hypotheses_by_key:
             continue
@@ -511,9 +584,7 @@ def _evidence_assessment_issues(
 
     hypotheses_by_resolution: dict[str, list[Any]] = {}
     for hypothesis in evidence.hypotheses:
-        hypotheses_by_resolution.setdefault(hypothesis.target_resolution_key, []).append(
-            hypothesis
-        )
+        hypotheses_by_resolution.setdefault(hypothesis.target_resolution_key, []).append(hypothesis)
 
     issues: list[dict[str, Any]] = []
     for competitors in hypotheses_by_resolution.values():
@@ -527,8 +598,7 @@ def _evidence_assessment_issues(
                         {
                             "code": "competing_hypothesis_group_incomplete",
                             "path": (
-                                f"/hypotheses/{hypothesis.local_key}/"
-                                "competing_hypothesis_keys"
+                                f"/hypotheses/{hypothesis.local_key}/competing_hypothesis_keys"
                             ),
                             "message": "竞争假设引用必须准确包含同一待解问题的全部其他假设。",
                             "component_id": "evidence_logic",
@@ -596,16 +666,11 @@ def _evidence_assessment_issues(
                     }
                 )
             if strict_competition:
-                for information_key in sorted(
-                    set(assessed_information) - required_information
-                ):
+                for information_key in sorted(set(assessed_information) - required_information):
                     issues.append(
                         {
                             "code": "unscoped_evidence_assessment",
-                            "path": (
-                                f"/hypotheses/{hypothesis.local_key}/"
-                                "evidence_assessments"
-                            ),
+                            "path": (f"/hypotheses/{hypothesis.local_key}/evidence_assessments"),
                             "message": (
                                 f"信息 {information_key!r} 未被竞争组推理路径使用，"
                                 "不应进入比较矩阵。"
@@ -627,10 +692,14 @@ def _v11_story_issues(
     allowed = {(item.latitude, item.longitude) for item in allowed_wgs84_coordinates}
     for location in story.locations:
         position = location.spatial_position
-        if isinstance(position, Wgs84SpatialPositionIRV2) and (
-            position.latitude,
-            position.longitude,
-        ) not in allowed:
+        if (
+            isinstance(position, Wgs84SpatialPositionIRV2)
+            and (
+                position.latitude,
+                position.longitude,
+            )
+            not in allowed
+        ):
             issues.append(
                 {
                     "code": "wgs84_not_explicit_in_brief",
@@ -753,13 +822,17 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
     if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
         package = definition.package
         if package is None:
-            raise PromptRepositoryError(
-                f"Prompt Package {request.prompt_version} is unavailable"
-            )
-        if set(package.components) != _V8_PROMPT_COMPONENTS:
+            raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
+        expected_components = (
+            _V12_PROMPT_COMPONENTS
+            if request.prompt_version == "brief-to-draft-v12"
+            else _V8_PROMPT_COMPONENTS
+        )
+        if set(package.components) != expected_components:
             raise PromptRepositoryError(
                 f"Prompt Package {request.prompt_version} must define "
-                "planner, story, evidence, and governance components"
+                + ", ".join(sorted(expected_components))
+                + " components"
             )
         if request.agent_version != package.runtime_agent_version:
             raise PromptRepositoryError(
@@ -777,9 +850,13 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
         )
 
 
-def _build_context_pack(request: GenerationRequest) -> DraftContextPackV1 | DraftContextPackV2:
-    context_type: type[DraftContextPackV1] | type[DraftContextPackV2] = (
-        DraftContextPackV2
+def _build_context_pack(
+    request: GenerationRequest,
+) -> DraftContextPackV1 | DraftContextPackV2 | DraftContextPackV3:
+    context_type: type[DraftContextPackV1] | type[DraftContextPackV2] | type[DraftContextPackV3] = (
+        DraftContextPackV3
+        if request.prompt_version == "brief-to-draft-v12"
+        else DraftContextPackV2
         if request.prompt_version == "brief-to-draft-v11"
         else DraftContextPackV1
     )
@@ -810,6 +887,41 @@ def _build_context_pack(request: GenerationRequest) -> DraftContextPackV1 | Draf
     return context_type.model_validate(payload)
 
 
+def _with_temporal_plan(
+    story: StoryWorldIRV3,
+    plan: TemporalPlanV1,
+) -> StoryWorldIRV2:
+    """Inject the validated v12 time plan into the compiler-facing Story IR.
+
+    Time belongs to the dedicated Temporal Planner in v12.  The Story model
+    intentionally cannot replace it, so compilation receives the existing v2
+    semantic shape only after this deterministic join.
+    """
+
+    assignments = {assignment.event_key: assignment.time for assignment in plan.assignments}
+    return StoryWorldIRV2(
+        entities=story.entities,
+        relationships=story.relationships,
+        locations=story.locations,
+        events=[
+            EventIRV2(
+                local_key=event.local_key,
+                description=event.description,
+                tags=event.tags,
+                title=event.title,
+                truth_status=event.truth_status,
+                time=assignments[event.local_key],
+                participant_keys=event.participant_keys,
+                location_key=event.location_key,
+                cause_keys=event.cause_keys,
+                effect_keys=event.effect_keys,
+                observed_by_keys=event.observed_by_keys,
+            )
+            for event in story.events
+        ],
+    )
+
+
 async def _model_step(
     request: GenerationRequest,
     call_component: ComponentCall,
@@ -820,7 +932,9 @@ async def _model_step(
     output_type: type[BaseModel],
     input_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if component_id == "story_world" and request.prompt_version == "brief-to-draft-v11":
+    if component_id == "story_world" and request.prompt_version == "brief-to-draft-v12":
+        schema_id = "story-world-ir-v3"
+    elif component_id == "story_world" and request.prompt_version == "brief-to-draft-v11":
         schema_id = "story-world-ir-v2"
     elif (
         component_id == "evidence_logic"
@@ -833,9 +947,7 @@ async def _model_step(
     if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
         definition = load_prompt("brief_to_draft", request.prompt_version)
         if definition.package is None:
-            raise PromptRepositoryError(
-                f"Prompt Package {request.prompt_version} is unavailable"
-            )
+            raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
         try:
             rendered = render_prompt_package(
                 definition.package,
@@ -1189,7 +1301,7 @@ def _upstream_hashes(input_payload: dict[str, Any]) -> dict[str, str]:
     return {
         key: _json_hash(value)
         for key, value in input_payload.items()
-        if key in {"context_pack", "blueprint"}
+        if key in {"context_pack", "blueprint", "temporal_plan"}
     }
 
 
@@ -1214,9 +1326,7 @@ def _allowed_reference_values(
     directory = _reference_directory(blueprint)
     return {
         field_name: [
-            local_key
-            for collection in allowed_collections
-            for local_key in directory[collection]
+            local_key for collection in allowed_collections for local_key in directory[collection]
         ]
         for field_name, allowed_collections in reference_contract.items()
     }
@@ -1227,9 +1337,7 @@ def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
     for record in records:
         requests = record.get("requests")
         merged["requests"] += (
-            requests
-            if isinstance(requests, int) and not isinstance(requests, bool)
-            else 1
+            requests if isinstance(requests, int) and not isinstance(requests, bool) else 1
         )
         for key in (
             "input_tokens",
@@ -1256,9 +1364,7 @@ def _failure_layer(error: ContractValidationError) -> str:
 
 
 def _requires_planner_repair(error: ContractValidationError) -> bool:
-    return any(
-        issue.get("component_id") == "case_blueprint_planner" for issue in error.errors
-    )
+    return any(issue.get("component_id") == "case_blueprint_planner" for issue in error.errors)
 
 
 def _emit_quality_gate_failure(

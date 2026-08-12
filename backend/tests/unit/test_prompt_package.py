@@ -12,6 +12,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
 from casefile.agent_runtime.prompt import (
     V10_GENERATION_AGENT_VERSION,
     V11_GENERATION_AGENT_VERSION,
+    V12_GENERATION_AGENT_VERSION,
 )
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package
 from casefile.agent_runtime.prompt_repository import (
@@ -176,10 +177,7 @@ def test_v10_package_generates_explicit_competing_evidence_assessments() -> None
     validate_casefile(result.candidate)
     hypotheses = result.candidate["hypotheses"]
     assert len(hypotheses) == 2
-    assert all(
-        hypothesis["evidence_assessments"]
-        for hypothesis in hypotheses
-    )
+    assert all(hypothesis["evidence_assessments"] for hypothesis in hypotheses)
     assert {
         assessment["effect"]
         for hypothesis in hypotheses
@@ -224,14 +222,57 @@ def test_v11_package_generates_workbench_ready_candidate() -> None:
     }
     assert len(result.candidate["hypotheses"]) == 2
     started = [
-        payload
-        for event_type, _stage, payload in events
-        if event_type == "agent.step.started"
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
     ]
     assert any(item["schema_id"] == "draft-context-pack-v2" for item in started)
     assert any(item["schema_id"] == "story-world-ir-v2" for item in started)
-    assert {
-        item["package_version"]
-        for item in started
-        if "package_version" in item
-    } == {"brief-to-draft-v11"}
+    assert {item["package_version"] for item in started if "package_version" in item} == {
+        "brief-to-draft-v11"
+    }
+
+
+def test_v12_package_generates_temporal_plan_then_injects_it_into_story() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=324,
+        prompt_version="brief-to-draft-v12",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v12",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v12",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v12",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V12_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    assert result.candidate["events"][0]["time"] == {
+        "kind": "exact",
+        "value": "2026-08-08T08:00",
+        "precision": "minute",
+    }
+    started = [
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
+    ]
+    assert {payload["package_version"] for payload in started if "package_version" in payload} == {
+        "brief-to-draft-v12"
+    }
+    assert any(
+        payload["component_id"] == "temporal_structure_planner"
+        and payload["schema_id"] == "temporal-plan-v1"
+        for payload in started
+    )
+    assert any(
+        payload["component_id"] == "story_world" and payload["schema_id"] == "story-world-ir-v3"
+        for payload in started
+    )

@@ -232,4 +232,34 @@ describe("editable proportional timeline", () => {
       expect(onPreviewTime).toHaveBeenCalledWith(selected.id, { kind: "unknown" }),
     );
   });
+
+  it("keeps every event visible on desktop when an older draft has no resolvable time anchor", () => {
+    const seed = timelineSeed();
+    seed.timelineEvents = seed.timelineEvents.map((event) => ({
+      ...event,
+      time: "时间未定",
+      start: null,
+      end: null,
+      sortKey: null,
+      timeProjection: "unresolved",
+      source: { time: { kind: "unknown" } },
+    })) as never;
+
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[0].id}
+        validationStatus="unavailable"
+      />,
+    );
+
+    expect(screen.getByText("没有可放入比例轴的绝对时间")).toBeInTheDocument();
+    expect(screen.getByText(/缺少可解析到作品内壁钟时间的锚点/)).toBeInTheDocument();
+    const unresolvedList = screen.getByRole("list", { name: "未解析事件清单" });
+    for (const event of seed.timelineEvents) {
+      expect(unresolvedList).toHaveTextContent(event.label);
+    }
+  });
 });

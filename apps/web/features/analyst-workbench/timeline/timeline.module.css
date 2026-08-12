@@ -412,6 +412,19 @@
   stroke-dasharray: 2 3;
 }
 
+.relativeProjectionHalo,
+.laneRelativeProjection {
+  fill: none;
+  stroke: var(--ink-faint);
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.eventRow[data-projection="relative"] .pointMarker,
+.laneMarker[data-projection="relative"] .lanePoint {
+  stroke-dasharray: 3 2;
+}
+
 .offAxisMarker {
   fill: var(--paper-high);
   stroke: var(--ink-faint);
@@ -544,6 +557,50 @@
   margin: 7px 0 0;
   color: var(--ink-muted);
   font-size: 10px;
+}
+
+.axisEmptyList {
+  width: min(620px, 100%);
+  margin: 16px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  list-style: none;
+  text-align: left;
+}
+
+.axisEmptyList li {
+  border-bottom: 1px dotted var(--rule);
+}
+
+.axisEmptyList button {
+  display: grid;
+  width: 100%;
+  min-height: 36px;
+  grid-template-columns: minmax(110px, 0.7fr) minmax(0, 1fr) minmax(110px, 0.7fr);
+  gap: 9px;
+  align-items: center;
+  padding: 6px 0;
+  color: var(--ink);
+  border: 0;
+  background: transparent;
+  font-size: 9px;
+  text-align: left;
+}
+
+.axisEmptyList button:hover,
+.axisEmptyList button:focus-visible {
+  color: var(--primary-strong);
+  background: var(--primary-soft);
+}
+
+.axisEmptyList time,
+.axisEmptyList small {
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobileList,

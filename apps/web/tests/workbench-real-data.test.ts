@@ -576,6 +576,49 @@ describe("real workbench data mapper", () => {
     });
   });
 
+  it("projects a relative event onto an existing wall-clock anchor without changing its source semantics", () => {
+    const caseFile = makeCaseFile();
+    caseFile.events = [
+      {
+        ...caseFile.events[0],
+        id: "evt_anchor",
+        title: "锚点事件",
+        time: {
+          kind: "exact",
+          value: "2042-06-01T20:00",
+          precision: "minute",
+        },
+      },
+      {
+        ...caseFile.events[1],
+        id: "evt_follow_up",
+        title: "后续事件",
+        time: {
+          kind: "relative",
+          anchor_event_ref: ref("event", "evt_anchor"),
+          relation: "after",
+          offset_minutes: 15,
+        },
+      },
+    ];
+
+    const timeline = mapCaseFileToWorkbenchModel(caseFile, 7).timelineEvents;
+    const followUp = timeline.find((event) => event.id === "evt_follow_up");
+
+    expect(timeline.map((event) => event.id)).toEqual(["evt_anchor", "evt_follow_up"]);
+    expect(followUp).toMatchObject({
+      timeProjection: "relative-resolved",
+      start: "2042-06-01T20:15:00",
+      sortKey: "2042-06-01T20:15:00",
+    });
+    expect(followUp?.source?.time).toEqual({
+      kind: "relative",
+      anchor_event_ref: ref("event", "evt_anchor"),
+      relation: "after",
+      offset_minutes: 15,
+    });
+  });
+
   it("keeps the existing fixture model available through an explicit adapter", () => {
     const model = expectWorkbenchSeedCompatibility(
       mapFixtureToWorkbenchModel(defaultWorkbenchSeed),

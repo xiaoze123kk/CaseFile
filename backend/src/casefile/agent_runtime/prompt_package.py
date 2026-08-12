@@ -27,6 +27,13 @@ from casefile.agent_runtime.brief_to_draft_v11.contracts import (
     PlannerInputV2,
     StoryWorldIRV2,
 )
+from casefile.agent_runtime.brief_to_draft_v12.contracts import (
+    DomainDraftInputV3,
+    PlannerInputV3,
+    StoryWorldIRV3,
+    TemporalPlannerInputV1,
+    TemporalPlanV1,
+)
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 
@@ -84,6 +91,9 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "brief-to-draft-domain-input-v1": DomainDraftInputV1,
         "brief-to-draft-planner-input-v2": PlannerInputV2,
         "brief-to-draft-domain-input-v2": DomainDraftInputV2,
+        "brief-to-draft-planner-input-v3": PlannerInputV3,
+        "brief-to-draft-temporal-input-v1": TemporalPlannerInputV1,
+        "brief-to-draft-domain-input-v3": DomainDraftInputV3,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -91,19 +101,20 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "case-blueprint-v1": CaseBlueprintV1,
         "story-world-ir-v1": StoryWorldIRV1,
         "story-world-ir-v2": StoryWorldIRV2,
+        "temporal-plan-v1": TemporalPlanV1,
+        "story-world-ir-v3": StoryWorldIRV3,
         "evidence-logic-ir-v1": EvidenceLogicIRV1,
         "evidence-logic-ir-v2": EvidenceLogicIRV2,
         "resolution-governance-ir-v1": ResolutionGovernanceIRV1,
     }
 )
-TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
-    {"no-tools-v1": frozenset()}
-)
+TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType({"no-tools-v1": frozenset()})
 RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
     {
         ("brief-to-draft-pipeline-v9", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v10", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v11", TOOLSET_VERSION),
+        ("brief-to-draft-pipeline-v12", TOOLSET_VERSION),
     }
 )
 

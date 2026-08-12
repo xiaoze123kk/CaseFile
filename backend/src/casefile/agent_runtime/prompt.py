@@ -16,18 +16,20 @@ V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
 V9_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v9"
 V10_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v10"
 V11_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v11"
+V12_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v12"
 BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
     "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
     "brief-to-draft-v10": V10_GENERATION_AGENT_VERSION,
     "brief-to-draft-v11": V11_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v12": V12_GENERATION_AGENT_VERSION,
 }
 COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
 PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
-    {"brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11"}
+    {"brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12"}
 )
 COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
-    {"brief-to-draft-v10", "brief-to-draft-v11"}
+    {"brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12"}
 )
 
 
@@ -182,6 +184,7 @@ __all__ = [
     "V9_GENERATION_AGENT_VERSION",
     "V10_GENERATION_AGENT_VERSION",
     "V11_GENERATION_AGENT_VERSION",
+    "V12_GENERATION_AGENT_VERSION",
     "agent_version_for_task",
     "anchor_extract_input",
     "brief_intake_questions_input",
