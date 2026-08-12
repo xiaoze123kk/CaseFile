@@ -106,8 +106,8 @@ def test_generation_task_uses_the_registry_version_without_a_deployment_override
     with factory() as session:
         task = session.get(TaskRun, task_run_id)
         assert task is not None
-        assert task.prompt_version == "brief-to-draft-v11"
-        assert task.agent_version == "brief-to-draft-pipeline-v11"
+        assert task.prompt_version == "brief-to-draft-v12"
+        assert task.agent_version == "brief-to-draft-pipeline-v12"
 
 
 def test_queued_task_cancels_immediately_and_is_never_claimed(

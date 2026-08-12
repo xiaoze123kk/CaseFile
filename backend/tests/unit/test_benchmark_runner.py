@@ -28,8 +28,8 @@ def test_fake_brief_to_draft_benchmark_records_component_rates() -> None:
     assert report["evaluation_scope"] == "provider"
     assert report["release_gate_eligible"] is False
     assert report["status"] == "passed"
-    assert report["prompt_version"] == "brief-to-draft-v11"
-    assert report["agent_version"] == "brief-to-draft-pipeline-v11"
+    assert report["prompt_version"] == "brief-to-draft-v12"
+    assert report["agent_version"] == "brief-to-draft-pipeline-v12"
     assert report["toolset_version"] == "casefile-generation-tools-v2"
     assert report["runs"] == 2
     assert report["runs_attempted"] == 2
@@ -42,8 +42,8 @@ def test_fake_brief_to_draft_benchmark_records_component_rates() -> None:
         "completion_rate": 0.0,
     }
     assert report["metrics"]["model_calls"] == {
-        "started": 8,
-        "completed": 8,
+        "started": 10,
+        "completed": 10,
         "failed": 0,
         "completion_rate": 1.0,
     }

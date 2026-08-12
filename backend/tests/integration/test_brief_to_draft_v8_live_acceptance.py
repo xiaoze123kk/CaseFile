@@ -251,15 +251,18 @@ def _live_config() -> LiveAcceptanceConfig:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPEATS must be between 1 and 100.")
     report_value = os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH", "").strip()
     prompt_version = os.getenv(
-        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v9"
+        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v12"
     ).strip()
     if prompt_version not in {
         "brief-to-draft-v8",
         "brief-to-draft-v9",
         "brief-to-draft-v10",
         "brief-to-draft-v11",
+        "brief-to-draft-v12",
     }:
-        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8, v9, v10, or v11.")
+        pytest.fail(
+            "Live acceptance prompt version must be brief-to-draft-v8, v9, v10, v11, or v12."
+        )
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
         test_database_url=test_database_url,
@@ -376,7 +379,11 @@ def _run_acceptance_suite(
     report: dict[str, Any],
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
-    scenarios = _V11_SCENARIOS if prompt_version == "brief-to-draft-v11" else (_LEGACY_SCENARIO,)
+    scenarios = (
+        _V11_SCENARIOS
+        if prompt_version in {"brief-to-draft-v11", "brief-to-draft-v12"}
+        else (_LEGACY_SCENARIO,)
+    )
     for run_index in range(repeats):
         strategy = _STRATEGIES[run_index % len(_STRATEGIES)]
         scenario = scenarios[run_index % len(scenarios)]
@@ -572,8 +579,11 @@ def _successful_task_violations(
     violations: list[str] = []
     if task.get("result_snapshot_id") is not None:
         violations.append("candidate_was_automatically_adopted")
+    expected_components = set(_EXPECTED_COMPONENTS)
+    if task.get("prompt_version") == "brief-to-draft-v12":
+        expected_components.add("temporal_structure_planner")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
-    if component_ids != _EXPECTED_COMPONENTS:
+    if component_ids != expected_components:
         violations.append("component_step_coverage_incomplete")
     latest_steps = _latest_steps_by_component(task)
     if any(step.get("status") not in {"succeeded", "reused"} for step in latest_steps.values()):
@@ -617,9 +627,13 @@ def _successful_task_violations(
             violations.append("persisted_candidate_failed_casefile_validation")
         else:
             violations.extend(
-                _scenario_candidate_violations(attempt.candidate_jsonb, scenario)
+                _scenario_candidate_violations(
+                    attempt.candidate_jsonb,
+                    scenario,
+                    prompt_version=str(task.get("prompt_version") or ""),
+                )
             )
-    if {step.component_id for step in steps} != _EXPECTED_COMPONENTS:
+    if {step.component_id for step in steps} != expected_components:
         violations.append("agent_step_runs_not_persisted")
     if len(calls) < 4 or not any(call.status == "succeeded" for call in calls):
         violations.append("agent_model_calls_not_persisted")
@@ -639,6 +653,8 @@ def _successful_task_violations(
 def _scenario_candidate_violations(
     candidate: dict[str, Any],
     scenario: AcceptanceScenario,
+    *,
+    prompt_version: str = "",
 ) -> list[str]:
     if scenario.scenario_id == "legacy_runtime":
         return []
@@ -647,6 +663,13 @@ def _scenario_candidate_violations(
         return [] if {"exact", "range"}.issubset(kinds) else ["scenario_time_exact_range_missing"]
     if scenario.scenario_id == "time_uncertain_relative":
         kinds = {item.get("time", {}).get("kind") for item in candidate.get("events", [])}
+        if prompt_version == "brief-to-draft-v12":
+            required = {"approximate", "relative"}
+            return (
+                []
+                if required.issubset(kinds) and "unknown" not in kinds
+                else ["scenario_uncertain_time_semantics_missing"]
+            )
         required = {"approximate", "relative", "unknown"}
         return [] if required.issubset(kinds) else ["scenario_uncertain_time_semantics_missing"]
     if scenario.scenario_id == "spatial_scene_topology":
@@ -1107,7 +1130,10 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
         return "failed"
     if any(not item["diagnostics_complete"] for item in report["failed_runs"]):
         return "failed"
-    if expected_runs == 30 and report.get("suite") == "brief_to_draft_v11":
+    if expected_runs == 30 and report.get("suite") in {
+        "brief_to_draft_v11",
+        "brief_to_draft_v12",
+    }:
         summary = report.get("scenario_summary", {})
         if set(summary) != {item.scenario_id for item in _V11_SCENARIOS}:
             return "failed"

@@ -32,7 +32,7 @@ Prompt 版本有三种互斥形态：
 4. 运行 Prompt Repository、Provider 和打包校验，先提交尚未激活的新版本。
 5. 评审通过后，单独移动 `registry.json` 中的 `current_version` 指针；回滚同样只移动该指针。
 
-`registry.json` 是生产新任务唯一的激活入口，不能通过环境变量选择历史 Prompt。`TaskRun` 会冻结 Registry 解析出的 `prompt_version`；v8 冻结四组件 Bundle，v9–v11 分别冻结对应的 Pipeline 与 `casefile-generation-tools-v2`，并在任何模型调用或步骤复用前完整校验 Prompt Package、输入契约、输出 Schema 和工具策略绑定。历史 v8–v10 TaskRun 始终按自身冻结版本执行。
+`registry.json` 是生产新任务唯一的激活入口，不能通过环境变量选择历史 Prompt。`TaskRun` 会冻结 Registry 解析出的 `prompt_version`；v8 冻结四组件 Bundle，v9–v12 分别冻结对应的 Pipeline 与 `casefile-generation-tools-v2`，并在任何模型调用或步骤复用前完整校验 Prompt Package、输入契约、输出 Schema 和工具策略绑定。历史 v8–v11 TaskRun 始终按自身冻结版本执行。
 
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
@@ -49,4 +49,6 @@ Prompt Package 是模型调用资产与契约的发布单元，不是工作流 D
 
 `brief-to-draft-v11` 保持 planner/story/evidence/governance 四部件：Story 使用 `StoryWorldIRV2` 表达无时区作品内壁钟时间与 schematic/WGS84 空间位置，Evidence 继续使用 v10 的 `EvidenceLogicIRV2` 竞争矩阵。它只映射已有 CaseFile 2.0 契约，不生成 Exposure Plan。
 
-v11 已在真实 API → Worker → PostgreSQL/SSE → 不可变候选路径完成 30 次发布验收：语义通过 `28/30`（门槛至少 `27/30`），五类场景为 `5/6`、`5/6`、`6/6`、`6/6`、`6/6`，零不变量违规且失败运行诊断完整。因此 Registry 已激活至 v11。需要回滚时同样只移动 `registry.json` 指针，不修改任何已发布版本目录。
+`brief-to-draft-v12` 在 v11 基础上增加独立 Temporal Planner：为 Blueprint 的每个事件分配可审计的作品内时间，禁止 `unknown`，要求绝对壁钟锚点，并将相对时间确定性注入 Story 的 `StoryWorldIRV3`。时间规划失败会阻断 Story 及下游生成，历史 v11 TaskRun 不受影响。
+
+v11 已在真实 API → Worker → PostgreSQL/SSE → 不可变候选路径完成 30 次发布验收：语义通过 `28/30`（门槛至少 `27/30`），五类场景为 `5/6`、`5/6`、`6/6`、`6/6`、`6/6`，零不变量违规且失败运行诊断完整。v12 已通过 FakeProvider、Prompt 契约、Docker PostgreSQL 应用服务和 Workbench 时间线回归验证，因此 Registry 当前激活至 v12。需要回滚时同样只移动 `registry.json` 指针，不修改任何已发布版本目录。

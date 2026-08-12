@@ -490,6 +490,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert [step["component_id"] for step in task.json()["component_steps"]] == [
             "context_pack_builder",
             "case_blueprint_planner",
+            "temporal_structure_planner",
             "story_world",
             "evidence_logic",
             "resolution_governance",
