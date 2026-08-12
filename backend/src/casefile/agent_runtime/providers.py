@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -83,6 +74,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -1455,7 +1455,9 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             "information_units": [node("record", "关键记录", ["discovery", "claim"])],
             "claims": [node("claim", "记录可信", ["record"])],
             "hypotheses": [node("hypothesis", "记录解释", ["resolution", "claim"])],
-            "reasoning_paths": [node("path", "验证路径", ["record", "claim"])],
+            "reasoning_paths": [
+                node("path", "验证路径", ["record", "claim", "hypothesis"])
+            ],
             "constraints": [node("constraint", "作者边界", ["resolution"])],
             "structure_locks": [node("lock", "事件标题锁", ["discovery"])],
         }

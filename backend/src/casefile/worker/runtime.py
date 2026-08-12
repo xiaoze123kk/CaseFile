@@ -420,8 +420,8 @@ class Worker:
                 if task_snapshot.prompt_version == "brief-to-draft-v7"
                 else int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
             )
-            feedback: tuple[dict[str, Any], ...] = ()
-            feedback_history: list[dict[str, Any]] = []
+            feedback = generation_request.repair_feedback
+            feedback_history: list[dict[str, Any]] = list(feedback)
             for repair_no in range(repair_limit + 1):
                 if repair_no:
                     self._emit(
@@ -614,6 +614,7 @@ class Worker:
                 candidate_strategy=candidate_strategy,
                 candidate_strategy_version=candidate_strategy_version,
                 reusable_steps=_reusable_component_steps(session, task),
+                repair_feedback=_previous_attempt_repair_feedback(session, task),
                 agent_version=task.agent_version,
                 toolset_version=task.toolset_version,
             )
@@ -999,6 +1000,7 @@ class Worker:
                 return False
             if task.leased_by != self.config.worker_id or attempt.status != "running":
                 return False
+            usage = _terminal_attempt_usage(session, attempt.id, usage)
             now = datetime.now(UTC)
             finalize_task_cancellation(
                 session,
@@ -1048,6 +1050,7 @@ class Worker:
                 or attempt.status != "running"
             ):
                 return
+            usage = _terminal_attempt_usage(session, attempt.id, usage)
             safe_message = _safe_error_message(error, sensitive_values)
             underlying_error_code = error_code
             if task.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
@@ -1373,26 +1376,52 @@ def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict
         or task.attempt_count < 2
     ):
         return {}
+    reusable_components = (
+        "case_blueprint_planner",
+        "story_world",
+        "evidence_logic",
+        "resolution_governance",
+    )
+    failed_steps = _previous_attempt_failed_steps(session, task)
+    invalidated: set[str] = set()
+    if failed_steps:
+        for step in failed_steps:
+            if step.component_id in reusable_components:
+                invalidated.add(step.component_id)
+            diagnostics = step.diagnostic_jsonb
+            raw_issues = diagnostics.get("issues") if isinstance(diagnostics, dict) else None
+            if not isinstance(raw_issues, list):
+                continue
+            for issue in raw_issues:
+                if not isinstance(issue, dict):
+                    continue
+                component_id = issue.get("component_id")
+                if component_id in reusable_components:
+                    invalidated.add(str(component_id))
+        if not invalidated:
+            # A coordinator-only or otherwise unattributed failure cannot prove that
+            # any upstream artifact is safe to carry into the resumed attempt.
+            return {}
+        if "case_blueprint_planner" in invalidated:
+            invalidated = set(reusable_components)
+
     rows = session.scalars(
         select(AgentStepRun)
         .where(
             AgentStepRun.task_run_id == task.id,
             AgentStepRun.status.in_(("succeeded", "reused")),
             AgentStepRun.component_version == task.prompt_version,
-            AgentStepRun.component_id.in_(
-                (
-                    "case_blueprint_planner",
-                    "story_world",
-                    "evidence_logic",
-                    "resolution_governance",
-                )
-            ),
+            AgentStepRun.component_id.in_(reusable_components),
         )
         .order_by(AgentStepRun.id.desc())
     )
     reusable: dict[str, dict[str, Any]] = {}
     for row in rows:
-        if row.component_id in reusable or not isinstance(row.output_jsonb, dict):
+        if (
+            row.component_id in reusable
+            or row.component_id in invalidated
+            or not isinstance(row.output_jsonb, dict)
+        ):
             continue
         reusable[row.component_id] = {
             "step_run_id": row.id,
@@ -1402,6 +1431,102 @@ def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict
             "output": row.output_jsonb,
         }
     return reusable
+
+
+def _previous_attempt_failed_steps(
+    session: Session,
+    task: TaskRun,
+) -> list[AgentStepRun]:
+    if task.attempt_count < 2:
+        return []
+    previous_attempt = session.scalar(
+        select(TaskAttempt).where(
+            TaskAttempt.task_run_id == task.id,
+            TaskAttempt.attempt_no == task.attempt_count - 1,
+            TaskAttempt.status == "failed",
+        )
+    )
+    if previous_attempt is None:
+        return []
+    return list(
+        session.scalars(
+            select(AgentStepRun)
+            .where(
+                AgentStepRun.task_attempt_id == previous_attempt.id,
+                AgentStepRun.status == "failed",
+            )
+            .order_by(AgentStepRun.id)
+        )
+    )
+
+
+def _previous_attempt_repair_feedback(
+    session: Session,
+    task: TaskRun,
+) -> tuple[dict[str, Any], ...]:
+    issues: list[dict[str, Any]] = []
+    for step in _previous_attempt_failed_steps(session, task):
+        diagnostics = step.diagnostic_jsonb
+        raw_issues = diagnostics.get("issues") if isinstance(diagnostics, dict) else None
+        if not isinstance(raw_issues, list):
+            continue
+        for issue in raw_issues:
+            if isinstance(issue, dict):
+                issues.append(dict(issue))
+                if len(issues) == 50:
+                    return ({"issues": issues},)
+    return ({"issues": issues},) if issues else ()
+
+
+def _terminal_attempt_usage(
+    session: Session,
+    attempt_id: int,
+    usage: dict[str, Any],
+) -> dict[str, Any]:
+    if usage:
+        return usage
+    rows = list(
+        session.scalars(
+            select(AgentModelCall)
+            .where(AgentModelCall.task_attempt_id == attempt_id)
+            .order_by(AgentModelCall.agent_step_run_id, AgentModelCall.call_no)
+        )
+    )
+    rows_by_step: dict[int, list[AgentModelCall]] = {}
+    for row in rows:
+        rows_by_step.setdefault(row.agent_step_run_id, []).append(row)
+
+    usage_keys = (
+        "requests",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cached_tokens",
+        "reasoning_tokens",
+    )
+    snapshots: list[dict[str, Any]] = []
+    for step_rows in rows_by_step.values():
+        rows_with_usage = [
+            row for row in step_rows if any(key in row.usage_jsonb for key in usage_keys)
+        ]
+        if rows_with_usage:
+            snapshots.append(max(rows_with_usage, key=lambda row: row.call_no).usage_jsonb)
+    if not snapshots:
+        return {}
+
+    merged: dict[str, Any] = {"requests": 0}
+    for snapshot in snapshots:
+        requests = snapshot.get("requests")
+        merged["requests"] += (
+            requests
+            if isinstance(requests, int) and not isinstance(requests, bool)
+            else 1
+        )
+        for key in usage_keys[1:]:
+            value = snapshot.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                merged[key] = int(merged.get(key, 0)) + value
+    return merged
 
 
 def _error_code(error: Exception) -> str:

@@ -105,6 +105,19 @@ export function DraftCandidatesStage() {
   const failedComponent = [...latestComponentSteps.values()].find(
     (step) => step.status === "failed",
   );
+  const taskFailure = selectedSlot?.latestTask?.failure ?? null;
+  const recoveryAvailable = Boolean(
+    taskFailure?.retryable || failedComponent?.recoverable,
+  );
+  const coordinatorFallback = failedComponent?.component_id === "run_coordinator";
+  const failureIssues = coordinatorFallback && taskFailure?.issues.length
+    ? taskFailure.issues
+    : failedComponent?.issues.length
+      ? failedComponent.issues
+      : taskFailure?.issues ?? [];
+  const showPipeline = Boolean(
+    selectedSlot && (generating || selectedSlot.latestTask),
+  );
   const adoptedCandidate = state.draftCandidates.find(
     (candidate) => candidate.id === state.adoptedCandidateId,
   ) ?? null;
@@ -427,11 +440,11 @@ export function DraftCandidatesStage() {
 
       {generationError ? <p className={styles.generationError} role="alert">{generationError}</p> : null}
 
-      {selectedSlot?.latestTask && componentSteps.length ? (
+      {showPipeline && selectedSlot ? (
         <section className={styles.agentPipeline} aria-label="深稿生成部件进度">
           <header>
-            <div><span>{selectedSlot.latestTask.prompt_version ?? "brief_to_draft"}</span><strong>六步生成流水线</strong></div>
-            <b>Attempt {selectedSlot.latestTask.attempt_count}</b>
+            <div><span>{selectedSlot.latestTask?.prompt_version ?? "正在创建任务"}</span><strong>六步生成流水线</strong></div>
+            <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
           </header>
           <ol>
             {pipelineRows(latestComponentSteps).map((row, index) => (
@@ -451,19 +464,31 @@ export function DraftCandidatesStage() {
               </li>
             ))}
           </ol>
-          {failedComponent ? (
+          {failedComponent || taskFailure ? (
             <div className={styles.componentFailure} role="alert">
-              <strong>{componentLabel(failedComponent.component_id)}执行失败</strong>
-              <p>层：{failedComponent.failure_layer ?? "未知"} · Schema：{failedComponent.schema_id}</p>
-              {failedComponent.issues.map((issue) => (
+              <strong>
+                {coordinatorFallback && taskFailure?.issues.length
+                  ? "质量与修复门禁执行失败"
+                  : failedComponent
+                    ? `${componentLabel(failedComponent.component_id)}执行失败`
+                    : "生成任务执行失败"}
+              </strong>
+              {coordinatorFallback && taskFailure?.issues.length ? (
+                <p>层：生成校验 · 任务级诊断</p>
+              ) : failedComponent ? (
+                <p>层：{failedComponent.failure_layer ?? "未知"} · Schema：{failedComponent.schema_id}</p>
+              ) : taskFailure ? (
+                <p>{taskFailure.message}</p>
+              ) : null}
+              {failureIssues.map((issue) => (
                 <code key={`${issue.code}-${issue.path}`}>{issue.path || "/"} · {issue.message}</code>
               ))}
               <button
-                disabled={!failedComponent.recoverable || generating}
+                disabled={!recoveryAvailable || generating}
                 onClick={() => void resumeFailedDraft()}
                 type="button"
               >
-                {failedComponent.recoverable ? "从失败阶段恢复" : "当前失败不可恢复"}
+                {recoveryAvailable ? "从失败阶段恢复" : "当前失败不可恢复"}
               </button>
             </div>
           ) : null}

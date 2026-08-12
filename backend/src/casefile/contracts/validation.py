@@ -51,6 +51,12 @@ _PUBLIC_INTEGRITY_MESSAGES = {
     "time_precision_mismatch": "时间值与精度不一致",
     "invalid_relative_time": "相对时间约束无效",
     "duplicate_key": "同一集合中存在重复键",
+    "competing_hypothesis_path_plan_missing": "案件蓝图缺少面向该竞争假设的独立推理路径",
+    "competing_hypothesis_path_missing": "竞争假设缺少使用信息输入的对应推理路径",
+    "competing_hypothesis_group_incomplete": "同一解答下的竞争假设集合不完整",
+    "unscoped_evidence_assessment": "证据评估引用了当前竞争集合之外的信息",
+    "missing_evidence_assessment": "竞争假设缺少必要的证据评估",
+    "duplicate_evidence_assessment": "同一竞争假设包含重复的证据评估",
 }
 
 

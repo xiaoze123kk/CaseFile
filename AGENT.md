@@ -13,6 +13,10 @@
 
 新增、删除、重命名受 Git 跟踪的源码文件，或实质性改变文件职责时，必须同步更新对应的 docs/ 文档。
 
+## 产品交互约束
+
+- 采用渐进式披露控制界面信息密度，不需要进行移动端的适配开发。
+
 ## 当前数据库表索引
 
 当前 51 张个人产品业务表为：`users`、`projects`、`user_provider_settings`、`source_records`、`brief_intakes`、`brief_intake_questions`、`brief_intake_candidates`、`briefs`、`brief_versions`、`casefiles`、`drafts`、`casefile_objects`、`casefile_refs`、`casefile_contract_refs`、`draft_operations`、`narrative_phases`、`entities`、`relationships`、`people`、`locations`、`events`、`information_units`、`evidence_items`、`testimonies`、`claims`、`hypotheses`、`reasoning_paths`、`reasoning_nodes`、`reasoning_edges`、`resolution_specs`、`resolution_slots`、`casefile_constraints`、`structure_locks`、`knowledge_states`、`knowledge_state_entries`、`exposure_plans`、`exposure_plan_revisions`、`exposure_plan_entries`、`exposure_plan_entry_refs`、`agent_threads`、`agent_messages`、`agent_patch_sets`、`agent_patch_operations`、`task_runs`、`task_attempts`、`task_events`、`agent_step_runs`、`agent_model_calls`、`draft_snapshots`、`canon_versions`、`audit_events`。具体职责与生命周期以 [backend/migrations/README.md](./backend/migrations/README.md) 为准。

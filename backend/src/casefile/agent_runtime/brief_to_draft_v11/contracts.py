@@ -141,6 +141,7 @@ class DraftContextPackV2(StrictAgentOutput):
 
 class PlannerInputV2(StrictAgentOutput):
     context_pack: DraftContextPackV2
+    targeted_repair_issues: list[dict[str, object]] | None = Field(default=None, max_length=50)
 
 
 class DomainDraftInputV2(StrictAgentOutput):

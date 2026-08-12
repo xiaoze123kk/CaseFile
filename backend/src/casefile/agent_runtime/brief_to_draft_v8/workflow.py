@@ -57,6 +57,11 @@ ComponentCall = Callable[
     Awaitable[tuple[dict[str, Any], dict[str, Any]]],
 ]
 
+
+class _PersistedQualityGateError(ContractValidationError):
+    """Validation failure whose quality-gate step was already closed."""
+
+
 _STEP_SCHEMA = {
     "context_pack_builder": "draft-context-pack-v1",
     "case_blueprint_planner": "case-blueprint-v1",
@@ -156,6 +161,7 @@ async def run_v8_generation(
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
     context = _build_context_pack(request)
+    prior_repair_issues = _request_repair_issues(request)
     _deterministic_step(
         request,
         "context_pack_builder",
@@ -164,6 +170,15 @@ async def run_v8_generation(
         schema_id="draft-context-pack-v2" if is_v11 else "draft-context-pack-v1",
     )
 
+    planner_input: dict[str, Any] = {"context_pack": context.model_dump(mode="json")}
+    if is_v11:
+        planner_repairs = [
+            issue
+            for issue in prior_repair_issues
+            if issue.get("component_id") == "case_blueprint_planner"
+        ]
+        if planner_repairs:
+            planner_input["targeted_repair_issues"] = planner_repairs
     planner_output, planner_usage = await _model_step(
         request,
         call_component,
@@ -171,10 +186,16 @@ async def run_v8_generation(
         prompt_component="planner",
         stage="planning",
         output_type=CaseBlueprintV1,
-        input_payload={"context_pack": context.model_dump(mode="json")},
+        input_payload=planner_input,
     )
     usage_records.append(planner_usage)
     blueprint = CaseBlueprintV1.model_validate(planner_output)
+    if is_v11:
+        blueprint_issues = _v11_blueprint_issues(blueprint)
+        if blueprint_issues:
+            error = ContractValidationError(blueprint_issues)
+            _emit_quality_gate_failure(request, error)
+            raise error
 
     async def draft_domain(
         component_id: str,
@@ -248,12 +269,23 @@ async def run_v8_generation(
         StoryWorldIRV2 if is_v11 else StoryWorldIRV1
     )
     domain_results = await asyncio.gather(
-        draft_domain("story_world", "story", story_output_type),
-        draft_domain("evidence_logic", "evidence", evidence_output_type),
+        draft_domain(
+            "story_world",
+            "story",
+            story_output_type,
+            _repair_issues_for_component(prior_repair_issues, "story_world"),
+        ),
+        draft_domain(
+            "evidence_logic",
+            "evidence",
+            evidence_output_type,
+            _repair_issues_for_component(prior_repair_issues, "evidence_logic"),
+        ),
         draft_domain(
             "resolution_governance",
             "governance",
             ResolutionGovernanceIRV1,
+            _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
         ),
     )
     story: StoryWorldIRV1 | StoryWorldIRV2 = story_output_type.model_validate(
@@ -276,6 +308,7 @@ async def run_v8_generation(
                 matrix_issues = _evidence_assessment_issues(
                     evidence,
                     strict_competition=is_v11,
+                    blueprint=blueprint,
                 )
                 if matrix_issues:
                     raise LinkerValidationError(matrix_issues)
@@ -290,7 +323,11 @@ async def run_v8_generation(
                     raise LinkerValidationError(story_issues)
             linked = _link_step(request, blueprint, story, evidence, governance)
             candidate = _compile_step(request, linked)
-            _quality_gate(request, candidate)
+            _quality_gate(
+                request,
+                candidate,
+                recoverable=gate_attempt == 0,
+            )
             tools.calls = 4 + len(repaired_components)
             tools.valid_calls = tools.calls
             tools.successful_calls = tools.calls
@@ -302,18 +339,14 @@ async def run_v8_generation(
             )
         except ContractValidationError as error:
             issues = [_diagnostic_issue(value) for value in error.errors[:50]]
-            request.emit(
-                "agent.step.failed",
-                "quality_gate",
-                {
-                    "component_id": "quality_repair_gate",
-                    "failure_layer": _failure_layer(error),
-                    "schema_id": "casefile-v1",
-                    "issues": issues,
-                    "recoverable": gate_attempt == 0,
-                },
-            )
-            if gate_attempt:
+            if not isinstance(error, _PersistedQualityGateError):
+                _emit_quality_gate_failure(
+                    request,
+                    error,
+                    issues=issues,
+                    recoverable=gate_attempt == 0,
+                )
+            if gate_attempt or _requires_planner_repair(error):
                 raise
             affected = _affected_domain_components(error)
             if not affected:
@@ -357,10 +390,110 @@ async def run_v8_generation(
     raise RuntimeError("brief-to-draft v8 quality gate exhausted")
 
 
+def _request_repair_issues(request: GenerationRequest) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for feedback in request.repair_feedback:
+        raw_issues = feedback.get("issues")
+        if not isinstance(raw_issues, list):
+            continue
+        for issue in raw_issues:
+            if isinstance(issue, dict):
+                normalized = _diagnostic_issue(issue)
+                key = (
+                    str(normalized.get("component_id") or ""),
+                    str(normalized.get("code") or ""),
+                    str(normalized.get("path") or ""),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                issues.append(normalized)
+                if len(issues) >= 50:
+                    return issues
+    return issues
+
+
+def _repair_issues_for_component(
+    issues: list[dict[str, Any]], component_id: str
+) -> list[dict[str, Any]] | None:
+    selected = [issue for issue in issues if issue.get("component_id") == component_id]
+    return selected or None
+
+
+def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
+    """Reject competition plans that no Evidence output can satisfy."""
+
+    hypothesis_keys = {item.local_key for item in blueprint.hypotheses}
+    resolution_keys = {item.local_key for item in blueprint.resolution_specs}
+    groups: list[set[str]] = []
+
+    def add_group(values: set[str]) -> None:
+        if len(values) < 2:
+            return
+        merged = set(values)
+        remaining: list[set[str]] = []
+        for existing in groups:
+            if existing & merged:
+                merged.update(existing)
+            else:
+                remaining.append(existing)
+        remaining.append(merged)
+        groups[:] = remaining
+
+    for path in blueprint.reasoning_paths:
+        add_group(set(path.dependency_keys) & hypothesis_keys)
+    for resolution in blueprint.resolution_specs:
+        add_group(set(resolution.dependency_keys) & hypothesis_keys)
+    hypotheses_by_resolution: dict[str, set[str]] = {}
+    for hypothesis in blueprint.hypotheses:
+        for resolution_key in set(hypothesis.dependency_keys) & resolution_keys:
+            hypotheses_by_resolution.setdefault(resolution_key, set()).add(
+                hypothesis.local_key
+            )
+    for values in hypotheses_by_resolution.values():
+        add_group(values)
+
+    issues: list[dict[str, Any]] = []
+    for group in groups:
+        for hypothesis_key in sorted(group):
+            has_dedicated_path = _blueprint_has_hypothesis_path(
+                blueprint,
+                hypothesis_key,
+            )
+            if has_dedicated_path:
+                continue
+            issues.append(
+                {
+                    "code": "competing_hypothesis_path_plan_missing",
+                    "path": f"/reasoning_paths/{hypothesis_key}",
+                    "message": "Planner 必须为每个竞争假设规划一条以该假设为目标的独立推理路径。",
+                    "component_id": "case_blueprint_planner",
+                    "failure_layer": "blueprint_semantics",
+                    "schema_id": "case-blueprint-v1",
+                    "ir_path": f"/hypotheses/{hypothesis_key}",
+                }
+            )
+    return issues
+
+
+def _blueprint_has_hypothesis_path(
+    blueprint: CaseBlueprintV1 | None, hypothesis_key: str
+) -> bool:
+    if blueprint is None:
+        return True
+    hypothesis_keys = {item.local_key for item in blueprint.hypotheses}
+    return any(
+        (set(path.dependency_keys) & hypothesis_keys) == {hypothesis_key}
+        for path in blueprint.reasoning_paths
+    )
+
+
 def _evidence_assessment_issues(
     evidence: EvidenceLogicIRV2,
     *,
     strict_competition: bool = False,
+    blueprint: CaseBlueprintV1 | None = None,
 ) -> list[dict[str, Any]]:
     """Require a complete path-grounded matrix across competing hypotheses."""
 
@@ -412,13 +545,22 @@ def _evidence_assessment_issues(
         for hypothesis in competitors:
             if strict_competition:
                 if not used_information_by_hypothesis[hypothesis.local_key]:
+                    component_id = (
+                        "evidence_logic"
+                        if _blueprint_has_hypothesis_path(blueprint, hypothesis.local_key)
+                        else "case_blueprint_planner"
+                    )
                     issues.append(
                         {
                             "code": "competing_hypothesis_path_missing",
                             "path": f"/reasoning_paths/{hypothesis.local_key}",
                             "message": "每个竞争假设必须有一条使用信息输入的对应推理路径。",
-                            "component_id": "evidence_logic",
-                            "failure_layer": "evidence_matrix",
+                            "component_id": component_id,
+                            "failure_layer": (
+                                "evidence_matrix"
+                                if component_id == "evidence_logic"
+                                else "blueprint_semantics"
+                            ),
                             "schema_id": "evidence-logic-ir-v2",
                             "ir_path": f"/hypotheses/{hypothesis.local_key}",
                         }
@@ -942,52 +1084,72 @@ def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str
     return candidate
 
 
-def _quality_gate(request: GenerationRequest, candidate: dict[str, Any]) -> None:
+def _quality_gate(
+    request: GenerationRequest,
+    candidate: dict[str, Any],
+    *,
+    recoverable: bool = True,
+) -> None:
     schema_id = f"casefile-v{request.schema_version.split('.', 1)[0]}"
     request.emit(
         "agent.step.started",
         "quality_gate",
         {"component_id": "quality_repair_gate", "schema_id": schema_id},
     )
-    validate_casefile(candidate)
-    description_issues: list[dict[str, Any]] = []
-    for component_id, collections in DOMAIN_COLLECTIONS.items():
-        for collection in collections:
-            for index, item in enumerate(candidate.get(collection, [])):
-                description = item.get("description") if isinstance(item, dict) else None
-                if not isinstance(description, str) or not description.strip():
-                    description_issues.append(
-                        {
-                            "code": "generated_description_missing",
-                            "path": f"/{collection}/{index}/description",
-                            "message": "Agent 生成的对象必须填写非空描述。",
-                            "component_id": component_id,
-                            "failure_layer": "description_gate",
-                            "schema_id": schema_id,
-                        }
-                    )
-    if description_issues:
-        raise ContractValidationError(description_issues)
-    expected_mode = request.brief.get("conclusion_mode")
-    mismatched = [
-        index
-        for index, resolution in enumerate(candidate.get("resolution_specs", []))
-        if resolution.get("conclusion_mode") != expected_mode
-    ]
-    if mismatched:
-        raise ContractValidationError(
-            [
-                {
-                    "code": "frozen_conclusion_mode_mismatch",
-                    "path": f"/resolution_specs/{index}/conclusion_mode",
-                    "message": "解答模式与冻结 Brief 不一致。",
-                    "component_id": "resolution_governance",
-                    "failure_layer": "frozen_context",
-                    "schema_id": "casefile-v1",
-                }
-                for index in mismatched
-            ]
+    try:
+        validate_casefile(candidate)
+        description_issues: list[dict[str, Any]] = []
+        for component_id, collections in DOMAIN_COLLECTIONS.items():
+            for collection in collections:
+                for index, item in enumerate(candidate.get(collection, [])):
+                    description = item.get("description") if isinstance(item, dict) else None
+                    if not isinstance(description, str) or not description.strip():
+                        description_issues.append(
+                            {
+                                "code": "generated_description_missing",
+                                "path": f"/{collection}/{index}/description",
+                                "message": "Agent 生成的对象必须填写非空描述。",
+                                "component_id": component_id,
+                                "failure_layer": "description_gate",
+                                "schema_id": schema_id,
+                            }
+                        )
+        if description_issues:
+            raise ContractValidationError(description_issues)
+        expected_mode = request.brief.get("conclusion_mode")
+        mismatched = [
+            index
+            for index, resolution in enumerate(candidate.get("resolution_specs", []))
+            if resolution.get("conclusion_mode") != expected_mode
+        ]
+        if mismatched:
+            raise ContractValidationError(
+                [
+                    {
+                        "code": "frozen_conclusion_mode_mismatch",
+                        "path": f"/resolution_specs/{index}/conclusion_mode",
+                        "message": "解答模式与冻结 Brief 不一致。",
+                        "component_id": "resolution_governance",
+                        "failure_layer": "frozen_context",
+                        "schema_id": schema_id,
+                    }
+                    for index in mismatched
+                ]
+            )
+    except ContractValidationError as error:
+        request.emit(
+            "agent.step.failed",
+            "quality_gate",
+            {
+                "component_id": "quality_repair_gate",
+                "failure_layer": _failure_layer(error),
+                "schema_id": schema_id,
+                "error_code": "quality_gate_failed",
+                "issues": [_diagnostic_issue(value) for value in error.errors[:50]],
+                "recoverable": recoverable,
+            },
         )
+        raise _PersistedQualityGateError(error.errors) from error
     request.emit(
         "agent.step.completed",
         "quality_gate",
@@ -1083,7 +1245,49 @@ def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _failure_layer(error: ContractValidationError) -> str:
+    layers = {
+        str(issue.get("failure_layer"))
+        for issue in error.errors
+        if isinstance(issue.get("failure_layer"), str) and issue.get("failure_layer")
+    }
+    if len(layers) == 1:
+        return layers.pop()
     return "reference_linker" if isinstance(error, LinkerValidationError) else "quality_gate"
+
+
+def _requires_planner_repair(error: ContractValidationError) -> bool:
+    return any(
+        issue.get("component_id") == "case_blueprint_planner" for issue in error.errors
+    )
+
+
+def _emit_quality_gate_failure(
+    request: GenerationRequest,
+    error: ContractValidationError,
+    *,
+    issues: list[dict[str, Any]] | None = None,
+    recoverable: bool = True,
+) -> None:
+    schema_id = f"casefile-v{request.schema_version.split('.', 1)[0]}"
+    request.emit(
+        "agent.step.started",
+        "quality_gate",
+        {"component_id": "quality_repair_gate", "schema_id": schema_id},
+    )
+    request.emit(
+        "agent.step.failed",
+        "quality_gate",
+        {
+            "component_id": "quality_repair_gate",
+            "failure_layer": _failure_layer(error),
+            "schema_id": schema_id,
+            "error_code": "quality_gate_failed",
+            "issues": issues
+            if issues is not None
+            else [_diagnostic_issue(value) for value in error.errors[:50]],
+            "recoverable": recoverable,
+        },
+    )
 
 
 def _diagnostic_issue(issue: dict[str, Any]) -> dict[str, Any]:

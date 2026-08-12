@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DraftCandidateView, TaskView } from "@/lib/api-client";
@@ -35,6 +35,85 @@ afterEach(() => {
 });
 
 describe("draft candidate cancellation feedback", () => {
+  it("shows the complete six-step pipeline while the first component is still pending", () => {
+    installSession(generatingState());
+
+    render(<DraftCandidatesStage />);
+
+    const pipeline = screen.getByLabelText("深稿生成部件进度");
+    expect(within(pipeline).getByText("六步生成流水线")).toBeInTheDocument();
+    expect(pipeline.querySelectorAll(":scope > ol > li")).toHaveLength(6);
+    expect(
+      Array.from(
+        pipeline.querySelectorAll(":scope > ol > li > div > small"),
+        (item) => item.textContent,
+      ),
+    ).toEqual(Array(6).fill("等待"));
+  });
+
+  it("uses retryable task diagnostics when a legacy coordinator step is not recoverable", () => {
+    const state = generatingState(false);
+    const task = generationTask("failed");
+    task.error_code = "agent_component_failed";
+    task.failure = {
+      code: "agent_component_failed",
+      message: "深稿生成部件未通过门禁，可从失败阶段恢复。",
+      retryable: true,
+      issues: [
+        {
+          code: "competing_hypothesis_path_missing",
+          path: "/reasoning_paths/hypothesis_b",
+          message: "竞争假设缺少使用信息输入的对应推理路径",
+        },
+      ],
+    };
+    task.component_steps = [
+      {
+        step_run_id: 901,
+        attempt_no: 1,
+        component_id: "run_coordinator",
+        parent_component_id: null,
+        execution_no: 1,
+        status: "failed",
+        schema_id: "task-run-v1",
+        input_hash: "coordinator-input",
+        output_hash: null,
+        failure_layer: "frozen_context",
+        issues: [
+          {
+            component_id: "run_coordinator",
+            failure_layer: "frozen_context",
+            schema_id: "task-run-v1",
+            code: "candidate_validation_failed",
+            path: "",
+            message: "CaseFile contract validation failed",
+          },
+        ],
+        recoverable: false,
+        resumed_from_step_run_id: null,
+      },
+    ];
+    state.generation.slots.structure_first = {
+      status: "failed",
+      stage: "failed",
+      taskRunId: task.task_run_id,
+      attempt: 1,
+      error: task.failure.message,
+      latestTask: task,
+    };
+    const resumeGeneration = vi.fn().mockResolvedValue(true);
+    installSession(state, { resumeGeneration });
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByText("/reasoning_paths/hypothesis_b · 竞争假设缺少使用信息输入的对应推理路径")).toBeInTheDocument();
+    expect(screen.queryByText("CaseFile contract validation failed")).not.toBeInTheDocument();
+    const resume = screen.getByRole("button", { name: "从失败阶段恢复" });
+    expect(resume).toBeEnabled();
+    fireEvent.click(resume);
+    expect(resumeGeneration).toHaveBeenCalledWith("structure_first");
+  });
+
   it.each([
     [
       "cancelling",

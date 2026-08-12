@@ -10,6 +10,11 @@ from application_services_test_support import (
     _draft_revision_and_content,
     _prepare_task,
 )
+from sqlalchemy import Engine, select, text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
+import casefile.agent_runtime.providers as agent_providers
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult
 from casefile.application.a_path_metrics import APathMetricsService
@@ -23,9 +28,6 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select, text
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -105,8 +107,8 @@ def test_generation_task_uses_the_registry_version_without_a_deployment_override
     with factory() as session:
         task = session.get(TaskRun, task_run_id)
         assert task is not None
-        assert task.prompt_version == "brief-to-draft-v9"
-        assert task.agent_version == "brief-to-draft-pipeline-v9"
+        assert task.prompt_version == "brief-to-draft-v11"
+        assert task.agent_version == "brief-to-draft-pipeline-v11"
 
 
 def test_queued_task_cancels_immediately_and_is_never_claimed(
@@ -296,8 +298,8 @@ def test_a_path_metrics_keep_partial_component_usage_after_terminal_attempt(
         assert attempt is not None
         assert task.status == terminal_status
         assert attempt.status == terminal_status
-        assert task.usage_jsonb == {}
-        assert attempt.usage_jsonb == {}
+        assert task.usage_jsonb == usage
+        assert attempt.usage_jsonb == usage
         assert len(model_calls) == 1
         assert model_calls[0].status == "succeeded"
         assert model_calls[0].usage_jsonb == usage
@@ -316,6 +318,115 @@ def test_a_path_metrics_keep_partial_component_usage_after_terminal_attempt(
             "task_attempt_fallbacks": 0,
             "task_run_fallbacks": 0,
         }
+
+
+def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    fail_planner = True
+    original_matrix_plan = agent_providers._add_fake_v10_matrix_plan
+
+    def matrix_plan_with_invalid_competition(
+        output_type: type[object],
+        payload: dict[str, object],
+    ) -> None:
+        original_matrix_plan(output_type, payload)
+        if not fail_planner or output_type.__name__ != "CaseBlueprintV1":
+            return
+        reasoning_paths = payload["reasoning_paths"]
+        assert isinstance(reasoning_paths, list)
+        shared_path = reasoning_paths[0]
+        assert isinstance(shared_path, dict)
+        shared_path["dependency_keys"] = [
+            "record",
+            "claim",
+            "hypothesis",
+            "alternative_hypothesis",
+        ]
+        payload["reasoning_paths"] = [shared_path]
+
+    with (
+        patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
+        patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v11",
+        ),
+        patch.object(
+            agent_providers,
+            "_add_fake_v10_matrix_plan",
+            side_effect=matrix_plan_with_invalid_competition,
+        ),
+    ):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="planner-semantic-gate"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+
+        assert worker.run_once() is True
+
+        with factory() as session:
+            failed = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
+            task_row = session.get(TaskRun, task_run_id)
+            attempt_one = session.scalar(
+                select(TaskAttempt).where(
+                    TaskAttempt.task_run_id == task_run_id,
+                    TaskAttempt.attempt_no == 1,
+                )
+            )
+            assert task_row is not None
+            assert attempt_one is not None
+            attempt_one_steps = list(
+                session.scalars(
+                    select(AgentStepRun).where(
+                        AgentStepRun.task_attempt_id == attempt_one.id
+                    )
+                )
+            )
+
+        assert failed["status"] == "failed"
+        assert failed["failure"]["retryable"] is True
+        assert {
+            issue["code"] for issue in failed["failure"]["issues"]
+        } == {"competing_hypothesis_path_plan_missing"}
+        quality_steps = [
+            step
+            for step in attempt_one_steps
+            if step.component_id == "quality_repair_gate"
+        ]
+        assert len(quality_steps) == 3
+        assert all(step.status == "failed" for step in quality_steps)
+        assert not any(
+            step.component_id == "run_coordinator" for step in attempt_one_steps
+        )
+
+        fail_planner = False
+        with factory() as session:
+            WorkflowService(session).resume_generation_task(
+                actor_id,
+                project_id,
+                task_run_id,
+                expected_draft_id=task_row.draft_id,
+                expected_draft_revision=task_row.input_draft_revision,
+                expected_brief_revision=task_row.input_brief_revision,
+            )
+
+        assert worker.run_once() is True
+
+        with factory() as session:
+            recovered = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
+        assert recovered["status"] == "succeeded"
+        attempt_two_planner = [
+            step
+            for step in recovered["component_steps"]
+            if step["attempt_no"] == 2
+            and step["component_id"] == "case_blueprint_planner"
+        ]
+        assert len(attempt_two_planner) == 1
+        assert attempt_two_planner[0]["status"] == "succeeded"
 
 
 def test_expired_lease_creates_a_new_attempt(
