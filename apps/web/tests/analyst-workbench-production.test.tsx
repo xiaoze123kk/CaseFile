@@ -479,7 +479,7 @@ describe("production analyst workbench", () => {
     const previewBanner = await screen.findByRole("status", {
       name: "候选预览只读提示",
     });
-    expect(previewBanner).toHaveTextContent("候选预览，不是 Current Draft");
+    expect(previewBanner).toHaveTextContent("候选预览，不是当前工作稿");
     expect(screen.getAllByText("候选调查员").length).toBeGreaterThan(0);
     expect(previewBanner).toHaveTextContent("结构优先 · Brief V4 · 任务 #73");
     expect(mocks.fetchDraftCandidatePreview).toHaveBeenCalledWith(42, 73);
@@ -1067,7 +1067,7 @@ describe("production analyst workbench", () => {
     );
 
     expect(screen.getByRole("dialog")).toHaveTextContent(
-      "候选预览只读；采用为 Current Draft 后才能编辑位置。",
+      "候选预览只读；采用为当前工作稿后才能编辑位置。",
     );
     expect(screen.queryByRole("button", { name: "编辑位置" })).toBeNull();
     expect(mocks.patchCaseDraftObject).not.toHaveBeenCalled();

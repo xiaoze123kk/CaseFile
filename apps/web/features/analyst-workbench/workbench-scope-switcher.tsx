@@ -126,7 +126,7 @@ export function ProjectSwitcher({
         >
           <header>
             <span>项目</span>
-            <small>切换后打开该项目的 Current Draft</small>
+            <small>切换后打开该项目的当前工作稿</small>
           </header>
           {projects === null && error === null ? (
             <div className={styles.menuState} role="status">正在读取项目列表…</div>
@@ -306,7 +306,7 @@ export function DraftSwitcher({
         >
           <header>
             <span>工作稿</span>
-            <small>选择后立即设为服务端 Current Draft</small>
+            <small>选择后立即设为服务端当前工作稿</small>
           </header>
           {drafts === null && error === null ? (
             <div className={styles.menuState} role="status">正在读取工作稿…</div>

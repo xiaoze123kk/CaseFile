@@ -367,7 +367,7 @@ export function TimelineOverview({
       });
       setNotice(
         data.can_confirm
-          ? "影响预览已完成；确认后才会写入 Current Draft。"
+          ? "影响预览已完成；确认后才会写入当前工作稿。"
           : "拟议时间未通过契约检查，请调整后重新预览。",
       );
     } catch (caught) {
@@ -378,7 +378,7 @@ export function TimelineOverview({
         data: null,
         message: caught instanceof Error ? caught.message : "时间预览失败。",
       });
-      setNotice("时间预览失败，Current Draft 未被修改。");
+      setNotice("时间预览失败，当前工作稿未被修改。");
     }
   }
 
@@ -463,7 +463,7 @@ export function TimelineOverview({
     setPending(null);
     setNotice(
       editable
-        ? "编辑后先查看影响，确认前不会写入 Current Draft。"
+        ? "编辑后先查看影响，确认前不会写入当前工作稿。"
         : "当前视图只读；可以核对时间语义，但不能写入。",
     );
   }
@@ -486,7 +486,7 @@ export function TimelineOverview({
       setPending(null);
       setEditor(null);
       setEditorEventId(null);
-      setNotice("事件时间已写入 Current Draft，时间轴已按最新事实顺序重排。");
+      setNotice("事件时间已写入当前工作稿，时间轴已按最新事实顺序重排。");
       return;
     }
     setPending({
@@ -1001,7 +1001,7 @@ export function TimelineOverview({
             </div>
           ) : null}
           {pending.message ? <p className={styles.previewError}>{pending.message}</p> : null}
-          <footer><button disabled={pending.status === "saving" || saving} onClick={() => setPending(null)} type="button">取消</button><button disabled={!pending.data?.can_confirm || pending.status === "saving" || saving} onClick={() => void confirmPreview()} type="button">{pending.status === "saving" || saving ? "正在写入…" : "确认写入 Current Draft"}</button></footer>
+          <footer><button disabled={pending.status === "saving" || saving} onClick={() => setPending(null)} type="button">取消</button><button disabled={!pending.data?.can_confirm || pending.status === "saving" || saving} onClick={() => void confirmPreview()} type="button">{pending.status === "saving" || saving ? "正在写入…" : "确认写入当前工作稿"}</button></footer>
         </section>
       ) : null}
     </section>

@@ -9,7 +9,15 @@ import type {
   WorkbenchReasoningGroup,
   WorkbenchSeed,
 } from "./analyst-fixture";
-import { reasoningOperationLabel } from "./workbench-presenters";
+import {
+  classificationLabel,
+  confirmationStatusLabel,
+  creatorDescription,
+  creatorLabel,
+  creatorText,
+  objectSubtypeLabel,
+  reasoningOperationLabel,
+} from "./workbench-presenters";
 import {
   buildFixtureSpatialModel,
   buildWorkbenchSpatialModel,
@@ -259,9 +267,9 @@ function confidenceText(value: number | null): string {
   return value === null ? "置信度未标注" : `置信度 ${Math.round(value * 100)}%`;
 }
 
-function metadataForObject(object: WorkbenchContractObject) {
+function metadataForObject(object: WorkbenchContractObject, kind: WorkbenchReferenceKind) {
   return {
-    description: typeof object.description === "string" ? object.description : "",
+    description: creatorDescription(object.description, kind),
     confidence: object.confidence,
     confirmationStatus: object.confirmation_status,
     revision: object.revision,
@@ -270,7 +278,7 @@ function metadataForObject(object: WorkbenchContractObject) {
 }
 
 function objectMeta(object: WorkbenchContractObject): string {
-  return `${confidenceText(object.confidence)} · ${object.confirmation_status}`;
+  return `${confidenceText(object.confidence)} · ${confirmationStatusLabel(object.confirmation_status)}`;
 }
 
 function buildRelatedEventIds(caseFile: CaseFileDocument): Map<string, Set<string>> {
@@ -321,58 +329,78 @@ function buildCaseObjects(caseFile: CaseFileDocument): WorkbenchCaseObject[] {
   const related = (id: string) => [...(relatedEvents.get(id) ?? [])].sort();
 
   return [
-    ...caseFile.entities.map((entity): WorkbenchCaseObject => ({
+    ...caseFile.entities.map((entity, index): WorkbenchCaseObject => ({
       id: entity.id,
       kind: "entity",
-      label: entity.name,
-      code: entity.entity_type,
+      label: creatorLabel(entity.name, {
+        kind: "entity",
+        index,
+        description: entity.description,
+      }),
+      code: objectSubtypeLabel(entity.entity_type),
       meta: objectMeta(entity),
       subtype: entity.entity_type,
-      ...metadataForObject(entity),
+      ...metadataForObject(entity, "entity"),
       relatedEventIds: related(entity.id),
       source: entity,
     })),
-    ...caseFile.information_units.map((information): WorkbenchCaseObject => ({
+    ...caseFile.information_units.map((information, index): WorkbenchCaseObject => ({
       id: information.id,
       kind: "information",
-      label: information.title,
-      code: `${information.information_type} · ${information.classification}`,
+      label: creatorLabel(information.title, {
+        kind: "information_unit",
+        index,
+        description: information.description,
+      }),
+      code: `${objectSubtypeLabel(information.information_type)} · ${classificationLabel(information.classification)}`,
       meta: objectMeta(information),
       subtype: information.information_type,
-      ...metadataForObject(information),
+      ...metadataForObject(information, "information_unit"),
       relatedEventIds: related(information.id),
       source: information,
     })),
-    ...caseFile.events.map((event): WorkbenchCaseObject => ({
+    ...caseFile.events.map((event, index): WorkbenchCaseObject => ({
       id: event.id,
       kind: "event",
-      label: event.title,
-      code: `${event.truth_status} · ${temporalSummary(event.time).precision}`,
+      label: creatorLabel(event.title, {
+        kind: "event",
+        index,
+        description: event.description,
+      }),
+      code: `${objectSubtypeLabel(event.truth_status)} · ${objectSubtypeLabel(temporalSummary(event.time).precision)}`,
       meta: objectMeta(event),
       subtype: event.truth_status,
-      ...metadataForObject(event),
+      ...metadataForObject(event, "event"),
       relatedEventIds: related(event.id),
       source: event,
     })),
-    ...caseFile.locations.map((location): WorkbenchCaseObject => ({
+    ...caseFile.locations.map((location, index): WorkbenchCaseObject => ({
       id: location.id,
       kind: "location",
-      label: location.name,
-      code: location.spatial_position?.coordinate_system ?? "topology",
+      label: creatorLabel(location.name, {
+        kind: "location",
+        index,
+        description: location.description,
+      }),
+      code: objectSubtypeLabel(location.spatial_position?.coordinate_system ?? "topology"),
       meta: objectMeta(location),
       subtype: location.spatial_position?.coordinate_system ?? "topology",
-      ...metadataForObject(location),
+      ...metadataForObject(location, "location"),
       relatedEventIds: related(location.id),
       source: location,
     })),
-    ...caseFile.hypotheses.map((hypothesis): WorkbenchCaseObject => ({
+    ...caseFile.hypotheses.map((hypothesis, index): WorkbenchCaseObject => ({
       id: hypothesis.id,
       kind: "hypothesis",
-      label: hypothesis.title,
-      code: hypothesis.status,
+      label: creatorLabel(hypothesis.title, {
+        kind: "hypothesis",
+        index,
+        description: hypothesis.description,
+      }),
+      code: objectSubtypeLabel(hypothesis.status),
       meta: objectMeta(hypothesis),
       subtype: hypothesis.status,
-      ...metadataForObject(hypothesis),
+      ...metadataForObject(hypothesis, "hypothesis"),
       relatedEventIds: related(hypothesis.id),
       source: hypothesis,
     })),
@@ -386,7 +414,14 @@ function buildTimeline(
 ): WorkbenchTimelineEvent[] {
   const objectIds = new Set(objects.map((object) => object.id));
   const locationNames = new Map(
-    caseFile.locations.map((location) => [location.id, location.name]),
+    caseFile.locations.map((location, index) => [
+      location.id,
+      creatorLabel(location.name, {
+        kind: "location",
+        index,
+        description: location.description,
+      }),
+    ]),
   );
   const temporalBounds = resolvedTemporalBounds(caseFile.events);
 
@@ -414,9 +449,13 @@ function buildTimeline(
         event: {
           id: event.id,
           time: temporal.label,
-          label: event.title,
+          label: creatorLabel(event.title, {
+            kind: "event",
+            index: originalIndex,
+            description: event.description,
+          }),
           location: locationId ? locationNames.get(locationId) ?? locationId : "未指定地点",
-          summary: typeof event.description === "string" ? event.description : "",
+          summary: creatorDescription(event.description, "event"),
           relatedObjectIds,
           issueIds: validationIssues
             .filter((issue) => issue.eventId === event.id)
@@ -496,61 +535,61 @@ function buildValidationIssues(
 
 function buildReferenceCatalog(caseFile: CaseFileDocument): Map<string, ReferenceCatalogEntry> {
   const entries: ReferenceCatalogEntry[] = [
-    { id: caseFile.casefile_id, kind: "casefile", label: caseFile.title },
-    ...caseFile.resolution_specs.map((item) => ({
+    { id: caseFile.casefile_id, kind: "casefile", label: creatorLabel(caseFile.title, { kind: "casefile", index: 0, description: caseFile.title }) },
+    ...caseFile.resolution_specs.map((item, index) => ({
       id: item.id,
       kind: "resolution_spec" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "resolution_spec", index, description: item.description }),
     })),
-    ...caseFile.entities.map((item) => ({
+    ...caseFile.entities.map((item, index) => ({
       id: item.id,
       kind: "entity" as const,
-      label: item.name,
+      label: creatorLabel(item.name, { kind: "entity", index, description: item.description }),
     })),
-    ...caseFile.relationships.map((item) => ({
+    ...caseFile.relationships.map((item, index) => ({
       id: item.id,
       kind: "relationship" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "relationship", index, description: item.description }),
     })),
-    ...caseFile.locations.map((item) => ({
+    ...caseFile.locations.map((item, index) => ({
       id: item.id,
       kind: "location" as const,
-      label: item.name,
+      label: creatorLabel(item.name, { kind: "location", index, description: item.description }),
     })),
-    ...caseFile.events.map((item) => ({
+    ...caseFile.events.map((item, index) => ({
       id: item.id,
       kind: "event" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "event", index, description: item.description }),
     })),
-    ...caseFile.information_units.map((item) => ({
+    ...caseFile.information_units.map((item, index) => ({
       id: item.id,
       kind: "information_unit" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "information_unit", index, description: item.description }),
     })),
-    ...caseFile.claims.map((item) => ({
+    ...caseFile.claims.map((item, index) => ({
       id: item.id,
       kind: "claim" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "claim", index, description: item.description }),
     })),
-    ...caseFile.hypotheses.map((item) => ({
+    ...caseFile.hypotheses.map((item, index) => ({
       id: item.id,
       kind: "hypothesis" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "hypothesis", index, description: item.description }),
     })),
-    ...caseFile.reasoning_paths.map((item) => ({
+    ...caseFile.reasoning_paths.map((item, index) => ({
       id: item.id,
       kind: "reasoning_path" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "reasoning_path", index, description: item.description }),
     })),
-    ...caseFile.constraints.map((item) => ({
+    ...caseFile.constraints.map((item, index) => ({
       id: item.id,
       kind: "constraint" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "constraint", index, description: item.description }),
     })),
-    ...caseFile.structure_locks.map((item) => ({
+    ...caseFile.structure_locks.map((item, index) => ({
       id: item.id,
       kind: "structure_lock" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "structure_lock", index, description: item.description }),
     })),
   ];
   return new Map(entries.map((entry) => [entry.id, entry]));
@@ -651,7 +690,11 @@ function buildRelationshipGraph(
       identity: `relationship:${relationship.id}`,
       from: readReference(relationship.from_ref),
       to: readReference(relationship.to_ref),
-      label: relationship.title || relationship.relationship_type,
+      label: creatorLabel(relationship.title, {
+        kind: "relationship",
+        index: caseFile.relationships.findIndex((item) => item.id === relationship.id),
+        description: relationship.description,
+      }),
       kind: "relationship",
       direction: relationship.direction,
       sourceObjectId: relationship.id,
@@ -948,11 +991,21 @@ function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath
       question: resolution?.reasoning_question ?? "",
       evidenceIds: uniqueStrings(steps.flatMap((step) => step.evidenceIds)),
       steps,
-      conclusion: hypothesis?.title ?? labelFor(target?.id ?? null),
+      conclusion: hypothesis
+        ? creatorLabel(hypothesis.title, {
+            kind: "hypothesis",
+            index: caseFile.hypotheses.findIndex((item) => item.id === hypothesis?.id),
+            description: hypothesis.description,
+          })
+        : labelFor(target?.id ?? null),
       outcome: outcomeForHypothesis(hypothesis),
       hypothesisId: hypothesis?.id ?? target?.id ?? path.id,
       targetHypothesisId: hypothesis?.id ?? null,
-      title: path.title,
+      title: creatorLabel(path.title, {
+        kind: "reasoning_path",
+        index: caseFile.reasoning_paths.findIndex((item) => item.id === path.id),
+        description: path.description,
+      }),
       pathType: path.path_type,
       targetId: target?.id ?? null,
       targetLabel: labelFor(target?.id ?? null),
@@ -1000,7 +1053,7 @@ function buildReasoningGroups(
         informationId,
         effect: assessment.effect,
         strength: assessment.strength,
-        rationale: assessment.rationale,
+        rationale: creatorText(assessment.rationale, "该判定依据待补充。"),
       });
     }
     groups.set(resolutionId, group);
@@ -1015,15 +1068,36 @@ function buildReasoningGroups(
       {
         resolutionSpecId: resolution.id,
         question:
-          resolution.reasoning_question || resolution.title || "未命名待解问题",
+          resolution.reasoning_question || resolution.title
+            ? creatorLabel(
+                resolution.reasoning_question || resolution.title,
+                {
+                  kind: "resolution_spec",
+                  index: caseFile.resolution_specs.findIndex((item) => item.id === resolution.id),
+                  description: resolution.description,
+                },
+              )
+            : "未命名待解问题",
         hypotheses: group.hypotheses.map((hypothesis) => ({
           id: hypothesis.id,
-          title: hypothesis.title,
+          title: creatorLabel(hypothesis.title, {
+            kind: "hypothesis",
+            index: caseFile.hypotheses.findIndex((item) => item.id === hypothesis.id),
+            description: hypothesis.description,
+          }),
           outcome: outcomeForHypothesis(hypothesis),
         })),
         information: caseFile.information_units.flatMap((item) =>
           group.informationIds.has(item.id)
-            ? [{ id: item.id, title: item.title, reliability: item.reliability }]
+            ? [{
+                id: item.id,
+                title: creatorLabel(item.title, {
+                  kind: "information_unit",
+                  index: caseFile.information_units.findIndex((candidate) => candidate.id === item.id),
+                  description: item.description,
+                }),
+                reliability: item.reliability,
+              }]
             : [],
         ),
         assessments: group.assessments,
@@ -1071,22 +1145,26 @@ function buildCaseMeta(input: {
   const actor = [...realObjects]
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0]
     ?.created_by.actor_id ?? "system";
+  const caseTitle = creatorLabel(input.caseFile.title, {
+    kind: "casefile",
+    index: 0,
+  });
   return {
-    title: input.caseFile.title,
-    monogram: Array.from(input.caseFile.title.trim())[0] ?? "案",
-    subtitle: `CaseFile ${input.caseFile.schema_version} · Current Draft`,
+    title: caseTitle,
+    monogram: Array.from(caseTitle.trim())[0] ?? "案",
+    subtitle: `卷宗契约 ${input.caseFile.schema_version} · 当前工作稿`,
     revision: `R${input.draftRevision}`,
-    timelineTitle: input.caseFile.title,
+    timelineTitle: caseTitle,
     timelineMeta: input.timeline.length
-      ? `${input.timeline.length} EVENTS${firstTime && lastTime ? ` · ${timelineClock(firstTime)} → ${timelineClock(lastTime)}` : ""}`
-      : "0 EVENTS",
-    mapTitle: `${input.caseFile.title} / 空间图`,
-    mapMeta: modeLabel || "0 LOCATIONS",
+      ? `${input.timeline.length} 个事件${firstTime && lastTime ? ` · ${timelineClock(firstTime)} → ${timelineClock(lastTime)}` : ""}`
+      : "0 个事件",
+    mapTitle: `${caseTitle} / 空间图`,
+    mapMeta: modeLabel || "0 个地点",
     mapNote: `${input.map.counts.geographic} 个地理坐标 · ${input.map.counts.scene} 个场景坐标 · ${input.map.counts.inferred} 个推算位置 · ${input.map.counts.unlocated} 个未定位`,
     relationshipSummary: `${input.graph.nodes.length} 个节点 · ${input.graph.edges.length} 条边`,
-    exportTitle: input.caseFile.title,
+    exportTitle: caseTitle,
     exportCode: input.caseFile.casefile_id,
-    exportSubtitle: "基于当前 Draft 的开发预览",
+    exportSubtitle: "基于当前工作稿的开发预览",
     dossierVisibleRoles: `${input.caseFile.entities.length} 个实体`,
     branchLabel: "当前工作稿",
     protagonist: actor,

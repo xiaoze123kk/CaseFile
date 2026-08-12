@@ -6,6 +6,9 @@ import {
   classificationLabel,
   confidenceLabel,
   confirmationStatusLabel,
+  creatorDescription,
+  creatorLabel,
+  creatorText,
   formatCaseWallClock,
   objectSubtypeLabel,
   objectTypeLabel,
@@ -85,6 +88,14 @@ const collectionLabels: Record<DetailCollection, string> = {
   hypotheses: "假设",
 };
 
+const collectionObjectTypes: Record<DetailCollection, string> = {
+  entities: "entity",
+  information_units: "information_unit",
+  events: "event",
+  locations: "location",
+  hypotheses: "hypothesis",
+};
+
 const fieldPathLabels: Record<string, string> = {
   aliases: "别名",
   availability: "可获得性",
@@ -159,14 +170,41 @@ function section(title: string, fields: Array<DetailField | null>): DetailSectio
   return presentFields.length ? { title, fields: presentFields } : null;
 }
 
-function titleFor(record: Record<string, unknown>): string {
-  return (
+function titleFor(
+  record: Record<string, unknown>,
+  objectType: string,
+  index = 0,
+): string {
+  return creatorLabel(
     stringValue(record.name) ||
-    stringValue(record.title) ||
-    stringValue(record.statement) ||
-    stringValue(record.proposition) ||
-    "未命名对象"
+      stringValue(record.title) ||
+      stringValue(record.statement) ||
+      stringValue(record.proposition),
+    {
+      kind: objectType,
+      index,
+      description: stringValue(record.description),
+    },
   );
+}
+
+function creatorTextField(
+  label: string,
+  value: unknown,
+  fallback: string,
+): DetailField | null {
+  const text = stringValue(value);
+  return text ? { kind: "text", label, value: creatorText(text, fallback) } : null;
+}
+
+function creatorListField(
+  label: string,
+  value: unknown,
+): DetailField | null {
+  const values = stringList(value).map((item, index) =>
+    creatorText(item, `${label} ${index + 1} 待补充`),
+  );
+  return values.length ? { kind: "list", label, values } : null;
 }
 
 function catalogEntry(
@@ -179,7 +217,7 @@ function catalogEntry(
   return {
     id,
     kindLabel: objectTypeLabel(objectType),
-    label: titleFor(object),
+    label: titleFor(object, objectType),
     missing: false,
     selectable,
   };
@@ -349,8 +387,12 @@ function structureLocksFor(
   return document.structure_locks.flatMap((lock) => {
     if (asObjectRef(lock.object_ref)?.object_id !== objectId) return [];
     return [{
-      title: lock.title,
-      reason: lock.reason,
+      title: creatorLabel(lock.title, {
+        kind: "structure_lock",
+        index: document.structure_locks.findIndex((item) => item.id === lock.id),
+        description: lock.description,
+      }),
+      reason: creatorText(lock.reason, "该结构约束的说明待补充。"),
       fields: lock.field_paths.map(fieldPathLabel),
     }];
   });
@@ -367,7 +409,11 @@ function relationshipsFor(
     const counterpart = from?.object_id === objectId ? to : to?.object_id === objectId ? from : null;
     if (!counterpart) return [];
     return [{
-      title: relationship.title || "关联关系",
+      title: creatorLabel(relationship.title, {
+        kind: "relationship",
+        index: document.relationships.findIndex((item) => item.id === relationship.id),
+        description: relationship.description,
+      }),
       counterpart: resolveReference(counterpart, catalog),
     }];
   });
@@ -378,7 +424,7 @@ function sectionsFor(
   object: Record<string, unknown>,
   catalog: Map<string, DetailReference>,
 ): { coreSections: DetailSection[]; moreSections: DetailSection[] } {
-  const commonMore = [section("补充信息", [listField("标签", object.tags)])].filter(
+  const commonMore = [section("补充信息", [creatorListField("标签", object.tags)])].filter(
     (item): item is DetailSection => item !== null,
   );
 
@@ -386,16 +432,16 @@ function sectionsFor(
     return {
       coreSections: compact([
         section("核心信息", [
-          listField("别名", object.aliases),
-          listField("特征", object.traits),
+          creatorListField("别名", object.aliases),
+          creatorListField("特征", object.traits),
         ]),
       ]),
       moreSections: [
         ...compact([
           section("人物与实体设定", [
-            listField("目标", object.goals),
-            listField("秘密", object.secrets),
-            listField("能力", object.capabilities),
+            creatorListField("目标", object.goals),
+            creatorListField("秘密", object.secrets),
+            creatorListField("能力", object.capabilities),
             listField("知识状态", formatKnowledgeStates(object.knowledge_states, catalog)),
           ]),
         ]),
@@ -408,7 +454,7 @@ function sectionsFor(
     const availability = asRecord(object.availability);
     return {
       coreSections: compact([
-        section("信息内容", [textField("正文", object.content)]),
+        section("信息内容", [creatorTextField("正文", object.content, "信息正文待补充。")]),
         section("判断", [
           textField("可靠度", reliabilityLabel(stringValue(object.reliability))),
           textField("事实状态", objectSubtypeLabel(stringValue(object.truth_status))),
@@ -424,7 +470,7 @@ function sectionsFor(
           ]),
           section("获得条件", [
             referenceField("可获得者", availability?.perspective_refs, catalog),
-            listField("获得条件", availability?.acquisition_conditions),
+            creatorListField("获得条件", availability?.acquisition_conditions),
             referenceField("替代路径", availability?.alternative_path_refs, catalog),
           ]),
         ]),
@@ -470,9 +516,9 @@ function sectionsFor(
         ...compact([
           section("地点规则", [
             referenceField("相邻地点", object.adjacency_refs, catalog),
-            listField("通行规则", object.access_rules),
+            creatorListField("通行规则", object.access_rules),
             listField("移动时间", formatTravelTimes(object.travel_times, catalog)),
-            listField("可见性规则", object.visibility_rules),
+            creatorListField("可见性规则", object.visibility_rules),
           ]),
         ]),
         ...commonMore,
@@ -482,7 +528,9 @@ function sectionsFor(
 
   return {
     coreSections: compact([
-      section("假设内容", [textField("命题", object.proposition)]),
+      section("假设内容", [
+        creatorTextField("命题", object.proposition, "假设命题待补充。"),
+      ]),
       section("判断", [
         textField("状态", objectSubtypeLabel(stringValue(object.status))),
         typeof object.score === "number"
@@ -540,7 +588,10 @@ export function buildObjectDetailModel(
     ),
     confirmationLabel: confirmationStatusLabel(stringValue(record.confirmation_status)),
     coreSections,
-    description: stringValue(record.description),
+    description: creatorDescription(
+      stringValue(record.description),
+      collectionObjectTypes[collection],
+    ),
     id: object.id,
     kindLabel: collectionLabels[collection],
     moreSections,
@@ -561,6 +612,10 @@ export function buildObjectDetailModel(
       ) as Extract<DetailField, { kind: "text" }> | null,
       textField("更新时间", record.updated_at) as Extract<DetailField, { kind: "text" }> | null,
     ]).map((field) => ({ label: field.label, value: field.value })),
-    title: titleFor(record),
+    title: titleFor(
+      record,
+      collectionObjectTypes[collection],
+      document[collection].findIndex((item) => item.id === object.id),
+    ),
   };
 }

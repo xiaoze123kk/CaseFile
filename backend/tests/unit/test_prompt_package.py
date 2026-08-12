@@ -7,12 +7,16 @@ import shutil
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
+from casefile.agent_runtime.brief_to_draft_v8 import workflow as generation_workflow
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
 from casefile.agent_runtime.prompt import (
     V10_GENERATION_AGENT_VERSION,
     V11_GENERATION_AGENT_VERSION,
     V12_GENERATION_AGENT_VERSION,
+    V13_GENERATION_AGENT_VERSION,
+    V14_GENERATION_AGENT_VERSION,
 )
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package
 from casefile.agent_runtime.prompt_repository import (
@@ -276,3 +280,129 @@ def test_v12_package_generates_temporal_plan_then_injects_it_into_story() -> Non
         payload["component_id"] == "story_world" and payload["schema_id"] == "story-world-ir-v3"
         for payload in started
     )
+
+
+def test_v13_fake_provider_keeps_temporal_generation_topology() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=325,
+        prompt_version="brief-to-draft-v13",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v13",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v13",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v13",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V13_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    started = [
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
+    ]
+    assert {payload["package_version"] for payload in started if "package_version" in payload} == {
+        "brief-to-draft-v13"
+    }
+    assert any(payload["component_id"] == "temporal_structure_planner" for payload in started)
+
+
+def test_v14_fake_provider_enforces_chinese_creator_text_and_keeps_topology() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=326,
+        prompt_version="brief-to-draft-v14",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v14",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v14",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v14",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V14_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    started = [
+        payload
+        for event_type, _stage, payload in events
+        if event_type == "agent.step.started"
+    ]
+    assert {payload["package_version"] for payload in started if "package_version" in payload} == {
+        "brief-to-draft-v14"
+    }
+    assert any(payload["component_id"] == "temporal_structure_planner" for payload in started)
+
+
+def test_v14_creator_language_gate_attributes_nested_english_text() -> None:
+    candidate = {
+        "title": "中文卷宗",
+        "information_units": [
+            {
+                "title": "Archive Access Logs",
+                "description": "中文说明",
+                "content": "English-only evidence content.",
+                "availability": {"acquisition_conditions": ["Read the terminal logs."]},
+            }
+        ],
+        "hypotheses": [
+            {
+                "title": "中文假设",
+                "description": "中文说明",
+                "proposition": "中文命题",
+                "evidence_assessments": [{"rationale": "Internal access is likely."}],
+            }
+        ],
+    }
+
+    issues = generation_workflow._creator_chinese_issues(candidate)
+
+    assert {issue["path"] for issue in issues} == {
+        "/information_units/0/title",
+        "/information_units/0/content",
+        "/information_units/0/availability/acquisition_conditions/0",
+        "/hypotheses/0/evidence_assessments/0/rationale",
+    }
+    assert {issue["component_id"] for issue in issues} == {"evidence_logic"}
+
+
+def test_v14_blueprint_language_gate_rejects_english_visible_fields() -> None:
+    blueprint = generation_workflow.CaseBlueprintV1.model_validate(
+        {
+            "title": "English Case Title",
+            "resolution_specs": [
+                {
+                    "local_key": "resolution",
+                    "title": "核心问题",
+                    "purpose": "Explain the mystery.",
+                    "dependency_keys": [],
+                }
+            ],
+        }
+    )
+
+    issues = generation_workflow._blueprint_creator_chinese_issues(blueprint)
+
+    assert {issue["path"] for issue in issues} == {
+        "/title",
+        "/resolution_specs/0/purpose",
+    }
+    assert {issue["component_id"] for issue in issues} == {"case_blueprint_planner"}

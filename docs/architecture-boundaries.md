@@ -27,7 +27,7 @@
 | `scripts/bootstrap.ps1` | 幂等准备本地 `.env` 与加密主密钥、两个 PostgreSQL 容器、开发库迁移、51 表/head 验证，以及可选开发用户种子。 |
 | `scripts/dev.ps1` | 从仓库根目录启动 `apps/web` 本地开发服务器；API 与 Worker 仍按各自入口启动。 |
 | `scripts/benchmark.ps1` | `brief_to_draft` Provider 级 Benchmark CLI 入口，支持 fake/openai/deepseek、重复运行和可选 JSON 报告；失败或环境阻断会返回非零状态，运行时发布验收另走 API/Worker/PostgreSQL 集成测试。 |
-| `scripts/acceptance-brief-to-draft-v8.ps1` | 显式触发真实 Provider 的组件化 Brief-to-Draft 运行时验收；兼容 v8–v11、默认验证 v11，仅使用当前本地配置凭据的密文副本和隔离 `*_test` 数据库，轮换五类时间/空间/竞争矩阵场景并验证 API、Worker、持久化、SSE 与未自动采用边界。 |
+| `scripts/acceptance-brief-to-draft-v8.ps1` | 显式触发真实 Provider 的组件化 Brief-to-Draft 运行时验收；兼容 v8–v14、默认验证 v14，仅使用当前本地配置凭据的密文副本和隔离 `*_test` 数据库，轮换五类时间/空间/竞争矩阵场景并验证 API、Worker、持久化、SSE 与未自动采用边界。 |
 | `scripts/test-a-path-e2e.ps1` | 在隔离 `*_test` 数据库和零成本 FakeProvider 上自启动 Next.js、FastAPI 与独立 Worker，执行 A 路径 Playwright 浏览器黄金测试并核对候选显式采用边界。 |
 | `scripts/generate-contracts.ps1` | 从根目录跨语言 Schema 生成 Python/TypeScript 契约包。 |
 | `scripts/check-contracts.ps1` | 检查根目录跨语言契约生成漂移和 Fixture 往返。 |

@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -33,6 +24,8 @@ from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
 from casefile.agent_runtime.brief_to_draft_v10.workflow import run_v10_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
 from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generation
+from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
+from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -84,6 +77,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -424,6 +426,8 @@ class FakeProvider:
                     "brief-to-draft-v10",
                     "brief-to-draft-v11",
                     "brief-to-draft-v12",
+                    "brief-to-draft-v13",
+                    "brief-to-draft-v14",
                 }:
                     _add_fake_v10_matrix_plan(output_type, output)
                 if output_type.__name__ == "ResolutionGovernanceIRV1":
@@ -449,7 +453,11 @@ class FakeProvider:
                 return output, usage
 
             runner = (
-                run_v12_generation
+                run_v14_generation
+                if request.prompt_version == "brief-to-draft-v14"
+                else run_v13_generation
+                if request.prompt_version == "brief-to-draft-v13"
+                else run_v12_generation
                 if request.prompt_version == "brief-to-draft-v12"
                 else run_v11_generation
                 if request.prompt_version == "brief-to-draft-v11"
@@ -770,7 +778,11 @@ class OpenAIAgentsProvider:
                 )
 
             runner = (
-                run_v12_generation
+                run_v14_generation
+                if request.prompt_version == "brief-to-draft-v14"
+                else run_v13_generation
+                if request.prompt_version == "brief-to-draft-v13"
+                else run_v12_generation
                 if request.prompt_version == "brief-to-draft-v12"
                 else run_v11_generation
                 if request.prompt_version == "brief-to-draft-v11"
@@ -1019,7 +1031,11 @@ class DeepSeekAgentsProvider:
                 )
 
             runner = (
-                run_v12_generation
+                run_v14_generation
+                if request.prompt_version == "brief-to-draft-v14"
+                else run_v13_generation
+                if request.prompt_version == "brief-to-draft-v13"
+                else run_v12_generation
                 if request.prompt_version == "brief-to-draft-v12"
                 else run_v11_generation
                 if request.prompt_version == "brief-to-draft-v11"
@@ -1191,6 +1207,7 @@ async def _run_auxiliary_agent(
         try:
             discarded_paths: list[str] = []
             normalized_ref_paths: list[str] = []
+            normalized_time_paths: list[str] = []
             if protocol == "strict_tool":
                 if not request.api_key:
                     raise ProviderProtocolError("DeepSeek API key is required")
@@ -1210,6 +1227,7 @@ async def _run_auxiliary_agent(
                     discarded_paths=discarded_paths,
                     planned_object_types=planned_object_types,
                     normalized_ref_paths=normalized_ref_paths,
+                    normalized_time_paths=normalized_time_paths,
                 )
             else:
                 resolved_instructions = instructions
@@ -1255,6 +1273,7 @@ async def _run_auxiliary_agent(
                         discarded_paths=discarded_paths,
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
+                        normalized_time_paths=normalized_time_paths,
                     )
             if discarded_paths:
                 request.emit(
@@ -1269,6 +1288,15 @@ async def _run_auxiliary_agent(
                     {
                         "paths": normalized_ref_paths,
                         "field_count": len(normalized_ref_paths),
+                    },
+                )
+            if normalized_time_paths:
+                request.emit(
+                    "validation.wall_clock_times_normalized",
+                    stage,
+                    {
+                        "paths": normalized_time_paths,
+                        "field_count": len(normalized_time_paths),
                     },
                 )
             usage = _merge_structured_usage(usage_records)

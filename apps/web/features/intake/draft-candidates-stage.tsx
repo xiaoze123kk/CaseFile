@@ -102,9 +102,9 @@ export function DraftCandidatesStage() {
       .sort((left, right) => left.step_run_id - right.step_run_id)
       .map((step) => [step.component_id, step]),
   );
-  const failedComponent = [...latestComponentSteps.values()].find(
-    (step) => step.status === "failed",
-  );
+  const failedComponent = [...latestComponentSteps.values()]
+    .filter((step) => step.status === "failed")
+    .sort((left, right) => right.step_run_id - left.step_run_id)[0] ?? null;
   const taskFailure = selectedSlot?.latestTask?.failure ?? null;
   const recoveryAvailable = Boolean(
     taskFailure?.retryable || failedComponent?.recoverable,
@@ -540,6 +540,7 @@ function pipelineRows(steps: Map<string, { status: PipelineStatus }>) {
   const domains = [
     { id: "story_world", label: "故事世界", status: direct("story_world") },
     { id: "evidence_logic", label: "证据推理", status: direct("evidence_logic") },
+    { id: "temporal_structure_planner", label: "时间结构规划", status: direct("temporal_structure_planner") },
     { id: "resolution_governance", label: "解答治理", status: direct("resolution_governance") },
   ];
   const domainStatus: PipelineStatus = domains.some((item) => item.status === "failed")
@@ -565,6 +566,7 @@ function componentLabel(componentId: string) {
   const domains: Record<string, string> = {
     story_world: "故事世界",
     evidence_logic: "证据推理",
+    temporal_structure_planner: "时间结构规划",
     resolution_governance: "解答治理",
   };
   return pipelineRows(new Map()).find((row) => row.id === componentId)?.label

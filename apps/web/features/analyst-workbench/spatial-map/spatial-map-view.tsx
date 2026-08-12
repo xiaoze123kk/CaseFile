@@ -319,7 +319,7 @@ export function SpatialMapView({
             preview: position,
             dirty,
             latestChanged: false,
-            notice: dirty ? "本地预览尚未写入 Current Draft。" : null,
+            notice: dirty ? "本地预览尚未写入当前工作稿。" : null,
             status: "idle",
           });
           onPositionEditStateChange?.(true, dirty);
@@ -421,7 +421,7 @@ export function SpatialMapView({
   function startPositionEdit() {
     if (!activeBaseLocation?.locationId || readOnlyReason) return;
     if (!onSaveSpatialPosition || !onReloadSpatialLocation) {
-      setInteractionNotice("当前空间卷宗没有可用的 Current Draft 写入通道。");
+      setInteractionNotice("当前空间卷宗没有可用的工作稿写入通道。");
       return;
     }
     if (onRequestPositionEdit && !onRequestPositionEdit(activeBaseLocation.locationId)) {
@@ -455,7 +455,7 @@ export function SpatialMapView({
       notice:
         activeBaseLocation.source === "inferred"
           ? "保存后将把关系推算位置确认为场景坐标。"
-          : "拖动只更新本地预览，保存前不会修改 Current Draft。",
+          : "拖动只更新本地预览，保存前不会修改当前工作稿。",
       status: "idle",
     });
     onPositionEditStateChange?.(true, false);
@@ -474,7 +474,7 @@ export function SpatialMapView({
       !onSaveSpatialPosition
     ) return;
     setEditSession((current) =>
-      current ? { ...current, notice: "正在写入 Current Draft…", status: "saving" } : current,
+      current ? { ...current, notice: "正在写入当前工作稿…", status: "saving" } : current,
     );
     const result = await onSaveSpatialPosition(
       editSession.locationId,
@@ -491,7 +491,7 @@ export function SpatialMapView({
             ...current,
             notice:
               result === "conflict"
-                ? "Current Draft 已更新。本地预览已保留，请先核对最新版。"
+                ? "当前工作稿已更新。本地预览已保留，请先核对最新版。"
                 : "位置未保存，请检查字段或服务状态后重试。",
             status: result === "conflict" ? "conflict" : "error",
           }
@@ -558,7 +558,7 @@ export function SpatialMapView({
   const effectiveReadOnlyReason =
     readOnlyReason ??
     (!onSaveSpatialPosition
-      ? "此视图只读；只有 Current Draft 可以编辑位置。"
+      ? "此视图只读；只有当前工作稿可以编辑位置。"
       : null);
   const editActionLabel =
     mode === "topology" && activeBaseLocation?.source === "schematic"
@@ -571,7 +571,7 @@ export function SpatialMapView({
     <section className={styles.spatialView} aria-labelledby="spatial-map-heading">
       <header className={styles.header}>
         <div className={styles.heading}>
-          <span>空间卷宗 · SPATIAL FILE</span>
+          <span>空间卷宗 · 空间图</span>
           <h2 id="spatial-map-heading">{title}</h2>
         </div>
         <div className={styles.headerMeta}>

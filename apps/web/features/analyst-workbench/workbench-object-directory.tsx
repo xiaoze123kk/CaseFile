@@ -162,7 +162,7 @@ export function WorkbenchObjectDirectory({
           <span>对象目录</span>
           <small>
             {filtered ? `${queryMatches.length} / ` : ""}
-            {objects.length} OBJECTS
+            {objects.length} 个对象
           </small>
         </div>
         <button
@@ -217,7 +217,7 @@ export function WorkbenchObjectDirectory({
           >
             <div className={styles.subtypeHeading}>
               <span>{objectKindLabels[kindFilter]} / 子类型</span>
-              <small>{subtypeOptions.length} TYPES</small>
+              <small>{subtypeOptions.length} 种类型</small>
             </div>
             <div className={styles.subtypeOptions}>
               <button

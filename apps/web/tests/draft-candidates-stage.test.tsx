@@ -49,6 +49,41 @@ describe("draft candidate cancellation feedback", () => {
         (item) => item.textContent,
       ),
     ).toEqual(Array(6).fill("等待"));
+    expect(within(pipeline).getByText("时间结构规划 · 等待")).toBeInTheDocument();
+  });
+
+  it("shows the newest failed execution instead of an earlier repaired gate", () => {
+    const state = generatingState(false);
+    const task = generationTask("failed");
+    task.component_steps = [
+      failedStep({
+        stepRunId: 901,
+        componentId: "quality_repair_gate",
+        executionNo: 5,
+        message: "早期质量门禁失败",
+      }),
+      failedStep({
+        stepRunId: 902,
+        componentId: "temporal_structure_planner",
+        executionNo: 2,
+        message: "分钟精度不能包含秒",
+      }),
+    ];
+    state.generation.slots.structure_first = {
+      status: "failed",
+      stage: "failed",
+      taskRunId: task.task_run_id,
+      attempt: 1,
+      error: task.failure?.message ?? null,
+      latestTask: task,
+    };
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByText("时间结构规划执行失败")).toBeInTheDocument();
+    expect(screen.getByText("/assignments/0/time/value · 分钟精度不能包含秒")).toBeInTheDocument();
+    expect(screen.queryByText("早期质量门禁失败")).not.toBeInTheDocument();
   });
 
   it("uses retryable task diagnostics when a legacy coordinator step is not recoverable", () => {
@@ -331,5 +366,42 @@ function generationTask(status: TaskView["status"]): TaskView {
     component_steps: [],
     created_at: "2026-08-09T00:00:00Z",
     updated_at: "2026-08-09T00:01:00Z",
+  };
+}
+
+function failedStep({
+  stepRunId,
+  componentId,
+  executionNo,
+  message,
+}: {
+  stepRunId: number;
+  componentId: string;
+  executionNo: number;
+  message: string;
+}): TaskView["component_steps"][number] {
+  return {
+    step_run_id: stepRunId,
+    attempt_no: 1,
+    component_id: componentId,
+    parent_component_id: null,
+    execution_no: executionNo,
+    status: "failed",
+    schema_id: "temporal-plan-v1",
+    input_hash: "failed-step-input",
+    output_hash: null,
+    failure_layer: "schema_validation",
+    issues: [
+      {
+        component_id: componentId,
+        failure_layer: "schema_validation",
+        schema_id: "temporal-plan-v1",
+        code: "validation_failed",
+        path: "/assignments/0/time/value",
+        message,
+      },
+    ],
+    recoverable: true,
+    resumed_from_step_run_id: null,
   };
 }

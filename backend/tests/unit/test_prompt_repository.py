@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
@@ -14,6 +15,8 @@ from casefile.agent_runtime.prompt import (
     V10_GENERATION_AGENT_VERSION,
     V11_GENERATION_AGENT_VERSION,
     V12_GENERATION_AGENT_VERSION,
+    V13_GENERATION_AGENT_VERSION,
+    V14_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -34,7 +37,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v12",
+    "brief_to_draft": "brief-to-draft-v14",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -132,6 +135,28 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "6207f57a035dd69369e91e290c904eb50541256f26a29b50e9f850b69a9e070c",
         "fragment:governance": "e8308618584c0ae881fb7a4185078493afa58cd125cdc242511bbca952cd79d5",
     },
+    ("brief_to_draft", "brief-to-draft-v13"): {
+        "fragment:common": "c1033e9ac83816e019d6cc8bee76010316ac178d2ba45070f86f9da09697d8d6",
+        "fragment:planner": "bbb57f4bd968f066467345b86ba788e5087d5b15d79561a71d0b9f08925f9ba4",
+        "fragment:temporal": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3",
+        "fragment:domain_common": (
+            "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"
+        ),
+        "fragment:story": "ebb727a0b54af0e80cfd7473bbeedce9385790d1a856e8611c7e076363751f58",
+        "fragment:evidence": "6207f57a035dd69369e91e290c904eb50541256f26a29b50e9f850b69a9e070c",
+        "fragment:governance": "e8308618584c0ae881fb7a4185078493afa58cd125cdc242511bbca952cd79d5",
+    },
+    ("brief_to_draft", "brief-to-draft-v14"): {
+        "fragment:common": "0e06a0b1643fc7a399a72d62e47fab3a6d5919c65561068cdc9c79bc0cb6ae74",
+        "fragment:planner": "010d32410cbe56cce36029d611b6ae5df1b8b46a96a6f115deb37f984f617ddc",
+        "fragment:temporal": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3",
+        "fragment:domain_common": (
+            "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+        ),
+        "fragment:story": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04",
+        "fragment:evidence": "20c3b8aca5508bf3fc2ce27c829e8c869c6e1fbc5e32b293f5cc484d0de4acd2",
+        "fragment:governance": "9335ce9839adad5de5f9a49c081bf8e5ccd8d9d72305f11f874b5866413ae3dc",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -166,6 +191,14 @@ def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v12")
         == V12_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v13")
+        == V13_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v14")
+        == V14_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
@@ -252,6 +285,19 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert v12.package.components["story"].output_schema_id == "story-world-ir-v3"
     assert "不得输出 kind=unknown" in v12.component_prompts["temporal"]
     assert "严禁输出 time" in v12.component_prompts["story"]
+    v13 = load_prompt("brief_to_draft", "brief-to-draft-v13")
+    assert v13.package is not None
+    assert v13.package.runtime_agent_version == V13_GENERATION_AGENT_VERSION
+    assert "minute 禁止追加 :00" in v13.component_prompts["temporal"]
+    assert "禁止追加 :00 或 :00:00" in v13.component_prompts["temporal"]
+    assert "不得输出小数秒、Z、UTC 或任何时区偏移" in v13.component_prompts["temporal"]
+    v14 = load_prompt("brief_to_draft", "brief-to-draft-v14")
+    assert v14.package is not None
+    assert v14.package.runtime_agent_version == V14_GENERATION_AGENT_VERSION
+    assert "所有面向创作者的自然语言字段都必须使用简体中文" in v14.component_prompts["planner"]
+    assert "不得输出纯英文标题、说明、命题、正文或判定依据" in v14.component_prompts[
+        "evidence"
+    ]
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]

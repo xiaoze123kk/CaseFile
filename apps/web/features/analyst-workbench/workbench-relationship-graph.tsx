@@ -157,7 +157,7 @@ export function RelationshipGraph({
         </div>
         <div className={styles.sectionTrailing}>
           <small>
-            {visibleNodeIds.size} NODES · {sceneEdges.length} EDGES
+            {visibleNodeIds.size} 个节点 · {sceneEdges.length} 条关系
           </small>
         </div>
       </header>

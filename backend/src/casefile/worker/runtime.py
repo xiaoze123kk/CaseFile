@@ -1445,16 +1445,28 @@ def _previous_attempt_failed_steps(
     )
     if previous_attempt is None:
         return []
-    return list(
+    steps = list(
         session.scalars(
             select(AgentStepRun)
-            .where(
-                AgentStepRun.task_attempt_id == previous_attempt.id,
-                AgentStepRun.status == "failed",
-            )
+            .where(AgentStepRun.task_attempt_id == previous_attempt.id)
             .order_by(AgentStepRun.id)
         )
     )
+    # One TaskAttempt can contain several full provider.generate runs because
+    # structural repair retries restart the component graph. Component-local
+    # execution_no values are not comparable across components, while the
+    # context builder is the deterministic first step of every full run.
+    latest_generation_start = next(
+        (step for step in reversed(steps) if step.component_id == "context_pack_builder"),
+        None,
+    )
+    if latest_generation_start is None:
+        return [step for step in steps if step.status == "failed"]
+    return [
+        step
+        for step in steps
+        if step.status == "failed" and step.id >= latest_generation_start.id
+    ]
 
 
 def _previous_attempt_repair_feedback(

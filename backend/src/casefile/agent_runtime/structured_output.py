@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import lru_cache
@@ -259,6 +260,7 @@ def validate_model_json(
     discarded_paths: list[str] | None = None,
     planned_object_types: dict[str, str] | None = None,
     normalized_ref_paths: list[str] | None = None,
+    normalized_time_paths: list[str] | None = None,
 ) -> BaseModel:
     """Validate JSON and apply only deterministic, precisely located normalization."""
 
@@ -269,6 +271,10 @@ def validate_model_json(
             return output_type.model_validate_json(raw_output)
         except ValidationError as error:
             raise ContractValidationError(pydantic_validation_issues(error)) from error
+
+    time_paths = _normalize_temporal_plan_wall_clock_values(payload, output_type)
+    if normalized_time_paths is not None:
+        normalized_time_paths.extend(time_paths)
 
     try:
         return output_type.model_validate(payload)
@@ -292,6 +298,56 @@ def validate_model_json(
                 normalized_ref_paths.extend(normalized)
             return validated
         raise ContractValidationError(pydantic_validation_issues(error)) from error
+
+
+def _normalize_temporal_plan_wall_clock_values(
+    payload: Any,
+    output_type: type[BaseModel],
+) -> list[str]:
+    """Remove only zero-valued precision suffixes from TemporalPlanV1 clocks."""
+
+    if output_type.__name__ != "TemporalPlanV1" or not isinstance(payload, dict):
+        return []
+    assignments = payload.get("assignments")
+    if not isinstance(assignments, list):
+        return []
+
+    normalized: list[str] = []
+    for index, assignment in enumerate(assignments):
+        if not isinstance(assignment, dict):
+            continue
+        time = assignment.get("time")
+        if not isinstance(time, dict):
+            continue
+        precision = time.get("precision")
+        fields = ("start", "end") if time.get("kind") == "range" else ("value",)
+        for field in fields:
+            value = time.get(field)
+            if not isinstance(value, str) or not isinstance(precision, str):
+                continue
+            result = _trim_zero_wall_clock_suffix(value, precision)
+            if result == value:
+                continue
+            time[field] = result
+            normalized.append(f"/assignments/{index}/time/{field}")
+    return normalized
+
+
+def _trim_zero_wall_clock_suffix(value: str, precision: str) -> str:
+    patterns = {
+        "day": (r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2})T00(?::00(?::00(?:\.0{1,6})?)?)?$",),
+        "hour": (
+            r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}):00(?::00(?:\.0{1,6})?)?$",
+        ),
+        "minute": (
+            r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}):00(?:\.0{1,6})?$",
+        ),
+    }
+    for pattern in patterns.get(precision, ()):
+        match = re.fullmatch(pattern, value)
+        if match is not None:
+            return match.group("kept")
+    return value
 
 
 def pydantic_validation_issues(error: ValidationError) -> list[dict[str, str]]:

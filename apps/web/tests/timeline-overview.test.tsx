@@ -200,7 +200,7 @@ describe("editable proportional timeline", () => {
     expect(
       await screen.findByRole("dialog", { name: "时间修改影响预览" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "确认写入 Current Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认写入当前工作稿" }));
     await waitFor(() => expect(onConfirmTime).toHaveBeenCalledTimes(1));
   });
 

@@ -7,11 +7,14 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
-import casefile.agent_runtime.providers as providers_module
-import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+import casefile.agent_runtime.providers as providers_module
+import casefile.agent_runtime.structured_output as structured_module
+from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
@@ -27,8 +30,9 @@ from casefile.agent_runtime.structured_output import (
     compile_deepseek_strict_schema,
     pydantic_validation_issues,
     strict_fallback_reason,
+    validate_model_json,
 )
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from casefile.contracts import ContractValidationError
 
 
 class _StrictSchemaFixture(BaseModel):
@@ -97,6 +101,126 @@ def test_compile_strict_schema_closes_objects_and_preserves_nullable_shape() -> 
 def test_compile_strict_schema_rejects_open_maps_without_weakening_them() -> None:
     with pytest.raises(StrictSchemaIneligible, match="Open object"):
         compile_deepseek_strict_schema(_OpenMapFixture)
+
+
+def test_temporal_plan_normalizes_only_zero_precision_suffixes() -> None:
+    normalized_paths: list[str] = []
+    result = validate_model_json(
+        TemporalPlanV1,
+        json.dumps(
+            {
+                "assignments": [
+                    {
+                        "event_key": "discovery",
+                        "time": {
+                            "kind": "exact",
+                            "value": "2031-10-14T22:30:00",
+                            "precision": "minute",
+                        },
+                        "basis": "design_anchor",
+                        "basis_refs": [],
+                    },
+                    {
+                        "event_key": "follow_up",
+                        "time": {
+                            "kind": "approximate",
+                            "value": "2031-10-14T23:00",
+                            "precision": "hour",
+                        },
+                        "basis": "design_anchor",
+                        "basis_refs": [],
+                    },
+                ]
+            }
+        ),
+        normalized_time_paths=normalized_paths,
+    )
+
+    assert result.assignments[0].time.value == "2031-10-14T22:30"
+    assert result.assignments[1].time.value == "2031-10-14T23"
+    assert normalized_paths == [
+        "/assignments/0/time/value",
+        "/assignments/1/time/value",
+    ]
+
+
+def test_temporal_plan_does_not_normalize_nonzero_or_timezone_suffixes() -> None:
+    for value in ("2031-10-14T22:30:15", "2031-10-14T22:30+08:00"):
+        with pytest.raises(ContractValidationError):
+            validate_model_json(
+                TemporalPlanV1,
+                json.dumps(
+                    {
+                        "assignments": [
+                            {
+                                "event_key": "discovery",
+                                "time": {
+                                    "kind": "exact",
+                                    "value": value,
+                                    "precision": "minute",
+                                },
+                                "basis": "design_anchor",
+                                "basis_refs": [],
+                            }
+                        ]
+                    }
+                ),
+            )
+
+
+def test_temporal_normalization_emits_an_observable_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def fake_runner_run(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            final_output=json.dumps(
+                {
+                    "assignments": [
+                        {
+                            "event_key": "discovery",
+                            "time": {
+                                "kind": "exact",
+                                "value": "2031-10-14T22:30:00",
+                                "precision": "minute",
+                            },
+                            "basis": "design_anchor",
+                            "basis_refs": [],
+                        }
+                    ]
+                }
+            ),
+            context_wrapper=SimpleNamespace(usage=_usage()),
+        )
+
+    monkeypatch.setattr(providers_module.Runner, "run", fake_runner_run)
+    request = _request(events)
+    output, _usage_result = asyncio.run(
+        _run_auxiliary_agent(
+            request,
+            model=DeepSeekAgentsProvider().create_model(request),
+            model_settings=ModelSettings(),
+            instructions="Return JSON.",
+            input_text="input",
+            output_type=TemporalPlanV1,
+            stage="temporal_planning",
+            structured_output=False,
+            tracing_disabled=True,
+            component_id="temporal_structure_planner",
+            schema_id="temporal-plan-v1",
+            deepseek_output_protocol="json_object",
+        )
+    )
+
+    assert output["assignments"][0]["time"]["value"] == "2031-10-14T22:30"
+    normalized = next(
+        event for event in events if event[0] == "validation.wall_clock_times_normalized"
+    )
+    assert normalized[2] == {
+        "paths": ["/assignments/0/time/value"],
+        "field_count": 1,
+    }
 
 
 def test_literal_validation_feedback_includes_allowed_enum_without_input() -> None:

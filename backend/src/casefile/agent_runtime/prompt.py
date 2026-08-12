@@ -17,19 +17,39 @@ V9_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v9"
 V10_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v10"
 V11_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v11"
 V12_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v12"
+V13_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v13"
+V14_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v14"
 BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
     "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
     "brief-to-draft-v10": V10_GENERATION_AGENT_VERSION,
     "brief-to-draft-v11": V11_GENERATION_AGENT_VERSION,
     "brief-to-draft-v12": V12_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v13": V13_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v14": V14_GENERATION_AGENT_VERSION,
 }
 COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
 PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
-    {"brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12"}
+    {
+        "brief-to-draft-v9",
+        "brief-to-draft-v10",
+        "brief-to-draft-v11",
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+    }
 )
 COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
-    {"brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12"}
+    {
+        "brief-to-draft-v10",
+        "brief-to-draft-v11",
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+    }
+)
+TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
+    {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14"}
 )
 
 
@@ -180,11 +200,14 @@ __all__ = [
     "COMPETITION_MATRIX_PROMPT_VERSIONS",
     "COMPONENT_GENERATION_PROMPT_VERSIONS",
     "PROMPT_PACKAGE_GENERATION_VERSIONS",
+    "TEMPORAL_PLAN_PROMPT_VERSIONS",
     "V8_GENERATION_AGENT_VERSION",
     "V9_GENERATION_AGENT_VERSION",
     "V10_GENERATION_AGENT_VERSION",
     "V11_GENERATION_AGENT_VERSION",
     "V12_GENERATION_AGENT_VERSION",
+    "V13_GENERATION_AGENT_VERSION",
+    "V14_GENERATION_AGENT_VERSION",
     "agent_version_for_task",
     "anchor_extract_input",
     "brief_intake_questions_input",

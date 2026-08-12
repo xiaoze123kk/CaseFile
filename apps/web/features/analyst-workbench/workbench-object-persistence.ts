@@ -31,7 +31,7 @@ export function useWorkbenchObjectPersistence({
   const saveInFlightRef = useRef(false);
 
   async function loadLatestDraft(): Promise<DraftView> {
-    if (projectId === null) throw new Error("Current Draft 项目标识缺失");
+    if (projectId === null) throw new Error("当前工作稿的项目标识缺失");
     const latest = await fetchCaseDraft(projectId);
     onDraftLoaded(latest);
     onRefreshContext();

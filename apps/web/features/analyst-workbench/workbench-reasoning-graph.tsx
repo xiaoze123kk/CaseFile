@@ -15,7 +15,7 @@ import {
   type WorkbenchCanvasSceneNode,
 } from "./workbench-canvas-kernel";
 import type { WorkbenchCanvasLayoutIdentity } from "./workbench-canvas-layout";
-import { reasoningOutcomeLabels } from "./workbench-presenters";
+import { reasoningOutcomeLabels, reliabilityLabel } from "./workbench-presenters";
 
 type ReasoningNodeKind = "evidence" | "reason" | "hypothesis";
 
@@ -116,7 +116,7 @@ function ReasoningMatrix({
     return (
       <section className={styles.reasoningMatrixEmpty}>
         <strong>当前工作稿还没有可比较的假设。</strong>
-        <p>推理过程图仍会保留已有路径；竞争矩阵只读取 Current Draft 的显式假设。</p>
+        <p>推理过程图仍会保留已有路径；竞争矩阵只读取当前工作稿的显式假设。</p>
       </section>
     );
   }
@@ -204,7 +204,7 @@ function ReasoningMatrix({
                     type="button"
                   >
                     <span>{information.title}</span>
-                    <small>可靠性 · {information.reliability}</small>
+                    <small>可靠性 · {reliabilityLabel(information.reliability)}</small>
                   </button>
                 </th>
                 {selectedGroup.hypotheses.map((hypothesis) => {
@@ -245,7 +245,7 @@ function ReasoningMatrix({
               type="button"
             >
               <span>{information.title}</span>
-              <small>可靠性 · {information.reliability}</small>
+              <small>可靠性 · {reliabilityLabel(information.reliability)}</small>
             </button>
             <ul>
               {selectedGroup.hypotheses.map((hypothesis) => {

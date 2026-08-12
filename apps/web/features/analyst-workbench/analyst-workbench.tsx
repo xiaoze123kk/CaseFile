@@ -299,7 +299,7 @@ function EvidenceComparison({
         </article>
       </div>
       <div className={styles.diffPanel}>
-        <header><span>建议修订</span><b>人工批准前不会写入 Canon</b></header>
+        <header><span>建议修订</span><b>人工批准前不会写入正式版本</b></header>
         <div className={styles.diffLine} data-kind="remove"><b>−</b><p>{issue.patchBefore}</p></div>
         <div className={styles.diffLine} data-kind="add"><b>+</b><p>{issue.patchAfter}</p></div>
         {editing ? (
@@ -688,7 +688,7 @@ export function AnalystWorkbench({
         const latest = await fetchCaseDraft(loadedProjectId);
         setDraftLoad({ projectId: loadedProjectId, draft: latest, error: null });
         refreshContext();
-        throw new Error("Current Draft 已更新，请基于最新时间轴重新预览。");
+        throw new Error("当前工作稿已更新，请基于最新时间轴重新预览。");
       }
       throw caught;
     }
@@ -792,19 +792,19 @@ function CandidatePreviewFactBoundary({
     validation: {
       title: "生成候选已通过完整 Contract 校验",
       detail:
-        "只读预览不会读取 Current Draft 的验证读模型；明确采用后，才能基于当前修订重新验证。",
+        "只读预览不会读取当前工作稿的验证读模型；明确采用后，才能基于当前修订重新验证。",
     },
     sources: {
-      title: "候选预览不读取 Current Draft 来源",
+      title: "候选预览不读取当前工作稿来源",
       detail:
-        "候选正文中的稳定引用仍可核对，但 SourceRecord 正文只随 Current Draft 读模型展示。",
+        "候选正文中的稳定引用仍可核对，但来源记录正文只随当前工作稿读模型展示。",
     },
     patch: {
       title: "候选预览不允许补丁操作",
       detail: "返回候选卷显式采用后，才能请求、批准或撤销补丁。",
     },
     audit: {
-      title: "候选尚未进入 Current Draft",
+      title: "候选尚未进入当前工作稿",
       detail:
         "GET 预览不会产生采用或编辑审计；明确采用后才会新增只追加事实。",
     },
@@ -1244,13 +1244,13 @@ function AnalystWorkbenchSurface({
   function revalidateAll() {
     if (blockDirtyObjectNavigation()) return;
     if (writeLocked) {
-      announce("候选预览为只读；采用为 Current Draft 后才能重新验证。");
+      announce("候选预览为只读；采用为当前工作稿后才能重新验证。");
       return;
     }
     if (realData) {
       setInspectorTab("issues");
       onReloadContext?.();
-      announce("正在重新读取当前 Draft 并执行确定性验证。");
+      announce("正在重新读取当前工作稿并执行确定性验证。");
       return;
     }
     setValidationPhase("running");
@@ -1444,7 +1444,7 @@ function AnalystWorkbenchSurface({
         >
           <div>
             <span>READ-ONLY CANDIDATE</span>
-            <strong>候选预览，不是 Current Draft</strong>
+            <strong>候选预览，不是当前工作稿</strong>
             <p>
               {previewCandidate.candidate_strategy_label} · Brief V
               {previewCandidate.brief_version_no} · 任务 #{previewCandidate.task_run_id}
@@ -1457,7 +1457,7 @@ function AnalystWorkbenchSurface({
             </small>
             {previewProjectId ? (
               <Link href={`/workbench?project=${previewProjectId}`}>
-                查看 Current Draft
+                查看当前工作稿
               </Link>
             ) : null}
             <Link href="/">返回候选卷</Link>
@@ -1668,7 +1668,7 @@ function AnalystWorkbenchSurface({
                 selectedObjectId={selectedObjectId}
                 readOnlyReason={
                   writeLocked
-                    ? "候选预览只读；采用为 Current Draft 后才能编辑位置。"
+                    ? "候选预览只读；采用为当前工作稿后才能编辑位置。"
                     : !realData
                       ? "本地样例只读，不写入持久化位置。"
                       : !onSaveSpatialPosition
@@ -1822,7 +1822,7 @@ function AnalystWorkbenchSurface({
               writeLocked ? (
                 <CandidatePreviewFactBoundary area="patch" />
               ) : realData || !selectedIssue ? (
-                <div className={styles.realEmptyState}><strong>补丁审阅尚未接入</strong><p>当前不会生成或批准样例补丁；对象编辑会直接写入真实 Draft。</p></div>
+                <div className={styles.realEmptyState}><strong>补丁审阅尚未接入</strong><p>当前不会生成或批准样例补丁；对象编辑会直接写入真实工作稿。</p></div>
               ) : <div className={styles.patchInspector}>
                 {selectedStatus === "patch-ready" || selectedStatus === "resolved" ? (
                   <>

@@ -86,7 +86,7 @@ export function SpatialAuditPanel({
         id="spatial-audit-panel"
       >
         <header>
-          <div><span>COORDINATE AUDIT</span><strong>图层与待确认项</strong></div>
+          <div><span>坐标核对</span><strong>图层与待确认项</strong></div>
           <button
             aria-label="收起空间核验工具"
             onClick={closeAuditPanel}

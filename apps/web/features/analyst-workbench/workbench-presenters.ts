@@ -80,6 +80,24 @@ const objectTypeLabels: Record<string, string> = {
   structure_lock: "结构锁",
 };
 
+const creatorTextTypeLabels: Record<string, string> = {
+  casefile: "卷宗",
+  claim: "论断",
+  constraint: "约束",
+  entity: "实体",
+  event: "事件",
+  hypothesis: "假设",
+  information: "信息",
+  information_unit: "信息",
+  location: "地点",
+  reasoning_path: "推理路径",
+  relationship: "关系",
+  resolution_spec: "目标问题",
+  structure_lock: "结构锁",
+  source_fragment: "来源片段",
+  unknown: "对象",
+};
+
 export interface CaseWallClock {
   date: string;
   fractionalSeconds: string;
@@ -96,6 +114,41 @@ export function objectSubtypeLabel(value: string): string {
 
 export function objectTypeLabel(value: string): string {
   return objectTypeLabels[value] ?? "其他对象";
+}
+
+function chineseExcerpt(value: string | null | undefined): string {
+  const text = value?.trim() ?? "";
+  if (!/[\u3400-\u9fff]/u.test(text)) return "";
+  return (text.match(/^[^。！？!?]*[。！？!?]?/u)?.[0] ?? text)
+    .replace(/^[\s、，：:；;“”‘’（）()《》<>-]+|[\s、，：:；;“”‘’（）()《》<>-]+$/g, "")
+    .slice(0, 80)
+    .trim();
+}
+
+export function creatorText(value: string | null | undefined, fallback: string): string {
+  const text = value?.trim() ?? "";
+  if (!text) return fallback;
+  return /[\u3400-\u9fff]/u.test(text) ? text : fallback;
+}
+
+export function creatorLabel(
+  value: string | null | undefined,
+  options: { kind: string; index: number; description?: string | null },
+): string {
+  const typeLabel = creatorTextTypeLabels[options.kind] ?? "对象";
+  const fallback = `${typeLabel} ${options.index + 1}（标题待补充）`;
+  const title = chineseExcerpt(value);
+  if (title) return title;
+  const fromDescription = chineseExcerpt(options.description);
+  return fromDescription || fallback;
+}
+
+export function creatorDescription(
+  value: string | null | undefined,
+  kind: string,
+): string {
+  const typeLabel = creatorTextTypeLabels[kind] ?? "对象";
+  return creatorText(value, `该${typeLabel}的创作说明待补充。`);
 }
 
 export function reliabilityLabel(value: string): string {

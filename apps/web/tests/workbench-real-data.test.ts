@@ -576,6 +576,60 @@ describe("real workbench data mapper", () => {
     });
   });
 
+  it("does not expose English-only generated text on Chinese workbench surfaces", () => {
+    const caseFile = makeCaseFile();
+    caseFile.information_units[0] = {
+      ...caseFile.information_units[0],
+      title: "Archive Access Logs",
+      description: "Access logs showing who opened the archive.",
+      content: "The archive was opened from an external address.",
+    };
+    caseFile.claims[0] = {
+      ...caseFile.claims[0],
+      title: "The Records Were Modified",
+      description: "The files contain signs of manipulation.",
+      statement: "The records were changed after creation.",
+    };
+    caseFile.hypotheses[0] = {
+      ...caseFile.hypotheses[0],
+      title: "The Manipulator Is an Insider",
+      description: "An insider changed the records.",
+      proposition: "An insider is responsible.",
+      evidence_assessments: [
+        {
+          information_ref: ref("information_unit", "info_gate_log"),
+          effect: "supports",
+          strength: "strong",
+          rationale: "The access log points to an insider.",
+        },
+      ],
+    };
+    caseFile.reasoning_paths[0] = {
+      ...caseFile.reasoning_paths[0],
+      title: "Internal Manipulator Reasoning Path",
+      description: "A reasoning chain for the insider hypothesis.",
+    };
+
+    const model = mapCaseFileToWorkbenchModel(caseFile, 7);
+    const information = model.caseObjects.find((item) => item.id === "info_gate_log");
+
+    expect(information?.label).toBe("信息 1（标题待补充）");
+    expect(information?.description).toBe("该信息的创作说明待补充。");
+    expect(model.graphNodes.find((item) => item.id === "claim_record_changed")?.label)
+      .toBe("论断 1（标题待补充）");
+    expect(model.reasoningPaths[0]).toMatchObject({
+      conclusion: "假设 1（标题待补充）",
+      title: "推理路径 1（标题待补充）",
+    });
+    expect(model.reasoningPaths[0].steps[0].claim).not.toMatch(/[A-Za-z]{2,}/);
+    expect(model.reasoningGroups[0].hypotheses[0].title)
+      .toBe("假设 1（标题待补充）");
+    expect(model.reasoningGroups[0].information[0].title)
+      .toBe("信息 1（标题待补充）");
+    expect(model.reasoningGroups[0].assessments[0].rationale)
+      .toBe("该判定依据待补充。");
+  });
+
   it("projects a relative event onto an existing wall-clock anchor without changing its source semantics", () => {
     const caseFile = makeCaseFile();
     caseFile.events = [

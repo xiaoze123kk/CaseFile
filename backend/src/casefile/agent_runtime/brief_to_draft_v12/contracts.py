@@ -41,7 +41,9 @@ class DraftContextPackV3(StrictAgentOutput):
     schema_id: Literal["draft-context-pack-v3"] = "draft-context-pack-v3"
     task_run_id: int = Field(ge=1)
     casefile_schema_version: Literal["2.0"] = "2.0"
-    prompt_bundle_version: Literal["brief-to-draft-v12"] = "brief-to-draft-v12"
+    prompt_bundle_version: Literal["brief-to-draft-v12", "brief-to-draft-v13"] = (
+        "brief-to-draft-v12"
+    )
     candidate_strategy: str = Field(min_length=1)
     candidate_strategy_version: str = Field(min_length=1)
     brief: dict[str, object]

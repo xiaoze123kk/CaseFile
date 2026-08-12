@@ -203,7 +203,7 @@ export function ExportView({
           <span>导出预览</span>
           <h2 id="export-heading">{seed.caseMeta.exportTitle}</h2>
         </div>
-        <small>{realData ? "DEVELOPMENT PREVIEW" : ready ? "READY" : "GATE BLOCKED"}</small>
+        <small>{realData ? "开发预览" : ready ? "可以导出" : "门禁阻断"}</small>
       </header>
       <div className={styles.exportSheet}>
         <div className={styles.exportCover}>
@@ -235,7 +235,7 @@ export function ExportView({
           <button disabled={!ready} type="button">
             {realData ? "正式导出尚未接入" : "生成导出包"}
           </button>
-          {realData ? <p>当前页面仅从真实 Draft 派生开发预览。</p> : !ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
+          {realData ? <p>当前页面仅从真实工作稿派生开发预览。</p> : !ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
         </div>
       </div>
     </section>
@@ -282,7 +282,7 @@ const compileTargets: Array<{
   {
     id: "test",
     label: "测试材料",
-    caption: "QA 用例",
+    caption: "质量核验用例",
     description: "验证问题与门禁检查，供测试与验收。",
   },
 ];
@@ -382,7 +382,7 @@ export function CompileCenterView({
           <span>编译中心</span>
           <h2 id="compile-heading">同一份卷宗，多种形式</h2>
         </div>
-        <small>{compileTargets.length} FORMATS</small>
+        <small>{compileTargets.length} 种格式</small>
       </header>
       <div className={styles.compileTargets} aria-label="编译目标">
         {compileTargets.map((item) => (

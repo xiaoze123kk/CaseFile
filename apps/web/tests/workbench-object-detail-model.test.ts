@@ -126,4 +126,24 @@ describe("workbench object detail model", () => {
       },
     ]);
   });
+
+  it("keeps English-only generated values out of browse-mode labels", () => {
+    const withEnglishInformation: CaseFile = {
+      ...document,
+      information_units: document.information_units.map((information) =>
+        information.id === "info_restart_log"
+          ? {
+              ...information,
+              title: "Archive Access Logs",
+              description: "Access logs showing who opened the archive.",
+            }
+          : information,
+      ),
+    };
+
+    expect(buildObjectDetailModel(withEnglishInformation, "info_restart_log")).toMatchObject({
+      title: "信息 1（标题待补充）",
+      description: "该信息的创作说明待补充。",
+    });
+  });
 });

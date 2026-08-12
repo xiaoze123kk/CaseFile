@@ -29,7 +29,7 @@ function ContextStateMessage({
     return (
       <div aria-busy="true" className={styles.realEmptyState}>
         <strong>{loadingTitle}</strong>
-        <p>正在从当前 Draft 的服务端读模型读取事实。</p>
+        <p>正在从当前工作稿的服务端读模型读取事实。</p>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export function WorkbenchValidationPanel({
   if (validation.status === "unavailable") {
     return (
       <div className={styles.realEmptyState}>
-        <strong>当前 Draft 暂不可验证</strong>
+        <strong>当前工作稿暂不可验证</strong>
         <p>草稿尚未关联已确认的 Brief；采用候选后可重新验证。</p>
         <button onClick={onRetry} type="button">重新验证</button>
       </div>
@@ -105,7 +105,7 @@ export function WorkbenchValidationPanel({
           </li>
         ))}
       </ol>
-      <button onClick={onRetry} type="button">重新验证当前 Draft</button>
+      <button onClick={onRetry} type="button">重新验证当前工作稿</button>
     </div>
   );
 }
@@ -121,7 +121,7 @@ export function WorkbenchSourcesPanel({
   if (!context) {
     return (
       <ContextStateMessage
-        emptyDetail="当前冻结 Brief 没有登记 SourceRecord。"
+        emptyDetail="当前冻结简报没有登记来源记录。"
         emptyTitle="暂无来源记录"
         loadingTitle="正在读取来源正文"
         onRetry={onRetry}
@@ -132,15 +132,15 @@ export function WorkbenchSourcesPanel({
   if (context.sources.length === 0 && context.contract_source_refs.length === 0) {
     return (
       <div className={styles.realEmptyState}>
-        <strong>当前 Draft 没有可展示的来源</strong>
-        <p>这里只展示冻结 Brief 实际引用的 SourceRecord，不会补入本地样例。</p>
+        <strong>当前工作稿没有可展示的来源</strong>
+        <p>这里只展示冻结简报实际引用的来源记录，不会补入本地样例。</p>
         <button onClick={onRetry} type="button">重新读取</button>
       </div>
     );
   }
   return (
     <div className={styles.sourceInspector}>
-      <p>来源正文来自冻结 Brief 记录的 SourceRecord；表名、主键和内容哈希共同构成可追溯标识。</p>
+      <p>来源正文来自冻结简报记录的来源记录；表名、主键和内容哈希共同构成可追溯标识。</p>
       {context.sources.map((source) => (
         <SourceRecordCard key={source.trace_id} source={source} />
       ))}
@@ -193,7 +193,7 @@ export function WorkbenchAuditPanel({
   if (!context) {
     return (
       <ContextStateMessage
-        emptyDetail="当前 Draft 还没有只追加的操作或审计事实。"
+        emptyDetail="当前工作稿还没有只追加的操作或审计事实。"
         emptyTitle="暂无审计记录"
         loadingTitle="正在读取审计事实"
         onRetry={onRetry}
@@ -204,7 +204,7 @@ export function WorkbenchAuditPanel({
   if (context.audit_entries.length === 0) {
     return (
       <div className={styles.realEmptyState}>
-        <strong>当前 Draft 尚无审计事实</strong>
+        <strong>当前工作稿尚无审计事实</strong>
         <p>这里仅展示 audit_events 与 draft_operations 的现有记录。</p>
         <button onClick={onRetry} type="button">重新读取</button>
       </div>
@@ -213,7 +213,7 @@ export function WorkbenchAuditPanel({
   return (
     <div className={styles.auditInspector}>
       <div className={styles.auditStatus}>
-        <span>当前 Draft 修订</span>
+        <span>当前工作稿修订</span>
         <strong>R{context.draft_revision}</strong>
         <small>{context.audit_entries.length} 条真实只追加事实</small>
       </div>

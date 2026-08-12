@@ -43,10 +43,12 @@ from casefile.agent_runtime.brief_to_draft_v12.contracts import (
     temporal_plan_issues,
     temporal_story_issues,
 )
+from casefile.agent_runtime.brief_to_draft_v14.contracts import DraftContextPackV4
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.prompt import (
     COMPETITION_MATRIX_PROMPT_VERSIONS,
     PROMPT_PACKAGE_GENERATION_VERSIONS,
+    TEMPORAL_PLAN_PROMPT_VERSIONS,
 )
 from casefile.agent_runtime.prompt_package import (
     PromptPackageError,
@@ -84,6 +86,33 @@ _STEP_SCHEMA = {
 _V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
 _V12_PROMPT_COMPONENTS = frozenset({"planner", "temporal", "story", "evidence", "governance"})
 _PACKAGE_PROMPT_VERSIONS = PROMPT_PACKAGE_GENERATION_VERSIONS
+
+_CREATOR_TEXT_FIELDS = frozenset(
+    {
+        "accepted_answer_texts",
+        "access_rules",
+        "acquisition_conditions",
+        "aliases",
+        "capabilities",
+        "content",
+        "description",
+        "goals",
+        "name",
+        "proposition",
+        "purpose",
+        "rationale",
+        "reason",
+        "reasoning_question",
+        "secrets",
+        "statement",
+        "tags",
+        "title",
+        "traits",
+        "visibility_rules",
+    }
+)
+_HAN_TEXT = re.compile(r"[\u3400-\u9fff]")
+_LATIN_TEXT = re.compile(r"[A-Za-z]")
 
 _DOMAIN_REFERENCE_CONTRACTS = {
     "story_world": {
@@ -167,11 +196,12 @@ async def run_v8_generation(
 
     _validate_frozen_prompt_release(request)
     is_v11 = request.prompt_version == "brief-to-draft-v11"
-    is_v12 = request.prompt_version == "brief-to-draft-v12"
-    uses_v2_context = is_v11 or is_v12
+    uses_temporal_plan = request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
+    uses_v2_context = is_v11 or uses_temporal_plan
     uses_competition_matrix = request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
+    repaired_components: set[str] = set()
     context = _build_context_pack(request)
     prior_repair_issues = _request_repair_issues(request)
     _deterministic_step(
@@ -180,8 +210,10 @@ async def run_v8_generation(
         "context_building",
         context.model_dump(mode="json"),
         schema_id=(
-            "draft-context-pack-v3"
-            if is_v12
+            "draft-context-pack-v4"
+            if request.prompt_version == "brief-to-draft-v14"
+            else "draft-context-pack-v3"
+            if uses_temporal_plan
             else "draft-context-pack-v2"
             if is_v11
             else "draft-context-pack-v1"
@@ -214,9 +246,35 @@ async def run_v8_generation(
             error = ContractValidationError(blueprint_issues)
             _emit_quality_gate_failure(request, error)
             raise error
+    if request.prompt_version == "brief-to-draft-v14":
+        blueprint_language_issues = _blueprint_creator_chinese_issues(blueprint)
+        if blueprint_language_issues:
+            repaired_components.add("case_blueprint_planner")
+            repaired_output, repaired_usage = await _model_step(
+                request,
+                call_component,
+                component_id="case_blueprint_planner",
+                prompt_component="planner",
+                stage="planning",
+                output_type=CaseBlueprintV1,
+                input_payload={
+                    "context_pack": context.model_dump(mode="json"),
+                    "targeted_repair_issues": blueprint_language_issues,
+                },
+            )
+            usage_records.append(repaired_usage)
+            blueprint = CaseBlueprintV1.model_validate(repaired_output)
+            remaining_blueprint_issues = [
+                *_v11_blueprint_issues(blueprint),
+                *_blueprint_creator_chinese_issues(blueprint),
+            ]
+            if remaining_blueprint_issues:
+                error = ContractValidationError(remaining_blueprint_issues)
+                _emit_quality_gate_failure(request, error, recoverable=False)
+                raise error
 
     temporal_plan: TemporalPlanV1 | None = None
-    if is_v12:
+    if uses_temporal_plan:
         temporal_output, temporal_usage = await _model_step(
             request,
             call_component,
@@ -267,9 +325,9 @@ async def run_v8_generation(
             "allowed_reference_values": _allowed_reference_values(blueprint, reference_contract),
             **({"targeted_repair_issues": repair_issues} if repair_issues else {}),
         }
-        if is_v12:
+        if uses_temporal_plan:
             if temporal_plan is None:
-                raise RuntimeError("brief-to-draft-v12 requires a temporal plan")
+                raise RuntimeError("temporal-planning versions require a temporal plan")
             input_payload["temporal_plan"] = temporal_plan.model_dump(mode="json")
         if uses_v2_context:
             input_payload["allowed_wgs84_coordinates"] = [
@@ -317,7 +375,7 @@ async def run_v8_generation(
         EvidenceLogicIRV2 if uses_competition_matrix else EvidenceLogicIRV1
     )
     story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3] = (
-        StoryWorldIRV3 if is_v12 else StoryWorldIRV2 if is_v11 else StoryWorldIRV1
+        StoryWorldIRV3 if uses_temporal_plan else StoryWorldIRV2 if is_v11 else StoryWorldIRV1
     )
     domain_results = await asyncio.gather(
         draft_domain(
@@ -343,9 +401,11 @@ async def run_v8_generation(
         story_output_type.model_validate(domain_results[0][0])
     )
     story: StoryWorldIRV1 | StoryWorldIRV2
-    if is_v12:
+    if uses_temporal_plan:
         if not isinstance(story_output, StoryWorldIRV3) or temporal_plan is None:
-            raise RuntimeError("brief-to-draft-v12 must use StoryWorldIRV3 and TemporalPlanV1")
+            raise RuntimeError(
+                "temporal-planning versions must use StoryWorldIRV3 and TemporalPlanV1"
+            )
         story = _with_temporal_plan(story_output, temporal_plan)
     else:
         if not isinstance(story_output, (StoryWorldIRV1, StoryWorldIRV2)):
@@ -359,7 +419,6 @@ async def run_v8_generation(
     governance = ResolutionGovernanceIRV1.model_validate(domain_results[2][0])
     usage_records.extend(result[1] for result in domain_results)
 
-    repaired_components: set[str] = set()
     for gate_attempt in range(2):
         try:
             if uses_competition_matrix:
@@ -374,16 +433,16 @@ async def run_v8_generation(
                     raise LinkerValidationError(matrix_issues)
             if uses_v2_context:
                 if not isinstance(story, StoryWorldIRV2):
-                    raise RuntimeError("v11 and v12 must compile through StoryWorldIRV2")
+                    raise RuntimeError("v11+ spatial runtimes must compile through StoryWorldIRV2")
                 story_issues = _v11_story_issues(
                     story,
                     _extract_allowed_wgs84_coordinates(request.brief),
                 )
                 if story_issues:
                     raise LinkerValidationError(story_issues)
-            if is_v12:
+            if uses_temporal_plan:
                 if not isinstance(story_output, StoryWorldIRV3) or temporal_plan is None:
-                    raise RuntimeError("brief-to-draft-v12 requires a temporal plan")
+                    raise RuntimeError("temporal-planning versions require a temporal plan")
                 temporal_issues = temporal_story_issues(story_output, temporal_plan)
                 if temporal_issues:
                     raise LinkerValidationError(temporal_issues)
@@ -394,7 +453,7 @@ async def run_v8_generation(
                 candidate,
                 recoverable=gate_attempt == 0,
             )
-            tools.calls = (5 if is_v12 else 4) + len(repaired_components)
+            tools.calls = (5 if uses_temporal_plan else 4) + len(repaired_components)
             tools.valid_calls = tools.calls
             tools.successful_calls = tools.calls
             tools.planned_object_ids = {entry.object_id for entry in linked.id_directory.values()}
@@ -445,10 +504,10 @@ async def run_v8_generation(
                 repaired_components.add(component_id)
                 if component_id == "story_world":
                     repaired_story = story_output_type.model_validate(value)
-                    if is_v12:
+                    if uses_temporal_plan:
                         if not isinstance(repaired_story, StoryWorldIRV3) or temporal_plan is None:
                             raise RuntimeError(
-                                "brief-to-draft-v12 repair lost temporal plan"
+                                "temporal-planning repair lost temporal plan"
                             ) from error
                         story_output = repaired_story
                         story = _with_temporal_plan(repaired_story, temporal_plan)
@@ -825,7 +884,7 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
             raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
         expected_components = (
             _V12_PROMPT_COMPONENTS
-            if request.prompt_version == "brief-to-draft-v12"
+            if request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
             else _V8_PROMPT_COMPONENTS
         )
         if set(package.components) != expected_components:
@@ -852,10 +911,17 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
 
 def _build_context_pack(
     request: GenerationRequest,
-) -> DraftContextPackV1 | DraftContextPackV2 | DraftContextPackV3:
-    context_type: type[DraftContextPackV1] | type[DraftContextPackV2] | type[DraftContextPackV3] = (
-        DraftContextPackV3
-        if request.prompt_version == "brief-to-draft-v12"
+) -> DraftContextPackV1 | DraftContextPackV2 | DraftContextPackV3 | DraftContextPackV4:
+    context_type: (
+        type[DraftContextPackV1]
+        | type[DraftContextPackV2]
+        | type[DraftContextPackV3]
+        | type[DraftContextPackV4]
+    ) = (
+        DraftContextPackV4
+        if request.prompt_version == "brief-to-draft-v14"
+        else DraftContextPackV3
+        if request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
         else DraftContextPackV2
         if request.prompt_version == "brief-to-draft-v11"
         else DraftContextPackV1
@@ -891,9 +957,9 @@ def _with_temporal_plan(
     story: StoryWorldIRV3,
     plan: TemporalPlanV1,
 ) -> StoryWorldIRV2:
-    """Inject the validated v12 time plan into the compiler-facing Story IR.
+    """Inject the validated temporal plan into the compiler-facing Story IR.
 
-    Time belongs to the dedicated Temporal Planner in v12.  The Story model
+    Time belongs to the dedicated Temporal Planner in temporal-planning versions. The Story model
     intentionally cannot replace it, so compilation receives the existing v2
     semantic shape only after this deterministic join.
     """
@@ -932,7 +998,7 @@ async def _model_step(
     output_type: type[BaseModel],
     input_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if component_id == "story_world" and request.prompt_version == "brief-to-draft-v12":
+    if component_id == "story_world" and request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS:
         schema_id = "story-world-ir-v3"
     elif component_id == "story_world" and request.prompt_version == "brief-to-draft-v11":
         schema_id = "story-world-ir-v2"
@@ -1228,6 +1294,10 @@ def _quality_gate(
                         )
         if description_issues:
             raise ContractValidationError(description_issues)
+        if request.prompt_version == "brief-to-draft-v14":
+            creator_language_issues = _creator_chinese_issues(candidate)
+            if creator_language_issues:
+                raise ContractValidationError(creator_language_issues)
         expected_mode = request.brief.get("conclusion_mode")
         mismatched = [
             index
@@ -1288,6 +1358,86 @@ def _affected_domain_components(error: ContractValidationError) -> set[str]:
                 affected.add(domain_component)
                 break
     return affected
+
+
+def _creator_chinese_issues(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    """Reject English-only creator-facing prose while preserving machine values."""
+
+    issues: list[dict[str, Any]] = []
+
+    def add_issue(path: str, component_id: str) -> None:
+        issues.append(
+            {
+                "code": "generated_creator_text_not_simplified_chinese",
+                "path": path,
+                "message": "面向作者的自然语言字段必须使用简体中文，不能输出纯英文。",
+                "component_id": component_id,
+                "failure_layer": "creator_language",
+                "schema_id": "casefile-v2",
+            }
+        )
+
+    def visit(value: object, path: str, component_id: str) -> None:
+        if isinstance(value, str):
+            if value.strip() and _LATIN_TEXT.search(value) and not _HAN_TEXT.search(value):
+                add_issue(path, component_id)
+            return
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                visit(item, f"{path}/{index}", component_id)
+
+    def scan(value: object, path: str, component_id: str) -> None:
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                scan(item, f"{path}/{index}", component_id)
+            return
+        if not isinstance(value, dict):
+            return
+        for field_name, field_value in value.items():
+            field_path = f"{path}/{field_name}"
+            if field_name in _CREATOR_TEXT_FIELDS:
+                visit(field_value, field_path, component_id)
+            elif isinstance(field_value, (dict, list)):
+                scan(field_value, field_path, component_id)
+
+    root_title = candidate.get("title")
+    visit(root_title, "/title", "case_blueprint_planner")
+    for component_id, collections in DOMAIN_COLLECTIONS.items():
+        for collection in collections:
+            values = candidate.get(collection)
+            if not isinstance(values, list):
+                continue
+            for index, item in enumerate(values):
+                scan(item, f"/{collection}/{index}", component_id)
+    for index, notice in enumerate(candidate.get("content_notices", [])):
+        scan(notice, f"/content_notices/{index}", "resolution_governance")
+    return issues[:50]
+
+
+def _blueprint_creator_chinese_issues(
+    blueprint: CaseBlueprintV1,
+) -> list[dict[str, Any]]:
+    issues: list[dict[str, Any]] = []
+
+    def inspect(value: str, path: str) -> None:
+        if value.strip() and _LATIN_TEXT.search(value) and not _HAN_TEXT.search(value):
+            issues.append(
+                {
+                    "code": "generated_creator_text_not_simplified_chinese",
+                    "path": path,
+                    "message": "Blueprint 面向作者的标题和用途必须使用简体中文。",
+                    "component_id": "case_blueprint_planner",
+                    "failure_layer": "creator_language",
+                    "schema_id": "case-blueprint-v1",
+                }
+            )
+
+    inspect(blueprint.title, "/title")
+    for collection in BLUEPRINT_COLLECTIONS:
+        for index, item in enumerate(getattr(blueprint, collection)):
+            inspect(item.title, f"/{collection}/{index}/title")
+            inspect(item.purpose, f"/{collection}/{index}/purpose")
+    return issues[:50]
 
 
 def _json_hash(value: object) -> str:

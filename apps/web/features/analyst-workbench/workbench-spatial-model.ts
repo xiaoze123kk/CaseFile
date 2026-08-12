@@ -3,6 +3,7 @@ import type { ObjectRef } from "@casefile/contracts";
 import type { CaseFileDocument } from "@/lib/api-client";
 
 import type { WorkbenchSeed } from "./analyst-fixture";
+import { creatorLabel } from "./workbench-presenters";
 import type {
   WorkbenchMapModel,
   SpatialLayerVisibility,
@@ -218,6 +219,7 @@ function locationRelatedObjectIds(
 
 function makeSpatialLocation(input: {
   location: ContractLocation;
+  locationIndex: number;
   source: WorkbenchSpatialLocation["source"];
   position: WorkbenchSpatialPosition;
   events: WorkbenchSpatialEvent[];
@@ -225,7 +227,11 @@ function makeSpatialLocation(input: {
   return {
     spatialId: input.location.id,
     locationId: input.location.id,
-    label: input.location.name,
+    label: creatorLabel(input.location.name, {
+      kind: "location",
+      index: input.locationIndex,
+      description: input.location.description,
+    }),
     source: input.source,
     position: input.position,
     events: input.events,
@@ -338,12 +344,13 @@ export function buildWorkbenchSpatialModel(
   const spatialRelations = buildSpatialRelations(caseFile.locations);
   const eventMap = eventsByLocation(timelineEvents);
   const geographicLocations = caseFile.locations
-    .flatMap((location) => {
+    .flatMap((location, locationIndex) => {
       const position = positions.get(location.id);
       return position?.kind === "wgs84"
         ? [
             makeSpatialLocation({
               location,
+              locationIndex,
               source: "wgs84",
               position: {
                 kind: "wgs84",
@@ -388,6 +395,7 @@ export function buildWorkbenchSpatialModel(
         ? [
             makeSpatialLocation({
               location,
+              locationIndex: caseFile.locations.findIndex((item) => item.id === location.id),
               source: "schematic",
               position: { kind: "planar", ...position },
               events: eventMap.get(location.id) ?? [],
@@ -413,6 +421,7 @@ export function buildWorkbenchSpatialModel(
       return [
         makeSpatialLocation({
           location,
+          locationIndex: caseFile.locations.findIndex((item) => item.id === location.id),
           source: position.inferred ? "inferred" : "schematic",
           position: { kind: "planar", x: position.x, y: position.y },
           events: eventMap.get(location.id) ?? [],
@@ -454,7 +463,14 @@ export function buildWorkbenchSpatialModel(
     unlocatedLocationIds,
     unlocatedLocations: caseFile.locations
       .filter((location) => unlocatedLocationIds.includes(location.id))
-      .map((location) => ({ locationId: location.id, label: location.name }))
+      .map((location) => ({
+        locationId: location.id,
+        label: creatorLabel(location.name, {
+          kind: "location",
+          index: caseFile.locations.findIndex((item) => item.id === location.id),
+          description: location.description,
+        }),
+      }))
       .sort((left, right) => left.locationId.localeCompare(right.locationId)),
     counts: {
       locations: caseFile.locations.length,

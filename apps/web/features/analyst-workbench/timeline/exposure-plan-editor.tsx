@@ -97,7 +97,7 @@ export function ExposurePlanEditor({
     try {
       const loaded = await fetchExposurePlan(projectId);
       if (loaded.draft_id !== draftId) {
-        throw new Error("Current Draft 已切换，请重新载入工作台。");
+        throw new Error("当前工作稿已切换，请重新载入工作台。");
       }
       setPlan(loaded);
       setWorkingEntries(workingExposureEntries(loaded, events));
@@ -116,7 +116,7 @@ export function ExposurePlanEditor({
         const loaded = await fetchExposurePlan(projectId);
         if (cancelled) return;
         if (loaded.draft_id !== draftId) {
-          throw new Error("Current Draft 已切换，请重新载入工作台。");
+          throw new Error("当前工作稿已切换，请重新载入工作台。");
         }
         setPlan(loaded);
         setWorkingEntries(workingExposureEntries(loaded, events));
@@ -185,7 +185,7 @@ export function ExposurePlanEditor({
         );
       if (conflict) {
         await loadPlan();
-        setMessage("披露计划或 Current Draft 已更新，已载入最新版。请重新排序。");
+        setMessage("披露计划或当前工作稿已更新，已载入最新版。请重新排序。");
         return;
       }
       setStatus("error");
@@ -217,7 +217,7 @@ export function ExposurePlanEditor({
 
           <div className={styles.boundaryNote}>
             <b>独立版本链</b>
-            <p>这里只安排读者先看到什么；不会改写发生时间、Current Draft 或 Canon。</p>
+            <p>这里只安排读者先看到什么；不会改写发生时间、当前工作稿或正式版本。</p>
           </div>
 
           {status === "loading" ? (

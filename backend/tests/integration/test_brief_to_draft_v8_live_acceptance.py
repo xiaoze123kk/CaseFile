@@ -251,7 +251,7 @@ def _live_config() -> LiveAcceptanceConfig:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPEATS must be between 1 and 100.")
     report_value = os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH", "").strip()
     prompt_version = os.getenv(
-        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v12"
+        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v14"
     ).strip()
     if prompt_version not in {
         "brief-to-draft-v8",
@@ -259,9 +259,11 @@ def _live_config() -> LiveAcceptanceConfig:
         "brief-to-draft-v10",
         "brief-to-draft-v11",
         "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
     }:
         pytest.fail(
-            "Live acceptance prompt version must be brief-to-draft-v8, v9, v10, v11, or v12."
+            "Live acceptance prompt version must be brief-to-draft-v8 through v14."
         )
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
@@ -381,7 +383,8 @@ def _run_acceptance_suite(
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
     scenarios = (
         _V11_SCENARIOS
-        if prompt_version in {"brief-to-draft-v11", "brief-to-draft-v12"}
+        if prompt_version
+        in {"brief-to-draft-v11", "brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14"}
         else (_LEGACY_SCENARIO,)
     )
     for run_index in range(repeats):
@@ -580,7 +583,11 @@ def _successful_task_violations(
     if task.get("result_snapshot_id") is not None:
         violations.append("candidate_was_automatically_adopted")
     expected_components = set(_EXPECTED_COMPONENTS)
-    if task.get("prompt_version") == "brief-to-draft-v12":
+    if task.get("prompt_version") in {
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+    }:
         expected_components.add("temporal_structure_planner")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
     if component_ids != expected_components:
@@ -663,7 +670,11 @@ def _scenario_candidate_violations(
         return [] if {"exact", "range"}.issubset(kinds) else ["scenario_time_exact_range_missing"]
     if scenario.scenario_id == "time_uncertain_relative":
         kinds = {item.get("time", {}).get("kind") for item in candidate.get("events", [])}
-        if prompt_version == "brief-to-draft-v12":
+        if prompt_version in {
+            "brief-to-draft-v12",
+            "brief-to-draft-v13",
+            "brief-to-draft-v14",
+        }:
             required = {"approximate", "relative"}
             return (
                 []
@@ -1133,6 +1144,8 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
     if expected_runs == 30 and report.get("suite") in {
         "brief_to_draft_v11",
         "brief_to_draft_v12",
+        "brief_to_draft_v13",
+        "brief_to_draft_v14",
     }:
         summary = report.get("scenario_summary", {})
         if set(summary) != {item.scenario_id for item in _V11_SCENARIOS}:

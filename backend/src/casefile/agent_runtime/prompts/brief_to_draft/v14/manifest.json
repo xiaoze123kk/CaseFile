@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v14",
+  "previous_version": "brief-to-draft-v13",
+  "change_summary": "强制所有创作者可见自然语言使用简体中文，并增加纯英文生成内容的确定性门禁。",
+  "runtime": {
+    "agent_version": "brief-to-draft-pipeline-v14",
+    "toolset_version": "casefile-generation-tools-v2"
+  },
+  "fragments": {
+    "common": {"file": "fragments/common.md", "sha256": "0e06a0b1643fc7a399a72d62e47fab3a6d5919c65561068cdc9c79bc0cb6ae74"},
+    "planner": {"file": "fragments/planner.md", "sha256": "010d32410cbe56cce36029d611b6ae5df1b8b46a96a6f115deb37f984f617ddc"},
+    "temporal": {"file": "fragments/temporal.md", "sha256": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3"},
+    "domain_common": {"file": "fragments/domain_common.md", "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"},
+    "story": {"file": "fragments/story.md", "sha256": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04"},
+    "evidence": {"file": "fragments/evidence.md", "sha256": "20c3b8aca5508bf3fc2ce27c829e8c869c6e1fbc5e32b293f5cc484d0de4acd2"},
+    "governance": {"file": "fragments/governance.md", "sha256": "9335ce9839adad5de5f9a49c081bf8e5ccd8d9d72305f11f874b5866413ae3dc"}
+  },
+  "components": {
+    "planner": {"instruction_fragments": ["common", "planner"], "input_contract_id": "brief-to-draft-planner-input-v4", "output_schema_id": "case-blueprint-v1", "tool_policy_id": "no-tools-v1"},
+    "temporal": {"instruction_fragments": ["common", "temporal"], "input_contract_id": "brief-to-draft-temporal-input-v2", "output_schema_id": "temporal-plan-v1", "tool_policy_id": "no-tools-v1"},
+    "story": {"instruction_fragments": ["common", "domain_common", "story"], "input_contract_id": "brief-to-draft-domain-input-v4", "output_schema_id": "story-world-ir-v3", "tool_policy_id": "no-tools-v1"},
+    "evidence": {"instruction_fragments": ["common", "domain_common", "evidence"], "input_contract_id": "brief-to-draft-domain-input-v4", "output_schema_id": "evidence-logic-ir-v2", "tool_policy_id": "no-tools-v1"},
+    "governance": {"instruction_fragments": ["common", "domain_common", "governance"], "input_contract_id": "brief-to-draft-domain-input-v4", "output_schema_id": "resolution-governance-ir-v1", "tool_policy_id": "no-tools-v1"}
+  }
+}
