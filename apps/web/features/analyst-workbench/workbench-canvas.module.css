@@ -47,6 +47,11 @@
 .reasoningNode[data-kind="hypothesis"][data-outcome="contested"] { border-color: rgba(217, 154, 62, 0.55); }
 .reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] { border-color: rgba(217, 92, 89, 0.55); }
 .reasoningNode[data-kind="hypothesis"][data-outcome="eliminated"] strong { color: var(--issue); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.reasoningNode[data-kind="conclusion"] { border-width: 2px; border-color: rgba(168, 75, 50, 0.62); background: #fff8f2; }
+.reasoningNode[data-kind="conclusion"] small { color: #8f3e2b; }
+.reasoningNode[data-kind="conclusion"][data-outcome="missing"] { border-style: dashed; background: #fffaf6; }
+.reasoningNode[data-kind="conclusion"][data-outcome="proposed"] { box-shadow: inset 4px 0 rgba(168, 75, 50, 0.2); }
+.reasoningNode[data-kind="conclusion"][data-outcome="confirmed"] { box-shadow: inset 4px 0 #a84b32; }
 .graphNode:focus-visible,
 .reasoningNode:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 

@@ -223,6 +223,11 @@ class ObjectPatchRequest(StrictRequest):
     changes: dict[str, Any] = Field(min_length=1)
 
 
+class ResolutionConclusionActionRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_revision: int = Field(ge=1)
+
+
 class TimelineTimePreviewRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)

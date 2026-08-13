@@ -115,7 +115,7 @@ try {
 import os
 from sqlalchemy import create_engine, text
 
-expected_revision = "20260811131444"
+expected_revision = "20260812175817"
 expected_tables = {
     "agent_model_calls", "agent_step_runs",
     "users", "user_provider_settings", "projects", "casefiles", "drafts", "briefs",

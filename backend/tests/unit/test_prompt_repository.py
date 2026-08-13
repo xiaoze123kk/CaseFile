@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
@@ -17,6 +16,7 @@ from casefile.agent_runtime.prompt import (
     V12_GENERATION_AGENT_VERSION,
     V13_GENERATION_AGENT_VERSION,
     V14_GENERATION_AGENT_VERSION,
+    V15_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -37,7 +37,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v14",
+    "brief_to_draft": "brief-to-draft-v15",
     "casefile_chat": "casefile-chat-v1",
 }
 
@@ -157,6 +157,17 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "20c3b8aca5508bf3fc2ce27c829e8c869c6e1fbc5e32b293f5cc484d0de4acd2",
         "fragment:governance": "9335ce9839adad5de5f9a49c081bf8e5ccd8d9d72305f11f874b5866413ae3dc",
     },
+    ("brief_to_draft", "brief-to-draft-v15"): {
+        "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
+        "fragment:planner": "010d32410cbe56cce36029d611b6ae5df1b8b46a96a6f115deb37f984f617ddc",
+        "fragment:temporal": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3",
+        "fragment:domain_common": (
+            "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+        ),
+        "fragment:story": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04",
+        "fragment:evidence": "20c3b8aca5508bf3fc2ce27c829e8c869c6e1fbc5e32b293f5cc484d0de4acd2",
+        "fragment:governance": "1539eeeaf325e297256c3b312e44bd28c29a3da6171981d4b6b573a27c4bef6e",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -199,6 +210,10 @@ def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
         agent_version_for_task("brief_to_draft", "brief-to-draft-v14")
         == V14_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v15")
+        == V15_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
@@ -295,9 +310,12 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert v14.package is not None
     assert v14.package.runtime_agent_version == V14_GENERATION_AGENT_VERSION
     assert "所有面向创作者的自然语言字段都必须使用简体中文" in v14.component_prompts["planner"]
-    assert "不得输出纯英文标题、说明、命题、正文或判定依据" in v14.component_prompts[
-        "evidence"
-    ]
+    assert "不得输出纯英文标题、说明、命题、正文或判定依据" in v14.component_prompts["evidence"]
+    v15 = load_prompt("brief_to_draft", "brief-to-draft-v15")
+    assert v15.package is not None
+    assert v15.package.runtime_agent_version == V15_GENERATION_AGENT_VERSION
+    assert v15.package.components["governance"].output_schema_id == "resolution-governance-ir-v2"
+    assert "它永远只是 proposed" in v15.component_prompts["governance"]
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]

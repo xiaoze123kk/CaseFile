@@ -30,6 +30,7 @@ export type ResolutionSpec = CoreMetadata & {
     value_type: "entity_or_claim_ref" | "text_or_claim_ref" | "object_ref" | "text" | "number" | "boolean";
     required: boolean;
   }[];
+  conclusion?: ResolutionConclusion;
   accepted_answers: (string | ObjectRef)[];
   required_claim_refs: ObjectRefList;
   [k: string]: unknown;
@@ -350,6 +351,19 @@ export interface CoreMetadata {
 export interface ActorRef {
   actor_type: "user" | "agent" | "system";
   actor_id: string;
+}
+export interface ResolutionConclusion {
+  outcome: "answer" | "undetermined";
+  review_status: "proposed" | "confirmed";
+  summary: string;
+  values: {
+    slot_id: string;
+    value: string | number | boolean | ObjectRef;
+  }[];
+  selected_hypothesis_refs: ObjectRefList;
+  supporting_reasoning_path_refs: ObjectRefList;
+  rationale: string;
+  unresolved_gaps: string[];
 }
 export interface SchematicSpatialPosition {
   coordinate_system: "schematic";

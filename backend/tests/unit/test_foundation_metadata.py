@@ -139,6 +139,7 @@ JSONB_ALLOWLIST = {
     ("resolution_slots", "value_jsonb"),
     ("resolution_specs", "accepted_answer_texts_jsonb"),
     ("resolution_specs", "conclusion_pattern_jsonb"),
+    ("resolution_specs", "conclusion_unresolved_gaps_jsonb"),
     ("resolution_specs", "fairness_requirements_jsonb"),
     ("structure_locks", "field_paths_jsonb"),
     ("task_attempts", "candidate_jsonb"),

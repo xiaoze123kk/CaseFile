@@ -19,7 +19,7 @@ import {
 } from "./workbench-presenters";
 import styles from "./workbench-object-editor.module.css";
 
-type SaveResult = "saved" | "conflict" | "error";
+type SaveResult = "saved" | "conflict" | "error" | { status: "error"; message: string };
 type SelectedDetail = NonNullable<ReturnType<typeof findWorkbenchDetailObject>>;
 
 const truthStatuses = [
@@ -51,12 +51,21 @@ function positionOf(object: DetailObject) {
   return null;
 }
 
-function editValuesFor(selected: SelectedDetail): Record<string, string> {
+function editValuesFor(
+  document: CaseFileDocument,
+  selected: SelectedDetail,
+): Record<string, string> {
   const object = selected.object as Record<string, unknown>;
   const position = selected.collection === "locations" ? positionOf(selected.object) : null;
+  const conclusion = object.conclusion && typeof object.conclusion === "object"
+    ? object.conclusion as Record<string, unknown>
+    : selected.collection === "resolution_specs"
+      ? defaultConclusionForResolution(document, object)
+      : null;
   return {
     name: String(object.name ?? ""),
     title: String(object.title ?? ""),
+    reasoning_question: String(object.reasoning_question ?? ""),
     description: String(object.description ?? ""),
     content: String(object.content ?? ""),
     reliability: String(object.reliability ?? "unknown"),
@@ -75,6 +84,125 @@ function editValuesFor(selected: SelectedDetail): Record<string, string> {
       position?.coordinate_system === "wgs84" ? String(position.latitude) : "",
     longitude:
       position?.coordinate_system === "wgs84" ? String(position.longitude) : "",
+    conclusion_outcome: String(conclusion?.outcome ?? "undetermined"),
+    conclusion_summary: String(conclusion?.summary ?? ""),
+    conclusion_rationale: String(conclusion?.rationale ?? ""),
+    conclusion_gaps: Array.isArray(conclusion?.unresolved_gaps)
+      ? conclusion.unresolved_gaps.join("\n")
+      : "",
+    selected_hypothesis_ids: Array.isArray(conclusion?.selected_hypothesis_refs)
+      ? conclusion.selected_hypothesis_refs.flatMap((item) =>
+          item && typeof item === "object" && "object_id" in item
+            ? [String(item.object_id)]
+            : [],
+        ).join("\n")
+      : "",
+    supporting_reasoning_path_ids: Array.isArray(conclusion?.supporting_reasoning_path_refs)
+      ? conclusion.supporting_reasoning_path_refs.flatMap((item) =>
+          item && typeof item === "object" && "object_id" in item
+            ? [String(item.object_id)]
+            : [],
+        ).join("\n")
+      : "",
+    ...(Array.isArray(conclusion?.values)
+      ? Object.fromEntries(conclusion.values.flatMap((item) => {
+          if (!item || typeof item !== "object" || !("slot_id" in item) || !("value" in item)) {
+            return [];
+          }
+          const value = item.value;
+          return [[
+            `conclusion_slot:${String(item.slot_id)}`,
+            value && typeof value === "object" && "object_id" in value
+              ? String(value.object_id)
+              : String(value ?? ""),
+          ]];
+        }))
+      : {}),
+  };
+}
+
+function lines(value: string): string[] {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function objectRefForId(document: CaseFileDocument, objectId: string) {
+  const collections = [
+    ["resolution_spec", document.resolution_specs],
+    ["entity", document.entities],
+    ["relationship", document.relationships],
+    ["location", document.locations],
+    ["event", document.events],
+    ["information_unit", document.information_units],
+    ["claim", document.claims],
+    ["hypothesis", document.hypotheses],
+    ["reasoning_path", document.reasoning_paths],
+    ["constraint", document.constraints],
+    ["structure_lock", document.structure_locks],
+  ] as const;
+  for (const [objectType, collection] of collections) {
+    if (collection.some((item) => item.id === objectId)) {
+      return { object_type: objectType, object_id: objectId };
+    }
+  }
+  return null;
+}
+
+function defaultConclusionForResolution(
+  document: CaseFileDocument,
+  resolution: Record<string, unknown>,
+) {
+  const resolutionId = String(resolution.id ?? "");
+  const selectedHypothesisRefs = document.hypotheses
+    .filter((item) => {
+      const target = item.target_resolution_ref;
+      return target && "object_id" in target && target.object_id === resolutionId;
+    })
+    .map((item) => ({ object_type: "hypothesis", object_id: item.id }));
+  const selectedHypothesisIds = new Set(selectedHypothesisRefs.map((item) => item.object_id));
+  const claimById = new Map(document.claims.map((item) => [item.id, item]));
+  const validClaimIds = new Set(
+    [
+      ...(Array.isArray(resolution.required_claim_refs) ? resolution.required_claim_refs : []),
+      ...document.hypotheses
+        .filter((item) => selectedHypothesisIds.has(item.id))
+        .flatMap((item) => item.required_claim_refs),
+    ].flatMap((reference) =>
+      reference && typeof reference === "object" && "object_id" in reference
+        ? [String(reference.object_id)]
+        : [],
+    ),
+  );
+  const pendingClaimIds = [...validClaimIds];
+  while (pendingClaimIds.length) {
+    const claim = claimById.get(pendingClaimIds.pop() ?? "");
+    if (!claim) continue;
+    for (const reference of claim.dependency_claim_refs) {
+      const claimId = String(reference.object_id);
+      if (!validClaimIds.has(claimId)) {
+        validClaimIds.add(claimId);
+        pendingClaimIds.push(claimId);
+      }
+    }
+  }
+  const supportingReasoningPathRefs = document.reasoning_paths
+    .filter((item) => {
+      const target = item.target_ref;
+      if (!item.required_for_resolution || !target || !("object_id" in target)) return false;
+      const targetId = String(target.object_id);
+      return selectedHypothesisIds.has(targetId) ||
+        validClaimIds.has(targetId) ||
+        targetId === resolutionId;
+    })
+    .map((item) => ({ object_type: "reasoning_path", object_id: item.id }));
+  return {
+    outcome: "undetermined" as const,
+    review_status: "proposed" as const,
+    summary: "",
+    values: [],
+    selected_hypothesis_refs: selectedHypothesisRefs,
+    supporting_reasoning_path_refs: supportingReasoningPathRefs,
+    rationale: "",
+    unresolved_gaps: ["请补充仍未解决的证据缺口。"],
   };
 }
 
@@ -157,7 +285,7 @@ export function WorkbenchObjectEditor({
     [document, selectedObjectId],
   );
   const [values, setValues] = useState<Record<string, string>>(() =>
-    selected ? editValuesFor(selected) : {},
+    selected ? editValuesFor(document, selected) : {},
   );
   const [dirty, setDirty] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -185,7 +313,7 @@ export function WorkbenchObjectEditor({
   }
 
   function cancelChanges() {
-    setValues(editValuesFor(currentSelected));
+    setValues(editValuesFor(document, currentSelected));
     setDirty(false);
     setEditing(false);
     onDirtyChange(false);
@@ -211,6 +339,57 @@ export function WorkbenchObjectEditor({
   }
 
   function buildChanges() {
+    if (currentSelected.collection === "resolution_specs") {
+      const object = currentSelected.object as Record<string, unknown>;
+      const existing = object.conclusion && typeof object.conclusion === "object"
+        ? object.conclusion as Record<string, unknown>
+        : defaultConclusionForResolution(document, object);
+      const requiredSlots = Array.isArray(object.required_slots)
+        ? object.required_slots.flatMap((item) =>
+            item && typeof item === "object" ? [item as Record<string, unknown>] : [],
+          )
+        : [];
+      const conclusionValues = values.conclusion_outcome === "answer"
+        ? requiredSlots.flatMap((slot) => {
+            const slotId = String(slot.slot_id ?? "");
+            const rawValue = values[`conclusion_slot:${slotId}`]?.trim() ?? "";
+            if (!rawValue) return [];
+            const valueType = String(slot.value_type ?? "");
+            let value: string | number | boolean | Record<string, string> = rawValue;
+            if (valueType === "number") value = Number(rawValue);
+            if (valueType === "boolean") value = rawValue === "true";
+            if (["object_ref", "entity_or_claim_ref"].includes(valueType)) {
+              value = objectRefForId(document, rawValue) ?? { object_type: "unknown", object_id: rawValue };
+            }
+            if (valueType === "text_or_claim_ref") {
+              const reference = objectRefForId(document, rawValue);
+              if (reference?.object_type === "claim") value = reference;
+            }
+            return [{ slot_id: slotId, value }];
+          })
+        : [];
+      return {
+        title: values.title,
+        description: values.description,
+        reasoning_question: values.reasoning_question,
+        conclusion: {
+          ...existing,
+          outcome: values.conclusion_outcome,
+          review_status: "proposed",
+          summary: values.conclusion_summary,
+          values: conclusionValues,
+          selected_hypothesis_refs: lines(values.selected_hypothesis_ids).map((object_id) => ({
+            object_type: "hypothesis",
+            object_id,
+          })),
+          supporting_reasoning_path_refs: lines(
+            values.supporting_reasoning_path_ids,
+          ).map((object_id) => ({ object_type: "reasoning_path", object_id })),
+          rationale: values.conclusion_rationale,
+          unresolved_gaps: lines(values.conclusion_gaps),
+        },
+      };
+    }
     if (currentSelected.collection === "entities") {
       return { name: values.name, description: values.description };
     }
@@ -270,6 +449,28 @@ export function WorkbenchObjectEditor({
       const score = Number(values.score);
       if (!Number.isFinite(score) || score < 0 || score > 100) return "支持度必须介于 0% 与 100% 之间。";
     }
+    if (currentSelected.collection === "resolution_specs") {
+      if (!values.conclusion_summary.trim()) return "请填写结论摘要。";
+      if (!values.conclusion_rationale.trim()) return "请填写结论依据。";
+      if (values.conclusion_outcome === "undetermined" && !values.conclusion_gaps.trim()) {
+        return "未定论必须说明证据缺口。";
+      }
+      if (!values.selected_hypothesis_ids.trim()) return "请至少关联一个同题假设。";
+      if (!values.supporting_reasoning_path_ids.trim()) return "请至少关联一条有效推理路径。";
+      if (values.conclusion_outcome === "answer") {
+        const object = currentSelected.object as Record<string, unknown>;
+        const missing = Array.isArray(object.required_slots)
+          ? object.required_slots.flatMap((item) => {
+              if (!item || typeof item !== "object" || !("slot_id" in item) || !item.required) {
+                return [];
+              }
+              const slotId = String(item.slot_id);
+              return values[`conclusion_slot:${slotId}`]?.trim() ? [] : [slotId];
+            })
+          : [];
+        if (missing.length) return `请填写必填答案槽位：${missing.join("、")}。`;
+      }
+    }
     return null;
   }
 
@@ -288,12 +489,36 @@ export function WorkbenchObjectEditor({
       setNotice("修改已写入当前工作稿。");
     } else if (result === "conflict") {
       setNotice("工作稿已更新。你的输入已保留，请核对最新版后再次保存。");
+    } else if (typeof result === "object") {
+      setNotice(result.message);
     } else {
       setNotice("修改未保存。请检查字段或服务状态后重试。");
     }
   }
 
   function renderQuickEditFields() {
+    if (currentSelected.collection === "resolution_specs") return <>
+      {field("标题", "title")}
+      {field("说明", "description", { multiline: true })}
+      {field("核心问题", "reasoning_question", { multiline: true })}
+      {selectField("结论类型", "conclusion_outcome", [
+        { value: "answer", label: "答案" },
+        { value: "undetermined", label: "未定论" },
+      ])}
+      {field("结论摘要", "conclusion_summary", { multiline: true })}
+      {field("裁决依据", "conclusion_rationale", { multiline: true })}
+      {field("未解决缺口（每行一项）", "conclusion_gaps", { multiline: true })}
+      {field("获选或并存假设 ID（每行一项）", "selected_hypothesis_ids", { multiline: true })}
+      {field("依据路径 ID（每行一项）", "supporting_reasoning_path_ids", { multiline: true })}
+      {values.conclusion_outcome === "answer" && Array.isArray(
+        (currentSelected.object as Record<string, unknown>).required_slots,
+      ) ? ((currentSelected.object as Record<string, unknown>).required_slots as Array<Record<string, unknown>>)
+        .map((slot) => <div key={String(slot.slot_id)}>{field(
+          `答案槽位 · ${String(slot.slot_id)}${slot.required ? "（必填）" : ""}`,
+          `conclusion_slot:${String(slot.slot_id)}`,
+        )}</div>) : null}
+      <p className={styles.conclusionEditNote}>保存后会明确退回“待作者确认”，必须再次确认才成为最终结论。对象型槽位请填写稳定对象 ID。</p>
+    </>;
     if (currentSelected.collection === "entities") return <>{field("名称", "name")}{field("说明", "description", { multiline: true })}</>;
     if (currentSelected.collection === "information_units") return <>
       {field("标题", "title")}{field("说明", "description", { multiline: true })}{field("正文", "content", { multiline: true })}

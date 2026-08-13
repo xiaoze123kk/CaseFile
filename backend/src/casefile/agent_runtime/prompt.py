@@ -19,6 +19,7 @@ V11_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v11"
 V12_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v12"
 V13_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v13"
 V14_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v14"
+V15_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v15"
 BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
     "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
@@ -27,6 +28,7 @@ BRIEF_TO_DRAFT_AGENT_VERSIONS = {
     "brief-to-draft-v12": V12_GENERATION_AGENT_VERSION,
     "brief-to-draft-v13": V13_GENERATION_AGENT_VERSION,
     "brief-to-draft-v14": V14_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v15": V15_GENERATION_AGENT_VERSION,
 }
 COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
 PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
@@ -37,6 +39,7 @@ PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
         "brief-to-draft-v12",
         "brief-to-draft-v13",
         "brief-to-draft-v14",
+        "brief-to-draft-v15",
     }
 )
 COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
@@ -46,10 +49,11 @@ COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
         "brief-to-draft-v12",
         "brief-to-draft-v13",
         "brief-to-draft-v14",
+        "brief-to-draft-v15",
     }
 )
 TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
-    {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14"}
+    {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15"}
 )
 
 

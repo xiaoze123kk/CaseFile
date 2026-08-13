@@ -57,6 +57,13 @@ _PUBLIC_INTEGRITY_MESSAGES = {
     "unscoped_evidence_assessment": "证据评估引用了当前竞争集合之外的信息",
     "missing_evidence_assessment": "竞争假设缺少必要的证据评估",
     "duplicate_evidence_assessment": "同一竞争假设包含重复的证据评估",
+    "conclusion_hypothesis_scope_invalid": "结论只能选择同一核心问题下的假设",
+    "conclusion_reasoning_path_scope_invalid": (
+        "结论依据路径必须属于当前问题的必要推理链"
+    ),
+    "conclusion_required_slot_missing": "答案结论缺少必填答案槽位",
+    "conclusion_basis_missing": "答案结论必须关联同题假设和有效推理路径",
+    "undetermined_basis_missing": "未定论必须列出并存解释、分析路径和证据缺口",
 }
 
 
@@ -125,11 +132,7 @@ def public_validation_issues(
     issues: list[dict[str, str]] = []
     for error in errors[: max(0, limit)]:
         raw_code = str(error.get("code", "validation_failed"))
-        code = (
-            raw_code
-            if re.fullmatch(r"[a-z][a-z0-9_]{0,79}", raw_code)
-            else "validation_failed"
-        )
+        code = raw_code if re.fullmatch(r"[a-z][a-z0-9_]{0,79}", raw_code) else "validation_failed"
         raw_path = str(error.get("path", ""))
         path = raw_path[:512] if raw_path.startswith("/") or not raw_path else ""
         message = _public_validation_message(code, str(error.get("message", "")))
@@ -321,9 +324,7 @@ def _validate_integrity(
             f"{base}/competing_hypothesis_refs",
         )
         assessment_information_ids: set[str] = set()
-        for assessment_index, assessment in enumerate(
-            hypothesis.get("evidence_assessments", [])
-        ):
+        for assessment_index, assessment in enumerate(hypothesis.get("evidence_assessments", [])):
             assessment_path = f"{base}/evidence_assessments/{assessment_index}"
             information_ref = assessment["information_ref"]
             _require_declared_type(
@@ -356,7 +357,165 @@ def _validate_integrity(
             "slot_id",
             f"/resolution_specs/{spec_index}/required_slots",
         )
+        conclusion = resolution.get("conclusion")
+        if conclusion is not None:
+            _validate_resolution_conclusion(
+                errors,
+                document,
+                resolution,
+                conclusion,
+                spec_index,
+            )
     return errors
+
+
+def _validate_resolution_conclusion(
+    errors: list[dict[str, Any]],
+    document: dict[str, Any],
+    resolution: dict[str, Any],
+    conclusion: dict[str, Any],
+    spec_index: int,
+) -> None:
+    base = f"/resolution_specs/{spec_index}/conclusion"
+    _require_list_type(
+        errors,
+        conclusion["selected_hypothesis_refs"],
+        "hypothesis",
+        f"{base}/selected_hypothesis_refs",
+    )
+    _require_list_type(
+        errors,
+        conclusion["supporting_reasoning_path_refs"],
+        "reasoning_path",
+        f"{base}/supporting_reasoning_path_refs",
+    )
+    _unique_string(errors, conclusion["values"], "slot_id", f"{base}/values")
+    slot_by_id = {slot["slot_id"]: slot for slot in resolution["required_slots"]}
+    for value_index, entry in enumerate(conclusion["values"]):
+        slot = slot_by_id.get(entry["slot_id"])
+        path = f"{base}/values/{value_index}"
+        if slot is None:
+            errors.append(
+                _error("conclusion_slot_unknown", f"{path}/slot_id", "结论答案引用了未声明的槽位")
+            )
+        elif not _resolution_slot_value_matches(slot["value_type"], entry["value"]):
+            errors.append(
+                _error("conclusion_slot_type_mismatch", f"{path}/value", "结论答案与槽位类型不匹配")
+            )
+    selected_ids = {ref["object_id"] for ref in conclusion["selected_hypothesis_refs"]}
+    hypothesis_by_id = {item["id"]: item for item in document["hypotheses"]}
+    for ref_index, reference in enumerate(conclusion["selected_hypothesis_refs"]):
+        object_id = reference["object_id"]
+        hypothesis = hypothesis_by_id.get(object_id)
+        if hypothesis is None or (
+            hypothesis["target_resolution_ref"]["object_id"] != resolution["id"]
+        ):
+            errors.append(
+                _error(
+                    "conclusion_hypothesis_scope_invalid",
+                    f"{base}/selected_hypothesis_refs/{ref_index}",
+                    "结论只能选择同一核心问题下的假设",
+                )
+            )
+    valid_target_ids = resolution_conclusion_target_ids(
+        document,
+        resolution,
+        selected_ids,
+    )
+    path_by_id = {item["id"]: item for item in document["reasoning_paths"]}
+    for ref_index, reference in enumerate(conclusion["supporting_reasoning_path_refs"]):
+        reasoning_path = path_by_id.get(reference["object_id"])
+        if reasoning_path is None or (
+            reasoning_path["target_ref"]["object_id"] not in valid_target_ids
+            or not reasoning_path["required_for_resolution"]
+        ):
+            errors.append(
+                _error(
+                    "conclusion_reasoning_path_scope_invalid",
+                    f"{base}/supporting_reasoning_path_refs/{ref_index}",
+                    "结论依据路径必须属于当前问题、所选假设或其必要 Claim 链，且标记为解答所需",
+                )
+            )
+    if conclusion["outcome"] == "answer":
+        value_ids = {entry["slot_id"] for entry in conclusion["values"]}
+        for slot in resolution["required_slots"]:
+            if slot["required"] and slot["slot_id"] not in value_ids:
+                errors.append(
+                    _error(
+                        "conclusion_required_slot_missing",
+                        f"{base}/values",
+                        f"答案结论缺少必填槽位 {slot['slot_id']}",
+                    )
+                )
+        if not selected_ids or not conclusion["supporting_reasoning_path_refs"]:
+            errors.append(
+                _error("conclusion_basis_missing", base, "答案结论必须关联假设和推理路径")
+            )
+    elif (
+        not selected_ids
+        or not conclusion["supporting_reasoning_path_refs"]
+        or not conclusion["unresolved_gaps"]
+    ):
+        errors.append(
+            _error("undetermined_basis_missing", base, "未定论必须列出并存解释、分析路径和证据缺口")
+        )
+
+
+def resolution_conclusion_target_ids(
+    document: dict[str, Any],
+    resolution: dict[str, Any],
+    selected_hypothesis_ids: set[str],
+) -> set[str]:
+    """Return valid reasoning-path targets for one Resolution conclusion."""
+
+    resolution_id = resolution["id"]
+    hypotheses = {
+        item["id"]: item
+        for item in document["hypotheses"]
+        if item["id"] in selected_hypothesis_ids
+        and item["target_resolution_ref"]["object_id"] == resolution_id
+    }
+    claim_ids = {
+        ref["object_id"]
+        for ref in [
+            *resolution["required_claim_refs"],
+            *(
+                ref
+                for hypothesis in hypotheses.values()
+                for ref in hypothesis["required_claim_refs"]
+            ),
+        ]
+    }
+    claims = {item["id"]: item for item in document["claims"]}
+    pending = list(claim_ids)
+    while pending:
+        claim = claims.get(pending.pop())
+        if claim is None:
+            continue
+        for reference in claim["dependency_claim_refs"]:
+            dependency_id = reference["object_id"]
+            if dependency_id not in claim_ids:
+                claim_ids.add(dependency_id)
+                pending.append(dependency_id)
+    return {resolution_id, *hypotheses, *claim_ids}
+
+
+def _resolution_slot_value_matches(value_type: str, value: Any) -> bool:
+    if value_type == "boolean":
+        return isinstance(value, bool)
+    if value_type == "number":
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    if value_type == "text":
+        return isinstance(value, str)
+    if value_type == "object_ref":
+        return isinstance(value, dict)
+    if value_type == "entity_or_claim_ref":
+        return isinstance(value, dict) and value.get("object_type") in {"entity", "claim"}
+    if value_type == "text_or_claim_ref":
+        return isinstance(value, str) or (
+            isinstance(value, dict) and value.get("object_type") == "claim"
+        )
+    return False
 
 
 def _require_list_type(

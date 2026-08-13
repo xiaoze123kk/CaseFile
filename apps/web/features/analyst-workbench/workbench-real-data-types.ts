@@ -10,11 +10,32 @@ import type {
 } from "./analyst-fixture";
 
 export type WorkbenchObjectKind =
+  | "resolution_spec"
   | "entity"
   | "information"
   | "event"
   | "location"
   | "hypothesis";
+
+export type WorkbenchConclusionStatus = "proposed" | "confirmed";
+export type WorkbenchConclusionOutcome = "answer" | "undetermined";
+
+export interface WorkbenchConclusion {
+  resolutionSpecId: string;
+  question: string;
+  outcome: WorkbenchConclusionOutcome;
+  reviewStatus: WorkbenchConclusionStatus;
+  summary: string;
+  values: Array<{
+    slotId: string;
+    value: string | number | boolean | Record<string, unknown>;
+  }>;
+  selectedHypothesisIds: string[];
+  supportingReasoningPathIds: string[];
+  relatedEventIds: string[];
+  rationale: string;
+  unresolvedGaps: string[];
+}
 
 export type WorkbenchReferenceKind =
   | "casefile"
@@ -60,6 +81,7 @@ export type SpatialLayerId =
 export type SpatialLayerVisibility = Record<SpatialLayerId, boolean>;
 
 export type WorkbenchContractObject =
+  | CaseFileDocument["resolution_specs"][number]
   | CaseFileDocument["entities"][number]
   | CaseFileDocument["information_units"][number]
   | CaseFileDocument["events"][number]
@@ -138,6 +160,9 @@ export type WorkbenchGraphEdgeKind =
   | "hypothesis_requirement"
   | "hypothesis_falsifier"
   | "hypothesis_competitor"
+  | "resolution_conclusion"
+  | "hypothesis_conclusion"
+  | "reasoning_conclusion"
   | "fixture";
 
 export interface WorkbenchGraphEdge {
@@ -300,6 +325,7 @@ export interface WorkbenchModel extends WorkbenchSeed {
   };
   reasoningPaths: WorkbenchReasoningPath[];
   reasoningGroups: WorkbenchReasoningGroup[];
+  conclusions: WorkbenchConclusion[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   map: WorkbenchMapModel;

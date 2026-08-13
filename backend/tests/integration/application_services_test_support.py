@@ -90,6 +90,47 @@ class RichFixtureProvider:
         )
 
 
+class ConclusionFixtureProvider(RichFixtureProvider):
+    """Add one valid proposed conclusion to the editing fixture."""
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        result = super().generate(request)
+        result.candidate["reasoning_paths"][0]["target_ref"] = {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger",
+        }
+        result.candidate["resolution_specs"][0]["conclusion"] = {
+            "outcome": "answer",
+            "review_status": "proposed",
+            "summary": "备用系统依据安全规则主动触发了主系统重启。",
+            "values": [
+                {
+                    "slot_id": "slot_root_cause",
+                    "value": {
+                        "object_type": "claim",
+                        "object_id": "claim_backup_trigger",
+                    },
+                }
+            ],
+            "selected_hypothesis_refs": [
+                {
+                    "object_type": "hypothesis",
+                    "object_id": "hyp_automatic_restart",
+                }
+            ],
+            "supporting_reasoning_path_refs": [
+                {
+                    "object_type": "reasoning_path",
+                    "object_id": "path_causal_restart",
+                }
+            ],
+            "rationale": "重启日志、关键主张和自动安全重启路径形成一致依据。",
+            "unresolved_gaps": [],
+        }
+        validate_casefile(result.candidate)
+        return result
+
+
 class EmptyKnowledgeStateProvider(RichFixtureProvider):
     """Add a valid knowledge-state slot that deliberately has no ObjectRefs."""
 

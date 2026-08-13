@@ -336,12 +336,8 @@ def _normalize_temporal_plan_wall_clock_values(
 def _trim_zero_wall_clock_suffix(value: str, precision: str) -> str:
     patterns = {
         "day": (r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2})T00(?::00(?::00(?:\.0{1,6})?)?)?$",),
-        "hour": (
-            r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}):00(?::00(?:\.0{1,6})?)?$",
-        ),
-        "minute": (
-            r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}):00(?:\.0{1,6})?$",
-        ),
+        "hour": (r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}):00(?::00(?:\.0{1,6})?)?$",),
+        "minute": (r"^(?P<kept>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}):00(?:\.0{1,6})?$",),
     }
     for pattern in patterns.get(precision, ()):
         match = re.fullmatch(pattern, value)

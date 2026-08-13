@@ -671,6 +671,44 @@ export async function patchCaseDraftObject(
   );
 }
 
+export async function confirmCaseDraftResolutionConclusion(
+  projectId: number,
+  resolutionId: string,
+  expectedDraftId: number,
+  expectedRevision: number,
+) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/draft/resolutions/${encodeURIComponent(resolutionId)}/conclusion/confirm`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+      },
+    },
+  );
+}
+
+export async function withdrawCaseDraftResolutionConclusion(
+  projectId: number,
+  resolutionId: string,
+  expectedDraftId: number,
+  expectedRevision: number,
+) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/draft/resolutions/${encodeURIComponent(resolutionId)}/conclusion/withdraw`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+      },
+    },
+  );
+}
+
 /** 只读预演事件时间变化；不会推进 Draft revision。 */
 export async function previewCaseDraftEventTime(
   projectId: number,

@@ -332,6 +332,25 @@
   stroke-width: 1;
 }
 
+.eventRow[data-conclusion-related="true"] .rowHitbox {
+  stroke: #a84b32;
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.eventRow[data-conclusion-related="true"] .rowLabel {
+  fill: #8f3e2b;
+}
+.conclusionRelatedTag,
+.laneConclusionRelatedTag {
+  fill: #8f3e2b;
+  font-family: "Microsoft YaHei", sans-serif;
+  font-size: 8px;
+  font-weight: 650;
+  pointer-events: none;
+}
+.laneConclusionRelatedTag { font-size: 7px; }
+
 .eventRow:focus-visible .rowHitbox {
   fill: var(--primary-soft);
   stroke: var(--primary);
@@ -557,6 +576,12 @@
   margin: 7px 0 0;
   color: var(--ink-muted);
   font-size: 10px;
+}
+
+.laneMarker[data-conclusion-related="true"] .lanePoint,
+.laneMarker[data-conclusion-related="true"] .laneRange {
+  stroke: #a84b32;
+  stroke-width: 3;
 }
 
 .axisEmptyList {
@@ -955,6 +980,10 @@
   .mobileList li > button:first-child[data-selected="true"] {
     background: var(--primary-soft);
     box-shadow: inset 3px 0 var(--primary);
+  }
+
+  .mobileList li > button:first-child[data-conclusion-related="true"] {
+    box-shadow: inset 3px 0 #a84b32;
   }
 
   .mobileList time {

@@ -145,6 +145,9 @@
                 }
               }
             },
+            "conclusion": {
+              "$ref": "#/$defs/ResolutionConclusion"
+            },
             "accepted_answers": {
               "type": "array",
               "items": {
@@ -159,6 +162,47 @@
         }
       ],
       "unevaluatedProperties": false
+    },
+    "ResolutionConclusion": {
+      "title": "ResolutionConclusion",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome", "review_status", "summary", "values",
+        "selected_hypothesis_refs", "supporting_reasoning_path_refs",
+        "rationale", "unresolved_gaps"
+      ],
+      "properties": {
+        "outcome": {"type": "string", "enum": ["answer", "undetermined"]},
+        "review_status": {"type": "string", "enum": ["proposed", "confirmed"]},
+        "summary": {"type": "string", "minLength": 1},
+        "values": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["slot_id", "value"],
+            "properties": {
+              "slot_id": {"type": "string", "pattern": "^slot_[a-z0-9][a-z0-9_]{0,55}$"},
+              "value": {
+                "oneOf": [
+                  {"type": "string", "minLength": 1},
+                  {"type": "number"},
+                  {"type": "boolean"},
+                  {"$ref": "common.schema.json#/$defs/ObjectRef"}
+                ]
+              }
+            }
+          }
+        },
+        "selected_hypothesis_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+        "supporting_reasoning_path_refs": {"$ref": "common.schema.json#/$defs/ObjectRefList"},
+        "rationale": {"type": "string", "minLength": 1},
+        "unresolved_gaps": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
     },
     "Entity": {
       "title": "Entity",

@@ -280,19 +280,46 @@ class TemporalPosition(
     ]
 
 
-class ResolutionSpec(CoreMetadata):
+class Outcome(StrEnum):
+    answer = 'answer'
+    undetermined = 'undetermined'
+
+
+class ReviewStatus(StrEnum):
+    proposed = 'proposed'
+    confirmed = 'confirmed'
+
+
+class Value1(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class Value(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    id: Annotated[str, Field(pattern='^res_[a-z0-9][a-z0-9_]{0,56}$')]
-    title: Annotated[str, Field(min_length=1)]
-    question_type: QuestionType
-    reasoning_question: Annotated[str, Field(min_length=1)]
-    conclusion_mode: ConclusionMode
-    required_slots: list[RequiredSlot]
-    accepted_answers: list[AcceptedAnswers | ObjectRef]
-    required_claim_refs: list[ObjectRef]
+    slot_id: Annotated[str, Field(pattern='^slot_[a-z0-9][a-z0-9_]{0,55}$')]
+    value: Value1 | float | bool | ObjectRef
+
+
+class UnresolvedGap(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class ResolutionConclusion(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    outcome: Outcome
+    review_status: ReviewStatus
+    summary: Annotated[str, Field(min_length=1)]
+    values: list[Value]
+    selected_hypothesis_refs: list[ObjectRef]
+    supporting_reasoning_path_refs: list[ObjectRef]
+    rationale: Annotated[str, Field(min_length=1)]
+    unresolved_gaps: list[UnresolvedGap]
 
 
 class EntityType(StrEnum):
@@ -1028,6 +1055,22 @@ class AgentGenerateResult(BaseModel):
     snapshot_id: Annotated[int, Field(ge=1)]
     draft_revision: Annotated[int, Field(ge=1)]
     content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class ResolutionSpec(CoreMetadata):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(pattern='^res_[a-z0-9][a-z0-9_]{0,56}$')]
+    title: Annotated[str, Field(min_length=1)]
+    question_type: QuestionType
+    reasoning_question: Annotated[str, Field(min_length=1)]
+    conclusion_mode: ConclusionMode
+    required_slots: list[RequiredSlot]
+    conclusion: ResolutionConclusion | None = None
+    accepted_answers: list[AcceptedAnswers | ObjectRef]
+    required_claim_refs: list[ObjectRef]
 
 
 class EditingContracts(BaseModel):

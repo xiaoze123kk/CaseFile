@@ -42,6 +42,7 @@ import type {
   WorkbenchReasoningStep,
   WorkbenchReferenceKind,
   WorkbenchTimelineEvent,
+  WorkbenchConclusion,
 } from "./workbench-real-data-types";
 
 export type * from "./workbench-real-data-types";
@@ -58,6 +59,7 @@ interface ReferenceCatalogEntry extends ParsedReference {
 }
 
 const objectKindOrder: WorkbenchObjectKind[] = [
+  "resolution_spec",
   "entity",
   "information",
   "event",
@@ -329,6 +331,25 @@ function buildCaseObjects(caseFile: CaseFileDocument): WorkbenchCaseObject[] {
   const related = (id: string) => [...(relatedEvents.get(id) ?? [])].sort();
 
   return [
+    ...caseFile.resolution_specs.map((resolution, index): WorkbenchCaseObject => ({
+      id: resolution.id,
+      kind: "resolution_spec",
+      label: creatorLabel(resolution.reasoning_question || resolution.title, {
+        kind: "resolution_spec",
+        index,
+        description: resolution.description,
+      }),
+      code: resolution.conclusion
+        ? resolution.conclusion.review_status === "confirmed"
+          ? "结论已确认"
+          : "结论待确认"
+        : "尚未形成结论",
+      meta: objectMeta(resolution),
+      subtype: resolution.conclusion?.review_status ?? "missing",
+      ...metadataForObject(resolution, "resolution_spec"),
+      relatedEventIds: related(resolution.id),
+      source: resolution,
+    })),
     ...caseFile.entities.map((entity, index): WorkbenchCaseObject => ({
       id: entity.id,
       kind: "entity",
@@ -405,6 +426,70 @@ function buildCaseObjects(caseFile: CaseFileDocument): WorkbenchCaseObject[] {
       source: hypothesis,
     })),
   ];
+}
+
+function buildConclusions(caseFile: CaseFileDocument): WorkbenchConclusion[] {
+  const informationEventIds = new Map(
+    caseFile.information_units.map((item) => [
+      item.id,
+      readReference(item.source_event_ref)?.id ?? null,
+    ]),
+  );
+  const claims = new Map(caseFile.claims.map((item) => [item.id, item]));
+  const hypotheses = new Map(caseFile.hypotheses.map((item) => [item.id, item]));
+  const paths = new Map(caseFile.reasoning_paths.map((item) => [item.id, item]));
+  const eventsForReferences = (ids: string[]) => uniqueStrings(ids.flatMap((id) => {
+    const direct = informationEventIds.get(id);
+    if (direct) return [direct];
+    const claim = claims.get(id);
+    if (claim) {
+      return [...claim.support_refs, ...claim.refute_refs].flatMap((ref) => {
+        const informationId = readReference(ref)?.id;
+        const eventId = informationId ? informationEventIds.get(informationId) : null;
+        return eventId ? [eventId] : [];
+      });
+    }
+    return [];
+  }));
+  return caseFile.resolution_specs.flatMap((resolution) => {
+    const conclusion = resolution.conclusion;
+    if (!conclusion) return [];
+    const selectedHypothesisIds = readReferenceIds(conclusion.selected_hypothesis_refs);
+    const supportingReasoningPathIds = readReferenceIds(
+      conclusion.supporting_reasoning_path_refs,
+    );
+    const relatedReferenceIds = [
+      ...supportingReasoningPathIds.flatMap((pathId) => {
+        const path = paths.get(pathId);
+        return path
+          ? path.steps.flatMap((step) => [
+              ...readReferenceIds(step.input_refs),
+              readReference(step.output_ref)?.id,
+            ])
+          : [];
+      }),
+      ...selectedHypothesisIds.flatMap((hypothesisId) => {
+        const hypothesis = hypotheses.get(hypothesisId);
+        return hypothesis ? readReferenceIds(hypothesis.required_claim_refs) : [];
+      }),
+    ].filter((id): id is string => Boolean(id));
+    return [{
+      resolutionSpecId: resolution.id,
+      question: resolution.reasoning_question,
+      outcome: conclusion.outcome,
+      reviewStatus: conclusion.review_status,
+      summary: creatorText(conclusion.summary, "当前结论摘要待补充。"),
+      values: conclusion.values.map((entry) => ({
+        slotId: entry.slot_id,
+        value: entry.value,
+      })),
+      selectedHypothesisIds,
+      supportingReasoningPathIds,
+      relatedEventIds: eventsForReferences(relatedReferenceIds),
+      rationale: creatorText(conclusion.rationale, "当前结论依据待补充。"),
+      unresolvedGaps: conclusion.unresolved_gaps,
+    } satisfies WorkbenchConclusion];
+  });
 }
 
 function buildTimeline(
@@ -637,6 +722,9 @@ function buildRelationshipGraph(
 
   const ensureNode = (reference: ParsedReference | null) => {
     if (!reference) {
+      return;
+    }
+    if (nodes.has(reference.id)) {
       return;
     }
     const catalogEntry = catalog.get(reference.id);
@@ -925,6 +1013,50 @@ function buildRelationshipGraph(
     }
   }
 
+  for (const resolution of caseFile.resolution_specs) {
+    const questionRef = { id: resolution.id, kind: "resolution_spec" as const };
+    const conclusion = resolution.conclusion;
+    const conclusionRef = { id: `resolution-conclusion:${resolution.id}`, kind: "resolution_spec" as const };
+    ensureNode(conclusionRef);
+    ensureNode(questionRef);
+    const questionNode = nodes.get(questionRef.id);
+    if (questionNode) questionNode.directoryObjectId = resolution.id;
+    const conclusionNode = nodes.get(conclusionRef.id);
+    if (conclusionNode) {
+      conclusionNode.directoryObjectId = resolution.id;
+      conclusionNode.label = conclusion?.summary ?? "尚未形成结论";
+    }
+    addEdge({
+      identity: `resolution:${resolution.id}:conclusion`,
+      from: questionRef,
+      to: conclusionRef,
+      label: conclusion ? "裁决" : "尚未形成结论",
+      kind: "resolution_conclusion",
+      sourceObjectId: resolution.id,
+    });
+    if (!conclusion) continue;
+    for (const hypothesisId of readReferenceIds(conclusion.selected_hypothesis_refs)) {
+      addEdge({
+        identity: `conclusion:${resolution.id}:hypothesis:${hypothesisId}`,
+        from: { id: hypothesisId, kind: "hypothesis" },
+        to: conclusionRef,
+        label: conclusion.outcome === "undetermined" ? "并存解释" : "进入当前结论",
+        kind: "hypothesis_conclusion",
+        sourceObjectId: resolution.id,
+      });
+    }
+    for (const pathId of readReferenceIds(conclusion.supporting_reasoning_path_refs)) {
+      addEdge({
+        identity: `conclusion:${resolution.id}:path:${pathId}`,
+        from: { id: pathId, kind: "reasoning_path" },
+        to: conclusionRef,
+        label: "收束依据",
+        kind: "reasoning_conclusion",
+        sourceObjectId: resolution.id,
+      });
+    }
+  }
+
   return {
     nodes: layoutGraphNodes([...nodes.values()]),
     edges: [...edges.values()].sort((left, right) => left.id.localeCompare(right.id)),
@@ -991,13 +1123,7 @@ function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath
       question: resolution?.reasoning_question ?? "",
       evidenceIds: uniqueStrings(steps.flatMap((step) => step.evidenceIds)),
       steps,
-      conclusion: hypothesis
-        ? creatorLabel(hypothesis.title, {
-            kind: "hypothesis",
-            index: caseFile.hypotheses.findIndex((item) => item.id === hypothesis?.id),
-            description: hypothesis.description,
-          })
-        : labelFor(target?.id ?? null),
+      conclusion: resolution?.conclusion?.summary ?? "该核心问题尚未形成结论",
       outcome: outcomeForHypothesis(hypothesis),
       hypothesisId: hypothesis?.id ?? target?.id ?? path.id,
       targetHypothesisId: hypothesis?.id ?? null,
@@ -1030,6 +1156,9 @@ function buildReasoningGroups(
       informationIds: Set<string>;
     }
   >();
+  const conclusions = new Map(
+    buildConclusions(caseFile).map((item) => [item.resolutionSpecId, item]),
+  );
 
   for (const hypothesis of caseFile.hypotheses) {
     const resolutionId = readReference(hypothesis.target_resolution_ref)?.id;
@@ -1101,6 +1230,7 @@ function buildReasoningGroups(
             : [],
         ),
         assessments: group.assessments,
+        conclusion: conclusions.get(resolution.id),
       },
     ];
   });
@@ -1182,6 +1312,7 @@ export function mapCaseFileToWorkbenchModel(
   const relationshipGraph = buildRelationshipGraph(caseFile, caseObjects);
   const reasoningPaths = buildReasoningPaths(caseFile);
   const reasoningGroups = buildReasoningGroups(caseFile);
+  const conclusions = buildConclusions(caseFile);
   const map = buildWorkbenchSpatialModel(caseFile, timelineEvents);
   const caseMeta = buildCaseMeta({
     caseFile,
@@ -1207,13 +1338,17 @@ export function mapCaseFileToWorkbenchModel(
     relationshipGraph,
     reasoningPaths,
     reasoningGroups,
+    conclusions,
     mapMarkers: [],
     mapLabels: [],
     map,
     drawer: emptyDrawer,
     initialAuditEntries: [],
     defaultEventId: timelineEvents[0]?.id ?? null,
-    defaultObjectId: caseObjects[0]?.id ?? null,
+    defaultObjectId:
+      caseObjects.find((object) => object.kind !== "resolution_spec")?.id ??
+      caseObjects[0]?.id ??
+      null,
     defaultIssueId: validationIssues[0]?.id ?? null,
   };
 }
@@ -1320,6 +1455,7 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     graphEdges,
     relationshipGraph: { nodes: graphNodes, edges: graphEdges },
     reasoningPaths,
+    conclusions: [],
     reasoningGroups: seed.reasoningGroups ?? [],
     mapMarkers: seed.mapMarkers,
     mapLabels: seed.mapLabels,

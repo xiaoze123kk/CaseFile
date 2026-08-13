@@ -12,6 +12,7 @@ import styles from "./workbench-object-directory.module.css";
 import { objectSubtypeLabel } from "./workbench-presenters";
 
 export const productionObjectKinds = [
+  "resolution_spec",
   "entity",
   "information",
   "event",
@@ -24,6 +25,7 @@ export type DirectoryObjectKind = (typeof productionObjectKinds)[number];
 export const fixtureObjectKinds = productionObjectKinds;
 
 const subtypeOrder: Record<DirectoryObjectKind, string[]> = {
+  resolution_spec: ["confirmed", "proposed", "missing"],
   entity: ["person", "organization", "object", "system", "faction", "rule_actor", "other"],
   information: ["evidence", "observation", "dialogue", "document", "system_log", "rule", "environment", "feedback", "other"],
   event: ["canon_true", "reported", "disputed", "false_belief", "unknown"],

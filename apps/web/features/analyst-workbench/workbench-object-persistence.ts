@@ -3,10 +3,12 @@
 import { useRef, useState } from "react";
 
 import {
+  confirmCaseDraftResolutionConclusion,
   fetchCaseDraft,
   patchCaseDraftObject,
+  withdrawCaseDraftResolutionConclusion,
 } from "@/features/case-session/case-session-api";
-import { ApiError, type DraftView } from "@/lib/api-client";
+import { ApiError, errorMessage, type DraftView } from "@/lib/api-client";
 
 import type {
   ReloadedSpatialLocation,
@@ -14,7 +16,11 @@ import type {
   SpatialPositionSaveResult,
 } from "./workbench-real-data-types";
 
-type ObjectSaveResult = "saved" | "conflict" | "error";
+export type ObjectSaveResult =
+  | "saved"
+  | "conflict"
+  | "error"
+  | { status: "error"; message: string };
 
 export function useWorkbenchObjectPersistence({
   draft,
@@ -67,7 +73,40 @@ export function useWorkbenchObjectPersistence({
           return "error";
         }
       }
-      return "error";
+      return { status: "error", message: errorMessage(caught) };
+    } finally {
+      saveInFlightRef.current = false;
+      setSavingObject(false);
+    }
+  }
+
+  async function transitionConclusion(
+    resolutionId: string,
+    action: "confirm" | "withdraw",
+  ): Promise<ObjectSaveResult> {
+    if (!draft || projectId === null || saveInFlightRef.current) return "error";
+    saveInFlightRef.current = true;
+    setSavingObject(true);
+    try {
+      const transition = action === "confirm"
+        ? confirmCaseDraftResolutionConclusion
+        : withdrawCaseDraftResolutionConclusion;
+      await transition(projectId, resolutionId, draft.draft_id, draft.revision);
+      await loadLatestDraft();
+      return "saved";
+    } catch (caught) {
+      if (
+        caught instanceof ApiError &&
+        (caught.status === 409 || caught.body.code === "draft_revision_conflict")
+      ) {
+        try {
+          await loadLatestDraft();
+          return "conflict";
+        } catch {
+          return "error";
+        }
+      }
+      return { status: "error", message: errorMessage(caught) };
     } finally {
       saveInFlightRef.current = false;
       setSavingObject(false);
@@ -116,6 +155,7 @@ export function useWorkbenchObjectPersistence({
 
   return {
     reloadSpatialLocation,
+    transitionConclusion,
     saveObject,
     saveSpatialPosition,
     savingObject,

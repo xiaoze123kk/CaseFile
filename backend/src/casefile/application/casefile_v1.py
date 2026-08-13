@@ -119,9 +119,7 @@ def _upgrade_casefile_v1_to_v2(candidate: dict[str, Any]) -> dict[str, Any]:
         if precision == "unknown":
             event["time"] = {"kind": "unknown"}
             continue
-        wall_precision = (
-            precision if precision in {"day", "hour", "minute", "second"} else "second"
-        )
+        wall_precision = precision if precision in {"day", "hour", "minute", "second"} else "second"
         start = _legacy_wall_clock(legacy["start"], wall_precision)
         end = legacy["end"]
         if end is not None:
@@ -515,6 +513,13 @@ def _create_content_rows(
             fairness_requirements_jsonb=[],
             conclusion_pattern_jsonb={},
             status="draft",
+            conclusion_outcome=(item.get("conclusion") or {}).get("outcome"),
+            conclusion_review_status=(item.get("conclusion") or {}).get("review_status"),
+            conclusion_summary=(item.get("conclusion") or {}).get("summary"),
+            conclusion_rationale=(item.get("conclusion") or {}).get("rationale"),
+            conclusion_unresolved_gaps_jsonb=(item.get("conclusion") or {}).get(
+                "unresolved_gaps", []
+            ),
         )
         session.add(resolution)
         session.flush()
@@ -528,7 +533,7 @@ def _create_content_rows(
                     label=slot["slot_id"],
                     is_required=slot["required"],
                     ordinal=ordinal,
-                    value_jsonb=None,
+                    value_jsonb=_resolution_slot_scalar_value(item, slot["slot_id"]),
                 )
             )
 
@@ -733,7 +738,7 @@ def _walk_object_refs(
     if _is_object_ref(value):
         metadata: dict[str, Any] = {}
         if parent is not None:
-            for key in ("minutes", "effect", "strength", "rationale"):
+            for key in ("minutes", "effect", "strength", "rationale", "slot_id"):
                 if key in parent:
                     metadata[key] = parent[key]
         yield path, 1, value, metadata
@@ -783,27 +788,72 @@ def _project_resolutions(
         }
         for ref in _refs_at(refs[registry.id], "/accepted_answers"):
             accepted[ref.ordinal] = _ref_value(ref)
-        result.append(
-            {
-                **_common(registry, refs),
-                "id": registry.object_id,
-                "title": row.title,
-                "question_type": row.question_type,
-                "reasoning_question": row.target_question,
-                "conclusion_mode": row.conclusion_mode,
-                "required_slots": [
-                    {
-                        "slot_id": slot.slot_key,
-                        "value_type": slot.value_type,
-                        "required": slot.is_required,
-                    }
-                    for slot in slots
-                ],
-                "accepted_answers": [accepted[index] for index in sorted(accepted)],
-                "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
-            }
-        )
+        projected = {
+            **_common(registry, refs),
+            "id": registry.object_id,
+            "title": row.title,
+            "question_type": row.question_type,
+            "reasoning_question": row.target_question,
+            "conclusion_mode": row.conclusion_mode,
+            "required_slots": [
+                {
+                    "slot_id": slot.slot_key,
+                    "value_type": slot.value_type,
+                    "required": slot.is_required,
+                }
+                for slot in slots
+            ],
+            "accepted_answers": [accepted[index] for index in sorted(accepted)],
+            "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
+        }
+        conclusion = _project_resolution_conclusion(row, slots, refs[registry.id])
+        if conclusion is not None:
+            projected["conclusion"] = conclusion
+        result.append(projected)
     return result
+
+
+def _resolution_slot_scalar_value(item: dict[str, Any], slot_id: str) -> Any | None:
+    conclusion = item.get("conclusion")
+    if conclusion is None:
+        return None
+    for value in conclusion["values"]:
+        if value["slot_id"] == slot_id and not _is_object_ref(value["value"]):
+            return value["value"]
+    return None
+
+
+def _project_resolution_conclusion(
+    row: ResolutionSpec,
+    slots: list[ResolutionSlot],
+    refs: list[CaseFileContractRef],
+) -> dict[str, Any] | None:
+    if row.conclusion_outcome is None:
+        return None
+    object_values = {
+        str(ref.metadata_jsonb.get("slot_id")): _ref_value(ref)
+        for ref in refs
+        if ref.field_path.startswith("/conclusion/values/")
+        and ref.field_path.endswith("/value")
+        and ref.metadata_jsonb.get("slot_id")
+    }
+    values = []
+    for slot in slots:
+        value = object_values.get(slot.slot_key, slot.value_jsonb)
+        if value is not None:
+            values.append({"slot_id": slot.slot_key, "value": value})
+    return {
+        "outcome": row.conclusion_outcome,
+        "review_status": row.conclusion_review_status,
+        "summary": row.conclusion_summary,
+        "values": values,
+        "selected_hypothesis_refs": _ref_values(refs, "/conclusion/selected_hypothesis_refs"),
+        "supporting_reasoning_path_refs": _ref_values(
+            refs, "/conclusion/supporting_reasoning_path_refs"
+        ),
+        "rationale": row.conclusion_rationale,
+        "unresolved_gaps": row.conclusion_unresolved_gaps_jsonb,
+    }
 
 
 def _project_entities(
@@ -1031,9 +1081,7 @@ def _project_hypotheses(
                 "id": registry.object_id,
                 "title": row.title,
                 "proposition": row.summary,
-                "target_resolution_ref": _single_ref(
-                    refs[registry.id], "/target_resolution_ref"
-                ),
+                "target_resolution_ref": _single_ref(refs[registry.id], "/target_resolution_ref"),
                 "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
                 "falsifier_refs": _ref_values(refs[registry.id], "/falsifier_refs"),
                 "competing_hypothesis_refs": _ref_values(

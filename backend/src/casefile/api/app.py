@@ -29,6 +29,7 @@ from casefile.api.schemas import (
     ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
+    ResolutionConclusionActionRequest,
     TimelineTimePreviewRequest,
 )
 from casefile.api.workbench import workbench_router
@@ -38,6 +39,7 @@ from casefile.application.exposure_plan import ExposurePlanService
 from casefile.application.services import CaseFileService
 from casefile.application.timeline import TimelineService
 from casefile.application.v1_editing import V1EditingService
+from casefile.contracts import ContractValidationError, public_validation_issues
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
     assert_database_ready,
@@ -80,6 +82,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
         allow_headers=["*"],
     )
     application.add_exception_handler(ApplicationError, _application_error_handler)
+    application.add_exception_handler(ContractValidationError, _contract_validation_error_handler)
     application.add_exception_handler(RequestValidationError, _validation_error_handler)
     application.add_exception_handler(StarletteHTTPException, _http_error_handler)
     application.add_exception_handler(SQLAlchemyError, _database_error_handler)
@@ -122,6 +125,24 @@ async def _application_error_handler(_: Request, error: Exception) -> JSONRespon
     return JSONResponse(
         status_code=error.status_code,
         content={"code": error.code, "message": error.message, "details": error.details},
+    )
+
+
+async def _contract_validation_error_handler(_: Request, error: Exception) -> JSONResponse:
+    assert isinstance(error, ContractValidationError)
+    issues = public_validation_issues(error.errors)
+    first = issues[0] if issues else {
+        "code": "contract_validation_failed",
+        "path": "",
+        "message": "提交内容不符合 CaseFile 结构约束。",
+    }
+    return JSONResponse(
+        status_code=422,
+        content={
+            "code": first["code"],
+            "message": first["message"],
+            "details": {"errors": issues},
+        },
     )
 
 
@@ -342,6 +363,44 @@ def _api_router() -> APIRouter:
             expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
             changes=payload.changes,
+        )
+        _set_revision(response, revision)
+        return result
+
+    @router.post("/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/confirm")
+    def confirm_resolution_conclusion(
+        project_id: int,
+        resolution_id: str,
+        payload: ResolutionConclusionActionRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result, revision = V1EditingService(session).confirm_conclusion(
+            actor,
+            project_id,
+            resolution_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+        )
+        _set_revision(response, revision)
+        return result
+
+    @router.post("/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/withdraw")
+    def withdraw_resolution_conclusion(
+        project_id: int,
+        resolution_id: str,
+        payload: ResolutionConclusionActionRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result, revision = V1EditingService(session).withdraw_conclusion(
+            actor,
+            project_id,
+            resolution_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
         )
         _set_revision(response, revision)
         return result

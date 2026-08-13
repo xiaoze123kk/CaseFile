@@ -282,7 +282,7 @@ function expectWorkbenchSeedCompatibility(model: WorkbenchModel) {
 }
 
 describe("real workbench data mapper", () => {
-  it("maps five real object collections, stable timeline refs, and deterministic graph data", () => {
+  it("maps six real object collections, stable timeline refs, and deterministic graph data", () => {
     const caseFile = makeCaseFile();
     const model = expectWorkbenchSeedCompatibility(
       mapCaseFileToWorkbenchModel(caseFile, 7),
@@ -292,6 +292,7 @@ describe("real workbench data mapper", () => {
     expect(model.draftRevision).toBe(7);
     expect(model.caseMeta.revision).toBe("R7");
     expect(model.objectCounts).toEqual({
+      resolution_spec: 1,
       entity: 2,
       information: 1,
       event: 3,
@@ -299,7 +300,7 @@ describe("real workbench data mapper", () => {
       hypothesis: 1,
     });
     expect(new Set(model.caseObjects.map((object) => object.kind))).toEqual(
-      new Set(["entity", "information", "event", "location", "hypothesis"]),
+      new Set(["resolution_spec", "entity", "information", "event", "location", "hypothesis"]),
     );
     expect(model.timelineEvents.map((event) => event.id)).toEqual([
       "evt_early",
@@ -372,7 +373,7 @@ describe("real workbench data mapper", () => {
       hypothesisId: "hyp_operator_changed_record",
       targetHypothesisId: "hyp_operator_changed_record",
       resolutionSpecId: "res_core_question",
-      conclusion: "值班员改写记录",
+      conclusion: "该核心问题尚未形成结论",
       outcome: "supported",
       evidenceIds: ["info_gate_log"],
     });
@@ -576,6 +577,71 @@ describe("real workbench data mapper", () => {
     });
   });
 
+  it("maps one resolution conclusion across relationship, reasoning, and timeline selection data", () => {
+    const caseFile = makeCaseFile();
+    caseFile.resolution_specs[0] = {
+      ...caseFile.resolution_specs[0],
+      conclusion: {
+        outcome: "answer",
+        review_status: "confirmed",
+        summary: "值班员改写了记录。",
+        values: [],
+        selected_hypothesis_refs: [
+          ref("hypothesis", "hyp_operator_changed_record"),
+        ],
+        supporting_reasoning_path_refs: [
+          ref("reasoning_path", "path_record_change"),
+        ],
+        rationale: "门禁记录与值班时段相互印证。",
+        unresolved_gaps: [],
+      },
+    };
+
+    const model = mapCaseFileToWorkbenchModel(caseFile, 7);
+
+    expect(model.conclusions).toEqual([
+      expect.objectContaining({
+        resolutionSpecId: "res_core_question",
+        reviewStatus: "confirmed",
+        summary: "值班员改写了记录。",
+        selectedHypothesisIds: ["hyp_operator_changed_record"],
+        supportingReasoningPathIds: ["path_record_change"],
+        relatedEventIds: ["evt_early"],
+      }),
+    ]);
+    expect(model.reasoningPaths[0]?.conclusion).toBe("值班员改写了记录。");
+    expect(model.graphNodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "res_core_question" }),
+      expect.objectContaining({
+        id: "resolution-conclusion:res_core_question",
+        directoryObjectId: "res_core_question",
+        label: "值班员改写了记录。",
+      }),
+    ]));
+    expect(model.graphEdges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        from: "res_core_question",
+        to: "resolution-conclusion:res_core_question",
+        kind: "resolution_conclusion",
+      }),
+      expect.objectContaining({
+        from: "hyp_operator_changed_record",
+        to: "resolution-conclusion:res_core_question",
+        label: "进入当前结论",
+      }),
+      expect.objectContaining({
+        from: "path_record_change",
+        to: "resolution-conclusion:res_core_question",
+        label: "收束依据",
+      }),
+    ]));
+    expect(model.timelineEvents.map((event) => event.id)).toEqual([
+      "evt_early",
+      "evt_late",
+      "evt_unknown_time",
+    ]);
+  });
+
   it("does not expose English-only generated text on Chinese workbench surfaces", () => {
     const caseFile = makeCaseFile();
     caseFile.information_units[0] = {
@@ -618,7 +684,7 @@ describe("real workbench data mapper", () => {
     expect(model.graphNodes.find((item) => item.id === "claim_record_changed")?.label)
       .toBe("论断 1（标题待补充）");
     expect(model.reasoningPaths[0]).toMatchObject({
-      conclusion: "假设 1（标题待补充）",
+      conclusion: "该核心问题尚未形成结论",
       title: "推理路径 1（标题待补充）",
     });
     expect(model.reasoningPaths[0].steps[0].claim).not.toMatch(/[A-Za-z]{2,}/);

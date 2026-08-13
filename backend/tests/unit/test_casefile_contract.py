@@ -214,6 +214,92 @@ def test_evidence_assessments_are_backward_compatible_and_semantically_checked()
     assert "schema_invalid" in _error_codes(empty_rationale)
 
 
+def _conclusion(path_id: str) -> dict[str, Any]:
+    return {
+        "outcome": "answer",
+        "review_status": "proposed",
+        "summary": "当前证据链支持自动安全重启解释。",
+        "values": [
+            {
+                "slot_id": "slot_root_cause",
+                "value": {"object_type": "claim", "object_id": "claim_backup_trigger"},
+            }
+        ],
+        "selected_hypothesis_refs": [
+            {"object_type": "hypothesis", "object_id": "hyp_automatic_restart"}
+        ],
+        "supporting_reasoning_path_refs": [
+            {"object_type": "reasoning_path", "object_id": path_id}
+        ],
+        "rationale": "必要推理路径已把信息连接到当前问题的关键主张。",
+        "unresolved_gaps": [],
+    }
+
+
+def test_resolution_conclusion_accepts_required_claim_target_paths() -> None:
+    for owner in ("resolution", "hypothesis"):
+        document = _load("restart_loop.casefile.json")
+        resolution = document["resolution_specs"][0]
+        hypothesis = document["hypotheses"][0]
+        claim_id = f"claim_{owner}_dependency"
+        dependent_claim = copy.deepcopy(document["claims"][0])
+        dependent_claim["id"] = claim_id
+        dependent_claim["dependency_claim_refs"] = []
+        document["claims"].append(dependent_claim)
+        if owner == "resolution":
+            resolution["required_claim_refs"] = [
+                {"object_type": "claim", "object_id": claim_id}
+            ]
+        else:
+            hypothesis["required_claim_refs"] = [
+                {"object_type": "claim", "object_id": claim_id}
+            ]
+        path = copy.deepcopy(document["reasoning_paths"][0])
+        path["id"] = f"path_{owner}_required_claim"
+        path["target_ref"] = {"object_type": "claim", "object_id": claim_id}
+        document["reasoning_paths"].append(path)
+        resolution["conclusion"] = _conclusion(path["id"])
+
+        validate_casefile(document)
+
+
+def test_resolution_conclusion_accepts_required_claim_dependency_closure_only() -> None:
+    document = _load("restart_loop.casefile.json")
+    resolution = document["resolution_specs"][0]
+    dependency_claim = copy.deepcopy(document["claims"][0])
+    dependency_claim["id"] = "claim_required_dependency"
+    dependency_claim["dependency_claim_refs"] = []
+    document["claims"].append(dependency_claim)
+    document["claims"][0]["dependency_claim_refs"] = [
+        {"object_type": "claim", "object_id": dependency_claim["id"]}
+    ]
+    path = copy.deepcopy(document["reasoning_paths"][0])
+    path["id"] = "path_required_dependency"
+    path["target_ref"] = {"object_type": "claim", "object_id": dependency_claim["id"]}
+    document["reasoning_paths"].append(path)
+    resolution["conclusion"] = _conclusion(path["id"])
+    validate_casefile(document)
+
+    unrelated = copy.deepcopy(document)
+    unrelated_claim = copy.deepcopy(dependency_claim)
+    unrelated_claim["id"] = "claim_unrelated"
+    unrelated["claims"].append(unrelated_claim)
+    unrelated_path = next(
+        item for item in unrelated["reasoning_paths"] if item["id"] == path["id"]
+    )
+    unrelated_path["target_ref"] = {
+        "object_type": "claim",
+        "object_id": unrelated_claim["id"],
+    }
+    assert "conclusion_reasoning_path_scope_invalid" in _error_codes(unrelated)
+
+    not_required = copy.deepcopy(document)
+    next(
+        item for item in not_required["reasoning_paths"] if item["id"] == path["id"]
+    )["required_for_resolution"] = False
+    assert "conclusion_reasoning_path_scope_invalid" in _error_codes(not_required)
+
+
 def test_rfc8785_hash_is_stable_across_object_key_order() -> None:
     document = _load("restart_loop.casefile.json")
     reordered = json.loads(json.dumps(document, ensure_ascii=False, sort_keys=True))

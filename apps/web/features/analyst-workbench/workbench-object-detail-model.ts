@@ -16,6 +16,7 @@ import {
 } from "./workbench-presenters";
 
 export type DetailCollection =
+  | "resolution_specs"
   | "entities"
   | "information_units"
   | "events"
@@ -73,6 +74,7 @@ export interface ObjectDetailModel {
 }
 
 export const detailCollections: DetailCollection[] = [
+  "resolution_specs",
   "entities",
   "information_units",
   "events",
@@ -81,6 +83,7 @@ export const detailCollections: DetailCollection[] = [
 ];
 
 const collectionLabels: Record<DetailCollection, string> = {
+  resolution_specs: "核心问题",
   entities: "实体",
   information_units: "信息",
   events: "事件",
@@ -89,6 +92,7 @@ const collectionLabels: Record<DetailCollection, string> = {
 };
 
 const collectionObjectTypes: Record<DetailCollection, string> = {
+  resolution_specs: "resolution_spec",
   entities: "entity",
   information_units: "information_unit",
   events: "event",
@@ -225,7 +229,7 @@ function catalogEntry(
 
 function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailReference> {
   const entries = [
-    ...document.resolution_specs.map((item) => catalogEntry(item, "resolution_spec", false)),
+    ...document.resolution_specs.map((item) => catalogEntry(item, "resolution_spec", true)),
     ...document.entities.map((item) => catalogEntry(item, "entity", true)),
     ...document.relationships.map((item) => catalogEntry(item, "relationship", false)),
     ...document.locations.map((item) => catalogEntry(item, "location", true)),
@@ -298,6 +302,10 @@ function subtypeFor(
   collection: DetailCollection,
   object: Record<string, unknown>,
 ): string {
+  if (collection === "resolution_specs") {
+    const conclusion = asRecord(object.conclusion);
+    return conclusion ? stringValue(conclusion.review_status) : "missing";
+  }
   if (collection === "entities") return stringValue(object.entity_type);
   if (collection === "information_units") return stringValue(object.information_type);
   if (collection === "events") return stringValue(object.truth_status);
@@ -419,6 +427,55 @@ function relationshipsFor(
   });
 }
 
+function eventReasoningSection(
+  document: CaseFileDocument,
+  eventId: string,
+  catalog: Map<string, DetailReference>,
+): DetailSection | null {
+  const information = document.information_units.filter(
+    (item) => asObjectRef(item.source_event_ref)?.object_id === eventId,
+  );
+  const informationIds = new Set(information.map((item) => item.id));
+  const claimRefs = information.flatMap((item) =>
+    Array.isArray(item.supports_claim_refs)
+      ? item.supports_claim_refs.flatMap((value) => asObjectRef(value) ?? [])
+      : [],
+  );
+  const claimIds = new Set(claimRefs.map((item) => item.object_id));
+  const hypotheses = document.hypotheses.filter((hypothesis) =>
+    hypothesis.required_claim_refs.some((value) =>
+      claimIds.has(asObjectRef(value)?.object_id ?? ""),
+    ) || (Array.isArray(hypothesis.evidence_assessments) &&
+      hypothesis.evidence_assessments.some((assessment) =>
+        informationIds.has(asObjectRef(assessment.information_ref)?.object_id ?? ""),
+      )),
+  );
+  const hypothesisRefs = hypotheses.map((item): TypedObjectRef => ({
+    object_type: "hypothesis",
+    object_id: item.id,
+  }));
+  const resolutionIds = new Set([
+    ...hypotheses.flatMap((item) => {
+      const reference = asObjectRef(item.target_resolution_ref);
+      return reference ? [reference.object_id] : [];
+    }),
+    ...document.resolution_specs.flatMap((resolution) =>
+      resolution.required_claim_refs.some((value) =>
+        claimIds.has(asObjectRef(value)?.object_id ?? ""),
+      ) ? [resolution.id] : [],
+    ),
+  ]);
+  const resolutionRefs = [...resolutionIds].map((objectId): TypedObjectRef => ({
+    object_type: "resolution_spec",
+    object_id: objectId,
+  }));
+  return section("推理影响", [
+    referenceField("支持论断", claimRefs, catalog),
+    referenceField("关联假设", hypothesisRefs, catalog),
+    referenceField("待解问题", resolutionRefs, catalog),
+  ]);
+}
+
 function sectionsFor(
   collection: DetailCollection,
   object: Record<string, unknown>,
@@ -427,6 +484,72 @@ function sectionsFor(
   const commonMore = [section("补充信息", [creatorListField("标签", object.tags)])].filter(
     (item): item is DetailSection => item !== null,
   );
+
+  if (collection === "resolution_specs") {
+    const conclusion = asRecord(object.conclusion);
+    const conclusionValues = Array.isArray(conclusion?.values)
+      ? conclusion.values.flatMap((item) => {
+          const value = asRecord(item);
+          if (!value) return [];
+          const answer = asObjectRef(value.value);
+          return [
+            answer
+              ? `${stringValue(value.slot_id)}：${resolveReference(answer, catalog).label}`
+              : `${stringValue(value.slot_id)}：${String(value.value ?? "未填写")}`,
+          ];
+        })
+      : [];
+    return {
+      coreSections: compact([
+        section("核心问题", [
+          creatorTextField("待解问题", object.reasoning_question, "核心问题待补充。"),
+          textField("解答模式", objectSubtypeLabel(stringValue(object.conclusion_mode))),
+        ]),
+        conclusion
+          ? section("当前结论", [
+              textField(
+                "裁决状态",
+                stringValue(conclusion.review_status) === "confirmed"
+                  ? "作者已确认"
+                  : "待作者确认",
+              ),
+              textField(
+                "结论类型",
+                stringValue(conclusion.outcome) === "undetermined" ? "未定论" : "答案",
+              ),
+              creatorTextField("结论摘要", conclusion.summary, "当前结论摘要待补充。"),
+              listField("答案槽位", conclusionValues),
+              creatorTextField("裁决依据", conclusion.rationale, "当前结论依据待补充。"),
+              creatorListField("未解决缺口", conclusion.unresolved_gaps),
+            ])
+          : section("当前结论", [
+              textField("裁决状态", "尚未形成结论"),
+              textField("下一步", "填写答案或未定论，并关联同题假设与有效推理路径。"),
+            ]),
+      ]),
+      moreSections: [
+        ...compact([
+          section("解答约束", [
+            listField(
+              "必填槽位",
+              Array.isArray(object.required_slots)
+                ? object.required_slots.map((item) => {
+                    const slot = asRecord(item);
+                    return slot
+                      ? `${stringValue(slot.slot_id)} · ${objectSubtypeLabel(stringValue(slot.value_type))}${slot.required ? " · 必填" : ""}`
+                      : "";
+                  }).filter(Boolean)
+                : [],
+            ),
+            referenceField("必需论断", object.required_claim_refs, catalog),
+            referenceField("获选假设", conclusion?.selected_hypothesis_refs, catalog),
+            referenceField("依据路径", conclusion?.supporting_reasoning_path_refs, catalog),
+          ]),
+        ]),
+        ...commonMore,
+      ],
+    };
+  }
 
   if (collection === "entities") {
     return {
@@ -578,6 +701,9 @@ export function buildObjectDetailModel(
     )
     .map((reference) => resolveReference(reference, catalog));
   const { coreSections, moreSections } = sectionsFor(collection, record, catalog);
+  const eventReasoning = collection === "events"
+    ? eventReasoningSection(document, object.id, catalog)
+    : null;
   const subtype = subtypeFor(collection, record);
   const createdBy = asRecord(record.created_by);
 
@@ -594,7 +720,7 @@ export function buildObjectDetailModel(
     ),
     id: object.id,
     kindLabel: collectionLabels[collection],
-    moreSections,
+    moreSections: eventReasoning ? [eventReasoning, ...moreSections] : moreSections,
     references,
     relationships: relationshipsFor(document, object.id, catalog),
     sourceReferences,

@@ -187,6 +187,16 @@
 .referenceList button:focus-visible,
 .associationList button:focus-visible { outline: 2px solid #c78b3c; }
 .objectEditorWide { grid-column: 1 / -1; }
+.conclusionEditNote {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 9px 10px;
+  color: #7c3f31;
+  border-left: 2px solid #a84b32;
+  background: rgba(168, 75, 50, 0.07);
+  font-size: 11px;
+  line-height: 1.6;
+}
 
 .associations {
   display: grid;

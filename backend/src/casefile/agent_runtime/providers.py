@@ -15,6 +15,15 @@ from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -26,6 +35,7 @@ from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generatio
 from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generation
 from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
 from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
+from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -77,15 +87,6 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 
 
 class GenerationProvider(Protocol):
@@ -428,9 +429,10 @@ class FakeProvider:
                     "brief-to-draft-v12",
                     "brief-to-draft-v13",
                     "brief-to-draft-v14",
+                    "brief-to-draft-v15",
                 }:
                     _add_fake_v10_matrix_plan(output_type, output)
-                if output_type.__name__ == "ResolutionGovernanceIRV1":
+                if output_type.__name__ in {"ResolutionGovernanceIRV1", "ResolutionGovernanceIRV2"}:
                     output["resolution_specs"][0]["conclusion_mode"] = request.brief[
                         "conclusion_mode"
                     ]
@@ -453,7 +455,9 @@ class FakeProvider:
                 return output, usage
 
             runner = (
-                run_v14_generation
+                run_v15_generation
+                if request.prompt_version == "brief-to-draft-v15"
+                else run_v14_generation
                 if request.prompt_version == "brief-to-draft-v14"
                 else run_v13_generation
                 if request.prompt_version == "brief-to-draft-v13"
@@ -778,7 +782,9 @@ class OpenAIAgentsProvider:
                 )
 
             runner = (
-                run_v14_generation
+                run_v15_generation
+                if request.prompt_version == "brief-to-draft-v15"
+                else run_v14_generation
                 if request.prompt_version == "brief-to-draft-v14"
                 else run_v13_generation
                 if request.prompt_version == "brief-to-draft-v13"
@@ -1031,7 +1037,9 @@ class DeepSeekAgentsProvider:
                 )
 
             runner = (
-                run_v14_generation
+                run_v15_generation
+                if request.prompt_version == "brief-to-draft-v15"
+                else run_v14_generation
                 if request.prompt_version == "brief-to-draft-v14"
                 else run_v13_generation
                 if request.prompt_version == "brief-to-draft-v13"
@@ -1723,8 +1731,8 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 },
             ]
         return output
-    if output_type.__name__ == "ResolutionGovernanceIRV1":
-        return {
+    if output_type.__name__ in {"ResolutionGovernanceIRV1", "ResolutionGovernanceIRV2"}:
+        output = {
             "resolution_specs": [
                 {
                     "local_key": "resolution",
@@ -1764,6 +1772,18 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             ],
             "content_notices": [],
         }
+        if output_type.__name__ == "ResolutionGovernanceIRV2":
+            output["resolution_specs"][0]["conclusion"] = {
+                "outcome": "answer",
+                "summary": "关键记录可信，可以作为当前核心问题的答案。",
+                "values": [],
+                "selected_hypothesis_keys": ["hypothesis"],
+                "supporting_reasoning_path_keys": ["path"],
+                "rationale": "记录内容与支持性信息一致，竞争解释仍缺少直接依据。",
+                "unresolved_gaps": [],
+            }
+            output["schema_id"] = "resolution-governance-ir-v2"
+        return output
     raise ProviderProtocolError(f"Fake v8 component is unsupported: {output_type.__name__}")
 
 

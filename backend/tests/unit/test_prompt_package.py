@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as generation_workflow
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
+from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
 from casefile.agent_runtime.prompt import (
     V10_GENERATION_AGENT_VERSION,
     V11_GENERATION_AGENT_VERSION,
     V12_GENERATION_AGENT_VERSION,
     V13_GENERATION_AGENT_VERSION,
     V14_GENERATION_AGENT_VERSION,
+    V15_GENERATION_AGENT_VERSION,
 )
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package
 from casefile.agent_runtime.prompt_repository import (
@@ -24,6 +26,7 @@ from casefile.agent_runtime.prompt_repository import (
     PromptRepositoryError,
     load_prompt,
 )
+from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.contracts import validate_casefile
 
@@ -342,14 +345,104 @@ def test_v14_fake_provider_enforces_chinese_creator_text_and_keeps_topology() ->
 
     validate_casefile(result.candidate)
     started = [
-        payload
-        for event_type, _stage, payload in events
-        if event_type == "agent.step.started"
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
     ]
     assert {payload["package_version"] for payload in started if "package_version" in payload} == {
         "brief-to-draft-v14"
     }
     assert any(payload["component_id"] == "temporal_structure_planner" for payload in started)
+
+
+def test_v15_fake_provider_generates_only_proposed_resolution_conclusions() -> None:
+    request = GenerationRequest(
+        task_run_id=327,
+        prompt_version="brief-to-draft-v15",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v15",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v15",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v15",
+        api_key=None,
+        max_turns=3,
+        emit=lambda *_args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V15_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    conclusion = result.candidate["resolution_specs"][0]["conclusion"]
+    assert conclusion["review_status"] == "proposed"
+    assert conclusion["selected_hypothesis_refs"]
+    assert conclusion["supporting_reasoning_path_refs"]
+    assert "confirmed" not in conclusion.values()
+
+
+def test_v15_governance_runs_after_evidence_and_can_return_undetermined() -> None:
+    calls: list[str] = []
+    governance_inputs: list[dict[str, object]] = []
+    request = GenerationRequest(
+        task_run_id=328,
+        prompt_version="brief-to-draft-v15",
+        brief={"conclusion_mode": "open_interpretation"},
+        casefile_id="case_demo_v15_open",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v15_open",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v15-open",
+        api_key=None,
+        max_turns=3,
+        emit=lambda *_args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V15_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    async def call_component(
+        _instructions: str,
+        input_text: str,
+        output_type: type[generation_workflow.BaseModel],
+        _stage: str,
+        component_id: str,
+        _schema_id: str,
+    ) -> tuple[dict[str, object], dict[str, int]]:
+        calls.append(component_id)
+        output = _fake_v8_output(output_type)
+        _add_fake_v10_matrix_plan(output_type, output)
+        if component_id == "resolution_governance":
+            governance_input = json.loads(input_text)
+            governance_inputs.append(governance_input)
+            output["resolution_specs"][0]["conclusion_mode"] = "open_interpretation"
+            output["resolution_specs"][0]["conclusion"] = {
+                "outcome": "undetermined",
+                "summary": "两种解释仍然并存，现有记录不足以完成唯一裁决。",
+                "values": [],
+                "selected_hypothesis_keys": ["hypothesis", "alternative_hypothesis"],
+                "supporting_reasoning_path_keys": ["path", "alternative_path"],
+                "rationale": "同一记录同时支持与削弱不同解释，尚无独立来源消除冲突。",
+                "unresolved_gaps": ["缺少独立来源对关键记录真伪的复核。"],
+            }
+        return output, {"requests": 1}
+
+    result = asyncio.run(run_v15_generation(request, call_component=call_component))
+
+    validate_casefile(result.candidate)
+    conclusion = result.candidate["resolution_specs"][0]["conclusion"]
+    assert conclusion["outcome"] == "undetermined"
+    assert conclusion["review_status"] == "proposed"
+    assert conclusion["unresolved_gaps"]
+    assert calls.index("resolution_governance") > calls.index("evidence_logic")
+    assert governance_inputs[0]["evidence_logic"]["schema_id"] == "evidence-logic-ir-v2"
+    assert len(governance_inputs[0]["evidence_logic"]["hypotheses"]) == 2
 
 
 def test_v14_creator_language_gate_attributes_nested_english_text() -> None:

@@ -83,8 +83,11 @@ export function RelationshipGraph({
             ? mappedNode.kind ?? object?.kind ?? "unknown"
             : object?.kind ?? mappedNode.kind ?? "unknown";
         const label = object?.label ?? mappedNode.label ?? node.objectId;
+        const isConclusionNode = node.objectId.startsWith("resolution-conclusion:");
         const caption =
-          mappedSeed.origin === "fixture"
+          isConclusionNode
+            ? "最终结论"
+            : mappedSeed.origin === "fixture"
             ? (graphReferenceLabels[String(kind)] ?? "引用")
             : object
               ? objectKindLabels[object.kind]
@@ -96,7 +99,7 @@ export function RelationshipGraph({
           caption,
           label,
           ariaLabel: `${caption}：${label}`,
-          accent: relationshipNodeAccent(String(kind)),
+          accent: isConclusionNode ? "#a84b32" : relationshipNodeAccent(String(kind)),
           selectableId,
           width: 176,
           height: 58,
@@ -153,7 +156,7 @@ export function RelationshipGraph({
       <header className={styles.sectionHeader}>
         <div>
           <span>关系网络</span>
-          <h2 id="relations-heading">事件、人物与证据</h2>
+          <h2 id="relations-heading">核心问题如何收束为最终结论</h2>
         </div>
         <div className={styles.sectionTrailing}>
           <small>

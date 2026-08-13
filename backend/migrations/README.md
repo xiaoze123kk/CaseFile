@@ -142,7 +142,7 @@ drafts ── exposure_plans（独立 revision 指针）
 | `reasoning_paths` | 推理路径、状态、置信度和 `required_for_resolution`。 | v1 Generation/Projection。 | 当前态可编辑；拥有 Node/Edge。 |
 | `reasoning_nodes` | Path 内稳定 key、顺序、来源对象和陈述。 | v1 Generation/Projection。 | 随 Path 编辑；key/顺序唯一。 |
 | `reasoning_edges` | 同 Path 两个 Node 间的有向论证边。 | v1 Generation/Projection。 | 禁止跨 Path 和自环。 |
-| `resolution_specs` | v1 可多条的 Resolution，含标题、目标无关推理问题、结论模式与可接受答案文本。 | v1 Generation/Projection。 | 当前态可编辑；旧目标字段列暂作兼容存储。 |
+| `resolution_specs` | v1 可多条的 Resolution，含标题、目标无关推理问题、结论模式、可接受答案文本，以及可选的当前结论结果、确认状态、摘要、依据、证据缺口、确认人和确认时间。 | v1 Generation/Projection；结论确认与撤回。 | 当前态可编辑；AI 只能写 `proposed`，作者确认写 `confirmed`；旧目标字段列暂作兼容存储。 |
 | `resolution_slots` | Resolution 内稳定 key、值类型、顺序与动态值。 | v1 Generation/Projection。 | 随 Resolution 编辑；key/顺序唯一。 |
 | `casefile_constraints` | v1 约束标题、自然语言陈述、规则表达式及兼容规则 JSON。 | v1 Generation/Projection。 | 当前态可启停和解决冲突。 |
 | `structure_locks` | v1 锁对象的强度、字段路径和原因。 | v1 Generation/Projection。 | 与 `object_type=structure_lock` 注册行 1:1。 |

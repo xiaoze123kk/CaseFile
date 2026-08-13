@@ -239,6 +239,7 @@ export function TimelineOverview({
   saving = false,
   onPreviewTime,
   onConfirmTime,
+  relatedConclusionEventIds = [],
 }: {
   seed: WorkbenchSeed;
   selectedEventId: string | null;
@@ -258,6 +259,7 @@ export function TimelineOverview({
     eventId: string,
     time: TimelineTemporalPosition,
   ) => Promise<SaveResult>;
+  relatedConclusionEventIds?: string[];
 }) {
   const events = seed.timelineEvents as TimelineDisplayEvent[];
   const selectedEvent =
@@ -601,6 +603,7 @@ export function TimelineOverview({
             </g>
             {viewMode === "events" ? events.map((timelineEvent, index) => {
               const selected = timelineEvent.id === selectedEventId;
+              const conclusionRelated = relatedConclusionEventIds.includes(timelineEvent.id);
               const issue = seed.validationIssues.find((item) =>
                 timelineEvent.issueIds.includes(item.id),
               );
@@ -621,13 +624,14 @@ export function TimelineOverview({
               return (
                 <g
                   key={timelineEvent.id}
-                  aria-label={`${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}${canDrag ? "，可拖动调整" : ""}`}
+                  aria-label={`${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}${conclusionRelated ? "，与当前结论相关" : ""}${canDrag ? "，可拖动调整" : ""}`}
                   aria-pressed={selected}
                   className={styles.eventRow}
                   data-draggable={canDrag}
                   data-dragging={dragGhost?.eventId === timelineEvent.id}
                   data-projection={projectedRelative ? "relative" : "absolute"}
                   data-selected={selected}
+                  data-conclusion-related={conclusionRelated}
                   onKeyDown={(event) => handleMarkerKey(event, timelineEvent)}
                   onPointerCancel={cancelDrag}
                   onPointerDown={(event) => startDrag(event, timelineEvent)}
@@ -647,6 +651,16 @@ export function TimelineOverview({
                   <text className={styles.rowLocation} x={92} y={y + 13}>
                     {timelineEvent.location}
                   </text>
+                  {conclusionRelated ? (
+                    <text
+                      className={styles.conclusionRelatedTag}
+                      textAnchor="end"
+                      x={PLOT_RIGHT - 28}
+                      y={diagnosticsVisible ? y + 13 : y - 10}
+                    >
+                      与当前结论相关
+                    </text>
+                  ) : null}
                   {diagnosticsVisible ? (
                     <text
                       className={styles.certaintyTag}
@@ -733,6 +747,7 @@ export function TimelineOverview({
                     const certainty = timelineCertainty(timelineEvent);
                     const projectedRelative = isRelativeProjection(timelineEvent);
                     const selected = timelineEvent.id === selectedEventId;
+                    const conclusionRelated = relatedConclusionEventIds.includes(eventId);
                     const issue = seed.validationIssues.find((item) =>
                       timelineEvent.issueIds.includes(item.id),
                     );
@@ -743,12 +758,13 @@ export function TimelineOverview({
                     const endX = bounds ? axis.scale(new Date(bounds.end)) : x;
                     return (
                       <g
-                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}`}
+                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}${conclusionRelated ? "，与当前结论相关" : ""}`}
                         aria-pressed={selected}
                         className={styles.laneMarker}
                         data-certainty={certainty}
                         data-projection={projectedRelative ? "relative" : "absolute"}
                         data-selected={selected}
+                        data-conclusion-related={conclusionRelated}
                         key={eventId}
                         onClick={() => onSelectEvent(eventId)}
                         onKeyDown={(event) => {
@@ -796,6 +812,16 @@ export function TimelineOverview({
                             r={10}
                           />
                         ) : null}
+                        {conclusionRelated ? (
+                          <text
+                            className={styles.laneConclusionRelatedTag}
+                            textAnchor="middle"
+                            x={x}
+                            y={y - 14}
+                          >
+                            与当前结论相关
+                          </text>
+                        ) : null}
                       </g>
                     );
                   })}
@@ -831,6 +857,7 @@ export function TimelineOverview({
         <ol className={styles.mobileList} aria-label="窄屏事件时间清单">
           {events.map((timelineEvent) => {
             const selected = timelineEvent.id === selectedEventId;
+            const conclusionRelated = relatedConclusionEventIds.includes(timelineEvent.id);
             const issue = seed.validationIssues.find((item) =>
               timelineEvent.issueIds.includes(item.id),
             );
@@ -839,6 +866,7 @@ export function TimelineOverview({
                 <button
                   aria-pressed={selected}
                   data-selected={selected}
+                  data-conclusion-related={conclusionRelated}
                   onClick={() => onSelectEvent(timelineEvent.id)}
                   type="button"
                 >
@@ -848,6 +876,7 @@ export function TimelineOverview({
                   <span>
                     <strong>{timelineEvent.label}</strong>
                     <small>{timelineEvent.location}</small>
+                    {conclusionRelated ? <small>与当前结论相关</small> : null}
                   </span>
                   {diagnosticsVisible ? (
                     <em data-certainty={timelineCertainty(timelineEvent)}>

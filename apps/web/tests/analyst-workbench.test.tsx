@@ -181,7 +181,7 @@ describe("analyst workbench", () => {
       screen.getByRole("button", { name: "证据：07 号门禁记录" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "结论：内部接应者" }),
+      screen.getByRole("button", { name: "假设：内部接应者" }),
     ).toBeInTheDocument();
   });
 
@@ -197,7 +197,7 @@ describe("analyst workbench", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("已排除").length).toBeGreaterThan(0);
     expect(
-      screen.getByRole("button", { name: "结论：三份记录彼此独立" }),
+      screen.getByRole("button", { name: "假设：隐藏的第四索引" }),
     ).toBeInTheDocument();
 
     fireEvent.click(
@@ -297,6 +297,19 @@ describe("analyst workbench", () => {
               hypotheses: [{ id: "hyp_one", title: "唯一假设", outcome: "supported" }],
               information: [],
               assessments: [],
+              conclusion: {
+                resolutionSpecId: "res_single",
+                question: "单一解释",
+                outcome: "undetermined",
+                reviewStatus: "confirmed",
+                summary: "当前仍需保留唯一可用解释。",
+                values: [],
+                selectedHypothesisIds: ["hyp_one"],
+                supportingReasoningPathIds: ["path_one"],
+                relatedEventIds: [],
+                rationale: "尚无第二个可比较解释。",
+                unresolvedGaps: ["缺少替代解释。"],
+              },
             },
           ],
         }}
@@ -306,6 +319,8 @@ describe("analyst workbench", () => {
     expect(
       screen.getByText("当前问题只有一个假设，至少需要两个解释才能比较。"),
     ).toBeInTheDocument();
+    expect(screen.getByText("当前仍需保留唯一可用解释。")).toBeInTheDocument();
+    expect(screen.getByText("作者已确认")).toBeInTheDocument();
 
     rerender(
       <ReasoningGraphView

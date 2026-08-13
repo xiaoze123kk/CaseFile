@@ -86,7 +86,10 @@ import {
   workbenchViewOptions,
   type WorkbenchView,
 } from "./workbench-views";
-import { useWorkbenchObjectPersistence } from "./workbench-object-persistence";
+import {
+  useWorkbenchObjectPersistence,
+  type ObjectSaveResult,
+} from "./workbench-object-persistence";
 import type {
   ReloadedSpatialLocation,
   SpatialPositionPayload,
@@ -529,6 +532,7 @@ export function AnalystWorkbench({
     saveObject,
     saveSpatialPosition,
     savingObject,
+    transitionConclusion,
   } = useWorkbenchObjectPersistence({
     draft,
     projectId,
@@ -719,6 +723,7 @@ export function AnalystWorkbench({
       onReloadSpatialLocation={reloadSpatialLocation}
       onSaveObject={saveObject}
       onSaveSpatialPosition={saveSpatialPosition}
+      onTransitionConclusion={transitionConclusion}
       projectId={projectId}
       realDocument={loadedDocument}
       realContextState={realContextState}
@@ -838,6 +843,7 @@ function AnalystWorkbenchSurface({
   onReloadSpatialLocation,
   onSaveObject,
   onSaveSpatialPosition,
+  onTransitionConclusion,
 }: {
   seed: WorkbenchModel;
   activeCandidate: WorkbenchCandidate | null;
@@ -865,7 +871,11 @@ function AnalystWorkbenchSurface({
   onSaveObject?: (
     objectId: string,
     changes: Record<string, unknown>,
-  ) => Promise<"saved" | "conflict" | "error">;
+  ) => Promise<ObjectSaveResult>;
+  onTransitionConclusion?: (
+    resolutionId: string,
+    action: "confirm" | "withdraw",
+  ) => Promise<ObjectSaveResult>;
   onSaveSpatialPosition?: (
     locationId: string,
     position: SpatialPositionPayload,
@@ -1010,6 +1020,12 @@ function AnalystWorkbenchSurface({
         const event = getEvent(seed, eventId);
         return event ? [event] : [];
       })
+    : [];
+  const selectedConclusion = seed.conclusions?.find(
+    (conclusion) => conclusion.resolutionSpecId === selectedObjectId,
+  );
+  const conclusionRelatedEventIds = selectedConclusion
+    ? selectedConclusion.relatedEventIds
     : [];
   const unresolvedCount = realData
     ? contextState.data?.validation.issue_count ?? 0
@@ -1173,7 +1189,12 @@ function AnalystWorkbenchSurface({
     const object = getObject(seed, objectId);
     if (!object || blockDirtyObjectNavigation(object.id)) return false;
     setSelectedObjectId(object.id);
-    const eventId = object.kind === "event" ? object.id : object.relatedEventIds[0];
+    const conclusionEventId = seed.conclusions?.find(
+      (conclusion) => conclusion.resolutionSpecId === object.id,
+    )?.relatedEventIds[0];
+    const eventId = object.kind === "event"
+      ? object.id
+      : conclusionEventId ?? object.relatedEventIds[0];
     setSelectedEventId(eventId ?? null);
     setObjectEditorNavigationNotice(null);
     if (revealInDirectory) {
@@ -1605,9 +1626,12 @@ function AnalystWorkbenchSurface({
                       realData && !writeLocked && currentDraft,
                     )}
                     issueStatuses={visibleIssueStatuses}
-                    onConfirmTime={(eventId, time) =>
-                      onSaveObject?.(eventId, { time }) ?? Promise.resolve("error")
-                    }
+                    onConfirmTime={async (eventId, time) => {
+                      const result = await (
+                        onSaveObject?.(eventId, { time }) ?? Promise.resolve("error")
+                      );
+                      return typeof result === "object" ? "error" : result;
+                    }}
                     onPreviewTime={onPreviewEventTime}
                     onSelectEvent={selectEvent}
                     projectId={
@@ -1618,6 +1642,7 @@ function AnalystWorkbenchSurface({
                     saving={savingObject}
                     seed={seed}
                     selectedEventId={selectedEventId}
+                    relatedConclusionEventIds={conclusionRelatedEventIds}
                     validationStatus={timelineValidationStatus}
                   />
                 ) : (
@@ -1631,7 +1656,30 @@ function AnalystWorkbenchSurface({
               <RelationshipGraph layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
             ) : null}
             {view === "reasoning" ? (
-              <ReasoningGraphView layoutScope={canvasLayoutScope} onSelectObject={(objectId) => selectObject(objectId, true)} seed={seed} selectedObjectId={selectedObjectId} />
+              <ReasoningGraphView
+                layoutScope={canvasLayoutScope}
+                onSelectObject={(objectId) => selectObject(objectId, true)}
+                onTransitionConclusion={onTransitionConclusion
+                  ? (resolutionId, action) => {
+                      void onTransitionConclusion(resolutionId, action).then((result) => {
+                        setLiveMessage(
+                          result === "saved"
+                            ? action === "confirm"
+                              ? "最终结论已由作者确认。"
+                              : "最终结论已撤回为待确认。"
+                            : result === "conflict"
+                              ? "工作稿已更新，已重新载入最新结论。"
+                            : typeof result === "object"
+                              ? result.message
+                              : "结论状态更新失败。",
+                        );
+                      });
+                    }
+                  : undefined}
+                seed={seed}
+                selectedObjectId={selectedObjectId}
+                transitionBusy={savingObject}
+              />
             ) : null}
             {view === "map" ? (
               <SpatialMapView

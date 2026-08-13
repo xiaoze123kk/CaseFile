@@ -42,8 +42,9 @@ describe("workbench object detail model", () => {
     expect(formatCaseWallClock("unknown")).toBe("时间未定");
   });
 
-  it("builds readable browse models for all five production object types", () => {
+  it("builds readable browse models for all six production object types", () => {
     const selections = [
+      ["res_root_cause", "核心问题", "其他"],
       ["ent_researcher", "实体", "人物"],
       ["info_restart_log", "信息", "系统日志"],
       ["evt_restart_seven", "事件", "既定事实"],
@@ -125,6 +126,35 @@ describe("workbench object detail model", () => {
         fields: ["卷宗时间", "参与者"],
       },
     ]);
+  });
+
+  it("exposes an event's Claim, hypothesis, and Resolution reasoning chain without adding events", () => {
+    const event = buildObjectDetailModel(document, "evt_restart_seven");
+    const reasoning = event?.moreSections.find((section) => section.title === "推理影响");
+
+    expect(reasoning?.fields).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "references",
+        label: "支持论断",
+        references: expect.arrayContaining([
+          expect.objectContaining({ id: "claim_backup_trigger", selectable: false }),
+        ]),
+      }),
+      expect.objectContaining({
+        kind: "references",
+        label: "关联假设",
+        references: expect.arrayContaining([
+          expect.objectContaining({ id: "hyp_automatic_restart", selectable: true }),
+        ]),
+      }),
+      expect.objectContaining({
+        kind: "references",
+        label: "待解问题",
+        references: expect.arrayContaining([
+          expect.objectContaining({ id: "res_root_cause", selectable: true }),
+        ]),
+      }),
+    ]));
   });
 
   it("keeps English-only generated values out of browse-mode labels", () => {

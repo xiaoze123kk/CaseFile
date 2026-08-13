@@ -44,6 +44,10 @@ from casefile.agent_runtime.brief_to_draft_v12.contracts import (
     temporal_story_issues,
 )
 from casefile.agent_runtime.brief_to_draft_v14.contracts import DraftContextPackV4
+from casefile.agent_runtime.brief_to_draft_v15.contracts import (
+    DraftContextPackV5,
+    ResolutionGovernanceIRV2,
+)
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.prompt import (
     COMPETITION_MATRIX_PROMPT_VERSIONS,
@@ -153,6 +157,9 @@ _DOMAIN_REFERENCE_CONTRACTS = {
     "resolution_governance": {
         "resolution_specs.accepted_answer_keys": ["entities", "claims", "hypotheses"],
         "resolution_specs.required_claim_keys": ["claims"],
+        "resolution_specs.conclusion.values[].value_key": list(BLUEPRINT_COLLECTIONS),
+        "resolution_specs.conclusion.selected_hypothesis_keys": ["hypotheses"],
+        "resolution_specs.conclusion.supporting_reasoning_path_keys": ["reasoning_paths"],
         "constraints.scope_keys": list(BLUEPRINT_COLLECTIONS),
         "constraints.conflict_keys": ["constraints"],
         "structure_locks.object_key": list(BLUEPRINT_COLLECTIONS),
@@ -198,6 +205,7 @@ async def run_v8_generation(
     is_v11 = request.prompt_version == "brief-to-draft-v11"
     uses_temporal_plan = request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
     uses_v2_context = is_v11 or uses_temporal_plan
+    uses_v15 = request.prompt_version == "brief-to-draft-v15"
     uses_competition_matrix = request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
@@ -210,7 +218,9 @@ async def run_v8_generation(
         "context_building",
         context.model_dump(mode="json"),
         schema_id=(
-            "draft-context-pack-v4"
+            "draft-context-pack-v5"
+            if uses_v15
+            else "draft-context-pack-v4"
             if request.prompt_version == "brief-to-draft-v14"
             else "draft-context-pack-v3"
             if uses_temporal_plan
@@ -246,7 +256,7 @@ async def run_v8_generation(
             error = ContractValidationError(blueprint_issues)
             _emit_quality_gate_failure(request, error)
             raise error
-    if request.prompt_version == "brief-to-draft-v14":
+    if request.prompt_version in {"brief-to-draft-v14", "brief-to-draft-v15"}:
         blueprint_language_issues = _blueprint_creator_chinese_issues(blueprint)
         if blueprint_language_issues:
             repaired_components.add("case_blueprint_planner")
@@ -311,6 +321,8 @@ async def run_v8_generation(
         prompt_component: str,
         output_type: type[BaseModel],
         repair_issues: list[dict[str, Any]] | None = None,
+        *,
+        evidence_logic: EvidenceLogicIRV2 | None = None,
     ) -> tuple[BaseModel, dict[str, Any]]:
         reference_contract = (
             _V11_STORY_REFERENCE_CONTRACT
@@ -334,6 +346,10 @@ async def run_v8_generation(
                 item.model_dump(mode="json")
                 for item in _extract_allowed_wgs84_coordinates(request.brief)
             ]
+        if uses_v15 and component_id == "resolution_governance":
+            if evidence_logic is None:
+                raise RuntimeError("v15 governance requires completed Evidence Logic")
+            input_payload["evidence_logic"] = evidence_logic.model_dump(mode="json")
         if request.prompt_version == "brief-to-draft-v8":
             input_payload.update(
                 {
@@ -377,7 +393,7 @@ async def run_v8_generation(
     story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3] = (
         StoryWorldIRV3 if uses_temporal_plan else StoryWorldIRV2 if is_v11 else StoryWorldIRV1
     )
-    domain_results = await asyncio.gather(
+    parallel_domain_tasks = [
         draft_domain(
             "story_world",
             "story",
@@ -390,13 +406,17 @@ async def run_v8_generation(
             evidence_output_type,
             _repair_issues_for_component(prior_repair_issues, "evidence_logic"),
         ),
-        draft_domain(
-            "resolution_governance",
-            "governance",
-            ResolutionGovernanceIRV1,
-            _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
-        ),
-    )
+    ]
+    if not uses_v15:
+        parallel_domain_tasks.append(
+            draft_domain(
+                "resolution_governance",
+                "governance",
+                ResolutionGovernanceIRV1,
+                _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
+            )
+        )
+    domain_results = await asyncio.gather(*parallel_domain_tasks)
     story_output: StoryWorldIRV1 | StoryWorldIRV2 | StoryWorldIRV3 = (
         story_output_type.model_validate(domain_results[0][0])
     )
@@ -416,8 +436,22 @@ async def run_v8_generation(
         if uses_competition_matrix
         else EvidenceLogicIRV1.model_validate(domain_results[1][0])
     )
-    governance = ResolutionGovernanceIRV1.model_validate(domain_results[2][0])
     usage_records.extend(result[1] for result in domain_results)
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2
+    if uses_v15:
+        if not isinstance(evidence, EvidenceLogicIRV2):
+            raise RuntimeError("v15 governance requires EvidenceLogicIRV2")
+        governance_output, governance_usage = await draft_domain(
+            "resolution_governance",
+            "governance",
+            ResolutionGovernanceIRV2,
+            _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
+            evidence_logic=evidence,
+        )
+        governance = ResolutionGovernanceIRV2.model_validate(governance_output)
+        usage_records.append(governance_usage)
+    else:
+        governance = ResolutionGovernanceIRV1.model_validate(domain_results[2][0])
 
     for gate_attempt in range(2):
         try:
@@ -476,6 +510,70 @@ async def run_v8_generation(
             affected = _affected_domain_components(error)
             if not affected:
                 raise
+            if uses_v15 and "evidence_logic" in affected:
+                affected.add("resolution_governance")
+            if uses_v15:
+                if "story_world" in affected:
+                    value, usage = await draft_domain(
+                        "story_world",
+                        "story",
+                        story_output_type,
+                        [
+                            issue
+                            for issue in issues
+                            if issue.get("component_id") == "story_world"
+                        ],
+                    )
+                    usage_records.append(usage)
+                    repaired_components.add("story_world")
+                    repaired_story = story_output_type.model_validate(value)
+                    if uses_temporal_plan:
+                        if not isinstance(repaired_story, StoryWorldIRV3) or temporal_plan is None:
+                            raise RuntimeError(
+                                "temporal-planning repair lost temporal plan"
+                            ) from error
+                        story_output = repaired_story
+                        story = _with_temporal_plan(repaired_story, temporal_plan)
+                    else:
+                        if not isinstance(repaired_story, (StoryWorldIRV1, StoryWorldIRV2)):
+                            raise RuntimeError(
+                                "legacy brief-to-draft repair returned an incompatible Story IR"
+                            ) from error
+                        story = repaired_story
+                if "evidence_logic" in affected:
+                    value, usage = await draft_domain(
+                        "evidence_logic",
+                        "evidence",
+                        evidence_output_type,
+                        [
+                            issue
+                            for issue in issues
+                            if issue.get("component_id") == "evidence_logic"
+                        ],
+                    )
+                    usage_records.append(usage)
+                    repaired_components.add("evidence_logic")
+                    evidence = EvidenceLogicIRV2.model_validate(value)
+                if "resolution_governance" in affected:
+                    if not isinstance(evidence, EvidenceLogicIRV2):
+                        raise RuntimeError(
+                            "v15 governance repair requires EvidenceLogicIRV2"
+                        ) from error
+                    value, usage = await draft_domain(
+                        "resolution_governance",
+                        "governance",
+                        ResolutionGovernanceIRV2,
+                        [
+                            issue
+                            for issue in issues
+                            if issue.get("component_id") == "resolution_governance"
+                        ],
+                        evidence_logic=evidence,
+                    )
+                    usage_records.append(usage)
+                    repaired_components.add("resolution_governance")
+                    governance = ResolutionGovernanceIRV2.model_validate(value)
+                continue
             repair_tasks = []
             repair_order: list[str] = []
             for component_id, prompt_component, output_type in (
@@ -911,14 +1009,23 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
 
 def _build_context_pack(
     request: GenerationRequest,
-) -> DraftContextPackV1 | DraftContextPackV2 | DraftContextPackV3 | DraftContextPackV4:
+) -> (
+    DraftContextPackV1
+    | DraftContextPackV2
+    | DraftContextPackV3
+    | DraftContextPackV4
+    | DraftContextPackV5
+):
     context_type: (
         type[DraftContextPackV1]
         | type[DraftContextPackV2]
         | type[DraftContextPackV3]
         | type[DraftContextPackV4]
+        | type[DraftContextPackV5]
     ) = (
-        DraftContextPackV4
+        DraftContextPackV5
+        if request.prompt_version == "brief-to-draft-v15"
+        else DraftContextPackV4
         if request.prompt_version == "brief-to-draft-v14"
         else DraftContextPackV3
         if request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
@@ -1007,6 +1114,8 @@ async def _model_step(
         and request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
     ):
         schema_id = "evidence-logic-ir-v2"
+    elif component_id == "resolution_governance" and request.prompt_version == "brief-to-draft-v15":
+        schema_id = "resolution-governance-ir-v2"
     else:
         schema_id = _STEP_SCHEMA[component_id]
     package_metadata: dict[str, str] = {}
@@ -1156,7 +1265,7 @@ def _link_step(
     blueprint: CaseBlueprintV1,
     story: StoryWorldIRV1 | StoryWorldIRV2,
     evidence: EvidenceLogicIR,
-    governance: ResolutionGovernanceIRV1,
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2,
 ) -> LinkedDraftV1:
     request.emit(
         "agent.step.started",
@@ -1294,7 +1403,7 @@ def _quality_gate(
                         )
         if description_issues:
             raise ContractValidationError(description_issues)
-        if request.prompt_version == "brief-to-draft-v14":
+        if request.prompt_version in {"brief-to-draft-v14", "brief-to-draft-v15"}:
             creator_language_issues = _creator_chinese_issues(candidate)
             if creator_language_issues:
                 raise ContractValidationError(creator_language_issues)

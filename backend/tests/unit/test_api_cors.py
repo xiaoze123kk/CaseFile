@@ -5,7 +5,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from casefile.api.app import _cors_origins, create_app
+from casefile.api.app import _contract_validation_error_handler, _cors_origins, create_app
+from casefile.contracts import ContractValidationError
 from fastapi.testclient import TestClient
 
 
@@ -34,3 +35,24 @@ def test_invalid_cors_origin_configuration_fails_closed() -> None:
     ):
         with pytest.raises(RuntimeError, match=r"HTTP\(S\) origins"):
             _cors_origins()
+
+
+@pytest.mark.asyncio
+async def test_contract_validation_error_returns_readable_422_body() -> None:
+    response = await _contract_validation_error_handler(
+        None,  # type: ignore[arg-type]
+        ContractValidationError(
+            [
+                {
+                    "code": "conclusion_reasoning_path_scope_invalid",
+                    "path": "/resolution_specs/0/conclusion/supporting_reasoning_path_refs/0",
+                    "message": "must not leak candidate values",
+                }
+            ]
+        ),
+    )
+
+    assert response.status_code == 422
+    assert b"conclusion_reasoning_path_scope_invalid" in response.body
+    assert "结论依据路径必须属于当前问题的必要推理链".encode() in response.body
+    assert b"must not leak candidate values" not in response.body

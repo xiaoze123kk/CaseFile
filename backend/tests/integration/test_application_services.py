@@ -11,6 +11,7 @@ import rfc8785
 from application_services_test_support import (
     PROFILE,
     ChatSuggestionProvider,
+    ConclusionFixtureProvider,
     EmptyKnowledgeStateProvider,
     RichFixtureProvider,
     StructuralFailureProvider,
@@ -19,6 +20,7 @@ from application_services_test_support import (
     _prepare_task,
 )
 from casefile.agent_runtime import FakeProvider
+from casefile.application.casefile_v1 import build_casefile_document
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
@@ -29,6 +31,7 @@ from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
     AgentStepRun,
+    AuditEvent,
     CaseFileContractRef,
     CaseFileObject,
     DraftOperation,
@@ -38,6 +41,7 @@ from casefile.data_postgres.models import (
     TaskRun,
     UserProviderSetting,
 )
+from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.exc import DBAPIError
@@ -1221,6 +1225,8 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             "x": 55,
             "y": 61,
         }
+
+
         with factory() as session:
             saved_location, revision = V1EditingService(session).patch_object(
                 actor_id,
@@ -1258,6 +1264,193 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             assert position_operations[0].field_path == f"/locations/{location_id}"
             assert position_operations[0].old_value_jsonb == before_location
             assert position_operations[0].new_value_jsonb == saved_location
+
+
+def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="conclusion-editing-test-worker"),
+            provider_factory=lambda _task: ConclusionFixtureProvider(),
+        )
+        assert worker.run_once() is True
+        adopted = _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            content = CaseFileService(session).get_draft(actor_id, project_id)["content"]
+            assert content is not None
+            resolution = content["resolution_specs"][0]
+            conclusion = resolution["conclusion"]
+            resolution_id = resolution["id"]
+            information_id = content["information_units"][0]["id"]
+            assert conclusion["review_status"] == "proposed"
+            assert conclusion["values"][0]["value"] == {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger",
+            }
+
+        with factory() as session:
+            confirmed, revision = V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=2,
+            )
+            assert revision == 3
+            assert confirmed["conclusion"]["review_status"] == "confirmed"
+
+        with factory() as session, pytest.raises(ApplicationError) as repeated_confirm:
+            V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=3,
+            )
+        assert repeated_confirm.value.code == "conclusion_transition_invalid"
+
+        with factory() as session:
+            invalidated, revision = V1EditingService(session).patch_object(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=3,
+                changes={
+                    "required_slots": [
+                        *confirmed["required_slots"],
+                        {
+                            "slot_id": "slot_explanation_note",
+                            "value_type": "text",
+                            "required": False,
+                        },
+                    ]
+                },
+            )
+            assert revision == 4
+            assert invalidated["conclusion"]["review_status"] == "proposed"
+
+        with factory() as session:
+            _confirmed, revision = V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=4,
+            )
+            assert revision == 5
+
+        with factory() as session:
+            information = next(
+                item
+                for item in CaseFileService(session).get_draft(actor_id, project_id)["content"][
+                    "information_units"
+                ]
+                if item["id"] == information_id
+            )
+            _updated, revision = V1EditingService(session).patch_object(
+                actor_id,
+                project_id,
+                information_id,
+                expected_draft_id=draft_id,
+                expected_revision=5,
+                changes={"content": information["content"] + "（已复核原始日志。）"},
+            )
+            assert revision == 7
+
+        with factory() as session:
+            current = CaseFileService(session).get_draft(actor_id, project_id)
+            current_resolution = current["content"]["resolution_specs"][0]
+            assert current_resolution["conclusion"]["review_status"] == "proposed"
+            _confirmed, revision = V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=7,
+            )
+            assert revision == 8
+
+        with factory() as session:
+            withdrawn, revision = V1EditingService(session).withdraw_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=8,
+            )
+            assert revision == 9
+            assert withdrawn["conclusion"]["review_status"] == "proposed"
+
+        with factory() as session, session.begin():
+            owned = ProjectRepository(session).get_owned(actor_id, project_id, lock=True)
+            assert owned is not None
+            current_document = build_casefile_document(session, owned)
+            current_resolution = current_document["resolution_specs"][0]
+            proposed_by_agent = {
+                **current_resolution["conclusion"],
+                "review_status": "confirmed",
+                "summary": "Agent 修订后的结论建议。",
+            }
+            revision, _group_no, applied = V1EditingService(session).apply_operation_batch(
+                owned,
+                operations=[
+                    {
+                        "operation_id": 901,
+                        "object_id": resolution_id,
+                        "field_path": "/conclusion",
+                        "old_value": current_resolution["conclusion"],
+                        "new_value": proposed_by_agent,
+                    }
+                ],
+                actor_user_id=actor_id,
+                operation_type="agent_patch_apply",
+                patch_set_id=901,
+            )
+            assert revision == 10
+            assert applied[0]["new_value"]["review_status"] == "proposed"
+
+        with factory() as session:
+            final = CaseFileService(session).get_draft(actor_id, project_id)
+            assert final["content"]["resolution_specs"][0]["conclusion"] == {
+                **proposed_by_agent,
+                "review_status": "proposed",
+            }
+            batch_operation = session.scalar(
+                select(DraftOperation).where(
+                    DraftOperation.operation_type == "agent_patch_apply",
+                    DraftOperation.result_revision == 10,
+                )
+            )
+            assert batch_operation is not None
+            assert batch_operation.new_value_jsonb["operations"][0]["value"][
+                "review_status"
+            ] == "proposed"
+            audit_actions = list(
+                session.scalars(
+                    select(AuditEvent.action)
+                    .where(
+                        AuditEvent.project_id == project_id,
+                        AuditEvent.action.like("resolution.conclusion_%"),
+                    )
+                    .order_by(AuditEvent.id)
+                )
+            )
+            assert audit_actions == [
+                "resolution.conclusion_confirmed",
+                "resolution.conclusion_invalidated",
+                "resolution.conclusion_confirmed",
+                "resolution.conclusion_invalidated",
+                "resolution.conclusion_confirmed",
+                "resolution.conclusion_withdrawn",
+            ]
 
 
 def test_v1_editing_supports_all_eleven_object_collections(

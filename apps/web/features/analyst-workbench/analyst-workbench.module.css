@@ -1691,6 +1691,27 @@
 
 /* 推理过程图与关系图：共享 React Flow 视口，节点仍保持档案卡片语义。 */
 .reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
+.conclusionBand { display: grid; grid-template-columns: minmax(180px, 0.38fr) minmax(0, 1fr); gap: 0; margin: 0 0 12px; border: 1px solid rgba(168, 75, 50, 0.38); background: linear-gradient(115deg, rgba(168, 75, 50, 0.08), var(--paper-high) 42%); }
+.conclusionQuestion { display: grid; align-content: center; gap: 7px; padding: 16px; color: var(--ink); border: 0; border-right: 1px solid var(--rule); background: transparent; text-align: left; }
+.conclusionQuestion span, .conclusionStatusRow span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+.conclusionQuestion strong { font-family: "STSong", "SimSun", serif; font-size: 16px; font-weight: 600; line-height: 1.4; }
+.conclusionDecision { min-width: 0; padding: 14px 16px; }
+.conclusionStatusRow { display: flex; align-items: center; gap: 8px; }
+.conclusionStatusRow b, .conclusionStatusRow i { padding: 3px 7px; color: var(--ink); border: 1px solid var(--rule); background: var(--paper); font-size: 9px; font-style: normal; font-weight: 650; }
+.conclusionStatusRow i { color: #9f4b35; border-color: rgba(168, 75, 50, 0.32); }
+.conclusionDecision h3 { margin: 8px 0 5px; color: var(--ink); font-family: "STSong", "SimSun", serif; font-size: 18px; line-height: 1.4; }
+.conclusionDecision p { margin: 0; color: var(--ink-muted); font-size: 10px; line-height: 1.6; }
+.conclusionValues { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 7px 0; }
+.conclusionValues div { display: grid; grid-template-columns: auto auto; gap: 6px; font-size: 10px; }
+.conclusionValues dt { color: var(--ink-faint); }
+.conclusionValues dd { margin: 0; color: var(--ink); font-weight: 650; }
+.conclusionGaps { display: flex; gap: 8px; margin-top: 8px; color: var(--issue-strong); font-size: 9px; }
+.conclusionGaps ul { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
+.conclusionGaps li::before { content: "· "; }
+.conclusionAction { margin-top: 10px; min-height: 30px; padding: 0 12px; color: #fff8ed; border: 1px solid #8f3e2b; background: #a84b32; font-size: 10px; font-weight: 650; }
+.conclusionAction:hover { background: #8f3e2b; }
+.conclusionAction:disabled { opacity: 0.52; cursor: wait; }
+.conclusionAction:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .relationsView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
 .reasoningTables { max-height: 150px; overflow: auto; border-top: 1px solid var(--rule); }
 .reasoningAlternative { background: var(--paper-high); }
@@ -1735,6 +1756,7 @@
   border-top: 1px solid var(--rule);
   background: var(--paper);
 }
+.reasoningMatrix > .conclusionBand { margin: 0; border-width: 0 0 1px; }
 .reasoningMatrixHeader {
   display: flex;
   align-items: end;
@@ -1771,6 +1793,21 @@
 .reasoningMatrixDesktop button:hover { background: rgba(199, 139, 60, 0.08); }
 .reasoningMatrixDesktop button span { display: block; line-height: 1.4; }
 .reasoningMatrixDesktop button small { color: var(--ink-faint); font-size: 8.5px; line-height: 1.4; }
+.hypothesisConclusionRole {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 6px;
+  color: #8f3e2b;
+  border: 1px solid rgba(168, 75, 50, 0.36);
+  background: rgba(168, 75, 50, 0.07);
+  font-size: 8.5px;
+  font-style: normal;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
 .reasoningMatrixDesktop td button { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .reasoningMatrixDesktop td button[data-effect="supports"] { color: var(--success); box-shadow: inset 3px 0 var(--success); }
 .reasoningMatrixDesktop td button[data-effect="contradicts"] { color: var(--issue-strong); box-shadow: inset 3px 0 var(--issue); }
@@ -1786,6 +1823,11 @@
 .reasoningMatrixEmpty p { max-width: 460px; margin: 0; font-size: 10px; line-height: 1.65; }
 
 @media (max-width: 700px) {
+  .conclusionBand { grid-template-columns: 1fr; }
+  .conclusionQuestion { padding: 11px; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .conclusionQuestion strong { font-size: 15px; }
+  .conclusionDecision { padding: 11px; }
+  .conclusionDecision h3 { font-size: 16px; }
   .reasoningModeSwitch { max-width: 100%; }
   .reasoningModeSwitch button { padding: 0 8px; }
   .reasoningMatrix { overflow-y: auto; }
@@ -1809,6 +1851,7 @@
   .reasoningMatrixMobile li button[data-effect="contradicts"] b { color: var(--issue-strong); }
   .reasoningMatrixMobile li button[data-effect="neutral"] b { color: #286e75; }
   .reasoningMatrixMobile li button[data-effect="unassessed"] b { color: var(--ink-faint); }
+  .reasoningMatrixMobile .hypothesisConclusionRole { grid-column: 1 / -1; }
   .reasoningAssessmentDetail { margin-top: 0; padding: 10px 11px 12px; }
   .reasoningMatrixEmpty { min-height: 240px; padding: 24px 16px; }
 }

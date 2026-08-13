@@ -256,6 +256,56 @@ function makeDraft(revision: number, entityName?: string): DraftView {
   };
 }
 
+function makeDraftWithConclusion(revision: number): DraftView {
+  const draft = makeDraft(revision);
+  const resolution = draft.content?.resolution_specs[0];
+  if (!resolution || !draft.content) {
+    throw new Error("测试工作稿缺少核心问题");
+  }
+  resolution.conclusion = {
+    outcome: "undetermined",
+    review_status: "confirmed",
+    summary: "作者判断：记录确曾被改写，但改写者仍未确定。",
+    values: [],
+    selected_hypothesis_refs: [
+      { object_type: "hypothesis", object_id: "hyp_record_tampered" },
+    ],
+    supporting_reasoning_path_refs: [
+      { object_type: "reasoning_path", object_id: "path_record_tampered" },
+    ],
+    rationale: "门禁记录提供了改写发生的事实锚点。",
+    unresolved_gaps: ["缺少能够识别改写者的独立证据。"],
+  };
+  draft.content.reasoning_paths = [
+    {
+      ...metadata("从门禁记录推导记录曾被改写。"),
+      id: "path_record_tampered",
+      title: "门禁记录改写路径",
+      path_type: "causal",
+      target_ref: {
+        object_type: "hypothesis",
+        object_id: "hyp_record_tampered",
+      },
+      steps: [
+        {
+          step_id: "step_gate_log_to_hypothesis",
+          input_refs: [
+            { object_type: "information_unit", object_id: "info_gate_log" },
+          ],
+          operation: "infer",
+          output_ref: {
+            object_type: "hypothesis",
+            object_id: "hyp_record_tampered",
+          },
+        },
+      ],
+      required_for_resolution: true,
+      alternative_path_refs: [],
+    },
+  ];
+  return draft;
+}
+
 function makeDraftWithScenePosition(revision: number, x: number, y = 36): DraftView {
   const draft = makeDraft(revision);
   const location = draft.content?.locations.find(
@@ -681,7 +731,7 @@ describe("production analyst workbench", () => {
     ).toBeInTheDocument();
   });
 
-  it("filters all five real object kinds with query-aware counts", async () => {
+  it("filters all six real object kinds with query-aware counts", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
@@ -689,7 +739,10 @@ describe("production analyst workbench", () => {
       name: "搜索对象名称或编号",
     });
     const filters = screen.getByLabelText("对象类型筛选");
-    expect(within(filters).getAllByRole("button")).toHaveLength(6);
+    expect(within(filters).getAllByRole("button")).toHaveLength(7);
+    expect(
+      within(filters).getByRole("button", { name: "核心问题，1 个匹配" }),
+    ).toBeInTheDocument();
     expect(
       within(filters).getByRole("button", { name: "实体，2 个匹配" }),
     ).toBeInTheDocument();
@@ -741,7 +794,7 @@ describe("production analyst workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "清除对象筛选" }));
     expect(search).toHaveValue("");
     expect(
-      within(filters).getByRole("button", { name: "全部对象，6 个匹配" }),
+      within(filters).getByRole("button", { name: "全部对象，7 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -847,6 +900,32 @@ describe("production analyst workbench", () => {
     expect(
       within(directory).getByRole("button", { name: /门禁开启/ }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("highlights only real events related to the selected Resolution conclusion", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithConclusion(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", { name: "对象目录结果" });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /谁改写了记录/ }),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /时间线/ }));
+
+    const timeline = container.querySelector(
+      '[aria-labelledby="timeline-heading"]',
+    ) as HTMLElement;
+    expect(timeline).toBeInTheDocument();
+    expect(
+      within(timeline).getAllByRole("button", {
+        name: /门禁开启.*与当前结论相关/,
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(within(timeline).getAllByText("与当前结论相关").length).toBeGreaterThan(0);
+    expect(timeline).not.toHaveTextContent(
+      "作者判断：记录确曾被改写，但改写者仍未确定。",
+    );
+    expect(timeline).not.toHaveTextContent("最终结论");
   });
 
   it("keeps a Current Draft object synchronized across all eight permanent views", async () => {

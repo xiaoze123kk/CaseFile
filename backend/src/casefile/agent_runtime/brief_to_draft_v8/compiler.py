@@ -29,6 +29,10 @@ from casefile.agent_runtime.brief_to_draft_v11.contracts import (
     TemporalPositionIRV2,
     UnknownTemporalPositionIRV2,
 )
+from casefile.agent_runtime.brief_to_draft_v15.contracts import (
+    ResolutionGovernanceIRV2,
+    ResolutionSpecIRV2,
+)
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
 
@@ -66,7 +70,7 @@ class LinkedDraftV1:
     blueprint: CaseBlueprintV1
     story: StoryWorldIRV1 | StoryWorldIRV2
     evidence: EvidenceLogicIR
-    governance: ResolutionGovernanceIRV1
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2
     id_directory: dict[str, DirectoryEntry]
     source_map: dict[str, SourceLocation]
 
@@ -79,7 +83,7 @@ def link_draft(
     blueprint: CaseBlueprintV1,
     story: StoryWorldIRV1 | StoryWorldIRV2,
     evidence: EvidenceLogicIR,
-    governance: ResolutionGovernanceIRV1,
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2,
     *,
     task_run_id: int,
 ) -> LinkedDraftV1:
@@ -192,9 +196,7 @@ def compile_casefile(
         precision = str(value.precision)
         if precision == "unknown":
             return {"kind": "unknown"}
-        wall_precision = (
-            precision if precision in {"day", "hour", "minute", "second"} else "second"
-        )
+        wall_precision = precision if precision in {"day", "hour", "minute", "second"} else "second"
 
         def wall_clock(moment: datetime) -> str:
             local = moment.replace(tzinfo=None)
@@ -239,6 +241,35 @@ def compile_casefile(
             value["description"] = item.description
         return value
 
+    def compiled_conclusion(item: SemanticObjectIR) -> dict[str, Any]:
+        if not isinstance(item, ResolutionSpecIRV2):
+            return {}
+        conclusion = item.conclusion
+        return {
+            "conclusion": {
+                "outcome": conclusion.outcome,
+                "review_status": "proposed",
+                "summary": conclusion.summary,
+                "values": [
+                    {
+                        "slot_id": f"slot_{value.slot_key}",
+                        "value": (
+                            refs([value.value_key])[0]
+                            if value.value_key is not None
+                            else value.value
+                        ),
+                    }
+                    for value in conclusion.values
+                ],
+                "selected_hypothesis_refs": refs(conclusion.selected_hypothesis_keys),
+                "supporting_reasoning_path_refs": refs(
+                    conclusion.supporting_reasoning_path_keys
+                ),
+                "rationale": conclusion.rationale,
+                "unresolved_gaps": conclusion.unresolved_gaps,
+            }
+        }
+
     story = linked.story
     evidence = linked.evidence
     governance = linked.governance
@@ -274,6 +305,7 @@ def compile_casefile(
                     *refs(item.accepted_answer_keys),
                 ],
                 "required_claim_refs": refs(item.required_claim_keys),
+                **compiled_conclusion(item),
             }
             for item in governance.resolution_specs
         ],
@@ -480,9 +512,7 @@ def compile_casefile(
         # example, ``spatial_position: null`` violates the contract.  Remove
         # optional nulls, then put back only fields the v1 schema explicitly
         # requires to be nullable.
-        candidate = CaseFile.model_validate(document).model_dump(
-            mode="json", exclude_none=True
-        )
+        candidate = CaseFile.model_validate(document).model_dump(mode="json", exclude_none=True)
         _restore_required_nullable_fields(candidate)
     except ValidationError as error:
         raise ContractValidationError(
@@ -703,9 +733,7 @@ def _validate_object_references(
                 )
 
 
-def _reference_rules(
-    collection: str, item: Any
-) -> list[tuple[str, list[str], set[str]]]:
+def _reference_rules(collection: str, item: Any) -> list[tuple[str, list[str], set[str]]]:
     any_object = set(BLUEPRINT_COLLECTIONS)
     if collection == "entities":
         states = item.knowledge_states
@@ -753,9 +781,7 @@ def _reference_rules(
             ("observed_by_keys", item.observed_by_keys, {"entities"}),
         ]
         if isinstance(item.time, RelativeTemporalPositionIRV2):
-            rules.append(
-                ("time/anchor_event_key", [item.time.anchor_event_key], {"events"})
-            )
+            rules.append(("time/anchor_event_key", [item.time.anchor_event_key], {"events"}))
         return rules
     if collection == "information_units":
         source = item.source_event_key
@@ -801,6 +827,12 @@ def _reference_rules(
             ("alternative_path_keys", item.alternative_path_keys, {"reasoning_paths"}),
         ]
     if collection == "resolution_specs":
+        conclusion = getattr(item, "conclusion", None)
+        value_keys = (
+            [value.value_key for value in conclusion.values if value.value_key]
+            if conclusion is not None
+            else []
+        )
         return [
             (
                 "accepted_answer_keys",
@@ -808,6 +840,17 @@ def _reference_rules(
                 {"entities", "claims", "hypotheses"},
             ),
             ("required_claim_keys", item.required_claim_keys, {"claims"}),
+            ("conclusion/values/value_key", value_keys, any_object),
+            (
+                "conclusion/selected_hypothesis_keys",
+                [] if conclusion is None else conclusion.selected_hypothesis_keys,
+                {"hypotheses"},
+            ),
+            (
+                "conclusion/supporting_reasoning_path_keys",
+                [] if conclusion is None else conclusion.supporting_reasoning_path_keys,
+                {"reasoning_paths"},
+            ),
         ]
     if collection == "constraints":
         return [

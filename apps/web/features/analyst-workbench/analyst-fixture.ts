@@ -47,11 +47,13 @@ export interface WorkbenchReasoningGroup {
     reliability: string;
   }>;
   assessments: WorkbenchReasoningAssessment[];
+  conclusion?: import("./workbench-real-data-types").WorkbenchConclusion;
 }
 
 export type InspectorTab = "object" | "issues" | "sources" | "patch" | "audit";
 
 export type ObjectKind =
+  | "resolution_spec"
   | "entity"
   | "information"
   | "person"
@@ -184,6 +186,7 @@ export interface WorkbenchSeed {
   graphEdges: GraphEdge[];
   reasoningPaths: ReasoningPath[];
   reasoningGroups?: WorkbenchReasoningGroup[];
+  conclusions?: import("./workbench-real-data-types").WorkbenchConclusion[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   drawer: WorkbenchDrawerCopy;
@@ -223,6 +226,7 @@ export interface CandidateBriefInput {
 }
 
 export const objectKindLabels: Record<ObjectKind, string> = {
+  resolution_spec: "核心问题",
   entity: "实体",
   information: "信息",
   person: "人物",
