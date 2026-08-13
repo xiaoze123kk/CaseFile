@@ -185,6 +185,7 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
   const [error, setError] = useState<string | null>(null);
   const [highlightBlock, setHighlightBlock] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sourcePaneRef = useRef<HTMLElement>(null);
 
   // ensureProject：复用当前活动项目，否则在首次操作时创建项目。
   const ensureProject = useCallback(async (): Promise<number | null> => {
@@ -411,7 +412,16 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
 
   function handleShowSource(item: ReverseParseItemView) {
     const blockNo = item.source_block_refs[0];
-    setHighlightBlock(typeof blockNo === "number" ? blockNo : null);
+    const resolved = typeof blockNo === "number" ? blockNo : null;
+    setHighlightBlock(resolved);
+    // 高亮后自动把来源面板滚动到对应块，避免用户手动寻找。
+    if (resolved !== null) {
+      requestAnimationFrame(() => {
+        sourcePaneRef.current
+          ?.querySelector(`[data-block-no="${resolved}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
   }
 
   const filteredItems =
@@ -594,7 +604,7 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
             )}
           </div>
 
-          <aside aria-label="来源块" className={styles.sourcePane}>
+          <aside aria-label="来源块" className={styles.sourcePane} ref={sourcePaneRef}>
             <header className={styles.groupHeader}>
               <h3 className={styles.groupTitle}>来源块</h3>
               <span className={styles.groupCount}>{blocks.length}</span>
@@ -605,6 +615,7 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
               blocks.map((block) => (
                 <div
                   className={`${styles.block} ${highlightBlock === block.block_no ? styles.blockHighlight : ""}`}
+                  data-block-no={block.block_no}
                   key={block.block_no}
                 >
                   <span className={styles.blockNo}>[{block.block_no}]</span>

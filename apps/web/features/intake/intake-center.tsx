@@ -249,8 +249,11 @@ export function IntakeCenter() {
   const [showReverseParse, setShowReverseParse] = useState(false);
 
   const handlePathB = async () => {
-    if (showIdeaGeneration) return;
+    if (ideaGenerating) return;
+    // 立即切换到路径 B 界面（组件自带 generating 加载态），
+    // 避免异步建案/生成期间停留在路径 A，也避免完成后覆盖用户已切换的路径。
     setShowReverseParse(false);
+    setShowIdeaGeneration(true);
     setIdeaGenerating(true);
     setError(null);
     try {
@@ -289,7 +292,6 @@ export function IntakeCenter() {
         created_at: (idea.created_at ?? null) as string | null,
       });
       setIdeaCandidates((result.ideas ?? []).map(cast));
-      setShowIdeaGeneration(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成创意失败。");
     } finally {
