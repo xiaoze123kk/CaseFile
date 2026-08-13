@@ -37,7 +37,9 @@ class IdeaService:
             "created_at": row.created_at.isoformat() if row.created_at else None,
         }
 
-    def _ensure_owned(self, actor_user_id: int, project_id: int, *, lock: bool = False):
+    def _ensure_owned(
+        self, actor_user_id: int, project_id: int, *, lock: bool = False
+    ) -> None:
         owned = self.projects.get_owned(actor_user_id, project_id, lock=lock)
         if owned is None:
             raise not_found("Project")
@@ -53,18 +55,25 @@ class IdeaService:
             raise not_found("IdeaCandidate")
         return idea
 
-    def _generate(self, *, regenerate: bool = False, existing_concepts: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+    def _generate(
+        self,
+        *,
+        regenerate: bool = False,
+        existing_concepts: tuple[str, ...] = (),
+    ) -> list[dict[str, Any]]:
         from casefile.agent_runtime import (
-            FakeProvider,
-            OpenAIAgentsProvider,
             DeepSeekAgentsProvider,
+            FakeProvider,
             IdeaGenerationRequest,
+            OpenAIAgentsProvider,
         )
         from casefile.agent_runtime.credentials import decrypt_api_key
         from casefile.agent_runtime.prompt_repository import prompt_version_for_task
         from casefile.data_postgres.models.identity import UserProviderSetting
 
-        input_hash = _json_hash({"regenerate": regenerate, "existing_concepts": list(existing_concepts)})
+        input_hash = _json_hash(
+            {"regenerate": regenerate, "existing_concepts": list(existing_concepts)}
+        )
         prompt_version = prompt_version_for_task("idea_generation")
 
         def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
@@ -78,8 +87,19 @@ class IdeaService:
                     UserProviderSetting.credential_status != "deleted",
                 ).order_by(UserProviderSetting.validated_at.desc().nulls_last()).limit(1)
             )
-            if setting is not None and setting.api_key_encrypted is not None:
-                api_key = decrypt_api_key(setting.api_key_encrypted)
+            if (
+                setting is not None
+                and setting.secret_ciphertext is not None
+                and setting.secret_nonce is not None
+                and setting.key_version is not None
+            ):
+                api_key = decrypt_api_key(
+                    setting.secret_ciphertext,
+                    setting.secret_nonce,
+                    user_id=setting.user_id,
+                    provider=setting.provider,
+                    key_version=setting.key_version,
+                )
                 request = IdeaGenerationRequest(
                     task_run_id=0,
                     prompt_version=prompt_version,
@@ -96,9 +116,11 @@ class IdeaService:
                     result = OpenAIAgentsProvider().generate_ideas(request)
                 else:
                     result = DeepSeekAgentsProvider().generate_ideas(request)
-                candidates = result.candidate.model_dump(mode="json").get("candidates", [])
-                if len(candidates) == 3:
-                    return candidates
+                live_candidates: list[dict[str, Any]] = result.candidate.model_dump(
+                    mode="json"
+                ).get("candidates", [])
+                if len(live_candidates) == 3:
+                    return live_candidates
         except Exception:
             pass
 
@@ -116,7 +138,10 @@ class IdeaService:
             network_retries=0,
         )
         result = FakeProvider().generate_ideas(request)
-        return result.candidate.model_dump(mode="json").get("candidates", [])
+        candidates: list[dict[str, Any]] = result.candidate.model_dump(mode="json").get(
+            "candidates", []
+        )
+        return candidates
 
     # ── Queries ──────────────────────────────────────────────────────
 
@@ -168,7 +193,9 @@ class IdeaService:
             idea = self._get_idea(project_id, idea_id, lock=True)
             if idea.status not in ("active", "bookmarked"):
                 raise ApplicationError(
-                    "idea_invalid_state", "只有活跃状态的创意候选可以被收藏或取消。", status_code=409,
+                    "idea_invalid_state",
+                    "只有活跃状态的创意候选可以被收藏或取消。",
+                    status_code=409,
                 )
             if idea.bookmarked_at is not None:
                 idea.bookmarked_at = None
@@ -187,7 +214,9 @@ class IdeaService:
             self._ensure_owned(actor_user_id, project_id, lock=True)
             idea = self._get_idea(project_id, idea_id, lock=True)
             if idea.status == "selected":
-                raise ApplicationError("idea_already_selected", "已选中的创意候选不能归档。", status_code=409)
+                raise ApplicationError(
+                    "idea_already_selected", "已选中的创意候选不能归档。", status_code=409
+                )
             idea.status = "archived"
             idea.bookmarked_at = None
             idea.bookmarked_by_user_id = None
@@ -207,7 +236,9 @@ class IdeaService:
             concept = str(content.get("concept", ""))
             core_suspense = str(content.get("core_suspense", ""))
             target_experience = str(content.get("target_experience", ""))
-            source_text = f"一句话概念：{concept}\n核心悬念：{core_suspense}\n目标体验：{target_experience}"
+            source_text = (
+                f"一句话概念：{concept}\n核心悬念：{core_suspense}\n目标体验：{target_experience}"
+            )
             idea.status = "selected"
             self.session.flush()
 
@@ -227,7 +258,9 @@ class IdeaService:
             self._ensure_owned(actor_user_id, project_id, lock=True)
             idea = self._get_idea(project_id, idea_id, lock=True)
             if idea.status == "selected":
-                raise ApplicationError("idea_already_selected", "已选中的创意候选不能重新生成。", status_code=409)
+                raise ApplicationError(
+                    "idea_already_selected", "已选中的创意候选不能重新生成。", status_code=409
+                )
 
             batch_ideas = (
                 self.session.scalars(
