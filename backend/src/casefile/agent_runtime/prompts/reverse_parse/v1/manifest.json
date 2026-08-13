@@ -1,0 +1,8 @@
+{
+  "agent_id": "reverse_parse",
+  "version": "reverse-parse-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "d2eaa75d1f9fabde23a0c48318abcc5542fdff1dd110bd60ffe6363878604299",
+  "previous_version": null,
+  "change_summary": "新增路径 C（已有内容反向解析）Agent，把分块文档抽取为五级分级的结构化条目。"
+}

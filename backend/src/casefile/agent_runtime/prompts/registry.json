@@ -22,6 +22,9 @@
     "casefile_chat": {
       "current_version": "casefile-chat-v1"
     },
+    "reverse_parse": {
+      "current_version": "reverse-parse-v1"
+    },
     "idea_generation": {
       "current_version": "idea-generation-v1"
     }

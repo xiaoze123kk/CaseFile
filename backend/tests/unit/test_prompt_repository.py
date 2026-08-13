@@ -34,6 +34,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_strategy_options": "brief-strategy-options-v1",
     "brief_to_draft": "brief-to-draft-v9",
     "casefile_chat": "casefile-chat-v1",
+    "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v1",
 }
 
@@ -102,6 +103,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
+    },
+    ("reverse_parse", "reverse-parse-v1"): {
+        "system": "d2eaa75d1f9fabde23a0c48318abcc5542fdff1dd110bd60ffe6363878604299"
     },
     ("idea_generation", "idea-generation-v1"): {
         "system": "2cf1e5fadf31f06d8e39ef023dba579b0b1e95fba421d3fdb39ba07631a37c2a"

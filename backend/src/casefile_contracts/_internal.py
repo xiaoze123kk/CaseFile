@@ -668,6 +668,7 @@ class TaskType(StrEnum):
     brief_strategy_options = 'brief_strategy_options'
     brief_to_draft = 'brief_to_draft'
     casefile_chat = 'casefile_chat'
+    reverse_parse = 'reverse_parse'
     idea_generation = 'idea_generation'
 
 
