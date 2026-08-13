@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  API_ROOT,
   ApiError,
   apiRequest,
   streamTaskEvents,
+  type ApiErrorBody,
   type BriefContent,
   type BriefIntakeCandidateContent,
   type BriefIntakeView,
@@ -707,5 +709,111 @@ export async function regenerateIdea(projectId: number, ideaId: number) {
   return apiRequest<Record<string, unknown>>(
     `/projects/${projectId}/ideas/${ideaId}/regenerate`,
     { actorId: LOCAL_ACTOR_ID, method: "POST", body: { keep_idea_ids: [] } },
+  );
+}
+
+// ── Reverse Parse (Path C: "我有已有内容") ─────────────────────────────
+
+export interface ReverseParseDocumentView {
+  id: number;
+  filename: string;
+  media_type: string;
+  parse_status: "queued" | "running" | "succeeded" | "failed";
+  current_task_run_id: number | null;
+  created_at: string | null;
+}
+
+export interface ReverseParseItemView {
+  id: number;
+  item_type: string;
+  content: Record<string, unknown>;
+  grading:
+    | "explicit"
+    | "inferred"
+    | "needs_confirmation"
+    | "conflicting"
+    | "missing_important";
+  grading_label: string;
+  source_block_refs: number[];
+  source_quote: string;
+  confirm_status: "unconfirmed" | "confirmed" | "rejected";
+}
+
+export async function uploadReverseParseDocument(projectId: number, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  // apiRequest 固定 JSON 序列化 body 与 Content-Type，multipart 上传需直接构造
+  // fetch，且不设置 Content-Type，让浏览器自动携带 boundary。
+  const response = await fetch(
+    `${API_ROOT}/projects/${projectId}/reverse-parse/documents`,
+    {
+      method: "POST",
+      body: form,
+      headers: { "X-CaseFile-User-Id": String(LOCAL_ACTOR_ID) },
+    },
+  );
+  if (!response.ok) {
+    const fallback: ApiErrorBody = {
+      code: "request_failed",
+      message: `请求失败（HTTP ${response.status}）`,
+      details: {},
+    };
+    throw new ApiError(
+      response.status,
+      await response.json().catch(() => fallback),
+    );
+  }
+  return (await response.json()) as {
+    document: ReverseParseDocumentView;
+    task: TaskView;
+  };
+}
+
+export async function fetchReverseParseDocuments(projectId: number) {
+  return apiRequest<{ documents: ReverseParseDocumentView[] }>(
+    `/projects/${projectId}/reverse-parse/documents`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
+export async function fetchReverseParseDocument(
+  projectId: number,
+  documentId: number,
+) {
+  return apiRequest<{ document: ReverseParseDocumentView; items: ReverseParseItemView[] }>(
+    `/projects/${projectId}/reverse-parse/documents/${documentId}`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
+export async function fetchReverseParseBlocks(projectId: number, documentId: number) {
+  return apiRequest<{ blocks: Array<{ block_no: number; text: string }> }>(
+    `/projects/${projectId}/reverse-parse/documents/${documentId}/blocks`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
+export async function confirmReverseParseItem(
+  projectId: number,
+  itemId: number,
+  action: "confirm" | "reject",
+) {
+  return apiRequest<ReverseParseItemView>(
+    `/projects/${projectId}/reverse-parse/items/${itemId}`,
+    { actorId: LOCAL_ACTOR_ID, method: "PATCH", body: { action } },
+  );
+}
+
+export async function retryReverseParse(projectId: number, documentId: number) {
+  return apiRequest<{ task: TaskView }>(
+    `/projects/${projectId}/reverse-parse/documents/${documentId}/retry`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+  );
+}
+
+export async function formBriefFromReverseParse(projectId: number, documentId: number) {
+  return apiRequest<{ stage: string }>(
+    `/projects/${projectId}/reverse-parse/documents/${documentId}/form-brief`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
   );
 }

@@ -158,7 +158,7 @@ export const intakeRoutes = [
     code: "C",
     label: "我有已有内容",
     summary: "从现成素材中提取起案信息",
-    state: "planned",
+    state: "available",
   },
   {
     code: "D",
