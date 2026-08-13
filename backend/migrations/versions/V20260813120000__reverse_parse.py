@@ -166,6 +166,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("ALTER TABLE task_events DISABLE TRIGGER trg_task_events_immutable")
+    op.execute(
+        "ALTER TABLE task_attempts DISABLE TRIGGER trg_task_attempt_candidate_immutable"
+    )
+    op.execute(
+        "DELETE FROM task_events WHERE task_run_id IN "
+        "(SELECT id FROM task_runs WHERE task_type = 'reverse_parse')"
+    )
+    op.execute(
+        "DELETE FROM task_attempts WHERE task_run_id IN "
+        "(SELECT id FROM task_runs WHERE task_type = 'reverse_parse')"
+    )
+    op.execute("DELETE FROM task_runs WHERE task_type = 'reverse_parse'")
+    op.execute(
+        "ALTER TABLE task_attempts ENABLE TRIGGER trg_task_attempt_candidate_immutable"
+    )
+    op.execute("ALTER TABLE task_events ENABLE TRIGGER trg_task_events_immutable")
     op.drop_constraint(op.f("ck_task_runs_input_matches_task_type"), "task_runs", type_="check")
     op.create_check_constraint(
         "input_matches_task_type", "task_runs",
