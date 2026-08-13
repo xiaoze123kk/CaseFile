@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 47-table personal foundation."""
+"""Disposable PostgreSQL verification for the 50-table personal foundation."""
 
 from __future__ import annotations
 
@@ -51,11 +51,14 @@ BUSINESS_TABLES = {
     "events",
     "evidence_items",
     "hypotheses",
+    "idea_candidates",
+    "imported_documents",
     "information_units",
     "knowledge_state_entries",
     "knowledge_states",
     "locations",
     "narrative_phases",
+    "parse_items",
     "people",
     "projects",
     "reasoning_edges",
@@ -825,7 +828,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_47_identity_tables_without_team_columns(
+def test_database_has_50_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -839,7 +842,7 @@ def test_database_has_47_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 47
+    assert len(identity_rows) == 50
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
