@@ -412,7 +412,9 @@ class ReverseParseService:
             confirmed_questions = [
                 i
                 for i in items
-                if i.item_type == "candidate_question" and i.confirm_status == "confirmed"
+                if i.item_type == "candidate_question"
+                and i.confirm_status == "confirmed"
+                and str(i.content_jsonb.get("question") or "").strip()
             ]
             if not confirmed_questions:
                 raise ApplicationError(
@@ -446,7 +448,10 @@ class ReverseParseService:
             if i.item_type == "candidate_question"
         ]
         conclusions = [i for i in confirmed if i.item_type == "candidate_conclusion"]
-        events = [i.content_jsonb for i in confirmed if i.item_type == "event"]
+        events = sorted(
+            (i.content_jsonb for i in confirmed if i.item_type == "event"),
+            key=lambda e: e.get("order_index", 0),
+        )
         entities = [i.content_jsonb for i in confirmed if i.item_type == "entity_alias"]
         first_block = document.blocks_jsonb[0]["text"] if document.blocks_jsonb else ""
         conclusion_mode = "undetermined"
