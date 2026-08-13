@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -90,6 +81,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -479,7 +479,10 @@ class FakeProvider:
             prem = random.choice(PREMISES)
             chosen.append({
                 "concept": f"{prof}在{sett}——{prem}。",
-                "core_suspense": f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。",
+                "core_suspense": (
+                    f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自"
+                    f"{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。"
+                ),
                 "reasoning_type": REASONING_TYPES[i % len(REASONING_TYPES)],
                 "conclusion_mode": CONCLUSION_MODES[i % len(CONCLUSION_MODES)],
                 "target_experience": random.choice(EXPERIENCES),
@@ -490,7 +493,10 @@ class FakeProvider:
         if request.regenerate and request.existing_concepts:
             for c in chosen:
                 while c["concept"] in request.existing_concepts:
-                    c["concept"] = f"{random.choice(PROFESSIONS)}在{random.choice(SETTINGS)}——{random.choice(PREMISES)}（新方向）。"
+                    c["concept"] = (
+                        f"{random.choice(PROFESSIONS)}在{random.choice(SETTINGS)}"
+                        f"——{random.choice(PREMISES)}（新方向）。"
+                    )
 
         candidate = IdeaCandidateSet(
             candidates=[IdeaCandidateModel.model_validate(c) for c in chosen]

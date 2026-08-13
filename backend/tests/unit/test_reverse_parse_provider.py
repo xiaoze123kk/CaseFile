@@ -10,7 +10,9 @@ def _request() -> ReverseParseRequest:
     return ReverseParseRequest(
         task_run_id=1,
         prompt_version="reverse-parse-v1",
-        blocks=[{"block_no": 1, "text": "深夜，档案修复师林晚发现三份记录都指向一段不存在的时间。"}],
+        blocks=[
+            {"block_no": 1, "text": "深夜，档案修复师林晚发现三份记录都指向一段不存在的时间。"}
+        ],
         input_hash="a" * 64,
         model_id="fake",
         api_key=None,
