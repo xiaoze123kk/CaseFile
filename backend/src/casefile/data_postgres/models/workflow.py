@@ -245,7 +245,7 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "task_type IN "
             "('brief_polish', 'brief_anchor_extract', 'brief_intake_questions', "
             "'brief_intake_synthesize', 'brief_strategy_options', "
-            "'brief_to_draft', 'casefile_chat')",
+            "'brief_to_draft', 'casefile_chat', 'reverse_parse')",
             name="task_type_allowed",
         ),
         CheckConstraint(
@@ -351,6 +351,17 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND agent_thread_id IS NOT NULL "
             "AND input_message_id IS NOT NULL "
             "AND output_message_id IS NOT NULL"
+            ") OR ("
+            "task_type = 'reverse_parse' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NULL "
+            "AND input_brief_revision IS NULL "
+            "AND brief_intake_id IS NULL "
+            "AND input_brief_intake_revision IS NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
             ")",
             name="input_matches_task_type",
         ),

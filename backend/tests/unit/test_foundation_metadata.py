@@ -37,11 +37,13 @@ EXPECTED_TABLES = {
     "evidence_items",
     "hypotheses",
     "idea_candidates",
+    "imported_documents",
     "information_units",
     "knowledge_state_entries",
     "knowledge_states",
     "locations",
     "narrative_phases",
+    "parse_items",
     "people",
     "projects",
     "reasoning_edges",
@@ -122,6 +124,7 @@ JSONB_ALLOWLIST = {
     ("events", "time_jsonb"),
     ("hypotheses", "exclusion_rule_jsonb"),
     ("idea_candidates", "content_jsonb"),
+    ("imported_documents", "blocks_jsonb"),
     ("information_units", "acquisition_conditions_jsonb"),
     ("locations", "access_rules_jsonb"),
     ("locations", "geo_jsonb"),
@@ -131,6 +134,8 @@ JSONB_ALLOWLIST = {
     ("narrative_phases", "completion_conditions_jsonb"),
     ("narrative_phases", "entry_conditions_jsonb"),
     ("narrative_phases", "release_rule_jsonb"),
+    ("parse_items", "content_jsonb"),
+    ("parse_items", "source_block_refs"),
     ("projects", "profile_jsonb"),
     ("reasoning_edges", "attributes_jsonb"),
     ("reasoning_nodes", "attributes_jsonb"),
@@ -252,7 +257,7 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
 def test_metadata_contains_exactly_the_47_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 48
+    assert len(models.__all__) == 50
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

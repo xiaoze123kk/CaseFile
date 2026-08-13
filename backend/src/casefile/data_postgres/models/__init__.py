@@ -46,6 +46,7 @@ from casefile.data_postgres.models.reasoning import (
     ResolutionSpec,
     StructureLock,
 )
+from casefile.data_postgres.models.reverse_parse import ImportedDocument, ParseItem
 from casefile.data_postgres.models.versioning import AuditEvent, CanonVersion, DraftSnapshot
 from casefile.data_postgres.models.workflow import (
     Brief,
@@ -84,11 +85,13 @@ __all__ = [
     "EvidenceItem",
     "Hypothesis",
     "IdeaCandidate",
+    "ImportedDocument",
     "InformationUnit",
     "KnowledgeState",
     "KnowledgeStateEntry",
     "Location",
     "NarrativePhase",
+    "ParseItem",
     "Person",
     "Project",
     "Relationship",
