@@ -112,17 +112,17 @@ def upgrade() -> None:
     op.create_index("ix_parse_items_document_id", "parse_items", ["document_id"])
 
     # Allow the new task type on task_runs.
-    op.drop_constraint("ck_task_runs_task_type_allowed", "task_runs", type_="check")
+    op.drop_constraint(op.f("ck_task_runs_task_type_allowed"), "task_runs", type_="check")
     op.create_check_constraint(
         "task_type_allowed", "task_runs",
         "task_type IN ('brief_polish', 'brief_anchor_extract', 'brief_intake_questions', "
         "'brief_intake_synthesize', 'brief_strategy_options', 'brief_to_draft', "
         "'casefile_chat', 'reverse_parse')",
     )
-    op.drop_constraint("ck_task_runs_input_matches_task_type", "task_runs", type_="check")
+    op.drop_constraint(op.f("ck_task_runs_input_matches_task_type"), "task_runs", type_="check")
     op.create_check_constraint(
         "input_matches_task_type", "task_runs",
-        "((task_type = 'brief_polish' AND brief_version_id IS NULL "
+        "(task_type = 'brief_polish' AND brief_version_id IS NULL "
         "AND input_source_record_id IS NOT NULL AND input_brief_revision IS NULL "
         "AND brief_intake_id IS NULL AND input_brief_intake_revision IS NULL "
         "AND base_brief_intake_candidate_id IS NULL AND agent_thread_id IS NULL "
@@ -161,15 +161,15 @@ def upgrade() -> None:
         "AND input_source_record_id IS NULL AND input_brief_revision IS NULL "
         "AND brief_intake_id IS NULL AND input_brief_intake_revision IS NULL "
         "AND base_brief_intake_candidate_id IS NULL AND agent_thread_id IS NULL "
-        "AND input_message_id IS NULL AND output_message_id IS NULL))",
+        "AND input_message_id IS NULL AND output_message_id IS NULL)",
     )
 
 
 def downgrade() -> None:
-    op.drop_constraint("ck_task_runs_input_matches_task_type", "task_runs", type_="check")
+    op.drop_constraint(op.f("ck_task_runs_input_matches_task_type"), "task_runs", type_="check")
     op.create_check_constraint(
         "input_matches_task_type", "task_runs",
-        "((task_type = 'brief_polish' AND brief_version_id IS NULL "
+        "(task_type = 'brief_polish' AND brief_version_id IS NULL "
         "AND input_source_record_id IS NOT NULL AND input_brief_revision IS NULL "
         "AND brief_intake_id IS NULL AND input_brief_intake_revision IS NULL "
         "AND base_brief_intake_candidate_id IS NULL AND agent_thread_id IS NULL "
@@ -203,9 +203,9 @@ def downgrade() -> None:
         "AND input_source_record_id IS NULL AND input_brief_revision IS NULL "
         "AND brief_intake_id IS NULL AND input_brief_intake_revision IS NULL "
         "AND base_brief_intake_candidate_id IS NULL AND agent_thread_id IS NOT NULL "
-        "AND input_message_id IS NOT NULL AND output_message_id IS NOT NULL))",
+        "AND input_message_id IS NOT NULL AND output_message_id IS NOT NULL)",
     )
-    op.drop_constraint("ck_task_runs_task_type_allowed", "task_runs", type_="check")
+    op.drop_constraint(op.f("ck_task_runs_task_type_allowed"), "task_runs", type_="check")
     op.create_check_constraint(
         "task_type_allowed", "task_runs",
         "task_type IN ('brief_polish', 'brief_anchor_extract', 'brief_intake_questions', "
