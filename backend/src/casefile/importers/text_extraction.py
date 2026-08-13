@@ -27,7 +27,10 @@ def extract_text(filename: str, data: bytes) -> str:
         return _pdf_text(data)
     if normalized.endswith(".docx"):
         return _docx_text(data)
-    return data.decode("utf-8")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ExtractionError("文本文件需为 UTF-8 编码。") from error
 
 
 def _docx_text(data: bytes) -> str:

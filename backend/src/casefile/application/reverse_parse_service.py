@@ -348,6 +348,14 @@ class ReverseParseService:
                 raise ApplicationError(
                     "already_succeeded", "文档已解析成功，无需重试。", status_code=409
                 )
+            if document.parse_status == "queued":
+                raise ApplicationError(
+                    "already_queued", "文档已有解析任务排队中，请等待完成。", status_code=409
+                )
+            if document.parse_status == "running":
+                raise ApplicationError(
+                    "already_running", "文档正在解析中，请等待完成。", status_code=409
+                )
             setting = self.session.scalar(
                 sa_select(UserProviderSetting)
                 .where(
@@ -465,7 +473,7 @@ class ReverseParseService:
         return {
             "concept": first_block[:1000],
             "core_selling_points": [
-                f"{e['name']}：{e.get('description', '')}" for e in entities[:3]
+                f"{e.get('name', '')}：{e.get('description', '')}" for e in entities[:3]
             ],
             "content_outline": [
                 f"{e.get('order_index', idx + 1)}. {e.get('title', '')}"

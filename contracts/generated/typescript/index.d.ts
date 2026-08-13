@@ -449,7 +449,9 @@ export interface TaskRun {
     | "brief_intake_synthesize"
     | "brief_strategy_options"
     | "brief_to_draft"
-    | "casefile_chat";
+    | "casefile_chat"
+    | "reverse_parse"
+    | "idea_generation";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
   provider: "openai" | "deepseek";
