@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -56,6 +47,10 @@ from casefile.agent_runtime.models import (
     IdeaCandidateSet,
     IdeaGenerationRequest,
     IdeaGenerationResult,
+    ReverseParseCandidate,
+    ReverseParseItem,
+    ReverseParseRequest,
+    ReverseParseResult,
     StrictAgentOutput,
     ToolMetrics,
 )
@@ -68,6 +63,7 @@ from casefile.agent_runtime.prompt import (
     generation_input,
     idea_generation_input,
     polish_input,
+    reverse_parse_input,
 )
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
 from casefile.agent_runtime.structured_output import (
@@ -85,6 +81,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -113,6 +118,10 @@ class AgentProvider(GenerationProvider, Protocol):
     def generate_ideas(
         self, request: IdeaGenerationRequest
     ) -> IdeaGenerationResult: ...
+
+    def reverse_parse(
+        self, request: ReverseParseRequest
+    ) -> ReverseParseResult: ...
 
 
 class ProviderProtocolError(RuntimeError):
@@ -381,6 +390,45 @@ class FakeProvider:
         request.emit("model.completed", "synthesizing", {"usage": usage})
         return BriefIntakeSynthesizeResult(candidate=candidate, usage=usage)
 
+    def reverse_parse(self, request: ReverseParseRequest) -> ReverseParseResult:
+        system_prompt_for_task("reverse_parse", request.prompt_version)
+        request.emit("model.started", "parsing", {"model_id": request.model_id})
+        items = [
+            ReverseParseItem(
+                item_type="entity_alias",
+                content={"name": "林晚", "aliases": ["档案修复师"], "description": "主角"},
+                grading="explicit",
+                source_block_refs=[1],
+                source_quote="档案修复师林晚",
+            ),
+            ReverseParseItem(
+                item_type="event",
+                content={"title": "发现异常记录", "order_index": 1,
+                         "description": "林晚发现三份记录指向不存在的时间"},
+                grading="explicit",
+                source_block_refs=[1],
+                source_quote="三份记录都指向一段不存在的时间",
+            ),
+            ReverseParseItem(
+                item_type="candidate_question",
+                content={"question": "是谁改写了记录中的时间？"},
+                grading="needs_confirmation",
+                source_block_refs=[1],
+                source_quote="一段不存在的时间",
+            ),
+            ReverseParseItem(
+                item_type="candidate_conclusion",
+                content={"conclusion": "有人在封存前系统性地篡改了档案", "mode": "unique"},
+                grading="inferred",
+                source_block_refs=[1],
+                source_quote="三份记录都指向一段不存在的时间",
+            ),
+        ]
+        candidate = ReverseParseCandidate(items=items)
+        usage = _zero_usage()
+        request.emit("model.completed", "parsing", {"usage": usage})
+        return ReverseParseResult(candidate=candidate, usage=usage)
+
     def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult:
         system_prompt_for_task("idea_generation", request.prompt_version)
         request.emit("model.started", "generating_ideas", {"model_id": request.model_id})
@@ -431,7 +479,10 @@ class FakeProvider:
             prem = random.choice(PREMISES)
             chosen.append({
                 "concept": f"{prof}在{sett}——{prem}。",
-                "core_suspense": f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。",
+                "core_suspense": (
+                    f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自"
+                    f"{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。"
+                ),
                 "reasoning_type": REASONING_TYPES[i % len(REASONING_TYPES)],
                 "conclusion_mode": CONCLUSION_MODES[i % len(CONCLUSION_MODES)],
                 "target_experience": random.choice(EXPERIENCES),
@@ -442,7 +493,10 @@ class FakeProvider:
         if request.regenerate and request.existing_concepts:
             for c in chosen:
                 while c["concept"] in request.existing_concepts:
-                    c["concept"] = f"{random.choice(PROFESSIONS)}在{random.choice(SETTINGS)}——{random.choice(PREMISES)}（新方向）。"
+                    c["concept"] = (
+                        f"{random.choice(PROFESSIONS)}在{random.choice(SETTINGS)}"
+                        f"——{random.choice(PREMISES)}（新方向）。"
+                    )
 
         candidate = IdeaCandidateSet(
             candidates=[IdeaCandidateModel.model_validate(c) for c in chosen]
@@ -793,6 +847,23 @@ class OpenAIAgentsProvider:
             usage=usage,
         )
 
+    def reverse_parse(self, request: ReverseParseRequest) -> ReverseParseResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task("reverse_parse", request.prompt_version),
+                input_text=reverse_parse_input(request.blocks, request.input_hash),
+                output_type=ReverseParseCandidate,
+                stage="parsing",
+            )
+        )
+        return ReverseParseResult(
+            candidate=ReverseParseCandidate.model_validate(candidate),
+            usage=usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
@@ -894,6 +965,8 @@ class OpenAIAgentsProvider:
             | BriefIntakeSynthesizeRequest
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
+            | ReverseParseRequest
+            | IdeaGenerationRequest
         ),
         *,
         instructions: str,
@@ -1065,6 +1138,23 @@ class DeepSeekAgentsProvider:
             usage=usage,
         )
 
+    def reverse_parse(self, request: ReverseParseRequest) -> ReverseParseResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=system_prompt_for_task("reverse_parse", request.prompt_version),
+                input_text=reverse_parse_input(request.blocks, request.input_hash),
+                output_type=ReverseParseCandidate,
+                stage="parsing",
+            )
+        )
+        return ReverseParseResult(
+            candidate=ReverseParseCandidate.model_validate(candidate),
+            usage=usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
@@ -1148,6 +1238,8 @@ class DeepSeekAgentsProvider:
             | BriefIntakeSynthesizeRequest
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
+            | ReverseParseRequest
+            | IdeaGenerationRequest
         ),
         *,
         instructions: str,
@@ -1178,6 +1270,8 @@ class DeepSeekAgentsProvider:
             | BriefIntakeSynthesizeRequest
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
+            | ReverseParseRequest
+            | IdeaGenerationRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(
@@ -1200,6 +1294,8 @@ async def _run_auxiliary_agent(
         | BriefIntakeSynthesizeRequest
         | BriefStrategyOptionsRequest
         | CaseFileChatRequest
+        | ReverseParseRequest
+        | IdeaGenerationRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,

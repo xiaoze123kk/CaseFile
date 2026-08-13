@@ -6,13 +6,14 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
 )
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EventSink(Protocol):
@@ -377,6 +378,64 @@ class IdeaGenerationRequest:
 @dataclass(frozen=True, slots=True)
 class IdeaGenerationResult:
     candidate: IdeaCandidateSet
+    usage: dict[str, Any]
+
+
+REVERSE_PARSE_ITEM_TYPES = (
+    "entity_alias",
+    "event",
+    "information_unit",
+    "knowledge_state",
+    "relationship_causality",
+    "candidate_question",
+    "candidate_conclusion",
+)
+REVERSE_PARSE_GRADINGS = (
+    "explicit",
+    "inferred",
+    "needs_confirmation",
+    "conflicting",
+    "missing_important",
+)
+
+
+class ReverseParseItem(StrictAgentOutput):
+    """One extracted item with grading and source block evidence."""
+
+    item_type: Literal[
+        "entity_alias", "event", "information_unit", "knowledge_state",
+        "relationship_causality", "candidate_question", "candidate_conclusion",
+    ]
+    content: dict[str, Any]
+    grading: Literal[
+        "explicit", "inferred", "needs_confirmation", "conflicting", "missing_important",
+    ]
+    source_block_refs: list[int] = Field(default_factory=list)
+    source_quote: str = Field(min_length=1, max_length=800)
+
+
+class ReverseParseCandidate(StrictAgentOutput):
+    """Complete structured extraction of one document."""
+
+    items: list[ReverseParseItem] = Field(min_length=1)
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseParseRequest:
+    task_run_id: int
+    prompt_version: str
+    blocks: list[dict[str, Any]]
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseParseResult:
+    candidate: ReverseParseCandidate
     usage: dict[str, Any]
 
 

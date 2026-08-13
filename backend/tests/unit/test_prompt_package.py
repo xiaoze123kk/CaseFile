@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package

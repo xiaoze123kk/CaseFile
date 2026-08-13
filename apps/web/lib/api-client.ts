@@ -1,6 +1,6 @@
 import type { CaseFile } from "@casefile/contracts";
 
-const API_ROOT =
+export const API_ROOT =
   process.env.NEXT_PUBLIC_CASEFILE_API_URL ?? "http://127.0.0.1:8000/api/v1";
 
 export interface ApiErrorBody {

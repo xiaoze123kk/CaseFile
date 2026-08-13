@@ -7,11 +7,13 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
-import casefile.agent_runtime.providers as providers_module
-import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+import casefile.agent_runtime.providers as providers_module
+import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
@@ -28,7 +30,6 @@ from casefile.agent_runtime.structured_output import (
     pydantic_validation_issues,
     strict_fallback_reason,
 )
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class _StrictSchemaFixture(BaseModel):

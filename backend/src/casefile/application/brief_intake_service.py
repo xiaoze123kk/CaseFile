@@ -8,15 +8,6 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import rfc8785
-from casefile_contracts import (
-    Brief as BriefContract,
-)
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,6 +33,15 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile_contracts import (
+    Brief as BriefContract,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
@@ -232,6 +232,41 @@ class BriefIntakeService:
             if activate:
                 intake.current_candidate_id = candidate.id
                 intake.stage = "confirmation"
+            intake.revision += 1
+            self.session.flush()
+            return self._view(owned, intake)
+
+    def create_import_candidate(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        *,
+        content: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create a legacy_import candidate from Path C confirmed parse results."""
+        normalized = validate_candidate_content(content)
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            intake = self._ensure_intake(owned, lock=True)
+            self._require_editable_intake(intake)
+            self._require_source(intake)
+            candidate = BriefIntakeCandidate(
+                project_id=owned.project.id,
+                intake_id=intake.id,
+                parent_candidate_id=None,
+                generated_by_task_run_id=None,
+                created_by_user_id=actor_user_id,
+                origin="legacy_import",
+                basis_input_hash=self._basis_hash(intake),
+                content_jsonb=normalized,
+                content_hash=_json_hash(normalized),
+                saved_at=None,
+                saved_by_user_id=None,
+            )
+            self.session.add(candidate)
+            self.session.flush()
+            intake.current_candidate_id = candidate.id
+            intake.stage = "confirmation"
             intake.revision += 1
             self.session.flush()
             return self._view(owned, intake)

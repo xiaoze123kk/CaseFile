@@ -30,6 +30,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "brief_strategy_options",
     "brief_to_draft",
     "casefile_chat",
+    "reverse_parse",
     "idea_generation",
 )
 

@@ -29,6 +29,10 @@ from casefile.agent_runtime.models import (
     IdeaGenerationRequest,
     IdeaGenerationResult,
     PolishMode,
+    ReverseParseCandidate,
+    ReverseParseItem,
+    ReverseParseRequest,
+    ReverseParseResult,
     ToolMetrics,
 )
 from casefile.agent_runtime.providers import (
@@ -71,5 +75,9 @@ __all__ = [
     "IdeaGenerationResult",
     "OpenAIAgentsProvider",
     "PolishMode",
+    "ReverseParseCandidate",
+    "ReverseParseItem",
+    "ReverseParseRequest",
+    "ReverseParseResult",
     "ToolMetrics",
 ]

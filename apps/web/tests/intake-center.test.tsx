@@ -882,6 +882,7 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /我有一个想法/u })).toBeEnabled();
     expect(screen.getByRole("button", { name: /帮我想一个/u })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /我有已有内容/u })).toBeEnabled();
     expect(
       screen.getByRole("radio", { name: /表达优化/u }),
     ).toBeChecked();
