@@ -46,6 +46,7 @@ import { BriefReviewStage } from "./brief-review-stage";
 import { CaseHistoryDrawer } from "./case-history-drawer";
 import { DraftCandidatesStage } from "./draft-candidates-stage";
 import IdeaCandidatesStage from "./idea-candidates-stage";
+import ReverseParseStage from "./reverse-parse-stage";
 import {
   OutlineStagesEditor,
   SellingPointsEditor,
@@ -244,8 +245,12 @@ export function IntakeCenter() {
   const [pastBatches, setPastBatches] = useState<Record<string, IdeaCandidateView[]>>({});
   const [ideaGenerating, setIdeaGenerating] = useState(false);
 
+  // ── Path C: Reverse Parse ────────────────────────────────────────────
+  const [showReverseParse, setShowReverseParse] = useState(false);
+
   const handlePathB = async () => {
     if (showIdeaGeneration) return;
+    setShowReverseParse(false);
     setIdeaGenerating(true);
     setError(null);
     try {
@@ -984,10 +989,12 @@ export function IntakeCenter() {
             {intakeRoutes.map((route) => {
               const available = route.state === "available";
               const isActive = route.code === "A"
-                ? !showIdeaGeneration
+                ? !showIdeaGeneration && !showReverseParse
                 : route.code === "B"
                   ? showIdeaGeneration
-                  : false;
+                  : route.code === "C"
+                    ? showReverseParse
+                    : false;
               return (
                 <button
                   aria-current={isActive ? "step" : undefined}
@@ -996,11 +1003,10 @@ export function IntakeCenter() {
                   key={route.code}
                   type="button"
                   onClick={
-                    route.code === "B"
-                      ? handlePathB
-                      : route.code === "A"
-                        ? () => setShowIdeaGeneration(false)
-                        : undefined
+                    route.code === "B" ? handlePathB
+                      : route.code === "A" ? () => { setShowIdeaGeneration(false); setShowReverseParse(false); }
+                      : route.code === "C" ? () => { setShowIdeaGeneration(false); setShowReverseParse(true); }
+                      : undefined
                   }
                 >
                   <span>{route.code}</span>
@@ -1022,7 +1028,9 @@ export function IntakeCenter() {
         </aside>
 
         <main className={styles.focusPlane}>
-          {showIdeaGeneration ? (
+          {showReverseParse ? (
+            <ReverseParseStage onFormed={() => setShowReverseParse(false)} />
+          ) : showIdeaGeneration ? (
             <IdeaCandidatesStage
               ideas={ideaCandidates}
               pastBatches={pastBatches}
