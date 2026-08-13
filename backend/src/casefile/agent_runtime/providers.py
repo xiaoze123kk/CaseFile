@@ -960,6 +960,7 @@ class OpenAIAgentsProvider:
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
             | ReverseParseRequest
+            | IdeaGenerationRequest
         ),
         *,
         instructions: str,
@@ -1232,6 +1233,7 @@ class DeepSeekAgentsProvider:
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
             | ReverseParseRequest
+            | IdeaGenerationRequest
         ),
         *,
         instructions: str,
@@ -1263,6 +1265,7 @@ class DeepSeekAgentsProvider:
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
             | ReverseParseRequest
+            | IdeaGenerationRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(
@@ -1286,6 +1289,7 @@ async def _run_auxiliary_agent(
         | BriefStrategyOptionsRequest
         | CaseFileChatRequest
         | ReverseParseRequest
+        | IdeaGenerationRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
