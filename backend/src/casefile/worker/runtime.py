@@ -45,6 +45,8 @@ from casefile.agent_runtime import (
     GenerationResult,
     OpenAIAgentsProvider,
     PolishMode,
+    ReverseParseRequest,
+    ReverseParseResult,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.observability import (
@@ -57,6 +59,7 @@ from casefile.application.casefile_v1 import (
     generation_candidate_summary,
     validate_generation_candidate_context,
 )
+from casefile.application.reverse_parse_service import ReverseParseService
 from casefile.application.task_cancellation import finalize_task_cancellation
 from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
@@ -400,6 +403,30 @@ class Worker:
                     attempt_id,
                     synthesize_result,
                 )
+                return
+            if task_snapshot.task_type == "reverse_parse":
+                if _json_hash(task_snapshot.input_jsonb) != task_snapshot.input_hash:
+                    raise RuntimeError("Frozen reverse parse payload does not match its input hash")
+                blocks = task_snapshot.input_jsonb.get("blocks", [])
+                if not isinstance(blocks, list):
+                    raise RuntimeError("Frozen reverse parse blocks must be an array")
+                parse_request = ReverseParseRequest(
+                    task_run_id=task_snapshot.id,
+                    prompt_version=task_snapshot.prompt_version,
+                    blocks=deepcopy(blocks),
+                    input_hash=task_snapshot.input_hash,
+                    model_id=task_snapshot.model_id,
+                    api_key=api_key,
+                    max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
+                    emit=lambda event_type, stage, payload: self._emit(
+                        task_run_id, event_type, stage, payload
+                    ),
+                    network_retries=_network_retries(task_snapshot),
+                )
+                parse_result = provider.reverse_parse(parse_request)
+                candidate = parse_result.candidate.model_dump(mode="json")
+                usage = parse_result.usage
+                self._complete_reverse_parse(task_run_id, attempt_id, parse_result)
                 return
             if task_snapshot.task_type == "casefile_chat":
                 chat_request = self._load_chat_request(task_snapshot, api_key)
@@ -818,6 +845,21 @@ class Worker:
                 task_run_id,
                 attempt_id,
                 content=result.candidate.model_dump(mode="json"),
+                usage=result.usage,
+            )
+
+    def _complete_reverse_parse(
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        result: ReverseParseResult,
+    ) -> None:
+        payload = result.candidate.model_dump(mode="json")
+        with self.session_factory() as session:
+            ReverseParseService(session).complete_parse_task(
+                task_run_id,
+                attempt_id,
+                items=list(payload["items"]),
                 usage=result.usage,
             )
 
