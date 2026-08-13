@@ -25,19 +25,21 @@ from casefile.data_postgres.base import Base, BigIntIdentityPrimaryKeyMixin
 class IdeaCandidate(BigIntIdentityPrimaryKeyMixin, Base):
     __tablename__ = "idea_candidates"
     __table_args__ = (
-        UniqueConstraint("project_id", "batch_id", "ordinal", name="uq_idea_candidates_batch_ordinal"),
+        UniqueConstraint(
+            "project_id", "batch_id", "ordinal", name="uq_idea_candidates_batch_ordinal"
+        ),
         UniqueConstraint("project_id", "id", name="uq_idea_candidates_project_id_id"),
-        CheckConstraint("ordinal BETWEEN 1 AND 3", name="ck_idea_candidates_ordinal_range"),
+        CheckConstraint("ordinal BETWEEN 1 AND 3", name="ordinal_range"),
         CheckConstraint(
             "status IN ('active', 'bookmarked', 'archived', 'selected')",
-            name="ck_idea_candidates_status_allowed",
+            name="status_allowed",
         ),
-        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="ck_idea_candidates_content_hash_format"),
-        CheckConstraint("jsonb_typeof(content_jsonb) = 'object'", name="ck_idea_candidates_content_is_object"),
+        CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),
+        CheckConstraint("jsonb_typeof(content_jsonb) = 'object'", name="content_is_object"),
         CheckConstraint(
             "(bookmarked_at IS NULL AND bookmarked_by_user_id IS NULL) OR "
             "(bookmarked_at IS NOT NULL AND bookmarked_by_user_id IS NOT NULL)",
-            name="ck_idea_candidates_bookmark_consistent",
+            name="bookmark_consistent",
         ),
         Index("ix_idea_candidates_project_batch", "project_id", "batch_id"),
         Index("ix_idea_candidates_project_status", "project_id", "status"),
