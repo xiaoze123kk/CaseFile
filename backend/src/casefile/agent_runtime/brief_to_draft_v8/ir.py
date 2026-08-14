@@ -58,6 +58,18 @@ class BlueprintObjectV1(StrictAgentOutput):
     dependency_keys: list[LocalKey] = Field(default_factory=list, max_length=30)
 
 
+class ReasoningPathBlueprintV2(BlueprintObjectV1):
+    """Blueprint reasoning path that pins its target and required information inputs.
+
+    Historical v8-v14 planners keep emitting only the four base fields; the
+    explicit fields were introduced so the Evidence Drafter no longer has to
+    re-derive the Planner's natural-language intent from dependency_keys.
+    """
+
+    target_key: LocalKey | None = None
+    required_information_keys: list[LocalKey] = Field(default_factory=list, max_length=30)
+
+
 class CaseBlueprintV1(StrictAgentOutput):
     """Fixed-collection object plan; the model cannot invent collection names."""
 
@@ -71,7 +83,7 @@ class CaseBlueprintV1(StrictAgentOutput):
     information_units: list[BlueprintObjectV1] = Field(default_factory=list, max_length=80)
     claims: list[BlueprintObjectV1] = Field(default_factory=list, max_length=60)
     hypotheses: list[BlueprintObjectV1] = Field(default_factory=list, max_length=30)
-    reasoning_paths: list[BlueprintObjectV1] = Field(default_factory=list, max_length=30)
+    reasoning_paths: list[ReasoningPathBlueprintV2] = Field(default_factory=list, max_length=30)
     constraints: list[BlueprintObjectV1] = Field(default_factory=list, max_length=40)
     structure_locks: list[BlueprintObjectV1] = Field(default_factory=list, max_length=40)
 
@@ -87,6 +99,24 @@ class CaseBlueprintV1(StrictAgentOutput):
         )
         if unknown:
             raise ValueError(f"blueprint contains unknown dependency keys: {unknown!r}")
+        targetable = {
+            item.local_key
+            for name in ("resolution_specs", "claims", "hypotheses")
+            for item in getattr(self, name)
+        }
+        information_keys = {item.local_key for item in self.information_units}
+        for path in self.reasoning_paths:
+            if path.target_key is not None and path.target_key not in targetable:
+                raise ValueError(
+                    f"reasoning path {path.local_key!r} targets a non-targetable "
+                    f"blueprint key: {path.target_key!r}"
+                )
+            unlisted = sorted(set(path.required_information_keys) - information_keys)
+            if unlisted:
+                raise ValueError(
+                    f"reasoning path {path.local_key!r} requires unknown information "
+                    f"units: {unlisted!r}"
+                )
         return self
 
 

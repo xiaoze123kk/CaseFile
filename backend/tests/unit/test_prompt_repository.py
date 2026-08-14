@@ -159,13 +159,13 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("brief_to_draft", "brief-to-draft-v15"): {
         "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
-        "fragment:planner": "010d32410cbe56cce36029d611b6ae5df1b8b46a96a6f115deb37f984f617ddc",
+        "fragment:planner": "e91b062a111cd7f779fe1a4517186488bfb74eb898ef49b8eae86c7e368a2390",
         "fragment:temporal": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3",
         "fragment:domain_common": (
             "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
         ),
         "fragment:story": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04",
-        "fragment:evidence": "325dd19f4dda7d0885eab112e45813d34a7ae6821816fcf965113dfa3ef585b2",
+        "fragment:evidence": "eed0cc7806d3b9c0da466a203fcfda427b6e51161f08f00da12bcf33e316d4a0",
         "fragment:governance": "1539eeeaf325e297256c3b312e44bd28c29a3da6171981d4b6b573a27c4bef6e",
     },
     ("casefile_chat", "casefile-chat-v1"): {

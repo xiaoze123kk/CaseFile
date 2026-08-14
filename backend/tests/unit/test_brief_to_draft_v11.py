@@ -21,6 +21,7 @@ from casefile.agent_runtime.brief_to_draft_v8.workflow import (
     _quality_gate,
     _v11_blueprint_issues,
     _v11_story_issues,
+    _v15_blueprint_path_issues,
     run_v8_generation,
 )
 from casefile.agent_runtime.brief_to_draft_v11.contracts import (
@@ -286,6 +287,33 @@ def test_v11_fake_blueprint_passes_competition_semantics() -> None:
     blueprint, _story, _evidence, _governance = _v11_parts()
 
     assert _v11_blueprint_issues(blueprint) == []
+
+
+def test_v15_blueprint_gate_requires_explicit_targeted_path_plans() -> None:
+    blueprint, _story, _evidence, _governance = _v11_parts()
+
+    assert _v15_blueprint_path_issues(blueprint) == []
+
+    for path in blueprint.reasoning_paths:
+        path.target_key = None
+        path.required_information_keys = []
+
+    issues = _v15_blueprint_path_issues(blueprint)
+
+    assert {issue["code"] for issue in issues} == {"competing_hypothesis_path_plan_missing"}
+    assert {issue["ir_path"] for issue in issues} == {
+        "/hypotheses/hypothesis",
+        "/hypotheses/alternative_hypothesis",
+    }
+    assert all(issue["component_id"] == "case_blueprint_planner" for issue in issues)
+
+
+def test_v15_blueprint_gate_accepts_explicit_target_without_dependency_guess() -> None:
+    blueprint, _story, _evidence, _governance = _v11_parts()
+    for path in blueprint.reasoning_paths:
+        path.dependency_keys = [key for key in path.dependency_keys if key.startswith("record")]
+
+    assert _v15_blueprint_path_issues(blueprint) == []
 
 
 def test_quality_gate_failure_closes_its_started_step() -> None:

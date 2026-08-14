@@ -251,7 +251,7 @@ async def run_v8_generation(
     usage_records.append(planner_usage)
     blueprint = CaseBlueprintV1.model_validate(planner_output)
     if uses_v2_context:
-        blueprint_issues = _v11_blueprint_issues(blueprint)
+        blueprint_issues = _blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15)
         if blueprint_issues:
             error = ContractValidationError(blueprint_issues)
             _emit_quality_gate_failure(request, error)
@@ -275,7 +275,7 @@ async def run_v8_generation(
             usage_records.append(repaired_usage)
             blueprint = CaseBlueprintV1.model_validate(repaired_output)
             remaining_blueprint_issues = [
-                *_v11_blueprint_issues(blueprint),
+                *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
                 *_blueprint_creator_chinese_issues(blueprint),
             ]
             if remaining_blueprint_issues:
@@ -450,6 +450,7 @@ async def run_v8_generation(
                 evidence,
                 strict_competition=uses_v2_context,
                 blueprint=blueprint,
+                use_explicit_targets=uses_v15,
             )
             if not matrix_issues:
                 break
@@ -489,6 +490,7 @@ async def run_v8_generation(
                     evidence,
                     strict_competition=uses_v2_context,
                     blueprint=blueprint,
+                    use_explicit_targets=uses_v15,
                 )
                 if matrix_issues:
                     raise LinkerValidationError(matrix_issues)
@@ -701,8 +703,20 @@ def _repair_issues_for_component(
     return selected or None
 
 
-def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
-    """Reject competition plans that no Evidence output can satisfy."""
+def _blueprint_path_plan_issues(
+    blueprint: CaseBlueprintV1,
+    *,
+    explicit_targets: bool,
+) -> list[dict[str, Any]]:
+    """Blueprint competition-path gate; v15+ requires explicit target plans."""
+
+    if explicit_targets:
+        return _v15_blueprint_path_issues(blueprint)
+    return _v11_blueprint_issues(blueprint)
+
+
+def _blueprint_competition_groups(blueprint: CaseBlueprintV1) -> list[set[str]]:
+    """Derive competing-hypothesis groups from blueprint dependencies."""
 
     hypothesis_keys = {item.local_key for item in blueprint.hypotheses}
     resolution_keys = {item.local_key for item in blueprint.resolution_specs}
@@ -731,9 +745,14 @@ def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
             hypotheses_by_resolution.setdefault(resolution_key, set()).add(hypothesis.local_key)
     for values in hypotheses_by_resolution.values():
         add_group(values)
+    return groups
+
+
+def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
+    """Reject competition plans that no Evidence output can satisfy (v11-v14)."""
 
     issues: list[dict[str, Any]] = []
-    for group in groups:
+    for group in _blueprint_competition_groups(blueprint):
         for hypothesis_key in sorted(group):
             has_dedicated_path = _blueprint_has_hypothesis_path(
                 blueprint,
@@ -755,6 +774,31 @@ def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
     return issues
 
 
+def _v15_blueprint_path_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
+    """Require an explicit targeted path plan per competing hypothesis (v15+)."""
+
+    issues: list[dict[str, Any]] = []
+    for group in _blueprint_competition_groups(blueprint):
+        for hypothesis_key in sorted(group):
+            if _blueprint_has_explicit_target_path(blueprint, hypothesis_key):
+                continue
+            issues.append(
+                {
+                    "code": "competing_hypothesis_path_plan_missing",
+                    "path": f"/reasoning_paths/{hypothesis_key}",
+                    "message": (
+                        "Planner 必须为每个竞争假设规划一条以该假设为 target "
+                        "且声明所需信息输入的推理路径。"
+                    ),
+                    "component_id": "case_blueprint_planner",
+                    "failure_layer": "blueprint_semantics",
+                    "schema_id": "case-blueprint-v1",
+                    "ir_path": f"/hypotheses/{hypothesis_key}",
+                }
+            )
+    return issues
+
+
 def _blueprint_has_hypothesis_path(blueprint: CaseBlueprintV1 | None, hypothesis_key: str) -> bool:
     if blueprint is None:
         return True
@@ -765,11 +809,23 @@ def _blueprint_has_hypothesis_path(blueprint: CaseBlueprintV1 | None, hypothesis
     )
 
 
+def _blueprint_has_explicit_target_path(
+    blueprint: CaseBlueprintV1 | None, hypothesis_key: str
+) -> bool:
+    if blueprint is None:
+        return True
+    return any(
+        path.target_key == hypothesis_key and bool(path.required_information_keys)
+        for path in blueprint.reasoning_paths
+    )
+
+
 def _evidence_assessment_issues(
     evidence: EvidenceLogicIRV2,
     *,
     strict_competition: bool = False,
     blueprint: CaseBlueprintV1 | None = None,
+    use_explicit_targets: bool = False,
 ) -> list[dict[str, Any]]:
     """Require a complete path-grounded matrix across competing hypotheses.
 
@@ -792,6 +848,7 @@ def _evidence_assessment_issues(
             blueprint,
             competition_groups,
             used_information_by_hypothesis,
+            use_explicit_targets=use_explicit_targets,
         )
         if path_issues:
             return path_issues
@@ -857,6 +914,8 @@ def _competition_path_issues(
     blueprint: CaseBlueprintV1 | None,
     competition_groups: list[list[Any]],
     used_information_by_hypothesis: dict[str, set[str]],
+    *,
+    use_explicit_targets: bool,
 ) -> list[dict[str, Any]]:
     """Reject a competing hypothesis without an information-grounded targeted path."""
 
@@ -865,11 +924,12 @@ def _competition_path_issues(
         for hypothesis in competitors:
             if used_information_by_hypothesis[hypothesis.local_key]:
                 continue
-            component_id = (
-                "evidence_logic"
-                if _blueprint_has_hypothesis_path(blueprint, hypothesis.local_key)
-                else "case_blueprint_planner"
+            planned = (
+                _blueprint_has_explicit_target_path(blueprint, hypothesis.local_key)
+                if use_explicit_targets
+                else _blueprint_has_hypothesis_path(blueprint, hypothesis.local_key)
             )
+            component_id = "evidence_logic" if planned else "case_blueprint_planner"
             issues.append(
                 {
                     "code": "competing_hypothesis_path_missing",

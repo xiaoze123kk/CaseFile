@@ -1800,12 +1800,17 @@ def _add_fake_v10_matrix_plan(output_type: type[BaseModel], output: dict[str, An
             "dependency_keys": ["resolution", "claim"],
         }
     )
+    if output["reasoning_paths"]:
+        output["reasoning_paths"][0]["target_key"] = "hypothesis"
+        output["reasoning_paths"][0]["required_information_keys"] = ["record"]
     output["reasoning_paths"].append(
         {
             "local_key": "alternative_path",
             "title": "记录冲突路径",
             "purpose": "验证记录是否可能被事后篡改。",
             "dependency_keys": ["record", "claim", "alternative_hypothesis"],
+            "target_key": "alternative_hypothesis",
+            "required_information_keys": ["record"],
         }
     )
 
