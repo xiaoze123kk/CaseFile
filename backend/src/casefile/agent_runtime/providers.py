@@ -404,7 +404,7 @@ class FakeProvider:
 
             async def call_component(
                 _instructions: str,
-                _input_text: str,
+                input_text: str,
                 output_type: type[BaseModel],
                 stage: str,
                 component_id: str,
@@ -422,20 +422,26 @@ class FakeProvider:
                         "prompt_sha256": sha256(_instructions.encode("utf-8")).hexdigest(),
                     },
                 )
-                output = _fake_v8_output(output_type)
-                if request.prompt_version in {
-                    "brief-to-draft-v10",
-                    "brief-to-draft-v11",
-                    "brief-to-draft-v12",
-                    "brief-to-draft-v13",
-                    "brief-to-draft-v14",
-                    "brief-to-draft-v15",
-                }:
-                    _add_fake_v10_matrix_plan(output_type, output)
-                if output_type.__name__ in {"ResolutionGovernanceIRV1", "ResolutionGovernanceIRV2"}:
-                    output["resolution_specs"][0]["conclusion_mode"] = request.brief[
-                        "conclusion_mode"
-                    ]
+                if output_type.__name__ == "MatrixEvaluationOutputV1":
+                    output = _fake_matrix_evaluation_output(json.loads(input_text))
+                else:
+                    output = _fake_v8_output(output_type)
+                    if request.prompt_version in {
+                        "brief-to-draft-v10",
+                        "brief-to-draft-v11",
+                        "brief-to-draft-v12",
+                        "brief-to-draft-v13",
+                        "brief-to-draft-v14",
+                        "brief-to-draft-v15",
+                    }:
+                        _add_fake_v10_matrix_plan(output_type, output)
+                    if output_type.__name__ in {
+                        "ResolutionGovernanceIRV1",
+                        "ResolutionGovernanceIRV2",
+                    }:
+                        output["resolution_specs"][0]["conclusion_mode"] = request.brief[
+                            "conclusion_mode"
+                        ]
                 usage = _zero_usage()
                 request.emit(
                     "agent.model_call.completed",
@@ -1785,6 +1791,32 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             output["schema_id"] = "resolution-governance-ir-v2"
         return output
     raise ProviderProtocolError(f"Fake v8 component is unsupported: {output_type.__name__}")
+
+
+def _fake_matrix_evaluation_output(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return one deterministic fake judgment per requested matrix cell."""
+
+    effects = ("supports", "contradicts", "neutral")
+    raw_cells = payload.get("cells")
+    cells = raw_cells if isinstance(raw_cells, list) else []
+    return {
+        "assessments": [
+            {
+                "hypothesis_key": cell["hypothesis_key"],
+                "information_key": cell["information_key"],
+                "effect": effects[index % 3],
+                "strength": "moderate",
+                "rationale": (
+                    f"信息 {cell['information_key']} 与假设 {cell['hypothesis_key']} "
+                    "命题的一致性支持当前判定。"
+                ),
+            }
+            for index, cell in enumerate(cells)
+            if isinstance(cell, dict)
+            and isinstance(cell.get("hypothesis_key"), str)
+            and isinstance(cell.get("information_key"), str)
+        ]
+    }
 
 
 def _add_fake_v10_matrix_plan(output_type: type[BaseModel], output: dict[str, Any]) -> None:

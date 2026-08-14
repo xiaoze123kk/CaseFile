@@ -79,7 +79,9 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "brief-to-draft-v12": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
     "brief-to-draft-v13": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
     "brief-to-draft-v14": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
-    "brief-to-draft-v15": frozenset({"planner", "temporal", "story", "evidence", "governance"}),
+    "brief-to-draft-v15": frozenset(
+        {"planner", "temporal", "story", "evidence", "matrix", "governance"}
+    ),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

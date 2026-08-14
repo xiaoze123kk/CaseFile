@@ -48,6 +48,9 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     DraftContextPackV5,
     ResolutionGovernanceIRV2,
 )
+from casefile.agent_runtime.brief_to_draft_v15.matrix import (
+    evaluate_evidence_matrix,
+)
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
 from casefile.agent_runtime.prompt import (
     COMPETITION_MATRIX_PROMPT_VERSIONS,
@@ -89,6 +92,9 @@ _STEP_SCHEMA = {
 }
 _V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
 _V12_PROMPT_COMPONENTS = frozenset({"planner", "temporal", "story", "evidence", "governance"})
+_V15_PROMPT_COMPONENTS = frozenset(
+    {"planner", "temporal", "story", "evidence", "matrix", "governance"}
+)
 _PACKAGE_PROMPT_VERSIONS = PROMPT_PACKAGE_GENERATION_VERSIONS
 
 _CREATOR_TEXT_FIELDS = frozenset(
@@ -451,6 +457,7 @@ async def run_v8_generation(
                 strict_competition=uses_v2_context,
                 blueprint=blueprint,
                 use_explicit_targets=uses_v15,
+                include_matrix=not uses_v15,
             )
             if not matrix_issues:
                 break
@@ -465,6 +472,18 @@ async def run_v8_generation(
             usage_records.append(evidence_usage)
             repaired_components.add("evidence_logic")
             evidence = EvidenceLogicIRV2.model_validate(evidence_value)
+        if uses_v15:
+            evidence, matrix_usage = await evaluate_evidence_matrix(
+                request,
+                call_component,
+                blueprint,
+                evidence,
+                context_payload=context.model_dump(mode="json"),
+                hypotheses_by_resolution=_hypotheses_by_resolution(evidence),
+                used_information_by_hypothesis=_used_information_by_hypothesis(evidence),
+                model_step=_model_step,
+            )
+            usage_records.extend(matrix_usage)
     governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2
     if uses_v15:
         if not isinstance(evidence, EvidenceLogicIRV2):
@@ -516,7 +535,9 @@ async def run_v8_generation(
                 candidate,
                 recoverable=gate_attempt == 0,
             )
-            tools.calls = (5 if uses_temporal_plan else 4) + len(repaired_components)
+            tools.calls = (
+                (6 if uses_v15 else 5 if uses_temporal_plan else 4) + len(repaired_components)
+            )
             tools.valid_calls = tools.calls
             tools.successful_calls = tools.calls
             tools.planned_object_ids = {entry.object_id for entry in linked.id_directory.values()}
@@ -589,6 +610,17 @@ async def run_v8_generation(
                     usage_records.append(usage)
                     repaired_components.add("evidence_logic")
                     evidence = EvidenceLogicIRV2.model_validate(value)
+                    evidence, matrix_usage = await evaluate_evidence_matrix(
+                        request,
+                        call_component,
+                        blueprint,
+                        evidence,
+                        context_payload=context.model_dump(mode="json"),
+                        hypotheses_by_resolution=_hypotheses_by_resolution(evidence),
+                        used_information_by_hypothesis=_used_information_by_hypothesis(evidence),
+                        model_step=_model_step,
+                    )
+                    usage_records.extend(matrix_usage)
                 if "resolution_governance" in affected:
                     if not isinstance(evidence, EvidenceLogicIRV2):
                         raise RuntimeError(
@@ -826,13 +858,15 @@ def _evidence_assessment_issues(
     strict_competition: bool = False,
     blueprint: CaseBlueprintV1 | None = None,
     use_explicit_targets: bool = False,
+    include_matrix: bool = True,
 ) -> list[dict[str, Any]]:
     """Require a complete path-grounded matrix across competing hypotheses.
 
     Validation is staged so a broken prerequisite never floods the repair model
     with derived matrix-cell errors. Competitor peer sets come first, then the
     existence of an information-grounded path per competing hypothesis, and only
-    then the exact matrix coverage.
+    then the exact matrix coverage. The deterministic-matrix runtime validates
+    the graph first with ``include_matrix=False`` and joins the cells itself.
     """
 
     hypotheses_by_resolution = _hypotheses_by_resolution(evidence)
@@ -852,6 +886,8 @@ def _evidence_assessment_issues(
         )
         if path_issues:
             return path_issues
+    if not include_matrix:
+        return []
     return _matrix_cell_issues(
         competition_groups,
         used_information_by_hypothesis,
@@ -1151,7 +1187,9 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
         if package is None:
             raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
         expected_components = (
-            _V12_PROMPT_COMPONENTS
+            _V15_PROMPT_COMPONENTS
+            if request.prompt_version == "brief-to-draft-v15"
+            else _V12_PROMPT_COMPONENTS
             if request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
             else _V8_PROMPT_COMPONENTS
         )
@@ -1287,6 +1325,8 @@ async def _model_step(
         schema_id = "evidence-logic-ir-v2"
     elif component_id == "resolution_governance" and request.prompt_version == "brief-to-draft-v15":
         schema_id = "resolution-governance-ir-v2"
+    elif component_id == "evidence_matrix" and request.prompt_version == "brief-to-draft-v15":
+        schema_id = "matrix-evaluation-v1"
     else:
         schema_id = _STEP_SCHEMA[component_id]
     package_metadata: dict[str, str] = {}

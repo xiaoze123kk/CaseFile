@@ -493,6 +493,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             "temporal_structure_planner",
             "story_world",
             "evidence_logic",
+            "evidence_matrix",
             "resolution_governance",
             "reference_linker",
             "casefile_compiler",

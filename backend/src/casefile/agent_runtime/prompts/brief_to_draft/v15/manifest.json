@@ -14,7 +14,8 @@
     "temporal": {"file": "fragments/temporal.md", "sha256": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3"},
     "domain_common": {"file": "fragments/domain_common.md", "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"},
     "story": {"file": "fragments/story.md", "sha256": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04"},
-    "evidence": {"file": "fragments/evidence.md", "sha256": "eed0cc7806d3b9c0da466a203fcfda427b6e51161f08f00da12bcf33e316d4a0"},
+    "evidence": {"file": "fragments/evidence.md", "sha256": "367c339e13d2b97208aed04834bbb7f2cc31317fc5c36e494a5cb2bb654f6411"},
+    "matrix": {"file": "fragments/matrix.md", "sha256": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80"},
     "governance": {"file": "fragments/governance.md", "sha256": "1539eeeaf325e297256c3b312e44bd28c29a3da6171981d4b6b573a27c4bef6e"}
   },
   "components": {
@@ -22,6 +23,7 @@
     "temporal": {"instruction_fragments": ["common", "temporal"], "input_contract_id": "brief-to-draft-temporal-input-v3", "output_schema_id": "temporal-plan-v1", "tool_policy_id": "no-tools-v1"},
     "story": {"instruction_fragments": ["common", "domain_common", "story"], "input_contract_id": "brief-to-draft-domain-input-v5", "output_schema_id": "story-world-ir-v3", "tool_policy_id": "no-tools-v1"},
     "evidence": {"instruction_fragments": ["common", "domain_common", "evidence"], "input_contract_id": "brief-to-draft-domain-input-v5", "output_schema_id": "evidence-logic-ir-v2", "tool_policy_id": "no-tools-v1"},
+    "matrix": {"instruction_fragments": ["matrix"], "input_contract_id": "brief-to-draft-matrix-evaluation-input-v1", "output_schema_id": "matrix-evaluation-v1", "tool_policy_id": "no-tools-v1"},
     "governance": {"instruction_fragments": ["common", "domain_common", "governance"], "input_contract_id": "brief-to-draft-governance-input-v5", "output_schema_id": "resolution-governance-ir-v2", "tool_policy_id": "no-tools-v1"}
   }
 }

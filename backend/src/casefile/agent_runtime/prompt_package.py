@@ -43,6 +43,8 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     DomainDraftInputV5,
     EvidenceRepairInputV1,
     GovernanceDraftInputV5,
+    MatrixEvaluationInputV1,
+    MatrixEvaluationOutputV1,
     PlannerInputV5,
     ResolutionGovernanceIRV2,
     TemporalPlannerInputV3,
@@ -115,6 +117,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "brief-to-draft-domain-input-v5": DomainDraftInputV5,
         "brief-to-draft-governance-input-v5": GovernanceDraftInputV5,
         "brief-to-draft-evidence-repair-input-v1": EvidenceRepairInputV1,
+        "brief-to-draft-matrix-evaluation-input-v1": MatrixEvaluationInputV1,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -128,6 +131,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "evidence-logic-ir-v2": EvidenceLogicIRV2,
         "resolution-governance-ir-v1": ResolutionGovernanceIRV1,
         "resolution-governance-ir-v2": ResolutionGovernanceIRV2,
+        "matrix-evaluation-v1": MatrixEvaluationOutputV1,
     }
 )
 TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType({"no-tools-v1": frozenset()})

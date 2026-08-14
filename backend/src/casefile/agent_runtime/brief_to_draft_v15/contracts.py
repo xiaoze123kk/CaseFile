@@ -77,6 +77,37 @@ class EvidenceRepairInputV1(DomainDraftInputV5):
     previous_output: EvidenceLogicIRV2
 
 
+class MatrixCellSpecIR(StrictAgentOutput):
+    """One fixed matrix cell computed deterministically from reasoning paths."""
+
+    hypothesis_key: LocalKey
+    information_key: LocalKey
+
+
+class MatrixAssessmentIR(MatrixCellSpecIR):
+    """The model's judgment for one deterministic matrix cell."""
+
+    effect: Literal["supports", "contradicts", "neutral"]
+    strength: Literal["weak", "moderate", "strong"]
+    rationale: str = Field(min_length=1)
+
+
+class MatrixEvaluationOutputV1(StrictAgentOutput):
+    schema_id: Literal["matrix-evaluation-v1"] = "matrix-evaluation-v1"
+    assessments: list[MatrixAssessmentIR] = Field(default_factory=list)
+
+
+class MatrixEvaluationInputV1(StrictAgentOutput):
+    """The evaluator judges only the program-computed cells; it cannot alter them."""
+
+    context_pack: DraftContextPackV5
+    blueprint: CaseBlueprintV1
+    evidence_graph: EvidenceLogicIRV2
+    cells: list[MatrixCellSpecIR] = Field(default_factory=list)
+    targeted_repair_issues: list[dict[str, object]] | None = Field(default=None, max_length=50)
+    previous_output: MatrixEvaluationOutputV1 | None = None
+
+
 class ResolutionConclusionValueIR(StrictAgentOutput):
     slot_key: LocalKey
     value: str | int | float | bool | None = None
@@ -118,6 +149,10 @@ __all__ = [
     "DraftContextPackV5",
     "EvidenceRepairInputV1",
     "GovernanceDraftInputV5",
+    "MatrixAssessmentIR",
+    "MatrixCellSpecIR",
+    "MatrixEvaluationInputV1",
+    "MatrixEvaluationOutputV1",
     "PlannerInputV5",
     "ResolutionConclusionIR",
     "ResolutionConclusionValueIR",

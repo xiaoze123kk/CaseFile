@@ -26,7 +26,11 @@ from casefile.agent_runtime.prompt_repository import (
     PromptRepositoryError,
     load_prompt,
 )
-from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
+from casefile.agent_runtime.providers import (
+    _add_fake_v10_matrix_plan,
+    _fake_matrix_evaluation_output,
+    _fake_v8_output,
+)
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.contracts import validate_casefile
 
@@ -416,6 +420,8 @@ def test_v15_governance_runs_after_evidence_and_can_return_undetermined() -> Non
         _schema_id: str,
     ) -> tuple[dict[str, object], dict[str, int]]:
         calls.append(component_id)
+        if output_type.__name__ == "MatrixEvaluationOutputV1":
+            return _fake_matrix_evaluation_output(json.loads(input_text)), {"requests": 1}
         output = _fake_v8_output(output_type)
         _add_fake_v10_matrix_plan(output_type, output)
         if component_id == "resolution_governance":
@@ -479,6 +485,8 @@ def test_v15_evidence_repair_receives_previous_output_and_phased_issues() -> Non
     ) -> tuple[dict[str, object], dict[str, int]]:
         nonlocal evidence_calls
         calls.append(component_id)
+        if output_type.__name__ == "MatrixEvaluationOutputV1":
+            return _fake_matrix_evaluation_output(json.loads(input_text)), {"requests": 1}
         output = _fake_v8_output(output_type)
         _add_fake_v10_matrix_plan(output_type, output)
         if component_id == "evidence_logic":

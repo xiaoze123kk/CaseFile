@@ -42,8 +42,8 @@ def test_fake_brief_to_draft_benchmark_records_component_rates() -> None:
         "completion_rate": 0.0,
     }
     assert report["metrics"]["model_calls"] == {
-        "started": 10,
-        "completed": 10,
+        "started": 12,
+        "completed": 12,
         "failed": 0,
         "completion_rate": 1.0,
     }

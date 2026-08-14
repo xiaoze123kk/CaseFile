@@ -597,6 +597,8 @@ def _successful_task_violations(
         "brief-to-draft-v15",
     }:
         expected_components.add("temporal_structure_planner")
+    if task.get("prompt_version") == "brief-to-draft-v15":
+        expected_components.add("evidence_matrix")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
     if component_ids != expected_components:
         violations.append("component_step_coverage_incomplete")
