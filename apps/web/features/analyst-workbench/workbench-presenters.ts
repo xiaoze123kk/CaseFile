@@ -98,6 +98,15 @@ const creatorTextTypeLabels: Record<string, string> = {
   unknown: "对象",
 };
 
+const conclusionSlotLabels: Record<string, string> = {
+  slot_core_answer: "核心答案",
+  slot_explanation_note: "说明",
+  slot_method: "作案方式",
+  slot_motive: "动机",
+  slot_perpetrator: "嫌疑人",
+  slot_root_cause: "根本原因",
+};
+
 export interface CaseWallClock {
   date: string;
   fractionalSeconds: string;
@@ -149,6 +158,10 @@ export function creatorDescription(
 ): string {
   const typeLabel = creatorTextTypeLabels[kind] ?? "对象";
   return creatorText(value, `该${typeLabel}的创作说明待补充。`);
+}
+
+export function conclusionSlotLabel(slotId: string): string {
+  return conclusionSlotLabels[slotId] ?? "解答信息";
 }
 
 export function reliabilityLabel(value: string): string {

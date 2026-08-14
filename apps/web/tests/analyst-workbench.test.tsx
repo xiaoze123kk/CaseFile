@@ -289,6 +289,48 @@ describe("analyst workbench", () => {
     expect(within(detail).getByText(/刷卡权限与进入时间一致/)).toBeInTheDocument();
   });
 
+  it("shows conclusion values with creator-facing labels instead of storage keys", () => {
+    render(
+      <ReasoningGraphView
+        layoutScope="conclusion-display"
+        onSelectObject={vi.fn()}
+        selectedObjectId={null}
+        seed={{
+          ...defaultWorkbenchSeed,
+          reasoningGroups: [
+            {
+              resolutionSpecId: "res_access",
+              question: "谁进入了受限区域？",
+              hypotheses: [],
+              information: [],
+              assessments: [],
+              conclusion: {
+                resolutionSpecId: "res_access",
+                question: "谁进入了受限区域？",
+                outcome: "answer",
+                reviewStatus: "proposed",
+                summary: "进入者是值班员。",
+                values: [{ label: "嫌疑人", value: "值班员" }],
+                selectedHypothesisIds: [],
+                supportingReasoningPathIds: [],
+                relatedEventIds: [],
+                rationale: "门禁记录与值班时段一致。",
+                unresolvedGaps: [],
+              },
+            },
+          ],
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "展开结论" }));
+
+    expect(screen.getByText("嫌疑人")).toBeInTheDocument();
+    expect(screen.getByText("值班员")).toBeInTheDocument();
+    expect(screen.queryByText("slot_perpetrator")).not.toBeInTheDocument();
+    expect(screen.queryByText("ent_167_002")).not.toBeInTheDocument();
+  });
+
   it("renders the three honest matrix empty states without fixture inference", () => {
     const onSelectObject = vi.fn();
     const baseProps = {
@@ -538,6 +580,9 @@ describe("analyst workbench", () => {
     expect(person.style.getPropertyValue("--canvas-node-accent")).not.toBe(
       evidence.style.getPropertyValue("--canvas-node-accent"),
     );
+
+    const personWrapper = person.closest(".react-flow__node") as HTMLElement;
+    expect(personWrapper).toHaveStyle({ width: "232px", height: "76px" });
   });
 
   it("highlights the union of relationships for multiple selected nodes", async () => {

@@ -11,6 +11,7 @@ import type {
 } from "./analyst-fixture";
 import {
   classificationLabel,
+  conclusionSlotLabel,
   confirmationStatusLabel,
   creatorDescription,
   creatorLabel,
@@ -424,6 +425,7 @@ function buildCaseObjects(caseFile: CaseFileDocument): WorkbenchCaseObject[] {
 }
 
 function buildConclusions(caseFile: CaseFileDocument): WorkbenchConclusion[] {
+  const catalog = buildReferenceCatalog(caseFile);
   const informationEventIds = new Map(
     caseFile.information_units.map((item) => [
       item.id,
@@ -474,10 +476,17 @@ function buildConclusions(caseFile: CaseFileDocument): WorkbenchConclusion[] {
       outcome: conclusion.outcome,
       reviewStatus: conclusion.review_status,
       summary: creatorText(conclusion.summary, "当前结论摘要待补充。"),
-      values: conclusion.values.map((entry) => ({
-        slotId: entry.slot_id,
-        value: entry.value,
-      })),
+      values: conclusion.values.map((entry) => {
+        const reference = readReference(entry.value as ObjectRef);
+        return {
+          label: conclusionSlotLabel(entry.slot_id),
+          value: reference
+            ? (catalog.get(reference.id)?.label ?? "关联对象")
+            : typeof entry.value === "string"
+              ? creatorText(entry.value, "答案待补充。")
+              : String(entry.value),
+        };
+      }),
       selectedHypothesisIds,
       supportingReasoningPathIds,
       relatedEventIds: eventsForReferences(relatedReferenceIds),

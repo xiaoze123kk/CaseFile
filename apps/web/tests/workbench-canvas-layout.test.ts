@@ -37,6 +37,16 @@ const relationIdentity: WorkbenchCanvasLayoutIdentity = {
 };
 
 describe("workbench canvas layout", () => {
+  it("moves automatic layouts to a new storage family after a node geometry revision", () => {
+    expect(
+      workbenchCanvasLayoutStorageKey({
+        scope: "project:7:draft:21",
+        revision: "R7",
+        view: "relations",
+      }),
+    ).toContain("casefile.canvas-layout.v2");
+  });
+
   it("creates deterministic semantic layouts for relationship and reasoning scenes", () => {
     const nodes = [
       { id: "evidence", width: 120, height: 60 },

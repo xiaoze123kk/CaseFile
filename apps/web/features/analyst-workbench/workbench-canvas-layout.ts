@@ -49,7 +49,7 @@ export interface RestoredWorkbenchCanvasLayout {
   warning: string | null;
 }
 
-const STORAGE_PREFIX = "casefile.canvas-layout.v1";
+const STORAGE_PREFIX = "casefile.canvas-layout.v2";
 
 function finitePoint(value: unknown): value is WorkbenchCanvasPoint {
   if (!value || typeof value !== "object") return false;
@@ -129,8 +129,8 @@ export function layoutWorkbenchCanvas(
   graph.setGraph({
     rankdir: direction,
     ranker: "network-simplex",
-    nodesep: direction === "LR" ? 42 : 34,
-    ranksep: direction === "LR" ? 88 : 72,
+    nodesep: direction === "LR" ? 56 : 42,
+    ranksep: direction === "LR" ? 112 : 84,
     edgesep: 20,
     marginx: 48,
     marginy: 48,

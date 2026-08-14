@@ -7,6 +7,7 @@ import {
 } from "@/features/analyst-workbench/workbench-object-detail-model";
 import {
   classificationLabel,
+  conclusionSlotLabel,
   confidenceLabel,
   confirmationStatusLabel,
   formatCaseClock,
@@ -29,6 +30,8 @@ describe("workbench object detail model", () => {
     expect(confirmationStatusLabel("user_confirmed")).toBe("作者已确认");
     expect(confidenceLabel(0.925)).toBe("置信度 93%");
     expect(confidenceLabel(null)).toBe("置信度未标注");
+    expect(conclusionSlotLabel("slot_root_cause")).toBe("根本原因");
+    expect(conclusionSlotLabel("slot_unrecognized_detail")).toBe("解答信息");
   });
 
   it("formats and serializes case wall-clock time without timezone conversion", () => {

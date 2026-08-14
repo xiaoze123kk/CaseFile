@@ -101,8 +101,8 @@ export function RelationshipGraph({
           ariaLabel: `${caption}：${label}`,
           accent: isConclusionNode ? "#a84b32" : relationshipNodeAccent(String(kind)),
           selectableId,
-          width: 176,
-          height: 58,
+          width: 232,
+          height: 76,
         };
       }),
     [graphNodes, mappedSeed.origin, seed],

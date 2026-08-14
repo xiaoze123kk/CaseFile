@@ -102,12 +102,6 @@ function conclusionOutcomeLabel(conclusion: WorkbenchConclusion | undefined) {
   return conclusion.outcome === "undetermined" ? "未定论" : "答案";
 }
 
-function conclusionValue(value: WorkbenchConclusion["values"][number]["value"]) {
-  if (typeof value !== "object" || value === null) return String(value);
-  const objectId = value.object_id;
-  return typeof objectId === "string" ? objectId : JSON.stringify(value);
-}
-
 function hypothesisConclusionRole(
   conclusion: WorkbenchConclusion | undefined,
   hypothesisId: string,
@@ -168,9 +162,9 @@ function ReasoningConclusionCard({
               {conclusion.values.length ? (
                 <dl className={styles.conclusionValues}>
                   {conclusion.values.map((item) => (
-                    <div key={item.slotId}>
-                      <dt>{item.slotId}</dt>
-                      <dd>{conclusionValue(item.value)}</dd>
+                    <div key={`${item.label}:${item.value}`}>
+                      <dt>{item.label}</dt>
+                      <dd>{item.value}</dd>
                     </div>
                   ))}
                 </dl>

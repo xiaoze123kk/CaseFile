@@ -27,8 +27,8 @@ export interface WorkbenchConclusion {
   reviewStatus: WorkbenchConclusionStatus;
   summary: string;
   values: Array<{
-    slotId: string;
-    value: string | number | boolean | Record<string, unknown>;
+    label: string;
+    value: string;
   }>;
   selectedHypothesisIds: string[];
   supportingReasoningPathIds: string[];

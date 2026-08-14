@@ -581,11 +581,27 @@ describe("real workbench data mapper", () => {
     const caseFile = makeCaseFile();
     caseFile.resolution_specs[0] = {
       ...caseFile.resolution_specs[0],
+      required_slots: [
+        {
+          slot_id: "slot_perpetrator",
+          value_type: "entity_or_claim_ref",
+          required: true,
+        },
+      ],
       conclusion: {
         outcome: "answer",
         review_status: "confirmed",
         summary: "值班员改写了记录。",
-        values: [],
+        values: [
+          {
+            slot_id: "slot_perpetrator",
+            value: ref("entity", "ent_operator"),
+          },
+          {
+            slot_id: "slot_unknown_detail",
+            value: ref("entity", "ent_missing"),
+          },
+        ],
         selected_hypothesis_refs: [
           ref("hypothesis", "hyp_operator_changed_record"),
         ],
@@ -604,6 +620,10 @@ describe("real workbench data mapper", () => {
         resolutionSpecId: "res_core_question",
         reviewStatus: "confirmed",
         summary: "值班员改写了记录。",
+        values: [
+          { label: "嫌疑人", value: "值班员" },
+          { label: "解答信息", value: "关联对象" },
+        ],
         selectedHypothesisIds: ["hyp_operator_changed_record"],
         supportingReasoningPathIds: ["path_record_change"],
         relatedEventIds: ["evt_early"],

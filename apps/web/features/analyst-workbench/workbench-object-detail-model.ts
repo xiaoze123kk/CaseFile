@@ -4,6 +4,7 @@ import type { CaseFileDocument } from "@/lib/api-client";
 
 import {
   classificationLabel,
+  conclusionSlotLabel,
   confidenceLabel,
   confirmationStatusLabel,
   creatorDescription,
@@ -494,8 +495,8 @@ function sectionsFor(
           const answer = asObjectRef(value.value);
           return [
             answer
-              ? `${stringValue(value.slot_id)}：${resolveReference(answer, catalog).label}`
-              : `${stringValue(value.slot_id)}：${String(value.value ?? "未填写")}`,
+              ? `${conclusionSlotLabel(stringValue(value.slot_id))}：${resolveReference(answer, catalog).label}`
+              : `${conclusionSlotLabel(stringValue(value.slot_id))}：${String(value.value ?? "未填写")}`,
           ];
         })
       : [];
@@ -536,7 +537,7 @@ function sectionsFor(
                 ? object.required_slots.map((item) => {
                     const slot = asRecord(item);
                     return slot
-                      ? `${stringValue(slot.slot_id)} · ${objectSubtypeLabel(stringValue(slot.value_type))}${slot.required ? " · 必填" : ""}`
+                      ? `${conclusionSlotLabel(stringValue(slot.slot_id))} · ${objectSubtypeLabel(stringValue(slot.value_type))}${slot.required ? " · 必填" : ""}`
                       : "";
                   }).filter(Boolean)
                 : [],
