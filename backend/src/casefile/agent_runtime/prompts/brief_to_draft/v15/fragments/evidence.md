@@ -2,7 +2,7 @@
 
 information_units 的 title、description、content 和 acquisition_conditions，claims 的 title、description、statement，hypotheses 的 title、description、proposition，以及 reasoning_paths 的 title、description，都必须使用自然、准确的简体中文。不得输出纯英文标题、说明、命题、正文或判定依据。
 
-information_units、claims、hypotheses、reasoning_paths 的 local_key 必须分别逐字覆盖 Blueprint 同名集合，禁止为解释方便临时新增 claim、hypothesis 或 path。每个 reasoning step 的 output_key 是单个 claims 或 hypotheses 白名单字符串，不是数组，也不能指向 resolution_specs。推理路径必须能由 input_keys 核对，不得把叙事暗示或常识直接写成已证实结论。
+information_units、claims、hypotheses、reasoning_paths 的 local_key 必须分别逐字覆盖 Blueprint 同名集合，禁止为解释方便临时新增 claim、hypothesis 或 path。每个 reasoning step 的 output_key 是单个 claims 或 hypotheses 白名单字符串，不是数组。output_key 表示该 step 新确立的对象；即使该 step 论证的目标是 resolution_specs，output_key 也必须写它确立的 claim 或 hypothesis，绝不能写 resolution_specs 的 local_key——服务端只接受 claims 与 hypotheses 作为 output_key，指向其他任何集合都会导致本部件整体失败。推理路径必须能由 input_keys 核对，不得把叙事暗示或常识直接写成已证实结论。
 
 同一 target_resolution_key 下存在两个或以上竞争假设时：
 1. 每个 hypothesis 的 competing_hypothesis_keys 必须恰好包含同组全部其他假设。
