@@ -324,10 +324,14 @@ def test_v15_blueprint_gate_requires_explicit_targeted_path_plans() -> None:
 
     issues = _v15_blueprint_path_issues(blueprint)
 
-    assert {issue["code"] for issue in issues} == {"competing_hypothesis_path_plan_missing"}
+    assert {issue["code"] for issue in issues} == {
+        "competing_hypothesis_path_plan_missing",
+        "competition_information_coverage_incomplete",
+    }
     assert {issue["ir_path"] for issue in issues} == {
         "/hypotheses/hypothesis",
         "/hypotheses/alternative_hypothesis",
+        "/information_units",
     }
     assert all(issue["component_id"] == "case_blueprint_planner" for issue in issues)
 
@@ -338,6 +342,24 @@ def test_v15_blueprint_gate_accepts_explicit_target_without_dependency_guess() -
         path.dependency_keys = [key for key in path.dependency_keys if key.startswith("record")]
 
     assert _v15_blueprint_path_issues(blueprint) == []
+
+
+def test_v15_blueprint_gate_requires_competition_paths_to_cover_all_information() -> None:
+    blueprint, _story, _evidence, _governance = _v11_parts()
+    blueprint.information_units = [
+        *blueprint.information_units,
+        BlueprintObjectV1(
+            local_key="extra_record",
+            title="额外记录",
+            purpose="补充信息",
+            dependency_keys=[],
+        ),
+    ]
+
+    issues = _v15_blueprint_path_issues(blueprint)
+
+    assert {issue["code"] for issue in issues} == {"competition_information_coverage_incomplete"}
+    assert {issue["ir_path"] for issue in issues} == {"/information_units"}
 
 
 def test_v15_blueprint_gate_requires_hypothesis_per_resolution() -> None:

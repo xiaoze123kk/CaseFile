@@ -869,6 +869,27 @@ def _v15_blueprint_path_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any
                 "ir_path": f"/resolution_specs/{resolution.local_key}",
             }
         )
+    information_keys = {item.local_key for item in blueprint.information_units}
+    for group in _blueprint_competition_groups(blueprint):
+        covered: set[str] = set()
+        for path in blueprint.reasoning_paths:
+            if path.target_key in group:
+                covered.update(path.required_information_keys)
+        if information_keys and covered != information_keys:
+            issues.append(
+                {
+                    "code": "competition_information_coverage_incomplete",
+                    "path": "/reasoning_paths",
+                    "message": (
+                        "竞争假设路径的 required_information_keys 并集必须覆盖全部 "
+                        "information_units，否则比较矩阵列不完整。"
+                    ),
+                    "component_id": "case_blueprint_planner",
+                    "failure_layer": "blueprint_semantics",
+                    "schema_id": "case-blueprint-v1",
+                    "ir_path": "/information_units",
+                }
+            )
     return issues
 
 
