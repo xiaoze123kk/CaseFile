@@ -164,10 +164,10 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:domain_common": (
             "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
         ),
-        "fragment:story": "8bd5eeccd3b00dc357a786342d489faccb1f7e6c9f8336e3c49888fcf4633a06",
+        "fragment:story": "19039a3b7e7d040c0cfe24021a8f5cc54315452d00a6824635af588394609935",
         "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
-        "fragment:governance": "8068377b57c531f24f800d0e38967ae49e7f22d54b41d85aa9e6ef859cb7cdbc",
+        "fragment:governance": "bdad16f91cab257ab0d6027bd65386e4474884283318f871bead3a4b7dcd3bb6",
     },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
