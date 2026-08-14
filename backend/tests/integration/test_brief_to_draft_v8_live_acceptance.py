@@ -294,6 +294,46 @@ def test_scenario_filter_narrows_rotation_and_rejects_unknown_ids() -> None:
         _filtered_scenarios(_V15_SCENARIOS, "not_a_scenario")
 
 
+def test_evidence_competition_observed_reads_persisted_evidence_steps() -> None:
+    def step(component_id: str, hypotheses: object) -> Any:
+        class FakeStep:
+            def __init__(self) -> None:
+                self.component_id = component_id
+                self.output_jsonb = (
+                    {"hypotheses": hypotheses} if not isinstance(hypotheses, str) else hypotheses
+                )
+
+        return FakeStep()
+
+    assert not _evidence_competition_observed(
+        [step("evidence_logic", [{"target_resolution_key": "resolution"}])]
+    )
+    assert _evidence_competition_observed(
+        [
+            step(
+                "evidence_logic",
+                [
+                    {"target_resolution_key": "resolution"},
+                    {"target_resolution_key": "resolution"},
+                ],
+            )
+        ]
+    )
+    assert not _evidence_competition_observed(
+        [
+            step(
+                "story_world",
+                [
+                    {"target_resolution_key": "resolution"},
+                    {"target_resolution_key": "resolution"},
+                ],
+            )
+        ]
+    )
+    assert not _evidence_competition_observed([step("evidence_logic", [])])
+    assert not _evidence_competition_observed([step("evidence_logic", "not-a-dict")])
+
+
 def test_v11_scenario_gate_keeps_six_attempts_per_scenario() -> None:
     scenario_ids = (
         "time_exact_range",
@@ -883,6 +923,30 @@ def _brief(
     }
 
 
+def _evidence_competition_observed(steps: list[Any]) -> bool:
+    """True when any persisted Evidence step held two or more competing hypotheses."""
+
+    for step in steps:
+        if getattr(step, "component_id", None) != "evidence_logic":
+            continue
+        output = getattr(step, "output_jsonb", None)
+        if not isinstance(output, dict):
+            continue
+        hypotheses = output.get("hypotheses")
+        if not isinstance(hypotheses, list):
+            continue
+        targets: dict[str, int] = {}
+        for hypothesis in hypotheses:
+            if not isinstance(hypothesis, dict):
+                continue
+            target = hypothesis.get("target_resolution_key")
+            if isinstance(target, str):
+                targets[target] = targets.get(target, 0) + 1
+        if any(count >= 2 for count in targets.values()):
+            return True
+    return False
+
+
 def _successful_task_violations(
     client: TestClient,
     factory: sessionmaker[Session],
@@ -895,6 +959,23 @@ def _successful_task_violations(
     violations: list[str] = []
     if task.get("result_snapshot_id") is not None:
         violations.append("candidate_was_automatically_adopted")
+    with factory() as session:
+        attempt = session.scalar(
+            select(TaskAttempt).where(
+                TaskAttempt.task_run_id == task["task_run_id"],
+                TaskAttempt.status == "succeeded",
+            )
+        )
+        steps = list(
+            session.scalars(
+                select(AgentStepRun).where(AgentStepRun.task_run_id == task["task_run_id"])
+            )
+        )
+        calls = list(
+            session.scalars(
+                select(AgentModelCall).where(AgentModelCall.task_run_id == task["task_run_id"])
+            )
+        )
     expected_components = set(_EXPECTED_COMPONENTS)
     if task.get("prompt_version") in {
         "brief-to-draft-v12",
@@ -903,10 +984,10 @@ def _successful_task_violations(
         "brief-to-draft-v15",
     }:
         expected_components.add("temporal_structure_planner")
-    if (
-        task.get("prompt_version") == "brief-to-draft-v15"
-        and scenario.scenario_id
+    if task.get("prompt_version") == "brief-to-draft-v15" and (
+        scenario.scenario_id
         in {"competition_matrix", "competition_matrix_dense", "competition_matrix_triple"}
+        or _evidence_competition_observed(steps)
     ):
         expected_components.add("evidence_matrix")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
@@ -928,23 +1009,6 @@ def _successful_task_violations(
         item.get("task_run_id") for item in candidates.json()
     }:
         violations.append("successful_candidate_not_queryable")
-    with factory() as session:
-        attempt = session.scalar(
-            select(TaskAttempt).where(
-                TaskAttempt.task_run_id == task["task_run_id"],
-                TaskAttempt.status == "succeeded",
-            )
-        )
-        steps = list(
-            session.scalars(
-                select(AgentStepRun).where(AgentStepRun.task_run_id == task["task_run_id"])
-            )
-        )
-        calls = list(
-            session.scalars(
-                select(AgentModelCall).where(AgentModelCall.task_run_id == task["task_run_id"])
-            )
-        )
     if attempt is None or not isinstance(attempt.candidate_jsonb, dict):
         violations.append("successful_task_missing_immutable_candidate")
     else:
