@@ -2,11 +2,14 @@
 
 import {
   applyNodeChanges,
+  EdgeLabelRenderer,
+  getSmoothStepPath,
   Handle,
   Position,
   ReactFlow,
   SelectionMode,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeChange,
   type NodeProps,
@@ -31,6 +34,7 @@ import {
   type WorkbenchCanvasLayoutIdentity,
   type WorkbenchCanvasPoint,
   layoutWorkbenchCanvas,
+  layoutWorkbenchMatrixCanvas,
   restoreWorkbenchCanvasLayout,
   saveWorkbenchCanvasLayout,
   workbenchCanvasLayoutStorageKey,
@@ -66,6 +70,7 @@ export interface WorkbenchCanvasSceneEdge {
   target: string;
   label?: string;
   kind?: string;
+  ariaLabel?: string;
 }
 
 interface WorkbenchCanvasNodeData extends Record<string, unknown> {
@@ -198,6 +203,74 @@ function WorkbenchCanvasNode({
 
 const nodeTypes = { casefile: WorkbenchCanvasNode };
 
+interface WorkbenchInteractiveEdgeData {
+  label: string;
+  ariaLabel: string;
+  effect: string;
+  active: boolean;
+  onActivate: () => void;
+}
+
+function WorkbenchInteractiveEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  sourcePosition,
+  targetPosition,
+  data,
+}: EdgeProps) {
+  const edgeData = (data ?? {}) as Partial<WorkbenchInteractiveEdgeData>;
+  const label = edgeData.label ?? "";
+  const ariaLabel = edgeData.ariaLabel ?? label;
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    borderRadius: 12,
+  });
+  const active = edgeData.active ?? false;
+  return (
+    <>
+      <path
+        className={active ? styles.canvasEdgeActive : styles.canvasEdge}
+        d={edgePath}
+        fill="none"
+        id={id}
+        style={edgeStyle(edgeData.effect, active)}
+      />
+      <EdgeLabelRenderer>
+        <div
+          className="nodrag nopan"
+          style={{
+            position: "absolute",
+            pointerEvents: "all",
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+          }}
+        >
+          <button
+            aria-label={ariaLabel}
+            aria-pressed={active}
+            className={styles.canvasEdgeCell}
+            data-active={active}
+            data-effect={edgeData.effect}
+            onClick={edgeData.onActivate}
+            type="button"
+          >
+            {label}
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const edgeTypes = { casefileEdge: WorkbenchInteractiveEdge };
+
 function edgeStyle(kind: string | undefined, active: boolean) {
   if (active) {
     return {
@@ -232,6 +305,14 @@ function edgeStyle(kind: string | undefined, active: boolean) {
       opacity: 0.72,
     };
   }
+  if (kind === "unassessed") {
+    return {
+      stroke: "#8a8f8d",
+      strokeWidth: 1.25,
+      strokeDasharray: "4 4",
+      opacity: 0.5,
+    };
+  }
   return { stroke: "var(--relation)", strokeWidth: 1.25, opacity: 0.56 };
 }
 
@@ -241,59 +322,103 @@ export function WorkbenchCanvasKernel({
   emptyHint,
   externalSelectedNodeIds,
   identity,
+  layout = "dagre",
   legend,
   nodeLegend,
   nodes: sceneNodes,
   edges: sceneEdges,
+  onActivateEdge,
   onActivateNode,
+  activeEdgeId = null,
 }: {
   ariaLabel: string;
   direction: WorkbenchCanvasDirection;
   emptyHint?: ReactNode;
   externalSelectedNodeIds: string[];
   identity: WorkbenchCanvasLayoutIdentity;
+  layout?: "dagre" | "matrix";
   legend?: ReactNode;
   nodeLegend?: WorkbenchCanvasLegendItem[];
   nodes: WorkbenchCanvasSceneNode[];
   edges: WorkbenchCanvasSceneEdge[];
+  onActivateEdge?: (edgeId: string) => void;
   onActivateNode: (selectableId: string) => void;
+  activeEdgeId?: string | null;
 }) {
   const automaticPositions = useMemo(
     () =>
-      layoutWorkbenchCanvas(
-        sceneNodes.map(({ id, width, height }) => ({ id, width, height })),
-        sceneEdges,
-        direction,
-      ),
-    [direction, sceneEdges, sceneNodes],
+      layout === "matrix"
+        ? layoutWorkbenchMatrixCanvas(
+            sceneNodes.map(({ id, width, height, kind }) => ({
+              id,
+              width,
+              height,
+              kind,
+            })),
+          )
+        : layoutWorkbenchCanvas(
+            sceneNodes.map(({ id, width, height }) => ({ id, width, height })),
+            sceneEdges,
+            direction,
+          ),
+    [direction, layout, sceneEdges, sceneNodes],
   );
   const automaticNodes = useMemo<WorkbenchFlowNode[]>(
-    () =>
-      sceneNodes.map((node) => ({
-        id: node.id,
-        type: "casefile",
-        position: automaticPositions[node.id] ?? { x: 0, y: 0 },
-        width: node.width,
-        height: node.height,
-        ariaLabel: node.ariaLabel,
-        data: {
-          variant: node.variant,
-          kind: node.kind,
-          caption: node.caption,
-          label: node.label,
+    () => {
+      const horizontal = direction === "LR";
+      // 交互边场景（竞争矩阵）需要边在首帧即渲染：显式声明与节点 DOM
+      // 手柄一致的 handles，保证没有 ResizeObserver 测量的测试环境也能
+      // 立即渲染边；其余场景沿用测量后的真实手柄边界。
+      const interactive = Boolean(onActivateEdge);
+      return sceneNodes.map((node) => {
+        const automaticNode: WorkbenchFlowNode = {
+          id: node.id,
+          type: "casefile",
+          position: automaticPositions[node.id] ?? { x: 0, y: 0 },
+          width: node.width,
+          height: node.height,
           ariaLabel: node.ariaLabel,
-          accent: node.accent,
-          selectableId: node.selectableId,
-          outcome: node.outcome,
-          direction,
-          active: false,
-          selected: false,
-          related: false,
-          onActivate: () => undefined,
-          onFocusChange: () => undefined,
-        },
-      })),
-    [automaticPositions, direction, sceneNodes],
+          data: {
+            variant: node.variant,
+            kind: node.kind,
+            caption: node.caption,
+            label: node.label,
+            ariaLabel: node.ariaLabel,
+            accent: node.accent,
+            selectableId: node.selectableId,
+            outcome: node.outcome,
+            direction,
+            active: false,
+            selected: false,
+            related: false,
+            onActivate: () => undefined,
+            onFocusChange: () => undefined,
+          },
+        };
+        if (!interactive) return automaticNode;
+        return {
+          ...automaticNode,
+          measured: { width: node.width, height: node.height },
+          handles: [
+            {
+              id: `${node.id}-source`,
+              type: "source" as const,
+              position: horizontal ? Position.Right : Position.Top,
+              x: horizontal ? node.width : node.width / 2,
+              y: horizontal ? node.height / 2 : 0,
+            },
+            {
+              id: `${node.id}-target`,
+              type: "target" as const,
+              position: horizontal ? Position.Left : Position.Bottom,
+              x: horizontal ? 0 : node.width / 2,
+              y: horizontal ? node.height / 2 : node.height,
+            },
+          ],
+        };
+      });
+    },
+    [automaticPositions, direction, onActivateEdge, sceneNodes],
   );
   const [nodes, setNodes] = useState(automaticNodes);
   const nodesRef = useRef(nodes);
@@ -599,7 +724,27 @@ export function WorkbenchCanvasKernel({
     () =>
       sceneEdges.map((edge) => {
         const active =
-          anchorNodeIds.has(edge.source) || anchorNodeIds.has(edge.target);
+          anchorNodeIds.has(edge.source) ||
+          anchorNodeIds.has(edge.target) ||
+          edge.id === activeEdgeId;
+        if (onActivateEdge) {
+          return {
+            id: edge.id,
+            source: edge.source,
+            target: edge.target,
+            type: "casefileEdge",
+            selectable: false,
+            focusable: false,
+            interactionWidth: 28,
+            data: {
+              label: edge.label ?? "",
+              ariaLabel: edge.ariaLabel ?? edge.label ?? edge.id,
+              effect: edge.kind ?? "",
+              active,
+              onActivate: () => onActivateEdge(edge.id),
+            },
+          };
+        }
         return {
           id: edge.id,
           source: edge.source,
@@ -624,7 +769,7 @@ export function WorkbenchCanvasKernel({
           style: edgeStyle(edge.kind, active),
         };
       }),
-    [anchorNodeIds, sceneEdges],
+    [activeEdgeId, anchorNodeIds, onActivateEdge, sceneEdges],
   );
 
   const applyFrame = useCallback(
@@ -746,6 +891,7 @@ export function WorkbenchCanvasKernel({
         data-scene={identity.view}
         data-tool={tool}
         deleteKeyCode={null}
+        edgeTypes={edgeTypes}
         edges={renderedEdges}
         edgesFocusable={false}
         edgesReconnectable={false}

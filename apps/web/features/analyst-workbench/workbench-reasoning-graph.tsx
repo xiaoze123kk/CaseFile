@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   type ReasoningOutcome,
@@ -116,83 +116,6 @@ function hypothesisConclusionRole(
   return conclusion.outcome === "undetermined" ? "并存解释" : "进入当前结论";
 }
 
-function ConclusionBand({
-  conclusion,
-  question,
-  onSelectResolution,
-  onTransitionConclusion,
-  busy = false,
-}: {
-  conclusion: WorkbenchConclusion | undefined;
-  question: string;
-  onSelectResolution: () => void;
-  onTransitionConclusion?: (action: "confirm" | "withdraw") => void;
-  busy?: boolean;
-}) {
-  return (
-    <article
-      className={styles.conclusionBand}
-      data-outcome={conclusion?.outcome ?? "missing"}
-      data-status={conclusion?.reviewStatus ?? "missing"}
-    >
-      <button
-        aria-label={`查看核心问题：${question}`}
-        className={styles.conclusionQuestion}
-        onClick={onSelectResolution}
-        type="button"
-      >
-        <span>核心问题</span>
-        <strong>{question}</strong>
-      </button>
-      <div className={styles.conclusionDecision}>
-        <div className={styles.conclusionStatusRow}>
-          <span>最终结论</span>
-          <b>{conclusionStatusLabel(conclusion)}</b>
-          <i>{conclusionOutcomeLabel(conclusion)}</i>
-        </div>
-        <h3>{conclusion?.summary ?? "该核心问题尚未形成结论"}</h3>
-        {conclusion ? (
-          <>
-            {conclusion.values.length ? (
-              <dl className={styles.conclusionValues}>
-                {conclusion.values.map((item) => (
-                  <div key={item.slotId}>
-                    <dt>{item.slotId}</dt>
-                    <dd>{conclusionValue(item.value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : null}
-            <p>{conclusion.rationale}</p>
-            {conclusion.unresolvedGaps.length ? (
-              <div className={styles.conclusionGaps}>
-                <span>仍缺少</span>
-                <ul>
-                  {conclusion.unresolvedGaps.map((gap) => <li key={gap}>{gap}</li>)}
-                </ul>
-              </div>
-            ) : null}
-            {onTransitionConclusion ? (
-              <button
-                className={styles.conclusionAction}
-                disabled={busy}
-                onClick={() => onTransitionConclusion(
-                  conclusion.reviewStatus === "confirmed" ? "withdraw" : "confirm",
-                )}
-                type="button"
-              >
-                {conclusion.reviewStatus === "confirmed" ? "撤回确认" : "确认最终结论"}
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <p>先完成推理路径和假设评估，再由作者确认答案或未定论。</p>
-        )}
-      </div>
-    </article>
-  );
-}
-
 function ReasoningConclusionCard({
   conclusion,
   question,
@@ -301,265 +224,138 @@ function matrixSelectionFor(
   };
 }
 
-function ReasoningMatrix({
-  groups,
-  onSelectObject,
-  selectedObjectId,
-  onTransitionConclusion,
-  transitionBusy,
+function ReasoningAssessmentCard({
+  cell,
+  onClose,
 }: {
-  groups: WorkbenchReasoningGroup[];
-  onSelectObject: (objectId: string) => void;
-  selectedObjectId: string | null;
-  onTransitionConclusion?: (resolutionId: string, action: "confirm" | "withdraw") => void;
-  transitionBusy?: boolean;
+  cell: MatrixSelection;
+  onClose: () => void;
 }) {
-  const [activeResolutionId, setActiveResolutionId] = useState<string | null>(null);
-  const [selection, setSelection] = useState<MatrixSelection | null>(null);
-  const selectedObjectGroup = groups.find(
-    (group) =>
-      group.resolutionSpecId === selectedObjectId ||
-      group.hypotheses.some((item) => item.id === selectedObjectId) ||
-      group.information.some((item) => item.id === selectedObjectId),
-  );
-  const selectedGroup =
-    selectedObjectGroup ??
-    groups.find((group) => group.resolutionSpecId === activeResolutionId) ??
-    groups[0];
-
-  if (!selectedGroup) {
-    return (
-      <section className={styles.reasoningMatrixEmpty}>
-        <strong>当前工作稿还没有可比较的假设。</strong>
-        <p>推理过程图仍会保留已有路径；竞争矩阵只读取当前工作稿的显式假设。</p>
-      </section>
-    );
-  }
-
-  const selectedConclusion = selectedGroup.conclusion;
-
-  if (selectedGroup.hypotheses.length < 2) {
-    return (
-      <section className={styles.reasoningMatrix} aria-label="竞争矩阵">
-        <ConclusionBand
-          conclusion={selectedConclusion}
-          onSelectResolution={() => onSelectObject(selectedGroup.resolutionSpecId)}
-          onTransitionConclusion={onTransitionConclusion
-            ? (action) => onTransitionConclusion(selectedGroup.resolutionSpecId, action)
-            : undefined}
-          question={selectedGroup.question}
-          busy={transitionBusy}
-        />
-        <div className={styles.reasoningMatrixEmpty}>
-          <strong>当前问题只有一个假设，至少需要两个解释才能比较。</strong>
-          <p>{selectedGroup.question}</p>
-        </div>
-      </section>
-    );
-  }
-
-  const selectCell = (
-    hypothesis: WorkbenchReasoningGroup["hypotheses"][number],
-    information: WorkbenchReasoningGroup["information"][number],
-  ) => {
-    const nextSelection = matrixSelectionFor(selectedGroup, hypothesis, information);
-    setSelection(nextSelection);
-    onSelectObject(information.id);
-  };
-
-  if (!selectedGroup.information.length) {
-    return (
-      <section className={styles.reasoningMatrix} aria-label="竞争矩阵">
-        <ConclusionBand
-          conclusion={selectedConclusion}
-          onSelectResolution={() => onSelectObject(selectedGroup.resolutionSpecId)}
-          onTransitionConclusion={onTransitionConclusion
-            ? (action) => onTransitionConclusion(selectedGroup.resolutionSpecId, action)
-            : undefined}
-          question={selectedGroup.question}
-          busy={transitionBusy}
-        />
-        <div className={styles.reasoningMatrixEmpty}>
-          <strong>已有竞争解释，但尚未生成显式证据评估。</strong>
-          <p>{selectedGroup.question}</p>
-        </div>
-      </section>
-    );
-  }
-
+  const { hypothesis, information, assessment } = cell;
+  const effect = assessment?.effect ?? "unassessed";
   return (
-    <section className={styles.reasoningMatrix} aria-labelledby="reasoning-matrix-heading">
-      <ConclusionBand
-        conclusion={selectedConclusion}
-        onSelectResolution={() => onSelectObject(selectedGroup.resolutionSpecId)}
-        onTransitionConclusion={onTransitionConclusion
-          ? (action) => onTransitionConclusion(selectedGroup.resolutionSpecId, action)
-          : undefined}
-        question={selectedGroup.question}
-        busy={transitionBusy}
-      />
-      <div className={styles.reasoningMatrixHeader}>
+    <aside
+      aria-label="判定依据"
+      aria-live="polite"
+      className={styles.reasoningAssessmentCard}
+      data-effect={effect}
+    >
+      <header>
         <div>
-          <span>竞争解释矩阵</span>
-          <h3 id="reasoning-matrix-heading">{selectedGroup.question}</h3>
+          <span>判定依据 · {hypothesis.title}</span>
+          <strong>{information.title}</strong>
         </div>
-        {groups.length > 1 ? (
-          <label className={styles.reasoningGroupPicker}>
-            <span>待解问题</span>
-            <select
-              aria-label="选择待解问题"
-              onChange={(event) => {
-                setActiveResolutionId(event.target.value);
-                setSelection(null);
-                onSelectObject(event.target.value);
-              }}
-              value={selectedGroup.resolutionSpecId}
-            >
-              {groups.map((group) => (
-                <option key={group.resolutionSpecId} value={group.resolutionSpecId}>
-                  {group.question}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-      </div>
-      <div className={styles.reasoningMatrixDesktop}>
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">信息</th>
-              {selectedGroup.hypotheses.map((hypothesis) => {
-                const conclusionRole = hypothesisConclusionRole(
-                  selectedConclusion,
-                  hypothesis.id,
-                );
-                return (
-                  <th key={hypothesis.id} scope="col">
-                    <button
-                      aria-label={`定位假设：${hypothesis.title}${conclusionRole ? `，${conclusionRole}` : ""}`}
-                      onClick={() => onSelectObject(hypothesis.id)}
-                      type="button"
-                    >
-                      <span>{hypothesis.title}</span>
-                      <small>{reasoningOutcomeLabels[hypothesis.outcome]}</small>
-                      {conclusionRole ? (
-                        <em className={styles.hypothesisConclusionRole}>{conclusionRole}</em>
-                      ) : null}
-                    </button>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {selectedGroup.information.map((information) => (
-              <tr key={information.id}>
-                <th scope="row">
-                  <button
-                    aria-label={`定位信息：${information.title}`}
-                    onClick={() => onSelectObject(information.id)}
-                    type="button"
-                  >
-                    <span>{information.title}</span>
-                    <small>可靠性 · {reliabilityLabel(information.reliability)}</small>
-                  </button>
-                </th>
-                {selectedGroup.hypotheses.map((hypothesis) => {
-                  const assessment = selectedGroup.assessments.find(
-                    (item) =>
-                      item.hypothesisId === hypothesis.id &&
-                      item.informationId === information.id,
-                  );
-                  const effect = assessment?.effect ?? "unassessed";
-                  return (
-                    <td key={hypothesis.id}>
-                      <button
-                        aria-label={`${information.title} 对 ${hypothesis.title}：${assessmentEffectLabels[effect]}`}
-                        data-effect={effect}
-                        onClick={() => selectCell(hypothesis, information)}
-                        type="button"
-                      >
-                        <span>{assessmentEffectLabels[effect]}</span>
-                        {assessment ? (
-                          <small>{assessmentStrengthLabels[assessment.strength]}</small>
-                        ) : null}
-                      </button>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className={styles.reasoningMatrixMobile}>
-        {selectedGroup.information.map((information) => (
-          <article key={information.id}>
-            <button
-              aria-label={`定位信息：${information.title}`}
-              className={styles.reasoningMatrixInformationButton}
-              onClick={() => onSelectObject(information.id)}
-              type="button"
-            >
-              <span>{information.title}</span>
-              <small>可靠性 · {reliabilityLabel(information.reliability)}</small>
-            </button>
-            <ul>
-              {selectedGroup.hypotheses.map((hypothesis) => {
-                const assessment = selectedGroup.assessments.find(
-                  (item) =>
-                    item.hypothesisId === hypothesis.id &&
-                    item.informationId === information.id,
-                );
-                const effect = assessment?.effect ?? "unassessed";
-                const conclusionRole = hypothesisConclusionRole(
-                  selectedConclusion,
-                  hypothesis.id,
-                );
-                return (
-                  <li key={hypothesis.id}>
-                    <button
-                      aria-label={`${information.title} 对 ${hypothesis.title}：${assessmentEffectLabels[effect]}`}
-                      data-effect={effect}
-                      onClick={() => selectCell(hypothesis, information)}
-                      type="button"
-                    >
-                      <span>{hypothesis.title}</span>
-                      <b>{assessmentEffectLabels[effect]}</b>
-                      {assessment ? <small>{assessmentStrengthLabels[assessment.strength]}</small> : null}
-                      {conclusionRole ? (
-                        <em className={styles.hypothesisConclusionRole}>{conclusionRole}</em>
-                      ) : null}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </article>
-        ))}
-      </div>
-      <aside className={styles.reasoningAssessmentDetail} aria-live="polite">
-        {selection ? (
-          <>
-            <span>判定依据 · {selection.hypothesis.title}</span>
-            <strong>{selection.information.title}</strong>
-            {selection.assessment ? (
-              <p>
-                {assessmentEffectLabels[selection.assessment.effect]} ·
-                {assessmentStrengthLabels[selection.assessment.strength]} ·
-                {selection.assessment.rationale}
-              </p>
-            ) : (
-              <p>该信息与此假设尚未评估；系统不会根据其他引用推断结论。</p>
-            )}
-          </>
-        ) : (
-          <p>选择一个单元格，查看判定依据并同步定位信息对象。</p>
-        )}
-      </aside>
-    </section>
+        <button aria-label="关闭判定依据" onClick={onClose} type="button">
+          ×
+        </button>
+      </header>
+      {assessment ? (
+        <>
+          <p className={styles.reasoningAssessmentEffect}>
+            {assessmentEffectLabels[assessment.effect]} ·{" "}
+            {assessmentStrengthLabels[assessment.strength]}
+          </p>
+          <p>{assessment.rationale}</p>
+        </>
+      ) : (
+        <p>该信息与此假设尚未评估；系统不会根据其他引用推断结论。</p>
+      )}
+    </aside>
   );
+}
+
+const matrixNodeMeta: Record<
+  "hypothesis" | "information",
+  { accent: string; legend: string }
+> = {
+  hypothesis: { accent: "#7f4a92", legend: "假设" },
+  information: { accent: "#2f6fb2", legend: "信息" },
+};
+
+const matrixNodeLegend: WorkbenchCanvasLegendItem[] = (
+  Object.entries(matrixNodeMeta) as Array<
+    [
+      "hypothesis" | "information",
+      (typeof matrixNodeMeta)["hypothesis" | "information"],
+    ]
+  >
+).map(([id, meta]) => ({ id, label: meta.legend, accent: meta.accent }));
+
+export type ReasoningMatrixEffect =
+  | "supports"
+  | "contradicts"
+  | "neutral"
+  | "unassessed";
+
+export interface ReasoningMatrixSceneNode {
+  id: string;
+  kind: "hypothesis" | "information";
+  caption: string;
+  label: string;
+  outcome?: ReasoningOutcome;
+  objectId: string;
+}
+
+export interface ReasoningMatrixSceneEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: ReasoningMatrixEffect;
+  label: string;
+  ariaLabel: string;
+}
+
+export interface ReasoningMatrixScene {
+  nodes: ReasoningMatrixSceneNode[];
+  edges: ReasoningMatrixSceneEdge[];
+}
+
+export function buildReasoningMatrixScene(
+  group: WorkbenchReasoningGroup,
+): ReasoningMatrixScene {
+  const conclusion = group.conclusion;
+  const nodes: ReasoningMatrixSceneNode[] = [
+    ...group.hypotheses.map((hypothesis) => {
+      const role = hypothesisConclusionRole(conclusion, hypothesis.id);
+      return {
+        id: hypothesis.id,
+        kind: "hypothesis" as const,
+        caption: role ? `假设 · ${role}` : "假设",
+        label: hypothesis.title,
+        outcome: hypothesis.outcome,
+        objectId: hypothesis.id,
+      };
+    }),
+    ...group.information.map((information) => ({
+      id: information.id,
+      kind: "information" as const,
+      caption: `信息 · ${reliabilityLabel(information.reliability)}`,
+      label: information.title,
+      objectId: information.id,
+    })),
+  ];
+  const edges: ReasoningMatrixSceneEdge[] = group.information.flatMap(
+    (information) =>
+      group.hypotheses.map((hypothesis) => {
+        const assessment = group.assessments.find(
+          (item) =>
+            item.hypothesisId === hypothesis.id &&
+            item.informationId === information.id,
+        );
+        const label = assessment
+          ? `${assessmentEffectLabels[assessment.effect]} · ${assessmentStrengthLabels[assessment.strength]}`
+          : "未评估";
+        return {
+          id: `${information.id}×${hypothesis.id}`,
+          source: information.id,
+          target: hypothesis.id,
+          kind: assessment?.effect ?? "unassessed",
+          label,
+          ariaLabel: `${information.title} 对 ${hypothesis.title}：${label}`,
+        };
+      }),
+  );
+  return { nodes, edges };
 }
 
 export function buildReasoningCanvas(
@@ -849,8 +645,11 @@ export function ReasoningGraphView({
   transitionBusy?: boolean;
 }) {
   const [mode, setMode] = useState<ReasoningMode>("graph");
+  const [matrixGroupId, setMatrixGroupId] = useState<string | null>(null);
+  const [matrixCell, setMatrixCell] = useState<MatrixSelection | null>(null);
+  const groups = seed.reasoningGroups ?? [];
   const activeReasoningGroup =
-    seed.reasoningGroups?.find((group) =>
+    groups.find((group) =>
       group.resolutionSpecId === selectedObjectId ||
       group.hypotheses.some((item) => item.id === selectedObjectId) ||
       group.information.some((item) => item.id === selectedObjectId) ||
@@ -859,7 +658,15 @@ export function ReasoningGraphView({
           (path as ReasoningPath & Partial<{ resolutionSpecId: string | null }>).resolutionSpecId === group.resolutionSpecId &&
           (path.id === selectedObjectId || path.evidenceIds.includes(selectedObjectId ?? "")),
       ),
-    ) ?? seed.reasoningGroups?.[0];
+    ) ?? groups[0];
+  const matrixGroup =
+    groups.find((group) =>
+      group.resolutionSpecId === selectedObjectId ||
+      group.hypotheses.some((item) => item.id === selectedObjectId) ||
+      group.information.some((item) => item.id === selectedObjectId),
+    ) ??
+    groups.find((group) => group.resolutionSpecId === matrixGroupId) ??
+    groups[0];
   const scene = useMemo(
     () => buildReasoningCanvas(
       seed.reasoningPaths,
@@ -948,13 +755,98 @@ export function ReasoningGraphView({
       ),
     [scene.nodes, selectedObjectId],
   );
+  const matrixScene = useMemo(
+    () =>
+      matrixGroup &&
+      matrixGroup.hypotheses.length >= 2 &&
+      matrixGroup.information.length > 0
+        ? buildReasoningMatrixScene(matrixGroup)
+        : { nodes: [], edges: [] },
+    [matrixGroup],
+  );
+  const matrixSceneNodes = useMemo<WorkbenchCanvasSceneNode[]>(
+    () =>
+      matrixScene.nodes.map((node) => ({
+        id: node.id,
+        variant: "reasoning",
+        kind: node.kind,
+        caption: node.caption,
+        label: node.label,
+        ariaLabel:
+          node.kind === "hypothesis"
+            ? `假设：${node.label}`
+            : `信息：${node.label}`,
+        accent: matrixNodeMeta[node.kind].accent,
+        selectableId: node.objectId,
+        outcome: node.outcome,
+        width: 216,
+        height: 64,
+      })),
+    [matrixScene.nodes],
+  );
+  const matrixSceneEdges = useMemo<WorkbenchCanvasSceneEdge[]>(
+    () => matrixScene.edges.map((edge) => ({ ...edge })),
+    [matrixScene.edges],
+  );
+  const matrixSelectedNodeIds = useMemo(
+    () =>
+      matrixScene.nodes.flatMap((node) =>
+        node.objectId === selectedObjectId ? [node.id] : [],
+      ),
+    [matrixScene.nodes, selectedObjectId],
+  );
+  const activateMatrixCell = useCallback(
+    (edgeId: string) => {
+      if (!matrixGroup) return;
+      const separator = edgeId.indexOf("×");
+      if (separator <= 0) return;
+      const informationId = edgeId.slice(0, separator);
+      const hypothesisId = edgeId.slice(separator + 1);
+      const hypothesis = matrixGroup.hypotheses.find(
+        (item) => item.id === hypothesisId,
+      );
+      const information = matrixGroup.information.find(
+        (item) => item.id === informationId,
+      );
+      if (!hypothesis || !information) return;
+      setMatrixCell(matrixSelectionFor(matrixGroup, hypothesis, information));
+      onSelectObject(information.id);
+    },
+    [matrixGroup, onSelectObject],
+  );
+  const selectMatrixGroup = (resolutionId: string) => {
+    setMatrixGroupId(resolutionId);
+    setMatrixCell(null);
+    onSelectObject(resolutionId);
+  };
+  const activeMatrixEdgeId = matrixCell
+    ? `${matrixCell.information.id}×${matrixCell.hypothesis.id}`
+    : null;
+  const matrixEmptyHint = !matrixGroup ? (
+    <p className={styles.reasoningCanvasEmpty}>
+      <strong>当前工作稿还没有可比较的假设。</strong>
+      <span>
+        推理过程图仍会保留已有路径；竞争矩阵只读取当前工作稿的显式假设。
+      </span>
+    </p>
+  ) : matrixGroup.hypotheses.length < 2 ? (
+    <p className={styles.reasoningCanvasEmpty}>
+      <strong>当前问题只有一个假设，至少需要两个解释才能比较。</strong>
+      <span>{matrixGroup.question}</span>
+    </p>
+  ) : matrixGroup.information.length === 0 ? (
+    <p className={styles.reasoningCanvasEmpty}>
+      <strong>已有竞争解释，但尚未生成显式证据评估。</strong>
+      <span>{matrixGroup.question}</span>
+    </p>
+  ) : null;
   const identity = useMemo<WorkbenchCanvasLayoutIdentity>(
     () => ({
       scope: layoutScope,
       revision: seed.caseMeta.revision,
-      view: "reasoning",
+      view: mode === "graph" ? "reasoning" : "matrix",
     }),
-    [layoutScope, seed.caseMeta.revision],
+    [layoutScope, mode, seed.caseMeta.revision],
   );
 
   return (
@@ -987,7 +879,27 @@ export function ReasoningGraphView({
               竞争矩阵
             </button>
           </div>
-          <small>{seed.reasoningPaths.length} 条路径</small>
+          {mode === "graph" ? (
+            <small>{seed.reasoningPaths.length} 条路径</small>
+          ) : groups.length > 1 ? (
+            <label className={styles.reasoningGroupPicker}>
+              <span>待解问题</span>
+              <select
+                aria-label="选择待解问题"
+                onChange={(event) => selectMatrixGroup(event.target.value)}
+                value={matrixGroup?.resolutionSpecId ?? ""}
+              >
+                {groups.map((group) => (
+                  <option
+                    key={group.resolutionSpecId}
+                    value={group.resolutionSpecId}
+                  >
+                    {group.question}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
       </header>
       <div className={styles.reasoningCanvasHost}>
@@ -1039,13 +951,48 @@ export function ReasoningGraphView({
             ) : null}
           </>
         ) : (
-          <ReasoningMatrix
-            groups={seed.reasoningGroups ?? []}
-            onSelectObject={onSelectObject}
-            selectedObjectId={selectedObjectId}
-            onTransitionConclusion={onTransitionConclusion}
-            transitionBusy={transitionBusy}
-          />
+          <>
+            <WorkbenchCanvasKernel
+              activeEdgeId={activeMatrixEdgeId}
+              ariaLabel="竞争矩阵画布"
+              direction="BT"
+              edges={matrixSceneEdges}
+              emptyHint={matrixEmptyHint}
+              externalSelectedNodeIds={matrixSelectedNodeIds}
+              identity={identity}
+              key={`${identity.scope}:${identity.revision}:${identity.view}`}
+              layout="matrix"
+              legend={
+                <>
+                  <span data-kind="supported">支持</span>
+                  <span data-kind="contradicts">冲突</span>
+                  <span data-kind="neutral">不区分</span>
+                  <span data-kind="unassessed">未评估</span>
+                </>
+              }
+              nodeLegend={matrixNodeLegend}
+              nodes={matrixSceneNodes}
+              onActivateEdge={activateMatrixCell}
+              onActivateNode={onSelectObject}
+            />
+            {matrixGroup ? (
+              <ReasoningConclusionCard
+                busy={transitionBusy}
+                conclusion={matrixGroup.conclusion}
+                onSelectResolution={() => onSelectObject(matrixGroup.resolutionSpecId)}
+                onTransitionConclusion={onTransitionConclusion
+                  ? (action) => onTransitionConclusion(matrixGroup.resolutionSpecId, action)
+                  : undefined}
+                question={matrixGroup.question}
+              />
+            ) : null}
+            {matrixCell ? (
+              <ReasoningAssessmentCard
+                cell={matrixCell}
+                onClose={() => setMatrixCell(null)}
+              />
+            ) : null}
+          </>
         )}
       </div>
       {mode === "graph" ? <div className={styles.reasoningTables}>

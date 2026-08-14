@@ -1,7 +1,7 @@
 import dagre from "@dagrejs/dagre";
 import type { Viewport } from "@xyflow/react";
 
-export type WorkbenchCanvasView = "relations" | "reasoning";
+export type WorkbenchCanvasView = "relations" | "reasoning" | "matrix";
 export type WorkbenchCanvasDirection = "LR" | "BT";
 
 export interface WorkbenchCanvasLayoutIdentity {
@@ -81,7 +81,8 @@ function parseSnapshot(value: string): WorkbenchCanvasLayoutSnapshot | null {
     typeof parsed.identity.scope !== "string" ||
     typeof parsed.identity.revision !== "string" ||
     (parsed.identity.view !== "relations" &&
-      parsed.identity.view !== "reasoning") ||
+      parsed.identity.view !== "reasoning" &&
+      parsed.identity.view !== "matrix") ||
     !parsed.positions ||
     typeof parsed.positions !== "object" ||
     !finiteViewport(parsed.viewport) ||
@@ -165,6 +166,61 @@ export function layoutWorkbenchCanvas(
       ];
     }),
   );
+}
+
+/**
+ * 竞争矩阵网格布局：假设沿顶部排成列，信息沿左侧排成行，
+ * 单元格评估作为连接两者的边，保留矩阵的"行 × 列"阅读顺序。
+ */
+export function layoutWorkbenchMatrixCanvas(
+  nodes: Array<WorkbenchCanvasLayoutNode & { kind?: string }>,
+): Record<string, WorkbenchCanvasPoint> {
+  const margin = 48;
+  const columnGap = 64;
+  const rowGap = 56;
+
+  const hypotheses = [...nodes]
+    .filter((node) => node.kind === "hypothesis")
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const information = [...nodes]
+    .filter((node) => node.kind === "information")
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const others = nodes.filter(
+    (node) => node.kind !== "hypothesis" && node.kind !== "information",
+  );
+
+  const hypothesisWidth = Math.max(0, ...hypotheses.map((node) => node.width));
+  const hypothesisHeight = Math.max(
+    0,
+    ...hypotheses.map((node) => node.height),
+  );
+  const informationHeight = Math.max(
+    0,
+    ...information.map((node) => node.height),
+  );
+
+  const positions: Record<string, WorkbenchCanvasPoint> = {};
+  hypotheses.forEach((node, index) => {
+    positions[node.id] = {
+      x: margin + index * (hypothesisWidth + columnGap),
+      y: margin,
+    };
+  });
+  const informationTop = margin + hypothesisHeight + rowGap;
+  information.forEach((node, index) => {
+    positions[node.id] = {
+      x: margin,
+      y: informationTop + index * (informationHeight + rowGap),
+    };
+  });
+  others.forEach((node, index) => {
+    positions[node.id] = {
+      x: margin,
+      y: informationTop + information.length * (informationHeight + rowGap) +
+        index * (informationHeight + rowGap),
+    };
+  });
+  return positions;
 }
 
 function mergePositions(

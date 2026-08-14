@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   layoutWorkbenchCanvas,
+  layoutWorkbenchMatrixCanvas,
   restoreWorkbenchCanvasLayout,
   saveWorkbenchCanvasLayout,
   workbenchCanvasLayoutStorageKey,
@@ -104,6 +105,23 @@ describe("workbench canvas layout", () => {
       added: { x: 80, y: 40 },
     });
     expect(restored.positions).not.toHaveProperty("removed");
+  });
+
+  it("places matrix hypotheses as columns and information as rows", () => {
+    const positions = layoutWorkbenchMatrixCanvas([
+      { id: "hyp_b", width: 200, height: 64, kind: "hypothesis" },
+      { id: "hyp_a", width: 180, height: 64, kind: "hypothesis" },
+      { id: "info_x", width: 190, height: 64, kind: "information" },
+      { id: "info_y", width: 190, height: 64, kind: "information" },
+    ]);
+
+    // 假设按 id 排序排在同一行，信息按 id 排序排在同一列。
+    expect(positions.hyp_a.y).toBe(positions.hyp_b.y);
+    expect(positions.hyp_a.x).toBeLessThan(positions.hyp_b.x);
+    expect(positions.info_x.x).toBe(positions.info_y.x);
+    expect(positions.info_y.y).toBeGreaterThan(positions.info_x.y);
+    // 信息行整体位于假设行下方。
+    expect(positions.info_x.y).toBeGreaterThan(positions.hyp_a.y);
   });
 
   it("falls back safely when stored JSON is corrupt or storage rejects writes", () => {

@@ -4,7 +4,7 @@ import type {
   ReasoningPath,
   WorkbenchReasoningGroup,
 } from "@/features/analyst-workbench/analyst-fixture";
-import { buildReasoningCanvas } from "@/features/analyst-workbench/workbench-reasoning-graph";
+import { buildReasoningCanvas, buildReasoningMatrixScene } from "@/features/analyst-workbench/workbench-reasoning-graph";
 import type { WorkbenchConclusion } from "@/features/analyst-workbench/workbench-real-data-types";
 
 const sharedHypothesisPaths: ReasoningPath[] = [
@@ -217,5 +217,125 @@ describe("reasoning conclusion canvas", () => {
 
   it("returns an empty scene when no reasoning data exists anywhere", () => {
     expect(buildReasoningCanvas([], [], [])).toEqual({ nodes: [], edges: [] });
+  });
+});
+
+describe("competition matrix scene", () => {
+  const matrixGroup: WorkbenchReasoningGroup = {
+    resolutionSpecId: "res_guard",
+    question: "谁改写了记录？",
+    hypotheses: [
+      { id: "hyp_guard", title: "值班员", outcome: "supported" },
+      { id: "hyp_other", title: "外部人员", outcome: "contested" },
+    ],
+    information: [
+      { id: "info_gate", title: "门禁记录", reliability: "confirmed" },
+      { id: "info_note", title: "值班笔记", reliability: "uncertain" },
+    ],
+    assessments: [
+      {
+        hypothesisId: "hyp_guard",
+        informationId: "info_gate",
+        effect: "supports",
+        strength: "strong",
+        rationale: "时段吻合。",
+      },
+      {
+        hypothesisId: "hyp_other",
+        informationId: "info_gate",
+        effect: "contradicts",
+        strength: "moderate",
+        rationale: "权限不符。",
+      },
+      {
+        hypothesisId: "hyp_guard",
+        informationId: "info_note",
+        effect: "neutral",
+        strength: "weak",
+        rationale: "无倾向。",
+      },
+    ],
+    conclusion: {
+      resolutionSpecId: "res_guard",
+      question: "谁改写了记录？",
+      outcome: "answer",
+      reviewStatus: "proposed",
+      summary: "值班员改写了记录",
+      values: [],
+      selectedHypothesisIds: ["hyp_guard"],
+      supportingReasoningPathIds: [],
+      relatedEventIds: [],
+      rationale: "",
+      unresolvedGaps: [],
+    },
+  };
+
+  it("lays out hypothesis and information nodes with conclusion roles", () => {
+    const scene = buildReasoningMatrixScene(matrixGroup);
+
+    expect(scene.nodes).toHaveLength(4);
+    expect(scene.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "hyp_guard",
+          kind: "hypothesis",
+          caption: "假设 · 进入当前结论",
+          outcome: "supported",
+          objectId: "hyp_guard",
+        }),
+        expect.objectContaining({
+          id: "hyp_other",
+          kind: "hypothesis",
+          caption: "假设",
+          outcome: "contested",
+        }),
+        expect.objectContaining({
+          id: "info_gate",
+          kind: "information",
+          caption: expect.stringContaining("信息"),
+          objectId: "info_gate",
+        }),
+      ]),
+    );
+  });
+
+  it("turns every cell into an honest edge including unassessed ones", () => {
+    const scene = buildReasoningMatrixScene(matrixGroup);
+
+    expect(scene.edges).toHaveLength(4);
+    expect(scene.edges.find((edge) => edge.id === "info_gate×hyp_guard")).toMatchObject({
+      source: "info_gate",
+      target: "hyp_guard",
+      kind: "supports",
+      label: "支持 · 强",
+      ariaLabel: "门禁记录 对 值班员：支持 · 强",
+    });
+    expect(scene.edges.find((edge) => edge.id === "info_gate×hyp_other")).toMatchObject({
+      kind: "contradicts",
+      label: "冲突 · 中",
+    });
+    expect(scene.edges.find((edge) => edge.id === "info_note×hyp_guard")).toMatchObject({
+      kind: "neutral",
+      label: "不区分 · 弱",
+    });
+    expect(scene.edges.find((edge) => edge.id === "info_note×hyp_other")).toMatchObject({
+      kind: "unassessed",
+      label: "未评估",
+      ariaLabel: "值班笔记 对 外部人员：未评估",
+    });
+  });
+
+  it("keeps the undetermined conclusion role honest", () => {
+    const scene = buildReasoningMatrixScene({
+      ...matrixGroup,
+      conclusion: {
+        ...matrixGroup.conclusion!,
+        outcome: "undetermined",
+      },
+    });
+
+    expect(scene.nodes.find((node) => node.id === "hyp_guard")).toMatchObject({
+      caption: "假设 · 并存解释",
+    });
   });
 });

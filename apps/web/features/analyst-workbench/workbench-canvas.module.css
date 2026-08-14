@@ -52,6 +52,8 @@
 .reasoningNode[data-kind="conclusion"][data-outcome="missing"] { border-style: dashed; background: #fffaf6; }
 .reasoningNode[data-kind="conclusion"][data-outcome="proposed"] { box-shadow: inset 4px 0 rgba(168, 75, 50, 0.2); }
 .reasoningNode[data-kind="conclusion"][data-outcome="confirmed"] { box-shadow: inset 4px 0 #a84b32; }
+.reasoningNode[data-kind="information"] { border-color: rgba(47, 111, 178, 0.45); }
+.reasoningNode[data-kind="information"] small { color: #2c6396; }
 .graphNode:focus-visible,
 .reasoningNode:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 
@@ -71,6 +73,7 @@
   background-size: auto, 22px 22px, 22px 22px, auto;
 }
 .canvasKernel[data-scene="reasoning"] { background: linear-gradient(rgba(199, 139, 60, 0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(199, 139, 60, 0.045) 1px, transparent 1px), var(--paper); background-size: 22px 22px; }
+.canvasKernel[data-scene="matrix"] { background: linear-gradient(rgba(47, 111, 178, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(47, 111, 178, 0.04) 1px, transparent 1px), var(--paper); background-size: 22px 22px; }
 .canvasKernel :global(.react-flow__pane) { cursor: crosshair; }
 .canvasKernel[data-tool="pan"] :global(.react-flow__pane),
 .canvasKernel[data-tool="pan"] :global(.react-flow__node) { cursor: grab; }
@@ -121,6 +124,30 @@
 .canvasLegend > span[data-kind="eliminated"]::before { border-top-color: var(--issue); }
 .canvasLegend > span[data-kind="contradicts"]::before { border-top-color: var(--issue); border-top-style: dashed; }
 .canvasLegend > span[data-kind="neutral"]::before { border-top-color: #277a83; }
+.canvasLegend > span[data-kind="unassessed"]::before { border-top-color: #8a8f8d; border-top-style: dashed; }
+.canvasEdgeCell {
+  display: inline-flex;
+  min-height: 18px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  color: var(--ink-muted);
+  border: 1px solid rgba(41, 44, 44, 0.22);
+  background: rgba(251, 250, 246, 0.96);
+  box-shadow: 0 1px 4px rgba(41, 44, 44, 0.12);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.canvasEdgeCell:hover { color: var(--ink); border-color: var(--primary); }
+.canvasEdgeCell:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.canvasEdgeCell[data-effect="supports"] { color: var(--success); border-color: rgba(53, 164, 111, 0.55); }
+.canvasEdgeCell[data-effect="contradicts"] { color: var(--issue-strong); border-color: rgba(217, 92, 89, 0.55); }
+.canvasEdgeCell[data-effect="neutral"] { color: #286e75; border-color: rgba(39, 122, 131, 0.55); }
+.canvasEdgeCell[data-effect="unassessed"] { color: var(--ink-faint); border-style: dashed; border-color: rgba(41, 44, 44, 0.3); }
+.canvasEdgeCell[data-active="true"] { color: var(--ink); border-color: var(--primary); box-shadow: 0 0 0 3px rgba(199, 139, 60, 0.16); }
 .canvasEmptyHint {
   position: absolute;
   z-index: 2;

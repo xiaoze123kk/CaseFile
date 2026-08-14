@@ -251,21 +251,42 @@ describe("analyst workbench", () => {
     );
 
     fireEvent.click(screen.getByRole("tab", { name: "竞争矩阵" }));
-    expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(screen.getAllByText("支持").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("未评估").length).toBeGreaterThan(0);
+    const canvas = screen.getByRole("application", { name: "竞争矩阵画布" });
+    expect(canvas).toBeInTheDocument();
+    expect(
+      within(canvas).getByRole("button", { name: "假设：内部人员进入" }),
+    ).toBeInTheDocument();
+    expect(
+      within(canvas).getByRole("button", { name: "假设：外部人员闯入" }),
+    ).toBeInTheDocument();
+    expect(
+      within(canvas).getByRole("button", { name: "信息：门禁记录" }),
+    ).toBeInTheDocument();
+    // 每个单元格是一条带标签的交互边，未评估单元格同样可见。
+    expect(
+      screen.getByRole("button", {
+        name: "门禁记录 对 内部人员进入：支持 · 强",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "门禁记录 对 外部人员闯入：未评估",
+      }),
+    ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "定位假设：内部人员进入" }));
+    fireEvent.click(screen.getByRole("button", { name: "假设：内部人员进入" }));
     expect(onSelectObject).toHaveBeenLastCalledWith("hyp_insider");
 
     fireEvent.click(
-      screen.getAllByRole("button", {
-        name: "门禁记录 对 内部人员进入：支持",
-      })[0],
+      screen.getByRole("button", {
+        name: "门禁记录 对 内部人员进入：支持 · 强",
+      }),
     );
     expect(onSelectObject).toHaveBeenLastCalledWith("info_gate");
-    expect(screen.getByText(/判定依据 · 内部人员进入/)).toBeInTheDocument();
-    expect(screen.getByText(/刷卡权限与进入时间一致/)).toBeInTheDocument();
+    const detail = screen.getByRole("complementary", { name: "判定依据" });
+    expect(within(detail).getByText(/判定依据 · 内部人员进入/)).toBeInTheDocument();
+    expect(within(detail).getByText("支持 · 强")).toBeInTheDocument();
+    expect(within(detail).getByText(/刷卡权限与进入时间一致/)).toBeInTheDocument();
   });
 
   it("renders the three honest matrix empty states without fixture inference", () => {
@@ -319,8 +340,9 @@ describe("analyst workbench", () => {
     expect(
       screen.getByText("当前问题只有一个假设，至少需要两个解释才能比较。"),
     ).toBeInTheDocument();
-    expect(screen.getByText("当前仍需保留唯一可用解释。")).toBeInTheDocument();
     expect(screen.getByText("作者已确认")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "展开结论" }));
+    expect(screen.getByText("当前仍需保留唯一可用解释。")).toBeInTheDocument();
 
     rerender(
       <ReasoningGraphView
