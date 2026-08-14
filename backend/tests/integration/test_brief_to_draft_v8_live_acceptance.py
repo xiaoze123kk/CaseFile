@@ -986,9 +986,7 @@ def _successful_task_violations(
     }:
         expected_components.add("temporal_structure_planner")
     if task.get("prompt_version") == "brief-to-draft-v15" and (
-        scenario.scenario_id
-        in {"competition_matrix", "competition_matrix_dense", "competition_matrix_triple"}
-        or _evidence_competition_observed(steps)
+        _evidence_competition_observed(steps)
     ):
         expected_components.add("evidence_matrix")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
