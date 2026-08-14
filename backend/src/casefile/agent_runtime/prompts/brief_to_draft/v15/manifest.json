@@ -14,7 +14,7 @@
     "temporal": {"file": "fragments/temporal.md", "sha256": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3"},
     "domain_common": {"file": "fragments/domain_common.md", "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"},
     "story": {"file": "fragments/story.md", "sha256": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04"},
-    "evidence": {"file": "fragments/evidence.md", "sha256": "20c3b8aca5508bf3fc2ce27c829e8c869c6e1fbc5e32b293f5cc484d0de4acd2"},
+    "evidence": {"file": "fragments/evidence.md", "sha256": "325dd19f4dda7d0885eab112e45813d34a7ae6821816fcf965113dfa3ef585b2"},
     "governance": {"file": "fragments/governance.md", "sha256": "1539eeeaf325e297256c3b312e44bd28c29a3da6171981d4b6b573a27c4bef6e"}
   },
   "components": {

@@ -41,6 +41,7 @@ from casefile.agent_runtime.brief_to_draft_v14.contracts import (
 )
 from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     DomainDraftInputV5,
+    EvidenceRepairInputV1,
     GovernanceDraftInputV5,
     PlannerInputV5,
     ResolutionGovernanceIRV2,
@@ -113,6 +114,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "brief-to-draft-temporal-input-v3": TemporalPlannerInputV3,
         "brief-to-draft-domain-input-v5": DomainDraftInputV5,
         "brief-to-draft-governance-input-v5": GovernanceDraftInputV5,
+        "brief-to-draft-evidence-repair-input-v1": EvidenceRepairInputV1,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -173,8 +175,14 @@ def render_prompt_package(
     *,
     agent_version: str,
     toolset_version: str,
+    input_contract_id: str | None = None,
 ) -> RenderedPrompt:
-    """Render one component without interpolating untrusted data into instructions."""
+    """Render one component without interpolating untrusted data into instructions.
+
+    ``input_contract_id`` may override the component's default input contract. The
+    Evidence repair path uses this to bind a stricter contract that carries the
+    previous failed output without widening every domain drafter's input surface.
+    """
 
     validate_prompt_package_bindings(package)
     if agent_version != package.runtime_agent_version:
@@ -194,12 +202,15 @@ def render_prompt_package(
             f"Prompt Package {package.version} has no component {component_id!r}"
         ) from error
 
-    contract = INPUT_CONTRACTS[component.input_contract_id]
+    contract_id = input_contract_id or component.input_contract_id
+    contract = INPUT_CONTRACTS.get(contract_id)
+    if contract is None:
+        raise PromptPackageError(f"Unknown Prompt Package input contract: {contract_id}")
     try:
         validated_input = contract.model_validate(input_value)
     except ValidationError as error:
         raise PromptPackageError(
-            f"Prompt Package input does not satisfy {component.input_contract_id}"
+            f"Prompt Package input does not satisfy {contract_id}"
         ) from error
 
     instruction_parts = [
@@ -221,7 +232,7 @@ def render_prompt_package(
         input_text=input_text,
         prompt_sha256=sha256(instructions.encode("utf-8")).hexdigest(),
         input_sha256=sha256(input_json.encode("utf-8")).hexdigest(),
-        input_contract_id=component.input_contract_id,
+        input_contract_id=contract_id,
         output_schema_id=component.output_schema_id,
         tool_policy_id=component.tool_policy_id,
         runtime_agent_version=package.runtime_agent_version,

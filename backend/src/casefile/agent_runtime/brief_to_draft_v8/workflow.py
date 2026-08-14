@@ -323,6 +323,8 @@ async def run_v8_generation(
         repair_issues: list[dict[str, Any]] | None = None,
         *,
         evidence_logic: EvidenceLogicIRV2 | None = None,
+        previous_output: EvidenceLogicIRV2 | None = None,
+        input_contract_id: str | None = None,
     ) -> tuple[BaseModel, dict[str, Any]]:
         reference_contract = (
             _V11_STORY_REFERENCE_CONTRACT
@@ -337,6 +339,8 @@ async def run_v8_generation(
             "allowed_reference_values": _allowed_reference_values(blueprint, reference_contract),
             **({"targeted_repair_issues": repair_issues} if repair_issues else {}),
         }
+        if previous_output is not None:
+            input_payload["previous_output"] = previous_output.model_dump(mode="json")
         if uses_temporal_plan:
             if temporal_plan is None:
                 raise RuntimeError("temporal-planning versions require a temporal plan")
@@ -384,6 +388,7 @@ async def run_v8_generation(
             stage="domain_drafting",
             output_type=output_type,
             input_payload=input_payload,
+            input_contract_id=input_contract_id,
         )
         return output_type.model_validate(output), usage
 
@@ -437,6 +442,28 @@ async def run_v8_generation(
         else EvidenceLogicIRV1.model_validate(domain_results[1][0])
     )
     usage_records.extend(result[1] for result in domain_results)
+    if uses_competition_matrix:
+        if not isinstance(evidence, EvidenceLogicIRV2):
+            raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
+        for _ in range(2):
+            matrix_issues = _evidence_assessment_issues(
+                evidence,
+                strict_competition=uses_v2_context,
+                blueprint=blueprint,
+            )
+            if not matrix_issues:
+                break
+            evidence_value, evidence_usage = await draft_domain(
+                "evidence_logic",
+                "evidence",
+                evidence_output_type,
+                matrix_issues,
+                previous_output=evidence,
+                input_contract_id="brief-to-draft-evidence-repair-input-v1",
+            )
+            usage_records.append(evidence_usage)
+            repaired_components.add("evidence_logic")
+            evidence = EvidenceLogicIRV2.model_validate(evidence_value)
     governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2
     if uses_v15:
         if not isinstance(evidence, EvidenceLogicIRV2):
@@ -541,6 +568,10 @@ async def run_v8_generation(
                             ) from error
                         story = repaired_story
                 if "evidence_logic" in affected:
+                    if not isinstance(evidence, EvidenceLogicIRV2):
+                        raise RuntimeError(
+                            "v15 evidence repair requires EvidenceLogicIRV2"
+                        ) from error
                     value, usage = await draft_domain(
                         "evidence_logic",
                         "evidence",
@@ -550,6 +581,8 @@ async def run_v8_generation(
                             for issue in issues
                             if issue.get("component_id") == "evidence_logic"
                         ],
+                        previous_output=evidence,
+                        input_contract_id="brief-to-draft-evidence-repair-input-v1",
                     )
                     usage_records.append(usage)
                     repaired_components.add("evidence_logic")
@@ -588,12 +621,23 @@ async def run_v8_generation(
                 if component_id not in affected:
                     continue
                 repair_order.append(component_id)
+                repair_kwargs: dict[str, Any] = {}
+                if component_id == "evidence_logic" and uses_competition_matrix:
+                    if not isinstance(evidence, EvidenceLogicIRV2):
+                        raise RuntimeError(
+                            "competition matrix evidence repair requires EvidenceLogicIRV2"
+                        ) from error
+                    repair_kwargs["previous_output"] = evidence
+                    repair_kwargs["input_contract_id"] = (
+                        "brief-to-draft-evidence-repair-input-v1"
+                    )
                 repair_tasks.append(
                     draft_domain(
                         component_id,
                         prompt_component,
                         output_type,
                         [issue for issue in issues if issue.get("component_id") == component_id],
+                        **repair_kwargs,
                     )
                 )
             repaired = await asyncio.gather(*repair_tasks)
@@ -727,71 +771,137 @@ def _evidence_assessment_issues(
     strict_competition: bool = False,
     blueprint: CaseBlueprintV1 | None = None,
 ) -> list[dict[str, Any]]:
-    """Require a complete path-grounded matrix across competing hypotheses."""
+    """Require a complete path-grounded matrix across competing hypotheses.
 
-    hypotheses_by_key = {item.local_key: item for item in evidence.hypotheses}
+    Validation is staged so a broken prerequisite never floods the repair model
+    with derived matrix-cell errors. Competitor peer sets come first, then the
+    existence of an information-grounded path per competing hypothesis, and only
+    then the exact matrix coverage.
+    """
+
+    hypotheses_by_resolution = _hypotheses_by_resolution(evidence)
+    competition_groups = [
+        competitors for competitors in hypotheses_by_resolution.values() if len(competitors) >= 2
+    ]
+    used_information_by_hypothesis = _used_information_by_hypothesis(evidence)
+    if strict_competition:
+        peer_issues = _competition_peer_issues(hypotheses_by_resolution)
+        if peer_issues:
+            return peer_issues
+        path_issues = _competition_path_issues(
+            blueprint,
+            competition_groups,
+            used_information_by_hypothesis,
+        )
+        if path_issues:
+            return path_issues
+    return _matrix_cell_issues(
+        competition_groups,
+        used_information_by_hypothesis,
+        strict_competition=strict_competition,
+    )
+
+
+def _hypotheses_by_resolution(evidence: EvidenceLogicIRV2) -> dict[str, list[Any]]:
+    """Group hypotheses by their target resolution, preserving singleton groups."""
+
+    groups: dict[str, list[Any]] = {}
+    for hypothesis in evidence.hypotheses:
+        groups.setdefault(hypothesis.target_resolution_key, []).append(hypothesis)
+    return groups
+
+
+def _used_information_by_hypothesis(evidence: EvidenceLogicIRV2) -> dict[str, set[str]]:
+    """Map each hypothesis to the information units its targeted paths input."""
+
+    hypothesis_keys = {item.local_key for item in evidence.hypotheses}
     information_keys = {item.local_key for item in evidence.information_units}
-    used_information_by_hypothesis: dict[str, set[str]] = {key: set() for key in hypotheses_by_key}
+    used: dict[str, set[str]] = {key: set() for key in hypothesis_keys}
     for path in evidence.reasoning_paths:
-        if path.target_key not in hypotheses_by_key:
+        if path.target_key not in hypothesis_keys:
             continue
-        used_information_by_hypothesis[path.target_key].update(
+        used[path.target_key].update(
             key for step in path.steps for key in step.input_keys if key in information_keys
         )
+    return used
 
-    hypotheses_by_resolution: dict[str, list[Any]] = {}
-    for hypothesis in evidence.hypotheses:
-        hypotheses_by_resolution.setdefault(hypothesis.target_resolution_key, []).append(hypothesis)
+
+def _competition_peer_issues(
+    hypotheses_by_resolution: dict[str, list[Any]],
+) -> list[dict[str, Any]]:
+    """Reject incomplete or cross-resolution competitor references."""
 
     issues: list[dict[str, Any]] = []
     for competitors in hypotheses_by_resolution.values():
         competitor_keys = {item.local_key for item in competitors}
-        if strict_competition:
-            for hypothesis in competitors:
-                expected_competitors = competitor_keys - {hypothesis.local_key}
-                actual_competitors = set(hypothesis.competing_hypothesis_keys)
-                if actual_competitors != expected_competitors:
-                    issues.append(
-                        {
-                            "code": "competing_hypothesis_group_incomplete",
-                            "path": (
-                                f"/hypotheses/{hypothesis.local_key}/competing_hypothesis_keys"
-                            ),
-                            "message": "竞争假设引用必须准确包含同一待解问题的全部其他假设。",
-                            "component_id": "evidence_logic",
-                            "failure_layer": "evidence_matrix",
-                            "schema_id": "evidence-logic-ir-v2",
-                            "ir_path": f"/hypotheses/{hypothesis.local_key}",
-                        }
-                    )
-        if len(competitors) < 2:
-            continue
+        for hypothesis in competitors:
+            expected_competitors = competitor_keys - {hypothesis.local_key}
+            actual_competitors = set(hypothesis.competing_hypothesis_keys)
+            if actual_competitors == expected_competitors:
+                continue
+            issues.append(
+                {
+                    "code": "competing_hypothesis_group_incomplete",
+                    "path": f"/hypotheses/{hypothesis.local_key}/competing_hypothesis_keys",
+                    "message": "竞争假设引用必须准确包含同一待解问题的全部其他假设。",
+                    "component_id": "evidence_logic",
+                    "failure_layer": "evidence_matrix",
+                    "schema_id": "evidence-logic-ir-v2",
+                    "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                }
+            )
+    return issues
+
+
+def _competition_path_issues(
+    blueprint: CaseBlueprintV1 | None,
+    competition_groups: list[list[Any]],
+    used_information_by_hypothesis: dict[str, set[str]],
+) -> list[dict[str, Any]]:
+    """Reject a competing hypothesis without an information-grounded targeted path."""
+
+    issues: list[dict[str, Any]] = []
+    for competitors in competition_groups:
+        for hypothesis in competitors:
+            if used_information_by_hypothesis[hypothesis.local_key]:
+                continue
+            component_id = (
+                "evidence_logic"
+                if _blueprint_has_hypothesis_path(blueprint, hypothesis.local_key)
+                else "case_blueprint_planner"
+            )
+            issues.append(
+                {
+                    "code": "competing_hypothesis_path_missing",
+                    "path": f"/reasoning_paths/{hypothesis.local_key}",
+                    "message": "每个竞争假设必须有一条使用信息输入的对应推理路径。",
+                    "component_id": component_id,
+                    "failure_layer": (
+                        "evidence_matrix"
+                        if component_id == "evidence_logic"
+                        else "blueprint_semantics"
+                    ),
+                    "schema_id": "evidence-logic-ir-v2",
+                    "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                }
+            )
+    return issues
+
+
+def _matrix_cell_issues(
+    competition_groups: list[list[Any]],
+    used_information_by_hypothesis: dict[str, set[str]],
+    *,
+    strict_competition: bool,
+) -> list[dict[str, Any]]:
+    """Reject missing, duplicate, or out-of-scope matrix cells."""
+
+    issues: list[dict[str, Any]] = []
+    for competitors in competition_groups:
         required_information = set().union(
             *(used_information_by_hypothesis[item.local_key] for item in competitors)
         )
         for hypothesis in competitors:
-            if strict_competition:
-                if not used_information_by_hypothesis[hypothesis.local_key]:
-                    component_id = (
-                        "evidence_logic"
-                        if _blueprint_has_hypothesis_path(blueprint, hypothesis.local_key)
-                        else "case_blueprint_planner"
-                    )
-                    issues.append(
-                        {
-                            "code": "competing_hypothesis_path_missing",
-                            "path": f"/reasoning_paths/{hypothesis.local_key}",
-                            "message": "每个竞争假设必须有一条使用信息输入的对应推理路径。",
-                            "component_id": component_id,
-                            "failure_layer": (
-                                "evidence_matrix"
-                                if component_id == "evidence_logic"
-                                else "blueprint_semantics"
-                            ),
-                            "schema_id": "evidence-logic-ir-v2",
-                            "ir_path": f"/hypotheses/{hypothesis.local_key}",
-                        }
-                    )
             assessments = list(getattr(hypothesis, "evidence_assessments", []))
             assessed_information = [item.information_key for item in assessments]
             for index, information_key in enumerate(assessed_information):
@@ -827,7 +937,7 @@ def _evidence_assessment_issues(
                     issues.append(
                         {
                             "code": "unscoped_evidence_assessment",
-                            "path": (f"/hypotheses/{hypothesis.local_key}/evidence_assessments"),
+                            "path": f"/hypotheses/{hypothesis.local_key}/evidence_assessments",
                             "message": (
                                 f"信息 {information_key!r} 未被竞争组推理路径使用，"
                                 "不应进入比较矩阵。"
@@ -1104,6 +1214,7 @@ async def _model_step(
     stage: str,
     output_type: type[BaseModel],
     input_payload: dict[str, Any],
+    input_contract_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     if component_id == "story_world" and request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS:
         schema_id = "story-world-ir-v3"
@@ -1130,6 +1241,7 @@ async def _model_step(
                 input_payload,
                 agent_version=request.agent_version or "",
                 toolset_version=request.toolset_version or "",
+                input_contract_id=input_contract_id,
             )
             bound_output_type = output_type_for_component(definition.package, prompt_component)
         except PromptPackageError as error:

@@ -22,6 +22,11 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from casefile.agent_runtime.prompt_repository import (
+    PromptRepositoryError,
+    load_prompt,
+    prompt_version_for_task,
+)
 from casefile.api.app import create_app
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
@@ -251,19 +256,15 @@ def _live_config() -> LiveAcceptanceConfig:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPEATS must be between 1 and 100.")
     report_value = os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH", "").strip()
     prompt_version = os.getenv(
-        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v14"
+        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION",
+        prompt_version_for_task("brief_to_draft"),
     ).strip()
-    if prompt_version not in {
-        "brief-to-draft-v8",
-        "brief-to-draft-v9",
-        "brief-to-draft-v10",
-        "brief-to-draft-v11",
-        "brief-to-draft-v12",
-        "brief-to-draft-v13",
-        "brief-to-draft-v14",
-    }:
+    try:
+        load_prompt("brief_to_draft", prompt_version)
+    except PromptRepositoryError:
         pytest.fail(
-            "Live acceptance prompt version must be brief-to-draft-v8 through v14."
+            f"Live acceptance prompt version {prompt_version!r} is not a packaged "
+            "brief_to_draft version."
         )
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
@@ -384,7 +385,13 @@ def _run_acceptance_suite(
     scenarios = (
         _V11_SCENARIOS
         if prompt_version
-        in {"brief-to-draft-v11", "brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14"}
+        in {
+            "brief-to-draft-v11",
+            "brief-to-draft-v12",
+            "brief-to-draft-v13",
+            "brief-to-draft-v14",
+            "brief-to-draft-v15",
+        }
         else (_LEGACY_SCENARIO,)
     )
     for run_index in range(repeats):
@@ -587,6 +594,7 @@ def _successful_task_violations(
         "brief-to-draft-v12",
         "brief-to-draft-v13",
         "brief-to-draft-v14",
+        "brief-to-draft-v15",
     }:
         expected_components.add("temporal_structure_planner")
     component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
@@ -674,6 +682,7 @@ def _scenario_candidate_violations(
             "brief-to-draft-v12",
             "brief-to-draft-v13",
             "brief-to-draft-v14",
+            "brief-to-draft-v15",
         }:
             required = {"approximate", "relative"}
             return (
@@ -1146,6 +1155,7 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
         "brief_to_draft_v12",
         "brief_to_draft_v13",
         "brief_to_draft_v14",
+        "brief_to_draft_v15",
     }:
         summary = report.get("scenario_summary", {})
         if set(summary) != {item.scenario_id for item in _V11_SCENARIOS}:

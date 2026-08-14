@@ -209,9 +209,36 @@ def test_v11_matrix_gate_requires_exact_peer_and_information_sets() -> None:
         for issue in _evidence_assessment_issues(evidence, strict_competition=True)
     }
 
-    assert codes == {
-        "competing_hypothesis_group_incomplete",
-        "missing_evidence_assessment",
+    # A broken peer set is a prerequisite error: derived matrix-cell errors must
+    # not flood the repair feedback before the peer closure is fixed.
+    assert codes == {"competing_hypothesis_group_incomplete"}
+
+
+def test_v11_matrix_gate_reports_missing_assessment_without_peer_error() -> None:
+    _blueprint, _story, evidence, _governance = _v11_parts()
+    evidence.hypotheses[1].evidence_assessments = []
+
+    codes = {
+        issue["code"]
+        for issue in _evidence_assessment_issues(evidence, strict_competition=True)
+    }
+
+    assert codes == {"missing_evidence_assessment"}
+
+
+def test_v11_matrix_gate_reports_path_missing_without_derived_unscoped_errors() -> None:
+    _blueprint, _story, evidence, _governance = _v11_parts()
+    for path in evidence.reasoning_paths:
+        for step in path.steps:
+            step.input_keys = ["claim"]
+
+    issues = _evidence_assessment_issues(evidence, strict_competition=True)
+
+    assert {issue["code"] for issue in issues} == {"competing_hypothesis_path_missing"}
+    assert len(issues) == 2
+    assert {issue["ir_path"] for issue in issues} == {
+        "/hypotheses/hypothesis",
+        "/hypotheses/alternative_hypothesis",
     }
 
 

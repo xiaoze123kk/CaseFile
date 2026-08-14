@@ -445,6 +445,60 @@ def test_v15_governance_runs_after_evidence_and_can_return_undetermined() -> Non
     assert len(governance_inputs[0]["evidence_logic"]["hypotheses"]) == 2
 
 
+def test_v15_evidence_repair_receives_previous_output_and_phased_issues() -> None:
+    calls: list[str] = []
+    evidence_inputs: list[dict[str, object]] = []
+    evidence_calls = 0
+    request = GenerationRequest(
+        task_run_id=329,
+        prompt_version="brief-to-draft-v15",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v15_repair",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v15_repair",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v15-repair",
+        api_key=None,
+        max_turns=3,
+        emit=lambda *_args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V15_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    async def call_component(
+        _instructions: str,
+        input_text: str,
+        output_type: type[generation_workflow.BaseModel],
+        _stage: str,
+        component_id: str,
+        _schema_id: str,
+    ) -> tuple[dict[str, object], dict[str, int]]:
+        nonlocal evidence_calls
+        calls.append(component_id)
+        output = _fake_v8_output(output_type)
+        _add_fake_v10_matrix_plan(output_type, output)
+        if component_id == "evidence_logic":
+            evidence_calls += 1
+            evidence_inputs.append(json.loads(input_text))
+            if evidence_calls == 1:
+                output["hypotheses"][0]["competing_hypothesis_keys"] = []
+        return output, {"requests": 1}
+
+    result = asyncio.run(run_v15_generation(request, call_component=call_component))
+
+    validate_casefile(result.candidate)
+    assert calls.count("evidence_logic") == 2
+    repair_input = evidence_inputs[1]
+    assert repair_input["previous_output"]["hypotheses"][0]["competing_hypothesis_keys"] == []
+    assert [issue["code"] for issue in repair_input["targeted_repair_issues"]] == [
+        "competing_hypothesis_group_incomplete"
+    ]
+
+
 def test_v14_creator_language_gate_attributes_nested_english_text() -> None:
     candidate = {
         "title": "中文卷宗",

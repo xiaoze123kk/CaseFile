@@ -64,6 +64,19 @@ class GovernanceDraftInputV5(DomainDraftInputV5):
     evidence_logic: EvidenceLogicIRV2
 
 
+class EvidenceRepairInputV1(DomainDraftInputV5):
+    """Evidence repair must see its previous failed output to make a targeted fix.
+
+    Reusing DomainDraftInputV5 left the repair model to re-draft the whole domain
+    from scratch because it could never observe the objects it was told to
+    "only fix". The previous output is required so the matrix repair can preserve
+    untouched reasoning_paths and evidence_assessments while addressing the
+    reported semantic issues.
+    """
+
+    previous_output: EvidenceLogicIRV2
+
+
 class ResolutionConclusionValueIR(StrictAgentOutput):
     slot_key: LocalKey
     value: str | int | float | bool | None = None
@@ -103,6 +116,7 @@ class ResolutionGovernanceIRV2(StrictAgentOutput):
 __all__ = [
     "DomainDraftInputV5",
     "DraftContextPackV5",
+    "EvidenceRepairInputV1",
     "GovernanceDraftInputV5",
     "PlannerInputV5",
     "ResolutionConclusionIR",
