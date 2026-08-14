@@ -10,13 +10,13 @@
   },
   "fragments": {
     "common": {"file": "fragments/common.md", "sha256": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00"},
-    "planner": {"file": "fragments/planner.md", "sha256": "426d953525220fa090cd46100a387aa9257b004e7c2c0a83b59a145a0e2711d6"},
+    "planner": {"file": "fragments/planner.md", "sha256": "914e3d3cc23786f983296636fbf96e1b17988b3d650be0865d8d716cf6974019"},
     "temporal": {"file": "fragments/temporal.md", "sha256": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640"},
     "domain_common": {"file": "fragments/domain_common.md", "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"},
-    "story": {"file": "fragments/story.md", "sha256": "19039a3b7e7d040c0cfe24021a8f5cc54315452d00a6824635af588394609935"},
+    "story": {"file": "fragments/story.md", "sha256": "6be6e4cbedd87586af144248b01367ea8fa1d9c011a45fdb0298950ff6802599"},
     "evidence": {"file": "fragments/evidence.md", "sha256": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4"},
     "matrix": {"file": "fragments/matrix.md", "sha256": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80"},
-    "governance": {"file": "fragments/governance.md", "sha256": "bdad16f91cab257ab0d6027bd65386e4474884283318f871bead3a4b7dcd3bb6"}
+    "governance": {"file": "fragments/governance.md", "sha256": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79"}
   },
   "components": {
     "planner": {"instruction_fragments": ["common", "planner"], "input_contract_id": "brief-to-draft-planner-input-v5", "output_schema_id": "case-blueprint-v1", "tool_policy_id": "no-tools-v1"},

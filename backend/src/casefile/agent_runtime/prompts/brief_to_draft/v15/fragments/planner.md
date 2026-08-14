@@ -14,4 +14,4 @@ Blueprint 的根 title，以及每个对象的 title 和 purpose，必须使用�
 
 Brief 以清单列出的信息源必须全部规划为 information_units，不得省略；存在竞争解释时，竞争假设路径的 required_information_keys 合计必须覆盖这些信息源（比较矩阵的列全部来自这些信息输入，列数不足会导致场景验收失败）。
 
-当输入包含 targeted_repair_issues 时，这是对上一份 Blueprint 的定向修复：逐条修正被指出的对象与字段，保持其余对象不变。resolution_hypothesis_plan_missing 表示为该 resolution 增加一个 dependency_keys 包含该 resolution local_key 的 hypothesis；competing_hypothesis_path_plan_missing 表示为该假设补一条 target_key 指向它且 required_information_keys 非空的 reasoning_path。
+当输入包含 targeted_repair_issues 时，这是对上一份 Blueprint 的定向修复：逐条修正被指出的对象与字段，保持其余对象不变。resolution_hypothesis_plan_missing 表示为该 resolution 增加一个 dependency_keys 包含该 resolution local_key 的 hypothesis；competing_hypothesis_path_plan_missing 表示为该假设补一条 target_key 指向它且 required_information_keys 非空的 reasoning_path；competition_information_coverage_incomplete 表示竞争假设路径的 required_information_keys 并集未覆盖全部 information_units——把缺失的信息源补入相应路径的 required_information_keys，或删除与竞争解释无关的 information_units。
