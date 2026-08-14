@@ -192,6 +192,19 @@ export function formatCaseClock(value: string): string {
   return parseCaseWallClock(value)?.time ?? (value === "unknown" ? "—" : "待核对");
 }
 
+export function relativeTimeLabel(
+  relation: "before" | "after" | "same_time",
+  offsetMinutes: number | null,
+): string {
+  const relationLabel = {
+    before: "之前",
+    after: "之后",
+    same_time: "同时",
+  }[relation];
+  const offset = offsetMinutes === null ? "" : ` ${offsetMinutes} 分钟`;
+  return `相对${offset}${relationLabel}`;
+}
+
 export function serializeCaseWallClock(
   date: string,
   time: string,

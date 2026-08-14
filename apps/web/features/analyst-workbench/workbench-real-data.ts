@@ -16,6 +16,7 @@ import {
   creatorLabel,
   creatorText,
   objectSubtypeLabel,
+  relativeTimeLabel,
   reasoningOperationLabel,
 } from "./workbench-presenters";
 import {
@@ -178,14 +179,8 @@ function temporalSummary(
     };
   }
   if (time.kind === "relative") {
-    const relation = {
-      before: "之前",
-      after: "之后",
-      same_time: "同时",
-    }[time.relation];
-    const offset = time.offset_minutes === null ? "" : ` ${time.offset_minutes} 分钟`;
     return {
-      label: `相对 ${time.anchor_event_ref.object_id}${offset}${relation}`,
+      label: relativeTimeLabel(time.relation, time.offset_minutes),
       start: null,
       end: null,
       precision: "relative",

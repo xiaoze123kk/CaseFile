@@ -19,6 +19,7 @@ import {
   type IssueStatus,
   type WorkbenchSeed,
 } from "../analyst-fixture";
+import { relativeTimeLabel } from "../workbench-presenters";
 import { ExposurePlanEditor } from "./exposure-plan-editor";
 import styles from "./timeline.module.css";
 import {
@@ -70,7 +71,7 @@ interface PendingPreview {
 }
 
 const VIEW_WIDTH = 1080;
-const PLOT_LEFT = 260;
+const PLOT_LEFT = 300;
 const PLOT_RIGHT = 1036;
 const AXIS_Y = 50;
 const ROW_TOP = 88;
@@ -210,11 +211,7 @@ function positionLabel(position: number | null) {
 function timeLabel(time: TimelineTemporalPosition) {
   if (time.kind === "unknown") return "时间未定";
   if (time.kind === "relative") {
-    const relation = { before: "之前", after: "之后", same_time: "同时" }[
-      time.relation
-    ];
-    const offset = time.offset_minutes === null ? "" : `${time.offset_minutes} 分钟`;
-    return `${time.anchor_event_ref.object_id} ${offset}${relation}`;
+    return relativeTimeLabel(time.relation, time.offset_minutes);
   }
   if (time.kind === "range") {
     return `${timelineClock(time.start)} → ${timelineClock(time.end)}`;
@@ -572,6 +569,7 @@ export function TimelineOverview({
             ref={svgRef}
             aria-label="按作品内时间等比例排列的事件轴"
             className={styles.axisSvg}
+            preserveAspectRatio="xMinYMin meet"
             role="group"
             viewBox={`0 0 ${VIEW_WIDTH} ${ROW_TOP + Math.max(rowCount, 1) * ROW_HEIGHT + 26}`}
           >
@@ -642,13 +640,13 @@ export function TimelineOverview({
                 >
                   <title>{`${timelineEvent.label} · ${timelineEventTime(timelineEvent.time)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
                   <rect className={styles.rowHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
-                  <text className={styles.rowTime} textAnchor="end" x={78} y={y - 4}>
+                  <text className={styles.rowTime} textAnchor="end" x={168} y={y - 4}>
                     {timelineEventTime(timelineEvent.time)}
                   </text>
-                  <text className={styles.rowLabel} x={92} y={y - 5}>
+                  <text className={styles.rowLabel} x={182} y={y - 5}>
                     {timelineEvent.label}
                   </text>
-                  <text className={styles.rowLocation} x={92} y={y + 13}>
+                  <text className={styles.rowLocation} x={182} y={y + 13}>
                     {timelineEvent.location}
                   </text>
                   {conclusionRelated ? (

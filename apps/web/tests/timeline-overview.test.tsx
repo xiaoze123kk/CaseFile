@@ -135,6 +135,47 @@ describe("editable proportional timeline", () => {
     ).toBeInTheDocument();
   });
 
+  it("pins the proportional axis to the top of the desktop canvas", () => {
+    const seed = timelineSeed();
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[0].id}
+        validationStatus="passed"
+      />,
+    );
+
+    expect(
+      screen.getByTestId("timeline-proportional-axis").querySelector("svg"),
+    ).toHaveAttribute("preserveAspectRatio", "xMinYMin meet");
+  });
+
+  it("reserves a full left gutter for relative time labels", () => {
+    const seed = timelineSeed();
+    const relativeTime = "相对 120 分钟之后";
+    seed.timelineEvents[1] = {
+      ...seed.timelineEvents[1],
+      time: relativeTime,
+    } as never;
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[1].id}
+        validationStatus="passed"
+      />,
+    );
+
+    expect(
+      within(screen.getByTestId("timeline-proportional-axis")).getByText(
+        relativeTime,
+      ),
+    ).toHaveAttribute("x", "168");
+  });
+
   it("uses date-only ticks when a multi-day axis lands on midnight", () => {
     const seed = timelineSeed();
     seed.timelineEvents = seed.timelineEvents.map((event, index) => {
@@ -202,6 +243,42 @@ describe("editable proportional timeline", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认写入当前工作稿" }));
     await waitFor(() => expect(onConfirmTime).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps relative preview labels free of internal anchor IDs", async () => {
+    const seed = timelineSeed();
+    const selected = seed.timelineEvents[0];
+    const onPreviewTime = vi.fn(async (eventId) =>
+      preview(eventId, {
+        kind: "relative",
+        anchor_event_ref: { object_type: "event", object_id: "evt_t167_001" },
+        relation: "after",
+        offset_minutes: 120,
+      }),
+    );
+    render(
+      <TimelineOverview
+        editable
+        issueStatuses={{}}
+        onPreviewTime={onPreviewTime}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={selected.id}
+        validationStatus="passed"
+      />,
+    );
+
+    fireEvent.keyDown(
+      within(screen.getByTestId("timeline-proportional-axis")).getByRole("button", {
+        name: new RegExp(selected.label),
+      }),
+      { key: "ArrowRight" },
+    );
+
+    expect(
+      await screen.findByText("相对 120 分钟之后"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("evt_t167_001")).not.toBeInTheDocument();
   });
 
   it("edits unknown time without fabricating a placeholder date", async () => {

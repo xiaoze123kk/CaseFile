@@ -728,9 +728,11 @@ describe("real workbench data mapper", () => {
     expect(timeline.map((event) => event.id)).toEqual(["evt_anchor", "evt_follow_up"]);
     expect(followUp).toMatchObject({
       timeProjection: "relative-resolved",
+      time: "相对 15 分钟之后",
       start: "2042-06-01T20:15:00",
       sortKey: "2042-06-01T20:15:00",
     });
+    expect(followUp?.time).not.toContain("evt_anchor");
     expect(followUp?.source?.time).toEqual({
       kind: "relative",
       anchor_event_ref: ref("event", "evt_anchor"),

@@ -132,7 +132,7 @@
   min-height: 27px;
   grid-template-columns: repeat(5, minmax(72px, 1fr));
   margin: 0;
-  padding: 0 12px 0 260px;
+  padding: 0 12px 0 300px;
   border-bottom: 1px solid var(--rule);
   background:
     repeating-linear-gradient(90deg, transparent 0 71px, rgba(41, 44, 44, 0.04) 72px),
