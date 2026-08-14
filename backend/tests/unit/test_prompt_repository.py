@@ -159,8 +159,8 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("brief_to_draft", "brief-to-draft-v15"): {
         "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
-        "fragment:planner": "1081f95d7e727fcb78c55732695f910ea32e0be96a61fbd9eb07ba7491982188",
-        "fragment:temporal": "013ba57a91da96bcc0e7b805e6438ae767b92605cdd3aa25a8e809906e8d0f80",
+        "fragment:planner": "ea67bf503ccf96e36c1f7232bf9a56c800eda4b81acc419814fa48956201b33e",
+        "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",
         "fragment:domain_common": (
             "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
         ),

@@ -10,7 +10,7 @@ exact、approximate 和 range 的无时区壁钟值必须严格匹配 precision�
 
 不得输出超出 precision 的低位零：minute 禁止追加 :00，hour 禁止追加 :00 或 :00:00，day 禁止追加 T00。不得输出小数秒、Z、UTC 或任何时区偏移。range 的 start 与 end 必须使用同一种 precision 格式。
 
-当 Brief 只缺锚点、但各事件的相对关系明确时，可以为当前作品设计一个符合题材的 design_anchor；它必须是完整的无时区作品内壁钟时间，而不是现实世界日期、UTC 或占位符。design_anchor 只能用于连接相对链，严禁为 Brief 明示时间完全未知的事件伪造日期。至少一个 assignment 必须是 exact、approximate 或 range，其余相对链必须最终解析到该类绝对锚点。
+当 Brief 的时间信息不足以让所有事件解析到绝对时间时，可以为当前作品设计一个符合题材的 design_anchor；它必须是完整的无时区作品内壁钟时间，而不是现实世界日期、UTC 或占位符。design_anchor 用于补足作品时间结构或连接相对链，严禁为 Brief 明示时间完全未知的事件伪造日期。至少一个 assignment 必须是 exact、approximate 或 range，其余相对链必须最终解析到该类绝对锚点。
 
 relative 的 before 和 after 必须提供非空的 offset_minutes；same_time 的 offset_minutes 只能为 null 或 0。anchor_event_key 只能引用同一计划中的另一事件，不能自引用、不能形成循环。不得从 narrative_order、数组位置或界面布局推断前后关系。
 
