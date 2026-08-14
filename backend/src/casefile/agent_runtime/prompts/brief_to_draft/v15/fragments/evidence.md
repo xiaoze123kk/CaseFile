@@ -5,7 +5,7 @@ information_units 的 title、description、content 和 acquisition_conditions�
 information_units、claims、hypotheses、reasoning_paths 的 local_key 必须分别逐字覆盖 Blueprint 同名集合，禁止为解释方便临时新增 claim、hypothesis 或 path。每个 reasoning step 的 output_key 是单个 claims 或 hypotheses 白名单字符串，不是数组。output_key 表示该 step 新确立的对象；即使该 step 论证的目标是 resolution_specs，output_key 也必须写它确立的 claim 或 hypothesis，绝不能写 resolution_specs 的 local_key——服务端只接受 claims 与 hypotheses 作为 output_key，指向其他任何集合都会导致本部件整体失败。推理路径必须能由 input_keys 核对，不得把叙事暗示或常识直接写成已证实结论。
 
 同一 target_resolution_key 下存在两个或以上竞争假设时：
-1. 每个 hypothesis 的 competing_hypothesis_keys 必须恰好包含同组全部其他假设。
+1. competing_hypothesis_keys 是派生数据：服务端按同一 target_resolution_key 下的全部假设确定性补全，你的输出会被服务端覆盖；关键是 target_resolution_key 必须正确指向该假设真正所属的 Resolution，同一 Resolution 下的每个假设都被视为互相竞争。
 2. 对每个 hypothesis H，必须至少存在一条 reasoning_path.target_key == H 的路径。
 3. 上述 H 的路径必须至少在一个 step.input_keys 中直接使用 information_units；后续比较矩阵的列只来自这些 information_unit 输入。
 

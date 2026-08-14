@@ -458,10 +458,9 @@ async def run_v8_generation(
         if not isinstance(story_output, (StoryWorldIRV1, StoryWorldIRV2)):
             raise RuntimeError("legacy brief-to-draft must use a compiler-compatible Story IR")
         story = story_output
-    evidence: EvidenceLogicIR = (
-        EvidenceLogicIRV2.model_validate(domain_results[1][0])
-        if uses_competition_matrix
-        else EvidenceLogicIRV1.model_validate(domain_results[1][0])
+    evidence: EvidenceLogicIR = _evidence_from_output(
+        domain_results[1][0],
+        evidence_output_type,
     )
     usage_records.extend(result[1] for result in domain_results)
     if uses_competition_matrix:
@@ -487,7 +486,9 @@ async def run_v8_generation(
             )
             usage_records.append(evidence_usage)
             repaired_components.add("evidence_logic")
-            evidence = EvidenceLogicIRV2.model_validate(evidence_value)
+            evidence = _evidence_from_output(evidence_value, evidence_output_type)
+            if not isinstance(evidence, EvidenceLogicIRV2):
+                raise RuntimeError("competition matrix repair must return EvidenceLogicIRV2")
         if uses_v15:
             evidence, matrix_usage = await evaluate_evidence_matrix(
                 request,
@@ -625,7 +626,11 @@ async def run_v8_generation(
                     )
                     usage_records.append(usage)
                     repaired_components.add("evidence_logic")
-                    evidence = EvidenceLogicIRV2.model_validate(value)
+                    evidence = _evidence_from_output(value, evidence_output_type)
+                    if not isinstance(evidence, EvidenceLogicIRV2):
+                        raise RuntimeError(
+                            "v15 evidence repair requires EvidenceLogicIRV2"
+                        ) from error
                     evidence, matrix_usage = await evaluate_evidence_matrix(
                         request,
                         call_component,
@@ -933,6 +938,45 @@ def _evidence_assessment_issues(
         used_information_by_hypothesis,
         strict_competition=strict_competition,
     )
+
+
+def _normalize_competing_hypothesis_closure(
+    evidence: EvidenceLogicIRV2,
+) -> EvidenceLogicIRV2:
+    """Deterministically close each same-resolution group's competitor references.
+
+    Hypotheses that target one Resolution compete by definition, so
+    ``competing_hypothesis_keys`` is derived data: the server computes it from
+    ``target_resolution_key`` instead of trusting the model to keep the N-way
+    mutual references consistent across repair rounds.
+    """
+
+    groups: dict[str, list[str]] = {}
+    for hypothesis in evidence.hypotheses:
+        groups.setdefault(hypothesis.target_resolution_key, []).append(
+            hypothesis.local_key
+        )
+    for hypothesis in evidence.hypotheses:
+        expected = [
+            key
+            for key in groups[hypothesis.target_resolution_key]
+            if key != hypothesis.local_key
+        ]
+        if hypothesis.competing_hypothesis_keys != expected:
+            hypothesis.competing_hypothesis_keys = expected
+    return evidence
+
+
+def _evidence_from_output(
+    value: Any,
+    output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2],
+) -> EvidenceLogicIRV1 | EvidenceLogicIRV2:
+    """Validate an Evidence output and derive competition closure server-side."""
+
+    evidence = output_type.model_validate(value)
+    if isinstance(evidence, EvidenceLogicIRV2):
+        _normalize_competing_hypothesis_closure(evidence)
+    return evidence
 
 
 def _hypotheses_by_resolution(evidence: EvidenceLogicIRV2) -> dict[str, list[Any]]:

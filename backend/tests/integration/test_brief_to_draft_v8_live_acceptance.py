@@ -26,6 +26,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import EvidenceLogicIRV2
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
     _evidence_assessment_issues,
     _hypotheses_by_resolution,
+    _normalize_competing_hypothesis_closure,
     _used_information_by_hypothesis,
 )
 from casefile.agent_runtime.brief_to_draft_v15.contracts import MatrixEvaluationOutputV1
@@ -1333,6 +1334,7 @@ def _evidence_quality_for_task(
             parsed = EvidenceLogicIRV2.model_validate(output)
         except ValidationError:
             continue
+        _normalize_competing_hypothesis_closure(parsed)
         parsed_by_step[step.id] = parsed
         graph_issues = _evidence_assessment_issues(
             parsed,

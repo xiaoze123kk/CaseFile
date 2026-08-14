@@ -18,6 +18,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
     _evidence_assessment_issues,
     _extract_allowed_wgs84_coordinates,
+    _normalize_competing_hypothesis_closure,
     _quality_gate,
     _v11_blueprint_issues,
     _v11_story_issues,
@@ -253,6 +254,29 @@ def test_v11_matrix_gate_rejects_cross_resolution_competitor_reference() -> None
     }
 
     assert codes == {"competing_hypothesis_group_incomplete"}
+
+
+def test_competition_closure_is_derived_server_side() -> None:
+    _blueprint, _story, evidence, _governance = _v11_parts()
+    evidence.hypotheses[0].competing_hypothesis_keys = []
+    evidence.hypotheses[1].competing_hypothesis_keys = ["hypothesis", "stale_key"]
+
+    normalized = _normalize_competing_hypothesis_closure(evidence)
+
+    assert [item.competing_hypothesis_keys for item in normalized.hypotheses] == [
+        ["alternative_hypothesis"],
+        ["hypothesis"],
+    ]
+    assert (
+        _evidence_assessment_issues(
+            normalized,
+            strict_competition=True,
+            blueprint=None,
+            use_explicit_targets=True,
+            include_matrix=False,
+        )
+        == []
+    )
 
 
 def test_v11_blueprint_gate_requires_one_dedicated_path_per_competing_hypothesis() -> None:

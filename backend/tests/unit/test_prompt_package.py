@@ -452,6 +452,14 @@ def test_v15_governance_runs_after_evidence_and_can_return_undetermined() -> Non
 
 
 def test_v15_evidence_repair_receives_previous_output_and_phased_issues() -> None:
+    """Broken competitor closure is derived server-side; real issues still repair.
+
+    A wrong ``competing_hypothesis_keys`` no longer triggers a model repair
+    round: the server closes each same-resolution group deterministically. The
+    bounded repair loop with ``previous_output`` is exercised by a genuine
+    information-grounded path issue instead.
+    """
+
     calls: list[str] = []
     evidence_inputs: list[dict[str, object]] = []
     evidence_calls = 0
@@ -494,16 +502,27 @@ def test_v15_evidence_repair_receives_previous_output_and_phased_issues() -> Non
             evidence_inputs.append(json.loads(input_text))
             if evidence_calls == 1:
                 output["hypotheses"][0]["competing_hypothesis_keys"] = []
+                output["reasoning_paths"][0]["steps"][0]["input_keys"] = ["claim"]
         return output, {"requests": 1}
 
     result = asyncio.run(run_v15_generation(request, call_component=call_component))
 
     validate_casefile(result.candidate)
+    hypothesis_ids = {item["id"] for item in result.candidate["hypotheses"]}
+    competing = {
+        item["id"]: [ref["object_id"] for ref in item["competing_hypothesis_refs"]]
+        for item in result.candidate["hypotheses"]
+    }
+    assert len(competing) == 2
+    for hypothesis_id, competitor_ids in competing.items():
+        assert competitor_ids == sorted(hypothesis_ids - {hypothesis_id})
     assert calls.count("evidence_logic") == 2
     repair_input = evidence_inputs[1]
-    assert repair_input["previous_output"]["hypotheses"][0]["competing_hypothesis_keys"] == []
-    assert [issue["code"] for issue in repair_input["targeted_repair_issues"]] == [
-        "competing_hypothesis_group_incomplete"
+    assert repair_input["previous_output"]["hypotheses"][0]["competing_hypothesis_keys"] == [
+        "alternative_hypothesis"
+    ]
+    assert "competing_hypothesis_path_missing" in [
+        issue["code"] for issue in repair_input["targeted_repair_issues"]
     ]
 
 

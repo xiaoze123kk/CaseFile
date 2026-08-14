@@ -159,13 +159,13 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("brief_to_draft", "brief-to-draft-v15"): {
         "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
-        "fragment:planner": "2689fa69ccfbbfd181c45348f9f9e7f30f0de88a4f4ff4a9d78fd8447c37223d",
+        "fragment:planner": "b6f074bd1be4162c337583fccf25dadb69925aef9e20bc396407ae5dd51d775d",
         "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",
         "fragment:domain_common": (
             "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
         ),
         "fragment:story": "8bd5eeccd3b00dc357a786342d489faccb1f7e6c9f8336e3c49888fcf4633a06",
-        "fragment:evidence": "227155502b46fb8860e283ec2be2a04e4b142489f239ae68985d5e31917d0899",
+        "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
         "fragment:governance": "8068377b57c531f24f800d0e38967ae49e7f22d54b41d85aa9e6ef859cb7cdbc",
     },
