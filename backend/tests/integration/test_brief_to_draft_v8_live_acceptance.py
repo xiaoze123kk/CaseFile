@@ -206,6 +206,25 @@ class LiveAcceptanceConfig:
     prompt_version: str
     repeats: int
     report_path: Path | None
+    scenario_filter: str
+
+
+def _filtered_scenarios(
+    scenarios: tuple[AcceptanceScenario, ...],
+    filter_value: str,
+) -> tuple[AcceptanceScenario, ...]:
+    """Narrow the rotation for fast iterations of one or more scenarios."""
+
+    if not filter_value.strip():
+        return scenarios
+    wanted = {item.strip() for item in filter_value.split(",") if item.strip()}
+    filtered = tuple(item for item in scenarios if item.scenario_id in wanted)
+    if not filtered:
+        raise ValueError(
+            "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER matched no scenario: "
+            f"{sorted(wanted)}"
+        )
+    return filtered
 
 
 def _base_report(*, suite: str, summary: dict[str, dict[str, int]]) -> dict[str, Any]:
@@ -260,6 +279,19 @@ def test_v15_scenario_gate_rejects_two_failures_in_one_scenario() -> None:
     report = _base_report(suite="brief_to_draft_v15", summary=summary)
 
     assert _report_status(report, expected_runs=30) == "failed"
+
+
+def test_scenario_filter_narrows_rotation_and_rejects_unknown_ids() -> None:
+    filtered = _filtered_scenarios(
+        _V15_SCENARIOS, " time_uncertain_relative , competition_matrix_dense "
+    )
+    assert tuple(item.scenario_id for item in filtered) == (
+        "time_uncertain_relative",
+        "competition_matrix_dense",
+    )
+    assert _filtered_scenarios(_V15_SCENARIOS, "  ") == _V15_SCENARIOS
+    with pytest.raises(ValueError, match="matched no scenario"):
+        _filtered_scenarios(_V15_SCENARIOS, "not_a_scenario")
 
 
 def test_v11_scenario_gate_keeps_six_attempts_per_scenario() -> None:
@@ -480,6 +512,7 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
                     model_id=model_id,
                     repeats=config.repeats,
                     prompt_version=config.prompt_version,
+                    scenario_filter=config.scenario_filter,
                     report=report,
                 )
         _summarize_execution_metrics(report)
@@ -538,6 +571,9 @@ def _live_config() -> LiveAcceptanceConfig:
         prompt_version=prompt_version,
         repeats=repeats,
         report_path=Path(report_value) if report_value else None,
+        scenario_filter=os.getenv(
+            "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER", ""
+        ).strip(),
     )
 
 
@@ -643,9 +679,11 @@ def _run_acceptance_suite(
     model_id: str,
     repeats: int,
     prompt_version: str,
+    scenario_filter: str,
     report: dict[str, Any],
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
+    scenarios: tuple[AcceptanceScenario, ...]
     if prompt_version == "brief-to-draft-v15":
         scenarios = _V15_SCENARIOS
     elif prompt_version in {
@@ -657,6 +695,7 @@ def _run_acceptance_suite(
         scenarios = _V11_SCENARIOS
     else:
         scenarios = (_LEGACY_SCENARIO,)
+    scenarios = _filtered_scenarios(scenarios, scenario_filter)
     for run_index in range(repeats):
         strategy = _STRATEGIES[run_index % len(_STRATEGIES)]
         scenario = scenarios[run_index % len(scenarios)]
