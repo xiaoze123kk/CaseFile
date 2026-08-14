@@ -1203,7 +1203,8 @@ def _persist_agent_execution_event(
                 component_id=component_id,
                 parent_component_id=(
                     "domain_drafters"
-                    if component_id in {"story_world", "evidence_logic", "resolution_governance"}
+                    if component_id
+                    in {"story_world", "evidence_logic", "evidence_matrix", "resolution_governance"}
                     else None
                 ),
                 execution_no=execution_no,

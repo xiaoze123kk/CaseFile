@@ -99,7 +99,7 @@
 | `backend/tests/integration/test_multiple_draft_migration.py`、`test_multiple_drafts.py` | 验证旧数据升级回填 Current Draft、复合外键与 Draft 内对象 ID 唯一，以及并发激活、归档/锁定门禁和编辑/快照/验证/来源/审计隔离。 |
 | `backend/tests/integration/test_application_task_lifecycle.py` | 在真实 `_test` PostgreSQL 验证 TaskRun Prompt 版本、queued/running/orphan 取消、lease 恢复、Provider 配置冻结与不可变事件。 |
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、候选采用、工作台验证/来源/审计读模型、SSE 恢复与完成门禁闭环。 |
-| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8–v14 验收（默认 v14）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 轮换三种候选策略及五类时间/空间/竞争矩阵场景，检查步骤/模型调用持久化、SSE、诊断、候选语义和 Draft/Canon 未自动写入边界。 |
+| `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8–v15 验收（默认版本读取 Prompt Registry）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 轮换三种候选策略；v11–v14 轮换五类时间/空间/竞争矩阵场景，v15 额外加入 2×8+ 与 3×8+ 两档密集竞争矩阵场景（共七类）并对 30 次发布验收强制 Evidence 语义 SLO（首次通过率 ≥ 90%、最多一次定向修复后 ≥ 98%）；报告按持久化步骤产物重放 Evidence 图/矩阵语义校验，统计首次通过率、修复恢复率、issue 计数与矩阵规模，并检查步骤/模型调用持久化、SSE、诊断、候选语义和 Draft/Canon 未自动写入边界。 |
 
 ## 51 表清单
 

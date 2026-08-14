@@ -3,9 +3,12 @@
 运行 Brief-to-Draft 真实 Provider 发布验收。
 
 .DESCRIPTION
-v12-v15 默认执行 30 次并轮换五类时间、空间与竞争矩阵场景。发布门槛为总计至少
-27/30、每类至少 5/6、零不变量违规且失败诊断完整；报告写入 tmp/，通过验收
-本身不会修改 Registry、Current Draft、Canon 或 Exposure Plan。
+v12-v14 默认执行 30 次并轮换五类时间、空间与竞争矩阵场景；v15 额外加入
+2 假设 × 8+ 信息与 3 假设 × 8+ 信息两档密集竞争矩阵场景（共七类轮换），
+并强制 Evidence 语义 SLO：首次通过率 >= 90%、最多一次定向修复后 >= 98%。
+发布门槛为总计至少 27/30、每类场景失败不超过一次、零不变量违规且失败诊断
+完整；报告写入 tmp/，通过验收本身不会修改 Registry、Current Draft、Canon
+或 Exposure Plan。
 #>
 param(
     [ValidateRange(1, 100)][int]$Repeats = 30,

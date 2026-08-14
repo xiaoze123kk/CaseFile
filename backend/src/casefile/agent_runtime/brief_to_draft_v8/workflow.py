@@ -886,6 +886,10 @@ def _evidence_assessment_issues(
         )
         if path_issues:
             return path_issues
+        if use_explicit_targets:
+            reference_issues = _evidence_graph_reference_issues(evidence)
+            if reference_issues:
+                return reference_issues
     if not include_matrix:
         return []
     return _matrix_cell_issues(
@@ -979,6 +983,31 @@ def _competition_path_issues(
                     ),
                     "schema_id": "evidence-logic-ir-v2",
                     "ir_path": f"/hypotheses/{hypothesis.local_key}",
+                }
+            )
+    return issues
+
+
+def _evidence_graph_reference_issues(evidence: EvidenceLogicIRV2) -> list[dict[str, Any]]:
+    """Reject reasoning step outputs that are not claims or hypotheses."""
+
+    allowed_targets = {item.local_key for item in evidence.claims} | {
+        item.local_key for item in evidence.hypotheses
+    }
+    issues: list[dict[str, Any]] = []
+    for path in evidence.reasoning_paths:
+        for index, step in enumerate(path.steps):
+            if step.output_key in allowed_targets:
+                continue
+            issues.append(
+                {
+                    "code": "reasoning_step_output_key_mismatch",
+                    "path": f"/reasoning_paths/{path.local_key}/steps/{index}/output_key",
+                    "message": "推理步骤 output_key 必须指向 claims 或 hypotheses 中的对象。",
+                    "component_id": "evidence_logic",
+                    "failure_layer": "evidence_matrix",
+                    "schema_id": "evidence-logic-ir-v2",
+                    "ir_path": f"/reasoning_paths/{path.local_key}",
                 }
             )
     return issues

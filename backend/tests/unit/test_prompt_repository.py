@@ -167,7 +167,7 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:story": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04",
         "fragment:evidence": "367c339e13d2b97208aed04834bbb7f2cc31317fc5c36e494a5cb2bb654f6411",
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
-        "fragment:governance": "1539eeeaf325e297256c3b312e44bd28c29a3da6171981d4b6b573a27c4bef6e",
+        "fragment:governance": "9fadb6923dbcfa4d8dadc649864966e5e1debef8c7a81969bed40df52c01b6a3",
     },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
