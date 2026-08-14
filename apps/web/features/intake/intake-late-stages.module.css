@@ -1236,6 +1236,7 @@
 .agentPipeline li small { margin-top: 4px; color: var(--ink-muted); }
 .agentPipeline li[data-status="running"] { background: color-mix(in srgb, var(--red) 7%, transparent); }
 .agentPipeline li[data-status="failed"] { color: var(--red); }
+.agentPipeline li[data-status="recovering"] { color: var(--warning); background: color-mix(in srgb, var(--warning) 7%, transparent); }
 .agentPipeline li[data-status="succeeded"] > span,
 .agentPipeline li[data-status="reused"] > span { color: #356548; }
 .agentPipeline li ul { margin: 8px 0 0; padding: 0; list-style: none; font-size: 11px; }
@@ -1244,6 +1245,8 @@
 .componentFailure p { margin: 0; font-size: 12px; }
 .componentFailure code { display: block; white-space: normal; color: var(--ink); }
 .componentFailure button { justify-self: start; }
+.componentRecovering { display: grid; gap: 7px; padding: 12px 14px; border-top: 1px solid var(--warning); color: var(--warning); }
+.componentRecovering p { margin: 0; font-size: 12px; }
 
 .oldCandidates {
   margin: 0 18px 18px;

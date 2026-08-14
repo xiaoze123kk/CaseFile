@@ -128,6 +128,50 @@ describe("draft candidate cancellation feedback", () => {
     expect(screen.queryByText("早期质量门禁失败")).not.toBeInTheDocument();
   });
 
+  it("keeps an in-flight recoverable gate failure as auto-repair instead of a failure alert", () => {
+    const state = generatingState(true);
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = [
+      failedStep({
+        stepRunId: 901,
+        componentId: "quality_repair_gate",
+        executionNo: 1,
+        message: "候选未通过质量门禁。",
+      }),
+    ];
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("质量与修复门禁未通过")).toBeInTheDocument();
+    expect(screen.getByText("未达到重试上限，正在自动修复，无需操作。")).toBeInTheDocument();
+    expect(screen.getByText("第 6 步未通过，正在自动修复…")).toBeInTheDocument();
+    expect(screen.getByText("修复中")).toBeInTheDocument();
+  });
+
+  it("keeps the failure alert when an active failure has exhausted its recovery budget", () => {
+    const state = generatingState(true);
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = [
+      {
+        ...failedStep({
+          stepRunId: 901,
+          componentId: "quality_repair_gate",
+          executionNo: 2,
+          message: "修复预算耗尽",
+        }),
+        recoverable: false,
+      },
+    ];
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("质量与修复门禁执行失败");
+    expect(screen.queryByText("未达到重试上限，正在自动修复，无需操作。")).not.toBeInTheDocument();
+  });
+
   it("uses retryable task diagnostics when a legacy coordinator step is not recoverable", () => {
     const state = generatingState(false);
     const task = generationTask("failed");

@@ -7,6 +7,7 @@ import {
   type CandidateSlotStrategy,
   useCaseSession,
 } from "@/features/case-session/case-session-provider";
+import type { TaskView } from "@/lib/api-client";
 
 import styles from "./intake-late-stages.module.css";
 
@@ -15,6 +16,13 @@ const strategyLabels: Record<CandidateSlotStrategy, string> = {
   atmosphere_first: "氛围优先",
   reasoning_first: "推理优先",
 };
+
+/** 任务仍处于排队、执行或停止请求中，尚未到达终态。 */
+const ACTIVE_GENERATION_TASK_STATUSES = new Set<TaskView["status"]>([
+  "queued",
+  "running",
+  "cancelling",
+]);
 
 const internalBriefFieldLabels = {
   source_record_ids: "原稿来源",
@@ -109,8 +117,19 @@ export function DraftCandidatesStage() {
   const recoveryAvailable = Boolean(
     taskFailure?.retryable || failedComponent?.recoverable,
   );
+  const taskActive = Boolean(
+    selectedSlot?.latestTask &&
+      ACTIVE_GENERATION_TASK_STATUSES.has(selectedSlot.latestTask.status),
+  );
+  // 运行中的可恢复部件失败仍在重试上限内，属于流水线自动修复，
+  // 不弹失败提示；只有重试耗尽、任务真正失败时才展示失败门禁。
+  const recovering = Boolean(taskActive && failedComponent?.recoverable);
   const pipeline = pipelineRows(latestComponentSteps);
-  const pipelineProgress = pipelineProgressFor(pipeline, componentSteps.length === 0);
+  const pipelineProgress = pipelineProgressFor(
+    pipeline,
+    componentSteps.length === 0,
+    recovering,
+  );
   const coordinatorFallback = failedComponent?.component_id === "run_coordinator";
   const failureIssues = coordinatorFallback && taskFailure?.issues.length
     ? taskFailure.issues
@@ -465,26 +484,41 @@ export function DraftCandidatesStage() {
             </div>
           </div>
           <ol>
-            {pipeline.map((row, index) => (
-              <li data-status={row.status} key={row.id}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div>
-                  <strong>{row.id === "domain_drafters" && row.children
-                    ? `${row.label} · 已完成 ${row.children.filter((child) => child.status === "succeeded" || child.status === "reused").length} / 4`
-                    : row.label}</strong>
-                  <small>{stepStatusLabel(row.status)}</small>
-                  {row.children ? (
-                    <ul>{row.children.map((child) => (
-                      <li data-status={child.status} key={child.id}>
-                        {child.label} · {stepStatusLabel(child.status)}
-                      </li>
-                    ))}</ul>
-                  ) : null}
-                </div>
-              </li>
-            ))}
+            {pipeline.map((row, index) => {
+              const rowStatus =
+                recovering && row.status === "failed" ? "recovering" : row.status;
+              return (
+                <li data-status={rowStatus} key={row.id}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <div>
+                    <strong>{row.id === "domain_drafters" && row.children
+                      ? `${row.label} · 已完成 ${row.children.filter((child) => child.status === "succeeded" || child.status === "reused").length} / 4`
+                      : row.label}</strong>
+                    <small>{stepStatusLabel(rowStatus)}</small>
+                    {row.children ? (
+                      <ul>{row.children.map((child) => {
+                        const childStatus =
+                          recovering && child.status === "failed"
+                            ? "recovering"
+                            : child.status;
+                        return (
+                          <li data-status={childStatus} key={child.id}>
+                            {child.label} · {stepStatusLabel(childStatus)}
+                          </li>
+                        );
+                      })}</ul>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
-          {failedComponent || taskFailure ? (
+          {recovering && failedComponent ? (
+            <div className={styles.componentRecovering} role="status">
+              <strong>{componentLabel(failedComponent.component_id)}未通过</strong>
+              <p>未达到重试上限，正在自动修复，无需操作。</p>
+            </div>
+          ) : failedComponent || taskFailure ? (
             <div className={styles.componentFailure} role="alert">
               <strong>
                 {coordinatorFallback && taskFailure?.issues.length
@@ -578,21 +612,32 @@ function pipelineRows(steps: Map<string, { status: PipelineStatus }>) {
   ];
 }
 
-function pipelineProgressFor(rows: ReturnType<typeof pipelineRows>, creatingTask: boolean) {
+function pipelineProgressFor(
+  rows: ReturnType<typeof pipelineRows>,
+  creatingTask: boolean,
+  recovering: boolean,
+) {
   const completedCount = rows.filter((row) => row.status === "succeeded" || row.status === "reused").length;
   if (creatingTask) return { completedCount, label: "正在创建任务" };
   const failedIndex = rows.findIndex((row) => row.status === "failed");
   const runningIndex = rows.findIndex((row) => row.status === "running");
   const nextIndex = rows.findIndex((row) => row.status === "pending");
-  if (failedIndex >= 0) return { completedCount, label: `第 ${failedIndex + 1} 步失败：${rows[failedIndex].label}` };
+  if (failedIndex >= 0) {
+    return {
+      completedCount,
+      label: recovering
+        ? `第 ${failedIndex + 1} 步未通过，正在自动修复…`
+        : `第 ${failedIndex + 1} 步失败：${rows[failedIndex].label}`,
+    };
+  }
   if (runningIndex >= 0) return { completedCount, label: `正在进行第 ${runningIndex + 1} 步：${rows[runningIndex].label}` };
   if (completedCount === rows.length) return { completedCount, label: "六步生成已完成" };
   if (nextIndex >= 0) return { completedCount, label: `下一步：第 ${nextIndex + 1} 步 ${rows[nextIndex].label}` };
   return { completedCount, label: "正在创建任务" };
 }
 
-function stepStatusLabel(status: PipelineStatus) {
-  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过" }[status];
+function stepStatusLabel(status: PipelineStatus | "recovering") {
+  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过", recovering: "修复中" }[status];
 }
 
 function componentLabel(componentId: string) {
