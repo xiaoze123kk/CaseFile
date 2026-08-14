@@ -8,13 +8,15 @@ v12-v14 默认执行 30 次并轮换五类时间、空间与竞争矩阵场景�
 并强制 Evidence 语义 SLO：首次通过率 >= 90%、最多一次定向修复后 >= 98%。
 发布门槛为总计至少 27/30、每类场景失败不超过一次、零不变量违规且失败诊断
 完整；报告写入 tmp/，通过验收本身不会修改 Registry、Current Draft、Canon
-或 Exposure Plan。
+或 Exposure Plan。可用 -Scenarios 传入逗号分隔的 scenario_id 只迭代部分场景
+（用于修复后的定向验证，不属于发布验收轮换）。
 #>
 param(
     [ValidateRange(1, 100)][int]$Repeats = 30,
     [ValidateSet("deepseek", "openai")][string]$Provider = "deepseek",
     [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15")][string]$PromptVersion = "brief-to-draft-v15",
-    [string]$ReportPath = ""
+    [string]$ReportPath = "",
+    [string]$Scenarios = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -71,6 +73,9 @@ $env:CASEFILE_LIVE_ACCEPTANCE_REPEATS = "$Repeats"
 $env:CASEFILE_LIVE_ACCEPTANCE_PROVIDER = $Provider
 $env:CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION = $PromptVersion
 $env:CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH = $reportFile
+if (-not [string]::IsNullOrWhiteSpace($Scenarios)) {
+    $env:CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER = $Scenarios
+}
 
 Push-Location $backendRoot
 try {
