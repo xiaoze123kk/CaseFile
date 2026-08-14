@@ -316,6 +316,20 @@ def test_v15_blueprint_gate_accepts_explicit_target_without_dependency_guess() -
     assert _v15_blueprint_path_issues(blueprint) == []
 
 
+def test_v15_blueprint_gate_requires_hypothesis_per_resolution() -> None:
+    blueprint, _story, _evidence, _governance = _v11_parts()
+
+    assert _v15_blueprint_path_issues(blueprint) == []
+
+    blueprint.hypotheses = []
+
+    issues = _v15_blueprint_path_issues(blueprint)
+
+    assert {issue["code"] for issue in issues} == {"resolution_hypothesis_plan_missing"}
+    assert {issue["ir_path"] for issue in issues} == {"/resolution_specs/resolution"}
+    assert all(issue["component_id"] == "case_blueprint_planner" for issue in issues)
+
+
 def test_quality_gate_failure_closes_its_started_step() -> None:
     blueprint, story, evidence, governance = _v11_parts()
     candidate = compile_casefile(

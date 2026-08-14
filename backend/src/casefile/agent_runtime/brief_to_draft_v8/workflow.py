@@ -256,15 +256,31 @@ async def run_v8_generation(
     )
     usage_records.append(planner_usage)
     blueprint = CaseBlueprintV1.model_validate(planner_output)
-    if uses_v2_context:
-        blueprint_issues = _blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15)
-        if blueprint_issues:
-            error = ContractValidationError(blueprint_issues)
-            _emit_quality_gate_failure(request, error)
-            raise error
-    if request.prompt_version in {"brief-to-draft-v14", "brief-to-draft-v15"}:
-        blueprint_language_issues = _blueprint_creator_chinese_issues(blueprint)
-        if blueprint_language_issues:
+    blueprint_path_issues = (
+        _blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15)
+        if uses_v2_context
+        else []
+    )
+    if blueprint_path_issues and not uses_v15:
+        error = ContractValidationError(blueprint_path_issues)
+        _emit_quality_gate_failure(request, error)
+        raise error
+    language_repair_allowed = request.prompt_version in {
+        "brief-to-draft-v14",
+        "brief-to-draft-v15",
+    }
+    needs_blueprint_repair = bool(blueprint_path_issues) or (
+        language_repair_allowed and bool(_blueprint_creator_chinese_issues(blueprint))
+    )
+    if needs_blueprint_repair:
+        repair_budget = 2 if uses_v15 else 1
+        for _ in range(repair_budget):
+            combined_issues = [
+                *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
+                *_blueprint_creator_chinese_issues(blueprint),
+            ]
+            if not combined_issues:
+                break
             repaired_components.add("case_blueprint_planner")
             repaired_output, repaired_usage = await _model_step(
                 request,
@@ -275,19 +291,19 @@ async def run_v8_generation(
                 output_type=CaseBlueprintV1,
                 input_payload={
                     "context_pack": context.model_dump(mode="json"),
-                    "targeted_repair_issues": blueprint_language_issues,
+                    "targeted_repair_issues": combined_issues,
                 },
             )
             usage_records.append(repaired_usage)
             blueprint = CaseBlueprintV1.model_validate(repaired_output)
-            remaining_blueprint_issues = [
-                *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
-                *_blueprint_creator_chinese_issues(blueprint),
-            ]
-            if remaining_blueprint_issues:
-                error = ContractValidationError(remaining_blueprint_issues)
-                _emit_quality_gate_failure(request, error, recoverable=False)
-                raise error
+        remaining_blueprint_issues = [
+            *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
+            *_blueprint_creator_chinese_issues(blueprint),
+        ]
+        if remaining_blueprint_issues:
+            error = ContractValidationError(remaining_blueprint_issues)
+            _emit_quality_gate_failure(request, error, recoverable=False)
+            raise error
 
     temporal_plan: TemporalPlanV1 | None = None
     if uses_temporal_plan:
@@ -807,7 +823,7 @@ def _v11_blueprint_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
 
 
 def _v15_blueprint_path_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any]]:
-    """Require an explicit targeted path plan per competing hypothesis (v15+)."""
+    """Require explicit targeted path plans and one hypothesis per Resolution (v15+)."""
 
     issues: list[dict[str, Any]] = []
     for group in _blueprint_competition_groups(blueprint):
@@ -828,6 +844,26 @@ def _v15_blueprint_path_issues(blueprint: CaseBlueprintV1) -> list[dict[str, Any
                     "ir_path": f"/hypotheses/{hypothesis_key}",
                 }
             )
+    for resolution in blueprint.resolution_specs:
+        if any(
+            resolution.local_key in hypothesis.dependency_keys
+            for hypothesis in blueprint.hypotheses
+        ):
+            continue
+        issues.append(
+            {
+                "code": "resolution_hypothesis_plan_missing",
+                "path": f"/resolution_specs/{resolution.local_key}",
+                "message": (
+                    "每个 resolution_specs 必须至少规划一个以它为 dependency 的 hypothesis；"
+                    "结论校验要求至少选择一个同题假设。"
+                ),
+                "component_id": "case_blueprint_planner",
+                "failure_layer": "blueprint_semantics",
+                "schema_id": "case-blueprint-v1",
+                "ir_path": f"/resolution_specs/{resolution.local_key}",
+            }
+        )
     return issues
 
 
