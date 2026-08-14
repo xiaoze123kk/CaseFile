@@ -16,7 +16,11 @@ import {
 } from "./workbench-canvas-kernel";
 import type { WorkbenchCanvasLayoutIdentity } from "./workbench-canvas-layout";
 import { reasoningOutcomeLabels, reliabilityLabel } from "./workbench-presenters";
-import type { WorkbenchConclusion } from "./workbench-real-data-types";
+import type {
+  WorkbenchConclusion,
+  WorkbenchGraphEdge,
+  WorkbenchGraphNode,
+} from "./workbench-real-data-types";
 
 type ReasoningNodeKind = "evidence" | "reason" | "hypothesis" | "conclusion";
 
@@ -49,7 +53,16 @@ interface ReasoningCanvasEdge {
   id: string;
   source: string;
   target: string;
-  kind: "evidence" | "chain" | "hypothesis" | "resolution" | ReasoningOutcome;
+  kind:
+    | "evidence"
+    | "chain"
+    | "hypothesis"
+    | "resolution"
+    | "supports"
+    | "contradicts"
+    | "neutral"
+    | ReasoningOutcome;
+  label?: string;
 }
 
 interface ReasoningCanvasScene {
@@ -177,6 +190,96 @@ function ConclusionBand({
         )}
       </div>
     </article>
+  );
+}
+
+function ReasoningConclusionCard({
+  conclusion,
+  question,
+  onSelectResolution,
+  onTransitionConclusion,
+  busy = false,
+}: {
+  conclusion: WorkbenchConclusion | undefined;
+  question: string;
+  onSelectResolution: () => void;
+  onTransitionConclusion?: (action: "confirm" | "withdraw") => void;
+  busy?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <aside
+      aria-label="核心问题与最终结论"
+      className={styles.reasoningCanvasCard}
+      data-outcome={conclusion?.outcome ?? "missing"}
+      data-status={conclusion?.reviewStatus ?? "missing"}
+    >
+      <header className={styles.reasoningCanvasCardHeader}>
+        <button
+          aria-label={`查看核心问题：${question}`}
+          className={styles.reasoningCanvasCardQuestion}
+          onClick={onSelectResolution}
+          type="button"
+        >
+          <span>核心问题</span>
+          <strong>{question}</strong>
+        </button>
+        <div className={styles.reasoningCanvasCardStatus}>
+          <b>{conclusionStatusLabel(conclusion)}</b>
+          <i>{conclusionOutcomeLabel(conclusion)}</i>
+        </div>
+        <button
+          aria-expanded={open}
+          className={styles.reasoningCanvasCardToggle}
+          onClick={() => setOpen((value) => !value)}
+          type="button"
+        >
+          {open ? "收起结论" : "展开结论"}
+        </button>
+      </header>
+      {open ? (
+        <div className={styles.reasoningCanvasCardBody}>
+          <h3>{conclusion?.summary ?? "该核心问题尚未形成结论"}</h3>
+          {conclusion ? (
+            <>
+              {conclusion.values.length ? (
+                <dl className={styles.conclusionValues}>
+                  {conclusion.values.map((item) => (
+                    <div key={item.slotId}>
+                      <dt>{item.slotId}</dt>
+                      <dd>{conclusionValue(item.value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              <p>{conclusion.rationale}</p>
+              {conclusion.unresolvedGaps.length ? (
+                <div className={styles.conclusionGaps}>
+                  <span>仍缺少</span>
+                  <ul>
+                    {conclusion.unresolvedGaps.map((gap) => <li key={gap}>{gap}</li>)}
+                  </ul>
+                </div>
+              ) : null}
+              {onTransitionConclusion ? (
+                <button
+                  className={styles.conclusionAction}
+                  disabled={busy}
+                  onClick={() => onTransitionConclusion(
+                    conclusion.reviewStatus === "confirmed" ? "withdraw" : "confirm",
+                  )}
+                  type="button"
+                >
+                  {conclusion.reviewStatus === "confirmed" ? "撤回确认" : "确认最终结论"}
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <p>先完成推理路径和假设评估，再由作者确认答案或未定论。</p>
+          )}
+        </div>
+      ) : null}
+    </aside>
   );
 }
 
@@ -463,6 +566,10 @@ export function buildReasoningCanvas(
   paths: Array<ReasoningPath & Partial<{ targetLabel: string }>>,
   conclusions: WorkbenchConclusion[] = [],
   reasoningGroups: WorkbenchReasoningGroup[] = [],
+  relationshipGraph: {
+    nodes: Array<Partial<WorkbenchGraphNode> & { objectId: string }>;
+    edges: Array<Partial<WorkbenchGraphEdge> & { from: string; to: string }>;
+  } | null = null,
 ): ReasoningCanvasScene {
   const nodes = new Map<string, ReasoningCanvasNode>();
   const edges = new Map<string, ReasoningCanvasEdge>();
@@ -582,6 +689,147 @@ export function buildReasoningCanvas(
     });
   });
 
+  if (!paths.length) {
+    // 无显式推理路径：先用假设/信息/判定依据（推理组）补全过程图。
+    const groupsWithContent = reasoningGroups.filter(
+      (group) => group.hypotheses.length > 0,
+    );
+    groupsWithContent.forEach((group) => {
+      const conclusion =
+        conclusionsByResolution.get(group.resolutionSpecId) ?? group.conclusion;
+      const conclusionId = `resolution-conclusion:${group.resolutionSpecId}`;
+      addNode({
+        id: conclusionId,
+        kind: "conclusion",
+        caption: conclusion
+          ? `${conclusionStatusLabel(conclusion)} · ${conclusionOutcomeLabel(conclusion)}`
+          : "尚未形成结论",
+        label: conclusion?.summary ?? "尚未形成结论",
+        objectId: group.resolutionSpecId,
+        outcome: conclusion?.reviewStatus ?? "missing",
+      });
+      group.hypotheses.forEach((hypothesis) => {
+        const hypothesisNodeId = `hypothesis-${hypothesis.id}`;
+        const conclusionRole = hypothesisConclusionRole(conclusion, hypothesis.id);
+        addNode({
+          id: hypothesisNodeId,
+          kind: "hypothesis",
+          caption: conclusionRole ?? "候选假设",
+          label: hypothesis.title,
+          objectId: hypothesis.id,
+          outcome: hypothesis.outcome,
+        });
+        if (conclusionRole || !conclusion) {
+          addEdge({
+            id: `${hypothesisNodeId}-${conclusionId}`,
+            source: hypothesisNodeId,
+            target: conclusionId,
+            kind: "resolution",
+          });
+        }
+      });
+      group.information.forEach((information) => {
+        addNode({
+          id: information.id,
+          kind: "evidence",
+          caption: `信息 · ${reliabilityLabel(information.reliability)}`,
+          label: information.title,
+          objectId: information.id,
+        });
+      });
+      group.assessments.forEach((assessment) => {
+        addEdge({
+          id: `assessment:${assessment.hypothesisId}:${assessment.informationId}`,
+          source: assessment.informationId,
+          target: `hypothesis-${assessment.hypothesisId}`,
+          kind: assessment.effect,
+        });
+      });
+    });
+
+    // 连推理组也没有：从关系图中取推理相关子集，构成论证图雏形。
+    if (!groupsWithContent.length && relationshipGraph) {
+      const reasoningEdgeKinds = new Set([
+        "hypothesis_requirement",
+        "hypothesis_falsifier",
+        "hypothesis_competitor",
+        "hypothesis_conclusion",
+        "reasoning_conclusion",
+        "information_support",
+        "information_refute",
+      ]);
+      const reasoningNodeKinds = new Set([
+        "hypothesis",
+        "information_unit",
+        "information",
+        "evidence",
+        "claim",
+        "reasoning_path",
+      ]);
+      const keptEdges = relationshipGraph.edges.filter((edge) =>
+        reasoningEdgeKinds.has(String(edge.kind ?? "")),
+      );
+      const touchedIds = new Set<string>();
+      keptEdges.forEach((edge) => {
+        touchedIds.add(edge.from);
+        touchedIds.add(edge.to);
+      });
+      relationshipGraph.nodes.forEach((node) => {
+        if (
+          !node.objectId.startsWith("resolution-conclusion:") &&
+          !reasoningNodeKinds.has(String(node.kind ?? "")) &&
+          !touchedIds.has(node.objectId)
+        ) {
+          return;
+        }
+        const isConclusion = node.objectId.startsWith("resolution-conclusion:");
+        const kind: ReasoningNodeKind = isConclusion
+          ? "conclusion"
+          : node.kind === "hypothesis"
+            ? "hypothesis"
+            : node.kind === "claim" || node.kind === "reasoning_path"
+              ? "reason"
+              : "evidence";
+        const caption = isConclusion
+          ? "最终结论"
+          : node.kind === "hypothesis"
+            ? "候选假设"
+            : node.kind === "claim"
+              ? "主张"
+              : node.kind === "reasoning_path"
+                ? "推理路径"
+                : "信息";
+        addNode({
+          id: node.objectId,
+          kind,
+          caption,
+          label: node.label ?? node.objectId,
+          objectId: node.directoryObjectId ?? undefined,
+        });
+      });
+      keptEdges.forEach((edge) => {
+        const kind: ReasoningCanvasEdge["kind"] =
+          edge.kind === "information_support"
+            ? "supports"
+            : edge.kind === "information_refute" ||
+                edge.kind === "hypothesis_competitor" ||
+                edge.kind === "hypothesis_falsifier"
+              ? "contradicts"
+              : edge.kind === "hypothesis_conclusion" ||
+                  edge.kind === "reasoning_conclusion"
+                ? "resolution"
+                : "evidence";
+        addEdge({
+          id: edge.id ?? `${edge.from}-${edge.to}`,
+          source: edge.from,
+          target: edge.to,
+          kind,
+          label: edge.label,
+        });
+      });
+    }
+  }
+
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
@@ -617,8 +865,22 @@ export function ReasoningGraphView({
       seed.reasoningPaths,
       seed.conclusions,
       seed.reasoningGroups ?? [],
+      {
+        nodes: seed.graphNodes as Array<
+          Partial<WorkbenchGraphNode> & { objectId: string }
+        >,
+        edges: seed.graphEdges as Array<
+          Partial<WorkbenchGraphEdge> & { from: string; to: string }
+        >,
+      },
     ),
-    [seed.conclusions, seed.reasoningGroups, seed.reasoningPaths],
+    [
+      seed.conclusions,
+      seed.graphEdges,
+      seed.graphNodes,
+      seed.reasoningGroups,
+      seed.reasoningPaths,
+    ],
   );
   const evidenceById = useMemo(
     () => new Map(seed.caseObjects.map((object) => [object.id, object])),
@@ -660,15 +922,22 @@ export function ReasoningGraphView({
       scene.edges.map((edge) => ({
         ...edge,
         label:
-          edge.kind === "evidence"
+          edge.label ??
+          (edge.kind === "evidence"
             ? "证据引用"
             : edge.kind === "chain"
               ? "推理推进"
-            : edge.kind === "hypothesis"
-              ? "收束到假设"
-              : edge.kind === "resolution"
-                ? "进入最终结论"
-                : reasoningOutcomeLabels[edge.kind],
+              : edge.kind === "hypothesis"
+                ? "收束到假设"
+                : edge.kind === "resolution"
+                  ? "进入最终结论"
+                  : edge.kind === "supports"
+                    ? "支持"
+                    : edge.kind === "contradicts"
+                      ? "冲突"
+                      : edge.kind === "neutral"
+                        ? "不区分"
+                        : reasoningOutcomeLabels[edge.kind]),
       })),
     [scene.edges],
   );
@@ -721,52 +990,64 @@ export function ReasoningGraphView({
           <small>{seed.reasoningPaths.length} 条路径</small>
         </div>
       </header>
-      {mode === "graph" && activeReasoningGroup ? (
-        <ConclusionBand
-          conclusion={activeReasoningGroup.conclusion}
-          onSelectResolution={() => onSelectObject(activeReasoningGroup.resolutionSpecId)}
-          onTransitionConclusion={onTransitionConclusion
-            ? (action) => onTransitionConclusion(activeReasoningGroup.resolutionSpecId, action)
-            : undefined}
-          question={activeReasoningGroup.question}
-          busy={transitionBusy}
-        />
-      ) : null}
-      {mode === "graph" && sceneNodes.length ? (
-        <WorkbenchCanvasKernel
-          ariaLabel="推理画布"
-          direction="BT"
-          edges={sceneEdges}
-          externalSelectedNodeIds={externalSelectedNodeIds}
-          identity={identity}
-          key={`${identity.scope}:${identity.revision}:${identity.view}`}
-          legend={
-            <>
-              <span data-kind="evidence">证据引用</span>
-              <span data-kind="chain">推理推进</span>
-              <span data-kind="hypothesis">收束到假设</span>
-              <span data-kind="resolution">进入最终结论</span>
-              <span data-kind="supported">支持</span>
-              <span data-kind="contested">解释竞争</span>
-              <span data-kind="eliminated">排除</span>
-              <span className={styles.srOnly}>已排除</span>
-            </>
-          }
-          nodeLegend={reasoningNodeLegend}
-          nodes={sceneNodes}
-          onActivateNode={onSelectObject}
-        />
-      ) : mode === "graph" ? (
-        <p className={styles.viewNote}>候选没有可展示的推理路径。</p>
-      ) : (
-        <ReasoningMatrix
-          groups={seed.reasoningGroups ?? []}
-          onSelectObject={onSelectObject}
-          selectedObjectId={selectedObjectId}
-          onTransitionConclusion={onTransitionConclusion}
-          transitionBusy={transitionBusy}
-        />
-      )}
+      <div className={styles.reasoningCanvasHost}>
+        {mode === "graph" ? (
+          <>
+            <WorkbenchCanvasKernel
+              ariaLabel="推理画布"
+              direction="BT"
+              edges={sceneEdges}
+              emptyHint={
+                <p className={styles.reasoningCanvasEmpty}>
+                  <strong>当前工作稿还没有可展示的推理内容。</strong>
+                  <span>
+                    生成或采用深稿后，这里会以无限画布呈现 证据 → 推理步骤 → 假设 → 最终结论。
+                  </span>
+                </p>
+              }
+              externalSelectedNodeIds={externalSelectedNodeIds}
+              identity={identity}
+              key={`${identity.scope}:${identity.revision}:${identity.view}`}
+              legend={
+                <>
+                  <span data-kind="evidence">证据引用</span>
+                  <span data-kind="chain">推理推进</span>
+                  <span data-kind="hypothesis">收束到假设</span>
+                  <span data-kind="resolution">进入最终结论</span>
+                  <span data-kind="supported">支持</span>
+                  <span data-kind="contradicts">冲突</span>
+                  <span data-kind="neutral">不区分</span>
+                  <span data-kind="contested">解释竞争</span>
+                  <span data-kind="eliminated">排除</span>
+                  <span className={styles.srOnly}>已排除</span>
+                </>
+              }
+              nodeLegend={reasoningNodeLegend}
+              nodes={sceneNodes}
+              onActivateNode={onSelectObject}
+            />
+            {activeReasoningGroup ? (
+              <ReasoningConclusionCard
+                busy={transitionBusy}
+                conclusion={activeReasoningGroup.conclusion}
+                onSelectResolution={() => onSelectObject(activeReasoningGroup.resolutionSpecId)}
+                onTransitionConclusion={onTransitionConclusion
+                  ? (action) => onTransitionConclusion(activeReasoningGroup.resolutionSpecId, action)
+                  : undefined}
+                question={activeReasoningGroup.question}
+              />
+            ) : null}
+          </>
+        ) : (
+          <ReasoningMatrix
+            groups={seed.reasoningGroups ?? []}
+            onSelectObject={onSelectObject}
+            selectedObjectId={selectedObjectId}
+            onTransitionConclusion={onTransitionConclusion}
+            transitionBusy={transitionBusy}
+          />
+        )}
+      </div>
       {mode === "graph" ? <div className={styles.reasoningTables}>
         {seed.reasoningPaths.map((path) => {
           const summary = path.steps

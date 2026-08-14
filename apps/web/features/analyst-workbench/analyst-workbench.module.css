@@ -1691,6 +1691,46 @@
 
 /* 推理过程图与关系图：共享 React Flow 视口，节点仍保持档案卡片语义。 */
 .reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }
+/* 画布壳独占 1fr 行铺满页面；核心问题与结论改为悬浮卡片叠加在画布上。 */
+.reasoningCanvasHost { position: relative; display: grid; min-width: 0; min-height: 0; }
+.reasoningCanvasEmpty { display: grid; max-width: 460px; gap: 8px; margin: 0; color: var(--ink-muted); font-size: 10px; line-height: 1.65; }
+.reasoningCanvasEmpty strong { color: var(--ink); font-family: "STSong", "SimSun", serif; font-size: 14px; font-weight: 600; }
+.reasoningCanvasCard {
+  position: absolute;
+  z-index: 4;
+  bottom: 10px;
+  left: 10px;
+  display: grid;
+  width: min(480px, calc(100% - 20px));
+  max-height: min(320px, 55%);
+  overflow: hidden;
+  border: 1px solid rgba(168, 75, 50, 0.42);
+  background: rgba(251, 250, 246, 0.97);
+  box-shadow: 0 6px 18px rgba(41, 44, 44, 0.14);
+  backdrop-filter: blur(4px);
+}
+.reasoningCanvasCardHeader {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(168, 75, 50, 0.28);
+}
+.reasoningCanvasCardQuestion { display: grid; min-width: 0; gap: 3px; padding: 0; color: var(--ink); border: 0; background: transparent; text-align: left; }
+.reasoningCanvasCardQuestion span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+.reasoningCanvasCardQuestion strong { font-family: "STSong", "SimSun", serif; font-size: 13px; font-weight: 600; line-height: 1.35; }
+.reasoningCanvasCardStatus { display: flex; flex: 0 0 auto; gap: 6px; }
+.reasoningCanvasCardStatus b,
+.reasoningCanvasCardStatus i { padding: 3px 7px; color: var(--ink); border: 1px solid var(--rule); background: var(--paper); font-size: 9px; font-style: normal; font-weight: 650; white-space: nowrap; }
+.reasoningCanvasCardStatus i { color: #9f4b35; border-color: rgba(168, 75, 50, 0.32); }
+.reasoningCanvasCardToggle { flex: 0 0 auto; min-height: 26px; padding: 0 8px; color: var(--ink-muted); border: 1px solid var(--rule); background: var(--paper-high); font-size: 9px; }
+.reasoningCanvasCardToggle:hover { color: var(--primary-strong); border-color: rgba(199, 139, 60, 0.5); }
+.reasoningCanvasCard button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.reasoningCanvasCardBody { min-height: 0; padding: 10px 12px 12px; overflow: auto; }
+.reasoningCanvasCardBody h3 { margin: 0 0 5px; color: var(--ink); font-family: "STSong", "SimSun", serif; font-size: 15px; font-weight: 600; line-height: 1.4; }
+.reasoningCanvasCardBody p { margin: 0; color: var(--ink-muted); font-size: 10px; line-height: 1.6; }
 .conclusionBand { display: grid; grid-template-columns: minmax(180px, 0.38fr) minmax(0, 1fr); gap: 0; margin: 0 0 12px; border: 1px solid rgba(168, 75, 50, 0.38); background: linear-gradient(115deg, rgba(168, 75, 50, 0.08), var(--paper-high) 42%); }
 .conclusionQuestion { display: grid; align-content: center; gap: 7px; padding: 16px; color: var(--ink); border: 0; border-right: 1px solid var(--rule); background: transparent; text-align: left; }
 .conclusionQuestion span, .conclusionStatusRow span { color: var(--ink-faint); font-family: "Cascadia Mono", Consolas, monospace; font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -1854,4 +1894,8 @@
   .reasoningMatrixMobile .hypothesisConclusionRole { grid-column: 1 / -1; }
   .reasoningAssessmentDetail { margin-top: 0; padding: 10px 11px 12px; }
   .reasoningMatrixEmpty { min-height: 240px; padding: 24px 16px; }
+  .reasoningCanvasCard { right: 6px; bottom: 6px; left: 6px; width: auto; max-height: 46%; }
+  .reasoningCanvasCardHeader { grid-template-columns: minmax(0, 1fr) auto; }
+  .reasoningCanvasCardQuestion { grid-column: 1 / -1; }
+  .reasoningCanvasCardToggle { padding: 0 7px; }
 }

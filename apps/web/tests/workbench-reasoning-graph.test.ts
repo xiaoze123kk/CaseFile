@@ -85,4 +85,137 @@ describe("reasoning conclusion canvas", () => {
     ]);
     expect(scene.edges).toEqual([]);
   });
+
+  it("derives the process graph from reasoning groups when no path exists", () => {
+    const groups: WorkbenchReasoningGroup[] = [{
+      resolutionSpecId: "res_guard",
+      question: "谁改写了记录？",
+      hypotheses: [
+        { id: "hyp_guard", title: "值班员", outcome: "supported" },
+        { id: "hyp_other", title: "外部人员", outcome: "eliminated" },
+      ],
+      information: [{ id: "info_gate", title: "门禁记录", reliability: "confirmed" }],
+      assessments: [
+        {
+          hypothesisId: "hyp_guard",
+          informationId: "info_gate",
+          effect: "supports",
+          strength: "strong",
+          rationale: "时段吻合。",
+        },
+        {
+          hypothesisId: "hyp_other",
+          informationId: "info_gate",
+          effect: "contradicts",
+          strength: "moderate",
+          rationale: "权限不符。",
+        },
+      ],
+      conclusion: {
+        resolutionSpecId: "res_guard",
+        question: "谁改写了记录？",
+        outcome: "answer",
+        reviewStatus: "proposed",
+        summary: "值班员改写了记录",
+        values: [],
+        selectedHypothesisIds: ["hyp_guard"],
+        supportingReasoningPathIds: [],
+        relatedEventIds: [],
+        rationale: "",
+        unresolvedGaps: [],
+      },
+    }];
+
+    const scene = buildReasoningCanvas([], [], groups);
+
+    expect(scene.nodes.map((node) => node.kind).sort()).toEqual([
+      "conclusion",
+      "evidence",
+      "hypothesis",
+      "hypothesis",
+    ]);
+    expect(scene.nodes.find((node) => node.id === "info_gate")).toMatchObject({
+      kind: "evidence",
+      caption: expect.stringContaining("信息"),
+      objectId: "info_gate",
+    });
+    expect(scene.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "supports",
+        source: "info_gate",
+        target: "hypothesis-hyp_guard",
+      }),
+      expect.objectContaining({
+        kind: "contradicts",
+        source: "info_gate",
+        target: "hypothesis-hyp_other",
+      }),
+      expect.objectContaining({
+        kind: "resolution",
+        source: "hypothesis-hyp_guard",
+        target: "resolution-conclusion:res_guard",
+      }),
+    ]));
+    expect(
+      scene.edges.filter((edge) => edge.source === "hypothesis-hyp_other"),
+    ).toEqual([]);
+  });
+
+  it("derives an argumentation sketch from the relationship graph subset", () => {
+    const scene = buildReasoningCanvas([], [], [], {
+      nodes: [
+        { objectId: "hyp_x", kind: "hypothesis", label: "假设X", directoryObjectId: "hyp_x" },
+        { objectId: "info_y", kind: "information_unit", label: "信息Y", directoryObjectId: "info_y" },
+        { objectId: "claim_z", kind: "claim", label: "主张Z", directoryObjectId: "claim_z" },
+        {
+          objectId: "resolution-conclusion:res_c",
+          kind: "resolution_spec",
+          label: "结论C",
+          directoryObjectId: "res_c",
+        },
+      ],
+      edges: [
+        { id: "e1", from: "info_y", to: "claim_z", kind: "information_support", label: "支持" },
+        { id: "e2", from: "claim_z", to: "hyp_x", kind: "hypothesis_requirement", label: "必要依据" },
+        {
+          id: "e3",
+          from: "hyp_x",
+          to: "resolution-conclusion:res_c",
+          kind: "hypothesis_conclusion",
+          label: "进入当前结论",
+        },
+      ],
+    });
+
+    expect(scene.nodes).toHaveLength(4);
+    expect(scene.nodes.find((node) => node.id === "hyp_x")).toMatchObject({
+      kind: "hypothesis",
+      objectId: "hyp_x",
+    });
+    expect(scene.nodes.find((node) => node.id === "info_y")).toMatchObject({
+      kind: "evidence",
+      objectId: "info_y",
+    });
+    expect(scene.nodes.find((node) => node.id === "claim_z")).toMatchObject({
+      kind: "reason",
+      objectId: "claim_z",
+    });
+    expect(
+      scene.nodes.find((node) => node.id === "resolution-conclusion:res_c"),
+    ).toMatchObject({ kind: "conclusion", objectId: "res_c" });
+    expect(scene.edges).toHaveLength(3);
+    expect(scene.edges.find((edge) => edge.id === "e1")).toMatchObject({
+      kind: "supports",
+    });
+    expect(scene.edges.find((edge) => edge.id === "e2")).toMatchObject({
+      kind: "evidence",
+    });
+    expect(scene.edges.find((edge) => edge.id === "e3")).toMatchObject({
+      kind: "resolution",
+    });
+  });
+
+  it("returns an empty scene when no reasoning data exists anywhere", () => {
+    expect(buildReasoningCanvas([], [], [])).toEqual({ nodes: [], edges: [] });
+  });
 });

@@ -210,8 +210,11 @@ function edgeStyle(kind: string | undefined, active: boolean) {
   if (kind === "chain") {
     return { stroke: "var(--primary)", strokeWidth: 1.5, opacity: 0.72 };
   }
-  if (kind === "supported") {
+  if (kind === "supported" || kind === "supports") {
     return { stroke: "var(--success)", strokeWidth: 1.5, opacity: 0.72 };
+  }
+  if (kind === "neutral") {
+    return { stroke: "#277a83", strokeWidth: 1.5, opacity: 0.72 };
   }
   if (kind === "contested") {
     return {
@@ -221,7 +224,7 @@ function edgeStyle(kind: string | undefined, active: boolean) {
       opacity: 0.72,
     };
   }
-  if (kind === "eliminated") {
+  if (kind === "eliminated" || kind === "contradicts") {
     return {
       stroke: "var(--issue)",
       strokeWidth: 1.5,
@@ -235,6 +238,7 @@ function edgeStyle(kind: string | undefined, active: boolean) {
 export function WorkbenchCanvasKernel({
   ariaLabel,
   direction,
+  emptyHint,
   externalSelectedNodeIds,
   identity,
   legend,
@@ -245,6 +249,7 @@ export function WorkbenchCanvasKernel({
 }: {
   ariaLabel: string;
   direction: WorkbenchCanvasDirection;
+  emptyHint?: ReactNode;
   externalSelectedNodeIds: string[];
   identity: WorkbenchCanvasLayoutIdentity;
   legend?: ReactNode;
@@ -370,6 +375,7 @@ export function WorkbenchCanvasKernel({
       void instance.setViewport(restoredViewport, { duration: 0 });
       return;
     }
+    if (!automaticNodes.length) return;
     void instance
       .fitView({ padding: 0.18, minZoom: 0.12, maxZoom: 1.2, duration: 0 })
       .then(() => {
@@ -377,14 +383,14 @@ export function WorkbenchCanvasKernel({
         viewportRef.current = fitted;
         setViewportState(fitted);
       });
-  }, [instance, storageReady]);
+  }, [instance, storageReady, automaticNodes.length]);
 
   useEffect(() => {
     function handleFullscreenChange() {
       const fullscreen = document.fullscreenElement === shellRef.current;
       setIsFullscreen(fullscreen);
       window.requestAnimationFrame(() => {
-        if (!instance) return;
+        if (!instance || !nodesRef.current.length) return;
         void instance
           .fitView({
             padding: 0.18,
@@ -667,6 +673,7 @@ export function WorkbenchCanvasKernel({
     commitFrame(before, after);
     persist(nextNodes);
     setLiveMessage("已按当前图谱结构重新整理画布。");
+    if (!nextNodes.length) return;
     void instance
       ?.fitView({ padding: 0.18, minZoom: 0.12, maxZoom: 1.2, duration: 0 })
       .then(() => {
@@ -678,7 +685,7 @@ export function WorkbenchCanvasKernel({
   }
 
   async function fitAll() {
-    if (!instance) return;
+    if (!instance || !nodesRef.current.length) return;
     await instance.fitView({
       padding: 0.18,
       minZoom: 0.12,
@@ -809,6 +816,11 @@ export function WorkbenchCanvasKernel({
         selectionOnDrag={tool === "select"}
         zoomOnDoubleClick={false}
       />
+      {!sceneNodes.length && emptyHint ? (
+        <div className={styles.canvasEmptyHint} role="note">
+          {emptyHint}
+        </div>
+      ) : null}
       {nodeLegend?.length ? (
         <div aria-label="节点类型图例" className={styles.canvasTypeLegend}>
           {nodeLegend.map((item) => (

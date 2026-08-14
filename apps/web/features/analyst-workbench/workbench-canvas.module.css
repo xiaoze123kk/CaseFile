@@ -119,6 +119,18 @@
 .canvasLegend > span[data-kind="eliminated"]::before { border-top-style: dashed; }
 .canvasLegend > span[data-kind="contested"]::before { border-top-color: var(--warning); }
 .canvasLegend > span[data-kind="eliminated"]::before { border-top-color: var(--issue); }
+.canvasLegend > span[data-kind="contradicts"]::before { border-top-color: var(--issue); border-top-style: dashed; }
+.canvasLegend > span[data-kind="neutral"]::before { border-top-color: #277a83; }
+.canvasEmptyHint {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 28px;
+  pointer-events: none;
+  text-align: center;
+}
 .canvasStorageNotice { position: absolute; z-index: 5; top: 10px; right: 102px; max-width: min(360px, calc(100% - 128px)); margin: 0; padding: 7px 10px; color: #7a5319; border: 1px solid rgba(217, 154, 62, 0.42); background: rgba(255, 245, 221, 0.95); box-shadow: 0 4px 12px rgba(41, 44, 44, 0.08); font-size: 9px; line-height: 1.45; }
 
 .zoomControls,

@@ -858,6 +858,29 @@ describe("analyst workbench", () => {
     expect(board.querySelectorAll(".react-flow__handle.connecting")).toHaveLength(0);
   });
 
+  it("keeps the reasoning process graph as a canvas shell even without reasoning data", () => {
+    render(
+      <ReasoningGraphView
+        layoutScope="empty-reasoning"
+        onSelectObject={() => undefined}
+        seed={{
+          ...defaultWorkbenchSeed,
+          reasoningPaths: [],
+          reasoningGroups: [],
+          conclusions: [],
+          graphNodes: [],
+          graphEdges: [],
+        }}
+        selectedObjectId={null}
+      />,
+    );
+
+    expect(screen.getByLabelText("推理画布")).toBeInTheDocument();
+    expect(
+      screen.getByText("当前工作稿还没有可展示的推理内容。"),
+    ).toBeInTheDocument();
+  });
+
   it("switches the complete workbench seed and keeps candidate navigation in the title row", () => {
     const { container } = renderWorkbench(<CandidateSeedHarness />);
 
