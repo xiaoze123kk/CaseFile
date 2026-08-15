@@ -1456,3 +1456,51 @@
     animation-iteration-count: 1 !important;
   }
 }
+
+.briefEditor {
+  border: 0;
+  padding: 0;
+  margin-inline: 0;
+  min-width: 0;
+}
+
+.frozenNotice {
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  color: var(--ink-muted);
+  background: rgba(255, 250, 247, 0.96);
+  font-size: 12px;
+}
+
+.exampleConfirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  color: var(--ink-muted);
+  background: var(--paper-low);
+  font-size: 12px;
+}
+
+.exampleConfirm p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.exampleConfirm button,
+.suggestionConfirm {
+  padding: 5px 9px;
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  background: transparent;
+  font-size: 11px;
+}
+
+.suggestionConfirm {
+  margin-top: 8px;
+}

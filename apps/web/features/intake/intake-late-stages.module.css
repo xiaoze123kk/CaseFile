@@ -850,6 +850,31 @@
   background: var(--red-soft);
 }
 
+.reviewFieldset {
+  display: contents;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.acknowledgeRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 9px 11px;
+  border: 1px solid var(--hairline);
+  background: var(--paper-low);
+  color: var(--ink-muted);
+  font-size: var(--font-caption);
+  line-height: 1.5;
+}
+
+.acknowledgeRow input {
+  margin-top: 2px;
+}
+
 .generateButton span,
 .generateButton b {
   display: block;

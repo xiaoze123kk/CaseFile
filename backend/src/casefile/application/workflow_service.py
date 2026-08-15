@@ -1108,6 +1108,20 @@ class WorkflowService:
             content = _validate_brief(brief.draft_jsonb)
             self._validate_brief_sources(owned, content)
             _require_confirmed_atomics(content)
+            if brief.current_version_id is not None:
+                existing = self.session.get(
+                    BriefVersion, brief.current_version_id
+                )
+                if existing is not None and existing.content_hash == _json_hash(
+                    content
+                ):
+                    # 幂等确认：同一份草稿重复冻结时返回已有版本，不再递增版本号。
+                    return _brief_version_view(existing, brief.public_id)
+                raise ApplicationError(
+                    "brief_already_confirmed_content_changed",
+                    "创作简报已经冻结；修改内容请先建立简报修订。",
+                    status_code=409,
+                )
             next_version = int(
                 self.session.scalar(
                     select(func.coalesce(func.max(BriefVersion.version_no), 0) + 1).where(

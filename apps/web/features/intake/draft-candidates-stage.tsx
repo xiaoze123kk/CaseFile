@@ -144,6 +144,12 @@ export function DraftCandidatesStage() {
   ) ?? null;
   const cancelling = selectedSlot?.latestTask?.status === "cancelling";
 
+  // 最新一份待采用候选在未手动收起时默认展开，避免“预览/采用”被折叠卡片藏起来。
+  const latestPendingCandidateId =
+    currentCandidates
+      .filter((candidate) => candidate.id !== state.adoptedCandidateId)
+      .at(-1)?.id ?? null;
+
   useEffect(() => {
     if (!ready || analysis.status !== "idle" || analysisStartedRef.current) return;
     analysisStartedRef.current = true;
@@ -251,7 +257,10 @@ export function DraftCandidatesStage() {
     index: number,
   ) {
     const status = candidateStatus(candidate);
-    const expanded = expandedCandidateId === candidate.id;
+    const expanded =
+      expandedCandidateId === candidate.id ||
+      (expandedCandidateId === null &&
+        candidate.id === latestPendingCandidateId);
     return (
       <article
         className={styles.candidateCard}
@@ -263,7 +272,9 @@ export function DraftCandidatesStage() {
         <button
           aria-expanded={expanded}
           className={styles.candidateSummary}
-          onClick={() => setExpandedCandidateId(expanded ? null : candidate.id)}
+          onClick={() =>
+            setExpandedCandidateId(expanded ? "__collapsed__" : candidate.id)
+          }
           type="button"
         >
           <span>{String(index + 1).padStart(2, "0")}</span>
@@ -330,7 +341,7 @@ export function DraftCandidatesStage() {
     <section className={styles.candidatesStage} aria-labelledby="candidates-stage-title">
       <header className={styles.stageHeader}>
         <div>
-          <span>创作简报 → 策略选择 → 完整工作稿</span>
+          <span>第 5 步 / 深稿候选与采用</span>
           <h1 id="candidates-stage-title">先选定创作策略，再生成一份完整深稿。</h1>
         </div>
         <dl>

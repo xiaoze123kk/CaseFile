@@ -886,6 +886,17 @@ def test_source_polish_extract_recovery_and_human_confirmation(
         assert confirmed["content"]["author_anchors"]
         assert confirmed["content"]["creative_constraints"]
 
+        # 重复冻结同一份草稿必须幂等返回同一版本，不能静默递增版本号。
+        with factory() as session:
+            workflow = WorkflowService(session)
+            reconfirmed = workflow.confirm_brief(
+                actor_id,
+                project_id,
+                expected_revision=saved_reviewed["draft_revision"],
+            )
+        assert reconfirmed["brief_version_id"] == confirmed["brief_version_id"]
+        assert reconfirmed["version_no"] == confirmed["version_no"]
+
 
 def test_strategy_options_reuse_frozen_brief_unless_refresh_is_explicit(
     workflow_database: tuple[Engine, int, str],

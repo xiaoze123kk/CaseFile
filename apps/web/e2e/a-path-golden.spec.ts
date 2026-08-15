@@ -191,6 +191,9 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   await expect(
     page.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
   ).toBeVisible();
+  await page
+    .getByRole("checkbox", { name: /我已逐条核对答案要点与创作规则/u })
+    .check();
   await page.getByRole("button", { name: "保存审阅" }).click();
   const freezeButton = page.getByRole("button", { name: /确认并冻结/ });
   await expect(freezeButton).toBeEnabled();
@@ -291,7 +294,6 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
     contentType: "application/json",
   });
 
-  await candidateCard.getByRole("button").first().click();
   const candidateCompletedAt = candidateCard.getByTestId(
     `candidate-completed-at-${generatedCandidate.task_run_id}`,
   );
@@ -301,6 +303,9 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   const adoptionButton = candidateCard.getByRole("button", {
     name: /采用为当前工作稿/,
   });
+  // 新生成的候选默认展开，预览与采用动作直接可见。
+  await expect(previewButton).toBeVisible();
+  await expect(adoptionButton).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   const expectedCompletedAt = new Intl.DateTimeFormat("zh-CN", {
@@ -409,7 +414,16 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
     .getByRole("region", { name: "当前简报完整深稿" })
     .locator("article")
     .filter({ hasText: generatedCandidate.title });
-  await restoredCandidateCard.getByRole("button").first().click();
+  if (
+    (await restoredCandidateCard
+      .getByRole("button", { name: /采用为当前工作稿/ })
+      .count()) === 0
+  ) {
+    await restoredCandidateCard.getByRole("button").first().click();
+  }
+  await expect(
+    restoredCandidateCard.getByRole("button", { name: /采用为当前工作稿/ }),
+  ).toBeVisible();
   await restoredCandidateCard
     .getByRole("button", { name: /采用为当前工作稿/ })
     .click();
@@ -516,7 +530,13 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
     .getByRole("region", { name: "当前简报完整深稿" })
     .locator("article")
     .filter({ hasText: "氛围优先" });
-  await candidateBCard.getByRole("button").first().click();
+  if (
+    (await candidateBCard
+      .getByRole("button", { name: /采用为当前工作稿/u })
+      .count()) === 0
+  ) {
+    await candidateBCard.getByRole("button").first().click();
+  }
   await expect(
     candidateBCard.getByTestId(
       `candidate-completed-at-${generatedCandidateB!.task_run_id}`,

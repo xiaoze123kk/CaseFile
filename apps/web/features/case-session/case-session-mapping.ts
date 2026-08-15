@@ -379,7 +379,8 @@ export function mapBriefContentToReview(
     creativeConstraints,
     pendingDecisions,
     dirty: false,
-    saved: true,
+    // 正式审阅要求作者先显式保存一次，不再把“刚进入审阅”当作“已保存”。
+    saved: false,
   };
 }
 

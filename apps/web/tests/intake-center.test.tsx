@@ -34,7 +34,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 function buildFakeBackend() {
-  const questions: BriefIntakeQuestionView[] = [
+  const defaultQuestions: BriefIntakeQuestionView[] = [
     {
       question_key: "reasoning_goal",
       ordinal: 1,
@@ -61,6 +61,7 @@ function buildFakeBackend() {
       answer_source: null,
     },
   ];
+  let questionBatch: BriefIntakeQuestionView[] = defaultQuestions;
 
   let revision = 1;
   let sourceSeq = 0;
@@ -83,6 +84,7 @@ function buildFakeBackend() {
   let failOpenaiAuth = false;
   let failNextAnchorExtract = false;
   let failNextQuestionRevision = false;
+  let failNextQuestionGeneration = false;
   const generationDraftRevisions: number[] = [];
   const generationDraftIds: number[] = [];
   const adoptionCurrentDraftIds: number[] = [];
@@ -255,7 +257,7 @@ function buildFakeBackend() {
     if (taskType === "brief_intake_questions") {
       const additional = currentQuestions.length > 0;
       const batchNumber = Math.floor(currentQuestions.length / 2) + 1;
-      const nextQuestions = questions.map((question, index) => ({
+      const nextQuestions = questionBatch.map((question, index) => ({
         ...question,
         question_key: additional
           ? `${question.question_key}_${batchNumber}`
@@ -506,6 +508,43 @@ function buildFakeBackend() {
     setFailNextQuestionRevision: (value: boolean) => {
       failNextQuestionRevision = value;
     },
+    setFailNextQuestionGeneration: (value: boolean) => {
+      failNextQuestionGeneration = value;
+    },
+    setQuestionBatch: (value: BriefIntakeQuestionView[]) => {
+      questionBatch = value.map((question, index) => ({
+        ...question,
+        ordinal: index + 1,
+      }));
+    },
+    resetAll: () => {
+      revision = 1;
+      sourceSeq = 0;
+      source = null;
+      currentQuestions = [];
+      candidates = [];
+      currentCandidateId = null;
+      briefRevision = 1;
+      briefVersionId = null;
+      versionNo = 0;
+      briefContent = null;
+      formalBriefReview = false;
+      draftCandidates = [];
+      taskSeq = 100;
+      taskTypes.clear();
+      taskProviders.clear();
+      questionBatch = defaultQuestions;
+      configuredProviders = ["openai"];
+      failOpenaiAuth = false;
+      failNextAnchorExtract = false;
+      failNextQuestionRevision = false;
+      failNextQuestionGeneration = false;
+      failNextDraftAdoption = false;
+      draftAdoptionGate = null;
+      generationDraftRevisions.length = 0;
+      generationDraftIds.length = 0;
+      adoptionCurrentDraftIds.length = 0;
+    },
     setFailNextDraftAdoption: (value: boolean) => {
       failNextDraftAdoption = value;
     },
@@ -613,6 +652,10 @@ function buildFakeBackend() {
       expectedRevision: number,
       provider: string,
     ) => {
+      if (failNextQuestionGeneration) {
+        failNextQuestionGeneration = false;
+        throw new Error("追问服务暂不可用，请稍后重试或手动建案。");
+      }
       if (failNextQuestionRevision) {
         failNextQuestionRevision = false;
         revision += 1;
@@ -891,12 +934,7 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
   vi.useRealTimers();
   routerPush.mockReset();
-  fake.backend.setConfiguredProviders(["openai"]);
-  fake.backend.setFailOpenaiAuth(false);
-  fake.backend.setFailNextAnchorExtract(false);
-  fake.backend.setFailNextQuestionRevision(false);
-  fake.backend.setFailNextDraftAdoption(false);
-  fake.backend.setDraftAdoptionGate(null);
+  fake.backend.resetAll();
   fake.backend.resetProjects();
 });
 
@@ -980,6 +1018,10 @@ describe("intake center", () => {
 
     expect(
       screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    ).toBeInTheDocument();
+    // 成功反馈必须进入可见的 live region，而不是只写进未渲染的 state。
+    expect(
+      screen.getByText("起案原文已记录，进入关键追问。"),
     ).toBeInTheDocument();
     const returnToOriginal = screen.getByRole("button", {
       name: "← 返回原稿",
@@ -1105,13 +1147,22 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     expect(
       screen
-        .getByRole("button", { name: "03 成案 创作简报草案" })
+        .getByRole("button", { name: "03 校核 创作简报草案" })
         .closest("li"),
     ).toHaveAttribute("data-complete", "true");
     expect(screen.getByLabelText("审阅作者答案原文")).toHaveValue(
       "我自己的结论：真正的发送者是未来的档案修复师。",
     );
     const freeze = screen.getByRole("button", { name: /确认并冻结/u });
+    // 首次进入审阅必须显式核对并保存，冻结才解锁。
+    expect(freeze).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /我已逐条核对答案要点与创作规则/u,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存审阅" }));
+    await flush();
     expect(freeze).toBeEnabled();
     expect(
       screen.getByText("已满足冻结条件；确认后会保存当前审阅并创建不可变版本。"),
@@ -1122,6 +1173,14 @@ describe("intake center", () => {
     expect(
       screen.getByRole("heading", { name: "先选定创作策略，再生成一份完整深稿。" }),
     ).toBeInTheDocument();
+
+    // 冻结后回到审阅页必须只读，不允许再次直接冻结。
+    fireEvent.click(
+      screen.getByRole("button", { name: "04 审阅 创作简报审阅" }),
+    );
+    expect(screen.getByRole("button", { name: "已冻结" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "← 返回深稿候选" }));
+
     await waitFor(() => {
       expect(screen.getByText(/Agent 建议：推理优先/u)).toBeInTheDocument();
     });
@@ -1150,7 +1209,10 @@ describe("intake center", () => {
     expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /第七码互证稿/u })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /缺页校准稿/u }));
+    // 新生成的候选默认展开，采用与预览直接可见。
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "预览工作台" })).toBeVisible(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "预览工作台" }));
     expect(routerPush).toHaveBeenLastCalledWith(
       expect.stringMatching(/^\/workbench\?project=1&preview=\d+$/u),
@@ -1196,15 +1258,169 @@ describe("intake center", () => {
     expect(routerPush).toHaveBeenCalledTimes(1);
     expect(routerPush).toHaveBeenLastCalledWith("/workbench?project=1");
     expect(
-      screen.getByRole("button", { name: /打开分析师工作台/u }),
+      screen.getByRole("button", { name: /进入分析师工作台/u }),
     ).toBeInTheDocument();
 
     routerPush.mockClear();
     fireEvent.click(
-      screen.getByRole("button", { name: /打开分析师工作台/u }),
+      screen.getByRole("button", { name: /进入分析师工作台/u }),
     );
     expect(routerPush).toHaveBeenCalledWith("/workbench?project=1");
+
+    // 建立简报修订后，审阅与深稿候选在重新冻结前必须不可达。
+    fireEvent.click(screen.getByRole("button", { name: "建立简报修订" }));
+    expect(
+      screen.getByRole("heading", {
+        name: "确认整体方向，再交给正式审阅。",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "04 审阅 创作简报审阅" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "05 采用 深稿候选与采用" }),
+    ).toBeDisabled();
   }, 15_000);
+
+  it("lets the author form a brief when the agent decides no questions are needed", async () => {
+    fake.backend.setQuestionBatch([]);
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: {
+        value:
+          "一名档案员发现三份可靠记录指向一段不存在的时间；结论由 Agent 在深稿中拟定，规模一晚完成。",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    expect(
+      screen.getByText(/无需追问；可以直接形成创作简报/u),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
+    expect(screen.getAllByText("无需追问").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /形成创作简报/u }));
+    await flush();
+    expect(
+      screen.getByRole("heading", {
+        name: "确认整体方向，再交给正式审阅。",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("treats an all-optional question set as answerable", async () => {
+    fake.backend.setQuestionBatch([
+      {
+        question_key: "experience_scale",
+        ordinal: 1,
+        prompt: "你希望它是一晚完成的小案，还是长案？",
+        impact: "影响角色数量与时长。",
+        required: false,
+        suggestions: ["一晚完成。", "三幕长案。"],
+        answer_status: "unanswered",
+        answer_text: null,
+        answer_source: null,
+      },
+      {
+        question_key: "tone",
+        ordinal: 2,
+        prompt: "希望偏克制还是偏戏剧？",
+        impact: "影响叙事语气。",
+        required: false,
+        suggestions: ["克制", "戏剧化"],
+        answer_status: "unanswered",
+        answer_text: null,
+        answer_source: null,
+      },
+    ]);
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "一段不存在的时间。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    expect(screen.getAllByText("可以暂缓")).toHaveLength(2);
+    expect(screen.queryByText("必须回答")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
+  });
+
+  it("confirms before replacing a non-empty idea with the sample", async () => {
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "我已经写下的灵感。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "载入示例" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "载入示例会替换当前已输入的最初想法。",
+    );
+    expect(screen.getByLabelText("写下最初想法")).toHaveValue(
+      "我已经写下的灵感。",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "仍要载入" }));
+    expect(
+      (screen.getByLabelText("写下最初想法") as HTMLTextAreaElement).value,
+    ).toContain("档案");
+  });
+
+  it("keeps manual briefing available when question generation fails", async () => {
+    fake.backend.setFailNextQuestionGeneration(true);
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "一段不存在的时间。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    expect(
+      screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "追问服务暂不可用，请稍后重试或手动建案。",
+    );
+    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /手动建立简报/u }),
+    ).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /手动建立简报/u }));
+    await flush();
+    expect(
+      screen.getByRole("heading", {
+        name: "确认整体方向，再交给正式审阅。",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("blocks stepper jumps that would bypass persisting the source text", async () => {
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "已保存的初始想法。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+    fireEvent.click(screen.getByRole("button", { name: "01 输入 最初想法" }));
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "尚未保存的改动。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "02 追问 关键追问" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "最初想法尚未保存，请先点击“继续关键追问”。",
+    );
+    expect(screen.getByLabelText("写下最初想法")).toHaveValue(
+      "尚未保存的改动。",
+    );
+  });
 
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {
     fake.backend.setConfiguredProviders(["openai", "deepseek"]);
@@ -1222,7 +1438,8 @@ describe("intake center", () => {
     expect(
       screen.getByText("玩家最终必须回答哪一个问题？"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeEnabled();
+    // 必答问题未回答时仍应阻断成案；本测试验证 provider 回退与追问补充。
+    expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeDisabled();
 
     fireEvent.click(
       screen.getByRole("button", { name: "再生成一些问题" }),

@@ -173,6 +173,10 @@ describe("case session candidate mapping", () => {
       { id: "constraint-agent-2", statement: "氛围克制", strength: "soft", origin: "agent" },
       { id: "constraint-agent-3", statement: "不使用超自然解释", strength: "hard", origin: "agent" },
     ]);
+    // 首次进入审阅不算“已保存”，必须显式保存后才能冻结。
+    expect(review.saved).toBe(false);
+    expect(canFreezeBriefReview(review)).toBe(false);
+    review.saved = true;
     expect(canFreezeBriefReview(review)).toBe(true);
   });
 
@@ -203,6 +207,9 @@ describe("case session candidate mapping", () => {
         origin: "agent",
       },
     ]);
+    expect(review.saved).toBe(false);
+    expect(canFreezeBriefReview(review)).toBe(false);
+    review.saved = true;
     expect(canFreezeBriefReview(review)).toBe(true);
   });
 
@@ -233,6 +240,9 @@ describe("case session candidate mapping", () => {
     expect(review.creativeConstraints).toEqual([
       { id: "constraint_1", statement: "Agent 拆解出的原子项", strength: "hard", origin: "agent" },
     ]);
+    expect(review.saved).toBe(false);
+    expect(canFreezeBriefReview(review)).toBe(false);
+    review.saved = true;
     expect(canFreezeBriefReview(review)).toBe(true);
   });
 

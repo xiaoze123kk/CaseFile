@@ -506,7 +506,8 @@
 }
 
 .sessionStatus,
-.sessionStatusError {
+.sessionStatusError,
+.sessionNotice {
   grid-column: 1 / -1;
   margin: 12px 20px 0;
   padding: 9px 12px;
@@ -515,6 +516,23 @@
   color: var(--ink-muted);
   background: rgba(255, 250, 247, 0.96);
   font-size: 12px;
+}
+
+.sessionNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-left-color: var(--accent);
+}
+
+.sessionNotice button {
+  padding: 0 6px;
+  border: 0;
+  color: var(--ink-faint);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1;
 }
 
 .sessionStatusError {

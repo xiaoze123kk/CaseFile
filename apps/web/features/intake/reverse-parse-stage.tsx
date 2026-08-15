@@ -578,6 +578,7 @@ export default function ReverseParseStage({ onFormed }: ReverseParseStageProps) 
                             key={item.id}
                             onConfirm={() => void handleConfirm(item.id, "confirm")}
                             onReject={() => void handleConfirm(item.id, "reject")}
+                            // eslint-disable-next-line react-hooks/refs -- sourcePaneRef 只在 requestAnimationFrame 回调内读取。
                             onShowSource={() => handleShowSource(item)}
                           />
                         ))}

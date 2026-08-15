@@ -135,10 +135,10 @@ export const intakeSteps: Array<{
   shortLabel: string;
 }> = [
   { id: "idea", no: "01", label: "最初想法", shortLabel: "输入" },
-  { id: "questions", no: "02", label: "关键追问", shortLabel: "研查" },
-  { id: "confirmation", no: "03", label: "创作简报草案", shortLabel: "成案" },
-  { id: "review", no: "04", label: "创作简报审阅", shortLabel: "活化" },
-  { id: "candidates", no: "05", label: "触达工作格", shortLabel: "决策" },
+  { id: "questions", no: "02", label: "关键追问", shortLabel: "追问" },
+  { id: "confirmation", no: "03", label: "创作简报草案", shortLabel: "校核" },
+  { id: "review", no: "04", label: "创作简报审阅", shortLabel: "审阅" },
+  { id: "candidates", no: "05", label: "深稿候选与采用", shortLabel: "采用" },
 ];
 
 export const intakeRoutes = [
@@ -555,12 +555,14 @@ export function atomicReviewComplete(review: BriefReview) {
   const anchorsComplete =
     review.resolutionMode !== "author_anchored" ||
     (!review.authorAnswer.trim() && review.authorAnchors.length === 0) ||
-    review.authorAnchors.some((anchor) => anchor.statement.trim());
+    (review.authorAnchors.length > 0 &&
+      review.authorAnchors.every((anchor) => anchor.statement.trim()));
   const constraintsComplete =
     !review.boundaryText.trim() ||
-    review.creativeConstraints.some((constraint) =>
-      Boolean(constraint.statement.trim()),
-    );
+    (review.creativeConstraints.length > 0 &&
+      review.creativeConstraints.every((constraint) =>
+        Boolean(constraint.statement.trim()),
+      ));
   return anchorsComplete && constraintsComplete;
 }
 

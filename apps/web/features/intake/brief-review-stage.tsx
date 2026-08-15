@@ -42,8 +42,11 @@ export function BriefReviewStage() {
     "逐条核对后先保存审阅，再冻结为不可变生成依据。",
   );
   const [freezing, setFreezing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [atomicsAcknowledged, setAtomicsAcknowledged] = useState(false);
   const manualSequence = useRef(0);
   const reviewState = state.review;
+  const frozen = state.frozenBriefVersion !== null;
 
   if (!reviewState) {
     return (
@@ -63,6 +66,7 @@ export function BriefReviewStage() {
   const review: BriefReview = reviewState;
 
   function commit(next: BriefReview) {
+    if (frozen) return;
     setReview(next);
     setError(null);
   }
@@ -108,6 +112,7 @@ export function BriefReviewStage() {
   }
 
   async function reextract() {
+    if (frozen) return;
     setError(null);
     try {
       const next = await reextractFromServer();
@@ -154,23 +159,39 @@ export function BriefReviewStage() {
   }
 
   async function handleSave() {
+    if (frozen) return;
     const blockers = reviewFieldBlockers(review);
     if (blockers.length) {
       setError(`保存前请补齐：${blockers.join("、")}。`);
       return;
     }
+    if (!atomicsAcknowledged) {
+      setError("请先勾选“我已逐条核对答案要点与创作规则”。");
+      return;
+    }
+    setSaving(true);
     setError(null);
     try {
       await saveReview();
       setNotice("审阅已保存。答案要点与创作规则完整后即可冻结。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "审阅保存失败。");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleFreeze() {
+    if (frozen) {
+      setError("创作简报已经冻结。需要修改请先建立简报修订。");
+      return;
+    }
     if (review.dirty || !review.saved) {
       setError("请先保存当前审阅修改。 ");
+      return;
+    }
+    if (!atomicsAcknowledged) {
+      setError("请先勾选“我已逐条核对答案要点与创作规则”。");
       return;
     }
     if (!atomicReviewComplete(review)) {
@@ -192,25 +213,32 @@ export function BriefReviewStage() {
   }
 
   const atomicsComplete = atomicReviewComplete(review);
+  const atomicsReady = atomicsComplete && atomicsAcknowledged;
   const fieldBlockers = reviewFieldBlockers(review);
   const freezeReady =
+    !frozen &&
+    atomicsAcknowledged &&
     review.saved &&
     !review.dirty &&
     atomicsComplete &&
     fieldBlockers.length === 0;
-  const freezeGuidance = fieldBlockers.length
-    ? `冻结前请补齐：${fieldBlockers.join("、")}。`
-    : review.dirty || !review.saved
-      ? "冻结前请先保存当前审阅修改。"
-      : !atomicsComplete
-        ? "冻结前请确认答案要点与创作规则；如已修改原文，可重新整理或手动新增。"
-        : "已满足冻结条件；确认后会保存当前审阅并创建不可变版本。";
+  const freezeGuidance = frozen
+    ? `简报已冻结为 V${String(state.frozenBriefVersion ?? 1).padStart(2, "0")}；需要修改请先建立简报修订。`
+    : fieldBlockers.length
+      ? `冻结前请补齐：${fieldBlockers.join("、")}。`
+      : !atomicsAcknowledged
+        ? "请逐条核对答案要点与创作规则，并勾选确认。"
+        : review.dirty || !review.saved
+          ? "冻结前请先保存当前审阅修改。"
+          : !atomicsComplete
+            ? "冻结前请确认答案要点与创作规则；如已修改原文，可重新整理或手动新增。"
+            : "已满足冻结条件；确认后会保存当前审阅并创建不可变版本。";
 
   return (
     <section className={styles.reviewStage} aria-labelledby="review-stage-title">
       <header className={styles.stageHeader}>
         <div>
-          <span>创作简报审阅 · 作者控制</span>
+          <span>第 4 步 / 审阅与冻结 · 作者控制</span>
           <h1 id="review-stage-title">把生成依据逐条钉在纸面上。</h1>
         </div>
         <dl>
@@ -220,7 +248,15 @@ export function BriefReviewStage() {
           </div>
           <div>
             <dt>审阅状态</dt>
-            <dd>{review.dirty ? "有未保存修改" : review.saved ? "已保存" : "待保存"}</dd>
+            <dd>
+              {frozen
+                ? "已冻结"
+                : review.dirty
+                  ? "有未保存修改"
+                  : review.saved
+                    ? "已保存"
+                    : "待确认"}
+            </dd>
           </div>
         </dl>
       </header>
@@ -233,6 +269,7 @@ export function BriefReviewStage() {
             handleSave();
           }}
         >
+          <fieldset className={styles.reviewFieldset} disabled={frozen}>
           <div className={styles.paperIndex} aria-hidden="true">
             <span>BRIEF</span>
             <b>04</b>
@@ -242,8 +279,14 @@ export function BriefReviewStage() {
               <small>目标无关创作简报</small>
               <strong>{review.reasoningProposition || "等待核心命题"}</strong>
             </div>
-            <span data-state={freezeReady ? "ready" : "editing"}>
-              {freezeReady ? "可冻结" : review.dirty ? "待保存" : "待确认"}
+            <span data-state={frozen || freezeReady ? "ready" : "editing"}>
+              {frozen
+                ? "已冻结"
+                : freezeReady
+                  ? "可冻结"
+                  : review.dirty
+                    ? "待保存"
+                    : "待确认"}
             </span>
           </header>
 
@@ -449,6 +492,16 @@ export function BriefReviewStage() {
             )}
           </section>
 
+          <label className={styles.acknowledgeRow}>
+            <input
+              checked={atomicsAcknowledged}
+              disabled={frozen}
+              onChange={(event) => setAtomicsAcknowledged(event.target.checked)}
+              type="checkbox"
+            />
+            我已逐条核对答案要点与创作规则；未勾选时不能保存审阅或冻结。
+          </label>
+
           <p
             className={styles.freezeGuidance}
             data-ready={freezeReady}
@@ -459,9 +512,17 @@ export function BriefReviewStage() {
           </p>
           {error ? <p className={styles.formError} role="alert">{error}</p> : null}
           <footer className={styles.reviewActions}>
-            <button onClick={reextract} type="button">重新整理答案要点和创作规则</button>
+            <button
+              disabled={saving || freezing}
+              onClick={reextract}
+              type="button"
+            >
+              重新整理答案要点和创作规则
+            </button>
             <div>
-              <button type="submit">保存审阅</button>
+              <button disabled={saving || freezing} type="submit">
+                {saving ? "正在保存审阅…" : "保存审阅"}
+              </button>
               <button
                 aria-describedby="freeze-guidance"
                 data-primary="true"
@@ -469,17 +530,33 @@ export function BriefReviewStage() {
                 onClick={handleFreeze}
                 title={freezeReady ? "确认并冻结简报" : freezeGuidance}
                 type="button"
-              >{freezing ? "正在冻结…" : "确认并冻结 →"}</button>
+              >
+                {frozen
+                  ? "已冻结"
+                  : freezing
+                    ? "正在冻结…"
+                    : "确认并冻结 →"}
+              </button>
             </div>
           </footer>
+          </fieldset>
         </form>
 
         <aside className={styles.reviewLedger}>
           <header><span>生成门禁</span><strong>作者确认卷</strong></header>
           <ol>
-            <li data-complete={atomicsComplete}>
-              <b>{atomicsComplete ? "✓" : "1"}</b>
-              <span><strong>答案与规则</strong><small>{atomicsComplete ? "内容完整" : "等待确认"}</small></span>
+            <li data-complete={atomicsReady}>
+              <b>{atomicsReady ? "✓" : "1"}</b>
+              <span>
+                <strong>答案与规则</strong>
+                <small>
+                  {atomicsAcknowledged
+                    ? atomicsComplete
+                      ? "已逐条核对"
+                      : "内容未完整"
+                    : "等待核对"}
+                </small>
+              </span>
             </li>
             <li data-complete={review.saved && !review.dirty}>
               <b>{review.saved && !review.dirty ? "✓" : "2"}</b>
@@ -487,7 +564,7 @@ export function BriefReviewStage() {
             </li>
             <li data-complete={freezeReady}>
               <b>{freezeReady ? "✓" : "3"}</b>
-              <span><strong>冻结简报</strong><small>{freezeReady ? "可以冻结" : "门禁未通过"}</small></span>
+              <span><strong>冻结简报</strong><small>{frozen ? "已冻结" : freezeReady ? "可以冻结" : "门禁未通过"}</small></span>
             </li>
           </ol>
           <section>
@@ -507,9 +584,13 @@ export function BriefReviewStage() {
           <p className={styles.ledgerNotice} aria-live="polite">{notice}</p>
           <button
             className={styles.backToBrief}
-            onClick={() => patchState({ step: "confirmation" })}
+            onClick={() =>
+              patchState({ step: frozen ? "candidates" : "confirmation" })
+            }
             type="button"
-          >← 返回简报成案</button>
+          >
+            {frozen ? "← 返回深稿候选" : "← 返回简报成案"}
+          </button>
         </aside>
       </div>
     </section>

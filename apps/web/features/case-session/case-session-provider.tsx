@@ -397,6 +397,7 @@ export function caseSessionReducer(
     return {
       ...state,
       step: "confirmation",
+      furthestStep: Math.min(state.furthestStep, 2),
       brief: state.review
         ? mergeReviewIntoBrief(state.brief, state.review)
         : state.brief,
@@ -1027,6 +1028,10 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
   const freezeReview = useCallback(async () => {
     const current = stateRef.current;
     if (!current.review || !canFreezeBriefReview(current.review)) return false;
+    if (current.frozenBriefVersion !== null) {
+      // 已冻结的版本不允许直接再次确认；修改必须走“建立简报修订”。
+      return false;
+    }
     const projectId = projectIdRef.current;
     if (projectId === null) return false;
     // adopt 投影只产出边界原文、不产出原子约束；冻结前先持久化审阅，
@@ -1695,6 +1700,8 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       review = mapBriefContentToReview(brief.content, pendingDecisions);
       const frozenVersionNo = brief.current_version_no ?? null;
       if (brief.current_version_id !== null && frozenVersionNo !== null) {
+        // 简报已冻结：审阅页按“已冻结”恢复，不再要求作者重新保存。
+        review = { ...review, dirty: false, saved: true };
         // 简报已冻结：回到候选稿步骤，恢复工作稿列表与采用状态。
         frozenBriefVersion = frozenVersionNo;
         step = "candidates";

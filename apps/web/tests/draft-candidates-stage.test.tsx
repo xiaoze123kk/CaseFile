@@ -311,8 +311,7 @@ describe("draft candidate completion time", () => {
     installSession(candidateState(candidate));
 
     render(<DraftCandidatesStage />);
-    fireEvent.click(screen.getByRole("button", { name: /完成时间候选/u }));
-
+    // 最新待采用候选默认展开，完成时间直接可见。
     expect(candidate.candidateState?.completedAt).toBe(completedAt);
     expect(screen.getByTestId("candidate-completed-at-401")).toHaveTextContent(
       fallback ?? formatCandidateCompletedAt(completedAt),
