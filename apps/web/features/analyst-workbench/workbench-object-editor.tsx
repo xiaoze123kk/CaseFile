@@ -3,17 +3,18 @@
 import type { CaseFileDocument } from "@/lib/api-client";
 import { useMemo, useState } from "react";
 
-import type { TimelineEvent } from "./analyst-fixture";
 import {
   buildObjectDetailModel,
   findWorkbenchDetailObject,
   type DetailField,
+  type DetailKnowledgeState,
   type DetailObject,
+  type DetailReference,
   type ObjectDetailModel,
 } from "./workbench-object-detail-model";
+import type { ContextFieldCitation } from "./workbench-provenance-model";
 import {
   classificationLabel,
-  formatCaseWallClock,
   objectSubtypeLabel,
   reliabilityLabel,
 } from "./workbench-presenters";
@@ -206,18 +207,201 @@ function defaultConclusionForResolution(
   };
 }
 
+function KnowledgeItem({
+  reference,
+  onSelectObject,
+}: {
+  reference: DetailReference;
+  onSelectObject: (objectId: string) => void;
+}) {
+  if (reference.selectable && !reference.missing) {
+    return (
+      <button
+        aria-label={`查看${reference.kindLabel}“${reference.label}”`}
+        className={styles.knowledgeItem}
+        onClick={() => onSelectObject(reference.id)}
+        title={`查看${reference.kindLabel}“${reference.label}”`}
+        type="button"
+      >
+        {reference.label}
+        <small>{reference.kindLabel}</small>
+      </button>
+    );
+  }
+  return (
+    <span className={styles.knowledgeItem} data-missing={reference.missing}>
+      {reference.label}
+      <small>{reference.kindLabel}</small>
+    </span>
+  );
+}
+
+function KnowledgeCognitionLine({
+  label,
+  references,
+  tone,
+  onSelectObject,
+}: {
+  label: string;
+  references: DetailReference[];
+  tone: "known" | "believed" | "false";
+  onSelectObject: (objectId: string) => void;
+}) {
+  return (
+    <div className={styles.cognitionLine}>
+      <span className={styles.cognitionLabel} data-tone={tone}>
+        {label}
+      </span>
+      <div className={styles.cognitionValues}>
+        {references.length
+          ? references.map((reference) => (
+              <KnowledgeItem
+                key={reference.id}
+                onSelectObject={onSelectObject}
+                reference={reference}
+              />
+            ))
+          : <span className={styles.cognitionEmpty}>—（无）</span>}
+      </div>
+    </div>
+  );
+}
+
+function KnowledgeMilestone({
+  state,
+  onSelectObject,
+}: {
+  state: DetailKnowledgeState;
+  onSelectObject: (objectId: string) => void;
+}) {
+  const eventContent = (
+    <>
+      <span className={styles.milestoneEventName}>{state.asOf.label}</span>
+      <span className={styles.milestoneEventTag}>事件</span>
+    </>
+  );
+  return (
+    <li className={styles.knowledgeMilestone}>
+      <span aria-hidden="true" className={styles.milestoneNode} />
+      <div className={styles.milestoneBody}>
+        <div className={styles.milestoneHeading}>
+          <span className={styles.milestoneAsOf}>截至</span>
+          {state.asOf.selectable && !state.asOf.missing ? (
+            <button
+              aria-label={`跳转查看截至事件“${state.asOf.label}”`}
+              className={styles.milestoneEvent}
+              onClick={() => onSelectObject(state.asOf.id)}
+              type="button"
+            >
+              {eventContent}
+            </button>
+          ) : (
+            <span
+              className={styles.milestoneEvent}
+              data-missing={state.asOf.missing}
+            >
+              {eventContent}
+            </span>
+          )}
+        </div>
+        <div className={styles.cognitionLines}>
+          <KnowledgeCognitionLine
+            label="已知"
+            onSelectObject={onSelectObject}
+            references={state.known}
+            tone="known"
+          />
+          <KnowledgeCognitionLine
+            label="相信"
+            onSelectObject={onSelectObject}
+            references={state.believes}
+            tone="believed"
+          />
+          <KnowledgeCognitionLine
+            label="错误认知"
+            onSelectObject={onSelectObject}
+            references={state.falseBeliefs}
+            tone="false"
+          />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function KnowledgeStateList({
+  states,
+  onSelectObject,
+}: {
+  states: DetailKnowledgeState[];
+  onSelectObject: (objectId: string) => void;
+}) {
+  return (
+    <ol className={styles.knowledgeTimeline}>
+      {states.map((state, index) => (
+        <KnowledgeMilestone
+          key={`${state.asOf.id || "story-start"}-${index}`}
+          onSelectObject={onSelectObject}
+          state={state}
+        />
+      ))}
+    </ol>
+  );
+}
+
 function renderField(
   field: DetailField,
   onSelectObject: (objectId: string) => void,
+  fieldCitations: ContextFieldCitation[],
+  onOpenSources?: () => void,
 ) {
   if (field.kind === "text") {
-    return <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>;
+    const citations = fieldCitations.filter((citation) =>
+      citation.fieldLabel === field.label && citation.fieldValue === field.value,
+    );
+    return (
+      <div key={field.label}>
+        <dt>{field.label}</dt>
+        <dd>
+          {field.value}
+          {citations.length ? (
+            <span className={styles.citationChips}>
+              {citations.flatMap((citation) => citation.matches.map((match) => (
+                <button
+                  aria-label={`来源：${match.sourceLabel}`}
+                  className={styles.citationChip}
+                  key={`${citation.fieldLabel}:${match.sourceRecordId}`}
+                  onClick={() => onOpenSources?.()}
+                  title={`${citation.fieldLabel} · 第 ${match.span.paragraphNo} 段`}
+                  type="button"
+                >
+                  {match.sourceLabel}
+                </button>
+              )))}
+            </span>
+          ) : null}
+        </dd>
+      </div>
+    );
   }
   if (field.kind === "list") {
     return (
       <div key={field.label}>
         <dt>{field.label}</dt>
         <dd><ul className={styles.valueList}>{field.values.map((value) => <li key={value}>{value}</li>)}</ul></dd>
+      </div>
+    );
+  }
+  if (field.kind === "knowledge_states") {
+    return (
+      <div className={styles.knowledgeStateField} key={field.label}>
+        <dt>{field.label}</dt>
+        <dd>
+          <KnowledgeStateList
+            onSelectObject={onSelectObject}
+            states={field.states}
+          />
+        </dd>
       </div>
     );
   }
@@ -238,11 +422,13 @@ function renderField(
 function renderSections(
   sections: ObjectDetailModel["coreSections"],
   onSelectObject: (objectId: string) => void,
+  fieldCitations: ContextFieldCitation[],
+  onOpenSources?: () => void,
 ) {
   return sections.map((section) => (
     <section className={styles.detailSection} key={section.title}>
       <h3>{section.title}</h3>
-      <dl>{section.fields.map((field) => renderField(field, onSelectObject))}</dl>
+      <dl>{section.fields.map((field) => renderField(field, onSelectObject, fieldCitations, onOpenSources))}</dl>
     </section>
   ));
 }
@@ -253,11 +439,11 @@ export function WorkbenchObjectEditor({
   revision,
   revisionLabel,
   saving,
-  relatedEvents,
   navigationNotice,
+  fieldCitations = [],
   onDirtyChange,
   onSelectObject,
-  onSelectRelatedEvent,
+  onOpenSources,
   onSave,
   readOnly = false,
   readOnlyReason,
@@ -267,11 +453,11 @@ export function WorkbenchObjectEditor({
   revision: number;
   revisionLabel?: string;
   saving: boolean;
-  relatedEvents: TimelineEvent[];
   navigationNotice: string | null;
+  fieldCitations?: ContextFieldCitation[];
   onDirtyChange: (dirty: boolean) => void;
   onSelectObject: (objectId: string) => void;
-  onSelectRelatedEvent: (eventId: string) => void;
+  onOpenSources?: () => void;
   onSave?: (objectId: string, changes: Record<string, unknown>) => Promise<SaveResult>;
   readOnly?: boolean;
   readOnlyReason?: string;
@@ -543,7 +729,7 @@ export function WorkbenchObjectEditor({
     </>;
   }
 
-  const associationCount = currentDetail.sourceReferences.length + currentDetail.references.length + currentDetail.relationships.length + relatedEvents.length;
+  const associationCount = currentDetail.sourceReferences.length + currentDetail.references.length + currentDetail.relationships.length;
 
   return (
     <section aria-label={readOnly ? "对象详情（只读）" : "对象详情与编辑"} className={styles.objectEditor} data-editing={editing}>
@@ -556,30 +742,34 @@ export function WorkbenchObjectEditor({
         </div>
         <div className={styles.headerActions}>
           <span className={styles.statusBadge}>{currentDetail.confirmationLabel}</span>
-          <span className={styles.confidenceBadge}>{currentDetail.confidenceLabel}</span>
+          {currentDetail.confidence !== null ? (
+            <span className={styles.confidenceBadge}>{currentDetail.confidenceLabel}</span>
+          ) : null}
           {!readOnly && !editing ? <button onClick={() => { setEditing(true); setNotice(null); }} type="button">编辑</button> : null}
         </div>
       </header>
 
-      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject)}</details> : null}</>}
+      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject, fieldCitations, onOpenSources)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject, fieldCitations, onOpenSources)}</details> : null}</>}
 
-      {associationCount ? <section aria-label="关联信息" className={styles.associations}>
-        <header><h3>关联信息</h3><span>{associationCount} 项依据</span></header>
-        {currentDetail.sourceReferences.length ? <article><h4>来源</h4><div className={styles.associationList}>{currentDetail.sourceReferences.map((reference) => <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}</div></article> : null}
-        {currentDetail.references.length ? <article><h4>提及对象</h4><div className={styles.associationList}>{currentDetail.references.map((reference) => reference.selectable ? <button key={reference.id} onClick={() => onSelectObject(reference.id)} type="button"><strong>{reference.label}</strong><small>{reference.kindLabel}</small></button> : <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}</div></article> : null}
-        {currentDetail.relationships.length ? <article><h4>关系</h4><div className={styles.associationList}>{currentDetail.relationships.map((relationship) => relationship.counterpart.selectable ? <button key={`${relationship.title}-${relationship.counterpart.id}`} onClick={() => onSelectObject(relationship.counterpart.id)} type="button"><strong>{relationship.title} · {relationship.counterpart.label}</strong><small>{relationship.counterpart.kindLabel}</small></button> : <span key={`${relationship.title}-${relationship.counterpart.id}`}><strong>{relationship.title} · {relationship.counterpart.label}</strong><small>{relationship.counterpart.kindLabel}</small></span>)}</div></article> : null}
-        {relatedEvents.length ? <article><h4>关联事件</h4><ol>{relatedEvents.map((event) => <li key={event.id}><button onClick={() => onSelectRelatedEvent(event.id)} type="button"><time dateTime={event.time}>{formatCaseWallClock(event.time)}</time><strong>{event.label}</strong></button></li>)}</ol></article> : null}
-      </section> : null}
+      {associationCount ? (
+        <p className={styles.associationHint}>
+          {associationCount} 项关联依据已转入下方「关系上下文」按语义与动词展示。
+        </p>
+      ) : null}
 
       {currentDetail.structureLocks.length ? <section aria-label="结构约束" className={styles.structureLocks}><h3>结构约束</h3>{currentDetail.structureLocks.map((lock) => <article key={lock.title}><strong>{lock.title}</strong><p>{lock.reason}</p><span>{lock.fields.join("、")}</span></article>)}</section> : null}
 
       <details className={styles.technicalDetails}><summary>技术信息</summary><dl><div><dt>当前工作稿</dt><dd>{revisionLabel ?? `工作稿 R${revision}`}</dd></div>{currentDetail.technicalDetails.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></details>
 
-      {navigationNotice || notice ? <p className={styles.objectEditorNotice} role="status">{navigationNotice ?? notice}</p> : null}
-      <footer className={styles.editorFooter}>
-        <span>{readOnly ? readOnlyReason ?? "候选预览，只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
-        {!readOnly ? <div className={styles.footerActions}>{editing ? <><button className={styles.cancelButton} disabled={saving} onClick={cancelChanges} type="button">取消修改</button><button disabled={!dirty || saving} onClick={() => void save()} type="button">{saving ? "正在保存…" : "保存修改"}</button></> : null}</div> : null}
-      </footer>
+      {navigationNotice || notice || readOnlyReason ? <p className={styles.objectEditorNotice} role="status">{navigationNotice ?? notice ?? readOnlyReason}</p> : null}
+      {!readOnly && editing ? (
+        <footer className={styles.editorFooter}>
+          <div className={styles.footerActions}>
+            <button className={styles.cancelButton} disabled={saving} onClick={cancelChanges} type="button">取消修改</button>
+            <button disabled={!dirty || saving} onClick={() => void save()} type="button">{saving ? "正在保存…" : "保存修改"}</button>
+          </div>
+        </footer>
+      ) : null}
     </section>
   );
 }

@@ -188,6 +188,9 @@ function makeCaseFile(entityName = "真实调查员"): CaseFile {
         cause_refs: [],
         effect_refs: [],
         observed_by_refs: [],
+        source_refs: [
+          { object_type: "source_fragment", object_id: "src_gate_log" },
+        ],
       },
     ],
     information_units: [
@@ -306,6 +309,64 @@ function makeDraftWithConclusion(revision: number): DraftView {
   return draft;
 }
 
+function makeDraftWithKnowledgeStates(revision: number): DraftView {
+  const draft = makeDraft(revision);
+  const content = draft.content;
+  if (!content) throw new Error("测试工作稿缺少 CaseFile 内容");
+  const analyst = content.entities[0];
+  if (!analyst) throw new Error("测试工作稿缺少调查员实体");
+  analyst.knowledge_states = [
+    {
+      as_of_event_ref: {
+        object_type: "event",
+        object_id: "evt_gate_opened",
+      },
+      knows_refs: [
+        { object_type: "information_unit", object_id: "info_gate_log" },
+      ],
+      believes_refs: [
+        { object_type: "claim", object_id: "claim_record_tampered" },
+      ],
+      false_belief_refs: [
+        { object_type: "claim", object_id: "claim_gate_sealed" },
+      ],
+    },
+    {
+      as_of_event_ref: null,
+      knows_refs: [],
+      believes_refs: [],
+      false_belief_refs: [],
+    },
+  ];
+  content.claims = [
+    {
+      ...metadata("调查员相信记录曾被改写。"),
+      id: "claim_record_tampered",
+      title: "记录曾被改写",
+      statement: "门禁记录在事件后被改写。",
+      claim_type: "fact",
+      support_refs: [],
+      refute_refs: [],
+      dependency_claim_refs: [],
+      status: "partially_supported",
+      materiality: "critical",
+    },
+    {
+      ...metadata("调查员误以为值班记录未被触碰。"),
+      id: "claim_gate_sealed",
+      title: "值班记录未受损",
+      statement: "值班记录在事件后保持原样。",
+      claim_type: "fact",
+      support_refs: [],
+      refute_refs: [],
+      dependency_claim_refs: [],
+      status: "unresolved",
+      materiality: "major",
+    },
+  ];
+  return draft;
+}
+
 function makeDraftWithScenePosition(revision: number, x: number, y = 36): DraftView {
   const draft = makeDraft(revision);
   const location = draft.content?.locations.find(
@@ -413,6 +474,18 @@ function makeContext(
         generated_by_task_run_id: null,
         created_by_user_id: 1,
         created_at: "2026-08-07T12:00:00Z",
+      },
+      {
+        trace_id: "source_records:13",
+        source_table: "source_records",
+        source_record_id: 13,
+        source_kind: "human_revision",
+        content_text: "作者修订：九点整门禁被值班员开启。 值班员确认了这条记录。",
+        content_hash: "b".repeat(64),
+        parent_source_record_id: 12,
+        generated_by_task_run_id: null,
+        created_by_user_id: 1,
+        created_at: "2026-08-07T12:10:00Z",
       },
     ],
     contract_source_refs: [
@@ -538,7 +611,7 @@ describe("production analyst workbench", () => {
     expect(mocks.loadProject).not.toHaveBeenCalled();
 
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
-    expect(within(editor).getByText("候选预览，只读")).toBeInTheDocument();
+    expect(within(editor).queryByText("候选预览，只读")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(
@@ -549,7 +622,9 @@ describe("production analyst workbench", () => {
     ).toBeDisabled();
     expect(screen.getByRole("tab", { name: /导出预览/u })).toBeDisabled();
     expect(screen.getByRole("tab", { name: /编译中心/u })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "重新验证" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "重新验证" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /补丁审阅/u })).not.toBeInTheDocument();
     expect(mocks.patchCaseDraftObject).not.toHaveBeenCalled();
   });
 
@@ -627,25 +702,44 @@ describe("production analyst workbench", () => {
     expect(secondLayoutKey).not.toBe(firstLayoutKey);
   });
 
-  it("renders real validation, SourceRecord content, trace ids, and audit provenance", async () => {
+  it("renders object context and audit changes without the source section or validator tabs", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("tab", { name: "验证问题0" }));
-    expect(await screen.findByText("确定性验证已通过")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /引用来源/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /补丁审阅/u })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "引用来源1" }));
-    expect(screen.getAllByText("source_records:12").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("作者提交的真实原稿正文。").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("src_gate_log").length).toBeGreaterThan(0);
+    const inspector = screen.getByRole("complementary", {
+      name: "对象上下文",
+    });
+    expect(within(inspector).queryByText("来源依据")).not.toBeInTheDocument();
+    expect(
+      within(inspector).queryByText("作者提交的真实原稿正文。"),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "审计记录1" }));
-    expect(screen.getByText("采用 Draft 候选")).toBeInTheDocument();
+    expect(within(inspector).getByText("最近变更")).toBeInTheDocument();
+    expect(within(inspector).getByText("采用 Draft 候选")).toBeInTheDocument();
+    expect(within(inspector).queryByText("来源 draft_operations #31")).not.toBeInTheDocument();
+
+    // 完整审计技术层保留在二级展开中
+    fireEvent.click(within(inspector).getByRole("button", { name: "查看完整历史" }));
     expect(screen.getByText("来源 draft_operations #31")).toBeInTheDocument();
+
+    // 技术来源详情下沉到底部来源抽屉，仍可核对 trace id 与正文
+    const drawer = screen.getByRole("region", { name: "来源与运行记录抽屉" });
+    fireEvent.click(
+      within(drawer).getByRole("button", { name: /来源抽屉/ }),
+    );
+    expect(within(drawer).getAllByText("source_records:12").length).toBeGreaterThan(0);
+    expect(
+      within(drawer).getAllByText("作者提交的真实原稿正文。").length,
+    ).toBeGreaterThan(0);
+    expect(within(drawer).getAllByText("src_gate_log").length).toBeGreaterThan(0);
   });
 
-  it("renders deterministic validator codes and JSON paths without fixture issues", async () => {
+  it("keeps deterministic validator codes and JSON paths out of the persistent inspector", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext.mockResolvedValueOnce(
       makeContext({
@@ -677,13 +771,15 @@ describe("production analyst workbench", () => {
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     await screen.findByText("1 个问题");
-    fireEvent.click(screen.getByRole("tab", { name: "验证问题1" }));
-    expect(screen.getByText("引用的对象不存在")).toBeInTheDocument();
-    expect(screen.getByText("missing_reference · /events/0/location_ref")).toBeInTheDocument();
+    expect(screen.queryByText("引用的对象不存在")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("missing_reference · /events/0/location_ref"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
     expect(screen.queryByText("时间知识冲突")).not.toBeInTheDocument();
   });
 
-  it("keeps a context read failure recoverable without hiding the real Draft", async () => {
+  it("keeps a context read failure recoverable inside recent changes", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext
       .mockRejectedValueOnce(
@@ -697,10 +793,10 @@ describe("production analyst workbench", () => {
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("tab", { name: "引用来源0" }));
-    expect(screen.getAllByRole("alert")[0]).toHaveTextContent("数据库暂时不可用");
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts[0]).toHaveTextContent("数据库暂时不可用");
     fireEvent.click(screen.getAllByRole("button", { name: "重新读取" })[0]);
-    expect((await screen.findAllByText("作者提交的真实原稿正文。")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("采用 Draft 候选")).length).toBeGreaterThan(0);
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledTimes(2);
   });
 
@@ -878,14 +974,14 @@ describe("production analyst workbench", () => {
     );
 
     expect(screen.getByRole("heading", { name: "门禁记录" })).toBeInTheDocument();
-    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
-    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
-      name: "关联事件",
-    }).parentElement as HTMLElement;
-    const eventLink = within(relatedEventArticle).getByRole("button", {
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    const informationGroup = within(relationContext).getByRole("region", {
+      name: "信息来源",
+    });
+    const eventLink = within(informationGroup).getByRole("button", {
       name: /门禁开启/,
     });
-    expect(eventLink).toHaveTextContent("2026年8月7日 09:00");
+    expect(eventLink).toHaveTextContent("来源于");
     expect(eventLink).not.toHaveTextContent("evt_gate_opened");
 
     fireEvent.click(eventLink);
@@ -900,6 +996,224 @@ describe("production analyst workbench", () => {
     expect(
       within(directory).getByRole("button", { name: /门禁开启/ }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("explains relations with verbs and reverse references in the context inspector", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    const direct = within(relationContext).getByRole("region", {
+      name: "直接关系",
+    });
+    expect(direct).toHaveTextContent("核对记录");
+    expect(direct).toHaveTextContent("值班员");
+
+    const events = within(relationContext).getByRole("region", {
+      name: "参与事件",
+    });
+    expect(events).toHaveTextContent("参与了");
+    expect(events).toHaveTextContent("门禁开启");
+
+    const incoming = within(relationContext).getByRole("region", {
+      name: "反向引用",
+    });
+    expect(incoming).toHaveTextContent("被 2 个字段引用");
+    expect(incoming).toHaveTextContent("关系起点");
+    expect(incoming).toHaveTextContent("参与者");
+  });
+
+  it("spells out each knowledge state with an event anchor and per-category object chips", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithKnowledgeStates(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+    const editor = screen.getByRole("region", { name: "对象详情与编辑" });
+    fireEvent.click(within(editor).getByText("更多创作信息"));
+
+    const anchor = within(editor).getByRole("button", {
+      name: "跳转查看截至事件“门禁开启”",
+    });
+    expect(within(anchor).getByText("事件")).toBeInTheDocument();
+    expect(anchor).toHaveTextContent("门禁开启");
+    expect(within(editor).getByText("卷宗起点")).toBeInTheDocument();
+
+    expect(within(editor).getAllByText("已知")).toHaveLength(2);
+    expect(within(editor).getAllByText("相信")).toHaveLength(2);
+    expect(within(editor).getAllByText("错误认知")).toHaveLength(2);
+    expect(within(editor).getAllByText("—（无）")).toHaveLength(3);
+
+    const knownChip = within(editor).getByRole("button", {
+      name: /门禁记录/,
+    });
+    expect(knownChip).toHaveTextContent("信息");
+    const believedChip = within(editor).getByText("记录曾被改写");
+    expect(believedChip).toBeInTheDocument();
+    const falseChip = within(editor).getByText("值班记录未受损");
+    expect(falseChip).toBeInTheDocument();
+
+    fireEvent.click(knownChip);
+    expect(screen.getByRole("heading", { name: "门禁记录" })).toBeInTheDocument();
+  });
+
+  it("collapses and expands context sections and relation groups on demand", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+
+    const inspector = screen.getByRole("complementary", {
+      name: "对象上下文",
+    });
+    const relationContext = within(inspector).getByRole("region", {
+      name: "关系上下文",
+    });
+    const relationToggle = within(relationContext).getByRole("button", {
+      name: "收起关系上下文",
+    });
+    expect(relationToggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(relationToggle);
+    expect(relationToggle).toHaveAttribute("aria-expanded", "false");
+    expect(relationToggle).toHaveAccessibleName("展开关系上下文");
+    expect(
+      within(relationContext).queryByRole("region", { name: "直接关系" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(relationContext).getByRole("button", {
+        name: "展开关系上下文",
+      }),
+    );
+    const direct = within(relationContext).getByRole("region", {
+      name: "直接关系",
+    });
+    const directToggle = within(direct).getByRole("button", {
+      name: "收起直接关系",
+    });
+    fireEvent.click(directToggle);
+    expect(
+      within(direct).queryByRole("list"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(relationContext).getByRole("region", { name: "反向引用" }),
+    ).toBeInTheDocument();
+
+    const changes = within(inspector).getByRole("region", {
+      name: "最近变更",
+    });
+    const changesToggle = within(changes).getByRole("button", {
+      name: "收起最近变更",
+    });
+    fireEvent.click(changesToggle);
+    expect(changesToggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(changes).queryByRole("list")).not.toBeInTheDocument();
+    fireEvent.click(
+      within(changes).getByRole("button", { name: "展开最近变更" }),
+    );
+    expect(within(changes).getByText("采用 Draft 候选")).toBeInTheDocument();
+  });
+
+  it("attaches author-language citations to fields with exact source spans", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /门禁记录/ }),
+    );
+
+    const editor = screen.getByRole("region", { name: "对象详情与编辑" });
+    const citation = await within(editor).findByRole("button", {
+      name: "来源：你的修订 ②",
+    });
+    expect(citation).toHaveTextContent("你的修订 ②");
+    fireEvent.click(citation);
+
+    const drawer = screen.getByRole("region", {
+      name: "来源与运行记录抽屉",
+    });
+    expect(
+      within(drawer).getByText(
+        "作者修订：九点整门禁被值班员开启。 值班员确认了这条记录。",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("moves object context back and forward like browser history", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const editor = () => screen.getByRole("region", { name: "对象详情与编辑" });
+    const editorHeading = () => within(editor()).getByRole("heading", { level: 2 });
+    const backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    const forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
+    expect(backButton).toBeDisabled();
+    expect(forwardButton).toBeDisabled();
+
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+    expect(editorHeading()).toHaveTextContent("真实调查员");
+
+    // 在关系图视角选择门禁记录：历史帧应记下“关系图”这个视角
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /门禁记录/ }),
+    );
+    expect(editorHeading()).toHaveTextContent("门禁记录");
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /值班员/ }),
+    );
+    expect(editorHeading()).toHaveTextContent("值班员");
+
+    fireEvent.click(backButton);
+    expect(editorHeading()).toHaveTextContent("门禁记录");
+    expect(
+      screen.getByRole("tab", { name: /关系图/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(backButton);
+    expect(editorHeading()).toHaveTextContent("真实调查员");
+    expect(
+      screen.getByRole("tab", { name: /时间线/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(backButton).toBeDisabled();
+
+    fireEvent.click(forwardButton);
+    expect(editorHeading()).toHaveTextContent("门禁记录");
+    expect(
+      screen.getByRole("tab", { name: /关系图/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(forwardButton);
+    expect(editorHeading()).toHaveTextContent("值班员");
+    expect(forwardButton).toBeDisabled();
   });
 
   it("highlights only real events related to the selected Resolution conclusion", async () => {
@@ -941,7 +1255,6 @@ describe("production analyst workbench", () => {
     );
 
     const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
-    const expectedSelection = "假设 · 记录曾被改写 / hyp_record_tampered";
     const views = [
       ["时间线", "timeline"],
       ["关系图", "relations"],
@@ -962,7 +1275,6 @@ describe("production analyst workbench", () => {
         "data-selected-object-id",
         "hyp_record_tampered",
       );
-      expect(within(canvas).getByText(expectedSelection)).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: new RegExp(label) })).toHaveAttribute(
         "aria-selected",
         "true",
@@ -1211,21 +1523,42 @@ describe("production analyst workbench", () => {
     );
 
     expect(screen.getByRole("heading", { name: "记录曾被改写" })).toBeInTheDocument();
-    expect(screen.getByText("此对象没有关联事件")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "关联事件" })).not.toBeInTheDocument();
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    expect(
+      within(relationContext).getByRole("region", { name: "推理作用" }),
+    ).toHaveTextContent("试图回答");
+    expect(
+      within(relationContext).queryByRole("region", { name: "参与事件" }),
+    ).not.toBeInTheDocument();
   });
 
   it("blocks object and related-event navigation until edits are saved or cancelled", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    const forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
+
+    // 先制造一条前进目标，让脏编辑保护同样覆盖历史导航
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /门禁记录/ }),
+    );
+    fireEvent.click(backButton);
+
     await beginQuickEdit();
     const name = screen.getByRole("textbox", { name: "名称" });
-    const directory = screen.getByRole("region", { name: "对象目录结果" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
+    fireEvent.click(forwardButton);
 
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "未保存的调查员名称",
@@ -1243,20 +1576,21 @@ describe("production analyst workbench", () => {
     await beginQuickEdit();
     const content = screen.getByRole("textbox", { name: "正文" });
     fireEvent.change(content, { target: { value: "未保存的门禁正文" } });
-    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
-    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
-      name: "关联事件",
-    }).parentElement as HTMLElement;
-    fireEvent.click(
-      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
-    );
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    const informationGroup = within(relationContext).getByRole("region", {
+      name: "信息来源",
+    });
+    const eventLink = within(informationGroup).getByRole("button", {
+      name: /门禁开启/,
+    });
+    fireEvent.click(eventLink);
     expect(screen.getByRole("textbox", { name: "正文" })).toHaveValue(
       "未保存的门禁正文",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "取消修改" }));
     fireEvent.click(
-      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
+      within(informationGroup).getByRole("button", { name: /门禁开启/ }),
     );
     expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
   });
@@ -1347,16 +1681,21 @@ describe("production analyst workbench", () => {
       within(graph).getByRole("button", { name: /值班员/ }),
     ).toHaveAttribute("data-related", "true");
 
-    fireEvent.click(
-      within(graph).getByRole("button", { name: /值班员/ }),
-    );
+    const operatorNode = within(graph).getByRole("button", {
+      name: /值班员/,
+    });
+    fireEvent.click(operatorNode);
+    expect(
+      screen.queryByRole("heading", { name: "值班员" }),
+    ).not.toBeInTheDocument();
+    expect(operatorNode).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(operatorNode, { ctrlKey: true });
     expect(screen.getByRole("heading", { name: "值班员" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "实体，2 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      within(graph).getByRole("button", { name: /值班员/ }),
-    ).toHaveAttribute("aria-pressed", "true");
+    expect(operatorNode).toHaveAttribute("aria-pressed", "true");
     expect(container.querySelector('[data-mobile-region="inspector"]')).toBeTruthy();
     expect(
       consoleError.mock.calls.filter(([message]) =>

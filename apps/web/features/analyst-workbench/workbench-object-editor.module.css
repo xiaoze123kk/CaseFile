@@ -115,8 +115,150 @@
 .technicalDetails dt { color: #777a75; font-size: 12px; }
 .detailSection dd { overflow-wrap: anywhere; color: #292c2c; }
 
+.citationChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.citationChip {
+  min-height: 28px;
+  padding: 2px 9px;
+  color: #87561f;
+  border: 1px solid rgba(199, 139, 60, 0.5);
+  background: rgba(199, 139, 60, 0.1);
+  font: 600 11px/1.4 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+}
+
+.citationChip:hover {
+  border-color: #c78b3c;
+  background: rgba(199, 139, 60, 0.18);
+}
+
 .valueList { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .valueList li::before { margin-right: 6px; color: #c78b3c; content: "·"; font-weight: 700; }
+
+.knowledgeStateField dd { display: grid; gap: 2px; }
+.knowledgeTimeline { display: grid; margin: 0; padding: 0; list-style: none; }
+.knowledgeMilestone {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  padding-bottom: 12px;
+}
+.knowledgeMilestone:last-child { padding-bottom: 0; }
+.knowledgeMilestone:not(:last-child)::before {
+  position: absolute;
+  bottom: 0;
+  left: 6px;
+  top: 16px;
+  width: 1px;
+  background: #ded8cc;
+  content: "";
+}
+.milestoneNode {
+  position: relative;
+  z-index: 1;
+  width: 13px;
+  height: 13px;
+  margin-top: 4px;
+  border: 2px solid #c78b3c;
+  border-radius: 50%;
+  background: #fbfaf6;
+}
+.milestoneBody { display: grid; min-width: 0; gap: 4px; padding-top: 1px; }
+.milestoneHeading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+.milestoneAsOf {
+  color: #777a75;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.milestoneEvent {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 28px;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 8px;
+  color: #292c2c;
+  border: 1px solid #d6d1c5;
+  background: #fbfaf6;
+  font: 600 12px/1.5 "Noto Serif SC", "STSong", SimSun, serif;
+  text-align: left;
+}
+button.milestoneEvent { cursor: pointer; }
+button.milestoneEvent:hover { border-color: #c78b3c; }
+.milestoneEvent[data-missing="true"] { border-style: dashed; }
+.milestoneEventName { min-width: 0; overflow-wrap: anywhere; }
+.milestoneEventTag {
+  padding: 1px 5px;
+  color: #87561f;
+  border: 1px solid rgba(199, 139, 60, 0.55);
+  background: rgba(199, 139, 60, 0.06);
+  font: 700 10px/1.4 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.cognitionLines { display: grid; gap: 3px; }
+.cognitionLine {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+}
+.cognitionLabel { font-size: 11px; font-weight: 700; white-space: nowrap; }
+.cognitionLabel[data-tone="known"] { color: #256f4b; }
+.cognitionLabel[data-tone="believed"] { color: #2c5d8a; }
+.cognitionLabel[data-tone="false"] { color: #8d3b39; }
+.cognitionValues {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+.knowledgeItem {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  color: #292c2c;
+  border: 0;
+  background: none;
+  font: 12px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+  text-align: left;
+}
+button.knowledgeItem {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(199, 139, 60, 0.55);
+  text-underline-offset: 3px;
+}
+button.knowledgeItem:hover { color: #87561f; text-decoration-color: #c78b3c; }
+.knowledgeItem > small { color: #777a75; font-size: 10px; white-space: nowrap; }
+.knowledgeItem > small::before { content: "（"; }
+.knowledgeItem > small::after { content: "）"; }
+span.knowledgeItem[data-missing="true"] {
+  color: #8d5452;
+  text-decoration: underline dashed rgba(168, 75, 50, 0.5);
+  text-underline-offset: 3px;
+}
+.cognitionEmpty { color: #9a9d96; font-size: 11px; }
 .referenceList { display: grid; gap: 5px; }
 .referenceList :is(button, span),
 .associationList :is(button, span) {
@@ -185,7 +327,9 @@
 .headerActions > button:focus-visible,
 .footerActions button:focus-visible,
 .referenceList button:focus-visible,
-.associationList button:focus-visible { outline: 2px solid #c78b3c; }
+.associationList button:focus-visible,
+.milestoneEvent:focus-visible,
+.knowledgeItem:focus-visible { outline: 2px solid #c78b3c; }
 .objectEditorWide { grid-column: 1 / -1; }
 .conclusionEditNote {
   grid-column: 1 / -1;
@@ -235,6 +379,16 @@
 .associations time { color: #87561f; font-size: 11px; }
 .associations ol strong { overflow-wrap: anywhere; font-size: 12px; }
 
+.associationHint {
+  margin: 0;
+  padding: 9px 11px;
+  color: #87561f;
+  border-left: 2px solid #c78b3c;
+  background: rgba(199, 139, 60, 0.08);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .structureLocks { display: grid; gap: 7px; padding: 13px; border: 1px solid rgba(217, 92, 89, 0.45); background: #fbfaf6; }
 .structureLocks h3 { margin-bottom: 2px; }
 .structureLocks article { padding: 9px; border-left: 2px solid #d95c59; background: #f3f1eb; }
@@ -250,14 +404,13 @@
   display: flex;
   min-height: 58px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
   margin: 0 -16px -16px;
   padding: 7px 16px;
   border-top: 1px solid #d6d1c5;
   background: #fbfaf6;
 }
-.editorFooter > span { color: #636763; font-size: 11px; }
 .footerActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .footerActions button { min-height: 44px; padding: 0 12px; color: #fbfaf6; border: 1px solid #292c2c; background: #292c2c; font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif; }
 .footerActions .cancelButton { color: #292c2c; border-color: #bdb8ad; background: transparent; }
@@ -276,6 +429,8 @@
   .headerActions > button { width: 100%; margin-left: 0; }
   .detailSection dl > div,
   .technicalDetails dl > div { grid-template-columns: 1fr; gap: 2px; }
+  .cognitionLine { grid-template-columns: 1fr; gap: 1px; }
+  .cognitionLabel { justify-self: start; }
   .objectEditorFields { grid-template-columns: 1fr; }
   .objectEditorWide { grid-column: auto; }
   .associations ol button { grid-template-columns: 1fr; gap: 2px; }

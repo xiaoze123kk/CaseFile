@@ -4,6 +4,7 @@ type WorkbenchIconName =
   | "validate"
   | "export"
   | "chevron"
+  | "clock"
   | "play"
   | "pause"
   | "close"
@@ -46,6 +47,12 @@ export function WorkbenchIcon({
       </>
     ),
     chevron: <path d="m5 6 3 3 3-3" />,
+    clock: (
+      <>
+        <circle cx="8" cy="8" r="5.25" />
+        <path d="M8 5.2V8l1.9 1.2" />
+      </>
+    ),
     play: <path d="m5 3 8 5-8 5Z" />,
     pause: (
       <>

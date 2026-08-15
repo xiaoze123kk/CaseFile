@@ -64,6 +64,96 @@ describe("workbench object detail model", () => {
     }
   });
 
+  it("spells out entity knowledge states as event anchors with categorized references", () => {
+    const entity = buildObjectDetailModel(document, "ent_researcher");
+    const knowledgeField = entity?.moreSections
+      .flatMap((section) => section.fields)
+      .find((field) => field.kind === "knowledge_states");
+
+    expect(knowledgeField).toMatchObject({
+      kind: "knowledge_states",
+      label: "知识状态",
+    });
+    if (knowledgeField?.kind !== "knowledge_states") {
+      throw new Error("实体详情缺少知识状态字段");
+    }
+    expect(knowledgeField.states).toEqual([
+      {
+        asOf: expect.objectContaining({
+          id: "evt_restart_seven",
+          kindLabel: "事件",
+          label: "系统第七次重启",
+          missing: false,
+          selectable: true,
+        }),
+        known: [
+          expect.objectContaining({
+            id: "info_restart_log",
+            kindLabel: "信息",
+            label: "第七次重启日志",
+          }),
+        ],
+        believes: [
+          expect.objectContaining({
+            id: "claim_backup_trigger",
+            kindLabel: "论断",
+            label: "备用系统触发重启",
+            selectable: false,
+          }),
+        ],
+        falseBeliefs: [],
+      },
+    ]);
+  });
+
+  it("falls back to a story-start event anchor and keeps missing knowledge targets readable", () => {
+    const withUnanchoredState: CaseFile = {
+      ...document,
+      entities: document.entities.map((entity) =>
+        entity.id === "ent_researcher"
+          ? {
+              ...entity,
+              knowledge_states: [
+                {
+                  as_of_event_ref: null,
+                  knows_refs: [
+                    { object_type: "claim", object_id: "claim_missing" },
+                  ],
+                  believes_refs: [],
+                  false_belief_refs: [],
+                },
+              ],
+            }
+          : entity,
+      ),
+    };
+    const entity = buildObjectDetailModel(withUnanchoredState, "ent_researcher");
+    const knowledgeField = entity?.moreSections
+      .flatMap((section) => section.fields)
+      .find((field) => field.kind === "knowledge_states");
+
+    if (knowledgeField?.kind !== "knowledge_states") {
+      throw new Error("实体详情缺少知识状态字段");
+    }
+    expect(knowledgeField.states[0]).toMatchObject({
+      asOf: {
+        id: "",
+        kindLabel: "事件",
+        label: "卷宗起点",
+        missing: false,
+        selectable: false,
+      },
+      known: [
+        expect.objectContaining({
+          id: "claim_missing",
+          label: "已缺失的论断",
+          missing: true,
+          selectable: false,
+        }),
+      ],
+    });
+  });
+
   it("resolves directory references, keeps non-directory references readable, and labels missing targets", () => {
     const withMissingReference: CaseFile = {
       ...document,

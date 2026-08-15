@@ -1,7 +1,10 @@
-import type { ObjectRef } from "@casefile/contracts";
-
 import type { CaseFileDocument } from "@/lib/api-client";
 
+import {
+  REFERENCE_FIELD_LABELS,
+  type TypedObjectRef,
+  walkObjectReferences,
+} from "./workbench-reference-index";
 import {
   classificationLabel,
   conclusionSlotLabel,
@@ -25,7 +28,7 @@ export type DetailCollection =
   | "hypotheses";
 
 export type DetailObject = CaseFileDocument[DetailCollection][number];
-type TypedObjectRef = ObjectRef & { object_id: string; object_type: string };
+export type { TypedObjectRef } from "./workbench-reference-index";
 
 export interface DetailReference {
   id: string;
@@ -35,10 +38,18 @@ export interface DetailReference {
   selectable: boolean;
 }
 
+export interface DetailKnowledgeState {
+  asOf: DetailReference;
+  known: DetailReference[];
+  believes: DetailReference[];
+  falseBeliefs: DetailReference[];
+}
+
 export type DetailField =
   | { kind: "text"; label: string; value: string }
   | { kind: "list"; label: string; values: string[] }
-  | { kind: "references"; label: string; references: DetailReference[] };
+  | { kind: "references"; label: string; references: DetailReference[] }
+  | { kind: "knowledge_states"; label: string; states: DetailKnowledgeState[] };
 
 export interface DetailSection {
   fields: DetailField[];
@@ -58,6 +69,7 @@ export interface DetailStructureLock {
 
 export interface ObjectDetailModel {
   collection: DetailCollection;
+  confidence: number | null;
   confidenceLabel: string;
   confirmationLabel: string;
   coreSections: DetailSection[];
@@ -67,6 +79,7 @@ export interface ObjectDetailModel {
   moreSections: DetailSection[];
   references: DetailReference[];
   relationships: DetailRelationship[];
+  revision: number;
   sourceReferences: DetailReference[];
   structureLocks: DetailStructureLock[];
   subtypeLabel: string;
@@ -102,29 +115,24 @@ const collectionObjectTypes: Record<DetailCollection, string> = {
 };
 
 const fieldPathLabels: Record<string, string> = {
+  ...REFERENCE_FIELD_LABELS,
   aliases: "别名",
   availability: "可获得性",
   capabilities: "能力",
   classification: "叙事分类",
   content: "正文",
   description: "说明",
-  effect_refs: "结果事件",
   entity_type: "实体类型",
-  falsifier_refs: "证伪条件",
   goals: "目标",
   information_type: "信息类型",
   knowledge_states: "知识状态",
-  location_ref: "发生地点",
   name: "名称",
-  observed_by_refs: "观察者",
-  participant_refs: "参与者",
   proposition: "命题",
   reliability: "可靠度",
   score: "支持度",
   secrets: "秘密",
   spatial_position: "空间位置",
   status: "状态",
-  supports_claim_refs: "支持论断",
   tags: "标签",
   time: "卷宗时间",
   title: "标题",
@@ -228,7 +236,7 @@ function catalogEntry(
   };
 }
 
-function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailReference> {
+export function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailReference> {
   const entries = [
     ...document.resolution_specs.map((item) => catalogEntry(item, "resolution_spec", true)),
     ...document.entities.map((item) => catalogEntry(item, "entity", true)),
@@ -245,7 +253,7 @@ function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailRe
   return new Map(entries.map((entry) => [entry.id, entry]));
 }
 
-function resolveReference(
+export function resolveReference(
   ref: TypedObjectRef,
   catalog: Map<string, DetailReference>,
 ): DetailReference {
@@ -329,23 +337,33 @@ function formatSpatialPosition(value: unknown): string {
   return "未标注空间位置";
 }
 
-function formatKnowledgeStates(
+const STORY_START_EVENT: DetailReference = {
+  id: "",
+  kindLabel: "事件",
+  label: "卷宗起点",
+  missing: false,
+  selectable: false,
+};
+
+function knowledgeStatesField(
   value: unknown,
   catalog: Map<string, DetailReference>,
-): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
+): DetailField | null {
+  if (!Array.isArray(value)) return null;
+  const states = value.flatMap((item) => {
     const state = asRecord(item);
     if (!state) return [];
     const asOf = asObjectRef(state.as_of_event_ref);
-    const asOfLabel = asOf
-      ? resolveReference(asOf, catalog).label
-      : "卷宗起点";
-    const known = referencesFor(state.knows_refs, catalog).length;
-    const believes = referencesFor(state.believes_refs, catalog).length;
-    const falseBeliefs = referencesFor(state.false_belief_refs, catalog).length;
-    return [`截至 ${asOfLabel}：已知 ${known} 项 · 相信 ${believes} 项 · 错误认知 ${falseBeliefs} 项`];
+    return [{
+      asOf: asOf ? resolveReference(asOf, catalog) : STORY_START_EVENT,
+      known: referencesFor(state.knows_refs, catalog),
+      believes: referencesFor(state.believes_refs, catalog),
+      falseBeliefs: referencesFor(state.false_belief_refs, catalog),
+    }];
   });
+  return states.length
+    ? { kind: "knowledge_states" as const, label: "知识状态", states }
+    : null;
 }
 
 function formatTravelTimes(
@@ -364,18 +382,9 @@ function formatTravelTimes(
 
 function allReferences(object: unknown): TypedObjectRef[] {
   const references = new Map<string, TypedObjectRef>();
-  const visit = (value: unknown) => {
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    const record = asRecord(value);
-    if (!record) return;
-    const ref = asObjectRef(record);
-    if (ref) references.set(`${ref.object_type}:${ref.object_id}`, ref);
-    Object.values(record).forEach(visit);
-  };
-  visit(object);
+  walkObjectReferences(object, (reference) => {
+    references.set(`${reference.object_type}:${reference.object_id}`, reference);
+  });
   return [...references.values()];
 }
 
@@ -566,7 +575,7 @@ function sectionsFor(
             creatorListField("目标", object.goals),
             creatorListField("秘密", object.secrets),
             creatorListField("能力", object.capabilities),
-            listField("知识状态", formatKnowledgeStates(object.knowledge_states, catalog)),
+            knowledgeStatesField(object.knowledge_states, catalog),
           ]),
         ]),
         ...commonMore,
@@ -710,6 +719,7 @@ export function buildObjectDetailModel(
 
   return {
     collection,
+    confidence: typeof record.confidence === "number" ? record.confidence : null,
     confidenceLabel: confidenceLabel(
       typeof record.confidence === "number" ? record.confidence : null,
     ),
@@ -724,6 +734,7 @@ export function buildObjectDetailModel(
     moreSections: eventReasoning ? [eventReasoning, ...moreSections] : moreSections,
     references,
     relationships: relationshipsFor(document, object.id, catalog),
+    revision: typeof record.revision === "number" ? record.revision : 0,
     sourceReferences,
     structureLocks: structureLocksFor(document, object.id),
     subtypeLabel: objectSubtypeLabel(subtype),

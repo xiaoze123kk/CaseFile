@@ -330,6 +330,7 @@ export function WorkbenchCanvasKernel({
   onActivateEdge,
   onActivateNode,
   activeEdgeId = null,
+  requireModifierForNodeSelection = false,
 }: {
   ariaLabel: string;
   direction: WorkbenchCanvasDirection;
@@ -344,6 +345,7 @@ export function WorkbenchCanvasKernel({
   onActivateEdge?: (edgeId: string) => void;
   onActivateNode: (selectableId: string) => void;
   activeEdgeId?: string | null;
+  requireModifierForNodeSelection?: boolean;
 }) {
   const automaticPositions = useMemo(
     () =>
@@ -378,6 +380,7 @@ export function WorkbenchCanvasKernel({
           width: node.width,
           height: node.height,
           ariaLabel: node.ariaLabel,
+          selectable: requireModifierForNodeSelection ? false : undefined,
           data: {
             variant: node.variant,
             kind: node.kind,
@@ -418,7 +421,7 @@ export function WorkbenchCanvasKernel({
         };
       });
     },
-    [automaticPositions, direction, onActivateEdge, sceneNodes],
+    [automaticPositions, direction, onActivateEdge, requireModifierForNodeSelection, sceneNodes],
   );
   const [nodes, setNodes] = useState(automaticNodes);
   const nodesRef = useRef(nodes);
@@ -916,16 +919,23 @@ export function WorkbenchCanvasKernel({
           setViewportState(nextViewport);
           persist(nodesRef.current, nextViewport);
         }}
-        onNodeClick={(_event, node) => {
-          if (tool === "select") {
-            const selected = toggleNodeSelection(node.id);
-            if (selected && node.data.selectableId) {
-              canvasActivationPendingRef.current = true;
-              onActivateNode(node.data.selectableId);
-              window.requestAnimationFrame(() => {
-                canvasActivationPendingRef.current = false;
-              });
-            }
+        onNodeClick={(event, node) => {
+          if (tool !== "select") return;
+          if (
+            requireModifierForNodeSelection &&
+            !event.ctrlKey &&
+            !event.metaKey
+          ) {
+            setLiveMessage("按住 Ctrl 键并左键点击节点，才会选中对象。");
+            return;
+          }
+          const selected = toggleNodeSelection(node.id);
+          if (selected && node.data.selectableId) {
+            canvasActivationPendingRef.current = true;
+            onActivateNode(node.data.selectableId);
+            window.requestAnimationFrame(() => {
+              canvasActivationPendingRef.current = false;
+            });
           }
         }}
         onNodeDragStart={startLayoutDrag}

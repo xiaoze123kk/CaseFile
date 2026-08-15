@@ -16,7 +16,6 @@ function renderEditor(
 ) {
   const onSave = vi.fn().mockResolvedValue("saved");
   const onSelectObject = vi.fn();
-  const onSelectRelatedEvent = vi.fn();
   const rendered = render(
     <WorkbenchObjectEditor
       document={document}
@@ -24,16 +23,14 @@ function renderEditor(
       onDirtyChange={vi.fn()}
       onSave={onSave}
       onSelectObject={onSelectObject}
-      onSelectRelatedEvent={onSelectRelatedEvent}
       readOnly={false}
-      relatedEvents={[]}
       revision={7}
       saving={false}
       selectedObjectId={selectedObjectId}
       {...overrides}
     />,
   );
-  return { ...rendered, onSave, onSelectObject, onSelectRelatedEvent };
+  return { ...rendered, onSave, onSelectObject };
 }
 
 describe("workbench object editor", () => {
@@ -60,6 +57,9 @@ describe("workbench object editor", () => {
     const { onSave, onSelectObject } = renderEditor("info_restart_log");
 
     expect(screen.getByText("可靠度")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /系统第七次重启/ }));
+    expect(onSelectObject).toHaveBeenCalledWith("evt_restart_seven");
+
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
     const reliability = screen.getByRole("combobox", { name: "可靠度" });
     expect(within(reliability).getByRole("option", { name: "低" })).toHaveValue("low");
@@ -70,9 +70,6 @@ describe("workbench object editor", () => {
       "info_restart_log",
       expect.objectContaining({ reliability: "low", truth_status: "canon_true" }),
     );
-
-    fireEvent.click(screen.getByRole("button", { name: /系统第七次重启/ }));
-    expect(onSelectObject).toHaveBeenCalledWith("evt_restart_seven");
   });
 
   it("keeps event time changes in the timeline preview flow", () => {
@@ -97,7 +94,7 @@ describe("workbench object editor", () => {
     renderEditor("ent_researcher", { readOnly: true });
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
 
-    expect(within(editor).getByText("候选预览，只读")).toBeInTheDocument();
+    expect(within(editor).queryByText("候选预览，只读")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
   });

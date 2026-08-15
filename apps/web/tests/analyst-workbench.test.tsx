@@ -111,29 +111,33 @@ describe("analyst workbench", () => {
 
     expect(screen.getByText("雾港失联前 34 分钟")).toBeInTheDocument();
     fireEvent.click(
-      screen.getAllByRole("button", {
-        name: /角色提前知道“第五人权限”/,
-      })[0],
+      screen.getByRole("button", {
+        name: /验证\s*2\s*个问题/,
+      }),
     );
 
     expect(
-      screen.getAllByRole("heading", {
+      screen.getByRole("heading", {
         name: "角色提前知道“第五人权限”",
       }),
-    ).toHaveLength(2);
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /角色提前知道“第五人权限”/,
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("事件前已知")).toBeInTheDocument();
     expect(screen.getByText("证据实际进入")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "请求 Agent 补丁" }));
-    expect(screen.getByText("Agent 建议")).toBeInTheDocument();
-    expect(screen.getByText("等待批准")).toBeInTheDocument();
+    expect(screen.getByText("Agent 建议已生成，等待人工批准。")).toBeInTheDocument();
 
     fireEvent.click(
       screen.getByRole("button", { name: "批准并局部重算" }),
     );
 
     expect(
-      screen.getByRole("button", { name: /验证1 个问题/ }),
+      screen.getByRole("button", { name: /验证\s*1\s*个问题/ }),
     ).toBeInTheDocument();
     expect(screen.getByText("批准 Agent 补丁")).toBeInTheDocument();
   });
@@ -155,7 +159,7 @@ describe("analyst workbench", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("provides text alternatives for the graph and direct access to source evidence", () => {
+  it("provides text alternatives for the graph and transcript access", () => {
     renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
@@ -461,19 +465,19 @@ describe("analyst workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "载入结构候选" }));
     fireEvent.click(screen.getByRole("tab", { name: /编译中心/ }));
 
-    // 结构候选仍有两条问题待处理，先解决
+    // 结构候选仍有两条问题待处理：从顶栏验证状态进入证据对照，逐条处理
+    fireEvent.click(screen.getByRole("button", { name: /验证\s*2\s*个问题/ }));
     fireEvent.click(
       screen.getAllByRole("button", { name: /沈砚提前认出/ })[0],
     );
     fireEvent.click(screen.getByRole("button", { name: "请求 Agent 补丁" }));
     fireEvent.click(screen.getByRole("button", { name: "批准并局部重算" }));
-    fireEvent.click(screen.getByRole("tab", { name: /验证问题/ }));
     fireEvent.click(
       screen.getAllByRole("button", { name: /顾遥在两个权限门内同时签名/ })[0],
     );
     fireEvent.click(screen.getByRole("button", { name: "标记已知例外" }));
 
-    // 处理问题时主画布被切到证据对照，回到编译中心
+    // 处理问题时主画布停留在证据对照，返回编译中心验证门禁已解除
     fireEvent.click(screen.getByRole("tab", { name: /编译中心/ }));
     const compileButton = screen.getByRole("button", {
       name: "编译为小说",
@@ -779,7 +783,7 @@ describe("analyst workbench", () => {
     expect(
       screen.getByRole("button", { name: "生成导出包" }),
     ).toBeDisabled();
-    expect(screen.getByText(/先处理右侧检查器中的 S0\/S1 问题/)).toBeInTheDocument();
+    expect(screen.getByText(/先处理主画布证据对比中的 S0\/S1 问题/)).toBeInTheDocument();
   });
 
   it("opens the agent dialog and answers a preset instruction from the seed", async () => {
@@ -845,16 +849,16 @@ describe("analyst workbench", () => {
     ) as HTMLElement;
 
     fireEvent.click(
-      screen.getByRole("button", { name: "收起上下文检查器" }),
+      screen.getByRole("button", { name: "收起对象上下文" }),
     );
     expect(body).toHaveAttribute("data-inspector-open", "false");
     expect(body.style.getPropertyValue("--inspector-width")).toBe("0px");
     expect(
-      screen.getByRole("button", { name: "展开上下文检查器" }),
+      screen.getByRole("button", { name: "展开对象上下文" }),
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "展开上下文检查器" }),
+      screen.getByRole("button", { name: "展开对象上下文" }),
     );
     expect(body).toHaveAttribute("data-inspector-open", "true");
     expect(body.style.getPropertyValue("--inspector-width")).toBe("400px");
@@ -932,6 +936,89 @@ describe("analyst workbench", () => {
     expect(
       screen.getByText("当前工作稿还没有可展示的推理内容。"),
     ).toBeInTheDocument();
+  });
+
+  it("moves the object context back and forward across directory selections", () => {
+    renderWorkbench();
+    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    const context = screen.getByRole("region", {
+      name: "对象上下文（本地样例）",
+    });
+    const heading = () => within(context).getByRole("heading", { level: 2 });
+    const initialTitle = heading().textContent ?? "";
+    const backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    const forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
+
+    expect(backButton).toBeDisabled();
+    expect(forwardButton).toBeDisabled();
+
+    let firstTitle: string | null = null;
+    for (const button of within(directory).getAllByRole("button")) {
+      fireEvent.click(button);
+      const title = heading().textContent;
+      if (title && title !== initialTitle) {
+        firstTitle = title;
+        break;
+      }
+    }
+    expect(firstTitle).not.toBeNull();
+
+    let secondTitle: string | null = null;
+    for (const button of within(directory).getAllByRole("button")) {
+      fireEvent.click(button);
+      const title = heading().textContent;
+      if (title && title !== initialTitle && title !== firstTitle) {
+        secondTitle = title;
+        break;
+      }
+    }
+    expect(secondTitle).not.toBeNull();
+
+    fireEvent.click(backButton);
+    expect(heading()).toHaveTextContent(firstTitle as string);
+
+    fireEvent.click(backButton);
+    expect(heading()).toHaveTextContent(initialTitle);
+    expect(backButton).toBeDisabled();
+
+    fireEvent.click(forwardButton);
+    expect(heading()).toHaveTextContent(firstTitle as string);
+
+    fireEvent.click(forwardButton);
+    expect(heading()).toHaveTextContent(secondTitle as string);
+    expect(forwardButton).toBeDisabled();
+  });
+
+  it("collapses and expands relation context sections in the local sample", () => {
+    renderWorkbench();
+    const relationContext = screen.getByRole("region", {
+      name: "关系上下文",
+    });
+    const sectionToggle = within(relationContext).getByRole("button", {
+      name: "收起关系上下文",
+    });
+    fireEvent.click(sectionToggle);
+    expect(sectionToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(relationContext).queryByRole("region", { name: "参与事件" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(relationContext).getByRole("button", {
+        name: "展开关系上下文",
+      }),
+    );
+    const events = within(relationContext).getByRole("region", {
+      name: "参与事件",
+    });
+    fireEvent.click(
+      within(events).getByRole("button", { name: "收起参与事件" }),
+    );
+    expect(within(events).queryByRole("list")).not.toBeInTheDocument();
   });
 
   it("switches the complete workbench seed and keeps candidate navigation in the title row", () => {
