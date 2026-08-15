@@ -11,6 +11,7 @@ import rfc8785
 from application_services_test_support import (
     PROFILE,
     ChatSuggestionProvider,
+    ConclusionFixtureProvider,
     EmptyKnowledgeStateProvider,
     RichFixtureProvider,
     StructuralFailureProvider,
@@ -18,19 +19,20 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
+from casefile.application.casefile_v1 import build_casefile_document
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
 from casefile.application.snapshot import casefile_content_hash
 from casefile.application.v1_editing import V1EditingService
+from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
+    AgentStepRun,
+    AuditEvent,
+    CaseFileContractRef,
     CaseFileObject,
     DraftOperation,
     DraftSnapshot,
@@ -39,7 +41,11 @@ from casefile.data_postgres.models import (
     TaskRun,
     UserProviderSetting,
 )
+from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -206,9 +212,7 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
         assert task["usage"]["tools"]["execution_success_rate"] == 1.0
         assert draft["revision"] == 1
         assert draft["content"] is None
-        assert [event["sequence_no"] for event in events] == list(
-            range(1, len(events) + 1)
-        )
+        assert [event["sequence_no"] for event in events] == list(range(1, len(events) + 1))
         assert events[-1]["event_type"] == "task.succeeded"
 
         adopted = _adopt_candidate(
@@ -245,6 +249,165 @@ def test_fake_worker_persists_candidate_then_adopts_exact_roundtrip_snapshot(
         assert snapshot_hash == casefile_content_hash(draft["content"])
 
 
+def test_v11_worker_candidate_adopts_into_workbench_ready_current_draft(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v11",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="v11-workbench-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+
+        assert worker.run_once() is True
+        with factory() as session:
+            workflow = WorkflowService(session)
+            task = workflow.get_task(actor_id, project_id, task_run_id)
+            draft_before = CaseFileService(session).get_draft(actor_id, project_id)
+
+        assert task["status"] == "succeeded"
+        assert task["prompt_version"] == "brief-to-draft-v11"
+        assert task["result_snapshot_id"] is None
+        assert draft_before["content"] is None
+        assert {step["component_id"] for step in task["component_steps"]} == {
+            "context_pack_builder",
+            "case_blueprint_planner",
+            "story_world",
+            "evidence_logic",
+            "resolution_governance",
+            "reference_linker",
+            "casefile_compiler",
+            "quality_repair_gate",
+        }
+
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+
+        with factory() as session:
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            context = WorkbenchReadModel(session).get_context(actor_id, project_id)
+        content = draft["content"]
+        assert content["events"][0]["time"]["kind"] == "exact"
+        assert content["locations"][0]["spatial_position"]["coordinate_system"] == ("schematic")
+        assert len(content["hypotheses"]) == 2
+        assert all(item["evidence_assessments"] for item in content["hypotheses"])
+        assert context["draft_id"] == draft["draft_id"]
+        assert context["draft_revision"] == 2
+        assert context["validation"]["status"] == "passed"
+
+
+def test_v12_worker_persists_temporal_step_for_workbench_ready_candidate(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v12",
+        ):
+            project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="v12-temporal-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+
+        assert worker.run_once() is True
+        with factory() as session:
+            task = WorkflowService(session).get_task(actor_id, project_id, task_run_id)
+            temporal_step = session.scalar(
+                select(AgentStepRun).where(
+                    AgentStepRun.task_run_id == task_run_id,
+                    AgentStepRun.component_id == "temporal_structure_planner",
+                )
+            )
+
+        assert task["status"] == "succeeded"
+        assert task["prompt_version"] == "brief-to-draft-v12"
+        assert temporal_step is not None
+        assert temporal_step.status == "succeeded"
+        assert temporal_step.ir_schema_id == "temporal-plan-v1"
+        assert temporal_step.output_jsonb["assignments"][0]["time"]["kind"] == "exact"
+        with factory() as session:
+            candidate = session.scalar(
+                select(TaskAttempt.candidate_jsonb).where(TaskAttempt.task_run_id == task_run_id)
+            )
+        assert isinstance(candidate, dict)
+        assert candidate["events"][0]["time"]["kind"] == "exact"
+
+
+def test_adoption_roundtrips_evidence_assessment_reference_metadata(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    class AssessedFixtureProvider(RichFixtureProvider):
+        def generate(self, request):  # type: ignore[no-untyped-def]
+            result = super().generate(request)
+            result.candidate["hypotheses"][0]["evidence_assessments"] = [
+                {
+                    "information_ref": {
+                        "object_type": "information_unit",
+                        "object_id": "info_restart_log",
+                    },
+                    "effect": "supports",
+                    "strength": "strong",
+                    "rationale": "重启日志直接记录了触发条件。",
+                }
+            ]
+            validate_casefile(result.candidate)
+            return result
+
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="assessed-fixture-worker"),
+            provider_factory=lambda _task: AssessedFixtureProvider(),
+        )
+        assert worker.run_once() is True
+
+        with factory() as session:
+            candidate = session.scalar(
+                select(TaskAttempt.candidate_jsonb).where(TaskAttempt.task_run_id == task_run_id)
+            )
+        assert isinstance(candidate, dict)
+        assert candidate["hypotheses"][0]["evidence_assessments"]
+
+        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+
+        with factory() as session:
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            ref = session.scalar(
+                select(CaseFileContractRef).where(
+                    CaseFileContractRef.field_path == "/evidence_assessments/0/information_ref"
+                )
+            )
+            snapshot = session.scalar(
+                select(DraftSnapshot).where(DraftSnapshot.draft_id == draft["draft_id"])
+            )
+
+        assert ref is not None
+        assert ref.object_type == "information_unit"
+        assert ref.object_id == "info_restart_log"
+        assert ref.metadata_jsonb == {
+            "effect": "supports",
+            "strength": "strong",
+            "rationale": "重启日志直接记录了触发条件。",
+        }
+        assert draft["content"] == candidate
+        assert snapshot is not None
+        assert snapshot.snapshot_jsonb == candidate
+        assert snapshot.content_hash == casefile_content_hash(candidate)
+
+
 def test_adoption_preserves_reference_free_knowledge_state_slots(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
@@ -278,7 +441,7 @@ def test_adoption_preserves_reference_free_knowledge_state_slots(
         }
 
 
-def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces_draft(
+def test_same_brief_candidates_create_independent_switchable_drafts(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
@@ -295,10 +458,12 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
         with factory() as session:
             workflow = WorkflowService(session)
             brief = workflow.get_brief(actor_id, project_id)
+            source_draft = CaseFileService(session).get_draft(actor_id, project_id)
             second = workflow.create_generation_task(
                 actor_id,
                 project_id,
                 brief_version_id=brief["current_version_id"],
+                expected_draft_id=source_draft["draft_id"],
                 expected_draft_revision=1,
             )
         second_task_id = int(second["task_run_id"])
@@ -316,20 +481,22 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
         ]
         assert all(item["can_adopt"] for item in candidates)
 
-        _adopt_candidate(
+        adopted_a = _adopt_candidate(
             engine,
             actor_id,
             project_id,
             second_task_id,
-            expected_revision=1,
         )
+        draft_a_id = int(adopted_a["draft_id"])
         with factory() as session:
             workflow = WorkflowService(session)
             brief = workflow.get_brief(actor_id, project_id)
+            current_draft = CaseFileService(session).get_draft(actor_id, project_id)
             third = workflow.create_generation_task(
                 actor_id,
                 project_id,
                 brief_version_id=brief["current_version_id"],
+                expected_draft_id=current_draft["draft_id"],
                 expected_draft_revision=2,
             )
         third_task_id = int(third["task_run_id"])
@@ -340,22 +507,27 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
         assert unchanged["revision"] == 2
         second_resolution_id = unchanged["content"]["resolution_specs"][0]["id"]
 
-        _adopt_candidate(
+        adopted_b = _adopt_candidate(
             engine,
             actor_id,
             project_id,
             third_task_id,
-            expected_revision=2,
         )
+        draft_b_id = int(adopted_b["draft_id"])
         with factory() as session:
             workflow = WorkflowService(session)
-            replaced = CaseFileService(session).get_draft(actor_id, project_id)
+            current_b = CaseFileService(session).get_draft(actor_id, project_id)
+            drafts = CaseFileService(session).list_drafts(actor_id, project_id)
             candidates = workflow.list_generation_candidates(actor_id, project_id)
-            active_count = session.scalar(
-                select(func.count(CaseFileObject.id)).where(
-                    CaseFileObject.project_id == project_id,
-                    CaseFileObject.deleted_at.is_(None),
-                )
+            active_counts = dict(
+                session.execute(
+                    select(CaseFileObject.draft_id, func.count(CaseFileObject.id))
+                    .where(
+                        CaseFileObject.project_id == project_id,
+                        CaseFileObject.deleted_at.is_(None),
+                    )
+                    .group_by(CaseFileObject.draft_id)
+                ).all()
             )
             archived_count = session.scalar(
                 select(func.count(CaseFileObject.id)).where(
@@ -363,27 +535,62 @@ def test_same_brief_generates_multiple_candidates_and_explicit_adoption_replaces
                     CaseFileObject.deleted_at.is_not(None),
                 )
             )
-            operation_types = list(
-                session.scalars(
-                    select(DraftOperation.operation_type)
+            operations = list(
+                session.execute(
+                    select(DraftOperation.draft_id, DraftOperation.operation_type)
                     .where(DraftOperation.project_id == project_id)
-                    .order_by(DraftOperation.sequence_no)
+                    .order_by(DraftOperation.draft_id)
                 )
             )
-        assert replaced["revision"] == 3
-        assert replaced["content"]["resolution_specs"][0]["id"] != second_resolution_id
-        assert active_count and active_count > 0
-        assert archived_count and archived_count > 0
-        assert operation_types == [
-            "agent_adopt_brief_candidate",
-            "agent_adopt_brief_candidate",
+        assert draft_b_id != draft_a_id
+        assert current_b["draft_id"] == draft_b_id
+        assert current_b["revision"] == 2
+        assert current_b["content"]["resolution_specs"][0]["id"] != second_resolution_id
+        assert [item["draft_id"] for item in drafts] == [draft_b_id, draft_a_id]
+        assert drafts[0]["is_current"] is True
+        assert all(item["has_content"] for item in drafts)
+        assert active_counts[draft_a_id] > 0
+        assert active_counts[draft_b_id] > 0
+        assert archived_count == 0
+        assert operations == [
+            (draft_a_id, "agent_adopt_brief_candidate"),
+            (draft_b_id, "agent_adopt_brief_candidate"),
         ]
         assert candidates[0]["task_run_id"] == third_task_id
         assert candidates[0]["is_current"] is True
         assert candidates[1]["task_run_id"] == second_task_id
         assert candidates[1]["is_adopted"] is True
         assert candidates[2]["task_run_id"] == first_task_id
-        assert candidates[2]["can_adopt"] is True
+        assert candidates[2]["can_adopt"] is False
+
+        with factory() as session:
+            restored_a = CaseFileService(session).activate_draft(
+                actor_id,
+                project_id,
+                draft_a_id,
+                expected_current_draft_id=draft_b_id,
+            )
+        assert restored_a["draft_id"] == draft_a_id
+        assert restored_a["revision"] == 2
+        assert restored_a["content"] == unchanged["content"]
+
+        with factory() as session:
+            switched_candidates = WorkflowService(session).list_generation_candidates(
+                actor_id,
+                project_id,
+            )
+        assert switched_candidates[0]["is_current"] is False
+        assert switched_candidates[1]["is_current"] is True
+
+        with pytest.raises(ApplicationError) as changed_source:
+            _adopt_candidate(
+                engine,
+                actor_id,
+                project_id,
+                first_task_id,
+                expected_current_draft_id=draft_a_id,
+            )
+        assert changed_source.value.code == "candidate_source_draft_changed"
 
         with engine.begin() as connection, pytest.raises(DBAPIError):
             connection.execute(
@@ -439,9 +646,7 @@ def test_historical_worker_repairs_structural_output_with_actionable_feedback(
                 ],
             }
         ]
-        failed_event = next(
-            event for event in events if event["event_type"] == "validation.failed"
-        )
+        failed_event = next(event for event in events if event["event_type"] == "validation.failed")
         assert failed_event["payload"]["issues"][0]["message"] == "字段类型应为 'object'"
         assert any(event["event_type"] == "model.repair_started" for event in events)
         assert "author-secret-value" not in repr(events)
@@ -602,9 +807,12 @@ def test_source_polish_extract_recovery_and_human_confirmation(
         assert proposal["generated_by_task_run_id"] == polish_task["task_run_id"]
         assert latest_polish is not None
         assert latest_polish["task_run_id"] == polish_task["task_run_id"]
-        assert next(
-            item for item in sources if item["source_record_id"] == original["source_record_id"]
-        )["content_text"] == "原稿必须完整保留；这句话不能被候选覆盖。"
+        assert (
+            next(
+                item for item in sources if item["source_record_id"] == original["source_record_id"]
+            )["content_text"]
+            == "原稿必须完整保留；这句话不能被候选覆盖。"
+        )
 
         unreviewed = _brief(original["source_record_id"])
         unreviewed["author_anchors"] = []
@@ -655,9 +863,7 @@ def test_source_polish_extract_recovery_and_human_confirmation(
             ]
             reviewed["creative_constraints"] = [
                 {
-                    "constraint_id": (
-                        f"constraint_task_{extract_task['task_run_id']}_{index:02d}"
-                    ),
+                    "constraint_id": (f"constraint_task_{extract_task['task_run_id']}_{index:02d}"),
                     "statement": item["statement"],
                     "strength": item["suggested_strength"],
                 }
@@ -826,6 +1032,7 @@ def test_brief_updates_clear_current_version_and_reject_foreign_sources(
                     actor_id,
                     first_id,
                     brief_version_id=confirmed["brief_version_id"],
+                    expected_draft_id=first["current_draft_id"],
                     expected_draft_revision=1,
                 )
         assert stale_version.value.code == "brief_version_not_current"
@@ -854,7 +1061,8 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             service = CaseFileService(session)
@@ -894,6 +1102,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 changes={
                     "name": "Edited investigator",
@@ -911,6 +1120,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 location_id,
+                expected_draft_id=draft_id,
                 expected_revision=3,
                 changes={
                     "name": "Edited laboratory",
@@ -930,17 +1140,21 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 "latitude": 30.2741,
                 "longitude": 120.1551,
             }
-            assert session.scalar(
-                select(Location.geo_jsonb)
-                .join(CaseFileObject, Location.object_registry_id == CaseFileObject.id)
-                .where(CaseFileObject.object_id == location_id)
-            ) == location["spatial_position"]
+            assert (
+                session.scalar(
+                    select(Location.geo_jsonb)
+                    .join(CaseFileObject, Location.object_registry_id == CaseFileObject.id)
+                    .where(CaseFileObject.object_id == location_id)
+                )
+                == location["spatial_position"]
+            )
 
         with factory() as session:
             event, revision = V1EditingService(session).patch_object(
                 actor_id,
                 project_id,
                 event_id,
+                expected_draft_id=draft_id,
                 expected_revision=4,
                 changes={
                     "title": "Edited restart event",
@@ -956,6 +1170,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 resolution_id,
+                expected_draft_id=draft_id,
                 expected_revision=5,
                 changes={
                     "title": "Edited core resolution",
@@ -965,8 +1180,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             assert revision == 6
             assert resolution["title"] == "Edited core resolution"
             assert (
-                resolution["reasoning_question"]
-                == "Which evidence establishes the restart cause?"
+                resolution["reasoning_question"] == "Which evidence establishes the restart cause?"
             )
 
         with factory() as session:
@@ -980,6 +1194,7 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=6,
                 changes={"id": "ent_replaced"},
             )
@@ -990,10 +1205,252 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=4,
                 changes={"name": "Stale edit"},
             )
         assert conflict.value.code == "draft_revision_conflict"
+
+        with factory() as session:
+            before_location = next(
+                item
+                for item in CaseFileService(session).get_draft(actor_id, project_id)["content"][
+                    "locations"
+                ]
+                if item["id"] == location_id
+            )
+
+        saved_position = {
+            "coordinate_system": "schematic",
+            "x": 55,
+            "y": 61,
+        }
+
+
+        with factory() as session:
+            saved_location, revision = V1EditingService(session).patch_object(
+                actor_id,
+                project_id,
+                location_id,
+                expected_draft_id=draft_id,
+                expected_revision=6,
+                changes={"spatial_position": saved_position},
+            )
+            assert revision == 7
+            assert saved_location["spatial_position"] == saved_position
+            assert saved_location["revision"] == before_location["revision"] + 1
+            assert {
+                key: value
+                for key, value in saved_location.items()
+                if key not in {"spatial_position", "revision", "updated_at"}
+            } == {
+                key: value
+                for key, value in before_location.items()
+                if key not in {"spatial_position", "revision", "updated_at"}
+            }
+
+        with factory() as session:
+            final = CaseFileService(session).get_draft(actor_id, project_id)
+            position_operations = list(
+                session.scalars(
+                    select(DraftOperation).where(
+                        DraftOperation.draft_id == draft_id,
+                        DraftOperation.result_revision == 7,
+                    )
+                )
+            )
+            assert final["revision"] == 7
+            assert len(position_operations) == 1
+            assert position_operations[0].field_path == f"/locations/{location_id}"
+            assert position_operations[0].old_value_jsonb == before_location
+            assert position_operations[0].new_value_jsonb == saved_location
+
+
+def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, task_run_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="conclusion-editing-test-worker"),
+            provider_factory=lambda _task: ConclusionFixtureProvider(),
+        )
+        assert worker.run_once() is True
+        adopted = _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            content = CaseFileService(session).get_draft(actor_id, project_id)["content"]
+            assert content is not None
+            resolution = content["resolution_specs"][0]
+            conclusion = resolution["conclusion"]
+            resolution_id = resolution["id"]
+            information_id = content["information_units"][0]["id"]
+            assert conclusion["review_status"] == "proposed"
+            assert conclusion["values"][0]["value"] == {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger",
+            }
+
+        with factory() as session:
+            confirmed, revision = V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=2,
+            )
+            assert revision == 3
+            assert confirmed["conclusion"]["review_status"] == "confirmed"
+
+        with factory() as session, pytest.raises(ApplicationError) as repeated_confirm:
+            V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=3,
+            )
+        assert repeated_confirm.value.code == "conclusion_transition_invalid"
+
+        with factory() as session:
+            invalidated, revision = V1EditingService(session).patch_object(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=3,
+                changes={
+                    "required_slots": [
+                        *confirmed["required_slots"],
+                        {
+                            "slot_id": "slot_explanation_note",
+                            "value_type": "text",
+                            "required": False,
+                        },
+                    ]
+                },
+            )
+            assert revision == 4
+            assert invalidated["conclusion"]["review_status"] == "proposed"
+
+        with factory() as session:
+            _confirmed, revision = V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=4,
+            )
+            assert revision == 5
+
+        with factory() as session:
+            information = next(
+                item
+                for item in CaseFileService(session).get_draft(actor_id, project_id)["content"][
+                    "information_units"
+                ]
+                if item["id"] == information_id
+            )
+            _updated, revision = V1EditingService(session).patch_object(
+                actor_id,
+                project_id,
+                information_id,
+                expected_draft_id=draft_id,
+                expected_revision=5,
+                changes={"content": information["content"] + "（已复核原始日志。）"},
+            )
+            assert revision == 7
+
+        with factory() as session:
+            current = CaseFileService(session).get_draft(actor_id, project_id)
+            current_resolution = current["content"]["resolution_specs"][0]
+            assert current_resolution["conclusion"]["review_status"] == "proposed"
+            _confirmed, revision = V1EditingService(session).confirm_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=7,
+            )
+            assert revision == 8
+
+        with factory() as session:
+            withdrawn, revision = V1EditingService(session).withdraw_conclusion(
+                actor_id,
+                project_id,
+                resolution_id,
+                expected_draft_id=draft_id,
+                expected_revision=8,
+            )
+            assert revision == 9
+            assert withdrawn["conclusion"]["review_status"] == "proposed"
+
+        with factory() as session, session.begin():
+            owned = ProjectRepository(session).get_owned(actor_id, project_id, lock=True)
+            assert owned is not None
+            current_document = build_casefile_document(session, owned)
+            current_resolution = current_document["resolution_specs"][0]
+            proposed_by_agent = {
+                **current_resolution["conclusion"],
+                "review_status": "confirmed",
+                "summary": "Agent 修订后的结论建议。",
+            }
+            revision, _group_no, applied = V1EditingService(session).apply_operation_batch(
+                owned,
+                operations=[
+                    {
+                        "operation_id": 901,
+                        "object_id": resolution_id,
+                        "field_path": "/conclusion",
+                        "old_value": current_resolution["conclusion"],
+                        "new_value": proposed_by_agent,
+                    }
+                ],
+                actor_user_id=actor_id,
+                operation_type="agent_patch_apply",
+                patch_set_id=901,
+            )
+            assert revision == 10
+            assert applied[0]["new_value"]["review_status"] == "proposed"
+
+        with factory() as session:
+            final = CaseFileService(session).get_draft(actor_id, project_id)
+            assert final["content"]["resolution_specs"][0]["conclusion"] == {
+                **proposed_by_agent,
+                "review_status": "proposed",
+            }
+            batch_operation = session.scalar(
+                select(DraftOperation).where(
+                    DraftOperation.operation_type == "agent_patch_apply",
+                    DraftOperation.result_revision == 10,
+                )
+            )
+            assert batch_operation is not None
+            assert batch_operation.new_value_jsonb["operations"][0]["value"][
+                "review_status"
+            ] == "proposed"
+            audit_actions = list(
+                session.scalars(
+                    select(AuditEvent.action)
+                    .where(
+                        AuditEvent.project_id == project_id,
+                        AuditEvent.action.like("resolution.conclusion_%"),
+                    )
+                    .order_by(AuditEvent.id)
+                )
+            )
+            assert audit_actions == [
+                "resolution.conclusion_confirmed",
+                "resolution.conclusion_invalidated",
+                "resolution.conclusion_confirmed",
+                "resolution.conclusion_invalidated",
+                "resolution.conclusion_confirmed",
+                "resolution.conclusion_withdrawn",
+            ]
 
 
 def test_v1_editing_supports_all_eleven_object_collections(
@@ -1009,7 +1466,8 @@ def test_v1_editing_supports_all_eleven_object_collections(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, task_run_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             content = CaseFileService(session).get_draft(actor_id, project_id)["content"]
@@ -1033,6 +1491,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                     actor_id,
                     project_id,
                     content[collection][0]["id"],
+                    expected_draft_id=draft_id,
                     expected_revision=revision,
                     changes=changes,
                 )
@@ -1040,14 +1499,14 @@ def test_v1_editing_supports_all_eleven_object_collections(
             revision = next_revision
 
         entity_refs = [
-            {"object_type": "entity", "object_id": entity["id"]}
-            for entity in content["entities"]
+            {"object_type": "entity", "object_id": entity["id"]} for entity in content["entities"]
         ]
         with factory() as session:
             event, next_revision = V1EditingService(session).patch_object(
                 actor_id,
                 project_id,
                 content["events"][0]["id"],
+                expected_draft_id=draft_id,
                 expected_revision=revision,
                 changes={"participant_refs": entity_refs},
             )
@@ -1060,6 +1519,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                 actor_id,
                 project_id,
                 content["entities"][0]["id"],
+                expected_draft_id=draft_id,
                 expected_revision=revision,
                 changes={"knowledge_states": []},
             )
@@ -1079,8 +1539,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
             )
             assert len(edit_operations) == len(edits) + 1
             assert {
-                operation.result_revision - operation.base_revision
-                for operation in edit_operations
+                operation.result_revision - operation.base_revision for operation in edit_operations
             } == {1}
 
 
@@ -1098,15 +1557,24 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert generation_worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             workflow = WorkflowService(session)
-            thread = workflow.create_agent_thread(actor_id, project_id, title=None)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
             queued = workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="请通读整个卷宗并给出可以审阅的修改建议。",
             )
             chat_task_id = int(queued["task"]["task_run_id"])
@@ -1140,21 +1608,18 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             patch_set = assistant["patch_set"]
             assert patch_set["status"] == "pending"
             assert len(patch_set["operations"]) == 2
-            operation_ids = [
-                operation["operation_id"] for operation in patch_set["operations"]
-            ]
+            operation_ids = [operation["operation_id"] for operation in patch_set["operations"]]
             applied = workflow.apply_agent_patch_set(
                 actor_id,
                 project_id,
                 patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=operation_ids,
             )
             assert applied["draft_revision"] == 3
             assert applied["status"] == "applied"
-            assert {
-                issue["rule_id"] for issue in applied["validator_issues"]
-            } == {"CF-W-CLAIM-001"}
+            assert {issue["rule_id"] for issue in applied["validator_issues"]} == {"CF-W-CLAIM-001"}
 
         with factory() as session:
             applied_draft = CaseFileService(session).get_draft(actor_id, project_id)
@@ -1183,6 +1648,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 actor_id,
                 project_id,
                 patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
                 expected_revision=3,
             )
             assert undone["draft_revision"] == 4
@@ -1221,15 +1687,24 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
             config=WorkerConfig(worker_id="stale-fixture-worker"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             workflow = WorkflowService(session)
-            thread = workflow.create_agent_thread(actor_id, project_id, title="并发编辑")
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title="并发编辑",
+            )
             queued = workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="请在后台分析，我会继续编辑。",
             )
             chat_task_id = int(queued["task"]["task_run_id"])
@@ -1242,6 +1717,7 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
                 actor_id,
                 project_id,
                 entity_id,
+                expected_draft_id=draft_id,
                 expected_revision=frozen_revision,
                 changes={"description": "用户在 Agent 运行期间补充的说明。"},
             )
@@ -1271,6 +1747,7 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
                     actor_id,
                     project_id,
                     assistant["patch_set"]["patch_set_id"],
+                    expected_draft_id=draft_id,
                     expected_revision=edited_revision,
                     operation_ids=None,
                 )
@@ -1290,14 +1767,23 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
             config=WorkerConfig(worker_id="invalid-fixture-worker"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
         with factory() as session:
             workflow = WorkflowService(session)
-            thread = workflow.create_agent_thread(actor_id, project_id, title=None)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
             workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="提出一条会触发结构门禁的建议。",
             )
         Worker(
@@ -1319,6 +1805,7 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
                     actor_id,
                     project_id,
                     patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
                     expected_revision=2,
                     operation_ids=[operation_id],
                 )
@@ -1326,10 +1813,7 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
         with factory() as session:
             unchanged = CaseFileService(session).get_draft(actor_id, project_id)
             assert unchanged["revision"] == 2
-            assert (
-                unchanged["content"]["events"][0]["time"]["end"]
-                == "2042-06-01T20:03:00+08:00"
-            )
+            assert unchanged["content"]["events"][0]["time"]["end"] == "2042-06-01T20:03"
             messages = WorkflowService(session).list_agent_messages(
                 actor_id,
                 project_id,
@@ -1352,7 +1836,8 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             provider_factory=lambda _task: RichFixtureProvider(),
         )
         assert generation_worker.run_once() is True
-        _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
 
         with factory() as session:
             generated_task = WorkflowService(session).get_task(
@@ -1376,12 +1861,16 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             thread = workflow.create_agent_thread(
                 actor_id,
                 project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 title="核对关键对象",
             )
             sent = workflow.send_agent_message(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="请逐项建议调整研究员、实验室和重启事件。",
             )
         first_chat_task_id = int(sent["task"]["task_run_id"])
@@ -1464,6 +1953,8 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
                 content="再给重启事件补一个候选标题。",
             )
         second_chat_task_id = int(second_sent["task"]["task_run_id"])
@@ -1513,22 +2004,20 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
 
         first_patch_id = int(first_patch["patch_set_id"])
         selected_operation_ids = [
-            int(operation["operation_id"])
-            for operation in first_patch["operations"][:2]
+            int(operation["operation_id"]) for operation in first_patch["operations"][:2]
         ]
         with factory() as session:
             rejected = WorkflowService(session).apply_agent_patch_set(
                 actor_id,
                 project_id,
                 int(second_patch["patch_set_id"]),
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=[],
             )
         assert rejected["status"] == "rejected"
         assert rejected["draft_revision"] == 2
-        assert [operation["decision"] for operation in rejected["operations"]] == [
-            "rejected"
-        ]
+        assert [operation["decision"] for operation in rejected["operations"]] == ["rejected"]
         with factory() as session:
             unchanged = CaseFileService(session).get_draft(actor_id, project_id)
         assert unchanged["revision"] == 2
@@ -1538,6 +2027,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 first_patch_id,
+                expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=selected_operation_ids,
             )
@@ -1559,17 +2049,24 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 )
             )
         assert applied_draft["revision"] == 3
-        assert next(
-            item for item in applied_draft["content"]["entities"] if item["id"] == entity_id
-        )["name"] == "林首席研究员"
-        assert next(
-            item
-            for item in applied_draft["content"]["locations"]
-            if item["id"] == location_id
-        )["name"] == "中央实验室"
-        assert next(
-            item for item in applied_draft["content"]["events"] if item["id"] == event_id
-        )["title"] == event["title"]
+        assert (
+            next(item for item in applied_draft["content"]["entities"] if item["id"] == entity_id)[
+                "name"
+            ]
+            == "林首席研究员"
+        )
+        assert (
+            next(
+                item for item in applied_draft["content"]["locations"] if item["id"] == location_id
+            )["name"]
+            == "中央实验室"
+        )
+        assert (
+            next(item for item in applied_draft["content"]["events"] if item["id"] == event_id)[
+                "title"
+            ]
+            == event["title"]
+        )
         assert len(apply_operations) == 1
         assert (
             apply_operations[0].base_revision,
@@ -1581,6 +2078,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 first_patch_id,
+                expected_draft_id=draft_id,
                 expected_revision=3,
             )
         assert undone["draft_revision"] == 4
@@ -1596,14 +2094,18 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 )
             )
         assert undone_draft["revision"] == 4
-        assert next(
-            item for item in undone_draft["content"]["entities"] if item["id"] == entity_id
-        )["name"] == entity["name"]
-        assert next(
-            item
-            for item in undone_draft["content"]["locations"]
-            if item["id"] == location_id
-        )["name"] == location["name"]
+        assert (
+            next(item for item in undone_draft["content"]["entities"] if item["id"] == entity_id)[
+                "name"
+            ]
+            == entity["name"]
+        )
+        assert (
+            next(
+                item for item in undone_draft["content"]["locations"] if item["id"] == location_id
+            )["name"]
+            == location["name"]
+        )
         assert len(undo_operations) == 1
         assert (
             undo_operations[0].base_revision,
@@ -1615,6 +2117,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 actor_id,
                 project_id,
                 int(second_patch["patch_set_id"]),
+                expected_draft_id=draft_id,
                 expected_revision=4,
                 operation_ids=None,
             )
@@ -1631,8 +2134,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         second_assistant = next(
             message
             for message in messages
-            if message["task"] is not None
-            and message["task"]["task_run_id"] == second_chat_task_id
+            if message["task"] is not None and message["task"]["task_run_id"] == second_chat_task_id
         )
         assert second_assistant["patch_set"]["status"] == "rejected"
         assert second_assistant["patch_set"]["is_stale"] is False

@@ -1,5 +1,6 @@
 """Normalized hypothesis, reasoning, resolution, and constraint models."""
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -7,6 +8,8 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    DateTime,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
@@ -288,6 +291,36 @@ class ResolutionSpec(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "jsonb_typeof(fairness_requirements_jsonb) = 'array'",
             name="fairness_requirements_is_array",
         ),
+        CheckConstraint(
+            "conclusion_outcome IS NULL OR conclusion_outcome IN ('answer', 'undetermined')",
+            name="conclusion_outcome_allowed",
+        ),
+        CheckConstraint(
+            "conclusion_review_status IS NULL OR "
+            "conclusion_review_status IN ('proposed', 'confirmed')",
+            name="conclusion_review_status_allowed",
+        ),
+        CheckConstraint(
+            "(conclusion_outcome IS NULL AND conclusion_review_status IS NULL "
+            "AND conclusion_summary IS NULL AND conclusion_rationale IS NULL) OR "
+            "(conclusion_outcome IS NOT NULL AND conclusion_review_status IS NOT NULL "
+            "AND conclusion_summary IS NOT NULL AND conclusion_rationale IS NOT NULL "
+            "AND length(btrim(conclusion_summary)) > 0 "
+            "AND length(btrim(conclusion_rationale)) > 0)",
+            name="conclusion_content_consistent",
+        ),
+        CheckConstraint(
+            "(conclusion_review_status = 'confirmed' "
+            "AND conclusion_confirmed_by_user_id IS NOT NULL "
+            "AND conclusion_confirmed_at IS NOT NULL) OR "
+            "(conclusion_review_status IS DISTINCT FROM 'confirmed' "
+            "AND conclusion_confirmed_by_user_id IS NULL AND conclusion_confirmed_at IS NULL)",
+            name="conclusion_confirmation_consistent",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(conclusion_unresolved_gaps_jsonb) = 'array'",
+            name="conclusion_unresolved_gaps_is_array",
+        ),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -308,6 +341,17 @@ class ResolutionSpec(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'draft'"))
+    conclusion_outcome: Mapped[str | None] = mapped_column(String(20))
+    conclusion_review_status: Mapped[str | None] = mapped_column(String(20))
+    conclusion_summary: Mapped[str | None] = mapped_column(Text)
+    conclusion_rationale: Mapped[str | None] = mapped_column(Text)
+    conclusion_unresolved_gaps_jsonb: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    conclusion_confirmed_by_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    conclusion_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ResolutionSlot(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):

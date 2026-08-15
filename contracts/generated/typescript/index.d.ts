@@ -30,6 +30,7 @@ export type ResolutionSpec = CoreMetadata & {
     value_type: "entity_or_claim_ref" | "text_or_claim_ref" | "object_ref" | "text" | "number" | "boolean";
     required: boolean;
   }[];
+  conclusion?: ResolutionConclusion;
   accepted_answers: (string | ObjectRef)[];
   required_claim_refs: ObjectRefList;
   [k: string]: unknown;
@@ -84,11 +85,7 @@ export type Event = CoreMetadata & {
   id: string;
   title: string;
   truth_status: "canon_true" | "reported" | "disputed" | "false_belief" | "unknown";
-  time: {
-    start: string;
-    end: string | null;
-    precision: "second" | "minute" | "hour" | "day" | "approximate" | "unknown";
-  };
+  time: TemporalPosition;
   participant_refs: ObjectRefList;
   location_ref: ObjectRef | null;
   cause_refs: ObjectRefList;
@@ -96,6 +93,17 @@ export type Event = CoreMetadata & {
   observed_by_refs: ObjectRefList;
   [k: string]: unknown;
 };
+export type TemporalPosition =
+  | ExactTemporalPosition
+  | ApproximateTemporalPosition
+  | RangeTemporalPosition
+  | RelativeTemporalPosition
+  | UnknownTemporalPosition;
+/**
+ * Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.
+ */
+export type WallClockTime = string;
+export type TemporalPrecision = "second" | "minute" | "hour" | "day";
 export type InformationUnit = CoreMetadata & {
   id: string;
   information_type:
@@ -135,6 +143,12 @@ export type Hypothesis = CoreMetadata & {
   required_claim_refs: ObjectRefList;
   falsifier_refs: ObjectRefList;
   competing_hypothesis_refs: ObjectRefList;
+  evidence_assessments?: {
+    information_ref: ObjectRef;
+    effect: "supports" | "contradicts" | "neutral";
+    strength: "weak" | "moderate" | "strong";
+    rationale: string;
+  }[];
   status: "active" | "supported" | "eliminated" | "accepted" | "rejected" | "undetermined";
   score: number | null;
   [k: string]: unknown;
@@ -291,7 +305,7 @@ export interface EditingContracts {
   agent_generate_result: AgentGenerateResult;
 }
 export interface CaseFile {
-  schema_version: "1.0";
+  schema_version: "2.0";
   casefile_id: string;
   title: string;
   status: "draft" | "canon" | "archived";
@@ -338,6 +352,19 @@ export interface ActorRef {
   actor_type: "user" | "agent" | "system";
   actor_id: string;
 }
+export interface ResolutionConclusion {
+  outcome: "answer" | "undetermined";
+  review_status: "proposed" | "confirmed";
+  summary: string;
+  values: {
+    slot_id: string;
+    value: string | number | boolean | ObjectRef;
+  }[];
+  selected_hypothesis_refs: ObjectRefList;
+  supporting_reasoning_path_refs: ObjectRefList;
+  rationale: string;
+  unresolved_gaps: string[];
+}
 export interface SchematicSpatialPosition {
   coordinate_system: "schematic";
   x: number;
@@ -347,6 +374,31 @@ export interface Wgs84SpatialPosition {
   coordinate_system: "wgs84";
   latitude: number;
   longitude: number;
+}
+export interface ExactTemporalPosition {
+  kind: "exact";
+  value: WallClockTime;
+  precision: TemporalPrecision;
+}
+export interface ApproximateTemporalPosition {
+  kind: "approximate";
+  value: WallClockTime;
+  precision: TemporalPrecision;
+}
+export interface RangeTemporalPosition {
+  kind: "range";
+  start: WallClockTime;
+  end: WallClockTime;
+  precision: TemporalPrecision;
+}
+export interface RelativeTemporalPosition {
+  kind: "relative";
+  anchor_event_ref: ObjectRef;
+  relation: "before" | "after" | "same_time";
+  offset_minutes: number | null;
+}
+export interface UnknownTemporalPosition {
+  kind: "unknown";
 }
 export interface Extensions {
   [k: string]: unknown;
@@ -395,7 +447,7 @@ export interface BriefIntakeQuestion {
   suggestions: string[];
 }
 export interface ValidationIssue {
-  schema_version: "1.0";
+  schema_version: "2.0";
   issue_id: string;
   rule_id: string;
   severity: "S0" | "S1" | "S2";
@@ -414,7 +466,7 @@ export interface ValidationIssue {
   extensions: Extensions;
 }
 export interface PatchCandidate {
-  schema_version: "1.0";
+  schema_version: "2.0";
   patch_id: string;
   base_version_id: string;
   reason_summary: string;
@@ -529,6 +581,7 @@ export interface TaskEvent {
 export interface AgentGenerateRequest {
   project_id: number;
   brief_version_id: number;
+  expected_draft_id: number;
   expected_draft_revision: number;
   provider: "openai" | "deepseek";
 }

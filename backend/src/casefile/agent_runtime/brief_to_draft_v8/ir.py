@@ -23,7 +23,6 @@ from casefile_contracts import (
     Materiality,
     Operation,
     PathType,
-    Precision,
     QuestionType,
     Reliability,
     Status,
@@ -35,6 +34,7 @@ from casefile_contracts import (
 
 LocalKey = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")]
 JsonPointer = Annotated[str, Field(pattern=r"^(?:/(?:[^~/]|~[01])*)*$")]
+Precision = Literal["second", "minute", "hour", "day", "approximate", "unknown"]
 
 
 class DraftContextPackV1(StrictAgentOutput):
@@ -58,6 +58,18 @@ class BlueprintObjectV1(StrictAgentOutput):
     dependency_keys: list[LocalKey] = Field(default_factory=list, max_length=30)
 
 
+class ReasoningPathBlueprintV2(BlueprintObjectV1):
+    """Blueprint reasoning path that pins its target and required information inputs.
+
+    Historical v8-v14 planners keep emitting only the four base fields; the
+    explicit fields were introduced so the Evidence Drafter no longer has to
+    re-derive the Planner's natural-language intent from dependency_keys.
+    """
+
+    target_key: LocalKey | None = None
+    required_information_keys: list[LocalKey] = Field(default_factory=list, max_length=30)
+
+
 class CaseBlueprintV1(StrictAgentOutput):
     """Fixed-collection object plan; the model cannot invent collection names."""
 
@@ -71,7 +83,7 @@ class CaseBlueprintV1(StrictAgentOutput):
     information_units: list[BlueprintObjectV1] = Field(default_factory=list, max_length=80)
     claims: list[BlueprintObjectV1] = Field(default_factory=list, max_length=60)
     hypotheses: list[BlueprintObjectV1] = Field(default_factory=list, max_length=30)
-    reasoning_paths: list[BlueprintObjectV1] = Field(default_factory=list, max_length=30)
+    reasoning_paths: list[ReasoningPathBlueprintV2] = Field(default_factory=list, max_length=30)
     constraints: list[BlueprintObjectV1] = Field(default_factory=list, max_length=40)
     structure_locks: list[BlueprintObjectV1] = Field(default_factory=list, max_length=40)
 
@@ -87,6 +99,24 @@ class CaseBlueprintV1(StrictAgentOutput):
         )
         if unknown:
             raise ValueError(f"blueprint contains unknown dependency keys: {unknown!r}")
+        targetable = {
+            item.local_key
+            for name in ("resolution_specs", "claims", "hypotheses")
+            for item in getattr(self, name)
+        }
+        information_keys = {item.local_key for item in self.information_units}
+        for path in self.reasoning_paths:
+            if path.target_key is not None and path.target_key not in targetable:
+                raise ValueError(
+                    f"reasoning path {path.local_key!r} targets a non-targetable "
+                    f"blueprint key: {path.target_key!r}"
+                )
+            unlisted = sorted(set(path.required_information_keys) - information_keys)
+            if unlisted:
+                raise ValueError(
+                    f"reasoning path {path.local_key!r} requires unknown information "
+                    f"units: {unlisted!r}"
+                )
         return self
 
 
@@ -231,6 +261,17 @@ class HypothesisIR(SemanticObjectIR):
     score: float | None = Field(default=None, ge=0, le=1)
 
 
+class EvidenceAssessmentIR(StrictAgentOutput):
+    information_key: LocalKey
+    effect: Literal["supports", "contradicts", "neutral"]
+    strength: Literal["weak", "moderate", "strong"]
+    rationale: str = Field(min_length=1)
+
+
+class HypothesisIRV2(HypothesisIR):
+    evidence_assessments: list[EvidenceAssessmentIR] = Field(default_factory=list)
+
+
 class ReasoningStepIR(StrictAgentOutput):
     step_key: LocalKey
     input_keys: list[LocalKey]
@@ -247,12 +288,23 @@ class ReasoningPathIR(SemanticObjectIR):
     alternative_path_keys: list[LocalKey] = Field(default_factory=list)
 
 
-class EvidenceLogicIRV1(StrictAgentOutput):
-    schema_id: Literal["evidence-logic-ir-v1"] = "evidence-logic-ir-v1"
+class EvidenceLogicIRBase(StrictAgentOutput):
     information_units: list[InformationUnitIR] = Field(default_factory=list)
     claims: list[ClaimIR] = Field(default_factory=list)
-    hypotheses: list[HypothesisIR] = Field(default_factory=list)
     reasoning_paths: list[ReasoningPathIR] = Field(default_factory=list)
+
+
+class EvidenceLogicIRV1(EvidenceLogicIRBase):
+    schema_id: Literal["evidence-logic-ir-v1"] = "evidence-logic-ir-v1"
+    hypotheses: list[HypothesisIR] = Field(default_factory=list)
+
+
+class EvidenceLogicIRV2(EvidenceLogicIRBase):
+    schema_id: Literal["evidence-logic-ir-v2"] = "evidence-logic-ir-v2"
+    hypotheses: list[HypothesisIRV2] = Field(default_factory=list)
+
+
+EvidenceLogicIR = EvidenceLogicIRV1 | EvidenceLogicIRV2
 
 
 class RequiredSlotIR(StrictAgentOutput):

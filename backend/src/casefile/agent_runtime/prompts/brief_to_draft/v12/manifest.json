@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "agent_id": "brief_to_draft",
+  "version": "brief-to-draft-v12",
+  "previous_version": "brief-to-draft-v11",
+  "change_summary": "将作品内时间结构拆分为独立 Temporal Planner，并由服务端确定性注入故事事件。",
+  "runtime": {
+    "agent_version": "brief-to-draft-pipeline-v12",
+    "toolset_version": "casefile-generation-tools-v2"
+  },
+  "fragments": {
+    "common": {"file": "fragments/common.md", "sha256": "5a2a325867caa00779022d6a18e0cb0467ad881efd76af793ce85af065d13fca"},
+    "planner": {"file": "fragments/planner.md", "sha256": "bbb57f4bd968f066467345b86ba788e5087d5b15d79561a71d0b9f08925f9ba4"},
+    "temporal": {"file": "fragments/temporal.md", "sha256": "434a5321dc7e114df23ec42d50fe92c4e0c4f149fa76ba7fa8d325ddc5574f6a"},
+    "domain_common": {"file": "fragments/domain_common.md", "sha256": "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"},
+    "story": {"file": "fragments/story.md", "sha256": "ebb727a0b54af0e80cfd7473bbeedce9385790d1a856e8611c7e076363751f58"},
+    "evidence": {"file": "fragments/evidence.md", "sha256": "6207f57a035dd69369e91e290c904eb50541256f26a29b50e9f850b69a9e070c"},
+    "governance": {"file": "fragments/governance.md", "sha256": "e8308618584c0ae881fb7a4185078493afa58cd125cdc242511bbca952cd79d5"}
+  },
+  "components": {
+    "planner": {"instruction_fragments": ["common", "planner"], "input_contract_id": "brief-to-draft-planner-input-v3", "output_schema_id": "case-blueprint-v1", "tool_policy_id": "no-tools-v1"},
+    "temporal": {"instruction_fragments": ["common", "temporal"], "input_contract_id": "brief-to-draft-temporal-input-v1", "output_schema_id": "temporal-plan-v1", "tool_policy_id": "no-tools-v1"},
+    "story": {"instruction_fragments": ["common", "domain_common", "story"], "input_contract_id": "brief-to-draft-domain-input-v3", "output_schema_id": "story-world-ir-v3", "tool_policy_id": "no-tools-v1"},
+    "evidence": {"instruction_fragments": ["common", "domain_common", "evidence"], "input_contract_id": "brief-to-draft-domain-input-v3", "output_schema_id": "evidence-logic-ir-v2", "tool_policy_id": "no-tools-v1"},
+    "governance": {"instruction_fragments": ["common", "domain_common", "governance"], "input_contract_id": "brief-to-draft-domain-input-v3", "output_schema_id": "resolution-governance-ir-v1", "tool_policy_id": "no-tools-v1"}
+  }
+}

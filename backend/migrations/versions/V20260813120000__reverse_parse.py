@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "20260813120000"
-down_revision: Union[str, None] = "20260810000000"
+down_revision: Union[str, None] = "20260812175817"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

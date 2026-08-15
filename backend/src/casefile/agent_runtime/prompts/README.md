@@ -20,7 +20,7 @@ Prompt 版本有三种互斥形态：
 
 - 单 Prompt：`manifest.json` 引用唯一的 `system.md`，并记录其 `system_prompt_sha256`。
 - 原子 Bundle：`manifest.json` 的 `components` 必须精确声明 `planner`、`story`、`evidence`、`governance`；每项只允许同名 `.md` 文件并记录独立 SHA-256。`brief-to-draft-v8` 使用此形态。
-- Prompt Package：Manifest `schema_version=2`，声明运行时兼容关系、带哈希的包内 fragments，以及每次模型调用对应的 component。component 只绑定有序指令片段、严格输入契约、输出 Schema 与工具策略；`brief-to-draft-v9` 是首个生产版本。
+- Prompt Package：Manifest `schema_version=2`，声明运行时兼容关系、带哈希的包内 fragments，以及每次模型调用对应的 component。component 只绑定有序指令片段、严格输入契约、输出 Schema 与工具策略；`brief-to-draft-v9` 是首个生产版本，v10 增加竞争矩阵，v11 在其上增加时间与空间语义。
 
 所有 Prompt 文件必须为 UTF-8、LF 换行、非空内容；哈希按原始字节计算。版本目录使用 `vN`，完整版本号使用 `<agent-id>-vN`，其中 `agent_id` 的下划线替换为连字符。
 
@@ -32,7 +32,7 @@ Prompt 版本有三种互斥形态：
 4. 运行 Prompt Repository、Provider 和打包校验，先提交尚未激活的新版本。
 5. 评审通过后，单独移动 `registry.json` 中的 `current_version` 指针；回滚同样只移动该指针。
 
-`registry.json` 是生产新任务唯一的激活入口，不能通过环境变量选择历史 Prompt。`TaskRun` 会冻结 Registry 解析出的 `prompt_version`；v8 冻结 `brief-to-draft-pipeline-v8` 并校验四组件 Bundle，v9 冻结 `brief-to-draft-pipeline-v9` 与 `casefile-generation-tools-v2`，并在任何模型调用或步骤复用前完整校验 Prompt Package、输入契约、输出 Schema 和工具策略绑定。
+`registry.json` 是生产新任务唯一的激活入口，不能通过环境变量选择历史 Prompt。`TaskRun` 会冻结 Registry 解析出的 `prompt_version`；v8 冻结四组件 Bundle，v9–v13 分别冻结对应的 Pipeline 与 `casefile-generation-tools-v2`，并在任何模型调用或步骤复用前完整校验 Prompt Package、输入契约、输出 Schema 和工具策略绑定。历史 v8–v12 TaskRun 始终按自身冻结版本执行。
 
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
@@ -47,4 +47,12 @@ Prompt Package 是模型调用资产与契约的发布单元，不是工作流 D
 - Output Schema 和 Tool Policy 使用版本化注册 ID；Package 加载时验证引用，模型调用前再次验证 TaskRun 冻结的 Agent/Toolset 版本。
 - Examples 只有被 component 显式引用为 fragment 时才进入模型上下文；测试 Fixture、Eval 和真实 Provider acceptance 不属于生产提示词资源。
 
-`brief-to-draft-v9` 已激活为生产新任务的默认版本。历史 v8 TaskRun 继续按冻结的 Bundle 与运行时版本执行；需要回滚时只移动 `registry.json` 指针，不修改任何已发布版本目录。
+`brief-to-draft-v11` 保持 planner/story/evidence/governance 四部件：Story 使用 `StoryWorldIRV2` 表达无时区作品内壁钟时间与 schematic/WGS84 空间位置，Evidence 继续使用 v10 的 `EvidenceLogicIRV2` 竞争矩阵。它只映射已有 CaseFile 2.0 契约，不生成 Exposure Plan。
+
+`brief-to-draft-v12` 在 v11 基础上增加独立 Temporal Planner：为 Blueprint 的每个事件分配可审计的作品内时间，禁止 `unknown`，要求绝对壁钟锚点，并将相对时间确定性注入 Story 的 `StoryWorldIRV3`。时间规划失败会阻断 Story 及下游生成，历史 v11 TaskRun 不受影响。
+
+`brief-to-draft-v13` 保持 v12 的机器契约与生成拓扑，明确 day/hour/minute/second 的无时区壁钟格式并禁止多余低位零、`Z` 和时区偏移。运行时只会确定性移除与声明精度冲突的零值后缀；非零秒、小数秒和时区值仍然进入有限修复流程。
+
+`brief-to-draft-v14` 保持 v13 的时间与推理拓扑，要求除 local_key、枚举、Schema 字段、稳定编号和必要专名外的所有创作者可见自然语言使用简体中文。最终质量门禁会把纯英文的标题、名称、说明、正文、命题、问题、理由及自然语言数组项归属到对应领域部件，并进入既有的一次定向修复。
+
+v11 已在真实 API → Worker → PostgreSQL/SSE → 不可变候选路径完成 30 次发布验收：语义通过 `28/30`（门槛至少 `27/30`），五类场景为 `5/6`、`5/6`、`6/6`、`6/6`、`6/6`，零不变量违规且失败运行诊断完整。v12 已通过 FakeProvider、Prompt 契约、Docker PostgreSQL 应用服务和 Workbench 时间线回归验证。v13 已通过聚焦契约和 FakeProvider 回归后激活；真实 Provider 发布验收仍需单独执行。需要回滚时同样只移动 `registry.json` 指针，不修改任何已发布版本目录。

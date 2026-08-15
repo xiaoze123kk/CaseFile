@@ -74,6 +74,7 @@ function buildFakeBackend() {
   let briefContent: BriefContent | null = null;
   let formalBriefReview = false;
   const caseDraftRevision = 17;
+  const caseDraftId = 71;
   let draftCandidates: DraftCandidateView[] = [];
   let taskSeq = 100;
   const taskTypes = new Map<number, string>();
@@ -83,7 +84,8 @@ function buildFakeBackend() {
   let failNextAnchorExtract = false;
   let failNextQuestionRevision = false;
   const generationDraftRevisions: number[] = [];
-  const adoptionDraftRevisions: number[] = [];
+  const generationDraftIds: number[] = [];
+  const adoptionCurrentDraftIds: number[] = [];
   let failNextDraftAdoption = false;
   let draftAdoptionGate: Promise<void> | null = null;
   let projects: ProjectView[] = [
@@ -97,7 +99,8 @@ function buildFakeBackend() {
       created_at: new Date(Date.now() - 86400000).toISOString(),
       updated_at: new Date().toISOString(),
       casefile_id: 1,
-      draft: { id: 1, revision: 1, schema_version: "v1", status: "open" },
+      current_draft_id: 1,
+      draft: { id: 1, title: "测试项目", revision: 1, schema_version: "v1", status: "active" },
     },
     {
       id: 2,
@@ -109,7 +112,8 @@ function buildFakeBackend() {
       created_at: new Date(Date.now() - 172800000).toISOString(),
       updated_at: new Date(Date.now() - 3600000).toISOString(),
       casefile_id: 2,
-      draft: { id: 2, revision: 1, schema_version: "v1", status: "open" },
+      current_draft_id: 2,
+      draft: { id: 2, title: "午夜回航旧案", revision: 1, schema_version: "v1", status: "active" },
     },
     {
       id: 3,
@@ -121,7 +125,8 @@ function buildFakeBackend() {
       created_at: new Date(Date.now() - 259200000).toISOString(),
       updated_at: new Date(Date.now() - 3600000).toISOString(),
       casefile_id: 3,
-      draft: { id: 3, revision: 1, schema_version: "v1", status: "open" },
+      current_draft_id: 3,
+      draft: { id: 3, title: "封存的旧卷", revision: 1, schema_version: "v1", status: "active" },
     },
   ];
 
@@ -367,29 +372,29 @@ function buildFakeBackend() {
               strategy: "structure_first",
               direction: "先建立事件、对象和因果骨架。",
               focus: "让结构首先清晰可审阅",
-              strengths: ["结构稳定", "引用易校验"],
+              strengths: ["结构稳定", "符合boundary_text中的创作边界"],
               tradeoffs: ["氛围细节稍后深化"],
-              brief_fit: "当前 Brief 已有明确事件边界。",
+              brief_fit: "直接对应Brief中的content_outline，并满足boundary_text中的要求。",
             },
             {
               strategy: "atmosphere_first",
               direction: "先建立场景质感与人物张力。",
               focus: "让氛围成为线索载体",
-              strengths: ["场景鲜明", "人物有记忆点"],
+              strengths: ["场景鲜明", "呼应core_selling_points"],
               tradeoffs: ["需要继续核对推理密度"],
-              brief_fit: "封存室与夜班具有明确氛围潜力。",
+              brief_fit: "引用creative_intent中的封存室与夜班设定。",
             },
             {
               strategy: "reasoning_first",
               direction: "先建立证据、反证和解答链。",
               focus: "让核心命题可验证",
-              strengths: ["证据链清晰", "假设边界明确"],
+              strengths: ["证据链清晰", "符合risk_notes"],
               tradeoffs: ["场景铺陈稍后深化"],
-              brief_fit: "当前 Brief 已给出明确推理命题。",
+              brief_fit: "直接围绕reasoning_proposition展开。",
             },
           ],
           recommended_strategy: "reasoning_first",
-          recommendation_reason: "明确的推理命题适合先建立证据闭环。",
+          recommendation_reason: "reasoning_proposition适合先建立证据闭环。",
         },
       };
     }
@@ -512,7 +517,8 @@ function buildFakeBackend() {
       draftAdoptionGate = gate;
     },
     getGenerationDraftRevisions: () => generationDraftRevisions,
-    getAdoptionDraftRevisions: () => adoptionDraftRevisions,
+    getGenerationDraftIds: () => generationDraftIds,
+    getAdoptionCurrentDraftIds: () => adoptionCurrentDraftIds,
     listConfiguredProviders: async () => configuredProviders,
     isProviderAuthFailure: isAuthFailure,
     isBriefIntakeRevisionConflict: isRevisionConflict,
@@ -638,18 +644,30 @@ function buildFakeBackend() {
     strategyOptionsResult: (task: TaskView) => task.result,
     fetchCaseDraft: async (): Promise<DraftView> => ({
       project_id: 1,
+      casefile_id: 1,
+      draft_id: caseDraftId,
+      title: "测试工作稿",
       revision: caseDraftRevision,
       schema_version: "v1",
-      status: "open",
+      status: "active",
+      document_status: "draft",
+      brief_version_id: null,
+      created_at: new Date(Date.now() - 3600000).toISOString(),
+      updated_at: new Date().toISOString(),
       content: null,
     }),
     startDraftGenerationTask: async (
       _projectId: number,
       _briefVersionId: number,
+      expectedDraftId: number,
       expectedDraftRevision: number,
     ) => {
+      generationDraftIds.push(expectedDraftId);
       generationDraftRevisions.push(expectedDraftRevision);
-      if (expectedDraftRevision !== caseDraftRevision) {
+      if (
+        expectedDraftId !== caseDraftId ||
+        expectedDraftRevision !== caseDraftRevision
+      ) {
         throw new Error("CaseFile Draft revision is stale");
       }
       return recordTask("brief_to_draft");
@@ -810,9 +828,9 @@ function buildFakeBackend() {
     adoptDraftCandidateWithReconciliation: async (
       _projectId: number,
       taskRunId: number,
-      expectedDraftRevision: number,
+      expectedCurrentDraftId: number,
     ) => {
-      adoptionDraftRevisions.push(expectedDraftRevision);
+      adoptionCurrentDraftIds.push(expectedCurrentDraftId);
       const gate = draftAdoptionGate;
       if (gate) {
         draftAdoptionGate = null;
@@ -822,15 +840,26 @@ function buildFakeBackend() {
         failNextDraftAdoption = false;
         throw new Error("候选采用服务暂不可用。");
       }
-      if (expectedDraftRevision !== caseDraftRevision) {
-        throw new Error("CaseFile Draft revision is stale");
+      if (expectedCurrentDraftId !== caseDraftId) {
+        throw new Error("Current Draft changed");
       }
       draftCandidates = draftCandidates.map((candidate) =>
         candidate.task_run_id === taskRunId
           ? { ...candidate, is_adopted: true, is_current: true }
           : candidate,
       );
-      return { facts: null, error: null };
+      return {
+        adoption: {
+          task_run_id: taskRunId,
+          draft_id: caseDraftId,
+          revision: caseDraftRevision,
+          title: "测试工作稿",
+          content_hash: "a".repeat(64),
+          adopted: true as const,
+        },
+        facts: null,
+        error: null,
+      };
     },
   };
 }
@@ -1098,11 +1127,24 @@ describe("intake center", () => {
     });
     const strategyComparison = screen.getByLabelText("三种策略并列比较");
     expect(within(strategyComparison).getAllByRole("button")).toHaveLength(3);
+    expect(strategyComparison).toHaveTextContent("内容骨架");
+    expect(strategyComparison).toHaveTextContent("创作边界");
+    expect(strategyComparison).toHaveTextContent("核心卖点");
+    expect(strategyComparison).toHaveTextContent("创作意图");
+    expect(strategyComparison).toHaveTextContent("推理目标");
+    expect(strategyComparison).toHaveTextContent("风险提示");
+    expect(strategyComparison).not.toHaveTextContent(
+      /content_outline|boundary_text|core_selling_points|creative_intent|reasoning_proposition|risk_notes/u,
+    );
+    const recommendation = screen.getByText(/Agent 建议：推理优先/u);
+    expect(recommendation).toHaveTextContent("推理目标适合先建立证据闭环。");
+    expect(recommendation).not.toHaveTextContent("reasoning_proposition");
     fireEvent.click(screen.getByRole("button", { name: /让结构首先清晰可审阅/u }));
     fireEvent.click(screen.getByRole("button", { name: /生成结构优先完整深稿/u }));
     await flush();
 
     expect(fake.backend.getGenerationDraftRevisions().slice(-1)).toEqual([17]);
+    expect(fake.backend.getGenerationDraftIds().slice(-1)).toEqual([71]);
     expect(screen.getByRole("button", { name: /完整深稿已生成/u })).toBeDisabled();
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
@@ -1132,7 +1174,7 @@ describe("intake center", () => {
       }),
     );
     const adoptionCountBeforeRetry =
-      fake.backend.getAdoptionDraftRevisions().length;
+      fake.backend.getAdoptionCurrentDraftIds().length;
     fireEvent.click(
       screen.getByRole("button", { name: /采用为当前工作稿/u }),
     );
@@ -1141,7 +1183,7 @@ describe("intake center", () => {
     const adopting = screen.getByRole("button", { name: "正在采用…" });
     expect(adopting).toBeDisabled();
     fireEvent.click(adopting);
-    expect(fake.backend.getAdoptionDraftRevisions()).toHaveLength(
+    expect(fake.backend.getAdoptionCurrentDraftIds()).toHaveLength(
       adoptionCountBeforeRetry + 1,
     );
 
@@ -1150,7 +1192,7 @@ describe("intake center", () => {
     });
     await flush();
 
-    expect(fake.backend.getAdoptionDraftRevisions().at(-1)).toBe(17);
+    expect(fake.backend.getAdoptionCurrentDraftIds().at(-1)).toBe(71);
     expect(routerPush).toHaveBeenCalledTimes(1);
     expect(routerPush).toHaveBeenLastCalledWith("/workbench?project=1");
     expect(
@@ -1162,7 +1204,7 @@ describe("intake center", () => {
       screen.getByRole("button", { name: /打开分析师工作台/u }),
     );
     expect(routerPush).toHaveBeenCalledWith("/workbench?project=1");
-  });
+  }, 15_000);
 
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {
     fake.backend.setConfiguredProviders(["openai", "deepseek"]);

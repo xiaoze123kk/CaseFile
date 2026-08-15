@@ -53,10 +53,12 @@ from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
 )
+from casefile.agent_runtime.prompt import COMPONENT_GENERATION_PROMPT_VERSIONS
 from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.application.brief_intake_service import BriefIntakeService
 from casefile.application.casefile_v1 import (
     generation_candidate_summary,
+    prepare_generation_candidate,
     validate_generation_candidate_context,
 )
 from casefile.application.reverse_parse_service import ReverseParseService
@@ -89,9 +91,6 @@ from casefile.data_postgres.models import (
 from casefile.data_postgres.repositories import ProjectRepository
 
 ProviderFactory = Callable[[TaskRun], AgentProvider]
-_COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(
-    {"brief-to-draft-v8", "brief-to-draft-v9"}
-)
 
 
 def provider_for_task(task: TaskRun) -> AgentProvider:
@@ -161,10 +160,7 @@ class Worker:
                         TaskRun.status == "queued",
                         (TaskRun.status == "running") & (TaskRun.lease_expires_at < now),
                         (TaskRun.status == "cancelling")
-                        & (
-                            TaskRun.lease_expires_at.is_(None)
-                            | (TaskRun.lease_expires_at < now)
-                        ),
+                        & (TaskRun.lease_expires_at.is_(None) | (TaskRun.lease_expires_at < now)),
                     )
                 )
                 .order_by(TaskRun.created_at, TaskRun.id)
@@ -448,8 +444,8 @@ class Worker:
                 if task_snapshot.prompt_version == "brief-to-draft-v7"
                 else int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
             )
-            feedback: tuple[dict[str, Any], ...] = ()
-            feedback_history: list[dict[str, Any]] = []
+            feedback = generation_request.repair_feedback
+            feedback_history: list[dict[str, Any]] = list(feedback)
             for repair_no in range(repair_limit + 1):
                 if repair_no:
                     self._emit(
@@ -619,6 +615,7 @@ class Worker:
                 task_run_id=task.id,
                 prompt_version=task.prompt_version,
                 brief=frozen_brief,
+                schema_version=str(task.input_jsonb.get("schema_version", "1.0")),
                 casefile_id=_required_string(task.input_jsonb, "casefile_id"),
                 brief_id=_required_string(task.input_jsonb, "brief_public_id"),
                 brief_version=_required_integer(
@@ -641,6 +638,7 @@ class Worker:
                 candidate_strategy=candidate_strategy,
                 candidate_strategy_version=candidate_strategy_version,
                 reusable_steps=_reusable_component_steps(session, task),
+                repair_feedback=_previous_attempt_repair_feedback(session, task),
                 agent_version=task.agent_version,
                 toolset_version=task.toolset_version,
             )
@@ -951,6 +949,7 @@ class Worker:
             brief = session.get(Brief, brief_version.brief_id)
             if brief is None:
                 raise RuntimeError("Brief disappeared")
+            candidate = prepare_generation_candidate(owned, candidate)
             validate_generation_candidate_context(
                 owned,
                 candidate,
@@ -1040,6 +1039,7 @@ class Worker:
                 return False
             if task.leased_by != self.config.worker_id or attempt.status != "running":
                 return False
+            usage = _terminal_attempt_usage(session, attempt.id, usage)
             now = datetime.now(UTC)
             finalize_task_cancellation(
                 session,
@@ -1089,12 +1089,13 @@ class Worker:
                 or attempt.status != "running"
             ):
                 return
+            usage = _terminal_attempt_usage(session, attempt.id, usage)
             safe_message = _safe_error_message(error, sensitive_values)
             underlying_error_code = error_code
-            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
+            if task.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
                 error_code = "agent_component_failed"
             failure_issues = _failure_validation_issues(validation_errors)
-            if task.prompt_version in _COMPONENT_GENERATION_PROMPT_VERSIONS:
+            if task.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
                 coordinator_issue = {
                     "component_id": "run_coordinator",
                     "failure_layer": "frozen_context",
@@ -1213,7 +1214,7 @@ def _persist_agent_execution_event(
 ) -> None:
     """Project component execution events into queryable step/call audit rows."""
 
-    if task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS:
+    if task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS:
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
@@ -1244,7 +1245,8 @@ def _persist_agent_execution_event(
                 component_id=component_id,
                 parent_component_id=(
                     "domain_drafters"
-                    if component_id in {"story_world", "evidence_logic", "resolution_governance"}
+                    if component_id
+                    in {"story_world", "evidence_logic", "evidence_matrix", "resolution_governance"}
                     else None
                 ),
                 execution_no=execution_no,
@@ -1409,31 +1411,57 @@ def _optional_hash(value: object) -> str | None:
 
 
 def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict[str, Any]]:
-    if (
-        task.prompt_version not in _COMPONENT_GENERATION_PROMPT_VERSIONS
-        or task.attempt_count < 2
-    ):
+    if task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS or task.attempt_count < 2:
         return {}
+    reusable_components = (
+        "case_blueprint_planner",
+        "temporal_structure_planner",
+        "story_world",
+        "evidence_logic",
+        "resolution_governance",
+    )
+    failed_steps = _previous_attempt_failed_steps(session, task)
+    invalidated: set[str] = set()
+    if failed_steps:
+        for step in failed_steps:
+            if step.component_id in reusable_components:
+                invalidated.add(step.component_id)
+            diagnostics = step.diagnostic_jsonb
+            raw_issues = diagnostics.get("issues") if isinstance(diagnostics, dict) else None
+            if not isinstance(raw_issues, list):
+                continue
+            for issue in raw_issues:
+                if not isinstance(issue, dict):
+                    continue
+                component_id = issue.get("component_id")
+                if component_id in reusable_components:
+                    invalidated.add(str(component_id))
+        if not invalidated:
+            # A coordinator-only or otherwise unattributed failure cannot prove that
+            # any upstream artifact is safe to carry into the resumed attempt.
+            return {}
+        if "case_blueprint_planner" in invalidated:
+            invalidated = set(reusable_components)
+        elif "temporal_structure_planner" in invalidated:
+            invalidated.add("story_world")
+
     rows = session.scalars(
         select(AgentStepRun)
         .where(
             AgentStepRun.task_run_id == task.id,
             AgentStepRun.status.in_(("succeeded", "reused")),
             AgentStepRun.component_version == task.prompt_version,
-            AgentStepRun.component_id.in_(
-                (
-                    "case_blueprint_planner",
-                    "story_world",
-                    "evidence_logic",
-                    "resolution_governance",
-                )
-            ),
+            AgentStepRun.component_id.in_(reusable_components),
         )
         .order_by(AgentStepRun.id.desc())
     )
     reusable: dict[str, dict[str, Any]] = {}
     for row in rows:
-        if row.component_id in reusable or not isinstance(row.output_jsonb, dict):
+        if (
+            row.component_id in reusable
+            or row.component_id in invalidated
+            or not isinstance(row.output_jsonb, dict)
+        ):
             continue
         reusable[row.component_id] = {
             "step_run_id": row.id,
@@ -1443,6 +1471,112 @@ def _reusable_component_steps(session: Session, task: TaskRun) -> dict[str, dict
             "output": row.output_jsonb,
         }
     return reusable
+
+
+def _previous_attempt_failed_steps(
+    session: Session,
+    task: TaskRun,
+) -> list[AgentStepRun]:
+    if task.attempt_count < 2:
+        return []
+    previous_attempt = session.scalar(
+        select(TaskAttempt).where(
+            TaskAttempt.task_run_id == task.id,
+            TaskAttempt.attempt_no == task.attempt_count - 1,
+            TaskAttempt.status == "failed",
+        )
+    )
+    if previous_attempt is None:
+        return []
+    steps = list(
+        session.scalars(
+            select(AgentStepRun)
+            .where(AgentStepRun.task_attempt_id == previous_attempt.id)
+            .order_by(AgentStepRun.id)
+        )
+    )
+    # One TaskAttempt can contain several full provider.generate runs because
+    # structural repair retries restart the component graph. Component-local
+    # execution_no values are not comparable across components, while the
+    # context builder is the deterministic first step of every full run.
+    latest_generation_start = next(
+        (step for step in reversed(steps) if step.component_id == "context_pack_builder"),
+        None,
+    )
+    if latest_generation_start is None:
+        return [step for step in steps if step.status == "failed"]
+    return [
+        step
+        for step in steps
+        if step.status == "failed" and step.id >= latest_generation_start.id
+    ]
+
+
+def _previous_attempt_repair_feedback(
+    session: Session,
+    task: TaskRun,
+) -> tuple[dict[str, Any], ...]:
+    issues: list[dict[str, Any]] = []
+    for step in _previous_attempt_failed_steps(session, task):
+        diagnostics = step.diagnostic_jsonb
+        raw_issues = diagnostics.get("issues") if isinstance(diagnostics, dict) else None
+        if not isinstance(raw_issues, list):
+            continue
+        for issue in raw_issues:
+            if isinstance(issue, dict):
+                issues.append(dict(issue))
+                if len(issues) == 50:
+                    return ({"issues": issues},)
+    return ({"issues": issues},) if issues else ()
+
+
+def _terminal_attempt_usage(
+    session: Session,
+    attempt_id: int,
+    usage: dict[str, Any],
+) -> dict[str, Any]:
+    if usage:
+        return usage
+    rows = list(
+        session.scalars(
+            select(AgentModelCall)
+            .where(AgentModelCall.task_attempt_id == attempt_id)
+            .order_by(AgentModelCall.agent_step_run_id, AgentModelCall.call_no)
+        )
+    )
+    rows_by_step: dict[int, list[AgentModelCall]] = {}
+    for row in rows:
+        rows_by_step.setdefault(row.agent_step_run_id, []).append(row)
+
+    usage_keys = (
+        "requests",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cached_tokens",
+        "reasoning_tokens",
+    )
+    snapshots: list[dict[str, Any]] = []
+    for step_rows in rows_by_step.values():
+        rows_with_usage = [
+            row for row in step_rows if any(key in row.usage_jsonb for key in usage_keys)
+        ]
+        if rows_with_usage:
+            snapshots.append(max(rows_with_usage, key=lambda row: row.call_no).usage_jsonb)
+    if not snapshots:
+        return {}
+
+    merged: dict[str, Any] = {"requests": 0}
+    for snapshot in snapshots:
+        requests = snapshot.get("requests")
+        merged["requests"] += (
+            requests if isinstance(requests, int) and not isinstance(requests, bool) else 1
+        )
+        for key in usage_keys[1:]:
+            value = snapshot.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                merged[key] = int(merged.get(key, 0)) + value
+    return merged
 
 
 def _error_code(error: Exception) -> str:

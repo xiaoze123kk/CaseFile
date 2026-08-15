@@ -124,6 +124,8 @@ expected_tables = {
     "agent_patch_sets", "agent_patch_operations", "casefile_objects", "casefile_refs",
     "casefile_contract_refs", "draft_operations", "narrative_phases", "entities",
     "people", "locations", "events", "information_units", "evidence_items",
+    "exposure_plans", "exposure_plan_revisions", "exposure_plan_entries",
+    "exposure_plan_entry_refs",
     "testimonies", "claims", "knowledge_states", "knowledge_state_entries",
     "hypotheses", "idea_candidates", "imported_documents", "parse_items",
     "reasoning_paths", "reasoning_nodes", "reasoning_edges",

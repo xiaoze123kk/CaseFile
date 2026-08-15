@@ -7,6 +7,7 @@ import {
   type CandidateSlotStrategy,
   useCaseSession,
 } from "@/features/case-session/case-session-provider";
+import type { TaskView } from "@/lib/api-client";
 
 import styles from "./intake-late-stages.module.css";
 
@@ -15,6 +16,42 @@ const strategyLabels: Record<CandidateSlotStrategy, string> = {
   atmosphere_first: "氛围优先",
   reasoning_first: "推理优先",
 };
+
+/** 任务仍处于排队、执行或停止请求中，尚未到达终态。 */
+const ACTIVE_GENERATION_TASK_STATUSES = new Set<TaskView["status"]>([
+  "queued",
+  "running",
+  "cancelling",
+]);
+
+const internalBriefFieldLabels = {
+  source_record_ids: "原稿来源",
+  creative_intent: "创作意图",
+  reasoning_proposition: "推理目标",
+  resolution_mode: "答案来源",
+  conclusion_mode: "结论模式",
+  author_answer: "作者答案",
+  author_anchors: "作者确认要点",
+  boundary_text: "创作边界",
+  creative_constraints: "创作约束",
+  core_selling_points: "核心卖点",
+  content_outline: "内容骨架",
+  scope_estimate: "篇幅预估",
+  risk_notes: "风险提示",
+} as const;
+
+const internalBriefFieldPattern = new RegExp(
+  `(^|[^A-Za-z0-9_])\`?(${Object.keys(internalBriefFieldLabels).join("|")})\`?(?=$|[^A-Za-z0-9_])`,
+  "gu",
+);
+
+export function presentStrategyText(value: string) {
+  return value.replace(
+    internalBriefFieldPattern,
+    (_match, prefix: string, field: keyof typeof internalBriefFieldLabels) =>
+      `${prefix}${internalBriefFieldLabels[field]}`,
+  );
+}
 
 const statusLabels = {
   pending: "待采用",
@@ -73,8 +110,34 @@ export function DraftCandidatesStage() {
       .sort((left, right) => left.step_run_id - right.step_run_id)
       .map((step) => [step.component_id, step]),
   );
-  const failedComponent = [...latestComponentSteps.values()].find(
-    (step) => step.status === "failed",
+  const failedComponent = [...latestComponentSteps.values()]
+    .filter((step) => step.status === "failed")
+    .sort((left, right) => right.step_run_id - left.step_run_id)[0] ?? null;
+  const taskFailure = selectedSlot?.latestTask?.failure ?? null;
+  const recoveryAvailable = Boolean(
+    taskFailure?.retryable || failedComponent?.recoverable,
+  );
+  const taskActive = Boolean(
+    selectedSlot?.latestTask &&
+      ACTIVE_GENERATION_TASK_STATUSES.has(selectedSlot.latestTask.status),
+  );
+  // 运行中的可恢复部件失败仍在重试上限内，属于流水线自动修复，
+  // 不弹失败提示；只有重试耗尽、任务真正失败时才展示失败门禁。
+  const recovering = Boolean(taskActive && failedComponent?.recoverable);
+  const pipeline = pipelineRows(latestComponentSteps);
+  const pipelineProgress = pipelineProgressFor(
+    pipeline,
+    componentSteps.length === 0,
+    recovering,
+  );
+  const coordinatorFallback = failedComponent?.component_id === "run_coordinator";
+  const failureIssues = coordinatorFallback && taskFailure?.issues.length
+    ? taskFailure.issues
+    : failedComponent?.issues.length
+      ? failedComponent.issues
+      : taskFailure?.issues ?? [];
+  const showPipeline = Boolean(
+    selectedSlot && (generating || selectedSlot.latestTask),
   );
   const adoptedCandidate = state.draftCandidates.find(
     (candidate) => candidate.id === state.adoptedCandidateId,
@@ -121,10 +184,12 @@ export function DraftCandidatesStage() {
     adoptionInFlightRef.current = true;
     setAdoptingCandidateId(candidateId);
     try {
-      if (!(await adoptCandidate(candidateId))) {
+      const adoptedDraftId = await adoptCandidate(candidateId);
+      if (!adoptedDraftId) {
         setGenerationError("这份深稿不属于当前冻结的创作简报，请重新生成。");
         return;
       }
+      setNotice(`工作稿 #${adoptedDraftId} 已设为当前稿，正在进入工作台。`);
       router.push(`/workbench?project=${activeProjectId}`);
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "采用深稿失败");
@@ -323,16 +388,16 @@ export function DraftCandidatesStage() {
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
                       <small>{recommended ? "Agent 建议 · " : ""}{strategyLabels[option.strategy]}</small>
-                      <strong>{option.focus}</strong>
-                      <p>{option.direction}</p>
+                      <strong>{presentStrategyText(option.focus)}</strong>
+                      <p>{presentStrategyText(option.direction)}</p>
                     </div>
                     <em>{selected ? "已选择" : "选择"}</em>
                   </button>
                   <div className={styles.candidateDetail}>
-                    <section><span>适配依据</span><p>{option.brief_fit}</p></section>
+                    <section><span>适配依据</span><p>{presentStrategyText(option.brief_fit)}</p></section>
                     <div className={styles.candidateComparison}>
-                      <section><span>主要收益</span><ul>{option.strengths.map((item) => <li key={item}>{item}</li>)}</ul></section>
-                      <section><span>需要接受</span><ul>{option.tradeoffs.map((item) => <li key={item}>{item}</li>)}</ul></section>
+                      <section><span>主要收益</span><ul>{option.strengths.map((item) => <li key={item}>{presentStrategyText(item)}</li>)}</ul></section>
+                      <section><span>需要接受</span><ul>{option.tradeoffs.map((item) => <li key={item}>{presentStrategyText(item)}</li>)}</ul></section>
                     </div>
                   </div>
                 </article>
@@ -348,7 +413,7 @@ export function DraftCandidatesStage() {
 
         {analysis.recommendationReason ? (
           <p className={styles.generationCurrentAction}>
-            Agent 建议：{strategyLabels[analysis.recommendedStrategy!]}。{analysis.recommendationReason}
+            Agent 建议：{strategyLabels[analysis.recommendedStrategy!]}。{presentStrategyText(analysis.recommendationReason)}
           </p>
         ) : null}
 
@@ -396,43 +461,88 @@ export function DraftCandidatesStage() {
 
       {generationError ? <p className={styles.generationError} role="alert">{generationError}</p> : null}
 
-      {selectedSlot?.latestTask && componentSteps.length ? (
+      {showPipeline && selectedSlot ? (
         <section className={styles.agentPipeline} aria-label="深稿生成部件进度">
           <header>
-            <div><span>{selectedSlot.latestTask.prompt_version ?? "brief_to_draft"}</span><strong>六步生成流水线</strong></div>
-            <b>Attempt {selectedSlot.latestTask.attempt_count}</b>
+            <div><span>{selectedSlot.latestTask?.prompt_version ?? "正在创建任务"}</span><strong>六步生成流水线</strong></div>
+            <b>Attempt {selectedSlot.latestTask?.attempt_count ?? selectedSlot.attempt}</b>
           </header>
+          <div className={styles.pipelineProgressSummary}>
+            <div className={styles.pipelineProgressCopy}>
+              <strong>{pipelineProgress.label}</strong>
+              <span>已完成 {pipelineProgress.completedCount} / 6 步</span>
+            </div>
+            <div
+              className={styles.pipelineProgressBar}
+              role="progressbar"
+              aria-label="六步生成进度"
+              aria-valuemin={0}
+              aria-valuemax={6}
+              aria-valuenow={pipelineProgress.completedCount}
+            >
+              <span style={{ width: `${(pipelineProgress.completedCount / 6) * 100}%` }} />
+            </div>
+          </div>
           <ol>
-            {pipelineRows(latestComponentSteps).map((row, index) => (
-              <li data-status={row.status} key={row.id}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                <div>
-                  <strong>{row.label}</strong>
-                  <small>{stepStatusLabel(row.status)}</small>
-                  {row.children ? (
-                    <ul>{row.children.map((child) => (
-                      <li data-status={child.status} key={child.id}>
-                        {child.label} · {stepStatusLabel(child.status)}
-                      </li>
-                    ))}</ul>
-                  ) : null}
-                </div>
-              </li>
-            ))}
+            {pipeline.map((row, index) => {
+              const rowStatus =
+                recovering && row.status === "failed" ? "recovering" : row.status;
+              return (
+                <li data-status={rowStatus} key={row.id}>
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <div>
+                    <strong>{row.id === "domain_drafters" && row.children
+                      ? `${row.label} · 已完成 ${row.children.filter((child) => child.status === "succeeded" || child.status === "reused").length} / 4`
+                      : row.label}</strong>
+                    <small>{stepStatusLabel(rowStatus)}</small>
+                    {row.children ? (
+                      <ul>{row.children.map((child) => {
+                        const childStatus =
+                          recovering && child.status === "failed"
+                            ? "recovering"
+                            : child.status;
+                        return (
+                          <li data-status={childStatus} key={child.id}>
+                            {child.label} · {stepStatusLabel(childStatus)}
+                          </li>
+                        );
+                      })}</ul>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ol>
-          {failedComponent ? (
+          {recovering && failedComponent ? (
+            <div className={styles.componentRecovering} role="status">
+              <strong>{componentLabel(failedComponent.component_id)}未通过</strong>
+              <p>未达到重试上限，正在自动修复，无需操作。</p>
+            </div>
+          ) : failedComponent || taskFailure ? (
             <div className={styles.componentFailure} role="alert">
-              <strong>{componentLabel(failedComponent.component_id)}执行失败</strong>
-              <p>层：{failedComponent.failure_layer ?? "未知"} · Schema：{failedComponent.schema_id}</p>
-              {failedComponent.issues.map((issue) => (
+              <strong>
+                {coordinatorFallback && taskFailure?.issues.length
+                  ? "质量与修复门禁执行失败"
+                  : failedComponent
+                    ? `${componentLabel(failedComponent.component_id)}执行失败`
+                    : "生成任务执行失败"}
+              </strong>
+              {coordinatorFallback && taskFailure?.issues.length ? (
+                <p>层：生成校验 · 任务级诊断</p>
+              ) : failedComponent ? (
+                <p>层：{failedComponent.failure_layer ?? "未知"} · Schema：{failedComponent.schema_id}</p>
+              ) : taskFailure ? (
+                <p>{taskFailure.message}</p>
+              ) : null}
+              {failureIssues.map((issue) => (
                 <code key={`${issue.code}-${issue.path}`}>{issue.path || "/"} · {issue.message}</code>
               ))}
               <button
-                disabled={!failedComponent.recoverable || generating}
+                disabled={!recoveryAvailable || generating}
                 onClick={() => void resumeFailedDraft()}
                 type="button"
               >
-                {failedComponent.recoverable ? "从失败阶段恢复" : "当前失败不可恢复"}
+                {recoveryAvailable ? "从失败阶段恢复" : "当前失败不可恢复"}
               </button>
             </div>
           ) : null}
@@ -484,6 +594,7 @@ function pipelineRows(steps: Map<string, { status: PipelineStatus }>) {
   const domains = [
     { id: "story_world", label: "故事世界", status: direct("story_world") },
     { id: "evidence_logic", label: "证据推理", status: direct("evidence_logic") },
+    { id: "temporal_structure_planner", label: "时间结构规划", status: direct("temporal_structure_planner") },
     { id: "resolution_governance", label: "解答治理", status: direct("resolution_governance") },
   ];
   const domainStatus: PipelineStatus = domains.some((item) => item.status === "failed")
@@ -501,14 +612,39 @@ function pipelineRows(steps: Map<string, { status: PipelineStatus }>) {
   ];
 }
 
-function stepStatusLabel(status: PipelineStatus) {
-  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过" }[status];
+function pipelineProgressFor(
+  rows: ReturnType<typeof pipelineRows>,
+  creatingTask: boolean,
+  recovering: boolean,
+) {
+  const completedCount = rows.filter((row) => row.status === "succeeded" || row.status === "reused").length;
+  if (creatingTask) return { completedCount, label: "正在创建任务" };
+  const failedIndex = rows.findIndex((row) => row.status === "failed");
+  const runningIndex = rows.findIndex((row) => row.status === "running");
+  const nextIndex = rows.findIndex((row) => row.status === "pending");
+  if (failedIndex >= 0) {
+    return {
+      completedCount,
+      label: recovering
+        ? `第 ${failedIndex + 1} 步未通过，正在自动修复…`
+        : `第 ${failedIndex + 1} 步失败：${rows[failedIndex].label}`,
+    };
+  }
+  if (runningIndex >= 0) return { completedCount, label: `正在进行第 ${runningIndex + 1} 步：${rows[runningIndex].label}` };
+  if (completedCount === rows.length) return { completedCount, label: "六步生成已完成" };
+  if (nextIndex >= 0) return { completedCount, label: `下一步：第 ${nextIndex + 1} 步 ${rows[nextIndex].label}` };
+  return { completedCount, label: "正在创建任务" };
+}
+
+function stepStatusLabel(status: PipelineStatus | "recovering") {
+  return { pending: "等待", running: "执行中", succeeded: "已完成", failed: "失败", reused: "已复用", skipped: "已跳过", recovering: "修复中" }[status];
 }
 
 function componentLabel(componentId: string) {
   const domains: Record<string, string> = {
     story_world: "故事世界",
     evidence_logic: "证据推理",
+    temporal_structure_planner: "时间结构规划",
     resolution_governance: "解答治理",
   };
   return pipelineRows(new Map()).find((row) => row.id === componentId)?.label

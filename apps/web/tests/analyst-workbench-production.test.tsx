@@ -13,23 +13,37 @@ import { AnalystWorkbench } from "@/features/analyst-workbench/analyst-workbench
 import {
   ApiError,
   type DraftCandidatePreviewView,
+  type DraftSummaryView,
   type DraftView,
+  type ProjectView,
   type WorkbenchContextView,
 } from "@/lib/api-client";
 
 const mocks = vi.hoisted(() => ({
+  activateDraft: vi.fn(),
   adoptCandidate: vi.fn(),
   candidateStatus: vi.fn(),
   fetchCaseDraft: vi.fn(),
   fetchDraftCandidatePreview: vi.fn(),
+  fetchExposurePlan: vi.fn(),
   fetchWorkbenchContext: vi.fn(),
+  listDrafts: vi.fn(),
+  listProjects: vi.fn(),
   loadProject: vi.fn(),
   patchCaseDraftObject: vi.fn(),
+  previewCaseDraftEventTime: vi.fn(),
+  putExposurePlan: vi.fn(),
 }));
 
 vi.mock("@/lib/api-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api-client")>();
-  return { ...actual, fetchWorkbenchContext: mocks.fetchWorkbenchContext };
+  return {
+    ...actual,
+    activateDraft: mocks.activateDraft,
+    fetchWorkbenchContext: mocks.fetchWorkbenchContext,
+    listDrafts: mocks.listDrafts,
+    listProjects: mocks.listProjects,
+  };
 });
 
 vi.mock("@/features/case-session/case-session-provider", () => ({
@@ -45,7 +59,10 @@ vi.mock("@/features/case-session/case-session-provider", () => ({
 vi.mock("@/features/case-session/case-session-api", () => ({
   fetchCaseDraft: mocks.fetchCaseDraft,
   fetchDraftCandidatePreview: mocks.fetchDraftCandidatePreview,
+  fetchExposurePlan: mocks.fetchExposurePlan,
   patchCaseDraftObject: mocks.patchCaseDraftObject,
+  previewCaseDraftEventTime: mocks.previewCaseDraftEventTime,
+  putExposurePlan: mocks.putExposurePlan,
 }));
 
 function metadata(description: string): CoreMetadata {
@@ -64,9 +81,13 @@ function metadata(description: string): CoreMetadata {
   };
 }
 
+async function beginQuickEdit() {
+  fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+}
+
 function makeCaseFile(entityName = "真实调查员"): CaseFile {
   return {
-    schema_version: "1.0",
+    schema_version: "2.0",
     casefile_id: "case_production_test",
     title: "真实测试卷宗",
     status: "draft",
@@ -152,8 +173,8 @@ function makeCaseFile(entityName = "真实调查员"): CaseFile {
         title: "门禁开启",
         truth_status: "reported",
         time: {
-          start: "2026-08-07T09:00:00Z",
-          end: null,
+          kind: "exact",
+          value: "2026-08-07T09:00",
           precision: "minute",
         },
         participant_refs: [
@@ -221,10 +242,120 @@ function makeCaseFile(entityName = "真实调查员"): CaseFile {
 function makeDraft(revision: number, entityName?: string): DraftView {
   return {
     project_id: 42,
+    casefile_id: 9,
+    draft_id: 9,
+    title: "真实测试卷宗",
     revision,
-    schema_version: "v1",
-    status: "open",
+    schema_version: "2.0",
+    status: "active",
+    document_status: "draft",
+    brief_version_id: 4,
+    created_at: "2026-08-09T10:00:00+00:00",
+    updated_at: "2026-08-09T11:00:00+00:00",
     content: makeCaseFile(entityName),
+  };
+}
+
+function makeDraftWithConclusion(revision: number): DraftView {
+  const draft = makeDraft(revision);
+  const resolution = draft.content?.resolution_specs[0];
+  if (!resolution || !draft.content) {
+    throw new Error("测试工作稿缺少核心问题");
+  }
+  resolution.conclusion = {
+    outcome: "undetermined",
+    review_status: "confirmed",
+    summary: "作者判断：记录确曾被改写，但改写者仍未确定。",
+    values: [],
+    selected_hypothesis_refs: [
+      { object_type: "hypothesis", object_id: "hyp_record_tampered" },
+    ],
+    supporting_reasoning_path_refs: [
+      { object_type: "reasoning_path", object_id: "path_record_tampered" },
+    ],
+    rationale: "门禁记录提供了改写发生的事实锚点。",
+    unresolved_gaps: ["缺少能够识别改写者的独立证据。"],
+  };
+  draft.content.reasoning_paths = [
+    {
+      ...metadata("从门禁记录推导记录曾被改写。"),
+      id: "path_record_tampered",
+      title: "门禁记录改写路径",
+      path_type: "causal",
+      target_ref: {
+        object_type: "hypothesis",
+        object_id: "hyp_record_tampered",
+      },
+      steps: [
+        {
+          step_id: "step_gate_log_to_hypothesis",
+          input_refs: [
+            { object_type: "information_unit", object_id: "info_gate_log" },
+          ],
+          operation: "infer",
+          output_ref: {
+            object_type: "hypothesis",
+            object_id: "hyp_record_tampered",
+          },
+        },
+      ],
+      required_for_resolution: true,
+      alternative_path_refs: [],
+    },
+  ];
+  return draft;
+}
+
+function makeDraftWithScenePosition(revision: number, x: number, y = 36): DraftView {
+  const draft = makeDraft(revision);
+  const location = draft.content?.locations.find(
+    (candidate) => candidate.id === "loc_archive_gate",
+  );
+  if (!location) throw new Error("测试工作稿缺少档案馆门禁地点");
+  location.spatial_position = { coordinate_system: "schematic", x, y };
+  return draft;
+}
+
+function makeProject(id: number, title: string): ProjectView {
+  return {
+    id,
+    title,
+    description: null,
+    profile: {},
+    status: "active",
+    archived_at: null,
+    created_at: "2026-08-09T10:00:00+00:00",
+    updated_at: "2026-08-09T11:00:00+00:00",
+    casefile_id: id,
+    current_draft_id: id === 42 ? 9 : 19,
+    draft: {
+      id: id === 42 ? 9 : 19,
+      title,
+      revision: 7,
+      schema_version: "2.0",
+      status: "active",
+    },
+  };
+}
+
+function makeDraftSummary(
+  draftId: number,
+  title: string,
+  isCurrent: boolean,
+): DraftSummaryView {
+  return {
+    draft_id: draftId,
+    title,
+    revision: 7,
+    schema_version: "2.0",
+    status: "active",
+    document_status: "draft",
+    brief_version_id: 4,
+    brief_version_no: 4,
+    has_content: true,
+    is_current: isCurrent,
+    created_at: "2026-08-09T10:00:00+00:00",
+    updated_at: "2026-08-09T11:00:00+00:00",
   };
 }
 
@@ -265,7 +396,7 @@ function makeContext(
     validation: {
       status: "passed",
       validator: "casefile.contracts.validate_casefile",
-      schema_version: "1.0",
+      schema_version: "2.0",
       issue_count: 0,
       issues: [],
       reason: null,
@@ -313,16 +444,37 @@ function makeContext(
 }
 
 beforeEach(() => {
+  mocks.activateDraft.mockReset();
   mocks.adoptCandidate.mockReset().mockResolvedValue(false);
   mocks.candidateStatus.mockReset();
   mocks.fetchCaseDraft.mockReset();
   mocks.fetchDraftCandidatePreview.mockReset();
+  mocks.fetchExposurePlan.mockReset().mockResolvedValue({
+    plan_id: 17,
+    draft_id: 9,
+    revision: 0,
+    updated_at: "2026-08-11T13:30:00+08:00",
+    entries: [],
+  });
   mocks.fetchWorkbenchContext.mockReset().mockResolvedValue(makeContext());
+  mocks.listDrafts.mockReset().mockResolvedValue([
+    makeDraftSummary(9, "真实测试卷宗", true),
+    makeDraftSummary(10, "第二工作稿", false),
+  ]);
+  mocks.listProjects.mockReset().mockResolvedValue([
+    makeProject(42, "真实测试卷宗"),
+    makeProject(43, "另一卷宗"),
+  ]);
   mocks.loadProject.mockReset().mockResolvedValue(undefined);
   mocks.patchCaseDraftObject.mockReset();
+  mocks.previewCaseDraftEventTime.mockReset();
+  mocks.putExposurePlan.mockReset();
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 describe("production analyst workbench", () => {
   it("shows explicit gates for a missing or invalid project id", () => {
@@ -377,7 +529,7 @@ describe("production analyst workbench", () => {
     const previewBanner = await screen.findByRole("status", {
       name: "候选预览只读提示",
     });
-    expect(previewBanner).toHaveTextContent("候选预览，不是 Current Draft");
+    expect(previewBanner).toHaveTextContent("候选预览，不是当前工作稿");
     expect(screen.getAllByText("候选调查员").length).toBeGreaterThan(0);
     expect(previewBanner).toHaveTextContent("结构优先 · Brief V4 · 任务 #73");
     expect(mocks.fetchDraftCandidatePreview).toHaveBeenCalledWith(42, 73);
@@ -386,12 +538,9 @@ describe("production analyst workbench", () => {
     expect(mocks.loadProject).not.toHaveBeenCalled();
 
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
-    expect(within(editor).getByRole("textbox", { name: "名称" })).toHaveAttribute(
-      "readonly",
-    );
-    expect(
-      within(editor).getByRole("button", { name: "采用后才能编辑" }),
-    ).toBeDisabled();
+    expect(within(editor).getByText("候选预览，只读")).toBeInTheDocument();
+    expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "候选预览不可使用 Agent" }),
     ).toBeDisabled();
@@ -414,7 +563,7 @@ describe("production analyst workbench", () => {
     ).toBeInTheDocument();
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("真实测试卷宗").length).toBeGreaterThan(0);
-    expect(screen.getByText("Draft R7 · 对象 R1")).toBeInTheDocument();
+    expect(screen.getByText("工作稿 R7")).toBeInTheDocument();
     const directory = screen.getByRole("region", { name: "对象目录结果" });
     const analystRow = within(directory).getByRole("button", {
       name: /真实调查员/,
@@ -426,6 +575,56 @@ describe("production analyst workbench", () => {
     expect(mocks.fetchCaseDraft).toHaveBeenCalledWith(42);
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledWith(1, 42);
     expect(screen.getByText("已通过")).toBeInTheDocument();
+  });
+
+  it("keeps project switching available when the project has no materialized Draft", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce({
+      ...makeDraft(1),
+      content: null,
+    });
+
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "这个项目还没有已生成的工作稿",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /项目.*真实测试卷宗/u }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /当前工作稿/u }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "返回建案中心生成工作稿" }),
+    ).toHaveAttribute("href", "/?project=42");
+  });
+
+  it("scopes persisted canvas layouts by project and Draft", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const first = render(<AnalystWorkbench requestedProjectId={42} />);
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/u }));
+    const firstLayoutKey = first.container
+      .querySelector("[data-layout-key]")
+      ?.getAttribute("data-layout-key");
+    expect(firstLayoutKey).toContain("project%3A42%3Adraft%3A9");
+
+    first.unmount();
+    mocks.fetchCaseDraft.mockResolvedValueOnce({
+      ...makeDraft(7),
+      draft_id: 10,
+    });
+    const second = render(<AnalystWorkbench requestedProjectId={42} />);
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/u }));
+    const secondLayoutKey = second.container
+      .querySelector("[data-layout-key]")
+      ?.getAttribute("data-layout-key");
+
+    expect(secondLayoutKey).toContain("project%3A42%3Adraft%3A10");
+    expect(secondLayoutKey).not.toBe(firstLayoutKey);
   });
 
   it("renders real validation, SourceRecord content, trace ids, and audit provenance", async () => {
@@ -453,7 +652,7 @@ describe("production analyst workbench", () => {
         validation: {
           status: "failed",
           validator: "casefile.contracts.validate_casefile",
-          schema_version: "1.0",
+          schema_version: "2.0",
           issue_count: 1,
           issues: [
             {
@@ -462,6 +661,13 @@ describe("production analyst workbench", () => {
               path: "/events/0/location_ref",
               message: "引用的对象不存在",
               severity: "error",
+              target: {
+                object_ref: {
+                  object_type: "event",
+                  object_id: "evt_gate",
+                },
+                field_path: "/location_ref",
+              },
             },
           ],
           reason: null,
@@ -525,7 +731,7 @@ describe("production analyst workbench", () => {
     ).toBeInTheDocument();
   });
 
-  it("filters all five real object kinds with query-aware counts", async () => {
+  it("filters all six real object kinds with query-aware counts", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
@@ -533,7 +739,10 @@ describe("production analyst workbench", () => {
       name: "搜索对象名称或编号",
     });
     const filters = screen.getByLabelText("对象类型筛选");
-    expect(within(filters).getAllByRole("button")).toHaveLength(6);
+    expect(within(filters).getAllByRole("button")).toHaveLength(7);
+    expect(
+      within(filters).getByRole("button", { name: "核心问题，1 个匹配" }),
+    ).toBeInTheDocument();
     expect(
       within(filters).getByRole("button", { name: "实体，2 个匹配" }),
     ).toBeInTheDocument();
@@ -585,7 +794,7 @@ describe("production analyst workbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "清除对象筛选" }));
     expect(search).toHaveValue("");
     expect(
-      within(filters).getByRole("button", { name: "全部对象，6 个匹配" }),
+      within(filters).getByRole("button", { name: "全部对象，7 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
   });
 
@@ -668,29 +877,324 @@ describe("production analyst workbench", () => {
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
 
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "门禁记录",
-    );
-    const relatedEvents = screen.getByRole("region", { name: "关联事件" });
-    const eventLink = within(relatedEvents).getByRole("button", {
+    expect(screen.getByRole("heading", { name: "门禁记录" })).toBeInTheDocument();
+    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
+    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
+      name: "关联事件",
+    }).parentElement as HTMLElement;
+    const eventLink = within(relatedEventArticle).getByRole("button", {
       name: /门禁开启/,
     });
-    expect(eventLink).toHaveTextContent("evt_gate_opened");
+    expect(eventLink).toHaveTextContent("2026年8月7日 09:00");
+    expect(eventLink).not.toHaveTextContent("evt_gate_opened");
 
     fireEvent.click(eventLink);
     expect(screen.getByRole("tab", { name: /时间线/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "门禁开启",
-    );
+    expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "事件，1 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
       within(directory).getByRole("button", { name: /门禁开启/ }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("highlights only real events related to the selected Resolution conclusion", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithConclusion(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", { name: "对象目录结果" });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /谁改写了记录/ }),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /时间线/ }));
+
+    const timeline = container.querySelector(
+      '[aria-labelledby="timeline-heading"]',
+    ) as HTMLElement;
+    expect(timeline).toBeInTheDocument();
+    expect(
+      within(timeline).getAllByRole("button", {
+        name: /门禁开启.*与当前结论相关/,
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(within(timeline).getAllByText("与当前结论相关").length).toBeGreaterThan(0);
+    expect(timeline).not.toHaveTextContent(
+      "作者判断：记录确曾被改写，但改写者仍未确定。",
+    );
+    expect(timeline).not.toHaveTextContent("最终结论");
+  });
+
+  it("keeps a Current Draft object synchronized across all eight permanent views", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", {
+      name: "搜索对象名称或编号",
+    });
+    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /记录曾被改写/ }),
+    );
+
+    const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
+    const expectedSelection = "假设 · 记录曾被改写 / hyp_record_tampered";
+    const views = [
+      ["时间线", "timeline"],
+      ["关系图", "relations"],
+      ["推理分析", "reasoning"],
+      ["地图", "map"],
+      ["卷宗编辑器", "dossier"],
+      ["导出预览", "export"],
+      ["编译中心", "compile"],
+      ["证据对比", "evidence"],
+    ] as const;
+
+    for (const [label, view] of views) {
+      fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
+      expect(canvas).toHaveAttribute("data-workbench-view", view);
+      expect(canvas).toHaveAttribute("data-draft-revision", "R7");
+      expect(canvas).toHaveAttribute(
+        "data-selected-object-id",
+        "hyp_record_tampered",
+      );
+      expect(within(canvas).getByText(expectedSelection)).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: new RegExp(label) })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    }
+
+    expect(
+      screen.getByText("“记录曾被改写”暂无可对照证据"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("角色提前知道“第五人权限”")).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();
+  });
+
+  it("keeps location and event selection inside the Current Draft map view", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    const marker = await screen.findByRole(
+      "button",
+      { name: /档案馆门禁，场景坐标，1 个事件/u },
+      { timeout: 3000 },
+    );
+    fireEvent.click(marker);
+
+    const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(canvas).toHaveAttribute("data-selected-object-id", "loc_archive_gate");
+    expect(await screen.findByRole("dialog")).toHaveTextContent("档案馆门禁");
+
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: /门禁开启/u,
+      }),
+    );
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(canvas).toHaveAttribute("data-selected-object-id", "evt_gate_opened");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("saves only a scene spatial position and keeps selection, view, and revision linked", async () => {
+    mocks.fetchCaseDraft
+      .mockResolvedValueOnce(makeDraftWithScenePosition(7, 42))
+      .mockResolvedValueOnce(makeDraftWithScenePosition(8, 42.5));
+    mocks.patchCaseDraftObject.mockResolvedValueOnce({});
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: /档案馆门禁，场景坐标，1 个事件/u },
+        { timeout: 3000 },
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑位置" }));
+    fireEvent.keyDown(
+      await screen.findByRole("button", { name: /位置可编辑/u }),
+      { key: "ArrowRight" },
+    );
+
+    expect(
+      screen.getByRole("region", { name: "对象详情（只读）" }),
+    ).toHaveTextContent("先保存或取消地图位置预览");
+    fireEvent.click(screen.getByRole("tab", { name: /时间线/ }));
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "保存位置" }));
+    await waitFor(() =>
+      expect(mocks.patchCaseDraftObject).toHaveBeenCalledWith(
+        42,
+        "loc_archive_gate",
+        9,
+        7,
+        {
+          spatial_position: {
+            coordinate_system: "schematic",
+            x: 42.5,
+            y: 36,
+          },
+        },
+      ),
+    );
+    await waitFor(() =>
+      expect(container.querySelector("#analyst-canvas")).toHaveAttribute(
+        "data-draft-revision",
+        "R8",
+      ),
+    );
+    expect(screen.getByRole("tab", { name: /地图/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(container.querySelector("#analyst-canvas")).toHaveAttribute(
+      "data-selected-object-id",
+      "loc_archive_gate",
+    );
+  });
+
+  it("retains a map preview through a 409 and retries against the reviewed revision", async () => {
+    mocks.fetchCaseDraft
+      .mockResolvedValueOnce(makeDraftWithScenePosition(7, 42))
+      .mockResolvedValueOnce(makeDraftWithScenePosition(8, 48))
+      .mockResolvedValueOnce(makeDraftWithScenePosition(9, 42.5));
+    mocks.patchCaseDraftObject
+      .mockRejectedValueOnce(
+        new ApiError(409, {
+          code: "draft_revision_conflict",
+          message: "CaseFile Draft revision is stale",
+          details: {},
+        }),
+      )
+      .mockResolvedValueOnce({});
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: /档案馆门禁，场景坐标，1 个事件/u },
+        { timeout: 3000 },
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "编辑位置" }));
+    fireEvent.keyDown(
+      await screen.findByRole("button", { name: /位置可编辑/u }),
+      { key: "ArrowRight" },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存位置" }));
+
+    expect(await screen.findByRole("button", { name: "核对最新版" })).toBeInTheDocument();
+    expect(mocks.fetchCaseDraft).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "核对最新版" }));
+    expect(await screen.findByText(/最新版已修改此地点坐标/u)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存位置" }));
+
+    await waitFor(() => expect(mocks.patchCaseDraftObject).toHaveBeenCalledTimes(2));
+    expect(mocks.patchCaseDraftObject).toHaveBeenLastCalledWith(
+      42,
+      "loc_archive_gate",
+      9,
+      8,
+      {
+        spatial_position: {
+          coordinate_system: "schematic",
+          x: 42.5,
+          y: 36,
+        },
+      },
+    );
+  }, 10_000);
+
+  it("keeps candidate map positions read-only and isolated from Current Draft writes", async () => {
+    mocks.fetchDraftCandidatePreview.mockResolvedValueOnce(makePreview());
+    render(
+      <AnalystWorkbench
+        requestedPreviewTaskRunId={73}
+        requestedProjectId={42}
+      />,
+    );
+
+    await screen.findByRole("status", { name: "候选预览只读提示" });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: /档案馆门禁，场景坐标/u },
+        { timeout: 3000 },
+      ),
+    );
+
+    expect(screen.getByRole("dialog")).toHaveTextContent(
+      "候选预览只读；采用为当前工作稿后才能编辑位置。",
+    );
+    expect(screen.queryByRole("button", { name: "编辑位置" })).toBeNull();
+    expect(mocks.patchCaseDraftObject).not.toHaveBeenCalled();
+    expect(mocks.fetchCaseDraft).not.toHaveBeenCalled();
+  });
+
+  it("blocks entering the map while object fields have unsaved edits", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
+    fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
+    fireEvent.click(screen.getByRole("tab", { name: /地图/ }));
+
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
+      "未保存的调查员名称",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "对象详情与编辑" })).getByRole(
+        "status",
+      ),
+    ).toHaveTextContent("请先保存或取消修改");
+    expect(container.querySelector("#analyst-canvas")).toHaveAttribute(
+      "data-selected-object-id",
+      "ent_real_analyst",
+    );
+    expect(screen.getByRole("tab", { name: /时间线/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.queryByTestId("spatial-map-canvas")).toBeNull();
+  });
+
+  it("renders only the event sequence in the Current Draft timeline", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await screen.findByRole("textbox", {
+      name: "搜索对象名称或编号",
+    });
+    expect(
+      screen.getByRole("heading", { name: "真实测试卷宗" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("application", { name: "事件关系图" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("同步关系图")).not.toBeInTheDocument();
   });
 
   it("clears stale timeline context for an object without related events", async () => {
@@ -705,20 +1209,17 @@ describe("production analyst workbench", () => {
       within(directory).getByRole("button", { name: /记录曾被改写/ }),
     );
 
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "记录曾被改写",
-    );
+    expect(screen.getByRole("heading", { name: "记录曾被改写" })).toBeInTheDocument();
     expect(screen.getByText("此对象没有关联事件")).toBeInTheDocument();
-    expect(
-      screen.getByText("此对象尚未关联事件，时间线不会沿用上一次选择。"),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "关联事件" })).not.toBeInTheDocument();
   });
 
   it("blocks object and related-event navigation until edits are saved or cancelled", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const name = await screen.findByRole("textbox", { name: "名称" });
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
     const directory = screen.getByRole("region", { name: "对象目录结果" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
     fireEvent.click(
@@ -738,11 +1239,15 @@ describe("production analyst workbench", () => {
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
+    await beginQuickEdit();
     const content = screen.getByRole("textbox", { name: "正文" });
     fireEvent.change(content, { target: { value: "未保存的门禁正文" } });
-    const relatedEvents = screen.getByRole("region", { name: "关联事件" });
+    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
+    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
+      name: "关联事件",
+    }).parentElement as HTMLElement;
     fireEvent.click(
-      within(relatedEvents).getByRole("button", { name: /门禁开启/ }),
+      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
     );
     expect(screen.getByRole("textbox", { name: "正文" })).toHaveValue(
       "未保存的门禁正文",
@@ -750,11 +1255,76 @@ describe("production analyst workbench", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "取消修改" }));
     fireEvent.click(
-      within(relatedEvents).getByRole("button", { name: /门禁开启/ }),
+      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
     );
-    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue(
-      "门禁开启",
+    expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
+  });
+
+  it("keeps unsaved object edits in place when project or Draft switching is requested", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
+    fireEvent.change(name, { target: { value: "尚未保存的调查员" } });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /项目.*真实测试卷宗/u }),
     );
+    const otherProject = screen.getByRole("menuitem", { name: /另一卷宗/u });
+    expect(fireEvent.click(otherProject)).toBe(false);
+    expect(name).toHaveValue("尚未保存的调查员");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /当前工作稿.*真实测试卷宗/u }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /第二工作稿/u }),
+    );
+
+    expect(mocks.activateDraft).not.toHaveBeenCalled();
+    expect(name).toHaveValue("尚未保存的调查员");
+    expect(
+      within(screen.getByRole("region", { name: "对象详情与编辑" })).getByRole(
+        "status",
+      ),
+    ).toHaveTextContent("请先保存或取消修改");
+  });
+
+  it("reloads the authoritative Current Draft after a concurrent activation", async () => {
+    const authoritative = {
+      ...makeDraft(8, "服务端当前稿人物"),
+      draft_id: 13,
+      title: "服务端当前工作稿",
+    };
+    mocks.fetchCaseDraft
+      .mockResolvedValueOnce(makeDraft(7))
+      .mockResolvedValueOnce(authoritative);
+    mocks.activateDraft.mockRejectedValueOnce(
+      new ApiError(409, {
+        code: "current_draft_changed",
+        message: "当前工作稿已在其他位置切换。",
+        details: { current_draft_id: 13 },
+      }),
+    );
+
+    render(<AnalystWorkbench requestedProjectId={42} />);
+    await screen.findByRole("textbox", { name: "搜索对象名称或编号" });
+    fireEvent.click(
+      screen.getByRole("button", { name: /当前工作稿.*真实测试卷宗/u }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: /第二工作稿/u }),
+    );
+
+    await waitFor(() => expect(mocks.fetchCaseDraft).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByRole("button", {
+        name: /当前工作稿.*服务端当前工作稿/u,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "服务端当前稿人物" })).toBeInTheDocument();
+    expect(mocks.loadProject).toHaveBeenCalledTimes(2);
   });
 
   it("reveals graph selections in the directory and highlights direct relations", async () => {
@@ -768,17 +1338,18 @@ describe("production analyst workbench", () => {
       name: "搜索对象名称或编号",
     });
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
-    const graph = screen.getByRole("group", { name: "事件关系图" });
+    const graph = screen.getByRole("application", { name: "事件关系图" });
     expect(
-      graph.querySelectorAll('g[data-active="true"]').length,
-    ).toBeGreaterThan(0);
+      within(graph).getByRole("button", { name: /真实调查员/ }),
+    ).toHaveAttribute("data-active", "true");
+    expect(
+      within(graph).getByRole("button", { name: /值班员/ }),
+    ).toHaveAttribute("data-related", "true");
 
     fireEvent.click(
       within(graph).getByRole("button", { name: /值班员/ }),
     );
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
-      "值班员",
-    );
+    expect(screen.getByRole("heading", { name: "值班员" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "实体，2 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -808,16 +1379,18 @@ describe("production analyst workbench", () => {
 
     render(<AnalystWorkbench requestedProjectId={42} />);
 
-    const name = await screen.findByRole("textbox", { name: "名称" });
+    await beginQuickEdit();
+    const name = screen.getByRole("textbox", { name: "名称" });
     fireEvent.change(name, { target: { value: "我的未保存名称" } });
     fireEvent.click(
-      screen.getByRole("button", { name: "保存到当前工作稿" }),
+      screen.getByRole("button", { name: "保存修改" }),
     );
 
     await waitFor(() =>
       expect(mocks.patchCaseDraftObject).toHaveBeenCalledWith(
         42,
         "ent_real_analyst",
+        9,
         7,
         {
           name: "我的未保存名称",
@@ -830,13 +1403,13 @@ describe("production analyst workbench", () => {
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "我的未保存名称",
     );
-    expect(screen.getByText("Draft R8 · 对象 R1")).toBeInTheDocument();
+    expect(screen.getByText("工作稿 R8")).toBeInTheDocument();
     const editor = screen.getByRole("region", { name: "对象详情与编辑" });
     expect(within(editor).getByRole("status")).toHaveTextContent(
       "工作稿已更新。你的输入已保留，请核对最新版后再次保存。",
     );
     expect(
-      screen.getByRole("button", { name: "保存到当前工作稿" }),
+      screen.getByRole("button", { name: "保存修改" }),
     ).toBeEnabled();
   });
 });

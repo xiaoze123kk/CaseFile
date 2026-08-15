@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "casefile_id": "case_restart_loop",
   "title": "第七次重启",
   "status": "draft",
@@ -170,8 +170,9 @@
       "title": "系统第七次重启",
       "truth_status": "canon_true",
       "time": {
-        "start": "2042-06-01T20:00:00+08:00",
-        "end": "2042-06-01T20:03:00+08:00",
+        "kind": "range",
+        "start": "2042-06-01T20:00",
+        "end": "2042-06-01T20:03",
         "precision": "minute"
       },
       "participant_refs": [{"object_type": "entity", "object_id": "ent_backup_system"}],

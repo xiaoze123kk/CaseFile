@@ -15,7 +15,10 @@ import {
   type BriefView,
   type DraftCandidateView,
   type DraftCandidatePreviewView,
+  type DraftCandidateAdoption,
   type DraftView,
+  type ExposurePlanEntryView,
+  type ExposurePlanView,
   type AnchorExtractMode,
   type PolishMode,
   type ProjectView,
@@ -23,6 +26,8 @@ import {
   type ProviderSettingView,
   type TaskView,
   type TaskType,
+  type TimelineTemporalPosition,
+  type TimelineTimePreviewView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 
@@ -261,6 +266,7 @@ export async function startAnchorExtractTask(
 export async function startDraftGenerationTask(
   projectId: number,
   briefVersionId: number,
+  draftId: number,
   draftRevision: number,
   provider: ProviderName,
   candidateStrategy: CandidateStrategy = "balanced",
@@ -271,6 +277,7 @@ export async function startDraftGenerationTask(
     method: "POST",
     body: {
       brief_version_id: briefVersionId,
+      expected_draft_id: draftId,
       expected_draft_revision: draftRevision,
       provider,
       candidate_strategy: candidateStrategy,
@@ -303,6 +310,7 @@ export async function cancelTask(projectId: number, taskRunId: number) {
 export async function resumeDraftGenerationTask(
   projectId: number,
   taskRunId: number,
+  draftId: number,
   draftRevision: number,
   briefRevision: number,
 ) {
@@ -312,6 +320,7 @@ export async function resumeDraftGenerationTask(
       actorId: LOCAL_ACTOR_ID,
       method: "POST",
       body: {
+        expected_draft_id: draftId,
         expected_draft_revision: draftRevision,
         expected_brief_revision: briefRevision,
       },
@@ -368,28 +377,56 @@ export async function waitForTask(
     const remaining = Math.max(1, deadline - Date.now());
     const timeoutId = window.setTimeout(abortStream, remaining);
     try {
-      await streamTaskEvents(
-        `/projects/${projectId}/tasks/${taskRunId}/stream`,
-        LOCAL_ACTOR_ID,
-        (event) => {
-          lastEventId = Math.max(lastEventId, event.sequence_no);
-          const eventStatus: Partial<Record<string, TaskView["status"]>> = {
-            "task.started": "running",
-            "task.cancel_requested": "cancelling",
-            "task.cancelled": "cancelled",
-            "task.succeeded": "succeeded",
-            "task.failed": "failed",
-          };
-          task = {
-            ...task,
-            status: eventStatus[event.event_type] ?? task.status,
-            stage: event.stage,
-          };
-          onTick?.(task);
-        },
-        streamController.signal,
-        lastEventId,
-      );
+      let authoritativeRefresh = Promise.resolve();
+      let refreshRunning = false;
+      let refreshRequested = false;
+      const queueAuthoritativeRefresh = () => {
+        refreshRequested = true;
+        if (refreshRunning) return;
+        refreshRunning = true;
+        authoritativeRefresh = authoritativeRefresh.then(async () => {
+          while (refreshRequested) {
+            refreshRequested = false;
+            await Promise.resolve();
+            const latest = await fetchTask(projectId, taskRunId, signal);
+            task = latest;
+            onTick?.(latest);
+          }
+          refreshRunning = false;
+        });
+      };
+      let streamError: unknown = null;
+      try {
+        await streamTaskEvents(
+          `/projects/${projectId}/tasks/${taskRunId}/stream`,
+          LOCAL_ACTOR_ID,
+          (event) => {
+            lastEventId = Math.max(lastEventId, event.sequence_no);
+            const eventStatus: Partial<Record<string, TaskView["status"]>> = {
+              "task.started": "running",
+              "task.cancel_requested": "cancelling",
+              "task.cancelled": "cancelled",
+              "task.succeeded": "succeeded",
+              "task.failed": "failed",
+            };
+            task = {
+              ...task,
+              status: eventStatus[event.event_type] ?? task.status,
+              stage: event.stage,
+            };
+            onTick?.(task);
+            if (event.event_type.startsWith("agent.step.")) {
+              queueAuthoritativeRefresh();
+            }
+          },
+          streamController.signal,
+          lastEventId,
+        );
+      } catch (error) {
+        streamError = error;
+      }
+      await authoritativeRefresh;
+      if (streamError) throw streamError;
     } catch (error) {
       if (signal?.aborted) {
         throw new CaseSessionError("已停止等待任务结果。", "task_wait_aborted");
@@ -618,6 +655,7 @@ export function strategyOptionsResult(task: TaskView) {
 export async function patchCaseDraftObject(
   projectId: number,
   objectId: string,
+  expectedDraftId: number,
   expectedRevision: number,
   changes: Record<string, unknown>,
 ) {
@@ -626,7 +664,100 @@ export async function patchCaseDraftObject(
     {
       actorId: LOCAL_ACTOR_ID,
       method: "PATCH",
-      body: { expected_revision: expectedRevision, changes },
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+        changes,
+      },
+    },
+  );
+}
+
+export async function confirmCaseDraftResolutionConclusion(
+  projectId: number,
+  resolutionId: string,
+  expectedDraftId: number,
+  expectedRevision: number,
+) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/draft/resolutions/${encodeURIComponent(resolutionId)}/conclusion/confirm`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+      },
+    },
+  );
+}
+
+export async function withdrawCaseDraftResolutionConclusion(
+  projectId: number,
+  resolutionId: string,
+  expectedDraftId: number,
+  expectedRevision: number,
+) {
+  return apiRequest<Record<string, unknown>>(
+    `/projects/${projectId}/draft/resolutions/${encodeURIComponent(resolutionId)}/conclusion/withdraw`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+      },
+    },
+  );
+}
+
+/** 只读预演事件时间变化；不会推进 Draft revision。 */
+export async function previewCaseDraftEventTime(
+  projectId: number,
+  eventId: string,
+  expectedDraftId: number,
+  expectedRevision: number,
+  proposedTime: TimelineTemporalPosition,
+) {
+  return apiRequest<TimelineTimePreviewView>(
+    `/projects/${projectId}/draft/events/${encodeURIComponent(eventId)}/time-preview`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+        proposed_time: proposedTime,
+      },
+    },
+  );
+}
+
+/** 读取 Current Draft 独立版本化的单一线性披露计划。 */
+export async function fetchExposurePlan(projectId: number) {
+  return apiRequest<ExposurePlanView>(
+    `/projects/${projectId}/draft/exposure-plan`,
+    { actorId: LOCAL_ACTOR_ID },
+  );
+}
+
+/** 以计划自身 revision 保存完整线性顺序；不推进 Draft revision。 */
+export async function putExposurePlan(
+  projectId: number,
+  expectedDraftId: number,
+  expectedRevision: number,
+  entries: Omit<ExposurePlanEntryView, "sequence_no">[],
+) {
+  return apiRequest<ExposurePlanView>(
+    `/projects/${projectId}/draft/exposure-plan`,
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "PUT",
+      body: {
+        expected_draft_id: expectedDraftId,
+        expected_revision: expectedRevision,
+        entries,
+      },
     },
   );
 }
@@ -634,14 +765,14 @@ export async function patchCaseDraftObject(
 export async function adoptDraftCandidate(
   projectId: number,
   taskRunId: number,
-  draftRevision: number,
+  expectedCurrentDraftId: number,
 ) {
-  return apiRequest<{ task_run_id: number; adopted: true }>(
+  return apiRequest<DraftCandidateAdoption>(
     `/projects/${projectId}/draft-candidates/${taskRunId}/adopt`,
     {
       actorId: LOCAL_ACTOR_ID,
       method: "POST",
-      body: { expected_draft_revision: draftRevision },
+      body: { expected_current_draft_id: expectedCurrentDraftId },
     },
   );
 }
@@ -649,11 +780,15 @@ export async function adoptDraftCandidate(
 export async function adoptDraftCandidateWithReconciliation(
   projectId: number,
   taskRunId: number,
-  draftRevision: number,
+  expectedCurrentDraftId: number,
 ) {
   try {
-    await adoptDraftCandidate(projectId, taskRunId, draftRevision);
-    return { facts: null, error: null };
+    const adoption = await adoptDraftCandidate(
+      projectId,
+      taskRunId,
+      expectedCurrentDraftId,
+    );
+    return { adoption, facts: null, error: null };
   } catch (error) {
     let facts: Awaited<ReturnType<typeof reconcileDraftCandidateAdoption>>;
     try {
@@ -664,7 +799,11 @@ export async function adoptDraftCandidateWithReconciliation(
         "draft_candidate_adoption_unconfirmed",
       );
     }
-    return { facts, error: facts.targetIsCurrent ? null : error };
+    return {
+      adoption: null,
+      facts,
+      error: facts.targetIsCurrent ? null : error,
+    };
   }
 }
 

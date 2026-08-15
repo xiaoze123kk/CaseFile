@@ -7,11 +7,16 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
+    V10_GENERATION_AGENT_VERSION,
+    V11_GENERATION_AGENT_VERSION,
+    V12_GENERATION_AGENT_VERSION,
+    V13_GENERATION_AGENT_VERSION,
+    V14_GENERATION_AGENT_VERSION,
+    V15_GENERATION_AGENT_VERSION,
     agent_version_for_task,
 )
 from casefile.agent_runtime.prompt_repository import (
@@ -32,7 +37,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_questions": "brief-intake-questions-v3",
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
-    "brief_to_draft": "brief-to-draft-v9",
+    "brief_to_draft": "brief-to-draft-v15",
     "casefile_chat": "casefile-chat-v1",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v1",
@@ -101,6 +106,71 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:evidence": "fcb5de2bf8ee2c4068907226f16f4cf985b9bd5b4713ad6b3da8ca4823a0647a",
         "fragment:governance": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146",
     },
+    ("brief_to_draft", "brief-to-draft-v10"): {
+        "fragment:common": "91f8417d301c2b8a2c8cf6ae19ebe3f5e0b8aa9850bd016bd406b1b3efc10f99",
+        "fragment:planner": "945e81789befcb0e8294ccb27ac3de99097e62e294cc0bef2215bb3a5e7fbb18",
+        "fragment:domain_common": (
+            "0d20f4fe4b60668f1c19c7277d93ea29c0ee43e0939d08ee577d731c41747c82"
+        ),
+        "fragment:story": "b62c800d4f62b1c39fd075416b8401de1161059753450c85984efda87f0bc46e",
+        "fragment:evidence": "db01f58b7d655e123c5a0c2f67a99c23ae1c1adcd9a156f57b273f72c832dbc9",
+        "fragment:governance": "32eeecc2917449a8cb3439cd8df24e97d99764f9ddc596b171611cdc8c0d2146",
+    },
+    ("brief_to_draft", "brief-to-draft-v11"): {
+        "fragment:common": "1471bea245e0a6f082ec34570c6e215f1ae8f39d0f669920730d4b79e2a4e0c6",
+        "fragment:planner": "196f2fc74293971660670edb84cbabc1d10fb47930d8adf0c268973d9cfe15ef",
+        "fragment:domain_common": (
+            "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"
+        ),
+        "fragment:story": "de327598d8b221a36e62728f39b6e49d4b563e7ded345142bc73cbfcd4cda128",
+        "fragment:evidence": "7e1d49fbce53f1bfada49f1c1b5ab3b089d221a62fce0a0ab87fcb02ce6df646",
+        "fragment:governance": "4413b0e36adf04856360c7278079185427cf71a327181234272e94de61ed1c98",
+    },
+    ("brief_to_draft", "brief-to-draft-v12"): {
+        "fragment:common": "5a2a325867caa00779022d6a18e0cb0467ad881efd76af793ce85af065d13fca",
+        "fragment:planner": "bbb57f4bd968f066467345b86ba788e5087d5b15d79561a71d0b9f08925f9ba4",
+        "fragment:temporal": "434a5321dc7e114df23ec42d50fe92c4e0c4f149fa76ba7fa8d325ddc5574f6a",
+        "fragment:domain_common": (
+            "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"
+        ),
+        "fragment:story": "ebb727a0b54af0e80cfd7473bbeedce9385790d1a856e8611c7e076363751f58",
+        "fragment:evidence": "6207f57a035dd69369e91e290c904eb50541256f26a29b50e9f850b69a9e070c",
+        "fragment:governance": "e8308618584c0ae881fb7a4185078493afa58cd125cdc242511bbca952cd79d5",
+    },
+    ("brief_to_draft", "brief-to-draft-v13"): {
+        "fragment:common": "c1033e9ac83816e019d6cc8bee76010316ac178d2ba45070f86f9da09697d8d6",
+        "fragment:planner": "bbb57f4bd968f066467345b86ba788e5087d5b15d79561a71d0b9f08925f9ba4",
+        "fragment:temporal": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3",
+        "fragment:domain_common": (
+            "30004da9ececfdb224ca51ae280d47e5e084e58252cbd418a706328e96ac55de"
+        ),
+        "fragment:story": "ebb727a0b54af0e80cfd7473bbeedce9385790d1a856e8611c7e076363751f58",
+        "fragment:evidence": "6207f57a035dd69369e91e290c904eb50541256f26a29b50e9f850b69a9e070c",
+        "fragment:governance": "e8308618584c0ae881fb7a4185078493afa58cd125cdc242511bbca952cd79d5",
+    },
+    ("brief_to_draft", "brief-to-draft-v14"): {
+        "fragment:common": "0e06a0b1643fc7a399a72d62e47fab3a6d5919c65561068cdc9c79bc0cb6ae74",
+        "fragment:planner": "010d32410cbe56cce36029d611b6ae5df1b8b46a96a6f115deb37f984f617ddc",
+        "fragment:temporal": "db080c9072794648f53428a6885e71b3b73c9c4fb9856e4878b7903d1d89dbd3",
+        "fragment:domain_common": (
+            "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+        ),
+        "fragment:story": "501b154d23f831c1060d6cb4ec4f727bd52b4f87f37488ffce15ab9a218dec04",
+        "fragment:evidence": "20c3b8aca5508bf3fc2ce27c829e8c869c6e1fbc5e32b293f5cc484d0de4acd2",
+        "fragment:governance": "9335ce9839adad5de5f9a49c081bf8e5ccd8d9d72305f11f874b5866413ae3dc",
+    },
+    ("brief_to_draft", "brief-to-draft-v15"): {
+        "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
+        "fragment:planner": "914e3d3cc23786f983296636fbf96e1b17988b3d650be0865d8d716cf6974019",
+        "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",
+        "fragment:domain_common": (
+            "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
+        ),
+        "fragment:story": "6be6e4cbedd87586af144248b01367ea8fa1d9c011a45fdb0298950ff6802599",
+        "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
+        "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
+        "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
+    },
     ("casefile_chat", "casefile-chat-v1"): {
         "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
     },
@@ -119,19 +189,40 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     assert set(SUPPORTED_AGENT_IDS) == contract_task_types
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
     assert {
-        agent_id: prompt_version_for_task(agent_id)
-        for agent_id in SUPPORTED_AGENT_IDS
+        agent_id: prompt_version_for_task(agent_id) for agent_id in SUPPORTED_AGENT_IDS
     } == EXPECTED_CURRENT_VERSIONS
 
 
 def test_task_agent_version_identifies_component_generation_pipelines() -> None:
     assert (
-        agent_version_for_task("brief_to_draft", "brief-to-draft-v8")
-        == V8_GENERATION_AGENT_VERSION
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v8") == V8_GENERATION_AGENT_VERSION
     )
     assert (
-        agent_version_for_task("brief_to_draft", "brief-to-draft-v9")
-        == V9_GENERATION_AGENT_VERSION
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v9") == V9_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v10")
+        == V10_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v11")
+        == V11_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v12")
+        == V12_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v13")
+        == V13_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v14")
+        == V14_GENERATION_AGENT_VERSION
+    )
+    assert (
+        agent_version_for_task("brief_to_draft", "brief-to-draft-v15")
+        == V15_GENERATION_AGENT_VERSION
     )
     assert agent_version_for_task("brief_to_draft", "brief-to-draft-v7") == AGENT_VERSION
     assert agent_version_for_task("brief_polish", "brief-polish-v3") == AGENT_VERSION
@@ -146,8 +237,7 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
                 for fragment_id, fragment in definition.package.fragments.items()
             }
             if definition.package is not None
-            else definition.component_sha256
-            or {"system": definition.system_prompt_sha256}
+            else definition.component_sha256 or {"system": definition.system_prompt_sha256}
         )
         for definition in definitions
     }
@@ -155,10 +245,13 @@ def test_packaged_prompt_versions_match_immutable_release_inventory() -> None:
     assert actual_hashes == EXPECTED_RELEASE_HASHES
     for definition in definitions:
         assert definition.system_prompt.endswith("\n")
-        assert system_prompt_for_task(
-            definition.agent_id,
-            definition.version,
-        ) == definition.system_prompt
+        assert (
+            system_prompt_for_task(
+                definition.agent_id,
+                definition.version,
+            )
+            == definition.system_prompt
+        )
         assert all(prompt.endswith("\n") for prompt in definition.component_prompts.values())
 
 
@@ -183,12 +276,8 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "最多一项 `required=true`" in prompts["brief_intake_questions"]
     assert "`mode=additional`" in prompts["brief_intake_questions"]
     assert "不得重新增加必答门槛" in prompts["brief_intake_questions"]
-    assert "存在 `base_candidate` 与 `instruction`" in prompts[
-        "brief_intake_synthesize"
-    ]
-    assert "`content_outline` 的每一项必须是一个完整字符串" in prompts[
-        "brief_intake_synthesize"
-    ]
+    assert "存在 `base_candidate` 与 `instruction`" in prompts["brief_intake_synthesize"]
+    assert "`content_outline` 的每一项必须是一个完整字符串" in prompts["brief_intake_synthesize"]
     assert "不得出现没有 `：` 的条目" in prompts["brief_intake_synthesize"]
     v8 = load_prompt("brief_to_draft", "brief-to-draft-v8")
     assert set(v8.component_prompts) == {"planner", "story", "evidence", "governance"}
@@ -197,6 +286,45 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "EvidenceLogicIRV1" in v8.component_prompts["evidence"]
     assert "ResolutionGovernanceIRV1" in v8.component_prompts["governance"]
     assert all("local_key" in prompt for prompt in v8.component_prompts.values())
+    v10 = load_prompt("brief_to_draft", "brief-to-draft-v10")
+    assert "EvidenceLogicIRV2" in v10.component_prompts["evidence"]
+    assert v10.package is not None
+    assert v10.package.components["evidence"].output_schema_id == "evidence-logic-ir-v2"
+    v11 = load_prompt("brief_to_draft", "brief-to-draft-v11")
+    assert "StoryWorldIRV2" in v11.component_prompts["story"]
+    assert "EvidenceLogicIRV2" in v11.component_prompts["evidence"]
+    assert v11.package is not None
+    assert v11.package.components["story"].output_schema_id == "story-world-ir-v2"
+    assert v11.package.components["planner"].input_contract_id.endswith("input-v2")
+    v12 = load_prompt("brief_to_draft", "brief-to-draft-v12")
+    assert v12.package is not None
+    assert set(v12.package.components) == {
+        "planner",
+        "temporal",
+        "story",
+        "evidence",
+        "governance",
+    }
+    assert v12.package.components["temporal"].output_schema_id == "temporal-plan-v1"
+    assert v12.package.components["story"].output_schema_id == "story-world-ir-v3"
+    assert "不得输出 kind=unknown" in v12.component_prompts["temporal"]
+    assert "严禁输出 time" in v12.component_prompts["story"]
+    v13 = load_prompt("brief_to_draft", "brief-to-draft-v13")
+    assert v13.package is not None
+    assert v13.package.runtime_agent_version == V13_GENERATION_AGENT_VERSION
+    assert "minute 禁止追加 :00" in v13.component_prompts["temporal"]
+    assert "禁止追加 :00 或 :00:00" in v13.component_prompts["temporal"]
+    assert "不得输出小数秒、Z、UTC 或任何时区偏移" in v13.component_prompts["temporal"]
+    v14 = load_prompt("brief_to_draft", "brief-to-draft-v14")
+    assert v14.package is not None
+    assert v14.package.runtime_agent_version == V14_GENERATION_AGENT_VERSION
+    assert "所有面向创作者的自然语言字段都必须使用简体中文" in v14.component_prompts["planner"]
+    assert "不得输出纯英文标题、说明、命题、正文或判定依据" in v14.component_prompts["evidence"]
+    v15 = load_prompt("brief_to_draft", "brief-to-draft-v15")
+    assert v15.package is not None
+    assert v15.package.runtime_agent_version == V15_GENERATION_AGENT_VERSION
+    assert v15.package.components["governance"].output_schema_id == "resolution-governance-ir-v2"
+    assert "它永远只是 proposed" in v15.component_prompts["governance"]
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
     assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
@@ -224,10 +352,13 @@ def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path
         "brief-polish-v1",
         "brief-polish-v2",
     ]
-    assert repository.load(
-        "brief_polish",
-        "brief-polish-v1",
-    ).system_prompt == "Role: historical prompt.\n"
+    assert (
+        repository.load(
+            "brief_polish",
+            "brief-polish-v1",
+        ).system_prompt
+        == "Role: historical prompt.\n"
+    )
     assert repository.load("brief_polish").version == "brief-polish-v2"
 
 

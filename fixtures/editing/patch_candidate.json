@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "patch_id": "patch_restart_time",
   "base_version_id": "snapshot_restart_loop_2",
   "reason_summary": "依据原始日志修复事件开始时间。",

@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
@@ -22,6 +20,7 @@ from casefile.application.a_path_metrics import (
     APathTaskFact,
     derive_a_path_metrics,
 )
+from fastapi.testclient import TestClient
 
 
 def test_semantic_coverage_observes_every_frozen_brief_dimension() -> None:
@@ -175,16 +174,19 @@ def test_a_path_funnel_derives_adoption_and_follow_up_edits_without_new_tables()
         ],
         operations=[
             APathOperationFact(
+                draft_id=101,
                 sequence_no=1,
                 operation_type="agent_adopt_brief_candidate",
                 new_value={"task_run_id": 10},
             ),
             APathOperationFact(
+                draft_id=101,
                 sequence_no=2,
                 operation_type="replace",
                 new_value={"title": "人工修订"},
             ),
             APathOperationFact(
+                draft_id=102,
                 sequence_no=3,
                 operation_type="agent_adopt_brief_candidate",
                 new_value={"task_run_id": 11},
@@ -221,6 +223,67 @@ def test_a_path_funnel_derives_adoption_and_follow_up_edits_without_new_tables()
         "maximum": 20000.0,
     }
     assert metrics["unobservable_stages"][0]["stage"] == "candidate_previewed"
+
+
+def test_a_path_post_adoption_edits_stay_with_their_own_draft_window() -> None:
+    started = datetime(2026, 8, 9, 10, 0, tzinfo=UTC)
+    metrics = derive_a_path_metrics(
+        tasks=[
+            APathTaskFact(
+                task_run_id=10,
+                status="succeeded",
+                result_snapshot_id=101,
+                usage={},
+                created_at=started,
+                completed_at=started + timedelta(seconds=10),
+            ),
+            APathTaskFact(
+                task_run_id=11,
+                status="succeeded",
+                result_snapshot_id=102,
+                usage={},
+                created_at=started,
+                completed_at=started + timedelta(seconds=20),
+            ),
+        ],
+        events=[],
+        operations=[
+            APathOperationFact(
+                draft_id=101,
+                sequence_no=1,
+                operation_type="agent_adopt_brief_candidate",
+                new_value={"task_run_id": 10},
+            ),
+            APathOperationFact(
+                draft_id=101,
+                sequence_no=2,
+                operation_type="replace",
+                new_value={"title": "工作稿 A 首次修订"},
+            ),
+            APathOperationFact(
+                draft_id=102,
+                sequence_no=3,
+                operation_type="agent_adopt_brief_candidate",
+                new_value={"task_run_id": 11},
+            ),
+            # 切回旧稿后的编辑仍属于 A，不能让最新采用的 B 变成“已续编”。
+            APathOperationFact(
+                draft_id=101,
+                sequence_no=4,
+                operation_type="replace",
+                new_value={"title": "工作稿 A 再次修订"},
+            ),
+        ],
+    )
+
+    assert metrics["funnel"]["post_adoption_edited_candidates"] == 1
+    assert metrics["funnel"]["post_adoption_edit_rate"] == 0.5
+    assert metrics["post_adoption"] == {
+        "adoption_operations": 2,
+        "edit_operations": 2,
+        "edited_adoptions": 1,
+        "operation_types": {"replace": 2},
+    }
 
 
 def test_a_path_usage_sums_immutable_attempts_without_double_counting_task_run() -> None:

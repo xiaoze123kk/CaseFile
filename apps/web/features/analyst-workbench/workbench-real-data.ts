@@ -1,17 +1,41 @@
-import type { CaseFile, ObjectRef } from "@casefile/contracts";
+import type { ObjectRef } from "@casefile/contracts";
+import type {
+  CaseFileDocument,
+  WorkbenchValidationView,
+} from "@/lib/api-client";
 
-import type { WorkbenchSeed } from "./analyst-fixture";
+import type {
+  ValidationIssue,
+  WorkbenchReasoningGroup,
+  WorkbenchSeed,
+} from "./analyst-fixture";
+import {
+  classificationLabel,
+  conclusionSlotLabel,
+  confirmationStatusLabel,
+  creatorDescription,
+  creatorLabel,
+  creatorText,
+  objectSubtypeLabel,
+  relativeTimeLabel,
+  reasoningOperationLabel,
+} from "./workbench-presenters";
+import {
+  buildFixtureSpatialModel,
+  buildWorkbenchSpatialModel,
+} from "./workbench-spatial-model";
+import {
+  formatWallClock,
+  parseWallClock,
+  timelineClock,
+} from "./timeline/timeline-time";
 import type {
   WorkbenchCaseMeta,
   WorkbenchCaseObject,
   WorkbenchContractObject,
-  WorkbenchCoordinateSystem,
   WorkbenchGraphEdge,
   WorkbenchGraphEdgeKind,
   WorkbenchGraphNode,
-  WorkbenchMapGroup,
-  WorkbenchMapLocation,
-  WorkbenchMapMarker,
   WorkbenchMapModel,
   WorkbenchModel,
   WorkbenchObjectKind,
@@ -20,12 +44,12 @@ import type {
   WorkbenchReasoningStep,
   WorkbenchReferenceKind,
   WorkbenchTimelineEvent,
+  WorkbenchConclusion,
 } from "./workbench-real-data-types";
 
 export type * from "./workbench-real-data-types";
 
-type ContractLocation = CaseFile["locations"][number];
-type ContractHypothesis = CaseFile["hypotheses"][number];
+type ContractHypothesis = CaseFileDocument["hypotheses"][number];
 
 interface ParsedReference {
   id: string;
@@ -36,21 +60,8 @@ interface ReferenceCatalogEntry extends ParsedReference {
   label: string;
 }
 
-interface SchematicPosition {
-  x: number;
-  y: number;
-  isFallback: boolean;
-}
-
-type SpatialPosition =
-  | { coordinateSystem: "schematic"; x: number; y: number }
-  | {
-      coordinateSystem: "wgs84";
-      latitude: number;
-      longitude: number;
-    };
-
 const objectKindOrder: WorkbenchObjectKind[] = [
+  "resolution_spec",
   "entity",
   "information",
   "event",
@@ -60,7 +71,10 @@ const objectKindOrder: WorkbenchObjectKind[] = [
 
 const referenceKindOrder: WorkbenchReferenceKind[] = [
   "entity",
+  "person",
   "information_unit",
+  "information",
+  "evidence",
   "event",
   "location",
   "hypothesis",
@@ -128,53 +142,132 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
-function finiteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+function parseTime(value: string): string | null {
+  const match = value.match(
+    /^(\d{4}-\d{2}-\d{2})(?:T(\d{2})(?::(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?)?)?(?:Z|[+-]\d{2}:\d{2})?$/,
+  );
+  if (!match) return null;
+  const [, date, hour = "00", minute = "00", second = "00", fraction = ""] = match;
+  return `${date}T${hour}:${minute}:${second}.${fraction.padEnd(6, "0")}`;
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+function temporalSummary(
+  time: CaseFileDocument["events"][number]["time"],
+): {
+  label: string;
+  start: string | null;
+  end: string | null;
+  precision: string;
+  sortKey: string | null;
+} {
+  if (!("kind" in time)) {
+    const start = time.precision === "unknown" ? null : time.start;
+    return {
+      label: start ?? "时间未定",
+      start,
+      end: time.end,
+      precision: time.precision,
+      sortKey: start ? parseTime(start) : null,
+    };
+  }
+  if (time.kind === "unknown") {
+    return {
+      label: "时间未定",
+      start: null,
+      end: null,
+      precision: "unknown",
+      sortKey: null,
+    };
+  }
+  if (time.kind === "relative") {
+    return {
+      label: relativeTimeLabel(time.relation, time.offset_minutes),
+      start: null,
+      end: null,
+      precision: "relative",
+      sortKey: null,
+    };
+  }
+  if (time.kind === "range") {
+    return {
+      label: `${time.start} – ${time.end}`,
+      start: time.start,
+      end: time.end,
+      precision: time.precision,
+      sortKey: parseTime(time.start),
+    };
+  }
+  return {
+    label: time.kind === "approximate" ? `约 ${time.value}` : time.value,
+    start: time.value,
+    end: null,
+    precision: time.precision,
+    sortKey: parseTime(time.value),
+  };
 }
 
-function readSpatialPosition(location: ContractLocation): SpatialPosition | null {
-  const raw = (location as Record<string, unknown>).spatial_position;
-  if (!isRecord(raw)) {
-    return null;
-  }
-  if (raw.coordinate_system === "schematic") {
-    const x = finiteNumber(raw.x);
-    const y = finiteNumber(raw.y);
-    return x !== null && y !== null && x >= 0 && x <= 100 && y >= 0 && y <= 100
-      ? { coordinateSystem: "schematic", x, y }
-      : null;
-  }
-  if (raw.coordinate_system === "wgs84") {
-    const latitude = finiteNumber(raw.latitude);
-    const longitude = finiteNumber(raw.longitude);
-    return latitude !== null &&
-      longitude !== null &&
-      latitude >= -90 &&
-      latitude <= 90 &&
-      longitude >= -180 &&
-      longitude <= 180
-      ? { coordinateSystem: "wgs84", latitude, longitude }
-      : null;
-  }
-  return null;
+interface ResolvedTimelineBounds {
+  start: string;
+  end: string | null;
+  sortKey: string;
 }
 
-function parseTime(value: string): number | null {
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function resolvedTemporalBounds(
+  events: CaseFileDocument["events"],
+): Map<string, ResolvedTimelineBounds> {
+  const eventById = new Map(events.map((event) => [event.id, event]));
+  const resolved = new Map<string, ResolvedTimelineBounds>();
+  const resolving = new Set<string>();
+
+  const resolve = (eventId: string): ResolvedTimelineBounds | null => {
+    const cached = resolved.get(eventId);
+    if (cached) return cached;
+    if (resolving.has(eventId)) return null;
+    const event = eventById.get(eventId);
+    if (!event) return null;
+    const temporal = temporalSummary(event.time);
+    if (temporal.start && temporal.sortKey) {
+      const value = {
+        start: temporal.start,
+        end: temporal.end,
+        sortKey: temporal.sortKey,
+      };
+      resolved.set(eventId, value);
+      return value;
+    }
+    if (!("kind" in event.time) || event.time.kind !== "relative") return null;
+    resolving.add(eventId);
+    const anchorRef = readReference(event.time.anchor_event_ref);
+    const anchor = anchorRef?.kind === "event" ? resolve(anchorRef.id) : null;
+    resolving.delete(eventId);
+    if (!anchor || event.time.offset_minutes === null) return null;
+    const anchorStart = parseWallClock(anchor.start);
+    const anchorEnd = parseWallClock(anchor.end ?? anchor.start);
+    if (anchorStart === null || anchorEnd === null) return null;
+    const offsetMilliseconds = event.time.offset_minutes * 60 * 1000;
+    const value =
+      event.time.relation === "before"
+        ? anchorStart - offsetMilliseconds
+        : event.time.relation === "after"
+          ? anchorEnd + offsetMilliseconds
+          : anchorStart;
+    const projected = formatWallClock(value, "second");
+    const result = { start: projected, end: null, sortKey: projected };
+    resolved.set(eventId, result);
+    return result;
+  };
+
+  for (const event of events) resolve(event.id);
+  return resolved;
 }
 
 function confidenceText(value: number | null): string {
   return value === null ? "置信度未标注" : `置信度 ${Math.round(value * 100)}%`;
 }
 
-function metadataForObject(object: WorkbenchContractObject) {
+function metadataForObject(object: WorkbenchContractObject, kind: WorkbenchReferenceKind) {
   return {
-    description: typeof object.description === "string" ? object.description : "",
+    description: creatorDescription(object.description, kind),
     confidence: object.confidence,
     confirmationStatus: object.confirmation_status,
     revision: object.revision,
@@ -183,10 +276,10 @@ function metadataForObject(object: WorkbenchContractObject) {
 }
 
 function objectMeta(object: WorkbenchContractObject): string {
-  return `${confidenceText(object.confidence)} · ${object.confirmation_status}`;
+  return `${confidenceText(object.confidence)} · ${confirmationStatusLabel(object.confirmation_status)}`;
 }
 
-function buildRelatedEventIds(caseFile: CaseFile): Map<string, Set<string>> {
+function buildRelatedEventIds(caseFile: CaseFileDocument): Map<string, Set<string>> {
   const result = new Map<string, Set<string>>();
   const directoryIds = new Set(
     [
@@ -229,77 +322,197 @@ function buildRelatedEventIds(caseFile: CaseFile): Map<string, Set<string>> {
   return result;
 }
 
-function buildCaseObjects(caseFile: CaseFile): WorkbenchCaseObject[] {
+function buildCaseObjects(caseFile: CaseFileDocument): WorkbenchCaseObject[] {
   const relatedEvents = buildRelatedEventIds(caseFile);
   const related = (id: string) => [...(relatedEvents.get(id) ?? [])].sort();
 
   return [
-    ...caseFile.entities.map((entity): WorkbenchCaseObject => ({
+    ...caseFile.resolution_specs.map((resolution, index): WorkbenchCaseObject => ({
+      id: resolution.id,
+      kind: "resolution_spec",
+      label: creatorLabel(resolution.reasoning_question || resolution.title, {
+        kind: "resolution_spec",
+        index,
+        description: resolution.description,
+      }),
+      code: resolution.conclusion
+        ? resolution.conclusion.review_status === "confirmed"
+          ? "结论已确认"
+          : "结论待确认"
+        : "尚未形成结论",
+      meta: objectMeta(resolution),
+      subtype: resolution.conclusion?.review_status ?? "missing",
+      ...metadataForObject(resolution, "resolution_spec"),
+      relatedEventIds: related(resolution.id),
+      source: resolution,
+    })),
+    ...caseFile.entities.map((entity, index): WorkbenchCaseObject => ({
       id: entity.id,
       kind: "entity",
-      label: entity.name,
-      code: entity.entity_type,
+      label: creatorLabel(entity.name, {
+        kind: "entity",
+        index,
+        description: entity.description,
+      }),
+      code: objectSubtypeLabel(entity.entity_type),
       meta: objectMeta(entity),
       subtype: entity.entity_type,
-      ...metadataForObject(entity),
+      ...metadataForObject(entity, "entity"),
       relatedEventIds: related(entity.id),
       source: entity,
     })),
-    ...caseFile.information_units.map((information): WorkbenchCaseObject => ({
+    ...caseFile.information_units.map((information, index): WorkbenchCaseObject => ({
       id: information.id,
       kind: "information",
-      label: information.title,
-      code: `${information.information_type} · ${information.classification}`,
+      label: creatorLabel(information.title, {
+        kind: "information_unit",
+        index,
+        description: information.description,
+      }),
+      code: `${objectSubtypeLabel(information.information_type)} · ${classificationLabel(information.classification)}`,
       meta: objectMeta(information),
       subtype: information.information_type,
-      ...metadataForObject(information),
+      ...metadataForObject(information, "information_unit"),
       relatedEventIds: related(information.id),
       source: information,
     })),
-    ...caseFile.events.map((event): WorkbenchCaseObject => ({
+    ...caseFile.events.map((event, index): WorkbenchCaseObject => ({
       id: event.id,
       kind: "event",
-      label: event.title,
-      code: `${event.truth_status} · ${event.time.precision}`,
+      label: creatorLabel(event.title, {
+        kind: "event",
+        index,
+        description: event.description,
+      }),
+      code: `${objectSubtypeLabel(event.truth_status)} · ${objectSubtypeLabel(temporalSummary(event.time).precision)}`,
       meta: objectMeta(event),
       subtype: event.truth_status,
-      ...metadataForObject(event),
+      ...metadataForObject(event, "event"),
       relatedEventIds: related(event.id),
       source: event,
     })),
-    ...caseFile.locations.map((location): WorkbenchCaseObject => ({
+    ...caseFile.locations.map((location, index): WorkbenchCaseObject => ({
       id: location.id,
       kind: "location",
-      label: location.name,
-      code: readSpatialPosition(location)?.coordinateSystem ?? "topology",
+      label: creatorLabel(location.name, {
+        kind: "location",
+        index,
+        description: location.description,
+      }),
+      code: objectSubtypeLabel(location.spatial_position?.coordinate_system ?? "topology"),
       meta: objectMeta(location),
-      subtype: readSpatialPosition(location)?.coordinateSystem ?? "topology",
-      ...metadataForObject(location),
+      subtype: location.spatial_position?.coordinate_system ?? "topology",
+      ...metadataForObject(location, "location"),
       relatedEventIds: related(location.id),
       source: location,
     })),
-    ...caseFile.hypotheses.map((hypothesis): WorkbenchCaseObject => ({
+    ...caseFile.hypotheses.map((hypothesis, index): WorkbenchCaseObject => ({
       id: hypothesis.id,
       kind: "hypothesis",
-      label: hypothesis.title,
-      code: hypothesis.status,
+      label: creatorLabel(hypothesis.title, {
+        kind: "hypothesis",
+        index,
+        description: hypothesis.description,
+      }),
+      code: objectSubtypeLabel(hypothesis.status),
       meta: objectMeta(hypothesis),
       subtype: hypothesis.status,
-      ...metadataForObject(hypothesis),
+      ...metadataForObject(hypothesis, "hypothesis"),
       relatedEventIds: related(hypothesis.id),
       source: hypothesis,
     })),
   ];
 }
 
+function buildConclusions(caseFile: CaseFileDocument): WorkbenchConclusion[] {
+  const catalog = buildReferenceCatalog(caseFile);
+  const informationEventIds = new Map(
+    caseFile.information_units.map((item) => [
+      item.id,
+      readReference(item.source_event_ref)?.id ?? null,
+    ]),
+  );
+  const claims = new Map(caseFile.claims.map((item) => [item.id, item]));
+  const hypotheses = new Map(caseFile.hypotheses.map((item) => [item.id, item]));
+  const paths = new Map(caseFile.reasoning_paths.map((item) => [item.id, item]));
+  const eventsForReferences = (ids: string[]) => uniqueStrings(ids.flatMap((id) => {
+    const direct = informationEventIds.get(id);
+    if (direct) return [direct];
+    const claim = claims.get(id);
+    if (claim) {
+      return [...claim.support_refs, ...claim.refute_refs].flatMap((ref) => {
+        const informationId = readReference(ref)?.id;
+        const eventId = informationId ? informationEventIds.get(informationId) : null;
+        return eventId ? [eventId] : [];
+      });
+    }
+    return [];
+  }));
+  return caseFile.resolution_specs.flatMap((resolution) => {
+    const conclusion = resolution.conclusion;
+    if (!conclusion) return [];
+    const selectedHypothesisIds = readReferenceIds(conclusion.selected_hypothesis_refs);
+    const supportingReasoningPathIds = readReferenceIds(
+      conclusion.supporting_reasoning_path_refs,
+    );
+    const relatedReferenceIds = [
+      ...supportingReasoningPathIds.flatMap((pathId) => {
+        const path = paths.get(pathId);
+        return path
+          ? path.steps.flatMap((step) => [
+              ...readReferenceIds(step.input_refs),
+              readReference(step.output_ref)?.id,
+            ])
+          : [];
+      }),
+      ...selectedHypothesisIds.flatMap((hypothesisId) => {
+        const hypothesis = hypotheses.get(hypothesisId);
+        return hypothesis ? readReferenceIds(hypothesis.required_claim_refs) : [];
+      }),
+    ].filter((id): id is string => Boolean(id));
+    return [{
+      resolutionSpecId: resolution.id,
+      question: resolution.reasoning_question,
+      outcome: conclusion.outcome,
+      reviewStatus: conclusion.review_status,
+      summary: creatorText(conclusion.summary, "当前结论摘要待补充。"),
+      values: conclusion.values.map((entry) => {
+        const reference = readReference(entry.value as ObjectRef);
+        return {
+          label: conclusionSlotLabel(entry.slot_id),
+          value: reference
+            ? (catalog.get(reference.id)?.label ?? "关联对象")
+            : typeof entry.value === "string"
+              ? creatorText(entry.value, "答案待补充。")
+              : String(entry.value),
+        };
+      }),
+      selectedHypothesisIds,
+      supportingReasoningPathIds,
+      relatedEventIds: eventsForReferences(relatedReferenceIds),
+      rationale: creatorText(conclusion.rationale, "当前结论依据待补充。"),
+      unresolvedGaps: conclusion.unresolved_gaps,
+    } satisfies WorkbenchConclusion];
+  });
+}
+
 function buildTimeline(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   objects: WorkbenchCaseObject[],
+  validationIssues: ValidationIssue[],
 ): WorkbenchTimelineEvent[] {
   const objectIds = new Set(objects.map((object) => object.id));
   const locationNames = new Map(
-    caseFile.locations.map((location) => [location.id, location.name]),
+    caseFile.locations.map((location, index) => [
+      location.id,
+      creatorLabel(location.name, {
+        kind: "location",
+        index,
+        description: location.description,
+      }),
+    ]),
   );
+  const temporalBounds = resolvedTemporalBounds(caseFile.events);
 
   return caseFile.events
     .map((event, originalIndex) => {
@@ -318,21 +531,36 @@ function buildTimeline(
         ...observerIds,
         ...sourceIds,
       ]).filter((id) => objectIds.has(id));
-      const sortKey = parseTime(event.time.start);
+      const temporal = temporalSummary(event.time);
+      const projection = temporalBounds.get(event.id);
+      const isRelative = "kind" in event.time && event.time.kind === "relative";
       return {
         event: {
           id: event.id,
-          time: event.time.start || "时间未定",
-          label: event.title,
+          time: temporal.label,
+          label: creatorLabel(event.title, {
+            kind: "event",
+            index: originalIndex,
+            description: event.description,
+          }),
           location: locationId ? locationNames.get(locationId) ?? locationId : "未指定地点",
-          summary: typeof event.description === "string" ? event.description : "",
+          summary: creatorDescription(event.description, "event"),
           relatedObjectIds,
-          issueIds: [],
-          start: event.time.start,
-          end: event.time.end,
-          precision: event.time.precision,
+          issueIds: validationIssues
+            .filter((issue) => issue.eventId === event.id)
+            .map((issue) => issue.id),
+          start: projection?.start ?? temporal.start,
+          end: projection?.end ?? temporal.end,
+          precision: temporal.precision,
           truthStatus: event.truth_status,
-          sortKey,
+          sortKey: projection?.sortKey ?? temporal.sortKey,
+          timeProjection: isRelative
+            ? projection
+              ? "relative-resolved"
+              : "unresolved"
+            : temporal.sortKey
+              ? "absolute"
+              : "unresolved",
           refs: {
             participantIds,
             locationId,
@@ -354,7 +582,7 @@ function buildTimeline(
         return -1;
       }
       if (left.event.sortKey !== null && right.event.sortKey !== null) {
-        const byTime = left.event.sortKey - right.event.sortKey;
+        const byTime = left.event.sortKey.localeCompare(right.event.sortKey);
         if (byTime !== 0) {
           return byTime;
         }
@@ -364,63 +592,93 @@ function buildTimeline(
     .map(({ event }) => event);
 }
 
-function buildReferenceCatalog(caseFile: CaseFile): Map<string, ReferenceCatalogEntry> {
+function buildValidationIssues(
+  validation: WorkbenchValidationView | null,
+): ValidationIssue[] {
+  if (validation?.status !== "failed") {
+    return [];
+  }
+  return validation.issues.map((issue) => {
+    const objectRef = issue.target.object_ref;
+    const eventId = objectRef?.object_type === "event" ? objectRef.object_id : null;
+    return {
+      id: issue.issue_id,
+      severity: issue.severity,
+      title: issue.message,
+      summary: issue.message,
+      eventId,
+      rule: `${issue.code} · ${issue.path}`,
+      evidenceIds: [],
+      beforeKnowledge: "",
+      eventClaim: "",
+      afterKnowledge: "",
+      patchBefore: "",
+      patchAfter: "",
+      source: "validator",
+      targetObjectId: objectRef?.object_id ?? null,
+      targetObjectType: objectRef?.object_type ?? null,
+      fieldPath: issue.target.field_path,
+    };
+  });
+}
+
+function buildReferenceCatalog(caseFile: CaseFileDocument): Map<string, ReferenceCatalogEntry> {
   const entries: ReferenceCatalogEntry[] = [
-    { id: caseFile.casefile_id, kind: "casefile", label: caseFile.title },
-    ...caseFile.resolution_specs.map((item) => ({
+    { id: caseFile.casefile_id, kind: "casefile", label: creatorLabel(caseFile.title, { kind: "casefile", index: 0, description: caseFile.title }) },
+    ...caseFile.resolution_specs.map((item, index) => ({
       id: item.id,
       kind: "resolution_spec" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "resolution_spec", index, description: item.description }),
     })),
-    ...caseFile.entities.map((item) => ({
+    ...caseFile.entities.map((item, index) => ({
       id: item.id,
       kind: "entity" as const,
-      label: item.name,
+      label: creatorLabel(item.name, { kind: "entity", index, description: item.description }),
     })),
-    ...caseFile.relationships.map((item) => ({
+    ...caseFile.relationships.map((item, index) => ({
       id: item.id,
       kind: "relationship" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "relationship", index, description: item.description }),
     })),
-    ...caseFile.locations.map((item) => ({
+    ...caseFile.locations.map((item, index) => ({
       id: item.id,
       kind: "location" as const,
-      label: item.name,
+      label: creatorLabel(item.name, { kind: "location", index, description: item.description }),
     })),
-    ...caseFile.events.map((item) => ({
+    ...caseFile.events.map((item, index) => ({
       id: item.id,
       kind: "event" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "event", index, description: item.description }),
     })),
-    ...caseFile.information_units.map((item) => ({
+    ...caseFile.information_units.map((item, index) => ({
       id: item.id,
       kind: "information_unit" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "information_unit", index, description: item.description }),
     })),
-    ...caseFile.claims.map((item) => ({
+    ...caseFile.claims.map((item, index) => ({
       id: item.id,
       kind: "claim" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "claim", index, description: item.description }),
     })),
-    ...caseFile.hypotheses.map((item) => ({
+    ...caseFile.hypotheses.map((item, index) => ({
       id: item.id,
       kind: "hypothesis" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "hypothesis", index, description: item.description }),
     })),
-    ...caseFile.reasoning_paths.map((item) => ({
+    ...caseFile.reasoning_paths.map((item, index) => ({
       id: item.id,
       kind: "reasoning_path" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "reasoning_path", index, description: item.description }),
     })),
-    ...caseFile.constraints.map((item) => ({
+    ...caseFile.constraints.map((item, index) => ({
       id: item.id,
       kind: "constraint" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "constraint", index, description: item.description }),
     })),
-    ...caseFile.structure_locks.map((item) => ({
+    ...caseFile.structure_locks.map((item, index) => ({
       id: item.id,
       kind: "structure_lock" as const,
-      label: item.title,
+      label: creatorLabel(item.title, { kind: "structure_lock", index, description: item.description }),
     })),
   ];
   return new Map(entries.map((entry) => [entry.id, entry]));
@@ -458,7 +716,7 @@ function layoutGraphNodes(nodes: WorkbenchGraphNode[]): WorkbenchGraphNode[] {
 }
 
 function buildRelationshipGraph(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   objects: WorkbenchCaseObject[],
 ): { nodes: WorkbenchGraphNode[]; edges: WorkbenchGraphEdge[] } {
   const catalog = buildReferenceCatalog(caseFile);
@@ -468,6 +726,9 @@ function buildRelationshipGraph(
 
   const ensureNode = (reference: ParsedReference | null) => {
     if (!reference) {
+      return;
+    }
+    if (nodes.has(reference.id)) {
       return;
     }
     const catalogEntry = catalog.get(reference.id);
@@ -521,7 +782,11 @@ function buildRelationshipGraph(
       identity: `relationship:${relationship.id}`,
       from: readReference(relationship.from_ref),
       to: readReference(relationship.to_ref),
-      label: relationship.title || relationship.relationship_type,
+      label: creatorLabel(relationship.title, {
+        kind: "relationship",
+        index: caseFile.relationships.findIndex((item) => item.id === relationship.id),
+        description: relationship.description,
+      }),
       kind: "relationship",
       direction: relationship.direction,
       sourceObjectId: relationship.id,
@@ -752,6 +1017,50 @@ function buildRelationshipGraph(
     }
   }
 
+  for (const resolution of caseFile.resolution_specs) {
+    const questionRef = { id: resolution.id, kind: "resolution_spec" as const };
+    const conclusion = resolution.conclusion;
+    const conclusionRef = { id: `resolution-conclusion:${resolution.id}`, kind: "resolution_spec" as const };
+    ensureNode(conclusionRef);
+    ensureNode(questionRef);
+    const questionNode = nodes.get(questionRef.id);
+    if (questionNode) questionNode.directoryObjectId = resolution.id;
+    const conclusionNode = nodes.get(conclusionRef.id);
+    if (conclusionNode) {
+      conclusionNode.directoryObjectId = resolution.id;
+      conclusionNode.label = conclusion?.summary ?? "尚未形成结论";
+    }
+    addEdge({
+      identity: `resolution:${resolution.id}:conclusion`,
+      from: questionRef,
+      to: conclusionRef,
+      label: conclusion ? "裁决" : "尚未形成结论",
+      kind: "resolution_conclusion",
+      sourceObjectId: resolution.id,
+    });
+    if (!conclusion) continue;
+    for (const hypothesisId of readReferenceIds(conclusion.selected_hypothesis_refs)) {
+      addEdge({
+        identity: `conclusion:${resolution.id}:hypothesis:${hypothesisId}`,
+        from: { id: hypothesisId, kind: "hypothesis" },
+        to: conclusionRef,
+        label: conclusion.outcome === "undetermined" ? "并存解释" : "进入当前结论",
+        kind: "hypothesis_conclusion",
+        sourceObjectId: resolution.id,
+      });
+    }
+    for (const pathId of readReferenceIds(conclusion.supporting_reasoning_path_refs)) {
+      addEdge({
+        identity: `conclusion:${resolution.id}:path:${pathId}`,
+        from: { id: pathId, kind: "reasoning_path" },
+        to: conclusionRef,
+        label: "收束依据",
+        kind: "reasoning_conclusion",
+        sourceObjectId: resolution.id,
+      });
+    }
+  }
+
   return {
     nodes: layoutGraphNodes([...nodes.values()]),
     edges: [...edges.values()].sort((left, right) => left.id.localeCompare(right.id)),
@@ -773,7 +1082,7 @@ function outcomeForHypothesis(
   return "contested";
 }
 
-function buildReasoningPaths(caseFile: CaseFile): WorkbenchReasoningPath[] {
+function buildReasoningPaths(caseFile: CaseFileDocument): WorkbenchReasoningPath[] {
   const catalog = buildReferenceCatalog(caseFile);
   const hypotheses = new Map(caseFile.hypotheses.map((item) => [item.id, item]));
   const resolutions = new Map(caseFile.resolution_specs.map((item) => [item.id, item]));
@@ -803,7 +1112,7 @@ function buildReasoningPaths(caseFile: CaseFile): WorkbenchReasoningPath[] {
       const outputLabel = labelFor(outputId);
       return {
         id: step.step_id,
-        verb: step.operation,
+        verb: reasoningOperationLabel(step.operation),
         claim: `${inputLabels.join("、")}${inputLabels.length ? " → " : ""}${outputLabel}`,
         evidenceIds: inputIds.filter((id) => informationIds.has(id)),
         operation: step.operation,
@@ -818,11 +1127,15 @@ function buildReasoningPaths(caseFile: CaseFile): WorkbenchReasoningPath[] {
       question: resolution?.reasoning_question ?? "",
       evidenceIds: uniqueStrings(steps.flatMap((step) => step.evidenceIds)),
       steps,
-      conclusion: hypothesis?.title ?? labelFor(target?.id ?? null),
+      conclusion: resolution?.conclusion?.summary ?? "该核心问题尚未形成结论",
       outcome: outcomeForHypothesis(hypothesis),
       hypothesisId: hypothesis?.id ?? target?.id ?? path.id,
       targetHypothesisId: hypothesis?.id ?? null,
-      title: path.title,
+      title: creatorLabel(path.title, {
+        kind: "reasoning_path",
+        index: caseFile.reasoning_paths.findIndex((item) => item.id === path.id),
+        description: path.description,
+      }),
       pathType: path.path_type,
       targetId: target?.id ?? null,
       targetLabel: labelFor(target?.id ?? null),
@@ -834,228 +1147,97 @@ function buildReasoningPaths(caseFile: CaseFile): WorkbenchReasoningPath[] {
   });
 }
 
-function initialGrid(ids: string[]): Map<string, { x: number; y: number }> {
-  const sorted = [...ids].sort();
-  const columns = Math.max(1, Math.ceil(Math.sqrt(sorted.length || 1)));
-  const rows = Math.max(1, Math.ceil(sorted.length / columns));
-  return new Map(
-    sorted.map((id, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      return [
-        id,
-        {
-          x: columns === 1 ? 50 : 12 + (column / (columns - 1)) * 76,
-          y: rows === 1 ? 50 : 12 + (row / (rows - 1)) * 76,
-        },
-      ];
-    }),
+function buildReasoningGroups(
+  caseFile: CaseFileDocument,
+): WorkbenchReasoningGroup[] {
+  const resolutions = new Map(caseFile.resolution_specs.map((item) => [item.id, item]));
+  const information = new Map(caseFile.information_units.map((item) => [item.id, item]));
+  const groups = new Map<
+    string,
+    {
+      hypotheses: ContractHypothesis[];
+      assessments: WorkbenchReasoningGroup["assessments"];
+      informationIds: Set<string>;
+    }
+  >();
+  const conclusions = new Map(
+    buildConclusions(caseFile).map((item) => [item.resolutionSpecId, item]),
   );
-}
 
-function buildSchematicPositions(
-  locations: ContractLocation[],
-  spatialById: Map<string, SpatialPosition | null>,
-): Map<string, SchematicPosition> {
-  const candidates = locations
-    .filter((location) => spatialById.get(location.id)?.coordinateSystem !== "wgs84")
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const initial = initialGrid(candidates.map((location) => location.id));
-  const positions = new Map<string, SchematicPosition>();
-  const fallbackIds = new Set<string>();
-  for (const location of candidates) {
-    const spatial = spatialById.get(location.id);
-    if (spatial?.coordinateSystem === "schematic") {
-      positions.set(location.id, { x: spatial.x, y: spatial.y, isFallback: false });
-    } else {
-      const point = initial.get(location.id) ?? { x: 50, y: 50 };
-      positions.set(location.id, { ...point, isFallback: true });
-      fallbackIds.add(location.id);
+  for (const hypothesis of caseFile.hypotheses) {
+    const resolutionId = readReference(hypothesis.target_resolution_ref)?.id;
+    if (!resolutionId || !resolutions.has(resolutionId)) {
+      continue;
     }
-  }
-
-  const candidateIds = new Set(candidates.map((location) => location.id));
-  const neighborWeights = new Map<string, Map<string, number>>();
-  const connect = (left: string, right: string | null, weight: number) => {
-    if (!right || left === right || !candidateIds.has(left) || !candidateIds.has(right)) {
-      return;
-    }
-    const add = (from: string, to: string) => {
-      const neighbors = neighborWeights.get(from) ?? new Map<string, number>();
-      neighbors.set(to, Math.max(neighbors.get(to) ?? 0, weight));
-      neighborWeights.set(from, neighbors);
+    const group = groups.get(resolutionId) ?? {
+      hypotheses: [],
+      assessments: [],
+      informationIds: new Set<string>(),
     };
-    add(left, right);
-    add(right, left);
-  };
-
-  for (const location of candidates) {
-    connect(location.id, readReference(location.parent_ref)?.id ?? null, 3);
-    for (const ref of location.adjacency_refs) {
-      connect(location.id, readReference(ref)?.id ?? null, 2);
-    }
-    for (const travel of location.travel_times) {
-      const weight = clamp(120 / Math.max(1, travel.minutes), 0.25, 4);
-      connect(location.id, readReference(travel.to_ref)?.id ?? null, weight);
-    }
-  }
-
-  for (let iteration = 0; iteration < 24; iteration += 1) {
-    const next = new Map(positions);
-    for (const id of [...fallbackIds].sort()) {
-      const neighbors = neighborWeights.get(id);
-      if (!neighbors || neighbors.size === 0) {
+    group.hypotheses.push(hypothesis);
+    for (const assessment of hypothesis.evidence_assessments ?? []) {
+      const informationId = readReference(assessment.information_ref)?.id;
+      if (!informationId || !information.has(informationId)) {
         continue;
       }
-      let totalWeight = 0;
-      let weightedX = 0;
-      let weightedY = 0;
-      for (const [neighborId, weight] of [...neighbors.entries()].sort()) {
-        const neighbor = positions.get(neighborId);
-        if (!neighbor) {
-          continue;
-        }
-        totalWeight += weight;
-        weightedX += neighbor.x * weight;
-        weightedY += neighbor.y * weight;
-      }
-      if (totalWeight === 0) {
-        continue;
-      }
-      const anchor = initial.get(id) ?? { x: 50, y: 50 };
-      const angle = ((hashString(id) % 360) * Math.PI) / 180;
-      const targetX = weightedX / totalWeight + Math.cos(angle) * 4;
-      const targetY = weightedY / totalWeight + Math.sin(angle) * 4;
-      next.set(id, {
-        x: clamp(targetX * 0.76 + anchor.x * 0.24, 3, 97),
-        y: clamp(targetY * 0.76 + anchor.y * 0.24, 3, 97),
-        isFallback: true,
+      group.informationIds.add(informationId);
+      group.assessments.push({
+        hypothesisId: hypothesis.id,
+        informationId,
+        effect: assessment.effect,
+        strength: assessment.strength,
+        rationale: creatorText(assessment.rationale, "该判定依据待补充。"),
       });
     }
-    for (const [id, point] of next) {
-      positions.set(id, point);
-    }
+    groups.set(resolutionId, group);
   }
-  return positions;
-}
 
-function eventMarkersForGroup(
-  coordinateSystem: WorkbenchCoordinateSystem,
-  timelineEvents: WorkbenchTimelineEvent[],
-  locations: WorkbenchMapLocation[],
-): WorkbenchMapMarker[] {
-  const points = new Map(
-    locations.flatMap((location) =>
-      location.locationId ? [[location.locationId, location] as const] : [],
-    ),
-  );
-  return timelineEvents.flatMap((event) => {
-    const locationId = event.refs.locationId;
-    const point = locationId ? points.get(locationId) : undefined;
-    return point
-      ? [
-          {
-            eventId: event.id,
-            locationId,
-            label: event.label,
-            coordinateSystem,
-            x: point.x,
-            y: point.y,
-          } satisfies WorkbenchMapMarker,
-        ]
-      : [];
+  return caseFile.resolution_specs.flatMap((resolution) => {
+    const group = groups.get(resolution.id);
+    if (!group) {
+      return [];
+    }
+    return [
+      {
+        resolutionSpecId: resolution.id,
+        question:
+          resolution.reasoning_question || resolution.title
+            ? creatorLabel(
+                resolution.reasoning_question || resolution.title,
+                {
+                  kind: "resolution_spec",
+                  index: caseFile.resolution_specs.findIndex((item) => item.id === resolution.id),
+                  description: resolution.description,
+                },
+              )
+            : "未命名待解问题",
+        hypotheses: group.hypotheses.map((hypothesis) => ({
+          id: hypothesis.id,
+          title: creatorLabel(hypothesis.title, {
+            kind: "hypothesis",
+            index: caseFile.hypotheses.findIndex((item) => item.id === hypothesis.id),
+            description: hypothesis.description,
+          }),
+          outcome: outcomeForHypothesis(hypothesis),
+        })),
+        information: caseFile.information_units.flatMap((item) =>
+          group.informationIds.has(item.id)
+            ? [{
+                id: item.id,
+                title: creatorLabel(item.title, {
+                  kind: "information_unit",
+                  index: caseFile.information_units.findIndex((candidate) => candidate.id === item.id),
+                  description: item.description,
+                }),
+                reliability: item.reliability,
+              }]
+            : [],
+        ),
+        assessments: group.assessments,
+        conclusion: conclusions.get(resolution.id),
+      },
+    ];
   });
-}
-
-function buildMap(
-  caseFile: CaseFile,
-  timelineEvents: WorkbenchTimelineEvent[],
-): WorkbenchMapModel {
-  const spatialById = new Map(
-    caseFile.locations.map((location) => [location.id, readSpatialPosition(location)]),
-  );
-  const schematicPositions = buildSchematicPositions(caseFile.locations, spatialById);
-  const locationNames = new Map(
-    caseFile.locations.map((location) => [location.id, location.name]),
-  );
-  const schematicLocations = [...schematicPositions.entries()]
-    .map(([locationId, point]): WorkbenchMapLocation => ({
-      locationId,
-      label: locationNames.get(locationId) ?? locationId,
-      coordinateSystem: "schematic",
-      x: point.x,
-      y: point.y,
-      isFallback: point.isFallback,
-    }))
-    .sort((left, right) => (left.locationId ?? "").localeCompare(right.locationId ?? ""));
-
-  const geographic = caseFile.locations
-    .flatMap((location) => {
-      const spatial = spatialById.get(location.id);
-      return spatial?.coordinateSystem === "wgs84"
-        ? [{ location, spatial }]
-        : [];
-    })
-    .sort((left, right) => left.location.id.localeCompare(right.location.id));
-  const latitudes = geographic.map(({ spatial }) => spatial.latitude);
-  const longitudes = geographic.map(({ spatial }) => spatial.longitude);
-  const bounds = geographic.length
-    ? {
-        minLatitude: Math.min(...latitudes),
-        maxLatitude: Math.max(...latitudes),
-        minLongitude: Math.min(...longitudes),
-        maxLongitude: Math.max(...longitudes),
-      }
-    : null;
-  const wgs84Locations = geographic.map(({ location, spatial }): WorkbenchMapLocation => {
-    const x =
-      bounds && bounds.maxLongitude !== bounds.minLongitude
-        ? ((spatial.longitude - bounds.minLongitude) /
-            (bounds.maxLongitude - bounds.minLongitude)) *
-          100
-        : 50;
-    const y =
-      bounds && bounds.maxLatitude !== bounds.minLatitude
-        ? ((bounds.maxLatitude - spatial.latitude) /
-            (bounds.maxLatitude - bounds.minLatitude)) *
-          100
-        : 50;
-    return {
-      locationId: location.id,
-      label: location.name,
-      coordinateSystem: "wgs84",
-      x,
-      y,
-      isFallback: false,
-      latitude: spatial.latitude,
-      longitude: spatial.longitude,
-    };
-  });
-
-  const schematic: WorkbenchMapGroup = {
-    coordinateSystem: "schematic",
-    locations: schematicLocations,
-    eventMarkers: eventMarkersForGroup("schematic", timelineEvents, schematicLocations),
-    bounds: null,
-  };
-  const wgs84: WorkbenchMapGroup = {
-    coordinateSystem: "wgs84",
-    locations: wgs84Locations,
-    eventMarkers: eventMarkersForGroup("wgs84", timelineEvents, wgs84Locations),
-    bounds,
-  };
-  const availableModes: WorkbenchCoordinateSystem[] = [
-    ...(wgs84.locations.length ? (["wgs84"] as const) : []),
-    ...(schematic.locations.length ? (["schematic"] as const) : []),
-  ];
-  return {
-    availableModes,
-    defaultMode: availableModes[0] ?? null,
-    groups: { schematic, wgs84 },
-    fallbackLocationIds: schematicLocations
-      .filter((location) => location.isFallback && location.locationId)
-      .map((location) => location.locationId as string),
-  };
 }
 
 function countObjects(
@@ -1070,7 +1252,7 @@ function countObjects(
 }
 
 function buildCaseMeta(input: {
-  caseFile: CaseFile;
+  caseFile: CaseFileDocument;
   draftRevision: number;
   timeline: WorkbenchTimelineEvent[];
   graph: { nodes: WorkbenchGraphNode[]; edges: WorkbenchGraphEdge[] };
@@ -1079,7 +1261,13 @@ function buildCaseMeta(input: {
   const firstTime = input.timeline.find((event) => event.sortKey !== null)?.start;
   const lastTime = [...input.timeline].reverse().find((event) => event.sortKey !== null)?.start;
   const modeLabel = input.map.availableModes
-    .map((mode) => (mode === "wgs84" ? "地理坐标" : "空间示意"))
+    .map((mode) =>
+      mode === "geographic"
+        ? "真实地图"
+        : mode === "scene"
+          ? "场景图"
+          : "自动布局",
+    )
     .join(" / ");
   const realObjects = [
     ...input.caseFile.entities,
@@ -1091,22 +1279,26 @@ function buildCaseMeta(input: {
   const actor = [...realObjects]
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0]
     ?.created_by.actor_id ?? "system";
+  const caseTitle = creatorLabel(input.caseFile.title, {
+    kind: "casefile",
+    index: 0,
+  });
   return {
-    title: input.caseFile.title,
-    monogram: Array.from(input.caseFile.title.trim())[0] ?? "案",
-    subtitle: `CaseFile ${input.caseFile.schema_version} · Current Draft`,
+    title: caseTitle,
+    monogram: Array.from(caseTitle.trim())[0] ?? "案",
+    subtitle: `卷宗契约 ${input.caseFile.schema_version} · 当前工作稿`,
     revision: `R${input.draftRevision}`,
-    timelineTitle: input.caseFile.title,
+    timelineTitle: caseTitle,
     timelineMeta: input.timeline.length
-      ? `${input.timeline.length} EVENTS${firstTime && lastTime ? ` · ${firstTime} → ${lastTime}` : ""}`
-      : "0 EVENTS",
-    mapTitle: `${input.caseFile.title} / 空间图`,
-    mapMeta: modeLabel || "0 LOCATIONS",
-    mapNote: `${input.map.groups.schematic.locations.filter((item) => !item.isFallback).length} 个示意坐标 · ${input.map.groups.wgs84.locations.length} 个地理坐标 · ${input.map.fallbackLocationIds.length} 个拓扑回退`,
+      ? `${input.timeline.length} 个事件${firstTime && lastTime ? ` · ${timelineClock(firstTime)} → ${timelineClock(lastTime)}` : ""}`
+      : "0 个事件",
+    mapTitle: `${caseTitle} / 空间图`,
+    mapMeta: modeLabel || "0 个地点",
+    mapNote: `${input.map.counts.geographic} 个地理坐标 · ${input.map.counts.scene} 个场景坐标 · ${input.map.counts.inferred} 个推算位置 · ${input.map.counts.unlocated} 个未定位`,
     relationshipSummary: `${input.graph.nodes.length} 个节点 · ${input.graph.edges.length} 条边`,
-    exportTitle: input.caseFile.title,
+    exportTitle: caseTitle,
     exportCode: input.caseFile.casefile_id,
-    exportSubtitle: "基于当前 Draft 的开发预览",
+    exportSubtitle: "基于当前工作稿的开发预览",
     dossierVisibleRoles: `${input.caseFile.entities.length} 个实体`,
     branchLabel: "当前工作稿",
     protagonist: actor,
@@ -1114,15 +1306,18 @@ function buildCaseMeta(input: {
 }
 
 export function mapCaseFileToWorkbenchModel(
-  caseFile: CaseFile,
+  caseFile: CaseFileDocument,
   draftRevision: number,
+  validation: WorkbenchValidationView | null = null,
 ): WorkbenchModel {
   const caseObjects = buildCaseObjects(caseFile);
-  const timelineEvents = buildTimeline(caseFile, caseObjects);
+  const validationIssues = buildValidationIssues(validation);
+  const timelineEvents = buildTimeline(caseFile, caseObjects, validationIssues);
   const relationshipGraph = buildRelationshipGraph(caseFile, caseObjects);
   const reasoningPaths = buildReasoningPaths(caseFile);
-  const map = buildMap(caseFile, timelineEvents);
-  const activeMapGroup = map.defaultMode ? map.groups[map.defaultMode] : null;
+  const reasoningGroups = buildReasoningGroups(caseFile);
+  const conclusions = buildConclusions(caseFile);
+  const map = buildWorkbenchSpatialModel(caseFile, timelineEvents);
   const caseMeta = buildCaseMeta({
     caseFile,
     draftRevision,
@@ -1140,28 +1335,25 @@ export function mapCaseFileToWorkbenchModel(
     caseObjects,
     objectCounts: countObjects(caseObjects),
     timelineEvents,
-    validationIssues: [],
+    validationIssues,
     sourceItems: [],
     graphNodes: relationshipGraph.nodes,
     graphEdges: relationshipGraph.edges,
     relationshipGraph,
     reasoningPaths,
-    mapMarkers: activeMapGroup?.eventMarkers ?? [],
-    mapLabels:
-      activeMapGroup?.locations.map((location) => ({
-        locationId: location.locationId,
-        label: location.label,
-        coordinateSystem: location.coordinateSystem,
-        x: location.x,
-        y: location.y,
-        isFallback: location.isFallback,
-      })) ?? [],
+    reasoningGroups,
+    conclusions,
+    mapMarkers: [],
+    mapLabels: [],
     map,
     drawer: emptyDrawer,
     initialAuditEntries: [],
     defaultEventId: timelineEvents[0]?.id ?? null,
-    defaultObjectId: caseObjects[0]?.id ?? null,
-    defaultIssueId: null,
+    defaultObjectId:
+      caseObjects.find((object) => object.kind !== "resolution_spec")?.id ??
+      caseObjects[0]?.id ??
+      null,
+    defaultIssueId: validationIssues[0]?.id ?? null,
   };
 }
 
@@ -1188,6 +1380,9 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     source: null,
   }));
   const objectById = new Map(caseObjects.map((object) => [object.id, object]));
+  const fixtureKindById = new Map(
+    seed.caseObjects.map((object) => [object.id, object.kind]),
+  );
   const timelineEvents = seed.timelineEvents.map((event): WorkbenchTimelineEvent => ({
     ...event,
     start: event.time,
@@ -1195,6 +1390,7 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     precision: "unknown",
     truthStatus: "unknown",
     sortKey: parseTime(event.time),
+    timeProjection: parseTime(event.time) ? "absolute" : "unresolved",
     refs: {
       participantIds: event.relatedObjectIds.filter(
         (id) => objectById.get(id)?.kind === "entity",
@@ -1210,7 +1406,9 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
   const graphNodes = seed.graphNodes.map((node): WorkbenchGraphNode => ({
       ...node,
       id: node.objectId,
-      kind: referenceKindForDirectoryKind(objectById.get(node.objectId)?.kind),
+      kind:
+        fixtureKindById.get(node.objectId) ??
+        referenceKindForDirectoryKind(objectById.get(node.objectId)?.kind),
       label: objectById.get(node.objectId)?.label ?? node.objectId,
       directoryObjectId: objectById.has(node.objectId) ? node.objectId : null,
     }));
@@ -1244,39 +1442,7 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
       outputLabel: path.conclusion,
     })),
   }));
-  const schematicLocations = seed.mapLabels.map((label): WorkbenchMapLocation => ({
-    locationId: null,
-    label: label.label,
-    coordinateSystem: "schematic",
-    x: label.x,
-    y: label.y,
-    isFallback: false,
-  }));
-  const schematicMarkers = seed.mapMarkers.map((marker): WorkbenchMapMarker => ({
-    ...marker,
-    locationId: null,
-    coordinateSystem: "schematic",
-  }));
-  const hasMapData = schematicLocations.length > 0 || schematicMarkers.length > 0;
-  const map: WorkbenchMapModel = {
-    availableModes: hasMapData ? ["schematic"] : [],
-    defaultMode: hasMapData ? "schematic" : null,
-    groups: {
-      schematic: {
-        coordinateSystem: "schematic",
-        locations: schematicLocations,
-        eventMarkers: schematicMarkers,
-        bounds: null,
-      },
-      wgs84: {
-        coordinateSystem: "wgs84",
-        locations: [],
-        eventMarkers: [],
-        bounds: null,
-      },
-    },
-    fallbackLocationIds: [],
-  };
+  const map = buildFixtureSpatialModel({ ...seed, timelineEvents });
 
   return {
     id: seed.id,
@@ -1293,15 +1459,10 @@ export function mapFixtureToWorkbenchModel(seed: WorkbenchSeed): WorkbenchModel 
     graphEdges,
     relationshipGraph: { nodes: graphNodes, edges: graphEdges },
     reasoningPaths,
-    mapMarkers: schematicMarkers,
-    mapLabels: schematicLocations.map((location) => ({
-      locationId: location.locationId,
-      label: location.label,
-      coordinateSystem: location.coordinateSystem,
-      x: location.x,
-      y: location.y,
-      isFallback: location.isFallback,
-    })),
+    conclusions: [],
+    reasoningGroups: seed.reasoningGroups ?? [],
+    mapMarkers: seed.mapMarkers,
+    mapLabels: seed.mapLabels,
     map,
     drawer: seed.drawer,
     initialAuditEntries: seed.initialAuditEntries,

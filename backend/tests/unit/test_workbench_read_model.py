@@ -4,14 +4,14 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
 
-from sqlalchemy.orm import Session
-
 from casefile.application.workbench_read_model import (
     WorkbenchReadModel,
     _contract_source_refs,
+    _validation_issue,
 )
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.repositories import OwnedDraft
+from sqlalchemy.orm import Session
 
 
 def test_validation_failure_returns_stable_localized_issues() -> None:
@@ -22,6 +22,7 @@ def test_validation_failure_returns_stable_localized_issues() -> None:
             Any,
             SimpleNamespace(
                 draft=SimpleNamespace(
+                    id=9,
                     brief_version_id=17,
                     schema_version="1.0",
                 )
@@ -41,6 +42,15 @@ def test_validation_failure_returns_stable_localized_issues() -> None:
     with patch(
         "casefile.application.workbench_read_model.build_casefile_document",
         side_effect=failure,
+    ), patch.object(
+        model,
+        "_validation_object_index",
+        return_value={
+            ("event", 0): {
+                "object_type": "event",
+                "object_id": "evt_gate",
+            }
+        },
     ):
         document, first = model._validation(owned)
         _document, second = model._validation(owned)
@@ -51,7 +61,40 @@ def test_validation_failure_returns_stable_localized_issues() -> None:
     assert first["issue_count"] == 1
     assert first["issues"][0]["message"] == "引用的对象不存在"
     assert first["issues"][0]["path"] == "/events/0/location_ref"
+    assert first["issues"][0]["target"] == {
+        "object_ref": {"object_type": "event", "object_id": "evt_gate"},
+        "field_path": "/location_ref",
+    }
     assert first["issues"][0]["issue_id"].startswith("validator:")
+
+
+def test_validation_issue_identity_survives_contract_reordering() -> None:
+    issue = {
+        "code": "missing_reference",
+        "path": "/events/1/location_ref",
+        "message": "引用的对象不存在",
+    }
+    original = _validation_issue(
+        issue,
+        {
+            ("event", 1): {
+                "object_type": "event",
+                "object_id": "evt_gate",
+            }
+        },
+    )
+    reordered = _validation_issue(
+        {**issue, "path": "/events/0/location_ref"},
+        {
+            ("event", 0): {
+                "object_type": "event",
+                "object_id": "evt_gate",
+            }
+        },
+    )
+
+    assert reordered["issue_id"] == original["issue_id"]
+    assert reordered["target"] == original["target"]
 
 
 def test_contract_source_refs_preserve_real_ids_and_json_pointer_paths() -> None:

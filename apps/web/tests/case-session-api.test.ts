@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { BriefContent } from "@/lib/api-client";
+import type { BriefContent, TaskView } from "@/lib/api-client";
 
 import {
   CaseSessionError,
@@ -83,6 +83,51 @@ describe("case session provider fallback", () => {
     expect(ticks).toHaveBeenCalledWith(expect.objectContaining({ status: "succeeded" }));
   });
 
+  it("coalesces adjacent step events into one authoritative component refresh", async () => {
+    const queued = taskView({ status: "queued", stage: "queued" });
+    const running = taskView({ status: "running", stage: "domain_drafting" });
+    running.component_steps = [
+      {
+        step_run_id: 81,
+        attempt_no: 1,
+        component_id: "story_world",
+        parent_component_id: "domain_drafters",
+        execution_no: 1,
+        status: "running",
+        schema_id: "story-world-ir-v2",
+        input_hash: "story-input",
+        output_hash: null,
+        failure_layer: null,
+        issues: [],
+        recoverable: false,
+        resumed_from_step_run_id: null,
+      },
+    ];
+    const succeeded = taskView({ status: "succeeded", stage: "completed" });
+    apiRequestMock
+      .mockResolvedValueOnce(queued)
+      .mockResolvedValueOnce(running)
+      .mockResolvedValueOnce(succeeded);
+    streamTaskEventsMock.mockImplementationOnce(
+      async (
+        _path: string,
+        _actorId: number,
+        onEvent: (event: Record<string, unknown>) => void,
+      ) => {
+        onEvent({ sequence_no: 1, event_type: "agent.step.started", stage: "domain_drafting" });
+        onEvent({ sequence_no: 2, event_type: "agent.step.completed", stage: "domain_drafting" });
+      },
+    );
+    const ticks = vi.fn();
+
+    await expect(waitForTask(7, 31, ticks)).resolves.toBe(succeeded);
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(3);
+    expect(ticks).toHaveBeenCalledWith(
+      expect.objectContaining({ component_steps: running.component_steps }),
+    );
+  });
+
   it("exposes user cancellation as a recognizable non-failure task result", async () => {
     const cancelled = taskView({ status: "cancelled", stage: "failed" });
     apiRequestMock.mockResolvedValue(cancelled);
@@ -121,6 +166,7 @@ describe("case session provider fallback", () => {
   it("reconnects SSE with the last observed sequence after an interruption", async () => {
     apiRequestMock
       .mockResolvedValueOnce(taskView({ status: "queued", stage: "queued" }))
+      .mockResolvedValueOnce(taskView({ status: "running", stage: "generating" }))
       .mockResolvedValueOnce(taskView({ status: "running", stage: "generating" }))
       .mockResolvedValueOnce(taskView({ status: "succeeded", stage: "completed" }));
     streamTaskEventsMock
@@ -191,6 +237,7 @@ describe("case session provider fallback", () => {
     await expect(
       adoptDraftCandidateWithReconciliation(7, 31, 4),
     ).resolves.toEqual({
+      adoption: null,
       facts: { candidates, draft, targetIsCurrent: true },
       error: null,
     });
@@ -199,7 +246,7 @@ describe("case session provider fallback", () => {
       "/projects/7/draft-candidates/31/adopt",
       expect.objectContaining({
         method: "POST",
-        body: { expected_draft_revision: 4 },
+        body: { expected_current_draft_id: 4 },
       }),
     );
     expect(apiRequestMock).toHaveBeenNthCalledWith(
@@ -461,7 +508,7 @@ describe("case session provider fallback", () => {
   });
 });
 
-function taskView(overrides: { status: string; stage: string }) {
+function taskView(overrides: Pick<TaskView, "status" | "stage">): TaskView {
   return {
     task_run_id: 31,
     project_id: 7,
@@ -482,7 +529,7 @@ function taskView(overrides: { status: string; stage: string }) {
     attempt_count: 1,
     usage: {},
     result_snapshot_id: null,
-    result: overrides.status === "succeeded" ? {} : null,
+    result: null,
     error_code: null,
     failure: null,
     component_steps: [],

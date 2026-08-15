@@ -111,19 +111,19 @@ for (const schemaPath of collectJsonFiles(schemaRoot)) {
 }
 
 const casefileValidator = ajv.getSchema(
-  "https://casefile.local/schemas/v1/casefile/casefile.schema.json",
+  "https://casefile.local/schemas/v2/casefile/casefile.schema.json",
 );
 const issueValidator = ajv.getSchema(
-  "https://casefile.local/schemas/v1/validation/validation-issue.schema.json",
+  "https://casefile.local/schemas/v2/validation/validation-issue.schema.json",
 );
 const patchValidator = ajv.getSchema(
-  "https://casefile.local/schemas/v1/casefile/patch-candidate.schema.json",
+  "https://casefile.local/schemas/v2/casefile/patch-candidate.schema.json",
 );
 const briefIntakeCandidateValidator = ajv.getSchema(
-  "https://casefile.local/schemas/v1/brief-intake/brief-intake.schema.json",
+  "https://casefile.local/schemas/v2/brief-intake/brief-intake.schema.json",
 );
 const briefIntakeQuestionSetValidator = ajv.getSchema(
-  "https://casefile.local/schemas/v1/brief-intake/brief-intake.schema.json#/$defs/BriefIntakeQuestionSet",
+  "https://casefile.local/schemas/v2/brief-intake/brief-intake.schema.json#/$defs/BriefIntakeQuestionSet",
 );
 
 if (

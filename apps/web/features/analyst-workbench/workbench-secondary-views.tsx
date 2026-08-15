@@ -1,9 +1,4 @@
-import {
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  useRef,
-  useState,
-} from "react";
+import { useState } from "react";
 
 import {
   getEvent,
@@ -11,318 +6,82 @@ import {
   type WorkbenchSeed,
 } from "./analyst-fixture";
 import styles from "./analyst-workbench.module.css";
-import {
-  type CanvasTool,
-  CanvasTools,
-  ZoomControls,
-} from "./workbench-canvas-controls";
-import { clamp } from "./workbench-geometry";
-import { reasoningOutcomeLabels } from "./workbench-presenters";
-import { RelationshipGraph } from "./workbench-relationship-graph";
-import type {
-  WorkbenchCoordinateSystem,
-  WorkbenchModel,
-} from "./workbench-real-data";
-
-const DEFAULT_TIMELINE_WIDTH = 340;
-
-function timelineClock(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
-}
+import { formatCaseClock, reasoningOutcomeLabels } from "./workbench-presenters";
+import type { WorkbenchModel } from "./workbench-real-data";
 
 export function TimelineOverview({
   seed,
   selectedEventId,
-  selectedObjectId,
   issueStatuses,
   onSelectEvent,
-  onSelectObject,
 }: {
   seed: WorkbenchSeed;
   selectedEventId: string | null;
-  selectedObjectId: string | null;
   issueStatuses: Record<string, IssueStatus>;
   onSelectEvent: (eventId: string) => void;
-  onSelectObject: (objectId: string) => void;
 }) {
   const selectedEvent = getEvent(seed, selectedEventId) ?? seed.timelineEvents[0];
-  const [timelineWidth, setTimelineWidth] = useState<number | null>(null);
-  const timelineResizeRef = useRef<{
-    startX: number;
-    startWidth: number;
-  } | null>(null);
-
-  function startTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
-    timelineResizeRef.current = {
-      startX: event.clientX,
-      startWidth: timelineWidth ?? DEFAULT_TIMELINE_WIDTH,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveTimelineResize(event: ReactPointerEvent<HTMLDivElement>) {
-    const resize = timelineResizeRef.current;
-    if (!resize) return;
-    setTimelineWidth(
-      clamp(resize.startWidth + (event.clientX - resize.startX), 240, 560),
-    );
-  }
-
-  function endTimelineResize() {
-    timelineResizeRef.current = null;
-  }
 
   if (!selectedEvent) {
     return null;
   }
 
   return (
-    <div
-      className={styles.timelineOverview}
-      style={
-        {
-          "--timeline-width": `${timelineWidth ?? DEFAULT_TIMELINE_WIDTH}px`,
-        } as CSSProperties
-      }
+    <section
+      className={styles.timelinePanel}
+      aria-labelledby="timeline-heading"
     >
-      <div
-        aria-hidden="true"
-        className={styles.timelineResizeHandle}
-        data-testid="timeline-resize-handle"
-        onPointerCancel={endTimelineResize}
-        onPointerDown={startTimelineResize}
-        onPointerMove={moveTimelineResize}
-        onPointerUp={endTimelineResize}
-      />
-      <section
-        className={styles.timelinePanel}
-        aria-labelledby="timeline-heading"
-      >
-        <header className={styles.sectionHeader}>
-          <div>
-            <span>事件序列</span>
-            <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
-          </div>
-          <small>{seed.caseMeta.timelineMeta}</small>
-        </header>
-        <ol className={styles.timelineList}>
-          {seed.timelineEvents.map((event) => {
-            const selected = event.id === selectedEventId;
-            const issue = seed.validationIssues.find((item) =>
-              event.issueIds.includes(item.id),
-            );
-            const issueStatus = issue ? issueStatuses[issue.id] : undefined;
-            return (
-              <li key={event.id}>
-                <button
-                  aria-pressed={selected}
-                  data-selected={selected}
-                  onClick={() => onSelectEvent(event.id)}
-                  type="button"
-                >
-                  <time
-                    aria-label={event.time}
-                    className={styles.eventTime}
-                    dateTime={event.time}
-                    title={event.time}
-                  >
-                    {timelineClock(event.time)}
-                  </time>
-                  <span className={styles.eventMarker} aria-hidden="true" />
-                  <span className={styles.eventCopy}>
-                    <strong>{event.label}</strong>
-                    <small>{event.location}</small>
-                    {selected ? <em>{event.summary}</em> : null}
-                  </span>
-                  {issue ? (
-                    <span
-                      className={styles.eventIssue}
-                      data-status={issueStatus}
-                    >
-                      {issue.severity}
-                    </span>
-                  ) : (
-                    <span className={styles.eventClear}>通过</span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-      <RelationshipGraph
-        compact
-        onSelectObject={onSelectObject}
-        relatedObjectIds={[
-          selectedEvent.id,
-          ...selectedEvent.relatedObjectIds,
-        ]}
-        seed={seed}
-        selectedObjectId={selectedObjectId}
-      />
-    </div>
-  );
-}
-
-export function MapView({
-  seed,
-  selectedEventId,
-  onSelectEvent,
-}: {
-  seed: WorkbenchSeed;
-  selectedEventId: string | null;
-  onSelectEvent: (id: string) => void;
-}) {
-  const mappedSeed = seed as WorkbenchSeed & Partial<Pick<WorkbenchModel, "map">>;
-  const mapModel = mappedSeed.map ?? null;
-  const [mapMode, setMapMode] = useState<WorkbenchCoordinateSystem | null>(
-    mapModel?.defaultMode ?? null,
-  );
-  const [zoom, setZoom] = useState(1);
-  const [tool, setTool] = useState<CanvasTool>("select");
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const panRef = useRef<{
-    startX: number;
-    startY: number;
-    startPan: { x: number; y: number };
-  } | null>(null);
-  const effectiveMapMode =
-    mapModel && mapMode && mapModel.availableModes.includes(mapMode)
-      ? mapMode
-      : mapModel?.defaultMode ?? mapMode;
-  const activeMapGroup =
-    mapModel && effectiveMapMode ? mapModel.groups[effectiveMapMode] : null;
-  const activeLabels = activeMapGroup?.locations ?? seed.mapLabels;
-  const activeMarkers = activeMapGroup?.eventMarkers ?? seed.mapMarkers;
-
-  function startMapPan(event: ReactPointerEvent<HTMLDivElement>) {
-    if (tool !== "pan") return;
-    panRef.current = {
-      startX: event.clientX,
-      startY: event.clientY,
-      startPan: pan,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveMapPan(event: ReactPointerEvent<HTMLDivElement>) {
-    const ref = panRef.current;
-    if (!ref) return;
-    setPan({
-      x: clamp(ref.startPan.x + (event.clientX - ref.startX), -600, 600),
-      y: clamp(ref.startPan.y + (event.clientY - ref.startY), -600, 600),
-    });
-  }
-
-  function endMapPan() {
-    panRef.current = null;
-  }
-
-  function selectMarker(eventId: string) {
-    if (tool !== "select") return;
-    onSelectEvent(eventId);
-  }
-
-  return (
-    <section className={styles.mapView} aria-labelledby="map-heading">
       <header className={styles.sectionHeader}>
         <div>
-          <span>空间核对</span>
-          <h2 id="map-heading">{seed.caseMeta.mapTitle}</h2>
+          <span>事件序列</span>
+          <h2 id="timeline-heading">{seed.caseMeta.timelineTitle}</h2>
         </div>
-        <div className={styles.sectionTrailing}>
-          <small>{seed.caseMeta.mapMeta}</small>
-          {mapModel && mapModel.availableModes.length > 1 ? (
-            <div className={styles.mapModeToggle} aria-label="地图坐标模式">
-              {mapModel.availableModes.map((mode) => (
-                <button
-                  aria-pressed={effectiveMapMode === mode}
-                  key={mode}
-                  onClick={() => setMapMode(mode)}
-                  type="button"
-                >
-                  {mode === "wgs84" ? "地理坐标" : "空间示意"}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <small>{seed.caseMeta.timelineMeta}</small>
       </header>
-      <div className={styles.zoomViewport}>
-        <div className={styles.zoomStage} style={{ zoom }}>
-          <div
-            className={styles.panStage}
-            style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
-          >
-            <div
-              className={styles.mapBoard}
-              data-coordinate-system={effectiveMapMode ?? "fixture"}
-              data-tool={tool}
-              onPointerCancel={endMapPan}
-              onPointerDown={startMapPan}
-              onPointerMove={moveMapPan}
-              onPointerUp={endMapPan}
-            >
-              <svg
-                aria-hidden="true"
-                preserveAspectRatio="none"
-                viewBox="0 0 100 100"
+      <ol className={styles.timelineList}>
+        {seed.timelineEvents.map((event) => {
+          const selected = event.id === selectedEventId;
+          const issue = seed.validationIssues.find((item) =>
+            event.issueIds.includes(item.id),
+          );
+          const issueStatus = issue ? issueStatuses[issue.id] : undefined;
+          return (
+            <li key={event.id}>
+              <button
+                aria-pressed={selected}
+                data-selected={selected}
+                onClick={() => onSelectEvent(event.id)}
+                type="button"
               >
-                <path d="M5 18h35v18h18v-12h37M18 5v90M40 18v50h38v27M58 24v28M78 52h17" />
-                <path
-                  className={styles.mapWater}
-                  d="M0 78c18-8 30 8 46 0s29 8 54-2v24H0Z"
-                />
-                <path
-                  className={styles.mapRoute}
-                  d="M19 63C34 58 39 29 30 25s11 27 24 27 10 18 19 18"
-                />
-              </svg>
-              {effectiveMapMode === "wgs84" ? <span className={styles.mapNorth} aria-label="北向上">N</span> : null}
-              {activeLabels.map((label) => (
-                <span
-                  className={styles.mapLabel}
-                  key={`${label.label}-${label.x}-${label.y}`}
-                  style={{ left: `${label.x}%`, top: `${label.y}%` }}
+                <time
+                  aria-label={event.time}
+                  className={styles.eventTime}
+                  dateTime={event.time}
+                  title={event.time}
                 >
-                  {label.label}
+                  {formatCaseClock(event.time)}
+                </time>
+                <span className={styles.eventMarker} aria-hidden="true" />
+                <span className={styles.eventCopy}>
+                  <strong>{event.label}</strong>
+                  <small>{event.location}</small>
+                  {selected ? <em>{event.summary}</em> : null}
                 </span>
-              ))}
-              {activeMarkers.map((marker) => (
-                <button
-                  aria-pressed={selectedEventId === marker.eventId}
-                  className={styles.mapMarker}
-                  key={marker.eventId}
-                  onClick={() => selectMarker(marker.eventId)}
-                  style={{ left: `${marker.x}%`, top: `${marker.y}%` }}
-                  type="button"
-                >
-                  <i aria-hidden="true" />
-                  <span>{marker.label}</span>
-                </button>
-              ))}
-              {activeLabels.length === 0 && activeMarkers.length === 0 ? (
-                <div className={styles.mapEmpty}><strong>当前工作稿没有地点坐标</strong><span>缺坐标地点会在存在拓扑引用时使用确定性示意布局。</span></div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div
-          aria-label="画布控制"
-          className={styles.canvasOverlayControls}
-          role="group"
-        >
-          <CanvasTools onToolChange={setTool} tool={tool} />
-          <ZoomControls onZoomChange={setZoom} zoom={zoom} />
-        </div>
-      </div>
-      <p className={styles.viewNote}>{seed.caseMeta.mapNote}</p>
+                {issue ? (
+                  <span
+                    className={styles.eventIssue}
+                    data-status={issueStatus}
+                  >
+                    {issue.severity}
+                  </span>
+                ) : (
+                  <span className={styles.eventClear}>通过</span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
     </section>
   );
 }
@@ -444,7 +203,7 @@ export function ExportView({
           <span>导出预览</span>
           <h2 id="export-heading">{seed.caseMeta.exportTitle}</h2>
         </div>
-        <small>{realData ? "DEVELOPMENT PREVIEW" : ready ? "READY" : "GATE BLOCKED"}</small>
+        <small>{realData ? "开发预览" : ready ? "可以导出" : "门禁阻断"}</small>
       </header>
       <div className={styles.exportSheet}>
         <div className={styles.exportCover}>
@@ -476,7 +235,7 @@ export function ExportView({
           <button disabled={!ready} type="button">
             {realData ? "正式导出尚未接入" : "生成导出包"}
           </button>
-          {realData ? <p>当前页面仅从真实 Draft 派生开发预览。</p> : !ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
+          {realData ? <p>当前页面仅从真实工作稿派生开发预览。</p> : !ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
         </div>
       </div>
     </section>
@@ -523,7 +282,7 @@ const compileTargets: Array<{
   {
     id: "test",
     label: "测试材料",
-    caption: "QA 用例",
+    caption: "质量核验用例",
     description: "验证问题与门禁检查，供测试与验收。",
   },
 ];
@@ -623,7 +382,7 @@ export function CompileCenterView({
           <span>编译中心</span>
           <h2 id="compile-heading">同一份卷宗，多种形式</h2>
         </div>
-        <small>{compileTargets.length} FORMATS</small>
+        <small>{compileTargets.length} 种格式</small>
       </header>
       <div className={styles.compileTargets} aria-label="编译目标">
         {compileTargets.map((item) => (

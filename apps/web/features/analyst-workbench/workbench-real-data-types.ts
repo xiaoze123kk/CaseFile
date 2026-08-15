@@ -1,25 +1,50 @@
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFileDocument } from "@/lib/api-client";
 
 import type {
   SourceItem,
   ValidationIssue,
   WorkbenchAuditEntry,
   WorkbenchDrawerCopy,
+  WorkbenchReasoningGroup,
   WorkbenchSeed,
 } from "./analyst-fixture";
 
 export type WorkbenchObjectKind =
+  | "resolution_spec"
   | "entity"
   | "information"
   | "event"
   | "location"
   | "hypothesis";
 
+export type WorkbenchConclusionStatus = "proposed" | "confirmed";
+export type WorkbenchConclusionOutcome = "answer" | "undetermined";
+
+export interface WorkbenchConclusion {
+  resolutionSpecId: string;
+  question: string;
+  outcome: WorkbenchConclusionOutcome;
+  reviewStatus: WorkbenchConclusionStatus;
+  summary: string;
+  values: Array<{
+    label: string;
+    value: string;
+  }>;
+  selectedHypothesisIds: string[];
+  supportingReasoningPathIds: string[];
+  relatedEventIds: string[];
+  rationale: string;
+  unresolvedGaps: string[];
+}
+
 export type WorkbenchReferenceKind =
   | "casefile"
   | "resolution_spec"
   | "entity"
+  | "person"
   | "information_unit"
+  | "information"
+  | "evidence"
   | "event"
   | "location"
   | "hypothesis"
@@ -31,14 +56,37 @@ export type WorkbenchReferenceKind =
   | "source_fragment"
   | "unknown";
 
-export type WorkbenchCoordinateSystem = "schematic" | "wgs84";
+export type WorkbenchSpatialMode = "geographic" | "scene" | "topology";
+
+export type WorkbenchPositionSource = "wgs84" | "schematic" | "inferred";
+
+export type SpatialPositionPayload = NonNullable<
+  CaseFileDocument["locations"][number]["spatial_position"]
+>;
+
+export type SpatialPositionSaveResult = "saved" | "conflict" | "error";
+
+export interface ReloadedSpatialLocation {
+  found: boolean;
+  position: SpatialPositionPayload | null;
+  revision: number;
+}
+
+export type SpatialLayerId =
+  | "locations"
+  | "events"
+  | "relations"
+  | "unconfirmed";
+
+export type SpatialLayerVisibility = Record<SpatialLayerId, boolean>;
 
 export type WorkbenchContractObject =
-  | CaseFile["entities"][number]
-  | CaseFile["information_units"][number]
-  | CaseFile["events"][number]
-  | CaseFile["locations"][number]
-  | CaseFile["hypotheses"][number];
+  | CaseFileDocument["resolution_specs"][number]
+  | CaseFileDocument["entities"][number]
+  | CaseFileDocument["information_units"][number]
+  | CaseFileDocument["events"][number]
+  | CaseFileDocument["locations"][number]
+  | CaseFileDocument["hypotheses"][number];
 
 export interface WorkbenchCaseObject {
   id: string;
@@ -73,13 +121,14 @@ export interface WorkbenchTimelineEvent {
   summary: string;
   relatedObjectIds: string[];
   issueIds: string[];
-  start: string;
+  start: string | null;
   end: string | null;
   precision: string;
   truthStatus: string;
-  sortKey: number | null;
+  sortKey: string | null;
+  timeProjection: "absolute" | "relative-resolved" | "unresolved";
   refs: WorkbenchTimelineReferences;
-  source: CaseFile["events"][number] | null;
+  source: CaseFileDocument["events"][number] | null;
 }
 
 export interface WorkbenchGraphNode {
@@ -111,6 +160,9 @@ export type WorkbenchGraphEdgeKind =
   | "hypothesis_requirement"
   | "hypothesis_falsifier"
   | "hypothesis_competitor"
+  | "resolution_conclusion"
+  | "hypothesis_conclusion"
+  | "reasoning_conclusion"
   | "fixture";
 
 export interface WorkbenchGraphEdge {
@@ -156,57 +208,83 @@ export interface WorkbenchReasoningPath {
   resolutionSpecId: string | null;
   requiredForResolution: boolean;
   alternativePathIds: string[];
-  source: CaseFile["reasoning_paths"][number] | null;
+  source: CaseFileDocument["reasoning_paths"][number] | null;
 }
 
-export interface WorkbenchMapLocation {
-  locationId: string | null;
-  label: string;
-  coordinateSystem: WorkbenchCoordinateSystem;
-  x: number;
-  y: number;
-  isFallback: boolean;
-  latitude?: number;
-  longitude?: number;
-}
+export type WorkbenchSpatialPosition =
+  | {
+      kind: "wgs84";
+      latitude: number;
+      longitude: number;
+    }
+  | {
+      kind: "planar";
+      x: number;
+      y: number;
+    };
 
-export interface WorkbenchMapMarker {
+export interface WorkbenchSpatialEvent {
   eventId: string;
+  label: string;
+  time: string;
+  relatedObjectIds: string[];
+}
+
+export interface WorkbenchSpatialLocation {
+  spatialId: string;
   locationId: string | null;
   label: string;
-  coordinateSystem: WorkbenchCoordinateSystem;
-  x: number;
-  y: number;
+  source: WorkbenchPositionSource;
+  position: WorkbenchSpatialPosition;
+  events: WorkbenchSpatialEvent[];
+  relatedObjectIds: string[];
 }
 
-export interface WorkbenchMapBounds {
-  minLatitude: number;
-  maxLatitude: number;
-  minLongitude: number;
-  maxLongitude: number;
+export interface WorkbenchSpatialRelation {
+  relationId: string;
+  kind: "adjacency" | "travel";
+  fromLocationId: string;
+  toLocationId: string;
+  direction: "directed" | "undirected";
+  label: string;
+  minutes: number | null;
 }
 
-export interface WorkbenchMapGroup {
-  coordinateSystem: WorkbenchCoordinateSystem;
-  locations: WorkbenchMapLocation[];
-  eventMarkers: WorkbenchMapMarker[];
-  bounds: WorkbenchMapBounds | null;
+export interface WorkbenchSpatialView {
+  mode: WorkbenchSpatialMode;
+  locations: WorkbenchSpatialLocation[];
+  relations: WorkbenchSpatialRelation[];
 }
 
 export interface WorkbenchMapModel {
-  availableModes: WorkbenchCoordinateSystem[];
-  defaultMode: WorkbenchCoordinateSystem | null;
-  groups: Record<WorkbenchCoordinateSystem, WorkbenchMapGroup>;
-  fallbackLocationIds: string[];
+  availableModes: WorkbenchSpatialMode[];
+  defaultMode: WorkbenchSpatialMode | null;
+  views: Record<WorkbenchSpatialMode, WorkbenchSpatialView>;
+  unlocatedLocationIds: string[];
+  unlocatedLocations: Array<{ locationId: string; label: string }>;
+  counts: {
+    locations: number;
+    events: number;
+    geographic: number;
+    scene: number;
+    inferred: number;
+    unlocated: number;
+  };
 }
 
-export interface WorkbenchMapLabel {
-  locationId: string | null;
+/** Fixture compatibility fields. Production map rendering consumes `WorkbenchMapModel`. */
+export interface WorkbenchMapMarker {
+  eventId: string;
   label: string;
-  coordinateSystem: WorkbenchCoordinateSystem;
   x: number;
   y: number;
-  isFallback: boolean;
+}
+
+/** Fixture compatibility fields. Production map rendering consumes `WorkbenchMapModel`. */
+export interface WorkbenchMapLabel {
+  label: string;
+  x: number;
+  y: number;
 }
 
 export interface WorkbenchCaseMeta {
@@ -232,7 +310,7 @@ export interface WorkbenchModel extends WorkbenchSeed {
   id: string;
   origin: "contract" | "fixture";
   draftRevision: number | null;
-  caseFile: CaseFile | null;
+  caseFile: CaseFileDocument | null;
   caseMeta: WorkbenchCaseMeta;
   caseObjects: WorkbenchCaseObject[];
   objectCounts: Record<WorkbenchObjectKind, number>;
@@ -246,6 +324,8 @@ export interface WorkbenchModel extends WorkbenchSeed {
     edges: WorkbenchGraphEdge[];
   };
   reasoningPaths: WorkbenchReasoningPath[];
+  reasoningGroups: WorkbenchReasoningGroup[];
+  conclusions: WorkbenchConclusion[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   map: WorkbenchMapModel;

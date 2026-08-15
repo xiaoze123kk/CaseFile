@@ -11,10 +11,6 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
@@ -29,6 +25,9 @@ from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
+from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROFILE: dict[str, object] = {}
@@ -89,6 +88,47 @@ class RichFixtureProvider:
             usage={"requests": 0, "input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
             tools=ToolMetrics(calls=1, valid_calls=1, successful_calls=1, adopted_results=1),
         )
+
+
+class ConclusionFixtureProvider(RichFixtureProvider):
+    """Add one valid proposed conclusion to the editing fixture."""
+
+    def generate(self, request: GenerationRequest) -> GenerationResult:
+        result = super().generate(request)
+        result.candidate["reasoning_paths"][0]["target_ref"] = {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger",
+        }
+        result.candidate["resolution_specs"][0]["conclusion"] = {
+            "outcome": "answer",
+            "review_status": "proposed",
+            "summary": "备用系统依据安全规则主动触发了主系统重启。",
+            "values": [
+                {
+                    "slot_id": "slot_root_cause",
+                    "value": {
+                        "object_type": "claim",
+                        "object_id": "claim_backup_trigger",
+                    },
+                }
+            ],
+            "selected_hypothesis_refs": [
+                {
+                    "object_type": "hypothesis",
+                    "object_id": "hyp_automatic_restart",
+                }
+            ],
+            "supporting_reasoning_path_refs": [
+                {
+                    "object_type": "reasoning_path",
+                    "object_id": "path_causal_restart",
+                }
+            ],
+            "rationale": "重启日志、关键主张和自动安全重启路径形成一致依据。",
+            "unresolved_gaps": [],
+        }
+        validate_casefile(result.candidate)
+        return result
 
 
 class EmptyKnowledgeStateProvider(RichFixtureProvider):
@@ -210,6 +250,19 @@ def _alembic_config(database_url: str) -> Config:
     return config
 
 
+def _clear_projects_before_downgrade(database_url: str) -> None:
+    """Remove test aggregates that cannot be represented by an older migration."""
+
+    engine = create_engine(database_url)
+    try:
+        if "projects" not in inspect(engine).get_table_names():
+            return
+        with engine.begin() as connection:
+            connection.execute(text("TRUNCATE TABLE projects CASCADE"))
+    finally:
+        engine.dispose()
+
+
 @pytest.fixture
 def workflow_database() -> Iterator[tuple[Engine, int, str]]:
     database_url = _test_database_url()
@@ -219,6 +272,7 @@ def workflow_database() -> Iterator[tuple[Engine, int, str]]:
         os.environ,
         {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
     ):
+        _clear_projects_before_downgrade(database_url)
         command.downgrade(config, "base")
         command.upgrade(config, "head")
         engine = create_engine(database_url)
@@ -235,6 +289,7 @@ def workflow_database() -> Iterator[tuple[Engine, int, str]]:
             yield engine, actor_id, master_key
         finally:
             engine.dispose()
+            _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
 
 
@@ -279,6 +334,7 @@ def _prepare_task(engine: Engine, actor_id: int) -> tuple[int, int]:
             actor_id,
             project_id,
             brief_version_id=confirmed["brief_version_id"],
+            expected_draft_id=empty_draft["draft_id"],
             expected_draft_revision=1,
         )
     return project_id, int(task["task_run_id"])
@@ -301,13 +357,16 @@ def _adopt_candidate(
     project_id: int,
     task_run_id: int,
     *,
-    expected_revision: int = 1,
+    expected_current_draft_id: int | None = None,
 ) -> dict[str, object]:
     factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     with factory() as session:
+        if expected_current_draft_id is None:
+            current = CaseFileService(session).get_draft(actor_id, project_id)
+            expected_current_draft_id = int(current["draft_id"])
         return WorkflowService(session).adopt_generation_candidate(
             actor_id,
             project_id,
             task_run_id,
-            expected_draft_revision=expected_revision,
+            expected_current_draft_id=expected_current_draft_id,
         )

@@ -11,6 +11,7 @@ from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError, not_found, revision_conflict
 from casefile.application.snapshot import build_casefile_document, casefile_content_hash
 from casefile.contracts import CASEFILE_SCHEMA_VERSION, ContractValidationError
+from casefile.data_postgres.models import AuditEvent, BriefVersion, Draft
 from casefile.data_postgres.repositories import (
     OwnedDraft,
     ProjectRepository,
@@ -87,11 +88,102 @@ class CaseFileService:
                 return _draft_view(owned, None)
             return _draft_view(owned, self._document(owned))
 
+    def list_drafts(self, actor_user_id: int, project_id: int) -> list[dict[str, Any]]:
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id)
+            result: list[dict[str, Any]] = []
+            for draft in self.projects.list_drafts(owned):
+                brief_version_no = None
+                if draft.brief_version_id is not None:
+                    brief_version = self.session.get(BriefVersion, draft.brief_version_id)
+                    brief_version_no = (
+                        brief_version.version_no if brief_version is not None else None
+                    )
+                result.append(
+                    _draft_summary_view(
+                        draft,
+                        current_draft_id=owned.casefile.current_draft_id,
+                        brief_version_no=brief_version_no,
+                    )
+                )
+            return result
+
+    def activate_draft(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        draft_id: int,
+        *,
+        expected_current_draft_id: int,
+    ) -> dict[str, Any]:
+        with self.session.begin():
+            current = self._owned(actor_user_id, project_id, lock=True)
+            if current.project.status == "archived" or current.casefile.status == "archived":
+                raise ApplicationError(
+                    "project_archived",
+                    "已归档的项目不能切换工作稿。",
+                    status_code=409,
+                )
+            if current.casefile.current_draft_id != expected_current_draft_id:
+                raise ApplicationError(
+                    "current_draft_changed",
+                    "当前工作稿已在其他位置切换，请刷新后重试。",
+                    status_code=409,
+                    details={"current_draft_id": current.casefile.current_draft_id},
+                )
+            target = self.projects.get_owned_draft(
+                actor_user_id,
+                project_id,
+                draft_id,
+                lock=True,
+            )
+            if target is None:
+                raise not_found("Draft")
+            if target.draft.status != "active":
+                raise ApplicationError(
+                    "draft_locked",
+                    "已锁定的工作稿不能设为当前工作稿。",
+                    status_code=409,
+                )
+            if target.draft.brief_version_id is None:
+                raise ApplicationError(
+                    "draft_empty",
+                    "尚未生成正文的工作稿不能设为当前工作稿。",
+                    status_code=409,
+                )
+            previous_draft_id = current.casefile.current_draft_id
+            current.casefile.current_draft_id = target.draft.id
+            self.session.add(
+                AuditEvent(
+                    project_id=current.project.id,
+                    casefile_id=current.casefile.id,
+                    actor_kind="user",
+                    actor_user_id=actor_user_id,
+                    actor_ref=None,
+                    action="draft.activated",
+                    target_type="draft",
+                    target_id=target.draft.id,
+                    trace_id=None,
+                    details_jsonb={"previous_draft_id": previous_draft_id},
+                )
+            )
+            self.session.flush()
+            return _draft_view(target, self._document(target))
+
     def create_snapshot(
-        self, actor_user_id: int, project_id: int, base_revision: int
+        self,
+        actor_user_id: int,
+        project_id: int,
+        expected_draft_id: int,
+        base_revision: int,
     ) -> tuple[dict[str, Any], bool]:
         with self.session.begin():
-            owned = self._editable(actor_user_id, project_id, base_revision)
+            owned = self._editable(
+                actor_user_id,
+                project_id,
+                expected_draft_id,
+                base_revision,
+            )
             document = self._document(owned)
             content_hash = casefile_content_hash(document)
             existing = self.snapshots.find_revision(owned.draft.id, owned.draft.revision)
@@ -133,7 +225,13 @@ class CaseFileService:
             raise not_found("Project")
         return owned
 
-    def _editable(self, actor_user_id: int, project_id: int, base_revision: int) -> OwnedDraft:
+    def _editable(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        expected_draft_id: int,
+        base_revision: int,
+    ) -> OwnedDraft:
         owned = self._owned(actor_user_id, project_id, lock=True)
         if owned.project.status == "archived" or owned.casefile.status == "archived":
             raise ApplicationError(
@@ -147,7 +245,7 @@ class CaseFileService:
                 "已锁定的草稿不能修改。",
                 status_code=409,
             )
-        if owned.draft.revision != base_revision:
+        if owned.draft.id != expected_draft_id or owned.draft.revision != base_revision:
             raise revision_conflict(expected=owned.draft.revision, received=base_revision)
         return owned
 
@@ -174,8 +272,10 @@ def _project_view(owned: OwnedDraft) -> dict[str, Any]:
         "created_at": owned.project.created_at,
         "updated_at": owned.project.updated_at,
         "casefile_id": owned.casefile.id,
+        "current_draft_id": owned.casefile.current_draft_id,
         "draft": {
             "id": owned.draft.id,
+            "title": owned.draft.title,
             "revision": owned.draft.revision,
             "schema_version": owned.draft.schema_version,
             "status": owned.draft.status,
@@ -188,10 +288,37 @@ def _draft_view(owned: OwnedDraft, document: dict[str, Any] | None) -> dict[str,
         "project_id": owned.project.id,
         "casefile_id": owned.casefile.id,
         "draft_id": owned.draft.id,
+        "title": owned.draft.title,
         "revision": owned.draft.revision,
         "schema_version": owned.draft.schema_version,
         "status": owned.draft.status,
+        "document_status": owned.draft.document_status,
+        "brief_version_id": owned.draft.brief_version_id,
+        "created_at": owned.draft.created_at,
+        "updated_at": owned.draft.updated_at,
         "content": document,
+    }
+
+
+def _draft_summary_view(
+    draft: Draft,
+    *,
+    current_draft_id: int,
+    brief_version_no: int | None,
+) -> dict[str, Any]:
+    return {
+        "draft_id": draft.id,
+        "title": draft.title,
+        "revision": draft.revision,
+        "schema_version": draft.schema_version,
+        "status": draft.status,
+        "document_status": draft.document_status,
+        "brief_version_id": draft.brief_version_id,
+        "brief_version_no": brief_version_no,
+        "has_content": draft.brief_version_id is not None,
+        "is_current": draft.id == current_draft_id,
+        "created_at": draft.created_at,
+        "updated_at": draft.updated_at,
     }
 
 

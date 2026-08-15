@@ -1,4 +1,4 @@
-"""Deterministic local-key linker and CaseFile v1 compiler."""
+"""Deterministic local-key linker and current CaseFile compiler."""
 
 from __future__ import annotations
 
@@ -13,10 +13,24 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     BLUEPRINT_COLLECTIONS,
     DOMAIN_COLLECTIONS,
     CaseBlueprintV1,
-    EvidenceLogicIRV1,
+    EvidenceLogicIR,
     ResolutionGovernanceIRV1,
     SemanticObjectIR,
     StoryWorldIRV1,
+    TimeIR,
+)
+from casefile.agent_runtime.brief_to_draft_v11.contracts import (
+    ApproximateTemporalPositionIRV2,
+    ExactTemporalPositionIRV2,
+    RangeTemporalPositionIRV2,
+    RelativeTemporalPositionIRV2,
+    StoryWorldIRV2,
+    TemporalPositionIRV2,
+    UnknownTemporalPositionIRV2,
+)
+from casefile.agent_runtime.brief_to_draft_v15.contracts import (
+    ResolutionGovernanceIRV2,
+    ResolutionSpecIRV2,
 )
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
@@ -54,9 +68,9 @@ class SourceLocation:
 @dataclass(frozen=True, slots=True)
 class LinkedDraftV1:
     blueprint: CaseBlueprintV1
-    story: StoryWorldIRV1
-    evidence: EvidenceLogicIRV1
-    governance: ResolutionGovernanceIRV1
+    story: StoryWorldIRV1 | StoryWorldIRV2
+    evidence: EvidenceLogicIR
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2
     id_directory: dict[str, DirectoryEntry]
     source_map: dict[str, SourceLocation]
 
@@ -67,9 +81,9 @@ class LinkerValidationError(ContractValidationError):
 
 def link_draft(
     blueprint: CaseBlueprintV1,
-    story: StoryWorldIRV1,
-    evidence: EvidenceLogicIRV1,
-    governance: ResolutionGovernanceIRV1,
+    story: StoryWorldIRV1 | StoryWorldIRV2,
+    evidence: EvidenceLogicIR,
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2,
     *,
     task_run_id: int,
 ) -> LinkedDraftV1:
@@ -150,9 +164,10 @@ def compile_casefile(
     version_id: str,
     version_no: int,
     parent_version_id: str | None,
+    schema_version: str = "2.0",
     updated_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Compile linked semantic IR into a complete, contract-valid CaseFile v1."""
+    """Compile linked v1 semantic IR into a current contract-valid CaseFile."""
 
     timestamp = (updated_at or datetime.now(UTC)).isoformat().replace("+00:00", "Z")
     directory = linked.id_directory
@@ -163,6 +178,51 @@ def compile_casefile(
 
     def refs(keys: Iterable[str]) -> list[dict[str, str]]:
         return [ref(key) for key in keys]
+
+    def temporal_position(value: TimeIR | TemporalPositionIRV2) -> dict[str, Any]:
+        if isinstance(value, (ExactTemporalPositionIRV2, ApproximateTemporalPositionIRV2)):
+            return value.model_dump(mode="json")
+        if isinstance(value, RangeTemporalPositionIRV2):
+            return value.model_dump(mode="json")
+        if isinstance(value, RelativeTemporalPositionIRV2):
+            return {
+                "kind": "relative",
+                "anchor_event_ref": ref(value.anchor_event_key),
+                "relation": value.relation,
+                "offset_minutes": value.offset_minutes,
+            }
+        if isinstance(value, UnknownTemporalPositionIRV2):
+            return {"kind": "unknown"}
+        precision = str(value.precision)
+        if precision == "unknown":
+            return {"kind": "unknown"}
+        wall_precision = precision if precision in {"day", "hour", "minute", "second"} else "second"
+
+        def wall_clock(moment: datetime) -> str:
+            local = moment.replace(tzinfo=None)
+            if wall_precision == "day":
+                return local.date().isoformat()
+            if wall_precision == "hour":
+                return local.strftime("%Y-%m-%dT%H")
+            if wall_precision == "minute":
+                return local.strftime("%Y-%m-%dT%H:%M")
+            return local.isoformat(timespec="seconds")
+
+        start = wall_clock(value.start)
+        if value.end is not None:
+            return {
+                "kind": "range",
+                "start": start,
+                "end": wall_clock(value.end),
+                "precision": wall_precision,
+            }
+        if precision == "approximate":
+            return {
+                "kind": "approximate",
+                "value": start,
+                "precision": wall_precision,
+            }
+        return {"kind": "exact", "value": start, "precision": wall_precision}
 
     def metadata(item: SemanticObjectIR) -> dict[str, Any]:
         value: dict[str, Any] = {
@@ -181,11 +241,40 @@ def compile_casefile(
             value["description"] = item.description
         return value
 
+    def compiled_conclusion(item: SemanticObjectIR) -> dict[str, Any]:
+        if not isinstance(item, ResolutionSpecIRV2):
+            return {}
+        conclusion = item.conclusion
+        return {
+            "conclusion": {
+                "outcome": conclusion.outcome,
+                "review_status": "proposed",
+                "summary": conclusion.summary,
+                "values": [
+                    {
+                        "slot_id": f"slot_{value.slot_key}",
+                        "value": (
+                            refs([value.value_key])[0]
+                            if value.value_key is not None
+                            else value.value
+                        ),
+                    }
+                    for value in conclusion.values
+                ],
+                "selected_hypothesis_refs": refs(conclusion.selected_hypothesis_keys),
+                "supporting_reasoning_path_refs": refs(
+                    conclusion.supporting_reasoning_path_keys
+                ),
+                "rationale": conclusion.rationale,
+                "unresolved_gaps": conclusion.unresolved_gaps,
+            }
+        }
+
     story = linked.story
     evidence = linked.evidence
     governance = linked.governance
     document: dict[str, Any] = {
-        "schema_version": "1.0",
+        "schema_version": schema_version,
         "casefile_id": casefile_id,
         "title": linked.blueprint.title,
         "status": "draft",
@@ -216,6 +305,7 @@ def compile_casefile(
                     *refs(item.accepted_answer_keys),
                 ],
                 "required_claim_refs": refs(item.required_claim_keys),
+                **compiled_conclusion(item),
             }
             for item in governance.resolution_specs
         ],
@@ -285,7 +375,7 @@ def compile_casefile(
                 "id": directory[item.local_key].object_id,
                 "title": item.title,
                 "truth_status": item.truth_status,
-                "time": item.time.model_dump(mode="json"),
+                "time": temporal_position(item.time),
                 "participant_refs": refs(item.participant_keys),
                 "location_ref": None if item.location_key is None else ref(item.location_key),
                 "cause_refs": refs(item.cause_keys),
@@ -342,6 +432,15 @@ def compile_casefile(
                 "required_claim_refs": refs(item.required_claim_keys),
                 "falsifier_refs": refs(item.falsifier_keys),
                 "competing_hypothesis_refs": refs(item.competing_hypothesis_keys),
+                "evidence_assessments": [
+                    {
+                        "information_ref": ref(assessment.information_key),
+                        "effect": assessment.effect,
+                        "strength": assessment.strength,
+                        "rationale": assessment.rationale,
+                    }
+                    for assessment in getattr(item, "evidence_assessments", [])
+                ],
                 "status": item.status,
                 "score": item.score,
             }
@@ -413,9 +512,7 @@ def compile_casefile(
         # example, ``spatial_position: null`` violates the contract.  Remove
         # optional nulls, then put back only fields the v1 schema explicitly
         # requires to be nullable.
-        candidate = CaseFile.model_validate(document).model_dump(
-            mode="json", exclude_none=True
-        )
+        candidate = CaseFile.model_validate(document).model_dump(mode="json", exclude_none=True)
         _restore_required_nullable_fields(candidate)
     except ValidationError as error:
         raise ContractValidationError(
@@ -431,7 +528,7 @@ def compile_casefile(
 
 
 def _restore_required_nullable_fields(candidate: dict[str, Any]) -> None:
-    """Restore only the CaseFile v1 fields that are both required and nullable."""
+    """Restore only current CaseFile fields that are both required and nullable."""
 
     version = candidate.get("version")
     if isinstance(version, dict):
@@ -463,8 +560,10 @@ def _restore_required_nullable_fields(candidate: dict[str, Any]) -> None:
             continue
         event.setdefault("location_ref", None)
         time = event.get("time")
-        if isinstance(time, dict):
+        if isinstance(time, dict) and "kind" not in time:
             time.setdefault("end", None)
+        elif isinstance(time, dict) and time.get("kind") == "relative":
+            time.setdefault("offset_minutes", None)
 
     for information in candidate.get("information_units", []):
         if isinstance(information, dict):
@@ -634,9 +733,7 @@ def _validate_object_references(
                 )
 
 
-def _reference_rules(
-    collection: str, item: Any
-) -> list[tuple[str, list[str], set[str]]]:
+def _reference_rules(collection: str, item: Any) -> list[tuple[str, list[str], set[str]]]:
     any_object = set(BLUEPRINT_COLLECTIONS)
     if collection == "entities":
         states = item.knowledge_states
@@ -676,13 +773,16 @@ def _reference_rules(
         ]
     if collection == "events":
         location = item.location_key
-        return [
+        rules = [
             ("participant_keys", item.participant_keys, {"entities"}),
             ("location_key", [] if location is None else [location], {"locations"}),
             ("cause_keys", item.cause_keys, {"events"}),
             ("effect_keys", item.effect_keys, {"events"}),
             ("observed_by_keys", item.observed_by_keys, {"entities"}),
         ]
+        if isinstance(item.time, RelativeTemporalPositionIRV2):
+            rules.append(("time/anchor_event_key", [item.time.anchor_event_key], {"events"}))
+        return rules
     if collection == "information_units":
         source = item.source_event_key
         availability = item.availability
@@ -709,6 +809,14 @@ def _reference_rules(
             ("required_claim_keys", item.required_claim_keys, {"claims"}),
             ("falsifier_keys", item.falsifier_keys, {"information_units", "claims"}),
             ("competing_hypothesis_keys", item.competing_hypothesis_keys, {"hypotheses"}),
+            (
+                "evidence_assessments/information_key",
+                [
+                    assessment.information_key
+                    for assessment in getattr(item, "evidence_assessments", [])
+                ],
+                {"information_units"},
+            ),
         ]
     if collection == "reasoning_paths":
         steps = item.steps
@@ -719,6 +827,12 @@ def _reference_rules(
             ("alternative_path_keys", item.alternative_path_keys, {"reasoning_paths"}),
         ]
     if collection == "resolution_specs":
+        conclusion = getattr(item, "conclusion", None)
+        value_keys = (
+            [value.value_key for value in conclusion.values if value.value_key]
+            if conclusion is not None
+            else []
+        )
         return [
             (
                 "accepted_answer_keys",
@@ -726,6 +840,17 @@ def _reference_rules(
                 {"entities", "claims", "hypotheses"},
             ),
             ("required_claim_keys", item.required_claim_keys, {"claims"}),
+            ("conclusion/values/value_key", value_keys, any_object),
+            (
+                "conclusion/selected_hypothesis_keys",
+                [] if conclusion is None else conclusion.selected_hypothesis_keys,
+                {"hypotheses"},
+            ),
+            (
+                "conclusion/supporting_reasoning_path_keys",
+                [] if conclusion is None else conclusion.supporting_reasoning_path_keys,
+                {"reasoning_paths"},
+            ),
         ]
     if collection == "constraints":
         return [

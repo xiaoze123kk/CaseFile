@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pytest import MonkeyPatch
-
 import casefile.benchmark.runner as benchmark_runner
 from casefile.agent_runtime import GenerationRequest, GenerationResult
 from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_report
+from pytest import MonkeyPatch
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[3] / "fixtures" / "benchmark"
 REQUIRED_FIXTURES = [
@@ -29,8 +28,8 @@ def test_fake_brief_to_draft_benchmark_records_component_rates() -> None:
     assert report["evaluation_scope"] == "provider"
     assert report["release_gate_eligible"] is False
     assert report["status"] == "passed"
-    assert report["prompt_version"] == "brief-to-draft-v9"
-    assert report["agent_version"] == "brief-to-draft-pipeline-v9"
+    assert report["prompt_version"] == "brief-to-draft-v15"
+    assert report["agent_version"] == "brief-to-draft-pipeline-v15"
     assert report["toolset_version"] == "casefile-generation-tools-v2"
     assert report["runs"] == 2
     assert report["runs_attempted"] == 2
@@ -43,8 +42,8 @@ def test_fake_brief_to_draft_benchmark_records_component_rates() -> None:
         "completion_rate": 0.0,
     }
     assert report["metrics"]["model_calls"] == {
-        "started": 8,
-        "completed": 8,
+        "started": 12,
+        "completed": 12,
         "failed": 0,
         "completion_rate": 1.0,
     }
@@ -182,7 +181,7 @@ def test_all_fixtures_pass_fake_benchmark() -> None:
         assert report["status"] == "completed"
         assert report["dimension"] == "ai_model"
         assert report["prompt_version"].startswith("brief-to-draft-v")
-        assert report["schema_version"] == "1.0"
+        assert report["schema_version"] == "2.0"
 
         svr = _metric_value(report, "structure_validity_rate")
         assert svr == 1.0, f"{fixture_name}: structure_validity_rate={svr}"

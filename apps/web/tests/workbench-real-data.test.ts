@@ -2,6 +2,7 @@ import type { CaseFile, CoreMetadata, ObjectRef } from "@casefile/contracts";
 import { describe, expect, it } from "vitest";
 
 import { defaultWorkbenchSeed } from "@/features/analyst-workbench/analyst-fixture";
+import type { WorkbenchValidationView } from "@/lib/api-client";
 import {
   mapCaseFileToWorkbenchModel,
   mapFixtureToWorkbenchModel,
@@ -30,7 +31,7 @@ function metadata(
 
 function makeCaseFile(): CaseFile {
   return {
-    schema_version: "1.0",
+    schema_version: "2.0",
     casefile_id: "case_real_workbench",
     title: "真实卷宗",
     status: "draft",
@@ -158,8 +159,8 @@ function makeCaseFile(): CaseFile {
         title: "后发生事件",
         truth_status: "canon_true",
         time: {
-          start: "2026-08-07T10:00:00Z",
-          end: null,
+          kind: "exact",
+          value: "2026-08-07T10:00",
           precision: "minute",
         },
         participant_refs: [ref("entity", "ent_operator")],
@@ -174,8 +175,9 @@ function makeCaseFile(): CaseFile {
         title: "先发生事件",
         truth_status: "reported",
         time: {
-          start: "2026-08-07T09:00:00Z",
-          end: "2026-08-07T09:05:00Z",
+          kind: "range",
+          start: "2026-08-07T09:00",
+          end: "2026-08-07T09:05",
           precision: "minute",
         },
         participant_refs: [ref("entity", "ent_analyst")],
@@ -189,7 +191,7 @@ function makeCaseFile(): CaseFile {
         id: "evt_unknown_time",
         title: "时间未定事件",
         truth_status: "unknown",
-        time: { start: "unknown", end: null, precision: "unknown" },
+        time: { kind: "unknown" },
         participant_refs: [],
         location_ref: ref("location", "loc_schematic_room"),
         cause_refs: [],
@@ -280,7 +282,7 @@ function expectWorkbenchSeedCompatibility(model: WorkbenchModel) {
 }
 
 describe("real workbench data mapper", () => {
-  it("maps five real object collections, stable timeline refs, and deterministic graph data", () => {
+  it("maps six real object collections, stable timeline refs, and deterministic graph data", () => {
     const caseFile = makeCaseFile();
     const model = expectWorkbenchSeedCompatibility(
       mapCaseFileToWorkbenchModel(caseFile, 7),
@@ -290,6 +292,7 @@ describe("real workbench data mapper", () => {
     expect(model.draftRevision).toBe(7);
     expect(model.caseMeta.revision).toBe("R7");
     expect(model.objectCounts).toEqual({
+      resolution_spec: 1,
       entity: 2,
       information: 1,
       event: 3,
@@ -297,7 +300,7 @@ describe("real workbench data mapper", () => {
       hypothesis: 1,
     });
     expect(new Set(model.caseObjects.map((object) => object.kind))).toEqual(
-      new Set(["entity", "information", "event", "location", "hypothesis"]),
+      new Set(["resolution_spec", "entity", "information", "event", "location", "hypothesis"]),
     );
     expect(model.timelineEvents.map((event) => event.id)).toEqual([
       "evt_early",
@@ -370,60 +373,128 @@ describe("real workbench data mapper", () => {
       hypothesisId: "hyp_operator_changed_record",
       targetHypothesisId: "hyp_operator_changed_record",
       resolutionSpecId: "res_core_question",
-      conclusion: "值班员改写记录",
+      conclusion: "该核心问题尚未形成结论",
       outcome: "supported",
       evidenceIds: ["info_gate_log"],
     });
     expect(path.steps[0]).toMatchObject({
       id: "step_log_to_claim",
+      verb: "推断",
       operation: "infer",
       inputIds: ["info_gate_log"],
       outputId: "claim_record_changed",
     });
   });
 
-  it("separates WGS84 and schematic maps, keeps north up, and lays out missing coordinates deterministically", () => {
+  it("groups competing hypotheses in contract order and reads only explicit evidence assessments", () => {
+    const caseFile = makeCaseFile();
+    caseFile.hypotheses = [
+      {
+        ...caseFile.hypotheses[0],
+        evidence_assessments: [
+          {
+            information_ref: ref("information_unit", "info_gate_log"),
+            effect: "supports",
+            strength: "strong",
+            rationale: "改写时间与值班记录一致。",
+          },
+        ],
+      },
+      {
+        ...caseFile.hypotheses[0],
+        id: "hyp_external_changed_record",
+        title: "外部人员改写记录",
+        proposition: "外部人员在事件后修改了门禁记录。",
+        evidence_assessments: [],
+      },
+    ];
+
+    const model = mapCaseFileToWorkbenchModel(caseFile, 7);
+
+    expect(model.reasoningGroups).toEqual([
+      {
+        resolutionSpecId: "res_core_question",
+        question: "是谁改写了记录？",
+        hypotheses: [
+          expect.objectContaining({ id: "hyp_operator_changed_record" }),
+          expect.objectContaining({ id: "hyp_external_changed_record" }),
+        ],
+        information: [
+          { id: "info_gate_log", title: "门禁记录", reliability: "high" },
+        ],
+        assessments: [
+          {
+            hypothesisId: "hyp_operator_changed_record",
+            informationId: "info_gate_log",
+            effect: "supports",
+            strength: "strong",
+            rationale: "改写时间与值班记录一致。",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("falls back to a stable question title when the resolution has no title", () => {
+    const caseFile = makeCaseFile();
+    caseFile.resolution_specs[0] = {
+      ...caseFile.resolution_specs[0],
+      title: "",
+      reasoning_question: "",
+    };
+
+    expect(mapCaseFileToWorkbenchModel(caseFile, 7).reasoningGroups[0]?.question).toBe(
+      "未命名待解问题",
+    );
+  });
+
+  it("separates geographic, scene, and deterministic topology data", () => {
     const caseFile = makeCaseFile();
     const model = mapCaseFileToWorkbenchModel(caseFile, 7);
 
-    expect(model.map.availableModes).toEqual(["wgs84", "schematic"]);
-    expect(model.map.defaultMode).toBe("wgs84");
-    const north = model.map.groups.wgs84.locations.find(
+    expect(model.map.availableModes).toEqual([
+      "geographic",
+      "scene",
+      "topology",
+    ]);
+    expect(model.map.defaultMode).toBe("geographic");
+    const north = model.map.views.geographic.locations.find(
       (location) => location.locationId === "loc_geo_north",
     );
-    const south = model.map.groups.wgs84.locations.find(
+    const south = model.map.views.geographic.locations.find(
       (location) => location.locationId === "loc_geo_south",
     );
-    expect(north).toMatchObject({ x: 100, y: 0, latitude: 31, longitude: 121 });
-    expect(south).toMatchObject({ x: 0, y: 100, latitude: 30, longitude: 120 });
-    expect(model.map.groups.wgs84.eventMarkers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          eventId: "evt_late",
-          locationId: "loc_geo_north",
-        }),
-      ]),
+    expect(north).toMatchObject({
+      source: "wgs84",
+      position: { kind: "wgs84", latitude: 31, longitude: 121 },
+    });
+    expect(north?.position).not.toHaveProperty("x");
+    expect(south).toMatchObject({
+      position: { kind: "wgs84", latitude: 30, longitude: 120 },
+    });
+    expect(north?.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ eventId: "evt_late" })]),
     );
 
-    const explicit = model.map.groups.schematic.locations.find(
+    const explicit = model.map.views.scene.locations.find(
       (location) => location.locationId === "loc_schematic_gate",
     );
-    const fallback = model.map.groups.schematic.locations.find(
+    const inferred = model.map.views.topology.locations.find(
       (location) => location.locationId === "loc_schematic_room",
     );
-    expect(explicit).toMatchObject({ x: 10, y: 20, isFallback: false });
-    expect(fallback?.isFallback).toBe(true);
-    expect(model.map.fallbackLocationIds).toEqual(["loc_schematic_room"]);
-    expect(model.map.groups.schematic.eventMarkers).toEqual(
+    expect(explicit).toMatchObject({
+      source: "schematic",
+      position: { kind: "planar", x: 10, y: 20 },
+    });
+    expect(model.map.views.scene.locations).toHaveLength(1);
+    expect(inferred).toMatchObject({ source: "inferred" });
+    expect(model.map.unlocatedLocationIds).toEqual([]);
+    expect(
+      model.map.views.topology.locations.flatMap((location) => location.events),
+    ).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          eventId: "evt_early",
-          locationId: "loc_schematic_gate",
-        }),
-        expect.objectContaining({
-          eventId: "evt_unknown_time",
-          locationId: "loc_schematic_room",
-        }),
+        expect.objectContaining({ eventId: "evt_early" }),
+        expect.objectContaining({ eventId: "evt_unknown_time" }),
       ]),
     );
     expect(model.map).toEqual(mapCaseFileToWorkbenchModel(caseFile, 7).map);
@@ -459,6 +530,235 @@ describe("real workbench data mapper", () => {
     expect(model.defaultEventId).toBeNull();
     expect(model.defaultObjectId).toBeNull();
     expect(model.defaultIssueId).toBeNull();
+  });
+
+  it("maps validator targets to stable event ids before timeline time sorting", () => {
+    const validation: WorkbenchValidationView = {
+      status: "failed",
+      validator: "casefile.contracts.validate_casefile",
+      schema_version: "1.0",
+      issue_count: 1,
+      issues: [
+        {
+          issue_id: "validator:stable-event",
+          code: "missing_reference",
+          path: "/events/0/location_ref",
+          message: "引用的对象不存在",
+          severity: "error",
+          target: {
+            object_ref: { object_type: "event", object_id: "evt_late" },
+            field_path: "/location_ref",
+          },
+        },
+      ],
+      reason: null,
+    };
+
+    const model = mapCaseFileToWorkbenchModel(makeCaseFile(), 7, validation);
+
+    expect(model.timelineEvents.map((event) => event.id)).toEqual([
+      "evt_early",
+      "evt_late",
+      "evt_unknown_time",
+    ]);
+    expect(
+      model.timelineEvents.find((event) => event.id === "evt_late")?.issueIds,
+    ).toEqual(["validator:stable-event"]);
+    expect(
+      model.timelineEvents.find((event) => event.id === "evt_early")?.issueIds,
+    ).toEqual([]);
+    expect(model.validationIssues[0]).toMatchObject({
+      id: "validator:stable-event",
+      eventId: "evt_late",
+      source: "validator",
+      evidenceIds: [],
+      patchBefore: "",
+      patchAfter: "",
+    });
+  });
+
+  it("maps one resolution conclusion across relationship, reasoning, and timeline selection data", () => {
+    const caseFile = makeCaseFile();
+    caseFile.resolution_specs[0] = {
+      ...caseFile.resolution_specs[0],
+      required_slots: [
+        {
+          slot_id: "slot_perpetrator",
+          value_type: "entity_or_claim_ref",
+          required: true,
+        },
+      ],
+      conclusion: {
+        outcome: "answer",
+        review_status: "confirmed",
+        summary: "值班员改写了记录。",
+        values: [
+          {
+            slot_id: "slot_perpetrator",
+            value: ref("entity", "ent_operator"),
+          },
+          {
+            slot_id: "slot_unknown_detail",
+            value: ref("entity", "ent_missing"),
+          },
+        ],
+        selected_hypothesis_refs: [
+          ref("hypothesis", "hyp_operator_changed_record"),
+        ],
+        supporting_reasoning_path_refs: [
+          ref("reasoning_path", "path_record_change"),
+        ],
+        rationale: "门禁记录与值班时段相互印证。",
+        unresolved_gaps: [],
+      },
+    };
+
+    const model = mapCaseFileToWorkbenchModel(caseFile, 7);
+
+    expect(model.conclusions).toEqual([
+      expect.objectContaining({
+        resolutionSpecId: "res_core_question",
+        reviewStatus: "confirmed",
+        summary: "值班员改写了记录。",
+        values: [
+          { label: "嫌疑人", value: "值班员" },
+          { label: "解答信息", value: "关联对象" },
+        ],
+        selectedHypothesisIds: ["hyp_operator_changed_record"],
+        supportingReasoningPathIds: ["path_record_change"],
+        relatedEventIds: ["evt_early"],
+      }),
+    ]);
+    expect(model.reasoningPaths[0]?.conclusion).toBe("值班员改写了记录。");
+    expect(model.graphNodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "res_core_question" }),
+      expect.objectContaining({
+        id: "resolution-conclusion:res_core_question",
+        directoryObjectId: "res_core_question",
+        label: "值班员改写了记录。",
+      }),
+    ]));
+    expect(model.graphEdges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        from: "res_core_question",
+        to: "resolution-conclusion:res_core_question",
+        kind: "resolution_conclusion",
+      }),
+      expect.objectContaining({
+        from: "hyp_operator_changed_record",
+        to: "resolution-conclusion:res_core_question",
+        label: "进入当前结论",
+      }),
+      expect.objectContaining({
+        from: "path_record_change",
+        to: "resolution-conclusion:res_core_question",
+        label: "收束依据",
+      }),
+    ]));
+    expect(model.timelineEvents.map((event) => event.id)).toEqual([
+      "evt_early",
+      "evt_late",
+      "evt_unknown_time",
+    ]);
+  });
+
+  it("does not expose English-only generated text on Chinese workbench surfaces", () => {
+    const caseFile = makeCaseFile();
+    caseFile.information_units[0] = {
+      ...caseFile.information_units[0],
+      title: "Archive Access Logs",
+      description: "Access logs showing who opened the archive.",
+      content: "The archive was opened from an external address.",
+    };
+    caseFile.claims[0] = {
+      ...caseFile.claims[0],
+      title: "The Records Were Modified",
+      description: "The files contain signs of manipulation.",
+      statement: "The records were changed after creation.",
+    };
+    caseFile.hypotheses[0] = {
+      ...caseFile.hypotheses[0],
+      title: "The Manipulator Is an Insider",
+      description: "An insider changed the records.",
+      proposition: "An insider is responsible.",
+      evidence_assessments: [
+        {
+          information_ref: ref("information_unit", "info_gate_log"),
+          effect: "supports",
+          strength: "strong",
+          rationale: "The access log points to an insider.",
+        },
+      ],
+    };
+    caseFile.reasoning_paths[0] = {
+      ...caseFile.reasoning_paths[0],
+      title: "Internal Manipulator Reasoning Path",
+      description: "A reasoning chain for the insider hypothesis.",
+    };
+
+    const model = mapCaseFileToWorkbenchModel(caseFile, 7);
+    const information = model.caseObjects.find((item) => item.id === "info_gate_log");
+
+    expect(information?.label).toBe("信息 1（标题待补充）");
+    expect(information?.description).toBe("该信息的创作说明待补充。");
+    expect(model.graphNodes.find((item) => item.id === "claim_record_changed")?.label)
+      .toBe("论断 1（标题待补充）");
+    expect(model.reasoningPaths[0]).toMatchObject({
+      conclusion: "该核心问题尚未形成结论",
+      title: "推理路径 1（标题待补充）",
+    });
+    expect(model.reasoningPaths[0].steps[0].claim).not.toMatch(/[A-Za-z]{2,}/);
+    expect(model.reasoningGroups[0].hypotheses[0].title)
+      .toBe("假设 1（标题待补充）");
+    expect(model.reasoningGroups[0].information[0].title)
+      .toBe("信息 1（标题待补充）");
+    expect(model.reasoningGroups[0].assessments[0].rationale)
+      .toBe("该判定依据待补充。");
+  });
+
+  it("projects a relative event onto an existing wall-clock anchor without changing its source semantics", () => {
+    const caseFile = makeCaseFile();
+    caseFile.events = [
+      {
+        ...caseFile.events[0],
+        id: "evt_anchor",
+        title: "锚点事件",
+        time: {
+          kind: "exact",
+          value: "2042-06-01T20:00",
+          precision: "minute",
+        },
+      },
+      {
+        ...caseFile.events[1],
+        id: "evt_follow_up",
+        title: "后续事件",
+        time: {
+          kind: "relative",
+          anchor_event_ref: ref("event", "evt_anchor"),
+          relation: "after",
+          offset_minutes: 15,
+        },
+      },
+    ];
+
+    const timeline = mapCaseFileToWorkbenchModel(caseFile, 7).timelineEvents;
+    const followUp = timeline.find((event) => event.id === "evt_follow_up");
+
+    expect(timeline.map((event) => event.id)).toEqual(["evt_anchor", "evt_follow_up"]);
+    expect(followUp).toMatchObject({
+      timeProjection: "relative-resolved",
+      time: "相对 15 分钟之后",
+      start: "2042-06-01T20:15:00",
+      sortKey: "2042-06-01T20:15:00",
+    });
+    expect(followUp?.time).not.toContain("evt_anchor");
+    expect(followUp?.source?.time).toEqual({
+      kind: "relative",
+      anchor_event_ref: ref("event", "evt_anchor"),
+      relation: "after",
+      offset_minutes: 15,
+    });
   });
 
   it("keeps the existing fixture model available through an explicit adapter", () => {

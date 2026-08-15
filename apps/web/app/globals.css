@@ -1,3 +1,6 @@
+@import "@xyflow/react/dist/style.css";
+@import "leaflet/dist/leaflet.css";
+
 :root {
   --paper: #fafaf5;
   --paper-low: #f4f4ef;

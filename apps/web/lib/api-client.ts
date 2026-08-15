@@ -1,4 +1,30 @@
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFile, CoreMetadata } from "@casefile/contracts";
+
+export interface LegacyTemporalPositionV1 {
+  start: string;
+  end: string | null;
+  precision: "second" | "minute" | "hour" | "day" | "approximate" | "unknown";
+}
+
+export type LegacyCaseFileEventV1 = CoreMetadata & {
+  id: CaseFile["events"][number]["id"];
+  title: CaseFile["events"][number]["title"];
+  truth_status: CaseFile["events"][number]["truth_status"];
+  time: LegacyTemporalPositionV1;
+  participant_refs: CaseFile["events"][number]["participant_refs"];
+  location_ref: CaseFile["events"][number]["location_ref"];
+  cause_refs: CaseFile["events"][number]["cause_refs"];
+  effect_refs: CaseFile["events"][number]["effect_refs"];
+  observed_by_refs: CaseFile["events"][number]["observed_by_refs"];
+};
+
+export type LegacyCaseFileV1 = Omit<CaseFile, "schema_version" | "events"> & {
+  schema_version: "1.0";
+  events: LegacyCaseFileEventV1[];
+};
+
+export type CaseFileDocument = CaseFile | LegacyCaseFileV1;
+export type TimelineTemporalPosition = CaseFile["events"][number]["time"];
 
 export const API_ROOT =
   process.env.NEXT_PUBLIC_CASEFILE_API_URL ?? "http://127.0.0.1:8000/api/v1";
@@ -59,7 +85,14 @@ export interface ProjectView {
   created_at: string;
   updated_at: string;
   casefile_id: number;
-  draft: { id: number; revision: number; schema_version: string; status: string };
+  current_draft_id: number;
+  draft: {
+    id: number;
+    title: string;
+    revision: number;
+    schema_version: string;
+    status: string;
+  };
 }
 
 export interface ProviderSettingView {
@@ -416,11 +449,13 @@ export interface DraftCandidateView extends GenerationCandidateSummary {
 export interface DraftCandidatePreviewView extends DraftCandidateView {
   preview: true;
   read_only: true;
-  content: CaseFile;
+  content: CaseFileDocument;
 }
 
 export interface DraftCandidateAdoption {
   task_run_id: number;
+  draft_id: number;
+  revision: number;
   title: string;
   content_hash: string;
   adopted: true;
@@ -438,10 +473,78 @@ export interface TaskEventView {
 
 export interface DraftView {
   project_id: number;
+  casefile_id: number;
+  draft_id: number;
+  title: string;
   revision: number;
   schema_version: string;
   status: string;
-  content: CaseFile | null;
+  document_status: string;
+  brief_version_id: number | null;
+  created_at: string;
+  updated_at: string;
+  content: CaseFileDocument | null;
+}
+
+export interface TimelineTimePreviewView {
+  draft_id: number;
+  base_revision: number;
+  event_id: string;
+  before_time: TimelineTemporalPosition;
+  proposed_time: TimelineTemporalPosition;
+  can_confirm: boolean;
+  order_change: {
+    from_index: number | null;
+    to_index: number | null;
+    crossed_event_ids: string[];
+  };
+  relative_dependent_event_ids: string[];
+  affected_event_ids: string[];
+  validation: {
+    status: "passed" | "failed";
+    issue_count: number;
+    issues: Array<{
+      code: string;
+      path: string;
+      message: string;
+    }>;
+  };
+}
+
+export interface ExposurePlanRefView {
+  object_type: string;
+  object_id: string;
+}
+
+export interface ExposurePlanEntryView {
+  entry_key: string;
+  sequence_no: number;
+  title: string;
+  note: string | null;
+  refs: ExposurePlanRefView[];
+}
+
+export interface ExposurePlanView {
+  plan_id: number;
+  draft_id: number;
+  revision: number;
+  updated_at: string;
+  entries: ExposurePlanEntryView[];
+}
+
+export interface DraftSummaryView {
+  draft_id: number;
+  title: string;
+  revision: number;
+  schema_version: string;
+  status: string;
+  document_status: string;
+  brief_version_id: number | null;
+  brief_version_no: number | null;
+  has_content: boolean;
+  is_current: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface WorkbenchValidationIssueView {
@@ -450,6 +553,13 @@ export interface WorkbenchValidationIssueView {
   path: string;
   message: string;
   severity: "error";
+  target: {
+    object_ref: {
+      object_type: string;
+      object_id: string;
+    } | null;
+    field_path: string;
+  };
 }
 
 export interface WorkbenchValidationView {
@@ -596,6 +706,28 @@ export async function listProjects(actorId: number) {
   return apiRequest<ProjectView[]>("/projects", { actorId });
 }
 
+export async function listDrafts(actorId: number, projectId: number) {
+  return apiRequest<DraftSummaryView[]>(`/projects/${projectId}/drafts`, {
+    actorId,
+  });
+}
+
+export async function activateDraft(
+  actorId: number,
+  projectId: number,
+  draftId: number,
+  expectedCurrentDraftId: number,
+) {
+  return apiRequest<DraftView>(
+    `/projects/${projectId}/drafts/${draftId}/activate`,
+    {
+      actorId,
+      method: "POST",
+      body: { expected_current_draft_id: expectedCurrentDraftId },
+    },
+  );
+}
+
 export async function fetchWorkbenchContext(actorId: number, projectId: number) {
   return apiRequest<WorkbenchContextView>(
     `/projects/${projectId}/workbench-context`,
@@ -625,7 +757,13 @@ export function errorMessage(error: unknown) {
       identity_invalid: "当前本地用户身份无效。",
       base_revision_required: "缺少草稿版本信息，请刷新页面后重试。",
       base_revision_invalid: "草稿版本信息无效，请刷新页面后重试。",
+      draft_id_required: "缺少工作稿标识，请刷新页面后重试。",
+      draft_id_invalid: "工作稿标识无效，请刷新页面后重试。",
       draft_revision_conflict: "草稿已被更新，请刷新后重新提交。",
+      current_draft_changed: "当前工作稿已切换，请刷新后重试。",
+      draft_locked: "这份工作稿已锁定，不能执行当前操作。",
+      draft_empty: "这份工作稿尚未生成正文。",
+      project_archived: "项目已归档，不能执行当前操作。",
       brief_revision_conflict: "创作简报已被更新，请刷新后重新提交。",
       resource_conflict: "当前修改与已保存的数据冲突，请刷新后重试。",
       database_unavailable: "数据库暂时不可用，请稍后重试。",
@@ -638,6 +776,8 @@ export function errorMessage(error: unknown) {
       provider_setting_required: "请先配置当前模型服务。",
       provider_credential_in_use: "仍有任务正在使用这把密钥，请等待任务结束后再删除。",
       draft_not_empty: "当前草稿已有内容，不能再次执行全量生成。",
+      draft_schema_upgrade_required:
+        "当前工作稿仍使用历史时间契约，请先完成契约升级再重新生成。",
       brief_version_not_current: "当前创作简报版本已过期，请刷新后重试。",
       brief_extraction_input_empty: "请先填写作者答案或创作规则。",
       source_content_blank: "来源原稿不能为空。",

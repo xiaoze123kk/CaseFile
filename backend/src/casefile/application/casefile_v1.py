@@ -6,24 +6,25 @@ import hashlib
 import re
 from collections import defaultdict
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from copy import deepcopy
 from decimal import Decimal
 from typing import Any
 
 import rfc8785
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from casefile.application.errors import ApplicationError
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
+    AuditEvent,
     Brief,
     BriefVersion,
     CaseFileConstraint,
     CaseFileContractRef,
     CaseFileObject,
-    CaseFileRef,
     Claim,
+    Draft,
     DraftOperation,
     DraftSnapshot,
     Entity,
@@ -55,6 +56,7 @@ COLLECTION_TYPES: tuple[tuple[str, str], ...] = (
 )
 
 KNOWLEDGE_STATE_COUNT_ATTRIBUTE = "_casefile_v1_knowledge_state_count"
+EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE = "_casefile_v1_evidence_assessments_present"
 
 
 def casefile_content_hash(document: dict[str, Any]) -> str:
@@ -71,15 +73,12 @@ def generation_candidate_summary(candidate: dict[str, Any]) -> dict[str, Any]:
         "title": candidate["title"],
         "content_hash": casefile_content_hash(candidate),
         "object_counts": {
-            collection: len(candidate[collection])
-            for collection, _object_type in COLLECTION_TYPES
+            collection: len(candidate[collection]) for collection, _object_type in COLLECTION_TYPES
         },
         "reasoning_questions": [
             item["reasoning_question"] for item in candidate["resolution_specs"]
         ],
-        "constraint_statements": [
-            item["statement"] for item in candidate["constraints"]
-        ],
+        "constraint_statements": [item["statement"] for item in candidate["constraints"]],
     }
 
 
@@ -96,158 +95,175 @@ def validate_generation_candidate_context(
     _validate_generation_context(owned, candidate, brief, brief_version)
 
 
+def prepare_generation_candidate(
+    owned: OwnedDraft,
+    candidate: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a candidate in the target Draft schema without mutating stored history."""
+
+    if candidate.get("schema_version") == owned.draft.schema_version:
+        return candidate
+    if candidate.get("schema_version") == "1.0" and owned.draft.schema_version == "2.0":
+        upgraded = _upgrade_casefile_v1_to_v2(candidate)
+        validate_casefile(upgraded)
+        return upgraded
+    return candidate
+
+
+def _upgrade_casefile_v1_to_v2(candidate: dict[str, Any]) -> dict[str, Any]:
+    upgraded = deepcopy(candidate)
+    upgraded["schema_version"] = "2.0"
+    for event in upgraded["events"]:
+        legacy = event["time"]
+        precision = legacy["precision"]
+        if precision == "unknown":
+            event["time"] = {"kind": "unknown"}
+            continue
+        wall_precision = precision if precision in {"day", "hour", "minute", "second"} else "second"
+        start = _legacy_wall_clock(legacy["start"], wall_precision)
+        end = legacy["end"]
+        if end is not None:
+            event["time"] = {
+                "kind": "range",
+                "start": start,
+                "end": _legacy_wall_clock(end, wall_precision),
+                "precision": wall_precision,
+            }
+        elif precision == "approximate":
+            event["time"] = {
+                "kind": "approximate",
+                "value": start,
+                "precision": wall_precision,
+            }
+        else:
+            event["time"] = {
+                "kind": "exact",
+                "value": start,
+                "precision": wall_precision,
+            }
+    return upgraded
+
+
+def _legacy_wall_clock(value: str, precision: str) -> str:
+    local = re.sub(r"(?:Z|[+-][0-9]{2}:[0-9]{2})$", "", value)
+    lengths = {"day": 10, "hour": 13, "minute": 16}
+    return local[: lengths[precision]] if precision in lengths else local
+
+
 def adopt_generation_candidate(
     session: Session,
-    owned: OwnedDraft,
+    source: OwnedDraft,
+    current: OwnedDraft,
     *,
     candidate: dict[str, Any],
     brief: Brief,
     brief_version: BriefVersion,
     task_run_id: int,
     actor_user_id: int,
-    expected_draft_revision: int,
+    expected_current_draft_id: int,
 ) -> DraftSnapshot:
-    """Atomically replace the current mutable Draft with one validated candidate."""
+    """Materialize a candidate as an independent Draft and select it atomically."""
 
+    candidate = prepare_generation_candidate(source, candidate)
     validate_generation_candidate_context(
-        owned,
+        source,
         candidate,
         brief=brief,
         brief_version=brief_version,
     )
-    if owned.draft.revision != expected_draft_revision:
+    if current.casefile.current_draft_id != expected_current_draft_id:
         raise ApplicationError(
-            "draft_revision_conflict",
-            "草稿已被更新，请刷新后重新提交。",
+            "current_draft_changed",
+            "当前工作稿已在其他位置切换，请刷新后重试。",
             status_code=409,
-            details={"current_revision": owned.draft.revision},
+            details={"current_draft_id": current.casefile.current_draft_id},
         )
-    if owned.project.status == "archived" or owned.casefile.status == "archived":
+    if current.project.status == "archived" or current.casefile.status == "archived":
         raise ApplicationError(
             "project_archived",
             "已归档的项目不能修改。",
             status_code=409,
         )
-    if owned.draft.status != "active":
+    if source.draft.status != "active":
         raise ApplicationError(
             "draft_locked",
-            "已锁定的草稿不能修改。",
+            "候选来源工作稿已锁定，不能采用该候选。",
             status_code=409,
         )
 
-    incoming_ids = {
-        item["id"]
-        for collection, _object_type in COLLECTION_TYPES
-        for item in candidate[collection]
-    }
-    used_ids = set(
-        session.scalars(
-            select(CaseFileObject.object_id).where(
-                CaseFileObject.casefile_id == owned.casefile.id,
-                CaseFileObject.object_id.in_(incoming_ids),
-            )
+    pristine_current = (
+        source.draft.id == current.draft.id
+        and source.draft.id == expected_current_draft_id
+        and current.draft.brief_version_id is None
+        and current.draft.revision == 1
+        and session.scalar(
+            select(func.count(CaseFileObject.id)).where(CaseFileObject.draft_id == current.draft.id)
         )
+        == 0
+        and session.scalar(
+            select(func.count(DraftOperation.id)).where(DraftOperation.draft_id == current.draft.id)
+        )
+        == 0
     )
-    if used_ids:
-        raise ApplicationError(
-            "candidate_object_ids_used",
-            "该候选已经被采用，或重复使用了历史对象 ID。",
-            status_code=409,
-            details={"object_ids": sorted(used_ids)},
+    if pristine_current:
+        target = current
+    else:
+        target_draft = Draft(
+            project_id=current.project.id,
+            casefile_id=current.casefile.id,
+            base_canon_version_id=source.draft.base_canon_version_id,
+            revision=1,
+            title=candidate["title"],
+            document_status=candidate["status"],
+            version_id=candidate["version"]["version_id"],
+            version_no=candidate["version"]["version_no"],
+            parent_version_id=candidate["version"]["parent_version_id"],
+            brief_version_id=brief_version.id,
+            schema_version=candidate["schema_version"],
+            status="active",
+            content_notices_jsonb=candidate["content_notices"],
+            extensions_jsonb=candidate["extensions"],
         )
-
-    active_objects = list(
-        session.scalars(
-            select(CaseFileObject)
-            .where(
-                CaseFileObject.draft_id == owned.draft.id,
-                CaseFileObject.deleted_at.is_(None),
-            )
-            .order_by(CaseFileObject.object_type, CaseFileObject.contract_ordinal)
-            .with_for_update()
-        )
-    )
-    old_content_hash = None
-    if active_objects:
-        old_content_hash = casefile_content_hash(build_casefile_document(session, owned))
-
-    if active_objects:
-        all_ordinals = session.execute(
-            select(CaseFileObject.object_type, func.max(CaseFileObject.contract_ordinal))
-            .where(CaseFileObject.draft_id == owned.draft.id)
-            .group_by(CaseFileObject.object_type)
-        ).all()
-        next_archive_ordinal = {
-            object_type: int(max_ordinal) + 1
-            for object_type, max_ordinal in all_ordinals
-        }
-        now = datetime.now(UTC)
-        active_ids: list[int] = []
-        for registry in active_objects:
-            archive_ordinal = next_archive_ordinal[registry.object_type]
-            next_archive_ordinal[registry.object_type] = archive_ordinal + 1
-            registry.contract_ordinal = archive_ordinal
-            registry.deleted_at = now
-            registry.revision += 1
-            active_ids.append(registry.id)
-        session.execute(
-            delete(CaseFileContractRef).where(
-                CaseFileContractRef.draft_id == owned.draft.id,
-                CaseFileContractRef.from_object_id.in_(active_ids),
-            )
-        )
-        session.execute(
-            delete(CaseFileRef).where(
-                CaseFileRef.draft_id == owned.draft.id,
-                or_(
-                    CaseFileRef.from_object_id.in_(active_ids),
-                    CaseFileRef.to_object_id.in_(active_ids),
-                ),
-            )
-        )
+        session.add(target_draft)
         session.flush()
+        target = OwnedDraft(current.project, current.casefile, target_draft)
 
-    registry_by_object_id = _create_registries(session, owned, candidate)
-    _create_content_rows(session, owned, candidate, registry_by_object_id)
-    _create_contract_refs(session, owned, candidate, registry_by_object_id)
+    target.draft.title = candidate["title"]
+    target.draft.document_status = candidate["status"]
+    target.draft.schema_version = candidate["schema_version"]
+    target.draft.version_id = candidate["version"]["version_id"]
+    target.draft.version_no = candidate["version"]["version_no"]
+    target.draft.parent_version_id = candidate["version"]["parent_version_id"]
+    target.draft.brief_version_id = brief_version.id
+    target.draft.content_notices_jsonb = candidate["content_notices"]
+    target.draft.extensions_jsonb = candidate["extensions"]
 
-    base_revision = owned.draft.revision
-    owned.project.title = candidate["title"]
-    owned.casefile.title = candidate["title"]
-    owned.casefile.status = candidate["status"]
-    owned.casefile.schema_version = candidate["schema_version"]
-    owned.draft.schema_version = candidate["schema_version"]
-    owned.draft.version_id = candidate["version"]["version_id"]
-    owned.draft.version_no = candidate["version"]["version_no"]
-    owned.draft.parent_version_id = candidate["version"]["parent_version_id"]
-    owned.draft.brief_version_id = brief_version.id
-    owned.draft.content_notices_jsonb = candidate["content_notices"]
-    owned.draft.extensions_jsonb = candidate["extensions"]
+    registry_by_object_id = _create_registries(session, target, candidate)
+    _create_content_rows(session, target, candidate, registry_by_object_id)
+    _create_contract_refs(session, target, candidate, registry_by_object_id)
+
+    base_revision = target.draft.revision
 
     content_hash = casefile_content_hash(candidate)
     sequence_no = int(
         session.scalar(
             select(func.coalesce(func.max(DraftOperation.sequence_no), 0) + 1).where(
-                DraftOperation.draft_id == owned.draft.id
+                DraftOperation.draft_id == target.draft.id
             )
         )
         or 1
     )
     session.add(
         DraftOperation(
-            project_id=owned.project.id,
-            casefile_id=owned.casefile.id,
-            draft_id=owned.draft.id,
+            project_id=target.project.id,
+            casefile_id=target.casefile.id,
+            draft_id=target.draft.id,
             casefile_object_id=None,
             sequence_no=sequence_no,
             operation_group_no=sequence_no,
             operation_type="agent_adopt_brief_candidate",
             field_path="",
-            old_value_jsonb=(
-                None
-                if old_content_hash is None
-                else {"content_hash": old_content_hash}
-            ),
+            old_value_jsonb=None,
             new_value_jsonb={
                 "brief_version_id": brief_version.id,
                 "content_hash": content_hash,
@@ -260,10 +276,30 @@ def adopt_generation_candidate(
             actor_ref=None,
         )
     )
+    previous_draft_id = current.casefile.current_draft_id
+    current.casefile.current_draft_id = target.draft.id
+    if target.draft.id != previous_draft_id:
+        session.add(
+            AuditEvent(
+                project_id=current.project.id,
+                casefile_id=current.casefile.id,
+                actor_kind="user",
+                actor_user_id=actor_user_id,
+                actor_ref=None,
+                action="draft.activated",
+                target_type="draft",
+                target_id=target.draft.id,
+                trace_id=None,
+                details_jsonb={
+                    "previous_draft_id": previous_draft_id,
+                    "task_run_id": task_run_id,
+                },
+            )
+        )
     session.flush()
-    session.refresh(owned.draft)
+    session.refresh(target.draft)
 
-    projected = build_casefile_document(session, owned)
+    projected = build_casefile_document(session, target)
     projected_hash = casefile_content_hash(projected)
     if projected != candidate or projected_hash != content_hash:
         raise ApplicationError(
@@ -274,11 +310,11 @@ def adopt_generation_candidate(
         )
 
     snapshot = DraftSnapshot(
-        project_id=owned.project.id,
-        casefile_id=owned.casefile.id,
-        draft_id=owned.draft.id,
-        snapshot_revision=owned.draft.revision,
-        schema_version=owned.draft.schema_version,
+        project_id=target.project.id,
+        casefile_id=target.casefile.id,
+        draft_id=target.draft.id,
+        snapshot_revision=target.draft.revision,
+        schema_version=target.draft.schema_version,
         snapshot_jsonb=projected,
         content_hash=content_hash,
         created_by_user_id=actor_user_id,
@@ -331,10 +367,10 @@ def build_casefile_document(session: Session, owned: OwnedDraft) -> dict[str, An
         )
 
     document: dict[str, Any] = {
-        "schema_version": owned.casefile.schema_version,
+        "schema_version": owned.draft.schema_version,
         "casefile_id": owned.casefile.object_id,
-        "title": owned.casefile.title,
-        "status": owned.casefile.status,
+        "title": owned.draft.title,
+        "status": owned.draft.document_status,
         "version": {
             "version_id": owned.draft.version_id,
             "version_no": owned.draft.version_no,
@@ -386,6 +422,8 @@ def _validate_generation_context(
     failures: dict[str, Any] = {}
     if candidate["casefile_id"] != owned.casefile.object_id:
         failures["casefile_id"] = owned.casefile.object_id
+    if candidate["schema_version"] != owned.draft.schema_version:
+        failures["schema_version"] = owned.draft.schema_version
     if candidate["brief_ref"] != expected_brief_ref:
         failures["brief_ref"] = expected_brief_ref
     if candidate["version"] != expected_version:
@@ -475,6 +513,13 @@ def _create_content_rows(
             fairness_requirements_jsonb=[],
             conclusion_pattern_jsonb={},
             status="draft",
+            conclusion_outcome=(item.get("conclusion") or {}).get("outcome"),
+            conclusion_review_status=(item.get("conclusion") or {}).get("review_status"),
+            conclusion_summary=(item.get("conclusion") or {}).get("summary"),
+            conclusion_rationale=(item.get("conclusion") or {}).get("rationale"),
+            conclusion_unresolved_gaps_jsonb=(item.get("conclusion") or {}).get(
+                "unresolved_gaps", []
+            ),
         )
         session.add(resolution)
         session.flush()
@@ -488,7 +533,7 @@ def _create_content_rows(
                     label=slot["slot_id"],
                     is_required=slot["required"],
                     ordinal=ordinal,
-                    value_jsonb=None,
+                    value_jsonb=_resolution_slot_scalar_value(item, slot["slot_id"]),
                 )
             )
 
@@ -508,9 +553,7 @@ def _create_content_rows(
                 # ObjectRef values live in CaseFileContractRef. Retain the
                 # complete nested-list shape here so an all-empty state does
                 # not disappear during a normalized round trip.
-                attributes_jsonb={
-                    KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(item["knowledge_states"])
-                },
+                attributes_jsonb={KNOWLEDGE_STATE_COUNT_ATTRIBUTE: len(item["knowledge_states"])},
             )
         )
     for item in candidate["relationships"]:
@@ -594,7 +637,13 @@ def _create_content_rows(
                 summary=item["proposition"],
                 status=item["status"],
                 score=_decimal(item["score"]),
-                exclusion_rule_jsonb={},
+                # An all-empty optional list has no ContractRef row. Preserve
+                # its presence separately so legacy snapshots that omitted
+                # the field and newer candidates that explicitly supplied []
+                # both round trip exactly without a schema migration.
+                exclusion_rule_jsonb={
+                    EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE: "evidence_assessments" in item
+                },
             )
         )
     for item in candidate["reasoning_paths"]:
@@ -687,9 +736,11 @@ def _walk_object_refs(
     parent: dict[str, Any] | None = None,
 ) -> Iterator[tuple[str, int, dict[str, str], dict[str, Any]]]:
     if _is_object_ref(value):
-        metadata = {}
-        if parent is not None and "minutes" in parent:
-            metadata["minutes"] = parent["minutes"]
+        metadata: dict[str, Any] = {}
+        if parent is not None:
+            for key in ("minutes", "effect", "strength", "rationale", "slot_id"):
+                if key in parent:
+                    metadata[key] = parent[key]
         yield path, 1, value, metadata
         return
     if isinstance(value, dict):
@@ -737,27 +788,72 @@ def _project_resolutions(
         }
         for ref in _refs_at(refs[registry.id], "/accepted_answers"):
             accepted[ref.ordinal] = _ref_value(ref)
-        result.append(
-            {
-                **_common(registry, refs),
-                "id": registry.object_id,
-                "title": row.title,
-                "question_type": row.question_type,
-                "reasoning_question": row.target_question,
-                "conclusion_mode": row.conclusion_mode,
-                "required_slots": [
-                    {
-                        "slot_id": slot.slot_key,
-                        "value_type": slot.value_type,
-                        "required": slot.is_required,
-                    }
-                    for slot in slots
-                ],
-                "accepted_answers": [accepted[index] for index in sorted(accepted)],
-                "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
-            }
-        )
+        projected = {
+            **_common(registry, refs),
+            "id": registry.object_id,
+            "title": row.title,
+            "question_type": row.question_type,
+            "reasoning_question": row.target_question,
+            "conclusion_mode": row.conclusion_mode,
+            "required_slots": [
+                {
+                    "slot_id": slot.slot_key,
+                    "value_type": slot.value_type,
+                    "required": slot.is_required,
+                }
+                for slot in slots
+            ],
+            "accepted_answers": [accepted[index] for index in sorted(accepted)],
+            "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
+        }
+        conclusion = _project_resolution_conclusion(row, slots, refs[registry.id])
+        if conclusion is not None:
+            projected["conclusion"] = conclusion
+        result.append(projected)
     return result
+
+
+def _resolution_slot_scalar_value(item: dict[str, Any], slot_id: str) -> Any | None:
+    conclusion = item.get("conclusion")
+    if conclusion is None:
+        return None
+    for value in conclusion["values"]:
+        if value["slot_id"] == slot_id and not _is_object_ref(value["value"]):
+            return value["value"]
+    return None
+
+
+def _project_resolution_conclusion(
+    row: ResolutionSpec,
+    slots: list[ResolutionSlot],
+    refs: list[CaseFileContractRef],
+) -> dict[str, Any] | None:
+    if row.conclusion_outcome is None:
+        return None
+    object_values = {
+        str(ref.metadata_jsonb.get("slot_id")): _ref_value(ref)
+        for ref in refs
+        if ref.field_path.startswith("/conclusion/values/")
+        and ref.field_path.endswith("/value")
+        and ref.metadata_jsonb.get("slot_id")
+    }
+    values = []
+    for slot in slots:
+        value = object_values.get(slot.slot_key, slot.value_jsonb)
+        if value is not None:
+            values.append({"slot_id": slot.slot_key, "value": value})
+    return {
+        "outcome": row.conclusion_outcome,
+        "review_status": row.conclusion_review_status,
+        "summary": row.conclusion_summary,
+        "values": values,
+        "selected_hypothesis_refs": _ref_values(refs, "/conclusion/selected_hypothesis_refs"),
+        "supporting_reasoning_path_refs": _ref_values(
+            refs, "/conclusion/supporting_reasoning_path_refs"
+        ),
+        "rationale": row.conclusion_rationale,
+        "unresolved_gaps": row.conclusion_unresolved_gaps_jsonb,
+    }
 
 
 def _project_entities(
@@ -964,24 +1060,42 @@ def _project_hypotheses(
     for registry in registries:
         row = session.scalar(select(Hypothesis).where(Hypothesis.object_registry_id == registry.id))
         if row is not None:
-            result.append(
-                {
-                    **_common(registry, refs),
-                    "id": registry.object_id,
-                    "title": row.title,
-                    "proposition": row.summary,
-                    "target_resolution_ref": _single_ref(
-                        refs[registry.id], "/target_resolution_ref"
-                    ),
-                    "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
-                    "falsifier_refs": _ref_values(refs[registry.id], "/falsifier_refs"),
-                    "competing_hypothesis_refs": _ref_values(
-                        refs[registry.id], "/competing_hypothesis_refs"
-                    ),
-                    "status": row.status,
-                    "score": _number(row.score),
-                }
+            assessment_indices = _path_indices(
+                refs[registry.id], r"^/evidence_assessments/(\d+)/information_ref$"
             )
+            evidence_assessments = []
+            for index in assessment_indices:
+                ref_row = _single_ref_row(
+                    refs[registry.id], f"/evidence_assessments/{index}/information_ref"
+                )
+                evidence_assessments.append(
+                    {
+                        "information_ref": _ref_value(ref_row),
+                        "effect": ref_row.metadata_jsonb["effect"],
+                        "strength": ref_row.metadata_jsonb["strength"],
+                        "rationale": ref_row.metadata_jsonb["rationale"],
+                    }
+                )
+            hypothesis = {
+                **_common(registry, refs),
+                "id": registry.object_id,
+                "title": row.title,
+                "proposition": row.summary,
+                "target_resolution_ref": _single_ref(refs[registry.id], "/target_resolution_ref"),
+                "required_claim_refs": _ref_values(refs[registry.id], "/required_claim_refs"),
+                "falsifier_refs": _ref_values(refs[registry.id], "/falsifier_refs"),
+                "competing_hypothesis_refs": _ref_values(
+                    refs[registry.id], "/competing_hypothesis_refs"
+                ),
+                "status": row.status,
+                "score": _number(row.score),
+            }
+            if (
+                row.exclusion_rule_jsonb.get(EVIDENCE_ASSESSMENTS_PRESENT_ATTRIBUTE) is True
+                or evidence_assessments
+            ):
+                hypothesis["evidence_assessments"] = evidence_assessments
+            result.append(hypothesis)
     return result
 
 

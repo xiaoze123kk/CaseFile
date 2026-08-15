@@ -163,19 +163,163 @@ class Wgs84SpatialPosition(BaseModel):
     longitude: Annotated[float, Field(ge=-180.0, le=180.0)]
 
 
-class ResolutionSpec(CoreMetadata):
+class WallClockTime(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+
+
+class TemporalPrecision(StrEnum):
+    second = 'second'
+    minute = 'minute'
+    hour = 'hour'
+    day = 'day'
+
+
+class TemporalPosition1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    id: Annotated[str, Field(pattern='^res_[a-z0-9][a-z0-9_]{0,56}$')]
-    title: Annotated[str, Field(min_length=1)]
-    question_type: QuestionType
-    reasoning_question: Annotated[str, Field(min_length=1)]
-    conclusion_mode: ConclusionMode
-    required_slots: list[RequiredSlot]
-    accepted_answers: list[AcceptedAnswers | ObjectRef]
-    required_claim_refs: list[ObjectRef]
+    kind: Literal['exact']
+    value: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    precision: TemporalPrecision
+
+
+class TemporalPosition2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['approximate']
+    value: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    precision: TemporalPrecision
+
+
+class TemporalPosition3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['range']
+    start: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    end: Annotated[
+        str,
+        Field(
+            description='Timezone-free in-world wall-clock time. Precision is encoded without fabricated lower-order fields.',
+            pattern='^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}(?::[0-9]{2}(?::[0-9]{2}(?:\\.[0-9]{1,6})?)?)?)?$',
+            title='WallClockTime',
+        ),
+    ]
+    precision: TemporalPrecision
+
+
+class Relation(StrEnum):
+    before = 'before'
+    after = 'after'
+    same_time = 'same_time'
+
+
+class TemporalPosition4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['relative']
+    anchor_event_ref: ObjectRef
+    relation: Relation
+    offset_minutes: Annotated[float | None, Field(ge=0.0)]
+
+
+class TemporalPosition5(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['unknown']
+
+
+class TemporalPosition(
+    RootModel[
+        TemporalPosition1
+        | TemporalPosition2
+        | TemporalPosition3
+        | TemporalPosition4
+        | TemporalPosition5
+    ]
+):
+    root: Annotated[
+        TemporalPosition1 | TemporalPosition2 | TemporalPosition3 | TemporalPosition4 | TemporalPosition5,
+        Field(title='TemporalPosition'),
+    ]
+
+
+class Outcome(StrEnum):
+    answer = 'answer'
+    undetermined = 'undetermined'
+
+
+class ReviewStatus(StrEnum):
+    proposed = 'proposed'
+    confirmed = 'confirmed'
+
+
+class Value1(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class Value(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    slot_id: Annotated[str, Field(pattern='^slot_[a-z0-9][a-z0-9_]{0,55}$')]
+    value: Value1 | float | bool | ObjectRef
+
+
+class UnresolvedGap(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class ResolutionConclusion(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    outcome: Outcome
+    review_status: ReviewStatus
+    summary: Annotated[str, Field(min_length=1)]
+    values: list[Value]
+    selected_hypothesis_refs: list[ObjectRef]
+    supporting_reasoning_path_refs: list[ObjectRef]
+    rationale: Annotated[str, Field(min_length=1)]
+    unresolved_gaps: list[UnresolvedGap]
 
 
 class EntityType(StrEnum):
@@ -303,25 +447,6 @@ class Location(CoreMetadata):
     visibility_rules: list[VisibilityRule]
 
 
-class Precision(StrEnum):
-    second = 'second'
-    minute = 'minute'
-    hour = 'hour'
-    day = 'day'
-    approximate = 'approximate'
-    unknown = 'unknown'
-
-
-class Time(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    start: AwareDatetime
-    end: AwareDatetime | None
-    precision: Precision
-
-
 class Event(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -330,7 +455,10 @@ class Event(CoreMetadata):
     id: Annotated[str, Field(pattern='^evt_[a-z0-9][a-z0-9_]{0,56}$')]
     title: Annotated[str, Field(min_length=1)]
     truth_status: TruthStatus
-    time: Time
+    time: Annotated[
+        TemporalPosition1 | TemporalPosition2 | TemporalPosition3 | TemporalPosition4 | TemporalPosition5,
+        Field(title='TemporalPosition'),
+    ]
     participant_refs: list[ObjectRef]
     location_ref: ObjectRef | None
     cause_refs: list[ObjectRef]
@@ -441,6 +569,29 @@ class Claim(CoreMetadata):
     materiality: Materiality
 
 
+class Effect(StrEnum):
+    supports = 'supports'
+    contradicts = 'contradicts'
+    neutral = 'neutral'
+
+
+class Strength(StrEnum):
+    weak = 'weak'
+    moderate = 'moderate'
+    strong = 'strong'
+
+
+class EvidenceAssessment(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    information_ref: ObjectRef
+    effect: Effect
+    strength: Strength
+    rationale: Annotated[str, Field(min_length=1)]
+
+
 class Status1(StrEnum):
     active = 'active'
     supported = 'supported'
@@ -462,6 +613,9 @@ class Hypothesis(CoreMetadata):
     required_claim_refs: list[ObjectRef]
     falsifier_refs: list[ObjectRef]
     competing_hypothesis_refs: list[ObjectRef]
+    evidence_assessments: Annotated[
+        list[EvidenceAssessment], Field(validate_default=True)
+    ] = []
     status: Status1
     score: Annotated[float | None, Field(ge=0.0, le=1.0)]
 
@@ -584,7 +738,7 @@ class Category(StrEnum):
     other = 'other'
 
 
-class Strength(StrEnum):
+class Strength1(StrEnum):
     hard = 'hard'
     soft = 'soft'
 
@@ -599,7 +753,7 @@ class BriefIntakeConstraint(BaseModel):
     ]
     category: Category
     statement: Annotated[str, Field(max_length=1000, min_length=1)]
-    strength: Strength
+    strength: Strength1
     confirmed: bool
     source: BriefIntakeFieldSource
 
@@ -794,7 +948,7 @@ class Strategy(StrEnum):
     reasoning_first = 'reasoning_first'
 
 
-class Strength1(RootModel[str]):
+class Strength2(RootModel[str]):
     root: Annotated[str, Field(max_length=240, min_length=1)]
 
 
@@ -810,7 +964,7 @@ class BriefStrategyOption(BaseModel):
     strategy: Strategy
     direction: Annotated[str, Field(max_length=600, min_length=1)]
     focus: Annotated[str, Field(max_length=300, min_length=1)]
-    strengths: Annotated[list[Strength1], Field(max_length=3, min_length=2)]
+    strengths: Annotated[list[Strength2], Field(max_length=3, min_length=2)]
     tradeoffs: Annotated[list[Tradeoff], Field(max_length=2, min_length=1)]
     brief_fit: Annotated[str, Field(max_length=400, min_length=1)]
 
@@ -888,6 +1042,7 @@ class AgentGenerateRequest(BaseModel):
     )
     project_id: Annotated[int, Field(ge=1)]
     brief_version_id: Annotated[int, Field(ge=1)]
+    expected_draft_id: Annotated[int, Field(ge=1)]
     expected_draft_revision: Annotated[int, Field(ge=1)]
     provider: Provider
 
@@ -902,6 +1057,22 @@ class AgentGenerateResult(BaseModel):
     snapshot_id: Annotated[int, Field(ge=1)]
     draft_revision: Annotated[int, Field(ge=1)]
     content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class ResolutionSpec(CoreMetadata):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(pattern='^res_[a-z0-9][a-z0-9_]{0,56}$')]
+    title: Annotated[str, Field(min_length=1)]
+    question_type: QuestionType
+    reasoning_question: Annotated[str, Field(min_length=1)]
+    conclusion_mode: ConclusionMode
+    required_slots: list[RequiredSlot]
+    conclusion: ResolutionConclusion | None = None
+    accepted_answers: list[AcceptedAnswers | ObjectRef]
+    required_claim_refs: list[ObjectRef]
 
 
 class EditingContracts(BaseModel):
@@ -1029,7 +1200,7 @@ class Schema_1(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    schema_version: Literal['1.0']
+    schema_version: Literal['2.0']
     casefile_id: Annotated[str, Field(pattern='^case_[a-z0-9][a-z0-9_]{0,55}$')]
     title: Annotated[str, Field(min_length=1)]
     status: Status_1
@@ -1069,7 +1240,7 @@ class Schema_2(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    schema_version: Literal['1.0']
+    schema_version: Literal['2.0']
     patch_id: Annotated[str, Field(pattern='^patch_[a-z0-9][a-z0-9_]{0,54}$')]
     base_version_id: Annotated[
         str, Field(pattern='^(?:draft|snapshot|cv)_[a-z0-9][a-z0-9_]{0,54}$')
@@ -1113,7 +1284,7 @@ class Schema_3(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
-    schema_version: Literal['1.0']
+    schema_version: Literal['2.0']
     issue_id: Annotated[str, Field(pattern='^issue_[a-z0-9][a-z0-9_]{0,54}$')]
     rule_id: Annotated[
         str, Field(pattern='^CF-S[012]-[A-Z0-9]+(?:-[A-Z0-9]+)*-[0-9]{3}$')

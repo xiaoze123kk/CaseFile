@@ -1,0 +1,1 @@
+Generated from current v2 contracts/schemas by scripts/generate-contracts.ps1; do not edit by hand. The adjacent v1 mirror is retained for historical reads.

@@ -21,6 +21,12 @@ from pydantic import BaseModel, create_model
 
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
+from casefile.agent_runtime.brief_to_draft_v10.workflow import run_v10_generation
+from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
+from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generation
+from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
+from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
+from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -55,6 +61,7 @@ from casefile.agent_runtime.models import (
     ToolMetrics,
 )
 from casefile.agent_runtime.prompt import (
+    COMPONENT_GENERATION_PROMPT_VERSIONS,
     anchor_extract_input,
     brief_intake_questions_input,
     brief_intake_synthesize_input,
@@ -526,11 +533,11 @@ class FakeProvider:
         return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
-        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
             async def call_component(
                 _instructions: str,
-                _input_text: str,
+                input_text: str,
                 output_type: type[BaseModel],
                 stage: str,
                 component_id: str,
@@ -548,11 +555,26 @@ class FakeProvider:
                         "prompt_sha256": sha256(_instructions.encode("utf-8")).hexdigest(),
                     },
                 )
-                output = _fake_v8_output(output_type)
-                if output_type.__name__ == "ResolutionGovernanceIRV1":
-                    output["resolution_specs"][0]["conclusion_mode"] = request.brief[
-                        "conclusion_mode"
-                    ]
+                if output_type.__name__ == "MatrixEvaluationOutputV1":
+                    output = _fake_matrix_evaluation_output(json.loads(input_text))
+                else:
+                    output = _fake_v8_output(output_type)
+                    if request.prompt_version in {
+                        "brief-to-draft-v10",
+                        "brief-to-draft-v11",
+                        "brief-to-draft-v12",
+                        "brief-to-draft-v13",
+                        "brief-to-draft-v14",
+                        "brief-to-draft-v15",
+                    }:
+                        _add_fake_v10_matrix_plan(output_type, output)
+                    if output_type.__name__ in {
+                        "ResolutionGovernanceIRV1",
+                        "ResolutionGovernanceIRV2",
+                    }:
+                        output["resolution_specs"][0]["conclusion_mode"] = request.brief[
+                            "conclusion_mode"
+                        ]
                 usage = _zero_usage()
                 request.emit(
                     "agent.model_call.completed",
@@ -572,7 +594,19 @@ class FakeProvider:
                 return output, usage
 
             runner = (
-                run_v9_generation
+                run_v15_generation
+                if request.prompt_version == "brief-to-draft-v15"
+                else run_v14_generation
+                if request.prompt_version == "brief-to-draft-v14"
+                else run_v13_generation
+                if request.prompt_version == "brief-to-draft-v13"
+                else run_v12_generation
+                if request.prompt_version == "brief-to-draft-v12"
+                else run_v11_generation
+                if request.prompt_version == "brief-to-draft-v11"
+                else run_v10_generation
+                if request.prompt_version == "brief-to-draft-v10"
+                else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
                 else run_v8_generation
             )
@@ -619,7 +653,7 @@ class FakeProvider:
         }
         strategy_title = strategy_titles.get(candidate_strategy)
         candidate: dict[str, Any] = {
-            "schema_version": "1.0",
+            "schema_version": request.schema_version,
             "casefile_id": request.casefile_id,
             "title": (
                 request.brief["creative_intent"]
@@ -895,7 +929,7 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
             async def call_component(
                 instructions: str,
@@ -925,7 +959,19 @@ class OpenAIAgentsProvider:
                 )
 
             runner = (
-                run_v9_generation
+                run_v15_generation
+                if request.prompt_version == "brief-to-draft-v15"
+                else run_v14_generation
+                if request.prompt_version == "brief-to-draft-v14"
+                else run_v13_generation
+                if request.prompt_version == "brief-to-draft-v13"
+                else run_v12_generation
+                if request.prompt_version == "brief-to-draft-v12"
+                else run_v11_generation
+                if request.prompt_version == "brief-to-draft-v11"
+                else run_v10_generation
+                if request.prompt_version == "brief-to-draft-v10"
+                else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
                 else run_v8_generation
             )
@@ -1182,7 +1228,7 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
-        if request.prompt_version in {"brief-to-draft-v8", "brief-to-draft-v9"}:
+        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
             async def call_component(
                 instructions: str,
@@ -1208,7 +1254,19 @@ class DeepSeekAgentsProvider:
                 )
 
             runner = (
-                run_v9_generation
+                run_v15_generation
+                if request.prompt_version == "brief-to-draft-v15"
+                else run_v14_generation
+                if request.prompt_version == "brief-to-draft-v14"
+                else run_v13_generation
+                if request.prompt_version == "brief-to-draft-v13"
+                else run_v12_generation
+                if request.prompt_version == "brief-to-draft-v12"
+                else run_v11_generation
+                if request.prompt_version == "brief-to-draft-v11"
+                else run_v10_generation
+                if request.prompt_version == "brief-to-draft-v10"
+                else run_v9_generation
                 if request.prompt_version == "brief-to-draft-v9"
                 else run_v8_generation
             )
@@ -1312,9 +1370,7 @@ async def _run_auxiliary_agent(
     deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
-        "native_json_schema"
-        if structured_output
-        else deepseek_output_protocol or "strict_tool"
+        "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
     )
     usage_records: list[dict[str, Any]] = []
     repaired = False
@@ -1382,6 +1438,7 @@ async def _run_auxiliary_agent(
         try:
             discarded_paths: list[str] = []
             normalized_ref_paths: list[str] = []
+            normalized_time_paths: list[str] = []
             if protocol == "strict_tool":
                 if not request.api_key:
                     raise ProviderProtocolError("DeepSeek API key is required")
@@ -1401,6 +1458,7 @@ async def _run_auxiliary_agent(
                     discarded_paths=discarded_paths,
                     planned_object_types=planned_object_types,
                     normalized_ref_paths=normalized_ref_paths,
+                    normalized_time_paths=normalized_time_paths,
                 )
             else:
                 resolved_instructions = instructions
@@ -1446,6 +1504,7 @@ async def _run_auxiliary_agent(
                         discarded_paths=discarded_paths,
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
+                        normalized_time_paths=normalized_time_paths,
                     )
             if discarded_paths:
                 request.emit(
@@ -1460,6 +1519,15 @@ async def _run_auxiliary_agent(
                     {
                         "paths": normalized_ref_paths,
                         "field_count": len(normalized_ref_paths),
+                    },
+                )
+            if normalized_time_paths:
+                request.emit(
+                    "validation.wall_clock_times_normalized",
+                    stage,
+                    {
+                        "paths": normalized_time_paths,
+                        "field_count": len(normalized_time_paths),
                     },
                 )
             usage = _merge_structured_usage(usage_records)
@@ -1655,12 +1723,12 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             "information_units": [node("record", "关键记录", ["discovery", "claim"])],
             "claims": [node("claim", "记录可信", ["record"])],
             "hypotheses": [node("hypothesis", "记录解释", ["resolution", "claim"])],
-            "reasoning_paths": [node("path", "验证路径", ["record", "claim"])],
+            "reasoning_paths": [node("path", "验证路径", ["record", "claim", "hypothesis"])],
             "constraints": [node("constraint", "作者边界", ["resolution"])],
             "structure_locks": [node("lock", "事件标题锁", ["discovery"])],
         }
-    if output_type.__name__ == "StoryWorldIRV1":
-        return {
+    if output_type.__name__ in {"StoryWorldIRV1", "StoryWorldIRV2", "StoryWorldIRV3"}:
+        output: dict[str, Any] = {
             "entities": [
                 {
                     "local_key": "author",
@@ -1695,11 +1763,6 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                     **common,
                     "title": "发现关键记录",
                     "truth_status": "canon_true",
-                    "time": {
-                        "start": "2026-08-08T08:00:00Z",
-                        "end": None,
-                        "precision": "minute",
-                    },
                     "participant_keys": ["author"],
                     "location_key": "archive",
                     "cause_keys": [],
@@ -1708,8 +1771,40 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 }
             ],
         }
-    if output_type.__name__ == "EvidenceLogicIRV1":
+        if output_type.__name__ == "StoryWorldIRV3":
+            output["schema_id"] = "story-world-ir-v3"
+        elif output_type.__name__ == "StoryWorldIRV2":
+            output["schema_id"] = "story-world-ir-v2"
+        if output_type.__name__ == "StoryWorldIRV2":
+            output["events"][0]["time"] = {
+                "kind": "exact",
+                "value": "2026-08-08T08:00",
+                "precision": "minute",
+            }
+        elif output_type.__name__ == "StoryWorldIRV1":
+            output["events"][0]["time"] = {
+                "start": "2026-08-08T08:00:00Z",
+                "end": None,
+                "precision": "minute",
+            }
+        return output
+    if output_type.__name__ == "TemporalPlanV1":
         return {
+            "assignments": [
+                {
+                    "event_key": "discovery",
+                    "time": {
+                        "kind": "exact",
+                        "value": "2026-08-08T08:00",
+                        "precision": "minute",
+                    },
+                    "basis": "design_anchor",
+                    "basis_refs": [],
+                }
+            ]
+        }
+    if output_type.__name__ in {"EvidenceLogicIRV1", "EvidenceLogicIRV2"}:
+        output = {
             "information_units": [
                 {
                     "local_key": "record",
@@ -1778,8 +1873,89 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
                 }
             ],
         }
-    if output_type.__name__ == "ResolutionGovernanceIRV1":
-        return {
+        if output_type.__name__ == "EvidenceLogicIRV2":
+            output["schema_id"] = "evidence-logic-ir-v2"
+            output["hypotheses"] = [
+                {
+                    "local_key": "hypothesis",
+                    **common,
+                    "title": "记录解释",
+                    "proposition": "记录内容对应真实发生的事件。",
+                    "target_resolution_key": "resolution",
+                    "required_claim_keys": ["claim"],
+                    "falsifier_keys": [],
+                    "competing_hypothesis_keys": ["alternative_hypothesis"],
+                    "evidence_assessments": [
+                        {
+                            "information_key": "record",
+                            "effect": "supports",
+                            "strength": "strong",
+                            "rationale": "关键记录与已知发现时间一致。",
+                        }
+                    ],
+                    "status": "supported",
+                    "score": 0.9,
+                },
+                {
+                    "local_key": "alternative_hypothesis",
+                    **common,
+                    "title": "记录误导",
+                    "proposition": "记录内容经过事后篡改，不能直接说明事件真实经过。",
+                    "target_resolution_key": "resolution",
+                    "required_claim_keys": ["claim"],
+                    "falsifier_keys": [],
+                    "competing_hypothesis_keys": ["hypothesis"],
+                    "evidence_assessments": [
+                        {
+                            "information_key": "record",
+                            "effect": "contradicts",
+                            "strength": "moderate",
+                            "rationale": "记录来源尚未独立验证，存在篡改可能。",
+                        }
+                    ],
+                    "status": "undetermined",
+                    "score": 0.4,
+                },
+            ]
+            output["reasoning_paths"] = [
+                {
+                    "local_key": "path",
+                    **common,
+                    "title": "记录支持路径",
+                    "path_type": "proof",
+                    "target_key": "hypothesis",
+                    "steps": [
+                        {
+                            "step_key": "verify_record",
+                            "input_keys": ["record"],
+                            "operation": "infer",
+                            "output_key": "claim",
+                        }
+                    ],
+                    "required_for_resolution": True,
+                    "alternative_path_keys": ["alternative_path"],
+                },
+                {
+                    "local_key": "alternative_path",
+                    **common,
+                    "title": "记录冲突路径",
+                    "path_type": "proof",
+                    "target_key": "alternative_hypothesis",
+                    "steps": [
+                        {
+                            "step_key": "challenge_record",
+                            "input_keys": ["record"],
+                            "operation": "compare",
+                            "output_key": "claim",
+                        }
+                    ],
+                    "required_for_resolution": True,
+                    "alternative_path_keys": ["path"],
+                },
+            ]
+        return output
+    if output_type.__name__ in {"ResolutionGovernanceIRV1", "ResolutionGovernanceIRV2"}:
+        output = {
             "resolution_specs": [
                 {
                     "local_key": "resolution",
@@ -1819,7 +1995,73 @@ def _fake_v8_output(output_type: type[BaseModel]) -> dict[str, Any]:
             ],
             "content_notices": [],
         }
+        if output_type.__name__ == "ResolutionGovernanceIRV2":
+            output["resolution_specs"][0]["conclusion"] = {
+                "outcome": "answer",
+                "summary": "关键记录可信，可以作为当前核心问题的答案。",
+                "values": [],
+                "selected_hypothesis_keys": ["hypothesis"],
+                "supporting_reasoning_path_keys": ["path"],
+                "rationale": "记录内容与支持性信息一致，竞争解释仍缺少直接依据。",
+                "unresolved_gaps": [],
+            }
+            output["schema_id"] = "resolution-governance-ir-v2"
+        return output
     raise ProviderProtocolError(f"Fake v8 component is unsupported: {output_type.__name__}")
+
+
+def _fake_matrix_evaluation_output(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return one deterministic fake judgment per requested matrix cell."""
+
+    effects = ("supports", "contradicts", "neutral")
+    raw_cells = payload.get("cells")
+    cells = raw_cells if isinstance(raw_cells, list) else []
+    return {
+        "assessments": [
+            {
+                "hypothesis_key": cell["hypothesis_key"],
+                "information_key": cell["information_key"],
+                "effect": effects[index % 3],
+                "strength": "moderate",
+                "rationale": (
+                    f"信息 {cell['information_key']} 与假设 {cell['hypothesis_key']} "
+                    "命题的一致性支持当前判定。"
+                ),
+            }
+            for index, cell in enumerate(cells)
+            if isinstance(cell, dict)
+            and isinstance(cell.get("hypothesis_key"), str)
+            and isinstance(cell.get("information_key"), str)
+        ]
+    }
+
+
+def _add_fake_v10_matrix_plan(output_type: type[BaseModel], output: dict[str, Any]) -> None:
+    """Keep the FakeProvider plan aligned with v10's two explicit competitors."""
+
+    if output_type.__name__ != "CaseBlueprintV1":
+        return
+    output["hypotheses"].append(
+        {
+            "local_key": "alternative_hypothesis",
+            "title": "记录误导",
+            "purpose": "与记录解释竞争的可检验替代假设。",
+            "dependency_keys": ["resolution", "claim"],
+        }
+    )
+    if output["reasoning_paths"]:
+        output["reasoning_paths"][0]["target_key"] = "hypothesis"
+        output["reasoning_paths"][0]["required_information_keys"] = ["record"]
+    output["reasoning_paths"].append(
+        {
+            "local_key": "alternative_path",
+            "title": "记录冲突路径",
+            "purpose": "验证记录是否可能被事后篡改。",
+            "dependency_keys": ["record", "claim", "alternative_hypothesis"],
+            "target_key": "alternative_hypothesis",
+            "required_information_keys": ["record"],
+        }
+    )
 
 
 async def _run_partitioned_generation(
@@ -1839,7 +2081,7 @@ async def _run_partitioned_generation(
         else str(request.candidate_strategy)
     )
     frozen_context = {
-        "schema_version": "1.0",
+        "schema_version": request.schema_version,
         "casefile_id": request.casefile_id,
         "brief_ref": {"brief_id": request.brief_id, "version": request.brief_version},
         "version": {
@@ -2161,7 +2403,7 @@ def _assemble_partitioned_candidate(
     partitions: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     candidate: dict[str, Any] = {
-        "schema_version": "1.0",
+        "schema_version": request.schema_version,
         "casefile_id": request.casefile_id,
         "title": title,
         "status": "draft",

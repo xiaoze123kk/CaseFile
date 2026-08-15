@@ -9,8 +9,10 @@ import {
 } from "./analyst-fixture";
 import { WorkbenchIcon } from "./workbench-icon";
 import styles from "./workbench-object-directory.module.css";
+import { objectSubtypeLabel } from "./workbench-presenters";
 
 export const productionObjectKinds = [
+  "resolution_spec",
   "entity",
   "information",
   "event",
@@ -22,42 +24,8 @@ export type DirectoryObjectKind = (typeof productionObjectKinds)[number];
 
 export const fixtureObjectKinds = productionObjectKinds;
 
-const subtypeLabels: Record<string, string> = {
-  accepted: "已采纳",
-  active: "核对中",
-  approximate: "约略时间",
-  canon_true: "既定事实",
-  dialogue: "对话",
-  disputed: "有争议",
-  document: "文档",
-  eliminated: "已排除",
-  environment: "环境信息",
-  evidence: "证据",
-  faction: "阵营",
-  false_belief: "错误认知",
-  feedback: "反馈",
-  information: "信息",
-  minute: "分钟",
-  object: "物件",
-  observation: "观察",
-  organization: "组织",
-  other: "其他",
-  person: "人物",
-  rejected: "已拒绝",
-  reported: "转述事实",
-  rule: "规则",
-  rule_actor: "规则角色",
-  schematic: "示意坐标",
-  supported: "已支持",
-  system: "系统",
-  system_log: "系统日志",
-  topology: "拓扑位置",
-  undetermined: "待判定",
-  unknown: "未知",
-  wgs84: "地理坐标",
-};
-
 const subtypeOrder: Record<DirectoryObjectKind, string[]> = {
+  resolution_spec: ["confirmed", "proposed", "missing"],
   entity: ["person", "organization", "object", "system", "faction", "rule_actor", "other"],
   information: ["evidence", "observation", "dialogue", "document", "system_log", "rule", "environment", "feedback", "other"],
   event: ["canon_true", "reported", "disputed", "false_belief", "unknown"],
@@ -75,17 +43,13 @@ function objectSubtype(object: CaseObject) {
   return object.subtype ?? object.code.split("·")[0]?.trim() ?? "other";
 }
 
-function subtypeLabel(subtype: string) {
-  return subtypeLabels[subtype] ?? subtype.replaceAll("_", " ");
-}
-
 function normalizeQuery(value: string) {
   return value.trim().toLocaleLowerCase("zh-CN");
 }
 
 function matchesQuery(object: CaseObject, query: string) {
   if (!query) return true;
-  return `${object.label} ${object.id} ${object.code} ${object.meta} ${objectSubtype(object)} ${subtypeLabel(objectSubtype(object))}`
+  return `${object.label} ${object.id} ${object.code} ${object.meta} ${objectSubtype(object)} ${objectSubtypeLabel(objectSubtype(object))}`
     .toLocaleLowerCase("zh-CN")
     .includes(query);
 }
@@ -200,7 +164,7 @@ export function WorkbenchObjectDirectory({
           <span>对象目录</span>
           <small>
             {filtered ? `${queryMatches.length} / ` : ""}
-            {objects.length} OBJECTS
+            {objects.length} 个对象
           </small>
         </div>
         <button
@@ -255,7 +219,7 @@ export function WorkbenchObjectDirectory({
           >
             <div className={styles.subtypeHeading}>
               <span>{objectKindLabels[kindFilter]} / 子类型</span>
-              <small>{subtypeOptions.length} TYPES</small>
+              <small>{subtypeOptions.length} 种类型</small>
             </div>
             <div className={styles.subtypeOptions}>
               <button
@@ -268,13 +232,13 @@ export function WorkbenchObjectDirectory({
               </button>
               {subtypeOptions.map((subtype) => (
                 <button
-                  aria-label={`${subtypeLabel(subtype)}，${subtypeCounts[subtype] ?? 0} 个匹配`}
+                  aria-label={`${objectSubtypeLabel(subtype)}，${subtypeCounts[subtype] ?? 0} 个匹配`}
                   aria-pressed={subtypeFilter === subtype}
                   key={subtype}
                   onClick={() => onSubtypeFilterChange(subtype)}
                   type="button"
                 >
-                  {subtypeLabel(subtype)} <b>{subtypeCounts[subtype] ?? 0}</b>
+                  {objectSubtypeLabel(subtype)} <b>{subtypeCounts[subtype] ?? 0}</b>
                 </button>
               ))}
             </div>
@@ -304,7 +268,7 @@ export function WorkbenchObjectDirectory({
               <span className={styles.objectCopy}>
                 <strong>{object.label}</strong>
                 <small>
-                  <span>{subtypeLabel(objectSubtype(object))}</span>
+                  <span>{objectSubtypeLabel(objectSubtype(object))}</span>
                   <code>{object.id}</code>
                 </small>
               </span>

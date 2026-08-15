@@ -84,29 +84,29 @@ def validators(
     checker = FormatChecker()
     return {
         "casefile": Draft202012Validator(
-            schemas["https://casefile.local/schemas/v1/casefile/casefile.schema.json"],
+            schemas["https://casefile.local/schemas/v2/casefile/casefile.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
         "brief": Draft202012Validator(
-            schemas["https://casefile.local/schemas/v1/brief/brief.schema.json"],
+            schemas["https://casefile.local/schemas/v2/brief/brief.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
         "validation_issue": Draft202012Validator(
-            schemas["https://casefile.local/schemas/v1/validation/validation-issue.schema.json"],
+            schemas["https://casefile.local/schemas/v2/validation/validation-issue.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
         "patch_candidate": Draft202012Validator(
-            schemas["https://casefile.local/schemas/v1/casefile/patch-candidate.schema.json"],
+            schemas["https://casefile.local/schemas/v2/casefile/patch-candidate.schema.json"],
             registry=registry,
             format_checker=checker,
         ),
         "task": Draft202012Validator(
             {
                 "$ref": (
-                    "https://casefile.local/schemas/v1/task/task.schema.json"
+                    "https://casefile.local/schemas/v2/task/task.schema.json"
                     "#/$defs/TaskRun"
                 )
             },

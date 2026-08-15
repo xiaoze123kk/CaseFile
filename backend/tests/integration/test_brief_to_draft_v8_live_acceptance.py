@@ -22,11 +22,23 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, func, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, sessionmaker
-
+from casefile.agent_runtime.brief_to_draft_v8.ir import EvidenceLogicIRV2
+from casefile.agent_runtime.brief_to_draft_v8.workflow import (
+    _evidence_assessment_issues,
+    _hypotheses_by_resolution,
+    _normalize_competing_hypothesis_closure,
+    _used_information_by_hypothesis,
+)
+from casefile.agent_runtime.brief_to_draft_v15.contracts import MatrixEvaluationOutputV1
+from casefile.agent_runtime.brief_to_draft_v15.matrix import (
+    derive_matrix_cells,
+    matrix_evaluation_issues,
+)
+from casefile.agent_runtime.prompt_repository import (
+    PromptRepositoryError,
+    load_prompt,
+    prompt_version_for_task,
+)
 from casefile.api.app import create_app
 from casefile.contracts import validate_casefile
 from casefile.data_postgres.models import (
@@ -39,6 +51,11 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = [
     pytest.mark.postgres,
@@ -66,6 +83,121 @@ _STRUCTURAL_FAILURE_LAYERS = {
     "description_gate",
     "frozen_context",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class AcceptanceScenario:
+    scenario_id: str
+    source_text: str
+    creative_intent: str
+    reasoning_proposition: str
+    author_answer: str
+    boundary_text: str
+
+
+_LEGACY_SCENARIO = AcceptanceScenario(
+    scenario_id="legacy_runtime",
+    source_text="一艘渡轮每晚都会返回同一座码头，航海记录在事故前被人修改。",
+    creative_intent="围绕午夜回航建立可验证的目标无关推理卷宗。",
+    reasoning_proposition="是谁修改了航海记录，回航保护机制为何触发？",
+    author_answer="大副修改了记录，欠压保护触发了回航。",
+    boundary_text="必须保持唯一因果答案。",
+)
+_V11_SCENARIOS = (
+    AcceptanceScenario(
+        scenario_id="time_exact_range",
+        source_text=(
+            "调查在2026-08-08T20:00准时开始；监控中断发生在"
+            "2026-08-08T20:15至2026-08-08T20:25之间。"
+        ),
+        creative_intent="保留精确到分钟的开始时间和同精度时间区间。",
+        reasoning_proposition="谁在监控中断区间进入了档案室？",
+        author_answer="管理员在该区间进入档案室并取走记录。",
+        boundary_text="时间不得添加时区，也不得把区间压缩为单点。",
+    ),
+    AcceptanceScenario(
+        scenario_id="time_uncertain_relative",
+        source_text=(
+            "警报大约在2026-08-08T21时响起；停电发生在警报之后约10分钟；"
+            "备用门何时开启完全未知。"
+        ),
+        creative_intent="同时保留 approximate、relative 和 unknown 三类时间确定性。",
+        reasoning_proposition="停电是否利用警报后的窗口触发？",
+        author_answer="停电在警报后十分钟触发，备用门时间仍未知。",
+        boundary_text="未知时间不得伪造日期；相对时间必须锚定警报事件。",
+    ),
+    AcceptanceScenario(
+        scenario_id="spatial_scene_topology",
+        source_text=(
+            "控制室位于档案室北侧，两室相邻，步行约3分钟；"
+            "控制室在场景示意图左上，档案室在右下。事件发生在档案室。"
+        ),
+        creative_intent="用示意坐标表达场景布局，并保留邻接和通行关系供拓扑视图使用。",
+        reasoning_proposition="嫌疑人如何从控制室抵达档案室？",
+        author_answer="嫌疑人沿相邻通道步行三分钟抵达档案室。",
+        boundary_text="不得添加真实地理坐标。",
+    ),
+    AcceptanceScenario(
+        scenario_id="spatial_wgs84",
+        source_text=(
+            "外部信标的显式坐标为 坐标：31.2304, 121.4737；"
+            "内部仓库没有可靠坐标。"
+        ),
+        creative_intent="仅把外部信标结构化为明确给出的 WGS84 坐标。",
+        reasoning_proposition="信标记录是否能证明人员到达外部位置？",
+        author_answer="信标记录证明人员到达外部位置。",
+        boundary_text="只能使用31.2304,121.4737；仓库必须保持未定位或纯拓扑。",
+    ),
+    AcceptanceScenario(
+        scenario_id="competition_matrix",
+        source_text=(
+            "门禁记录可能是真实刷卡，也可能是事后伪造。摄像头只拍到门被打开，"
+            "终端日志显示记录写入时间晚于开门时间。"
+        ),
+        creative_intent="建立真实刷卡与事后伪造两个可检验竞争解释。",
+        reasoning_proposition="门禁记录应解释为真实刷卡还是事后伪造？",
+        author_answer="记录由事后伪造，但两个解释都必须接受同一信息矩阵检验。",
+        boundary_text="每个竞争解释必须逐项评价摄像头和终端日志。",
+    ),
+)
+
+# Dense competition tiers for v15: the model must ground a 2×10+ or 3×8+
+# matrix whose scope is derived solely from information_unit path inputs while
+# the source also names claim/event material that must NOT become matrix columns.
+_COMPETITION_MATRIX_DENSE_SCENARIO = AcceptanceScenario(
+    scenario_id="competition_matrix_dense",
+    source_text=(
+        "研发库深夜遭批量下载。现场收集到十二类信息：机房监控截图、门禁刷卡记录、"
+        "终端登录日志、访客登记表、USB 插拔日志、网络流量日志、打印记录、"
+        "机房钥匙借还登记、外包维护工单、离职员工门禁注销记录、防火墙拦截日志、"
+        "次晨保安证词。此外存在两段事件叙述：下载发生在凌晨维护窗口，"
+        "值班工程师声称当晚无人报修。"
+    ),
+    creative_intent="建立内部伪造工卡窃取与外包维护拷贝两个竞争解释，接受同一批多来源信息检验。",
+    reasoning_proposition="研发库批量下载应解释为内部伪造工卡窃取，还是外包维护人员拷贝？",
+    author_answer="内部员工伪造工卡窃取，但两个解释必须接受全部信息的同一矩阵检验。",
+    boundary_text="每个竞争解释必须对路径实际使用的全部信息逐一评价，不得遗漏、重复或评价路径未使用的信息。",
+)
+_COMPETITION_MATRIX_TRIPLE_SCENARIO = AcceptanceScenario(
+    scenario_id="competition_matrix_triple",
+    source_text=(
+        "交易系统周二夜间宕机。调查收集到九类信息：机房电源日志、UPS 状态记录、"
+        "网络交换机日志、入侵检测告警、服务器温度曲线、磁盘 SMART 数据、"
+        "空调运行记录、值班工程师证词、夜间施工工单。事件发生在业务高峰前两小时，"
+        "运维团队声称切换过程未收到任何异常告警。"
+    ),
+    creative_intent="建立供电故障、网络攻击、硬件老化三个竞争解释，检验 peer 闭包与更大矩阵。",
+    reasoning_proposition="交易系统宕机应解释为供电故障、网络攻击还是硬件老化？",
+    author_answer="市电波动引发连锁故障，但三种解释必须接受同一信息矩阵检验。",
+    boundary_text="三个竞争解释必须互相完整引用，并对路径实际使用的全部信息逐一评价。",
+)
+_V15_SCENARIOS = (
+    *_V11_SCENARIOS,
+    _COMPETITION_MATRIX_DENSE_SCENARIO,
+    _COMPETITION_MATRIX_TRIPLE_SCENARIO,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class LiveAcceptanceConfig:
     source_database_url: str
@@ -75,12 +207,300 @@ class LiveAcceptanceConfig:
     prompt_version: str
     repeats: int
     report_path: Path | None
+    scenario_filter: str
+
+
+def _filtered_scenarios(
+    scenarios: tuple[AcceptanceScenario, ...],
+    filter_value: str,
+) -> tuple[AcceptanceScenario, ...]:
+    """Narrow the rotation for fast iterations of one or more scenarios."""
+
+    if not filter_value.strip():
+        return scenarios
+    wanted = {item.strip() for item in filter_value.split(",") if item.strip()}
+    filtered = tuple(item for item in scenarios if item.scenario_id in wanted)
+    if not filtered:
+        raise ValueError(
+            "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER matched no scenario: "
+            f"{sorted(wanted)}"
+        )
+    return filtered
+
+
+def _base_report(*, suite: str, summary: dict[str, dict[str, int]]) -> dict[str, Any]:
+    return {
+        "status": "running",
+        "suite": suite,
+        "runs_attempted": 30,
+        "successful_runs": 30,
+        "failed_runs": [],
+        "invariant_violations": [],
+        "scenario_summary": summary,
+        "scenario_passed_runs": sum(counter["scenario_passed"] for counter in summary.values()),
+        "evidence_quality": {
+            "initial_evidence_semantic_pass_rate": 0.96,
+            "evidence_semantic_pass_rate_after_repairs": 0.99,
+        },
+    }
+
+
+def test_v15_scenario_gate_accepts_uneven_seven_scenario_rotation() -> None:
+    summary = {
+        scenario_id: {"attempted": attempts, "scenario_passed": attempts}
+        for scenario_id, attempts in (
+            ("time_exact_range", 4),
+            ("time_uncertain_relative", 4),
+            ("spatial_scene_topology", 4),
+            ("spatial_wgs84", 4),
+            ("competition_matrix", 4),
+            ("competition_matrix_dense", 5),
+            ("competition_matrix_triple", 5),
+        )
+    }
+    report = _base_report(suite="brief_to_draft_v15", summary=summary)
+
+    assert _report_status(report, expected_runs=30) == "passed"
+
+
+def test_v15_scenario_gate_rejects_two_failures_in_one_scenario() -> None:
+    summary = {
+        scenario_id: {"attempted": attempts, "scenario_passed": max(0, attempts - 1)}
+        for scenario_id, attempts in (
+            ("time_exact_range", 4),
+            ("time_uncertain_relative", 4),
+            ("spatial_scene_topology", 4),
+            ("spatial_wgs84", 4),
+            ("competition_matrix", 4),
+            ("competition_matrix_dense", 5),
+            ("competition_matrix_triple", 5),
+        )
+    }
+    summary["competition_matrix_triple"]["scenario_passed"] = 3
+    report = _base_report(suite="brief_to_draft_v15", summary=summary)
+
+    assert _report_status(report, expected_runs=30) == "failed"
+
+
+def test_scenario_filter_narrows_rotation_and_rejects_unknown_ids() -> None:
+    filtered = _filtered_scenarios(
+        _V15_SCENARIOS, " time_uncertain_relative , competition_matrix_dense "
+    )
+    assert tuple(item.scenario_id for item in filtered) == (
+        "time_uncertain_relative",
+        "competition_matrix_dense",
+    )
+    assert _filtered_scenarios(_V15_SCENARIOS, "  ") == _V15_SCENARIOS
+    with pytest.raises(ValueError, match="matched no scenario"):
+        _filtered_scenarios(_V15_SCENARIOS, "not_a_scenario")
+
+
+def test_evidence_competition_observed_reads_persisted_evidence_steps() -> None:
+    def step(component_id: str, hypotheses: object) -> Any:
+        class FakeStep:
+            def __init__(self) -> None:
+                self.component_id = component_id
+                self.output_jsonb = (
+                    {"hypotheses": hypotheses} if not isinstance(hypotheses, str) else hypotheses
+                )
+
+        return FakeStep()
+
+    assert not _evidence_competition_observed(
+        [step("evidence_logic", [{"target_resolution_key": "resolution"}])]
+    )
+    assert _evidence_competition_observed(
+        [
+            step(
+                "evidence_logic",
+                [
+                    {"target_resolution_key": "resolution"},
+                    {"target_resolution_key": "resolution"},
+                ],
+            )
+        ]
+    )
+    assert not _evidence_competition_observed(
+        [
+            step(
+                "story_world",
+                [
+                    {"target_resolution_key": "resolution"},
+                    {"target_resolution_key": "resolution"},
+                ],
+            )
+        ]
+    )
+    assert not _evidence_competition_observed([step("evidence_logic", [])])
+    assert not _evidence_competition_observed([step("evidence_logic", "not-a-dict")])
+
+
+def test_v11_scenario_gate_keeps_six_attempts_per_scenario() -> None:
+    scenario_ids = (
+        "time_exact_range",
+        "time_uncertain_relative",
+        "spatial_scene_topology",
+        "spatial_wgs84",
+        "competition_matrix",
+    )
+    summary = {
+        scenario_id: {"attempted": 6, "scenario_passed": 6 if index < 2 else 5}
+        for index, scenario_id in enumerate(scenario_ids)
+    }
+    report = _base_report(suite="brief_to_draft_v11", summary=summary)
+
+    assert _report_status(report, expected_runs=30) == "passed"
+
+    summary["competition_matrix"]["scenario_passed"] = 4
+    assert _report_status(report, expected_runs=30) == "failed"
+
+
+def test_v15_release_gate_enforces_evidence_semantic_slo() -> None:
+    summary = {
+        scenario_id: {"attempted": attempts, "scenario_passed": attempts}
+        for scenario_id, attempts in (
+            ("time_exact_range", 4),
+            ("time_uncertain_relative", 4),
+            ("spatial_scene_topology", 4),
+            ("spatial_wgs84", 4),
+            ("competition_matrix", 4),
+            ("competition_matrix_dense", 5),
+            ("competition_matrix_triple", 5),
+        )
+    }
+    passing = _base_report(suite="brief_to_draft_v15", summary=summary)
+
+    assert _report_status(passing, expected_runs=30) == "passed"
+
+    below_initial = _base_report(suite="brief_to_draft_v15", summary=summary)
+    below_initial["evidence_quality"]["initial_evidence_semantic_pass_rate"] = 0.86
+    assert _report_status(below_initial, expected_runs=30) == "failed"
+
+    below_repair = _base_report(suite="brief_to_draft_v15", summary=summary)
+    below_repair["evidence_quality"]["evidence_semantic_pass_rate_after_repairs"] = 0.97
+    assert _report_status(below_repair, expected_runs=30) == "failed"
+
+
+def _dense_candidate(
+    *,
+    hypotheses: int,
+    columns: int,
+) -> dict[str, Any]:
+    information_ids = [f"info_{index:02d}" for index in range(columns)]
+    hypothesis_ids = [f"hyp_{index}" for index in range(hypotheses)]
+    return {
+        "hypotheses": [
+            {
+                "id": hypothesis_id,
+                "target_resolution_ref": {"object_id": "res_01"},
+                "competing_hypothesis_refs": [
+                    {"object_id": peer_id}
+                    for peer_id in hypothesis_ids
+                    if peer_id != hypothesis_id
+                ],
+                "evidence_assessments": [
+                    {"information_ref": {"object_id": information_id}}
+                    for information_id in information_ids
+                ],
+            }
+            for hypothesis_id in hypothesis_ids
+        ]
+    }
+
+
+def test_dense_matrix_scenario_candidate_checks() -> None:
+    dense = _COMPETITION_MATRIX_DENSE_SCENARIO
+    triple = _COMPETITION_MATRIX_TRIPLE_SCENARIO
+
+    assert _scenario_candidate_violations(
+        _dense_candidate(hypotheses=2, columns=8), dense
+    ) == []
+    assert _scenario_candidate_violations(
+        _dense_candidate(hypotheses=2, columns=7), dense
+    ) == ["scenario_competition_matrix_incomplete"]
+    assert _scenario_candidate_violations(
+        _dense_candidate(hypotheses=2, columns=8), triple
+    ) == ["scenario_competing_hypotheses_missing"]
+    assert _scenario_candidate_violations(
+        _dense_candidate(hypotheses=3, columns=8), triple
+    ) == []
+
+
+def test_evidence_quality_summary_rates() -> None:
+    entries: list[tuple[dict[str, Any], bool]] = [
+        (
+            {
+                "evidence_repairs": 0,
+                "matrix_repairs": 0,
+                "initial_semantic_pass": True,
+                "final_semantic_pass": True,
+                "issue_counts": {},
+                "hypothesis_count": 2,
+                "matrix_information_count": 8,
+                "matrix_cell_count": 16,
+            },
+            True,
+        ),
+        (
+            {
+                "evidence_repairs": 1,
+                "matrix_repairs": 0,
+                "initial_semantic_pass": False,
+                "final_semantic_pass": True,
+                "issue_counts": {"competing_hypothesis_path_missing": 1},
+                "hypothesis_count": 2,
+                "matrix_information_count": 10,
+                "matrix_cell_count": 20,
+            },
+            True,
+        ),
+        (
+            {
+                "evidence_repairs": 2,
+                "matrix_repairs": 2,
+                "initial_semantic_pass": False,
+                "final_semantic_pass": False,
+                "issue_counts": {"competing_hypothesis_path_missing": 2},
+                "hypothesis_count": 3,
+                "matrix_information_count": 12,
+                "matrix_cell_count": 36,
+            },
+            False,
+        ),
+        (
+            {
+                "evidence_repairs": None,
+                "matrix_repairs": None,
+                "initial_semantic_pass": None,
+                "final_semantic_pass": None,
+                "issue_counts": {},
+                "hypothesis_count": None,
+                "matrix_information_count": None,
+                "matrix_cell_count": None,
+            },
+            False,
+        ),
+    ]
+
+    summary = _evidence_quality_summary(entries)
+
+    assert summary["runs"] == 4
+    assert summary["runs_with_evidence"] == 3
+    assert summary["initial_evidence_semantic_pass_rate"] == round(1 / 3, 4)
+    assert summary["evidence_semantic_pass_rate_after_repairs"] == round(2 / 3, 4)
+    assert summary["evidence_repair_recovery_rate"] == 0.5
+    assert summary["final_generation_success_rate"] == 0.5
+    assert summary["issue_counts"] == {"competing_hypothesis_path_missing": 3}
+    assert summary["hypothesis_count"] == {"min": 2, "max": 3}
+    assert summary["matrix_information_count"] == {"min": 8, "max": 12}
+    assert summary["matrix_cell_count"] == {"min": 16, "max": 36}
 
 
 def test_live_brief_to_draft_runtime_acceptance() -> None:
     config = _live_config()
     report: dict[str, Any] = {
         "suite": config.prompt_version.replace("-", "_"),
+        "prompt_version": config.prompt_version,
         "evaluation_scope": "api_worker_postgres",
         "release_gate_eligible": config.repeats == 30,
         "provider": config.provider,
@@ -132,6 +552,8 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
                     provider=config.provider,
                     model_id=model_id,
                     repeats=config.repeats,
+                    prompt_version=config.prompt_version,
+                    scenario_filter=config.scenario_filter,
                     report=report,
                 )
         _summarize_execution_metrics(report)
@@ -172,10 +594,16 @@ def _live_config() -> LiveAcceptanceConfig:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPEATS must be between 1 and 100.")
     report_value = os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH", "").strip()
     prompt_version = os.getenv(
-        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION", "brief-to-draft-v9"
+        "CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION",
+        prompt_version_for_task("brief_to_draft"),
     ).strip()
-    if prompt_version not in {"brief-to-draft-v8", "brief-to-draft-v9"}:
-        pytest.fail("Live acceptance prompt version must be brief-to-draft-v8 or v9.")
+    try:
+        load_prompt("brief_to_draft", prompt_version)
+    except PromptRepositoryError:
+        pytest.fail(
+            f"Live acceptance prompt version {prompt_version!r} is not a packaged "
+            "brief_to_draft version."
+        )
     return LiveAcceptanceConfig(
         source_database_url=source_database_url,
         test_database_url=test_database_url,
@@ -184,6 +612,9 @@ def _live_config() -> LiveAcceptanceConfig:
         prompt_version=prompt_version,
         repeats=repeats,
         report_path=Path(report_value) if report_value else None,
+        scenario_filter=os.getenv(
+            "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER", ""
+        ).strip(),
     )
 
 
@@ -288,17 +719,34 @@ def _run_acceptance_suite(
     provider: str,
     model_id: str,
     repeats: int,
+    prompt_version: str,
+    scenario_filter: str,
     report: dict[str, Any],
 ) -> None:
     headers = {"X-CaseFile-User-Id": str(actor_user_id)}
+    scenarios: tuple[AcceptanceScenario, ...]
+    if prompt_version == "brief-to-draft-v15":
+        scenarios = _V15_SCENARIOS
+    elif prompt_version in {
+        "brief-to-draft-v11",
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+    }:
+        scenarios = _V11_SCENARIOS
+    else:
+        scenarios = (_LEGACY_SCENARIO,)
+    scenarios = _filtered_scenarios(scenarios, scenario_filter)
     for run_index in range(repeats):
         strategy = _STRATEGIES[run_index % len(_STRATEGIES)]
+        scenario = scenarios[run_index % len(scenarios)]
         task_id, project_id = _queue_generation_task(
             client,
             headers=headers,
             run_index=run_index,
             strategy=strategy,
             provider=provider,
+            scenario=scenario,
         )
         started = time.perf_counter()
         did_run = worker.run_once()
@@ -309,6 +757,7 @@ def _run_acceptance_suite(
                 {
                     "run": run_index + 1,
                     "strategy": strategy,
+                    "scenario": scenario.scenario_id,
                     "task_run_id": task_id,
                     "failure_class": "worker_no_claim",
                 }
@@ -324,6 +773,7 @@ def _run_acceptance_suite(
                 {
                     "run": run_index + 1,
                     "strategy": strategy,
+                    "scenario": scenario.scenario_id,
                     "task_run_id": task_id,
                     "failure_class": "task_read_failed",
                     "http_status": task_response.status_code,
@@ -335,6 +785,7 @@ def _run_acceptance_suite(
         task_record = {
             "run": run_index + 1,
             "strategy": strategy,
+            "scenario": scenario.scenario_id,
             "task_run_id": task_id,
             "status": task["status"],
             "latency_ms": latency_ms,
@@ -343,17 +794,29 @@ def _run_acceptance_suite(
         }
         if task["status"] == "succeeded":
             report["successful_runs"] = int(report["successful_runs"]) + 1
-            report["successful_run_details"].append(task_record)
             violations = _successful_task_violations(
                 client,
                 factory,
                 headers=headers,
                 project_id=project_id,
                 task=task,
+                scenario=scenario,
             )
-            if violations:
+            scenario_violations = [
+                item for item in violations if item.startswith("scenario_")
+            ]
+            invariant_violations = [
+                item for item in violations if not item.startswith("scenario_")
+            ]
+            task_record["scenario_passed"] = not scenario_violations
+            task_record["scenario_violations"] = scenario_violations
+            task_record["evidence_quality"] = _evidence_quality_for_task(
+                factory, task_id, prompt_version
+            )
+            report["successful_run_details"].append(task_record)
+            if invariant_violations:
                 report["invariant_violations"].extend(
-                    [{**task_record, "violation": item} for item in violations]
+                    [{**task_record, "violation": item} for item in invariant_violations]
                 )
             continue
         failure = {
@@ -362,6 +825,7 @@ def _run_acceptance_suite(
             "failure_details": _failure_details(task, factory),
             "diagnostics_complete": _diagnostics_complete(task),
             "components": _failed_components(task),
+            "evidence_quality": _evidence_quality_for_task(factory, task_id, prompt_version),
         }
         report["failed_runs"].append(failure)
         report["invariant_violations"].extend(
@@ -371,7 +835,6 @@ def _run_acceptance_suite(
         if failure["failure_class"] in {
             "provider_authentication",
             "provider_rate_limited",
-            "provider_unavailable",
         }:
             report["status"] = "blocked"
             break
@@ -384,6 +847,7 @@ def _queue_generation_task(
     run_index: int,
     strategy: str,
     provider: str,
+    scenario: AcceptanceScenario,
 ) -> tuple[int, int]:
     created = client.post(
         "/api/v1/projects",
@@ -401,7 +865,7 @@ def _queue_generation_task(
         headers=headers,
         json={
             "source_kind": "human_original",
-            "content_text": "一艘渡轮每晚都会返回同一座码头，航海记录在事故前被人修改。",
+            "content_text": scenario.source_text,
         },
     )
     assert source.status_code == 201, source.text
@@ -409,7 +873,7 @@ def _queue_generation_task(
     brief = client.put(
         f"/api/v1/projects/{project_id}/brief",
         headers=headers,
-        json={"expected_revision": 1, "content": _brief(source_record_id)},
+        json={"expected_revision": 1, "content": _brief(source_record_id, scenario)},
     )
     assert brief.status_code == 200, brief.text
     confirmed = client.post(
@@ -423,6 +887,7 @@ def _queue_generation_task(
         headers=headers,
         json={
             "brief_version_id": confirmed.json()["brief_version_id"],
+            "expected_draft_id": created.json()["current_draft_id"],
             "expected_draft_revision": 1,
             "provider": provider,
             "candidate_strategy": strategy,
@@ -432,18 +897,23 @@ def _queue_generation_task(
     return int(queued.json()["task_run_id"]), project_id
 
 
-def _brief(source_record_id: int) -> dict[str, object]:
+def _brief(
+    source_record_id: int,
+    scenario: AcceptanceScenario = _LEGACY_SCENARIO,
+) -> dict[str, object]:
     return {
         "source_record_ids": [source_record_id],
-        "creative_intent": "围绕午夜回航建立可验证的目标无关推理卷宗。",
-        "reasoning_proposition": "是谁修改了航海记录，回航保护机制为何触发？",
+        # GenerationRequest freezes the Brief payload, not SourceRecord正文；把本轮
+        # 验收事实同时放进 Brief，确保模型与 WGS84 白名单门禁看到同一冻结输入。
+        "creative_intent": f"{scenario.creative_intent}\n冻结原稿事实：{scenario.source_text}",
+        "reasoning_proposition": scenario.reasoning_proposition,
         "resolution_mode": "author_anchored",
         "conclusion_mode": "unique",
-        "author_answer": "大副修改了记录，欠压保护触发了回航。",
+        "author_answer": scenario.author_answer,
         "author_anchors": [
-            {"anchor_id": "anchor_live_first_officer", "statement": "大副修改了航海记录。"}
+            {"anchor_id": "anchor_live_answer", "statement": scenario.author_answer}
         ],
-        "boundary_text": "必须保持唯一因果答案。",
+        "boundary_text": scenario.boundary_text,
         "creative_constraints": [
             {
                 "constraint_id": "constraint_live_unique",
@@ -454,6 +924,30 @@ def _brief(source_record_id: int) -> dict[str, object]:
     }
 
 
+def _evidence_competition_observed(steps: list[Any]) -> bool:
+    """True when any persisted Evidence step held two or more competing hypotheses."""
+
+    for step in steps:
+        if getattr(step, "component_id", None) != "evidence_logic":
+            continue
+        output = getattr(step, "output_jsonb", None)
+        if not isinstance(output, dict):
+            continue
+        hypotheses = output.get("hypotheses")
+        if not isinstance(hypotheses, list):
+            continue
+        targets: dict[str, int] = {}
+        for hypothesis in hypotheses:
+            if not isinstance(hypothesis, dict):
+                continue
+            target = hypothesis.get("target_resolution_key")
+            if isinstance(target, str):
+                targets[target] = targets.get(target, 0) + 1
+        if any(count >= 2 for count in targets.values()):
+            return True
+    return False
+
+
 def _successful_task_violations(
     client: TestClient,
     factory: sessionmaker[Session],
@@ -461,29 +955,11 @@ def _successful_task_violations(
     headers: dict[str, str],
     project_id: int,
     task: dict[str, Any],
+    scenario: AcceptanceScenario = _LEGACY_SCENARIO,
 ) -> list[str]:
     violations: list[str] = []
     if task.get("result_snapshot_id") is not None:
         violations.append("candidate_was_automatically_adopted")
-    component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
-    if component_ids != _EXPECTED_COMPONENTS:
-        violations.append("component_step_coverage_incomplete")
-    latest_steps = _latest_steps_by_component(task)
-    if any(step.get("status") not in {"succeeded", "reused"} for step in latest_steps.values()):
-        violations.append("successful_task_has_unresolved_component")
-    failed_steps = [
-        step for step in task["component_steps"] if step.get("status") == "failed"
-    ]
-    if failed_steps and not _diagnostics_complete_for_steps(failed_steps):
-        violations.append("successful_task_has_incomplete_repair_diagnostic")
-    draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=headers)
-    if draft.status_code != 200 or draft.json().get("content") is not None:
-        violations.append("generation_mutated_draft_before_adoption")
-    candidates = client.get(f"/api/v1/projects/{project_id}/draft-candidates", headers=headers)
-    if candidates.status_code != 200 or task["task_run_id"] not in {
-        item.get("task_run_id") for item in candidates.json()
-    }:
-        violations.append("successful_candidate_not_queryable")
     with factory() as session:
         attempt = session.scalar(
             select(TaskAttempt).where(
@@ -501,6 +977,37 @@ def _successful_task_violations(
                 select(AgentModelCall).where(AgentModelCall.task_run_id == task["task_run_id"])
             )
         )
+    expected_components = set(_EXPECTED_COMPONENTS)
+    if task.get("prompt_version") in {
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+        "brief-to-draft-v15",
+    }:
+        expected_components.add("temporal_structure_planner")
+    if task.get("prompt_version") == "brief-to-draft-v15" and (
+        _evidence_competition_observed(steps)
+    ):
+        expected_components.add("evidence_matrix")
+    component_ids = {step.get("component_id") for step in task.get("component_steps", [])}
+    if component_ids != expected_components:
+        violations.append("component_step_coverage_incomplete")
+    latest_steps = _latest_steps_by_component(task)
+    if any(step.get("status") not in {"succeeded", "reused"} for step in latest_steps.values()):
+        violations.append("successful_task_has_unresolved_component")
+    failed_steps = [
+        step for step in task["component_steps"] if step.get("status") == "failed"
+    ]
+    if failed_steps and not _diagnostics_complete_for_steps(failed_steps):
+        violations.append("successful_task_has_incomplete_repair_diagnostic")
+    draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=headers)
+    if draft.status_code != 200 or draft.json().get("content") is not None:
+        violations.append("generation_mutated_draft_before_adoption")
+    candidates = client.get(f"/api/v1/projects/{project_id}/draft-candidates", headers=headers)
+    if candidates.status_code != 200 or task["task_run_id"] not in {
+        item.get("task_run_id") for item in candidates.json()
+    }:
+        violations.append("successful_candidate_not_queryable")
     if attempt is None or not isinstance(attempt.candidate_jsonb, dict):
         violations.append("successful_task_missing_immutable_candidate")
     else:
@@ -508,7 +1015,15 @@ def _successful_task_violations(
             validate_casefile(attempt.candidate_jsonb)
         except Exception:
             violations.append("persisted_candidate_failed_casefile_validation")
-    if {step.component_id for step in steps} != _EXPECTED_COMPONENTS:
+        else:
+            violations.extend(
+                _scenario_candidate_violations(
+                    attempt.candidate_jsonb,
+                    scenario,
+                    prompt_version=str(task.get("prompt_version") or ""),
+                )
+            )
+    if {step.component_id for step in steps} != expected_components:
         violations.append("agent_step_runs_not_persisted")
     if len(calls) < 4 or not any(call.status == "succeeded" for call in calls):
         violations.append("agent_model_calls_not_persisted")
@@ -523,6 +1038,102 @@ def _successful_task_violations(
     ):
         violations.append("component_events_not_projected_to_sse")
     return violations
+
+
+def _scenario_candidate_violations(
+    candidate: dict[str, Any],
+    scenario: AcceptanceScenario,
+    *,
+    prompt_version: str = "",
+) -> list[str]:
+    if scenario.scenario_id == "legacy_runtime":
+        return []
+    if scenario.scenario_id == "time_exact_range":
+        kinds = {item.get("time", {}).get("kind") for item in candidate.get("events", [])}
+        return [] if {"exact", "range"}.issubset(kinds) else ["scenario_time_exact_range_missing"]
+    if scenario.scenario_id == "time_uncertain_relative":
+        kinds = {item.get("time", {}).get("kind") for item in candidate.get("events", [])}
+        if prompt_version in {
+            "brief-to-draft-v12",
+            "brief-to-draft-v13",
+            "brief-to-draft-v14",
+            "brief-to-draft-v15",
+        }:
+            required = {"approximate", "relative"}
+            return (
+                []
+                if required.issubset(kinds) and "unknown" not in kinds
+                else ["scenario_uncertain_time_semantics_missing"]
+            )
+        required = {"approximate", "relative", "unknown"}
+        return [] if required.issubset(kinds) else ["scenario_uncertain_time_semantics_missing"]
+    if scenario.scenario_id == "spatial_scene_topology":
+        locations = candidate.get("locations", [])
+        has_schematic = any(
+            item.get("spatial_position", {}).get("coordinate_system") == "schematic"
+            for item in locations
+            if isinstance(item, dict)
+        )
+        has_topology = any(
+            item.get("parent_ref") is not None
+            or bool(item.get("adjacency_refs"))
+            or bool(item.get("travel_times"))
+            for item in locations
+            if isinstance(item, dict)
+        )
+        return [] if has_schematic and has_topology else ["scenario_scene_topology_missing"]
+    if scenario.scenario_id == "spatial_wgs84":
+        wgs84 = [
+            item["spatial_position"]
+            for item in candidate.get("locations", [])
+            if isinstance(item, dict)
+            and isinstance(item.get("spatial_position"), dict)
+            and item["spatial_position"].get("coordinate_system") == "wgs84"
+        ]
+        expected = {(31.2304, 121.4737)}
+        actual = {
+            (float(item["latitude"]), float(item["longitude"])) for item in wgs84
+        }
+        return [] if actual == expected else ["scenario_explicit_wgs84_not_preserved"]
+    if scenario.scenario_id in {
+        "competition_matrix",
+        "competition_matrix_dense",
+        "competition_matrix_triple",
+    }:
+        minimum_hypotheses = 3 if scenario.scenario_id == "competition_matrix_triple" else 2
+        minimum_columns = 2 if scenario.scenario_id == "competition_matrix" else 8
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for hypothesis in candidate.get("hypotheses", []):
+            target = hypothesis.get("target_resolution_ref")
+            if isinstance(target, dict) and isinstance(target.get("object_id"), str):
+                groups.setdefault(target["object_id"], []).append(hypothesis)
+        competitors = next(
+            (group for group in groups.values() if len(group) >= minimum_hypotheses), None
+        )
+        if competitors is None:
+            return ["scenario_competing_hypotheses_missing"]
+        hypothesis_ids = {item["id"] for item in competitors}
+        columns: list[set[str]] = []
+        for hypothesis in competitors:
+            peer_ids = {
+                ref.get("object_id")
+                for ref in hypothesis.get("competing_hypothesis_refs", [])
+                if isinstance(ref, dict)
+            }
+            if peer_ids != hypothesis_ids - {hypothesis["id"]}:
+                return ["scenario_competing_peer_refs_incomplete"]
+            assessed = {
+                assessment.get("information_ref", {}).get("object_id")
+                for assessment in hypothesis.get("evidence_assessments", [])
+                if isinstance(assessment, dict)
+            }
+            columns.append({item for item in assessed if isinstance(item, str)})
+        if len(columns[0]) < minimum_columns or any(
+            column != columns[0] for column in columns[1:]
+        ):
+            return ["scenario_competition_matrix_incomplete"]
+        return []
+    return ["scenario_unknown"]
 
 
 def _failed_task_write_boundary_violations(
@@ -656,6 +1267,213 @@ def _task_execution_metrics(
     return {"model_calls": call_summary, "component_steps": step_summary}
 
 
+def _evidence_quality_for_task(
+    factory: sessionmaker[Session],
+    task_run_id: int,
+    prompt_version: str,
+) -> dict[str, Any]:
+    """Re-validate persisted Evidence and Matrix outputs with local semantics.
+
+    The workflow persists every successful component output, so the acceptance
+    report can measure initial semantic pass and repair recovery without
+    depending on live-run diagnostics. For v15 the graph draft and the matrix
+    evaluation are validated separately; historical versions validate the full
+    LLM-written matrix on the first Evidence output. Runs that never reached
+    the Evidence component keep ``None`` rates so they never pollute the SLO
+    denominator.
+    """
+
+    is_v15 = prompt_version == "brief-to-draft-v15"
+    with factory() as session:
+        steps = list(
+            session.scalars(
+                select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id)
+            )
+        )
+    evidence_steps = sorted(
+        (
+            step
+            for step in steps
+            if step.component_id == "evidence_logic" and step.status in {"succeeded", "reused"}
+        ),
+        key=lambda step: step.execution_no,
+    )
+    matrix_steps = sorted(
+        (
+            step
+            for step in steps
+            if step.component_id == "evidence_matrix" and step.status in {"succeeded", "reused"}
+        ),
+        key=lambda step: step.execution_no,
+    )
+    metrics: dict[str, Any] = {
+        "evidence_steps": len(evidence_steps),
+        "matrix_steps": len(matrix_steps),
+        "evidence_repairs": None,
+        "matrix_repairs": None,
+        "initial_semantic_pass": None,
+        "final_semantic_pass": None,
+        "issue_counts": {},
+        "hypothesis_count": None,
+        "matrix_information_count": None,
+        "matrix_cell_count": None,
+    }
+    if not evidence_steps:
+        return metrics
+    metrics["evidence_repairs"] = max(0, len(evidence_steps) - 1)
+    metrics["matrix_repairs"] = max(0, len(matrix_steps) - 1)
+    issue_counts: dict[str, int] = {}
+    parsed_by_step: dict[int, EvidenceLogicIRV2] = {}
+    for step in evidence_steps:
+        output = step.output_jsonb
+        if not isinstance(output, dict):
+            continue
+        try:
+            parsed = EvidenceLogicIRV2.model_validate(output)
+        except ValidationError:
+            continue
+        _normalize_competing_hypothesis_closure(parsed)
+        parsed_by_step[step.id] = parsed
+        graph_issues = _evidence_assessment_issues(
+            parsed,
+            strict_competition=True,
+            blueprint=None,
+            use_explicit_targets=is_v15,
+            include_matrix=not is_v15,
+        )
+        for issue in graph_issues:
+            _increment_named_count(issue_counts, str(issue.get("code") or "unknown_issue"))
+    if not parsed_by_step:
+        return metrics
+    timeline = sorted(
+        [*evidence_steps, *matrix_steps],
+        key=lambda step: (step.started_at, step.id),
+    )
+    first_evidence = parsed_by_step[evidence_steps[0].id]
+    final_evidence = parsed_by_step[evidence_steps[-1].id]
+    first_graph_issues = _evidence_assessment_issues(
+        first_evidence,
+        strict_competition=True,
+        blueprint=None,
+        use_explicit_targets=is_v15,
+        include_matrix=not is_v15,
+    )
+    final_graph_issues = _evidence_assessment_issues(
+        final_evidence,
+        strict_competition=True,
+        blueprint=None,
+        use_explicit_targets=is_v15,
+        include_matrix=not is_v15,
+    )
+    first_matrix_clean = True
+    final_matrix_clean = True
+    if is_v15:
+        matrix_clean_flags: list[bool] = []
+        last_evidence_parsed: EvidenceLogicIRV2 | None = None
+        for step in timeline:
+            if step.component_id == "evidence_logic":
+                last_evidence_parsed = parsed_by_step.get(step.id)
+                continue
+            # Each matrix execution evaluates the cells of the latest preceding
+            # Evidence draft, so pair them by persisted timeline order instead
+            # of by list index; a repair can change the graph between calls.
+            cells = (
+                derive_matrix_cells(
+                    _hypotheses_by_resolution(last_evidence_parsed),
+                    _used_information_by_hypothesis(last_evidence_parsed),
+                )
+                if last_evidence_parsed is not None
+                else []
+            )
+            output = step.output_jsonb
+            clean = not cells
+            if isinstance(output, dict):
+                try:
+                    evaluated = MatrixEvaluationOutputV1.model_validate(output)
+                except ValidationError:
+                    matrix_clean_flags.append(False)
+                    continue
+                matrix_issues = matrix_evaluation_issues(evaluated, cells)
+                clean = not matrix_issues
+                for issue in matrix_issues:
+                    _increment_named_count(
+                        issue_counts, str(issue.get("code") or "unknown_issue")
+                    )
+            matrix_clean_flags.append(clean)
+        if matrix_clean_flags:
+            first_matrix_clean = matrix_clean_flags[0]
+            final_matrix_clean = matrix_clean_flags[-1]
+    metrics["initial_semantic_pass"] = not first_graph_issues and first_matrix_clean
+    metrics["final_semantic_pass"] = not final_graph_issues and final_matrix_clean
+
+    used = _used_information_by_hypothesis(final_evidence)
+    cells = derive_matrix_cells(_hypotheses_by_resolution(final_evidence), used)
+    metrics["hypothesis_count"] = len(final_evidence.hypotheses)
+    metrics["matrix_information_count"] = len({cell.information_key for cell in cells})
+    metrics["matrix_cell_count"] = len(cells)
+    metrics["issue_counts"] = issue_counts
+    return metrics
+
+
+def _evidence_quality_summary(
+    entries: list[tuple[dict[str, Any], bool]],
+) -> dict[str, Any]:
+    """Aggregate per-run Evidence quality into release-report rates.
+
+    The SLO denominators only count runs whose Evidence component actually
+    produced outputs, so runs that died upstream never pollute the rates.
+    """
+
+    measured = [entry for entry, _success in entries if entry.get("evidence_repairs") is not None]
+    runs = len(entries)
+    runs_with_evidence = len(measured)
+    initial_passes = sum(bool(entry.get("initial_semantic_pass")) for entry in measured)
+    final_passes = sum(bool(entry.get("final_semantic_pass")) for entry in measured)
+    repaired = [
+        entry
+        for entry in measured
+        if int(entry.get("evidence_repairs") or 0) + int(entry.get("matrix_repairs") or 0) > 0
+    ]
+    recovered = sum(bool(entry.get("final_semantic_pass")) for entry in repaired)
+    issue_counts: dict[str, int] = {}
+    for entry in measured:
+        counts = entry.get("issue_counts")
+        if isinstance(counts, dict):
+            for code, value in counts.items():
+                _increment_named_count(issue_counts, str(code), int(value))
+
+    def range_of(field: str) -> dict[str, int | None]:
+        values = [
+            int(entry[field])
+            for entry in measured
+            if isinstance(entry.get(field), int) and not isinstance(entry.get(field), bool)
+        ]
+        if not values:
+            return {"min": None, "max": None}
+        return {"min": min(values), "max": max(values)}
+
+    return {
+        "runs": runs,
+        "runs_with_evidence": runs_with_evidence,
+        "initial_evidence_semantic_pass_rate": (
+            round(initial_passes / runs_with_evidence, 4) if runs_with_evidence else None
+        ),
+        "evidence_semantic_pass_rate_after_repairs": (
+            round(final_passes / runs_with_evidence, 4) if runs_with_evidence else None
+        ),
+        "evidence_repair_recovery_rate": (
+            round(recovered / len(repaired), 4) if repaired else None
+        ),
+        "final_generation_success_rate": (
+            round(sum(success for _entry, success in entries) / runs, 4) if runs else None
+        ),
+        "issue_counts": issue_counts,
+        "hypothesis_count": range_of("hypothesis_count"),
+        "matrix_information_count": range_of("matrix_information_count"),
+        "matrix_cell_count": range_of("matrix_cell_count"),
+    }
+
+
 def _metric_counter(container: dict[str, Any], key: str) -> dict[str, Any]:
     current = container.get(key)
     if isinstance(current, dict):
@@ -701,6 +1519,43 @@ def _summarize_execution_metrics(report: dict[str, Any]) -> None:
         "component_steps": _aggregate_metric_group(details, "component_steps"),
     }
     report["execution_metrics"] = summary
+    scenario_summary: dict[str, dict[str, int]] = {}
+    for item in details:
+        if not isinstance(item, dict):
+            continue
+        scenario = str(item.get("scenario") or "legacy_runtime")
+        counter = scenario_summary.setdefault(
+            scenario,
+            {"attempted": 0, "task_succeeded": 0, "scenario_passed": 0},
+        )
+        counter["attempted"] += 1
+        counter["task_succeeded"] += 1
+        if item.get("scenario_passed", True):
+            counter["scenario_passed"] += 1
+    for item in report.get("failed_runs", []):
+        if not isinstance(item, dict):
+            continue
+        scenario = str(item.get("scenario") or "legacy_runtime")
+        counter = scenario_summary.setdefault(
+            scenario,
+            {"attempted": 0, "task_succeeded": 0, "scenario_passed": 0},
+        )
+        counter["attempted"] += 1
+    report["scenario_summary"] = scenario_summary
+    report["scenario_passed_runs"] = sum(
+        counter["scenario_passed"] for counter in scenario_summary.values()
+    )
+    quality_entries: list[tuple[dict[str, Any], bool]] = [
+        (item["evidence_quality"], True)
+        for item in details
+        if isinstance(item, dict) and isinstance(item.get("evidence_quality"), dict)
+    ]
+    quality_entries.extend(
+        (item["evidence_quality"], False)
+        for item in report.get("failed_runs", [])
+        if isinstance(item, dict) and isinstance(item.get("evidence_quality"), dict)
+    )
+    report["evidence_quality"] = _evidence_quality_summary(quality_entries)
 
 
 def _latency_summary(values: list[float]) -> dict[str, float | int]:
@@ -898,6 +1753,41 @@ def _report_status(report: dict[str, Any], *, expected_runs: int) -> str:
         return "failed"
     if any(not item["diagnostics_complete"] for item in report["failed_runs"]):
         return "failed"
+    suite = report.get("suite")
+    scenario_ids: tuple[str, ...] = ()
+    if suite == "brief_to_draft_v15":
+        scenario_ids = tuple(item.scenario_id for item in _V15_SCENARIOS)
+    elif suite in {
+        "brief_to_draft_v11",
+        "brief_to_draft_v12",
+        "brief_to_draft_v13",
+        "brief_to_draft_v14",
+    }:
+        scenario_ids = tuple(item.scenario_id for item in _V11_SCENARIOS)
+    if scenario_ids and expected_runs == 30:
+        summary = report.get("scenario_summary", {})
+        if set(summary) != set(scenario_ids):
+            return "failed"
+        if int(report.get("scenario_passed_runs", 0)) < 27:
+            return "failed"
+        per_scenario_min = expected_runs // len(scenario_ids)
+        per_scenario_max = (expected_runs + len(scenario_ids) - 1) // len(scenario_ids)
+        for scenario_id in scenario_ids:
+            counter = summary.get(scenario_id, {})
+            attempted = int(counter.get("attempted", 0))
+            passed = int(counter.get("scenario_passed", 0))
+            if not per_scenario_min <= attempted <= per_scenario_max:
+                return "failed"
+            if passed < attempted - 1:
+                return "failed"
+    if suite == "brief_to_draft_v15" and expected_runs == 30:
+        quality = report.get("evidence_quality") or {}
+        initial_rate = quality.get("initial_evidence_semantic_pass_rate")
+        after_repairs_rate = quality.get("evidence_semantic_pass_rate_after_repairs")
+        if not isinstance(initial_rate, (int, float)) or initial_rate < 0.9:
+            return "failed"
+        if not isinstance(after_repairs_rate, (int, float)) or after_repairs_rate < 0.98:
+            return "failed"
     return "passed"
 
 

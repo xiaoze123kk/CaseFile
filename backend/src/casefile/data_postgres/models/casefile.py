@@ -30,6 +30,19 @@ class CaseFile(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "casefiles"
     __table_args__ = (
         ForeignKeyConstraint(
+            ["project_id", "id", "current_draft_id"],
+            [
+                "drafts.project_id",
+                "drafts.casefile_id",
+                "drafts.id",
+            ],
+            name="fk_casefiles_project_casefile_current_draft_drafts",
+            ondelete="RESTRICT",
+            use_alter=True,
+            deferrable=True,
+            initially="DEFERRED",
+        ),
+        ForeignKeyConstraint(
             ["project_id", "id", "current_canon_version_id"],
             [
                 "canon_versions.project_id",
@@ -80,11 +93,12 @@ class CaseFile(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'draft'"),
     )
     current_canon_version_id: Mapped[int | None] = mapped_column(BigInteger)
+    current_draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Draft(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
-    """The single mutable working copy of a CaseFile."""
+    """One mutable working copy in a CaseFile with one server-selected current Draft."""
 
     __tablename__ = "drafts"
     __table_args__ = (
@@ -108,22 +122,27 @@ class Draft(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint(
             "project_id",
             "casefile_id",
-            name="uq_drafts_project_id_casefile_id",
-        ),
-        UniqueConstraint(
-            "project_id",
-            "casefile_id",
             "id",
             name="uq_drafts_project_id_casefile_id_id",
         ),
         CheckConstraint("revision >= 1", name="revision_positive"),
         CheckConstraint("version_no >= 1", name="version_no_positive"),
+        CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
         CheckConstraint(
             "version_id ~ '^draft_[a-z0-9][a-z0-9_]{0,54}$'",
             name="version_id_format",
         ),
         CheckConstraint("length(btrim(schema_version)) > 0", name="schema_version_not_blank"),
         CheckConstraint("status IN ('active', 'locked')", name="status_allowed"),
+        CheckConstraint(
+            "document_status IN ('draft', 'canon', 'archived')",
+            name="document_status_allowed",
+        ),
+        Index(
+            "ix_drafts_casefile_id_updated_at",
+            "casefile_id",
+            "updated_at",
+        ),
         CheckConstraint(
             "jsonb_typeof(content_notices_jsonb) = 'array'",
             name="content_notices_is_array",
@@ -138,6 +157,12 @@ class Draft(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         Integer,
         nullable=False,
         server_default=text("1"),
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    document_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'draft'"),
     )
     version_id: Mapped[str] = mapped_column(String(64), nullable=False)
     version_no: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
@@ -188,9 +213,9 @@ class CaseFileObject(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="uq_casefile_objects_lineage_id",
         ),
         UniqueConstraint(
-            "casefile_id",
+            "draft_id",
             "object_id",
-            name="uq_casefile_objects_casefile_id_object_id",
+            name="uq_casefile_objects_draft_id_object_id",
         ),
         UniqueConstraint(
             "draft_id",

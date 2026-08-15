@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://casefile.local/schemas/v1/task/task.schema.json",
+  "$id": "https://casefile.local/schemas/v2/task/task.schema.json",
   "title": "TaskContracts",
   "$defs": {
     "TaskFailureIssue": {
@@ -257,10 +257,11 @@
     "AgentGenerateRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["project_id", "brief_version_id", "expected_draft_revision", "provider"],
+      "required": ["project_id", "brief_version_id", "expected_draft_id", "expected_draft_revision", "provider"],
       "properties": {
         "project_id": {"type": "integer", "minimum": 1},
         "brief_version_id": {"type": "integer", "minimum": 1},
+        "expected_draft_id": {"type": "integer", "minimum": 1},
         "expected_draft_revision": {"type": "integer", "minimum": 1},
         "provider": {"type": "string", "enum": ["openai", "deepseek"]}
       }

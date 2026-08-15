@@ -10,13 +10,13 @@
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
-| `contracts/openapi.json` | 跨语言契约骨架携带的 OpenAPI 快照。 |
+| `contracts/openapi.json` | 从 FastAPI 应用导出的完整 OpenAPI 3.1 快照，包含多工作稿列表/激活、事件时间影响预览，以及 Draft ID + 独立 Plan revision 的 Exposure Plan 读写契约。 |
 
 ## 契约变更顺序
 
 修改 `schemas/` → 重新生成 Python/TypeScript → 导出 OpenAPI → 跑跨语言 fixture 测试。破坏性变更必须提升 Schema 版本并提供迁移策略。
 
-根目录 `contracts/schemas/` 是 CaseFile v1、Brief、Task 和编辑契约的唯一人工维护事实源。`scripts/generate-contracts.ps1` 同步生成跨语言包、后端 Pydantic 模型和 `backend/src/casefile/contracts/schemas/v1/` 运行时镜像；生成物禁止手改，`check:contracts` 必须拒绝漂移。
+根目录 `contracts/schemas/` 是当前 CaseFile v2、Brief、Task 和编辑契约的唯一人工维护事实源。`scripts/generate-contracts.ps1` 同步生成跨语言包、后端 Pydantic 模型和 `backend/src/casefile/contracts/schemas/v2/` 当前运行时镜像；`backend/src/casefile/contracts/schemas/v1/` 作为历史只读镜像保留，生成器不得删除或覆盖。生成物禁止手改，`check:contracts` 必须拒绝漂移。
 
 ## Fixture
 

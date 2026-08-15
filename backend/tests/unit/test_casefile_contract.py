@@ -1,15 +1,17 @@
-"""Runtime CaseFile v1 schema, reference, and canonical-hash tests."""
+"""Runtime versioned CaseFile schema, reference, and canonical-hash tests."""
 
 from __future__ import annotations
 
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from jsonschema import Draft202012Validator
 
+from casefile.application.casefile_v1 import prepare_generation_candidate
 from casefile.application.snapshot import casefile_content_hash
 from casefile.contracts import (
     ContractValidationError,
@@ -42,6 +44,40 @@ def test_schema_is_valid_and_all_three_product_shapes_pass() -> None:
         validate_casefile(_load(fixture))
 
 
+def test_historical_v1_document_remains_readable() -> None:
+    legacy = _load("restart_loop.casefile.json")
+    legacy["schema_version"] = "1.0"
+    legacy["events"][0]["time"] = {
+        "start": "2042-06-01T20:00:00+08:00",
+        "end": "2042-06-01T20:03:00+08:00",
+        "precision": "minute",
+    }
+
+    Draft202012Validator.check_schema(load_casefile_schema("1.0"))
+    validate_casefile(legacy)
+
+
+def test_v1_candidate_upgrade_does_not_mutate_historical_payload() -> None:
+    legacy = _load("restart_loop.casefile.json")
+    legacy["schema_version"] = "1.0"
+    legacy["events"][0]["time"] = {
+        "start": "2042-06-01T20:00:00+08:00",
+        "end": None,
+        "precision": "unknown",
+    }
+    frozen = copy.deepcopy(legacy)
+
+    upgraded = prepare_generation_candidate(
+        SimpleNamespace(draft=SimpleNamespace(schema_version="2.0")),  # type: ignore[arg-type]
+        legacy,
+    )
+
+    assert legacy == frozen
+    assert upgraded["schema_version"] == "2.0"
+    assert upgraded["events"][0]["time"] == {"kind": "unknown"}
+    validate_casefile(upgraded)
+
+
 def test_runtime_rejects_dangling_and_wrong_type_references() -> None:
     missing = _load("restart_loop.casefile.json")
     missing["events"][0]["location_ref"]["object_id"] = "loc_missing"
@@ -67,8 +103,202 @@ def test_runtime_rejects_deterministic_semantic_invariants() -> None:
     assert "self_reference" in _error_codes(self_adjacent)
 
     invalid_time = _load("restart_loop.casefile.json")
-    invalid_time["events"][0]["time"]["end"] = "2042-06-01T19:59:00+08:00"
+    invalid_time["events"][0]["time"]["end"] = "2042-06-01T19:59"
     assert "invalid_time_range" in _error_codes(invalid_time)
+
+
+def test_temporal_position_v2_supports_all_five_semantics() -> None:
+    document = _load("restart_loop.casefile.json")
+    event = document["events"][0]
+
+    for time in (
+        {"kind": "exact", "value": "2042-06-01T20:00", "precision": "minute"},
+        {
+            "kind": "approximate",
+            "value": "2042-06-01T20",
+            "precision": "hour",
+        },
+        {
+            "kind": "range",
+            "start": "2042-06-01T20:00",
+            "end": "2042-06-01T20:03",
+            "precision": "minute",
+        },
+        {"kind": "unknown"},
+    ):
+        candidate = copy.deepcopy(document)
+        candidate["events"][0]["time"] = time
+        validate_casefile(candidate)
+
+    relative = copy.deepcopy(document)
+    anchor = copy.deepcopy(event)
+    anchor["id"] = "evt_restart_anchor"
+    anchor["time"] = {"kind": "exact", "value": "2042-06-01T19:00", "precision": "minute"}
+    relative["events"].append(anchor)
+    relative["events"][0]["time"] = {
+        "kind": "relative",
+        "anchor_event_ref": {"object_type": "event", "object_id": "evt_restart_anchor"},
+        "relation": "after",
+        "offset_minutes": 60,
+    }
+    validate_casefile(relative)
+
+
+def test_temporal_position_v2_rejects_fabricated_unknown_and_timezone_values() -> None:
+    fabricated_unknown = _load("restart_loop.casefile.json")
+    fabricated_unknown["events"][0]["time"] = {
+        "kind": "unknown",
+        "value": "2042-06-01T20:00",
+    }
+    assert "schema_invalid" in _error_codes(fabricated_unknown)
+
+    timezone_value = _load("restart_loop.casefile.json")
+    timezone_value["events"][0]["time"] = {
+        "kind": "exact",
+        "value": "2042-06-01T20:00+08:00",
+        "precision": "minute",
+    }
+    assert "schema_invalid" in _error_codes(timezone_value)
+
+    precision_mismatch = _load("restart_loop.casefile.json")
+    precision_mismatch["events"][0]["time"] = {
+        "kind": "exact",
+        "value": "2042-06-01T20:00",
+        "precision": "hour",
+    }
+    assert "time_precision_mismatch" in _error_codes(precision_mismatch)
+
+
+def test_evidence_assessments_are_backward_compatible_and_semantically_checked() -> None:
+    legacy = _load("restart_loop.casefile.json")
+    validate_casefile(legacy)
+
+    sparse = _load("restart_loop.casefile.json")
+    sparse["hypotheses"][0]["evidence_assessments"] = [
+        {
+            "information_ref": {
+                "object_type": "information_unit",
+                "object_id": "info_restart_log",
+            },
+            "effect": "supports",
+            "strength": "strong",
+            "rationale": "重启日志直接记录了触发条件。",
+        }
+    ]
+    validate_casefile(sparse)
+
+    wrong_type = copy.deepcopy(sparse)
+    wrong_type["hypotheses"][0]["evidence_assessments"][0]["information_ref"] = {
+        "object_type": "claim",
+        "object_id": "claim_backup_trigger",
+    }
+    assert "reference_type_mismatch" in _error_codes(wrong_type)
+
+    missing_information = copy.deepcopy(sparse)
+    missing_information["hypotheses"][0]["evidence_assessments"][0]["information_ref"][
+        "object_id"
+    ] = "info_missing"
+    assert "missing_reference" in _error_codes(missing_information)
+
+    duplicate = copy.deepcopy(sparse)
+    duplicate["hypotheses"][0]["evidence_assessments"].append(
+        copy.deepcopy(duplicate["hypotheses"][0]["evidence_assessments"][0])
+    )
+    assert "duplicate_key" in _error_codes(duplicate)
+
+    illegal_enum = copy.deepcopy(sparse)
+    illegal_enum["hypotheses"][0]["evidence_assessments"][0]["effect"] = "maybe"
+    assert "schema_invalid" in _error_codes(illegal_enum)
+
+    empty_rationale = copy.deepcopy(sparse)
+    empty_rationale["hypotheses"][0]["evidence_assessments"][0]["rationale"] = ""
+    assert "schema_invalid" in _error_codes(empty_rationale)
+
+
+def _conclusion(path_id: str) -> dict[str, Any]:
+    return {
+        "outcome": "answer",
+        "review_status": "proposed",
+        "summary": "当前证据链支持自动安全重启解释。",
+        "values": [
+            {
+                "slot_id": "slot_root_cause",
+                "value": {"object_type": "claim", "object_id": "claim_backup_trigger"},
+            }
+        ],
+        "selected_hypothesis_refs": [
+            {"object_type": "hypothesis", "object_id": "hyp_automatic_restart"}
+        ],
+        "supporting_reasoning_path_refs": [
+            {"object_type": "reasoning_path", "object_id": path_id}
+        ],
+        "rationale": "必要推理路径已把信息连接到当前问题的关键主张。",
+        "unresolved_gaps": [],
+    }
+
+
+def test_resolution_conclusion_accepts_required_claim_target_paths() -> None:
+    for owner in ("resolution", "hypothesis"):
+        document = _load("restart_loop.casefile.json")
+        resolution = document["resolution_specs"][0]
+        hypothesis = document["hypotheses"][0]
+        claim_id = f"claim_{owner}_dependency"
+        dependent_claim = copy.deepcopy(document["claims"][0])
+        dependent_claim["id"] = claim_id
+        dependent_claim["dependency_claim_refs"] = []
+        document["claims"].append(dependent_claim)
+        if owner == "resolution":
+            resolution["required_claim_refs"] = [
+                {"object_type": "claim", "object_id": claim_id}
+            ]
+        else:
+            hypothesis["required_claim_refs"] = [
+                {"object_type": "claim", "object_id": claim_id}
+            ]
+        path = copy.deepcopy(document["reasoning_paths"][0])
+        path["id"] = f"path_{owner}_required_claim"
+        path["target_ref"] = {"object_type": "claim", "object_id": claim_id}
+        document["reasoning_paths"].append(path)
+        resolution["conclusion"] = _conclusion(path["id"])
+
+        validate_casefile(document)
+
+
+def test_resolution_conclusion_accepts_required_claim_dependency_closure_only() -> None:
+    document = _load("restart_loop.casefile.json")
+    resolution = document["resolution_specs"][0]
+    dependency_claim = copy.deepcopy(document["claims"][0])
+    dependency_claim["id"] = "claim_required_dependency"
+    dependency_claim["dependency_claim_refs"] = []
+    document["claims"].append(dependency_claim)
+    document["claims"][0]["dependency_claim_refs"] = [
+        {"object_type": "claim", "object_id": dependency_claim["id"]}
+    ]
+    path = copy.deepcopy(document["reasoning_paths"][0])
+    path["id"] = "path_required_dependency"
+    path["target_ref"] = {"object_type": "claim", "object_id": dependency_claim["id"]}
+    document["reasoning_paths"].append(path)
+    resolution["conclusion"] = _conclusion(path["id"])
+    validate_casefile(document)
+
+    unrelated = copy.deepcopy(document)
+    unrelated_claim = copy.deepcopy(dependency_claim)
+    unrelated_claim["id"] = "claim_unrelated"
+    unrelated["claims"].append(unrelated_claim)
+    unrelated_path = next(
+        item for item in unrelated["reasoning_paths"] if item["id"] == path["id"]
+    )
+    unrelated_path["target_ref"] = {
+        "object_type": "claim",
+        "object_id": unrelated_claim["id"],
+    }
+    assert "conclusion_reasoning_path_scope_invalid" in _error_codes(unrelated)
+
+    not_required = copy.deepcopy(document)
+    next(
+        item for item in not_required["reasoning_paths"] if item["id"] == path["id"]
+    )["required_for_resolution"] = False
+    assert "conclusion_reasoning_path_scope_invalid" in _error_codes(not_required)
 
 
 def test_rfc8785_hash_is_stable_across_object_key_order() -> None:

@@ -14,7 +14,7 @@
       "invariant_id": "CF-I-002",
       "description": "事件结束时间早于开始时间。",
       "base_casefile": "../../casefiles/restart_loop.casefile.json",
-      "mutation": {"op": "replace", "path": "/events/0/time/end", "value": "2042-06-01T19:59:00+08:00"}
+      "mutation": {"op": "replace", "path": "/events/0/time/end", "value": "2042-06-01T19:59"}
     },
     {
       "fixture_id": "semantic_patch_touches_hard_lock",

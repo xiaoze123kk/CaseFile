@@ -1,0 +1,321 @@
+.trigger {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--ink);
+  border: 1px solid var(--rule-strong);
+  background: var(--paper-high);
+  font-size: 9px;
+}
+
+.trigger span {
+  color: var(--primary-strong);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+}
+
+.trigger:focus-visible,
+.sheet button:focus-visible,
+.sheet input:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.sheet {
+  position: absolute;
+  z-index: 12;
+  right: 12px;
+  bottom: 54px;
+  display: grid;
+  width: min(440px, calc(100% - 24px));
+  max-height: min(680px, calc(100svh - 140px));
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  overflow: hidden;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper-high);
+  box-shadow: 0 18px 48px rgba(29, 30, 28, 0.22);
+}
+
+.sheet > header {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px 9px 15px;
+  color: #f7f2e8;
+  background: var(--ink);
+}
+
+.sheet > header div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.sheet > header span {
+  color: rgba(247, 242, 232, 0.56);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.sheet > header strong {
+  margin-top: 3px;
+  font-family: Bahnschrift, "Microsoft YaHei UI", sans-serif;
+  font-size: 13px;
+}
+
+.sheet > header button {
+  min-width: 48px;
+  min-height: 28px;
+  color: rgba(247, 242, 232, 0.78);
+  border: 1px solid rgba(247, 242, 232, 0.22);
+  background: transparent;
+  font-size: 9px;
+}
+
+.boundaryNote {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+  background:
+    linear-gradient(90deg, rgba(199, 139, 60, 0.09), transparent 58%),
+    var(--paper);
+}
+
+.boundaryNote b {
+  color: var(--primary-strong);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+}
+
+.boundaryNote p {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.state {
+  margin: 0;
+  padding: 20px 15px;
+  color: var(--ink-muted);
+  font-size: 10px;
+}
+
+.state[data-error="true"] {
+  color: var(--issue-strong);
+}
+
+.state button,
+.appendMissing {
+  min-height: 28px;
+  margin-top: 8px;
+  color: var(--primary-strong);
+  border: 1px solid rgba(199, 139, 60, 0.45);
+  background: var(--primary-soft);
+  font-size: 9px;
+}
+
+.planMeta {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  color: var(--ink-faint);
+  border-bottom: 1px solid var(--rule);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+}
+
+.planMeta b,
+.planMeta i {
+  margin-left: auto;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.planMeta b {
+  color: var(--primary-strong);
+}
+
+.planMeta i {
+  color: var(--success);
+}
+
+.entryList {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.entryList li {
+  display: grid;
+  min-height: 70px;
+  grid-template-columns: 34px minmax(0, 1fr) 64px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--rule);
+}
+
+.entryList li[data-selected="true"] {
+  background: var(--primary-soft);
+  box-shadow: inset 3px 0 var(--primary);
+}
+
+.sequence {
+  display: grid;
+  place-items: center;
+  color: var(--ink-faint);
+  border-right: 1px dotted var(--rule-strong);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+}
+
+.entryBody {
+  display: grid;
+  min-width: 0;
+  align-content: center;
+  gap: 5px;
+  padding: 7px 10px;
+}
+
+.entrySelect {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0;
+  color: var(--ink);
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.entrySelect strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entrySelect small {
+  margin-top: 3px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 7px;
+}
+
+.entryBody input {
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 6px;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+  border-bottom-color: var(--rule);
+  background: transparent;
+  font-size: 8px;
+}
+
+.entryBody input:hover,
+.entryBody input:focus {
+  border-color: var(--rule-strong);
+  background: var(--paper-high);
+}
+
+.moveActions {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  border-left: 1px solid var(--rule);
+}
+
+.moveActions button {
+  color: var(--ink-muted);
+  border: 0;
+  background: transparent;
+  font-size: 8px;
+}
+
+.moveActions button + button {
+  border-top: 1px solid var(--rule);
+}
+
+.moveActions button:disabled {
+  color: var(--ink-faint);
+  opacity: 0.4;
+}
+
+.appendMissing {
+  margin: 8px 14px 0;
+}
+
+.message {
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--ink-muted);
+  border-top: 1px solid var(--rule);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.sheet > footer {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.sheet > footer button {
+  min-height: 30px;
+  padding: 0 11px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule-strong);
+  background: var(--paper-high);
+  font-size: 9px;
+}
+
+.sheet > footer button:last-child {
+  color: #fffaf1;
+  border-color: var(--primary-strong);
+  background: var(--primary-strong);
+}
+
+.sheet > footer button:disabled {
+  opacity: 0.42;
+}
+
+@media (max-width: 780px) {
+  .sheet {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: none;
+  }
+
+  .entryList li {
+    grid-template-columns: 30px minmax(0, 1fr) 58px;
+  }
+
+  .sheet > footer {
+    justify-content: stretch;
+  }
+
+  .sheet > footer button {
+    flex: 1;
+  }
+}

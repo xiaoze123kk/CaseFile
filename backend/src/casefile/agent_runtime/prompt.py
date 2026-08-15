@@ -14,15 +14,54 @@ from casefile.agent_runtime.models import (
 AGENT_VERSION = "casefile-single-agent-v2"
 V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
 V9_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v9"
+V10_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v10"
+V11_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v11"
+V12_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v12"
+V13_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v13"
+V14_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v14"
+V15_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v15"
+BRIEF_TO_DRAFT_AGENT_VERSIONS = {
+    "brief-to-draft-v8": V8_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v9": V9_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v10": V10_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v11": V11_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v12": V12_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v13": V13_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v14": V14_GENERATION_AGENT_VERSION,
+    "brief-to-draft-v15": V15_GENERATION_AGENT_VERSION,
+}
+COMPONENT_GENERATION_PROMPT_VERSIONS = frozenset(BRIEF_TO_DRAFT_AGENT_VERSIONS)
+PROMPT_PACKAGE_GENERATION_VERSIONS = frozenset(
+    {
+        "brief-to-draft-v9",
+        "brief-to-draft-v10",
+        "brief-to-draft-v11",
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+        "brief-to-draft-v15",
+    }
+)
+COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
+    {
+        "brief-to-draft-v10",
+        "brief-to-draft-v11",
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+        "brief-to-draft-v15",
+    }
+)
+TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
+    {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15"}
+)
 
 
 def agent_version_for_task(task_type: str, prompt_version: str) -> str:
     """Return the runtime topology frozen alongside a TaskRun."""
 
-    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v8":
-        return V8_GENERATION_AGENT_VERSION
-    if task_type == "brief_to_draft" and prompt_version == "brief-to-draft-v9":
-        return V9_GENERATION_AGENT_VERSION
+    if task_type == "brief_to_draft" and prompt_version in BRIEF_TO_DRAFT_AGENT_VERSIONS:
+        return BRIEF_TO_DRAFT_AGENT_VERSIONS[prompt_version]
     return AGENT_VERSION
 
 
@@ -190,8 +229,18 @@ def reverse_parse_input(blocks: list[dict[str, Any]], input_hash: str) -> str:
 
 __all__ = [
     "AGENT_VERSION",
+    "BRIEF_TO_DRAFT_AGENT_VERSIONS",
+    "COMPETITION_MATRIX_PROMPT_VERSIONS",
+    "COMPONENT_GENERATION_PROMPT_VERSIONS",
+    "PROMPT_PACKAGE_GENERATION_VERSIONS",
+    "TEMPORAL_PLAN_PROMPT_VERSIONS",
     "V8_GENERATION_AGENT_VERSION",
     "V9_GENERATION_AGENT_VERSION",
+    "V10_GENERATION_AGENT_VERSION",
+    "V11_GENERATION_AGENT_VERSION",
+    "V12_GENERATION_AGENT_VERSION",
+    "V13_GENERATION_AGENT_VERSION",
+    "V14_GENERATION_AGENT_VERSION",
     "agent_version_for_task",
     "anchor_extract_input",
     "brief_intake_questions_input",

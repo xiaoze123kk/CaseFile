@@ -1,36 +1,26 @@
 "use client";
 
-import type { CaseFile } from "@casefile/contracts";
+import type { CaseFileDocument } from "@/lib/api-client";
 import { useMemo, useState } from "react";
 
 import type { TimelineEvent } from "./analyst-fixture";
+import {
+  buildObjectDetailModel,
+  findWorkbenchDetailObject,
+  type DetailField,
+  type DetailObject,
+  type ObjectDetailModel,
+} from "./workbench-object-detail-model";
+import {
+  classificationLabel,
+  formatCaseWallClock,
+  objectSubtypeLabel,
+  reliabilityLabel,
+} from "./workbench-presenters";
 import styles from "./workbench-object-editor.module.css";
 
-type EditableCollection =
-  | "entities"
-  | "information_units"
-  | "events"
-  | "locations"
-  | "hypotheses";
-
-type EditableObject = CaseFile[EditableCollection][number];
-type SaveResult = "saved" | "conflict" | "error";
-
-const collections: EditableCollection[] = [
-  "entities",
-  "information_units",
-  "events",
-  "locations",
-  "hypotheses",
-];
-
-const collectionLabels: Record<EditableCollection, string> = {
-  entities: "实体",
-  information_units: "信息",
-  events: "事件",
-  locations: "地点",
-  hypotheses: "假设",
-};
+type SaveResult = "saved" | "conflict" | "error" | { status: "error"; message: string };
+type SelectedDetail = NonNullable<ReturnType<typeof findWorkbenchDetailObject>>;
 
 const truthStatuses = [
   "canon_true",
@@ -40,24 +30,7 @@ const truthStatuses = [
   "unknown",
 ] as const;
 
-function findObject(document: CaseFile, objectId: string | null) {
-  if (!objectId) return null;
-  for (const collection of collections) {
-    const object = document[collection].find((item) => item.id === objectId);
-    if (object) return { collection, object: object as EditableObject };
-  }
-  return null;
-}
-
-function objectSubtype(collection: EditableCollection, object: EditableObject) {
-  if (collection === "entities") return String(object.entity_type);
-  if (collection === "information_units") return String(object.information_type);
-  if (collection === "events") return String(object.truth_status);
-  if (collection === "locations") return "location";
-  return String(object.status);
-}
-
-function positionOf(object: EditableObject) {
+function positionOf(object: DetailObject) {
   const value = (object as Record<string, unknown>).spatial_position;
   if (!value || typeof value !== "object") return null;
   const position = value as Record<string, unknown>;
@@ -78,69 +51,200 @@ function positionOf(object: EditableObject) {
   return null;
 }
 
-function referencedIds(object: EditableObject) {
-  const ids = new Set<string>();
-  const visit = (value: unknown) => {
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    if (!value || typeof value !== "object") return;
-    const record = value as Record<string, unknown>;
-    if (typeof record.object_id === "string") ids.add(record.object_id);
-    Object.values(record).forEach(visit);
-  };
-  visit(object);
-  ids.delete(object.id);
-  return [...ids];
-}
-
-function objectRefId(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const objectId = (value as Record<string, unknown>).object_id;
-  return typeof objectId === "string" ? objectId : null;
-}
-
-function valuesForSelected(
-  selected: ReturnType<typeof findObject>,
+function editValuesFor(
+  document: CaseFileDocument,
+  selected: SelectedDetail,
 ): Record<string, string> {
-  if (!selected) return {};
   const object = selected.object as Record<string, unknown>;
-  const time =
-    selected.collection === "events"
-      ? (object.time as Record<string, unknown>)
+  const position = selected.collection === "locations" ? positionOf(selected.object) : null;
+  const conclusion = object.conclusion && typeof object.conclusion === "object"
+    ? object.conclusion as Record<string, unknown>
+    : selected.collection === "resolution_specs"
+      ? defaultConclusionForResolution(document, object)
       : null;
-  const position =
-    selected.collection === "locations" ? positionOf(selected.object) : null;
   return {
     name: String(object.name ?? ""),
     title: String(object.title ?? ""),
+    reasoning_question: String(object.reasoning_question ?? ""),
     description: String(object.description ?? ""),
     content: String(object.content ?? ""),
     reliability: String(object.reliability ?? "unknown"),
     truth_status: String(object.truth_status ?? "unknown"),
     classification: String(object.classification ?? "background"),
-    time_start: String(time?.start ?? ""),
-    time_end: String(time?.end ?? ""),
-    time_precision: String(time?.precision ?? "unknown"),
     proposition: String(object.proposition ?? ""),
     hypothesis_status: String(object.status ?? "undetermined"),
     score:
       object.score === null || object.score === undefined
         ? ""
-        : String(object.score),
+        : String(Math.round(Number(object.score) * 100)),
     coordinate_system: position?.coordinate_system ?? "",
     x: position?.coordinate_system === "schematic" ? String(position.x) : "",
     y: position?.coordinate_system === "schematic" ? String(position.y) : "",
     latitude:
-      position?.coordinate_system === "wgs84"
-        ? String(position.latitude)
-        : "",
+      position?.coordinate_system === "wgs84" ? String(position.latitude) : "",
     longitude:
-      position?.coordinate_system === "wgs84"
-        ? String(position.longitude)
-        : "",
+      position?.coordinate_system === "wgs84" ? String(position.longitude) : "",
+    conclusion_outcome: String(conclusion?.outcome ?? "undetermined"),
+    conclusion_summary: String(conclusion?.summary ?? ""),
+    conclusion_rationale: String(conclusion?.rationale ?? ""),
+    conclusion_gaps: Array.isArray(conclusion?.unresolved_gaps)
+      ? conclusion.unresolved_gaps.join("\n")
+      : "",
+    selected_hypothesis_ids: Array.isArray(conclusion?.selected_hypothesis_refs)
+      ? conclusion.selected_hypothesis_refs.flatMap((item) =>
+          item && typeof item === "object" && "object_id" in item
+            ? [String(item.object_id)]
+            : [],
+        ).join("\n")
+      : "",
+    supporting_reasoning_path_ids: Array.isArray(conclusion?.supporting_reasoning_path_refs)
+      ? conclusion.supporting_reasoning_path_refs.flatMap((item) =>
+          item && typeof item === "object" && "object_id" in item
+            ? [String(item.object_id)]
+            : [],
+        ).join("\n")
+      : "",
+    ...(Array.isArray(conclusion?.values)
+      ? Object.fromEntries(conclusion.values.flatMap((item) => {
+          if (!item || typeof item !== "object" || !("slot_id" in item) || !("value" in item)) {
+            return [];
+          }
+          const value = item.value;
+          return [[
+            `conclusion_slot:${String(item.slot_id)}`,
+            value && typeof value === "object" && "object_id" in value
+              ? String(value.object_id)
+              : String(value ?? ""),
+          ]];
+        }))
+      : {}),
   };
+}
+
+function lines(value: string): string[] {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function objectRefForId(document: CaseFileDocument, objectId: string) {
+  const collections = [
+    ["resolution_spec", document.resolution_specs],
+    ["entity", document.entities],
+    ["relationship", document.relationships],
+    ["location", document.locations],
+    ["event", document.events],
+    ["information_unit", document.information_units],
+    ["claim", document.claims],
+    ["hypothesis", document.hypotheses],
+    ["reasoning_path", document.reasoning_paths],
+    ["constraint", document.constraints],
+    ["structure_lock", document.structure_locks],
+  ] as const;
+  for (const [objectType, collection] of collections) {
+    if (collection.some((item) => item.id === objectId)) {
+      return { object_type: objectType, object_id: objectId };
+    }
+  }
+  return null;
+}
+
+function defaultConclusionForResolution(
+  document: CaseFileDocument,
+  resolution: Record<string, unknown>,
+) {
+  const resolutionId = String(resolution.id ?? "");
+  const selectedHypothesisRefs = document.hypotheses
+    .filter((item) => {
+      const target = item.target_resolution_ref;
+      return target && "object_id" in target && target.object_id === resolutionId;
+    })
+    .map((item) => ({ object_type: "hypothesis", object_id: item.id }));
+  const selectedHypothesisIds = new Set(selectedHypothesisRefs.map((item) => item.object_id));
+  const claimById = new Map(document.claims.map((item) => [item.id, item]));
+  const validClaimIds = new Set(
+    [
+      ...(Array.isArray(resolution.required_claim_refs) ? resolution.required_claim_refs : []),
+      ...document.hypotheses
+        .filter((item) => selectedHypothesisIds.has(item.id))
+        .flatMap((item) => item.required_claim_refs),
+    ].flatMap((reference) =>
+      reference && typeof reference === "object" && "object_id" in reference
+        ? [String(reference.object_id)]
+        : [],
+    ),
+  );
+  const pendingClaimIds = [...validClaimIds];
+  while (pendingClaimIds.length) {
+    const claim = claimById.get(pendingClaimIds.pop() ?? "");
+    if (!claim) continue;
+    for (const reference of claim.dependency_claim_refs) {
+      const claimId = String(reference.object_id);
+      if (!validClaimIds.has(claimId)) {
+        validClaimIds.add(claimId);
+        pendingClaimIds.push(claimId);
+      }
+    }
+  }
+  const supportingReasoningPathRefs = document.reasoning_paths
+    .filter((item) => {
+      const target = item.target_ref;
+      if (!item.required_for_resolution || !target || !("object_id" in target)) return false;
+      const targetId = String(target.object_id);
+      return selectedHypothesisIds.has(targetId) ||
+        validClaimIds.has(targetId) ||
+        targetId === resolutionId;
+    })
+    .map((item) => ({ object_type: "reasoning_path", object_id: item.id }));
+  return {
+    outcome: "undetermined" as const,
+    review_status: "proposed" as const,
+    summary: "",
+    values: [],
+    selected_hypothesis_refs: selectedHypothesisRefs,
+    supporting_reasoning_path_refs: supportingReasoningPathRefs,
+    rationale: "",
+    unresolved_gaps: ["请补充仍未解决的证据缺口。"],
+  };
+}
+
+function renderField(
+  field: DetailField,
+  onSelectObject: (objectId: string) => void,
+) {
+  if (field.kind === "text") {
+    return <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>;
+  }
+  if (field.kind === "list") {
+    return (
+      <div key={field.label}>
+        <dt>{field.label}</dt>
+        <dd><ul className={styles.valueList}>{field.values.map((value) => <li key={value}>{value}</li>)}</ul></dd>
+      </div>
+    );
+  }
+  return (
+    <div key={field.label}>
+      <dt>{field.label}</dt>
+      <dd className={styles.referenceList}>
+        {field.references.map((reference) => reference.selectable ? (
+          <button key={reference.id} onClick={() => onSelectObject(reference.id)} type="button">
+            <strong>{reference.label}</strong><small>{reference.kindLabel}</small>
+          </button>
+        ) : <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}
+      </dd>
+    </div>
+  );
+}
+
+function renderSections(
+  sections: ObjectDetailModel["coreSections"],
+  onSelectObject: (objectId: string) => void,
+) {
+  return sections.map((section) => (
+    <section className={styles.detailSection} key={section.title}>
+      <h3>{section.title}</h3>
+      <dl>{section.fields.map((field) => renderField(field, onSelectObject))}</dl>
+    </section>
+  ));
 }
 
 export function WorkbenchObjectEditor({
@@ -152,11 +256,13 @@ export function WorkbenchObjectEditor({
   relatedEvents,
   navigationNotice,
   onDirtyChange,
+  onSelectObject,
   onSelectRelatedEvent,
   onSave,
   readOnly = false,
+  readOnlyReason,
 }: {
-  document: CaseFile;
+  document: CaseFileDocument;
   selectedObjectId: string | null;
   revision: number;
   revisionLabel?: string;
@@ -164,43 +270,37 @@ export function WorkbenchObjectEditor({
   relatedEvents: TimelineEvent[];
   navigationNotice: string | null;
   onDirtyChange: (dirty: boolean) => void;
+  onSelectObject: (objectId: string) => void;
   onSelectRelatedEvent: (eventId: string) => void;
-  onSave?: (
-    objectId: string,
-    changes: Record<string, unknown>,
-  ) => Promise<SaveResult>;
+  onSave?: (objectId: string, changes: Record<string, unknown>) => Promise<SaveResult>;
   readOnly?: boolean;
+  readOnlyReason?: string;
 }) {
   const selected = useMemo(
-    () => findObject(document, selectedObjectId),
+    () => findWorkbenchDetailObject(document, selectedObjectId),
+    [document, selectedObjectId],
+  );
+  const detail = useMemo(
+    () => buildObjectDetailModel(document, selectedObjectId),
     [document, selectedObjectId],
   );
   const [values, setValues] = useState<Record<string, string>>(() =>
-    valuesForSelected(selected),
+    selected ? editValuesFor(document, selected) : {},
   );
   const [dirty, setDirty] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  if (!selected) {
+  if (!selected || !detail) {
     return (
       <div className={styles.emptyState}>
         <strong>选择一个对象开始核对</strong>
-        <p>这里会显示真实字段、引用和可安全编辑的内容。</p>
+        <p>这里会显示创作信息、关联依据和可安全修改的内容。</p>
       </div>
     );
   }
-
-  const { collection, object } = selected;
-  const references = referencedIds(object);
-  const metadata = object as Record<string, unknown>;
-  const relationships = document.relationships.filter(
-    (relationship) =>
-      objectRefId(relationship.from_ref) === object.id ||
-      objectRefId(relationship.to_ref) === object.id,
-  );
-  const structureLocks = document.structure_locks.filter(
-    (lock) => objectRefId(lock.object_ref) === object.id,
-  );
+  const currentSelected: SelectedDetail = selected;
+  const currentDetail: ObjectDetailModel = detail;
 
   function change(name: string, value: string) {
     if (readOnly) return;
@@ -213,39 +313,87 @@ export function WorkbenchObjectEditor({
   }
 
   function cancelChanges() {
-    setValues(valuesForSelected(selected));
+    setValues(editValuesFor(document, currentSelected));
     setDirty(false);
+    setEditing(false);
     onDirtyChange(false);
     setNotice("已取消未保存修改。");
   }
 
-  function field(label: string, name: string, multiline = false) {
+  function field(label: string, name: string, options?: { multiline?: boolean; type?: string; min?: number; max?: number; step?: number }) {
+    const multiline = options?.multiline ?? false;
     return (
       <label className={multiline ? styles.objectEditorWide : undefined}>
         <span>{label}</span>
-        {multiline ? (
-          <textarea
-            onChange={(event) => change(name, event.target.value)}
-            readOnly={readOnly}
-            rows={4}
-            value={values[name] ?? ""}
-          />
-        ) : (
-          <input
-            onChange={(event) => change(name, event.target.value)}
-            readOnly={readOnly}
-            value={values[name] ?? ""}
-          />
-        )}
+        {multiline ? <textarea onChange={(event) => change(name, event.target.value)} readOnly={readOnly} rows={4} value={values[name] ?? ""} /> : <input max={options?.max} min={options?.min} onChange={(event) => change(name, event.target.value)} readOnly={readOnly} step={options?.step} type={options?.type ?? "text"} value={values[name] ?? ""} />}
       </label>
     );
   }
 
+  function selectField(
+    label: string,
+    name: string,
+    options: Array<{ label: string; value: string }>,
+  ) {
+    return <label><span>{label}</span><select disabled={readOnly} onChange={(event) => change(name, event.target.value)} value={values[name] ?? ""}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+  }
+
   function buildChanges() {
-    if (collection === "entities") {
+    if (currentSelected.collection === "resolution_specs") {
+      const object = currentSelected.object as Record<string, unknown>;
+      const existing = object.conclusion && typeof object.conclusion === "object"
+        ? object.conclusion as Record<string, unknown>
+        : defaultConclusionForResolution(document, object);
+      const requiredSlots = Array.isArray(object.required_slots)
+        ? object.required_slots.flatMap((item) =>
+            item && typeof item === "object" ? [item as Record<string, unknown>] : [],
+          )
+        : [];
+      const conclusionValues = values.conclusion_outcome === "answer"
+        ? requiredSlots.flatMap((slot) => {
+            const slotId = String(slot.slot_id ?? "");
+            const rawValue = values[`conclusion_slot:${slotId}`]?.trim() ?? "";
+            if (!rawValue) return [];
+            const valueType = String(slot.value_type ?? "");
+            let value: string | number | boolean | Record<string, string> = rawValue;
+            if (valueType === "number") value = Number(rawValue);
+            if (valueType === "boolean") value = rawValue === "true";
+            if (["object_ref", "entity_or_claim_ref"].includes(valueType)) {
+              value = objectRefForId(document, rawValue) ?? { object_type: "unknown", object_id: rawValue };
+            }
+            if (valueType === "text_or_claim_ref") {
+              const reference = objectRefForId(document, rawValue);
+              if (reference?.object_type === "claim") value = reference;
+            }
+            return [{ slot_id: slotId, value }];
+          })
+        : [];
+      return {
+        title: values.title,
+        description: values.description,
+        reasoning_question: values.reasoning_question,
+        conclusion: {
+          ...existing,
+          outcome: values.conclusion_outcome,
+          review_status: "proposed",
+          summary: values.conclusion_summary,
+          values: conclusionValues,
+          selected_hypothesis_refs: lines(values.selected_hypothesis_ids).map((object_id) => ({
+            object_type: "hypothesis",
+            object_id,
+          })),
+          supporting_reasoning_path_refs: lines(
+            values.supporting_reasoning_path_ids,
+          ).map((object_id) => ({ object_type: "reasoning_path", object_id })),
+          rationale: values.conclusion_rationale,
+          unresolved_gaps: lines(values.conclusion_gaps),
+        },
+      };
+    }
+    if (currentSelected.collection === "entities") {
       return { name: values.name, description: values.description };
     }
-    if (collection === "information_units") {
+    if (currentSelected.collection === "information_units") {
       return {
         title: values.title,
         description: values.description,
@@ -255,213 +403,182 @@ export function WorkbenchObjectEditor({
         classification: values.classification,
       };
     }
-    if (collection === "events") {
+    if (currentSelected.collection === "events") {
       return {
         title: values.title,
         description: values.description,
         truth_status: values.truth_status,
-        time: {
-          start: values.time_start,
-          end: values.time_end.trim() || null,
-          precision: values.time_precision,
-        },
       };
     }
-    if (collection === "locations") {
+    if (currentSelected.collection === "locations") {
       let spatialPosition: Record<string, unknown> | undefined;
       if (values.coordinate_system === "schematic") {
-        spatialPosition = {
-          coordinate_system: "schematic",
-          x: Number(values.x),
-          y: Number(values.y),
-        };
+        spatialPosition = { coordinate_system: "schematic", x: Number(values.x), y: Number(values.y) };
       } else if (values.coordinate_system === "wgs84") {
-        spatialPosition = {
-          coordinate_system: "wgs84",
-          latitude: Number(values.latitude),
-          longitude: Number(values.longitude),
-        };
+        spatialPosition = { coordinate_system: "wgs84", latitude: Number(values.latitude), longitude: Number(values.longitude) };
       }
-      return {
-        name: values.name,
-        description: values.description,
-        ...(spatialPosition ? { spatial_position: spatialPosition } : {}),
-      };
+      return { name: values.name, description: values.description, ...(spatialPosition ? { spatial_position: spatialPosition } : {}) };
     }
     return {
       title: values.title,
       description: values.description,
       proposition: values.proposition,
       status: values.hypothesis_status,
-      score: values.score.trim() ? Number(values.score) : null,
+      score: values.score.trim() ? Number(values.score) / 100 : null,
     };
   }
 
   function coordinateInvalid() {
-    if (collection !== "locations") return false;
+    if (currentSelected.collection !== "locations") return false;
     if (values.coordinate_system === "schematic") {
-      if (!values.x.trim() || !values.y.trim()) return true;
       const x = Number(values.x);
       const y = Number(values.y);
-      return !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 100 || y < 0 || y > 100;
+      return !values.x.trim() || !values.y.trim() || !Number.isFinite(x) || !Number.isFinite(y) || x < 0 || x > 100 || y < 0 || y > 100;
     }
     if (values.coordinate_system === "wgs84") {
-      if (!values.latitude.trim() || !values.longitude.trim()) return true;
       const latitude = Number(values.latitude);
       const longitude = Number(values.longitude);
-      return !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180;
+      return !values.latitude.trim() || !values.longitude.trim() || !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180;
     }
     return false;
   }
 
   function invalidMessage() {
     if (coordinateInvalid()) return "坐标超出允许范围，请检查后再保存。";
-    if (collection === "events") {
-      if (!values.time_start.trim() || Number.isNaN(Date.parse(values.time_start))) {
-        return "开始时间必须是有效的 ISO 8601 日期时间。";
-      }
-      if (values.time_end.trim() && Number.isNaN(Date.parse(values.time_end))) {
-        return "结束时间必须是有效的 ISO 8601 日期时间。";
-      }
-    }
-    if (collection === "hypotheses" && values.score.trim()) {
+    if (currentSelected.collection === "hypotheses" && values.score.trim()) {
       const score = Number(values.score);
-      if (!Number.isFinite(score) || score < 0 || score > 1) {
-        return "假设分数必须介于 0 与 1 之间。";
+      if (!Number.isFinite(score) || score < 0 || score > 100) return "支持度必须介于 0% 与 100% 之间。";
+    }
+    if (currentSelected.collection === "resolution_specs") {
+      if (!values.conclusion_summary.trim()) return "请填写结论摘要。";
+      if (!values.conclusion_rationale.trim()) return "请填写结论依据。";
+      if (values.conclusion_outcome === "undetermined" && !values.conclusion_gaps.trim()) {
+        return "未定论必须说明证据缺口。";
+      }
+      if (!values.selected_hypothesis_ids.trim()) return "请至少关联一个同题假设。";
+      if (!values.supporting_reasoning_path_ids.trim()) return "请至少关联一条有效推理路径。";
+      if (values.conclusion_outcome === "answer") {
+        const object = currentSelected.object as Record<string, unknown>;
+        const missing = Array.isArray(object.required_slots)
+          ? object.required_slots.flatMap((item) => {
+              if (!item || typeof item !== "object" || !("slot_id" in item) || !item.required) {
+                return [];
+              }
+              const slotId = String(item.slot_id);
+              return values[`conclusion_slot:${slotId}`]?.trim() ? [] : [slotId];
+            })
+          : [];
+        if (missing.length) return `请填写必填答案槽位：${missing.join("、")}。`;
       }
     }
     return null;
   }
 
   async function save() {
-    if (readOnly || !onSave) return;
+    if (!onSave) return;
     const validationMessage = invalidMessage();
     if (!dirty || validationMessage) {
       if (validationMessage) setNotice(validationMessage);
       return;
     }
-    const result = await onSave(object.id, buildChanges());
+    const result = await onSave(currentSelected.object.id, buildChanges());
     if (result === "saved") {
       setDirty(false);
+      setEditing(false);
       onDirtyChange(false);
       setNotice("修改已写入当前工作稿。");
     } else if (result === "conflict") {
       setNotice("工作稿已更新。你的输入已保留，请核对最新版后再次保存。");
+    } else if (typeof result === "object") {
+      setNotice(result.message);
     } else {
       setNotice("修改未保存。请检查字段或服务状态后重试。");
     }
   }
 
+  function renderQuickEditFields() {
+    if (currentSelected.collection === "resolution_specs") return <>
+      {field("标题", "title")}
+      {field("说明", "description", { multiline: true })}
+      {field("核心问题", "reasoning_question", { multiline: true })}
+      {selectField("结论类型", "conclusion_outcome", [
+        { value: "answer", label: "答案" },
+        { value: "undetermined", label: "未定论" },
+      ])}
+      {field("结论摘要", "conclusion_summary", { multiline: true })}
+      {field("裁决依据", "conclusion_rationale", { multiline: true })}
+      {field("未解决缺口（每行一项）", "conclusion_gaps", { multiline: true })}
+      {field("获选或并存假设 ID（每行一项）", "selected_hypothesis_ids", { multiline: true })}
+      {field("依据路径 ID（每行一项）", "supporting_reasoning_path_ids", { multiline: true })}
+      {values.conclusion_outcome === "answer" && Array.isArray(
+        (currentSelected.object as Record<string, unknown>).required_slots,
+      ) ? ((currentSelected.object as Record<string, unknown>).required_slots as Array<Record<string, unknown>>)
+        .map((slot) => <div key={String(slot.slot_id)}>{field(
+          `答案槽位 · ${String(slot.slot_id)}${slot.required ? "（必填）" : ""}`,
+          `conclusion_slot:${String(slot.slot_id)}`,
+        )}</div>) : null}
+      <p className={styles.conclusionEditNote}>保存后会明确退回“待作者确认”，必须再次确认才成为最终结论。对象型槽位请填写稳定对象 ID。</p>
+    </>;
+    if (currentSelected.collection === "entities") return <>{field("名称", "name")}{field("说明", "description", { multiline: true })}</>;
+    if (currentSelected.collection === "information_units") return <>
+      {field("标题", "title")}{field("说明", "description", { multiline: true })}{field("正文", "content", { multiline: true })}
+      {selectField("可靠度", "reliability", ["high", "medium", "low", "unknown"].map((value) => ({ value, label: reliabilityLabel(value) })))}
+      {selectField("事实状态", "truth_status", truthStatuses.map((value) => ({ value, label: objectSubtypeLabel(value) })))}
+      {selectField("叙事分类", "classification", ["key", "supporting", "background", "distractor", "misleading", "incomplete"].map((value) => ({ value, label: classificationLabel(value) })))}
+    </>;
+    if (currentSelected.collection === "events") return <>
+      {field("标题", "title")}{field("说明", "description", { multiline: true })}
+      {selectField("事实状态", "truth_status", truthStatuses.map((value) => ({ value, label: objectSubtypeLabel(value) })))}
+    </>;
+    if (currentSelected.collection === "locations") return <>
+      {field("名称", "name")}{field("说明", "description", { multiline: true })}
+      {selectField("空间方式", "coordinate_system", [{ value: "", label: "未标注空间位置" }, { value: "schematic", label: "示意位置" }, { value: "wgs84", label: "地理坐标（经纬度）" }])}
+      {values.coordinate_system === "schematic" ? <>{field("水平位置（0–100）", "x", { type: "number", min: 0, max: 100 })}{field("垂直位置（0–100）", "y", { type: "number", min: 0, max: 100 })}</> : null}
+      {values.coordinate_system === "wgs84" ? <>{field("纬度", "latitude", { type: "number", min: -90, max: 90, step: 0.000001 })}{field("经度", "longitude", { type: "number", min: -180, max: 180, step: 0.000001 })}</> : null}
+    </>;
+    return <>
+      {field("标题", "title")}{field("说明", "description", { multiline: true })}{field("命题", "proposition", { multiline: true })}
+      {selectField("状态", "hypothesis_status", ["active", "supported", "eliminated", "accepted", "rejected", "undetermined"].map((value) => ({ value, label: objectSubtypeLabel(value) })))}
+      {field("支持度（0–100%）", "score", { type: "number", min: 0, max: 100, step: 1 })}
+    </>;
+  }
+
+  const associationCount = currentDetail.sourceReferences.length + currentDetail.references.length + currentDetail.relationships.length + relatedEvents.length;
+
   return (
-    <section
-      className={styles.objectEditor}
-      aria-label={readOnly ? "对象详情（只读）" : "对象详情与编辑"}
-    >
-      <header>
-        <div>
-          <span>{collectionLabels[collection]} · {objectSubtype(collection, object)}</span>
-          <strong>{object.id}</strong>
+    <section aria-label={readOnly ? "对象详情（只读）" : "对象详情与编辑"} className={styles.objectEditor} data-editing={editing}>
+      <header className={styles.detailHeader}>
+        <span className={styles.objectIndex}>{currentDetail.kindLabel.slice(0, 1)}</span>
+        <div className={styles.detailIdentity}>
+          <p>{currentDetail.kindLabel} · {currentDetail.subtypeLabel}</p>
+          <h2>{currentDetail.title}</h2>
+          {currentDetail.description ? <span>{currentDetail.description}</span> : null}
         </div>
-        <small>{revisionLabel ?? `Draft R${revision}`} · 对象 R{String(metadata.revision ?? "—")}</small>
+        <div className={styles.headerActions}>
+          <span className={styles.statusBadge}>{currentDetail.confirmationLabel}</span>
+          <span className={styles.confidenceBadge}>{currentDetail.confidenceLabel}</span>
+          {!readOnly && !editing ? <button onClick={() => { setEditing(true); setNotice(null); }} type="button">编辑</button> : null}
+        </div>
       </header>
 
-      <div className={styles.objectEditorFields}>
-        {collection === "entities" ? <>{field("名称", "name")}{field("说明", "description", true)}</> : null}
-        {collection === "information_units" ? (
-          <>
-            {field("标题", "title")}
-            {field("说明", "description", true)}
-            {field("正文", "content", true)}
-            <label><span>可靠度</span><select disabled={readOnly} onChange={(event) => change("reliability", event.target.value)} value={values.reliability}>{["high", "medium", "low", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label><span>真值状态</span><select disabled={readOnly} onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label><span>分类</span><select disabled={readOnly} onChange={(event) => change("classification", event.target.value)} value={values.classification}>{["key", "supporting", "background", "distractor", "misleading", "incomplete"].map((value) => <option key={value}>{value}</option>)}</select></label>
-          </>
-        ) : null}
-        {collection === "events" ? (
-          <>
-            {field("标题", "title")}
-            {field("说明", "description", true)}
-            {field("开始时间", "time_start")}
-            {field("结束时间", "time_end")}
-            <label><span>时间精度</span><select disabled={readOnly} onChange={(event) => change("time_precision", event.target.value)} value={values.time_precision}>{["second", "minute", "hour", "day", "approximate", "unknown"].map((value) => <option key={value}>{value}</option>)}</select></label>
-            <label><span>真值状态</span><select disabled={readOnly} onChange={(event) => change("truth_status", event.target.value)} value={values.truth_status}>{truthStatuses.map((value) => <option key={value}>{value}</option>)}</select></label>
-          </>
-        ) : null}
-        {collection === "locations" ? (
-          <>
-            {field("名称", "name")}
-            {field("说明", "description", true)}
-            <label><span>坐标系统</span><select disabled={readOnly} onChange={(event) => change("coordinate_system", event.target.value)} value={values.coordinate_system}><option disabled value="">选择坐标系统</option><option value="schematic">空间示意</option><option value="wgs84">WGS84</option></select></label>
-            {values.coordinate_system === "schematic" ? <>{field("X（0–100）", "x")}{field("Y（0–100）", "y")}</> : null}
-            {values.coordinate_system === "wgs84" ? <>{field("纬度", "latitude")}{field("经度", "longitude")}</> : null}
-          </>
-        ) : null}
-        {collection === "hypotheses" ? (
-          <>
-            {field("标题", "title")}
-            {field("说明", "description", true)}
-            {field("命题", "proposition", true)}
-            <label><span>状态</span><select disabled={readOnly} onChange={(event) => change("hypothesis_status", event.target.value)} value={values.hypothesis_status}>{["active", "supported", "eliminated", "accepted", "rejected", "undetermined"].map((value) => <option key={value}>{value}</option>)}</select></label>
-            {field("分数（0–1，可空）", "score")}
-          </>
-        ) : null}
-      </div>
+      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject)}</details> : null}</>}
 
-      <section className={styles.relatedEvents} aria-label="关联事件">
-        <header>
-          <strong>关联事件</strong>
-          <small>{relatedEvents.length} EVENTS</small>
-        </header>
-        {relatedEvents.length ? (
-          <ol>
-            {relatedEvents.map((event) => (
-              <li key={event.id}>
-                <button
-                  onClick={() => onSelectRelatedEvent(event.id)}
-                  type="button"
-                >
-                  <time>{event.time}</time>
-                  <span>
-                    <strong>{event.label}</strong>
-                    <small>{event.id}</small>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p>此对象尚未关联事件，时间线不会沿用上一次选择。</p>
-        )}
-      </section>
+      {associationCount ? <section aria-label="关联信息" className={styles.associations}>
+        <header><h3>关联信息</h3><span>{associationCount} 项依据</span></header>
+        {currentDetail.sourceReferences.length ? <article><h4>来源</h4><div className={styles.associationList}>{currentDetail.sourceReferences.map((reference) => <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}</div></article> : null}
+        {currentDetail.references.length ? <article><h4>提及对象</h4><div className={styles.associationList}>{currentDetail.references.map((reference) => reference.selectable ? <button key={reference.id} onClick={() => onSelectObject(reference.id)} type="button"><strong>{reference.label}</strong><small>{reference.kindLabel}</small></button> : <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}</div></article> : null}
+        {currentDetail.relationships.length ? <article><h4>关系</h4><div className={styles.associationList}>{currentDetail.relationships.map((relationship) => relationship.counterpart.selectable ? <button key={`${relationship.title}-${relationship.counterpart.id}`} onClick={() => onSelectObject(relationship.counterpart.id)} type="button"><strong>{relationship.title} · {relationship.counterpart.label}</strong><small>{relationship.counterpart.kindLabel}</small></button> : <span key={`${relationship.title}-${relationship.counterpart.id}`}><strong>{relationship.title} · {relationship.counterpart.label}</strong><small>{relationship.counterpart.kindLabel}</small></span>)}</div></article> : null}
+        {relatedEvents.length ? <article><h4>关联事件</h4><ol>{relatedEvents.map((event) => <li key={event.id}><button onClick={() => onSelectRelatedEvent(event.id)} type="button"><time dateTime={event.time}>{formatCaseWallClock(event.time)}</time><strong>{event.label}</strong></button></li>)}</ol></article> : null}
+      </section> : null}
 
-      <dl className={styles.objectMetadata}>
-        <div><dt>确认状态</dt><dd>{String(metadata.confirmation_status ?? "—")}</dd></div>
-        <div><dt>置信度</dt><dd>{metadata.confidence === null || metadata.confidence === undefined ? "—" : String(metadata.confidence)}</dd></div>
-        <div><dt>引用对象</dt><dd>{references.length ? references.join("、") : "无"}</dd></div>
-        <div><dt>只读关系</dt><dd>{relationships.length ? relationships.map((relationship) => `${relationship.id} · ${relationship.title}`).join("；") : "无"}</dd></div>
-        <div><dt>结构锁</dt><dd>{structureLocks.length ? structureLocks.map((lock) => `${lock.id} · ${lock.title}`).join("；") : "无"}</dd></div>
-      </dl>
+      {currentDetail.structureLocks.length ? <section aria-label="结构约束" className={styles.structureLocks}><h3>结构约束</h3>{currentDetail.structureLocks.map((lock) => <article key={lock.title}><strong>{lock.title}</strong><p>{lock.reason}</p><span>{lock.fields.join("、")}</span></article>)}</section> : null}
 
-      {navigationNotice || notice ? (
-        <p className={styles.objectEditorNotice} role="status">
-          {navigationNotice ?? notice}
-        </p>
-      ) : null}
-      <footer>
-        <span>{readOnly ? "候选预览只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
-        <div className={styles.footerActions}>
-          <button
-            className={styles.cancelButton}
-            disabled={readOnly || !dirty || saving}
-            onClick={cancelChanges}
-            type="button"
-          >
-            取消修改
-          </button>
-          <button disabled={readOnly || !dirty || saving} onClick={() => void save()} type="button">
-            {readOnly ? "采用后才能编辑" : saving ? "正在保存…" : "保存到当前工作稿"}
-          </button>
-        </div>
+      <details className={styles.technicalDetails}><summary>技术信息</summary><dl><div><dt>当前工作稿</dt><dd>{revisionLabel ?? `工作稿 R${revision}`}</dd></div>{currentDetail.technicalDetails.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></details>
+
+      {navigationNotice || notice ? <p className={styles.objectEditorNotice} role="status">{navigationNotice ?? notice}</p> : null}
+      <footer className={styles.editorFooter}>
+        <span>{readOnly ? readOnlyReason ?? "候选预览，只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
+        {!readOnly ? <div className={styles.footerActions}>{editing ? <><button className={styles.cancelButton} disabled={saving} onClick={cancelChanges} type="button">取消修改</button><button disabled={!dirty || saving} onClick={() => void save()} type="button">{saving ? "正在保存…" : "保存修改"}</button></> : null}</div> : null}
       </footer>
     </section>
   );

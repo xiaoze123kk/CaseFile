@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Iterator
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from casefile.application.casefile_v1 import COLLECTION_TYPES
 from casefile.application.errors import not_found
 from casefile.application.snapshot import build_casefile_document
 from casefile.contracts import ContractValidationError, public_validation_issues
@@ -22,6 +24,8 @@ from casefile.data_postgres.models import (
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
 
 _AUDIT_LIMIT = 100
+_COLLECTION_OBJECT_TYPES = dict(COLLECTION_TYPES)
+_OBJECT_PATH = re.compile(r"^/([^/]+)/(\d+)(/.*)?$")
 
 
 class WorkbenchReadModel:
@@ -61,7 +65,11 @@ class WorkbenchReadModel:
         try:
             document = build_casefile_document(self.session, owned)
         except ContractValidationError as error:
-            issues = [_validation_issue(item) for item in public_validation_issues(error.errors)]
+            object_index = self._validation_object_index(owned)
+            issues = [
+                _validation_issue(item, object_index)
+                for item in public_validation_issues(error.errors)
+            ]
             return None, {
                 "status": "failed",
                 "validator": "casefile.contracts.validate_casefile",
@@ -78,6 +86,31 @@ class WorkbenchReadModel:
             "issues": [],
             "reason": None,
         }
+
+    def _validation_object_index(
+        self,
+        owned: OwnedDraft,
+    ) -> dict[tuple[str, int], dict[str, str]]:
+        rows = list(
+            self.session.scalars(
+                select(CaseFileObject)
+                .where(
+                    CaseFileObject.draft_id == owned.draft.id,
+                    CaseFileObject.deleted_at.is_(None),
+                )
+                .order_by(CaseFileObject.object_type, CaseFileObject.contract_ordinal)
+            )
+        )
+        positions: dict[str, int] = {}
+        result: dict[tuple[str, int], dict[str, str]] = {}
+        for row in rows:
+            index = positions.get(row.object_type, 0)
+            positions[row.object_type] = index + 1
+            result[(row.object_type, index)] = {
+                "object_type": row.object_type,
+                "object_id": row.object_id,
+            }
+        return result
 
     def _sources(self, owned: OwnedDraft) -> list[dict[str, Any]]:
         version_id = owned.draft.brief_version_id
@@ -151,8 +184,23 @@ class WorkbenchReadModel:
         return [entry for _occurred_at, entry in entries[:_AUDIT_LIMIT]]
 
 
-def _validation_issue(issue: dict[str, str]) -> dict[str, str]:
-    identity = "\x00".join((issue["code"], issue["path"], issue["message"]))
+def _validation_issue(
+    issue: dict[str, str],
+    object_index: dict[tuple[str, int], dict[str, str]],
+) -> dict[str, Any]:
+    target = _validation_target(issue["path"], object_index)
+    object_ref = target["object_ref"]
+    if object_ref is None:
+        location_identity = issue["path"]
+    else:
+        location_identity = "\x00".join(
+            (
+                object_ref["object_type"],
+                object_ref["object_id"],
+                target["field_path"],
+            )
+        )
+    identity = "\x00".join((issue["code"], location_identity, issue["message"]))
     suffix = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
     return {
         "issue_id": f"validator:{suffix}",
@@ -160,7 +208,25 @@ def _validation_issue(issue: dict[str, str]) -> dict[str, str]:
         "path": issue["path"],
         "message": issue["message"],
         "severity": "error",
+        "target": target,
     }
+
+
+def _validation_target(
+    path: str,
+    object_index: dict[tuple[str, int], dict[str, str]],
+) -> dict[str, Any]:
+    match = _OBJECT_PATH.fullmatch(path)
+    if match is None:
+        return {"object_ref": None, "field_path": path}
+    collection, raw_index, field_path = match.groups()
+    object_type = _COLLECTION_OBJECT_TYPES.get(collection)
+    if object_type is None:
+        return {"object_ref": None, "field_path": path}
+    object_ref = object_index.get((object_type, int(raw_index)))
+    if object_ref is None:
+        return {"object_ref": None, "field_path": path}
+    return {"object_ref": object_ref, "field_path": field_path or ""}
 
 
 def _source_record_ids(content: dict[str, Any]) -> list[int]:

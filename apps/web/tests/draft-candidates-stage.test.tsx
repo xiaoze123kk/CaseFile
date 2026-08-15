@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DraftCandidateView, TaskView } from "@/lib/api-client";
@@ -35,6 +35,206 @@ afterEach(() => {
 });
 
 describe("draft candidate cancellation feedback", () => {
+  it("shows the complete six-step pipeline while the first component is still pending", () => {
+    installSession(generatingState());
+
+    render(<DraftCandidatesStage />);
+
+    const pipeline = screen.getByLabelText("深稿生成部件进度");
+    expect(within(pipeline).getByText("六步生成流水线")).toBeInTheDocument();
+    expect(within(pipeline).getAllByText("正在创建任务")).toHaveLength(2);
+    expect(within(pipeline).getByText("已完成 0 / 6 步")).toBeInTheDocument();
+    expect(within(pipeline).getByRole("progressbar", { name: "六步生成进度" })).toHaveAttribute("aria-valuenow", "0");
+    expect(pipeline.querySelectorAll(":scope > ol > li")).toHaveLength(6);
+    expect(
+      Array.from(
+        pipeline.querySelectorAll(":scope > ol > li > div > small"),
+        (item) => item.textContent,
+      ),
+    ).toEqual(Array(6).fill("等待"));
+    expect(within(pipeline).getByText("时间结构规划 · 等待")).toBeInTheDocument();
+  });
+
+  it.each([
+    [1, ["context_pack_builder"], "正在进行第 2 步：案件蓝图规划"],
+    [3, ["context_pack_builder", "case_blueprint_planner", "story_world", "evidence_logic", "temporal_structure_planner", "resolution_governance"], "正在进行第 4 步：引用链接"],
+    [5, ["context_pack_builder", "case_blueprint_planner", "story_world", "evidence_logic", "temporal_structure_planner", "resolution_governance", "reference_linker", "casefile_compiler"], "正在进行第 6 步：质量与修复门禁"],
+  ] as const)("shows %i completed top-level steps from real component state", (completed, componentIds, currentLabel) => {
+    const state = generatingState();
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = componentIds.map((componentId, index) => componentStep(componentId, "succeeded", index + 1));
+    const runningComponent = completed === 1 ? "case_blueprint_planner" : completed === 3 ? "reference_linker" : "quality_repair_gate";
+    task.component_steps.push(componentStep(runningComponent, "running", 20));
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    const pipeline = screen.getByLabelText("深稿生成部件进度");
+    expect(within(pipeline).getByText(`已完成 ${completed} / 6 步`)).toBeInTheDocument();
+    expect(within(pipeline).getByText(currentLabel)).toBeInTheDocument();
+    expect(within(pipeline).getByRole("progressbar")).toHaveAttribute("aria-valuenow", String(completed));
+  });
+
+  it("counts all four domain drafters before completing the third step", () => {
+    const state = generatingState();
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = [
+      componentStep("context_pack_builder", "succeeded", 1),
+      componentStep("case_blueprint_planner", "succeeded", 2),
+      componentStep("story_world", "succeeded", 3),
+      componentStep("evidence_logic", "succeeded", 4),
+      componentStep("temporal_structure_planner", "succeeded", 5),
+      componentStep("resolution_governance", "running", 6),
+    ];
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByText("三域创作 · 已完成 3 / 4")).toBeInTheDocument();
+    expect(screen.getByText("已完成 2 / 6 步")).toBeInTheDocument();
+  });
+
+  it("shows the newest failed execution instead of an earlier repaired gate", () => {
+    const state = generatingState(false);
+    const task = generationTask("failed");
+    task.component_steps = [
+      failedStep({
+        stepRunId: 901,
+        componentId: "quality_repair_gate",
+        executionNo: 5,
+        message: "早期质量门禁失败",
+      }),
+      failedStep({
+        stepRunId: 902,
+        componentId: "temporal_structure_planner",
+        executionNo: 2,
+        message: "分钟精度不能包含秒",
+      }),
+    ];
+    state.generation.slots.structure_first = {
+      status: "failed",
+      stage: "failed",
+      taskRunId: task.task_run_id,
+      attempt: 1,
+      error: task.failure?.message ?? null,
+      latestTask: task,
+    };
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByText("时间结构规划执行失败")).toBeInTheDocument();
+    expect(screen.getByText("/assignments/0/time/value · 分钟精度不能包含秒")).toBeInTheDocument();
+    expect(screen.queryByText("早期质量门禁失败")).not.toBeInTheDocument();
+  });
+
+  it("keeps an in-flight recoverable gate failure as auto-repair instead of a failure alert", () => {
+    const state = generatingState(true);
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = [
+      failedStep({
+        stepRunId: 901,
+        componentId: "quality_repair_gate",
+        executionNo: 1,
+        message: "候选未通过质量门禁。",
+      }),
+    ];
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("质量与修复门禁未通过")).toBeInTheDocument();
+    expect(screen.getByText("未达到重试上限，正在自动修复，无需操作。")).toBeInTheDocument();
+    expect(screen.getByText("第 6 步未通过，正在自动修复…")).toBeInTheDocument();
+    expect(screen.getByText("修复中")).toBeInTheDocument();
+  });
+
+  it("keeps the failure alert when an active failure has exhausted its recovery budget", () => {
+    const state = generatingState(true);
+    const task = state.generation.slots.structure_first.latestTask!;
+    task.component_steps = [
+      {
+        ...failedStep({
+          stepRunId: 901,
+          componentId: "quality_repair_gate",
+          executionNo: 2,
+          message: "修复预算耗尽",
+        }),
+        recoverable: false,
+      },
+    ];
+    installSession(state);
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("质量与修复门禁执行失败");
+    expect(screen.queryByText("未达到重试上限，正在自动修复，无需操作。")).not.toBeInTheDocument();
+  });
+
+  it("uses retryable task diagnostics when a legacy coordinator step is not recoverable", () => {
+    const state = generatingState(false);
+    const task = generationTask("failed");
+    task.error_code = "agent_component_failed";
+    task.failure = {
+      code: "agent_component_failed",
+      message: "深稿生成部件未通过门禁，可从失败阶段恢复。",
+      retryable: true,
+      issues: [
+        {
+          code: "competing_hypothesis_path_missing",
+          path: "/reasoning_paths/hypothesis_b",
+          message: "竞争假设缺少使用信息输入的对应推理路径",
+        },
+      ],
+    };
+    task.component_steps = [
+      {
+        step_run_id: 901,
+        attempt_no: 1,
+        component_id: "run_coordinator",
+        parent_component_id: null,
+        execution_no: 1,
+        status: "failed",
+        schema_id: "task-run-v1",
+        input_hash: "coordinator-input",
+        output_hash: null,
+        failure_layer: "frozen_context",
+        issues: [
+          {
+            component_id: "run_coordinator",
+            failure_layer: "frozen_context",
+            schema_id: "task-run-v1",
+            code: "candidate_validation_failed",
+            path: "",
+            message: "CaseFile contract validation failed",
+          },
+        ],
+        recoverable: false,
+        resumed_from_step_run_id: null,
+      },
+    ];
+    state.generation.slots.structure_first = {
+      status: "failed",
+      stage: "failed",
+      taskRunId: task.task_run_id,
+      attempt: 1,
+      error: task.failure.message,
+      latestTask: task,
+    };
+    const resumeGeneration = vi.fn().mockResolvedValue(true);
+    installSession(state, { resumeGeneration });
+
+    render(<DraftCandidatesStage />);
+
+    expect(screen.getByText("/reasoning_paths/hypothesis_b · 竞争假设缺少使用信息输入的对应推理路径")).toBeInTheDocument();
+    expect(screen.queryByText("CaseFile contract validation failed")).not.toBeInTheDocument();
+    const resume = screen.getByRole("button", { name: "从失败阶段恢复" });
+    expect(resume).toBeEnabled();
+    fireEvent.click(resume);
+    expect(resumeGeneration).toHaveBeenCalledWith("structure_first");
+  });
+
   it.each([
     [
       "cancelling",
@@ -252,5 +452,66 @@ function generationTask(status: TaskView["status"]): TaskView {
     component_steps: [],
     created_at: "2026-08-09T00:00:00Z",
     updated_at: "2026-08-09T00:01:00Z",
+  };
+}
+
+function failedStep({
+  stepRunId,
+  componentId,
+  executionNo,
+  message,
+}: {
+  stepRunId: number;
+  componentId: string;
+  executionNo: number;
+  message: string;
+}): TaskView["component_steps"][number] {
+  return {
+    step_run_id: stepRunId,
+    attempt_no: 1,
+    component_id: componentId,
+    parent_component_id: null,
+    execution_no: executionNo,
+    status: "failed",
+    schema_id: "temporal-plan-v1",
+    input_hash: "failed-step-input",
+    output_hash: null,
+    failure_layer: "schema_validation",
+    issues: [
+      {
+        component_id: componentId,
+        failure_layer: "schema_validation",
+        schema_id: "temporal-plan-v1",
+        code: "validation_failed",
+        path: "/assignments/0/time/value",
+        message,
+      },
+    ],
+    recoverable: true,
+    resumed_from_step_run_id: null,
+  };
+}
+
+function componentStep(
+  componentId: string,
+  status: TaskView["component_steps"][number]["status"],
+  stepRunId: number,
+): TaskView["component_steps"][number] {
+  return {
+    step_run_id: stepRunId,
+    attempt_no: 1,
+    component_id: componentId,
+    parent_component_id: ["story_world", "evidence_logic", "temporal_structure_planner", "resolution_governance"].includes(componentId)
+      ? "domain_drafters"
+      : null,
+    execution_no: 1,
+    status,
+    schema_id: "test-schema-v1",
+    input_hash: `input-${componentId}`,
+    output_hash: status === "succeeded" ? `output-${componentId}` : null,
+    failure_layer: null,
+    issues: [],
+    recoverable: false,
+    resumed_from_step_run_id: null,
   };
 }

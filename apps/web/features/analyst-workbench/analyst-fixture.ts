@@ -1,13 +1,3 @@
-export type WorkbenchView =
-  | "timeline"
-  | "relations"
-  | "reasoning"
-  | "map"
-  | "dossier"
-  | "export"
-  | "compile"
-  | "evidence";
-
 export type ReasoningOutcome = "supported" | "contested" | "eliminated";
 
 export interface ReasoningStep {
@@ -27,9 +17,43 @@ export interface ReasoningPath {
   hypothesisId: string;
 }
 
+export type ReasoningAssessmentEffect =
+  | "supports"
+  | "contradicts"
+  | "neutral"
+  | "unassessed";
+
+export type ReasoningAssessmentStrength = "weak" | "moderate" | "strong";
+
+export interface WorkbenchReasoningAssessment {
+  hypothesisId: string;
+  informationId: string;
+  effect: Exclude<ReasoningAssessmentEffect, "unassessed">;
+  strength: ReasoningAssessmentStrength;
+  rationale: string;
+}
+
+export interface WorkbenchReasoningGroup {
+  resolutionSpecId: string;
+  question: string;
+  hypotheses: Array<{
+    id: string;
+    title: string;
+    outcome: ReasoningOutcome;
+  }>;
+  information: Array<{
+    id: string;
+    title: string;
+    reliability: string;
+  }>;
+  assessments: WorkbenchReasoningAssessment[];
+  conclusion?: import("./workbench-real-data-types").WorkbenchConclusion;
+}
+
 export type InspectorTab = "object" | "issues" | "sources" | "patch" | "audit";
 
 export type ObjectKind =
+  | "resolution_spec"
   | "entity"
   | "information"
   | "person"
@@ -62,10 +86,10 @@ export interface TimelineEvent {
 
 export interface ValidationIssue {
   id: string;
-  severity: "S0" | "S1";
+  severity: "S0" | "S1" | "error";
   title: string;
   summary: string;
-  eventId: string;
+  eventId: string | null;
   rule: string;
   evidenceIds: string[];
   beforeKnowledge: string;
@@ -73,6 +97,10 @@ export interface ValidationIssue {
   afterKnowledge: string;
   patchBefore: string;
   patchAfter: string;
+  source?: "fixture" | "validator";
+  targetObjectId?: string | null;
+  targetObjectType?: string | null;
+  fieldPath?: string;
 }
 
 export interface SourceItem {
@@ -157,6 +185,8 @@ export interface WorkbenchSeed {
   graphNodes: GraphNode[];
   graphEdges: GraphEdge[];
   reasoningPaths: ReasoningPath[];
+  reasoningGroups?: WorkbenchReasoningGroup[];
+  conclusions?: import("./workbench-real-data-types").WorkbenchConclusion[];
   mapMarkers: WorkbenchMapMarker[];
   mapLabels: WorkbenchMapLabel[];
   drawer: WorkbenchDrawerCopy;
@@ -196,6 +226,7 @@ export interface CandidateBriefInput {
 }
 
 export const objectKindLabels: Record<ObjectKind, string> = {
+  resolution_spec: "核心问题",
   entity: "实体",
   information: "信息",
   person: "人物",
@@ -204,20 +235,6 @@ export const objectKindLabels: Record<ObjectKind, string> = {
   location: "地点",
   hypothesis: "假设",
 };
-
-export const viewOptions: Array<{
-  id: Exclude<WorkbenchView, "evidence">;
-  label: string;
-  shortLabel: string;
-}> = [
-  { id: "timeline", label: "时间线", shortLabel: "时" },
-  { id: "relations", label: "关系图", shortLabel: "关" },
-  { id: "reasoning", label: "推理图", shortLabel: "推" },
-  { id: "map", label: "地图", shortLabel: "图" },
-  { id: "dossier", label: "卷宗编辑器", shortLabel: "卷" },
-  { id: "export", label: "导出预览", shortLabel: "出" },
-  { id: "compile", label: "编译中心", shortLabel: "编" },
-];
 
 export const caseObjects: CaseObject[] = [
   {
@@ -1066,7 +1083,9 @@ export function validateWorkbenchSeed(seed: WorkbenchSeed) {
     }
   }
   for (const issue of seed.validationIssues) {
-    if (!eventIds.has(issue.eventId)) errors.push(`${issue.id} 引用未知事件 ${issue.eventId}`);
+    if (issue.eventId && !eventIds.has(issue.eventId)) {
+      errors.push(`${issue.id} 引用未知事件 ${issue.eventId}`);
+    }
     for (const evidenceId of issue.evidenceIds) {
       if (!objectIds.has(evidenceId)) errors.push(`${issue.id} 引用未知证据 ${evidenceId}`);
     }

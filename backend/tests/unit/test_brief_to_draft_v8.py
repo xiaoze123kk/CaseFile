@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from casefile.agent_runtime.brief_to_draft_v8.compiler import (
     LinkerValidationError,
     compile_casefile,
@@ -15,6 +14,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     BlueprintObjectV1,
     CaseBlueprintV1,
     EvidenceLogicIRV1,
+    EvidenceLogicIRV2,
     KnowledgeStateIR,
     LocationIR,
     ResolutionGovernanceIRV1,
@@ -22,6 +22,7 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     TimeIR,
 )
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
+    _evidence_assessment_issues,
     _merge_usage,
     _safe_diagnostic_message,
 )
@@ -162,11 +163,100 @@ def _governance() -> ResolutionGovernanceIRV1:
     )
 
 
+def _v10_evidence() -> EvidenceLogicIRV2:
+    payload = _evidence().model_dump(mode="json")
+    payload["schema_id"] = "evidence-logic-ir-v2"
+    payload["hypotheses"] = [
+        {
+            "local_key": "captain_explanation",
+            "description": "船长为保护船员而藏起日志。",
+            "tags": [],
+            "title": "船长藏匿日志",
+            "proposition": "船长将最后一页日志藏在甲板夹层。",
+            "target_resolution_key": "main_resolution",
+            "required_claim_keys": ["main_claim"],
+            "falsifier_keys": [],
+            "competing_hypothesis_keys": ["storm_explanation"],
+            "evidence_assessments": [
+                {
+                    "information_key": "wet_log",
+                    "effect": "supports",
+                    "strength": "strong",
+                    "rationale": "盐渍位置与主动藏匿的路径吻合。",
+                }
+            ],
+            "status": "supported",
+            "score": 0.8,
+        },
+        {
+            "local_key": "storm_explanation",
+            "description": "风暴使日志意外掉入夹层。",
+            "tags": [],
+            "title": "风暴遗失日志",
+            "proposition": "日志在风暴中意外落入甲板夹层。",
+            "target_resolution_key": "main_resolution",
+            "required_claim_keys": ["main_claim"],
+            "falsifier_keys": [],
+            "competing_hypothesis_keys": ["captain_explanation"],
+            "evidence_assessments": [
+                {
+                    "information_key": "wet_log",
+                    "effect": "contradicts",
+                    "strength": "moderate",
+                    "rationale": "受潮只在边缘，不像风暴导致的随机遗失。",
+                }
+            ],
+            "status": "undetermined",
+            "score": 0.3,
+        },
+    ]
+    payload["reasoning_paths"] = [
+        {
+            "local_key": "captain_path",
+            "description": "以纸页盐渍推断主动藏匿。",
+            "tags": [],
+            "title": "主动藏匿路径",
+            "path_type": "proof",
+            "target_key": "captain_explanation",
+            "steps": [
+                {
+                    "step_key": "salt_trace",
+                    "input_keys": ["wet_log"],
+                    "operation": "infer",
+                    "output_key": "main_claim",
+                }
+            ],
+            "required_for_resolution": True,
+            "alternative_path_keys": ["storm_path"],
+        },
+        {
+            "local_key": "storm_path",
+            "description": "检验风暴遗失这个替代解释。",
+            "tags": [],
+            "title": "风暴遗失路径",
+            "path_type": "proof",
+            "target_key": "storm_explanation",
+            "steps": [
+                {
+                    "step_key": "storm_check",
+                    "input_keys": ["wet_log"],
+                    "operation": "compare",
+                    "output_key": "main_claim",
+                }
+            ],
+            "required_for_resolution": True,
+            "alternative_path_keys": ["captain_path"],
+        },
+    ]
+    return EvidenceLogicIRV2.model_validate(payload)
+
+
 def test_v8_output_schemas_compile_for_deepseek_strict() -> None:
     for output_type in (
         CaseBlueprintV1,
         StoryWorldIRV1,
         EvidenceLogicIRV1,
+        EvidenceLogicIRV2,
         ResolutionGovernanceIRV1,
     ):
         schema = compile_deepseek_strict_schema(output_type)
@@ -215,6 +305,64 @@ def test_linker_and_compiler_inject_ids_metadata_and_object_types() -> None:
     ]
     assert candidate["extensions"] == {}
     assert candidate["version"]["parent_version_id"] is None
+
+
+def test_v10_compiler_preserves_explicit_assessments_and_matrix_gate() -> None:
+    blueprint = _blueprint().model_copy(deep=True)
+    blueprint.hypotheses = [
+        BlueprintObjectV1(
+            local_key="captain_explanation",
+            title="船长藏匿日志",
+            purpose="第一个竞争解释。",
+        ),
+        BlueprintObjectV1(
+            local_key="storm_explanation",
+            title="风暴遗失日志",
+            purpose="第二个竞争解释。",
+        ),
+    ]
+    blueprint.reasoning_paths = [
+        BlueprintObjectV1(
+            local_key="captain_path",
+            title="主动藏匿路径",
+            purpose="支持第一个解释。",
+        ),
+        BlueprintObjectV1(
+            local_key="storm_path",
+            title="风暴遗失路径",
+            purpose="检验第二个解释。",
+        ),
+    ]
+    evidence = _v10_evidence()
+
+    assert _evidence_assessment_issues(evidence) == []
+    linked = link_draft(blueprint, _story(), evidence, _governance(), task_run_id=125)
+    candidate = compile_casefile(
+        linked,
+        casefile_id="case_demo",
+        brief_id="brief_demo",
+        brief_version=2,
+        version_id="draft_demo",
+        version_no=3,
+        parent_version_id=None,
+        updated_at=datetime(2026, 8, 8, tzinfo=UTC),
+    )
+
+    validate_casefile(candidate)
+    assert candidate["hypotheses"][0]["evidence_assessments"] == [
+        {
+            "information_ref": {"object_type": "information_unit", "object_id": "info_t125_001"},
+            "effect": "supports",
+            "strength": "strong",
+            "rationale": "盐渍位置与主动藏匿的路径吻合。",
+        }
+    ]
+
+    incomplete = evidence.model_copy(deep=True)
+    incomplete.hypotheses[1].evidence_assessments = []
+    assert {issue["code"] for issue in _evidence_assessment_issues(incomplete)} == {
+        "missing_evidence_assessment"
+    }
 
 
 def test_compiler_omits_optional_nulls_and_preserves_required_nulls() -> None:

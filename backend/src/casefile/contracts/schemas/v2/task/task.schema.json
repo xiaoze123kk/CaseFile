@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/task/task.schema.json",
+  "title": "TaskContracts",
+  "$defs": {
+    "TaskFailureIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "path", "message"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "path": {"type": "string", "maxLength": 512},
+        "message": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    },
+    "TaskFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable", "issues"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 320},
+        "retryable": {"type": "boolean"},
+        "issues": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/TaskFailureIssue"}
+        }
+      }
+    },
+    "AgentDiagnosticIssue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id", "failure_layer", "schema_id", "code", "path", "message"
+      ],
+      "properties": {
+        "component_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "failure_layer": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "schema_id": {"type": ["string", "null"]},
+        "code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "path": {"type": "string", "maxLength": 512},
+        "message": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    },
+    "AgentComponentStepView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_run_id", "attempt_no", "component_id", "parent_component_id",
+        "execution_no", "status", "schema_id", "input_hash", "output_hash",
+        "failure_layer", "issues", "recoverable", "resumed_from_step_run_id"
+      ],
+      "properties": {
+        "step_run_id": {"type": "integer", "minimum": 1},
+        "attempt_no": {"type": "integer", "minimum": 1},
+        "component_id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "parent_component_id": {"type": ["string", "null"]},
+        "execution_no": {"type": "integer", "minimum": 1},
+        "status": {
+          "type": "string",
+          "enum": ["pending", "running", "succeeded", "failed", "reused", "skipped"]
+        },
+        "schema_id": {"type": "string", "minLength": 1},
+        "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "output_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "failure_layer": {"type": ["string", "null"]},
+        "issues": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/AgentDiagnosticIssue"}
+        },
+        "recoverable": {"type": "boolean"},
+        "resumed_from_step_run_id": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "BriefStrategyOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "direction", "focus", "strengths", "tradeoffs", "brief_fit"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["structure_first", "atmosphere_first", "reasoning_first"]
+        },
+        "direction": {"type": "string", "minLength": 1, "maxLength": 600},
+        "focus": {"type": "string", "minLength": 1, "maxLength": 300},
+        "strengths": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "tradeoffs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "brief_fit": {"type": "string", "minLength": 1, "maxLength": 400}
+      }
+    },
+    "BriefStrategyOptionsResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_hash", "strategy_version", "options",
+        "recommended_strategy", "recommendation_reason"
+      ],
+      "properties": {
+        "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "strategy_version": {"const": "candidate-strategy-v1"},
+        "options": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/BriefStrategyOption"}
+        },
+        "recommended_strategy": {
+          "type": "string",
+          "enum": ["structure_first", "atmosphere_first", "reasoning_first"]
+        },
+        "recommendation_reason": {"type": "string", "minLength": 1, "maxLength": 400}
+      }
+    },
+    "TaskRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_run_id", "project_id", "task_type", "status", "stage",
+        "provider", "model_id", "input_draft_revision", "input_brief_revision",
+        "input_source_record_id", "input_brief_intake_id",
+        "input_brief_intake_revision", "base_brief_intake_candidate_id",
+        "agent_thread_id", "input_message_id",
+        "output_message_id", "input_hash", "attempt_count", "usage", "result", "failure",
+        "component_steps", "candidate_strategy"
+      ],
+      "properties": {
+        "task_run_id": {"type": "integer", "minimum": 1},
+        "project_id": {"type": "integer", "minimum": 1},
+        "task_type": {
+          "type": "string",
+          "enum": [
+            "brief_polish",
+            "brief_anchor_extract",
+            "brief_intake_questions",
+            "brief_intake_synthesize",
+            "brief_strategy_options",
+            "brief_to_draft",
+            "casefile_chat"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
+        },
+        "stage": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "provider": {"type": "string", "enum": ["openai", "deepseek"]},
+        "model_id": {"type": "string", "minLength": 1},
+        "input_draft_revision": {"type": "integer", "minimum": 1},
+        "input_brief_revision": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_source_record_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_brief_intake_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_brief_intake_revision": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "base_brief_intake_candidate_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "agent_thread_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_message_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "output_message_id": {
+          "oneOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "input_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "candidate_strategy": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["structure_first", "atmosphere_first", "reasoning_first", "balanced"]
+            },
+            {"type": "null"}
+          ]
+        },
+        "attempt_count": {"type": "integer", "minimum": 0},
+        "usage": {"type": "object", "additionalProperties": true},
+        "result": {
+          "oneOf": [
+            {"type": "object", "additionalProperties": true},
+            {"type": "null"}
+          ]
+        },
+        "result_snapshot_id": {"type": ["integer", "null"], "minimum": 1},
+        "error_code": {"type": ["string", "null"]},
+        "failure": {
+          "oneOf": [
+            {"$ref": "#/$defs/TaskFailure"},
+            {"type": "null"}
+          ]
+        },
+        "component_steps": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/AgentComponentStepView"}
+        },
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "TaskEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "task_run_id", "sequence_no", "event_type", "stage", "payload", "occurred_at"],
+      "properties": {
+        "event_id": {"type": "integer", "minimum": 1},
+        "task_run_id": {"type": "integer", "minimum": 1},
+        "sequence_no": {"type": "integer", "minimum": 1},
+        "event_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.]*$"},
+        "stage": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "payload": {"type": "object", "additionalProperties": true},
+        "occurred_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "AgentGenerateRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_id", "brief_version_id", "expected_draft_id", "expected_draft_revision", "provider"],
+      "properties": {
+        "project_id": {"type": "integer", "minimum": 1},
+        "brief_version_id": {"type": "integer", "minimum": 1},
+        "expected_draft_id": {"type": "integer", "minimum": 1},
+        "expected_draft_revision": {"type": "integer", "minimum": 1},
+        "provider": {"type": "string", "enum": ["openai", "deepseek"]}
+      }
+    },
+    "AgentGenerateResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_run_id", "status", "snapshot_id", "draft_revision", "content_hash"],
+      "properties": {
+        "task_run_id": {"type": "integer", "minimum": 1},
+        "status": {"const": "succeeded"},
+        "snapshot_id": {"type": "integer", "minimum": 1},
+        "draft_revision": {"type": "integer", "minimum": 1},
+        "content_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

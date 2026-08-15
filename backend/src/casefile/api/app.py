@@ -19,21 +19,29 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from casefile.api.brief_intake import brief_intake_router
 from casefile.api.dependencies import (
     ActorDependency,
+    DraftIdentityDependency,
     RevisionDependency,
     SessionDependency,
 )
 from casefile.api.ideas import ideas_router
 from casefile.api.reverse_parse import reverse_parse_router
 from casefile.api.schemas import (
+    DraftActivateRequest,
+    ExposurePlanPutRequest,
     ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
+    ResolutionConclusionActionRequest,
+    TimelineTimePreviewRequest,
 )
 from casefile.api.workbench import workbench_router
 from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
+from casefile.application.exposure_plan import ExposurePlanService
 from casefile.application.services import CaseFileService
+from casefile.application.timeline import TimelineService
 from casefile.application.v1_editing import V1EditingService
+from casefile.contracts import ContractValidationError, public_validation_issues
 from casefile.data_postgres.session import (
     EXPECTED_DATABASE_REVISION,
     assert_database_ready,
@@ -76,6 +84,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
         allow_headers=["*"],
     )
     application.add_exception_handler(ApplicationError, _application_error_handler)
+    application.add_exception_handler(ContractValidationError, _contract_validation_error_handler)
     application.add_exception_handler(RequestValidationError, _validation_error_handler)
     application.add_exception_handler(StarletteHTTPException, _http_error_handler)
     application.add_exception_handler(SQLAlchemyError, _database_error_handler)
@@ -109,9 +118,7 @@ def _cors_origins() -> list[str]:
             or parsed.query
             or parsed.fragment
         ):
-            raise RuntimeError(
-                "CASEFILE_CORS_ORIGINS must contain comma-separated HTTP(S) origins"
-            )
+            raise RuntimeError("CASEFILE_CORS_ORIGINS must contain comma-separated HTTP(S) origins")
         if origin not in origins:
             origins.append(origin)
     return origins
@@ -122,6 +129,24 @@ async def _application_error_handler(_: Request, error: Exception) -> JSONRespon
     return JSONResponse(
         status_code=error.status_code,
         content={"code": error.code, "message": error.message, "details": error.details},
+    )
+
+
+async def _contract_validation_error_handler(_: Request, error: Exception) -> JSONResponse:
+    assert isinstance(error, ContractValidationError)
+    issues = public_validation_issues(error.errors)
+    first = issues[0] if issues else {
+        "code": "contract_validation_failed",
+        "path": "",
+        "message": "提交内容不符合 CaseFile 结构约束。",
+    }
+    return JSONResponse(
+        status_code=422,
+        content={
+            "code": first["code"],
+            "message": first["message"],
+            "details": {"errors": issues},
+        },
     )
 
 
@@ -300,6 +325,32 @@ def _api_router() -> APIRouter:
         _set_revision(response, result["revision"])
         return result
 
+    @router.get("/projects/{project_id}/drafts")
+    def list_drafts(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> list[dict[str, Any]]:
+        return CaseFileService(session).list_drafts(actor, project_id)
+
+    @router.post("/projects/{project_id}/drafts/{draft_id}/activate")
+    def activate_draft(
+        project_id: int,
+        draft_id: int,
+        payload: DraftActivateRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = CaseFileService(session).activate_draft(
+            actor,
+            project_id,
+            draft_id,
+            expected_current_draft_id=payload.expected_current_draft_id,
+        )
+        _set_revision(response, result["revision"])
+        return result
+
     @router.patch("/projects/{project_id}/draft/objects/{object_id}")
     def patch_v1_object(
         project_id: int,
@@ -313,10 +364,95 @@ def _api_router() -> APIRouter:
             actor,
             project_id,
             object_id,
+            expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
             changes=payload.changes,
         )
         _set_revision(response, revision)
+        return result
+
+    @router.post("/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/confirm")
+    def confirm_resolution_conclusion(
+        project_id: int,
+        resolution_id: str,
+        payload: ResolutionConclusionActionRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result, revision = V1EditingService(session).confirm_conclusion(
+            actor,
+            project_id,
+            resolution_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+        )
+        _set_revision(response, revision)
+        return result
+
+    @router.post("/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/withdraw")
+    def withdraw_resolution_conclusion(
+        project_id: int,
+        resolution_id: str,
+        payload: ResolutionConclusionActionRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result, revision = V1EditingService(session).withdraw_conclusion(
+            actor,
+            project_id,
+            resolution_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+        )
+        _set_revision(response, revision)
+        return result
+
+    @router.post("/projects/{project_id}/draft/events/{event_id}/time-preview")
+    def preview_event_time(
+        project_id: int,
+        event_id: str,
+        payload: TimelineTimePreviewRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return TimelineService(session).preview_event_time(
+            actor,
+            project_id,
+            event_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+            proposed_time=payload.proposed_time,
+        )
+
+    @router.get("/projects/{project_id}/draft/exposure-plan")
+    def get_exposure_plan(
+        project_id: int,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = ExposurePlanService(session).get(actor, project_id)
+        response.headers["X-CaseFile-Exposure-Plan-Revision"] = str(result["revision"])
+        return result
+
+    @router.put("/projects/{project_id}/draft/exposure-plan")
+    def put_exposure_plan(
+        project_id: int,
+        payload: ExposurePlanPutRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = ExposurePlanService(session).put(
+            actor,
+            project_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+            entries=[entry.model_dump() for entry in payload.entries],
+        )
+        response.headers["X-CaseFile-Exposure-Plan-Revision"] = str(result["revision"])
         return result
 
     @router.post("/projects/{project_id}/draft/snapshots")
@@ -324,10 +460,16 @@ def _api_router() -> APIRouter:
         project_id: int,
         response: Response,
         actor: ActorDependency,
+        draft_id: DraftIdentityDependency,
         revision: RevisionDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        result, created = CaseFileService(session).create_snapshot(actor, project_id, revision)
+        result, created = CaseFileService(session).create_snapshot(
+            actor,
+            project_id,
+            draft_id,
+            revision,
+        )
         response.status_code = 201 if created else 200
         _set_revision(response, result["revision"])
         return result

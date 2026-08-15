@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 from pathlib import Path
@@ -9,12 +10,27 @@ from pathlib import Path
 import pytest
 
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
+from casefile.agent_runtime.brief_to_draft_v8 import workflow as generation_workflow
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1
+from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
+from casefile.agent_runtime.prompt import (
+    V10_GENERATION_AGENT_VERSION,
+    V11_GENERATION_AGENT_VERSION,
+    V12_GENERATION_AGENT_VERSION,
+    V13_GENERATION_AGENT_VERSION,
+    V14_GENERATION_AGENT_VERSION,
+    V15_GENERATION_AGENT_VERSION,
+)
 from casefile.agent_runtime.prompt_package import PromptPackageError, render_prompt_package
 from casefile.agent_runtime.prompt_repository import (
     PromptRepository,
     PromptRepositoryError,
     load_prompt,
+)
+from casefile.agent_runtime.providers import (
+    _add_fake_v10_matrix_plan,
+    _fake_matrix_evaluation_output,
+    _fake_v8_output,
 )
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.contracts import validate_casefile
@@ -146,3 +162,422 @@ def test_fake_provider_runs_v9_package_pipeline() -> None:
     assert len(started) == 4
     assert {payload["package_version"] for payload in started} == {"brief-to-draft-v9"}
     assert {payload["tool_policy_id"] for payload in started} == {"no-tools-v1"}
+
+
+def test_v10_package_generates_explicit_competing_evidence_assessments() -> None:
+    request = GenerationRequest(
+        task_run_id=322,
+        prompt_version="brief-to-draft-v10",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v10",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v10",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v10",
+        api_key=None,
+        max_turns=3,
+        emit=lambda _event_type, _stage, _payload: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V10_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    hypotheses = result.candidate["hypotheses"]
+    assert len(hypotheses) == 2
+    assert all(hypothesis["evidence_assessments"] for hypothesis in hypotheses)
+    assert {
+        assessment["effect"]
+        for hypothesis in hypotheses
+        for assessment in hypothesis["evidence_assessments"]
+    } == {"supports", "contradicts"}
+
+
+def test_v11_package_generates_workbench_ready_candidate() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=323,
+        prompt_version="brief-to-draft-v11",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v11",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v11",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v11",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V11_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    assert result.candidate["events"][0]["time"] == {
+        "kind": "exact",
+        "value": "2026-08-08T08:00",
+        "precision": "minute",
+    }
+    assert result.candidate["locations"][0]["spatial_position"] == {
+        "coordinate_system": "schematic",
+        "x": 50.0,
+        "y": 50.0,
+    }
+    assert len(result.candidate["hypotheses"]) == 2
+    started = [
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
+    ]
+    assert any(item["schema_id"] == "draft-context-pack-v2" for item in started)
+    assert any(item["schema_id"] == "story-world-ir-v2" for item in started)
+    assert {item["package_version"] for item in started if "package_version" in item} == {
+        "brief-to-draft-v11"
+    }
+
+
+def test_v12_package_generates_temporal_plan_then_injects_it_into_story() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=324,
+        prompt_version="brief-to-draft-v12",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v12",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v12",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v12",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V12_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    assert result.candidate["events"][0]["time"] == {
+        "kind": "exact",
+        "value": "2026-08-08T08:00",
+        "precision": "minute",
+    }
+    started = [
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
+    ]
+    assert {payload["package_version"] for payload in started if "package_version" in payload} == {
+        "brief-to-draft-v12"
+    }
+    assert any(
+        payload["component_id"] == "temporal_structure_planner"
+        and payload["schema_id"] == "temporal-plan-v1"
+        for payload in started
+    )
+    assert any(
+        payload["component_id"] == "story_world" and payload["schema_id"] == "story-world-ir-v3"
+        for payload in started
+    )
+
+
+def test_v13_fake_provider_keeps_temporal_generation_topology() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=325,
+        prompt_version="brief-to-draft-v13",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v13",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v13",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v13",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V13_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    started = [
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
+    ]
+    assert {payload["package_version"] for payload in started if "package_version" in payload} == {
+        "brief-to-draft-v13"
+    }
+    assert any(payload["component_id"] == "temporal_structure_planner" for payload in started)
+
+
+def test_v14_fake_provider_enforces_chinese_creator_text_and_keeps_topology() -> None:
+    events: list[tuple[str, str, dict[str, object]]] = []
+    request = GenerationRequest(
+        task_run_id=326,
+        prompt_version="brief-to-draft-v14",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v14",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v14",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v14",
+        api_key=None,
+        max_turns=3,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V14_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    started = [
+        payload for event_type, _stage, payload in events if event_type == "agent.step.started"
+    ]
+    assert {payload["package_version"] for payload in started if "package_version" in payload} == {
+        "brief-to-draft-v14"
+    }
+    assert any(payload["component_id"] == "temporal_structure_planner" for payload in started)
+
+
+def test_v15_fake_provider_generates_only_proposed_resolution_conclusions() -> None:
+    request = GenerationRequest(
+        task_run_id=327,
+        prompt_version="brief-to-draft-v15",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v15",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v15",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v15",
+        api_key=None,
+        max_turns=3,
+        emit=lambda *_args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V15_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    result = FakeProvider().generate(request)
+
+    validate_casefile(result.candidate)
+    conclusion = result.candidate["resolution_specs"][0]["conclusion"]
+    assert conclusion["review_status"] == "proposed"
+    assert conclusion["selected_hypothesis_refs"]
+    assert conclusion["supporting_reasoning_path_refs"]
+    assert "confirmed" not in conclusion.values()
+
+
+def test_v15_governance_runs_after_evidence_and_can_return_undetermined() -> None:
+    calls: list[str] = []
+    governance_inputs: list[dict[str, object]] = []
+    request = GenerationRequest(
+        task_run_id=328,
+        prompt_version="brief-to-draft-v15",
+        brief={"conclusion_mode": "open_interpretation"},
+        casefile_id="case_demo_v15_open",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v15_open",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v15-open",
+        api_key=None,
+        max_turns=3,
+        emit=lambda *_args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V15_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    async def call_component(
+        _instructions: str,
+        input_text: str,
+        output_type: type[generation_workflow.BaseModel],
+        _stage: str,
+        component_id: str,
+        _schema_id: str,
+    ) -> tuple[dict[str, object], dict[str, int]]:
+        calls.append(component_id)
+        if output_type.__name__ == "MatrixEvaluationOutputV1":
+            return _fake_matrix_evaluation_output(json.loads(input_text)), {"requests": 1}
+        output = _fake_v8_output(output_type)
+        _add_fake_v10_matrix_plan(output_type, output)
+        if component_id == "resolution_governance":
+            governance_input = json.loads(input_text)
+            governance_inputs.append(governance_input)
+            output["resolution_specs"][0]["conclusion_mode"] = "open_interpretation"
+            output["resolution_specs"][0]["conclusion"] = {
+                "outcome": "undetermined",
+                "summary": "两种解释仍然并存，现有记录不足以完成唯一裁决。",
+                "values": [],
+                "selected_hypothesis_keys": ["hypothesis", "alternative_hypothesis"],
+                "supporting_reasoning_path_keys": ["path", "alternative_path"],
+                "rationale": "同一记录同时支持与削弱不同解释，尚无独立来源消除冲突。",
+                "unresolved_gaps": ["缺少独立来源对关键记录真伪的复核。"],
+            }
+        return output, {"requests": 1}
+
+    result = asyncio.run(run_v15_generation(request, call_component=call_component))
+
+    validate_casefile(result.candidate)
+    conclusion = result.candidate["resolution_specs"][0]["conclusion"]
+    assert conclusion["outcome"] == "undetermined"
+    assert conclusion["review_status"] == "proposed"
+    assert conclusion["unresolved_gaps"]
+    assert calls.index("resolution_governance") > calls.index("evidence_logic")
+    assert governance_inputs[0]["evidence_logic"]["schema_id"] == "evidence-logic-ir-v2"
+    assert len(governance_inputs[0]["evidence_logic"]["hypotheses"]) == 2
+
+
+def test_v15_evidence_repair_receives_previous_output_and_phased_issues() -> None:
+    """Broken competitor closure is derived server-side; real issues still repair.
+
+    A wrong ``competing_hypothesis_keys`` no longer triggers a model repair
+    round: the server closes each same-resolution group deterministically. The
+    bounded repair loop with ``previous_output`` is exercised by a genuine
+    information-grounded path issue instead.
+    """
+
+    calls: list[str] = []
+    evidence_inputs: list[dict[str, object]] = []
+    evidence_calls = 0
+    request = GenerationRequest(
+        task_run_id=329,
+        prompt_version="brief-to-draft-v15",
+        brief={"conclusion_mode": "unique"},
+        casefile_id="case_demo_v15_repair",
+        brief_id="brief_demo",
+        brief_version=1,
+        version_id="draft_demo_v15_repair",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake-v15-repair",
+        api_key=None,
+        max_turns=3,
+        emit=lambda *_args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+        agent_version=V15_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+        schema_version="2.0",
+    )
+
+    async def call_component(
+        _instructions: str,
+        input_text: str,
+        output_type: type[generation_workflow.BaseModel],
+        _stage: str,
+        component_id: str,
+        _schema_id: str,
+    ) -> tuple[dict[str, object], dict[str, int]]:
+        nonlocal evidence_calls
+        calls.append(component_id)
+        if output_type.__name__ == "MatrixEvaluationOutputV1":
+            return _fake_matrix_evaluation_output(json.loads(input_text)), {"requests": 1}
+        output = _fake_v8_output(output_type)
+        _add_fake_v10_matrix_plan(output_type, output)
+        if component_id == "evidence_logic":
+            evidence_calls += 1
+            evidence_inputs.append(json.loads(input_text))
+            if evidence_calls == 1:
+                output["hypotheses"][0]["competing_hypothesis_keys"] = []
+                output["reasoning_paths"][0]["steps"][0]["input_keys"] = ["claim"]
+        return output, {"requests": 1}
+
+    result = asyncio.run(run_v15_generation(request, call_component=call_component))
+
+    validate_casefile(result.candidate)
+    hypothesis_ids = {item["id"] for item in result.candidate["hypotheses"]}
+    competing = {
+        item["id"]: [ref["object_id"] for ref in item["competing_hypothesis_refs"]]
+        for item in result.candidate["hypotheses"]
+    }
+    assert len(competing) == 2
+    for hypothesis_id, competitor_ids in competing.items():
+        assert competitor_ids == sorted(hypothesis_ids - {hypothesis_id})
+    assert calls.count("evidence_logic") == 2
+    repair_input = evidence_inputs[1]
+    assert repair_input["previous_output"]["hypotheses"][0]["competing_hypothesis_keys"] == [
+        "alternative_hypothesis"
+    ]
+    assert "competing_hypothesis_path_missing" in [
+        issue["code"] for issue in repair_input["targeted_repair_issues"]
+    ]
+
+
+def test_v14_creator_language_gate_attributes_nested_english_text() -> None:
+    candidate = {
+        "title": "中文卷宗",
+        "information_units": [
+            {
+                "title": "Archive Access Logs",
+                "description": "中文说明",
+                "content": "English-only evidence content.",
+                "availability": {"acquisition_conditions": ["Read the terminal logs."]},
+            }
+        ],
+        "hypotheses": [
+            {
+                "title": "中文假设",
+                "description": "中文说明",
+                "proposition": "中文命题",
+                "evidence_assessments": [{"rationale": "Internal access is likely."}],
+            }
+        ],
+    }
+
+    issues = generation_workflow._creator_chinese_issues(candidate)
+
+    assert {issue["path"] for issue in issues} == {
+        "/information_units/0/title",
+        "/information_units/0/content",
+        "/information_units/0/availability/acquisition_conditions/0",
+        "/hypotheses/0/evidence_assessments/0/rationale",
+    }
+    assert {issue["component_id"] for issue in issues} == {"evidence_logic"}
+
+
+def test_v14_blueprint_language_gate_rejects_english_visible_fields() -> None:
+    blueprint = generation_workflow.CaseBlueprintV1.model_validate(
+        {
+            "title": "English Case Title",
+            "resolution_specs": [
+                {
+                    "local_key": "resolution",
+                    "title": "核心问题",
+                    "purpose": "Explain the mystery.",
+                    "dependency_keys": [],
+                }
+            ],
+        }
+    )
+
+    issues = generation_workflow._blueprint_creator_chinese_issues(blueprint)
+
+    assert {issue["path"] for issue in issues} == {
+        "/title",
+        "/resolution_specs/0/purpose",
+    }
+    assert {issue["component_id"] for issue in issues} == {"case_blueprint_planner"}

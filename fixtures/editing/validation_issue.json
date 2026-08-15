@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "issue_id": "issue_restart_time",
   "rule_id": "CF-S1-TIME-001",
   "severity": "S1",

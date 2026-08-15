@@ -13,14 +13,10 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-
+from application_services_test_support import _clear_projects_before_downgrade
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
+from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
@@ -29,11 +25,16 @@ from casefile.agent_runtime.models import (
     GenerationRequest,
     GenerationResult,
 )
-from casefile.agent_runtime.providers import _fake_v8_output
+from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -115,10 +116,10 @@ class RecoverableV8Provider(FakeProvider):
                 )
                 raise ContractValidationError([issue])
             output = _fake_v8_output(output_type)
+            if request.prompt_version in {"brief-to-draft-v10", "brief-to-draft-v11"}:
+                _add_fake_v10_matrix_plan(output_type, output)
             if component_id == "resolution_governance":
-                output["resolution_specs"][0]["conclusion_mode"] = request.brief[
-                    "conclusion_mode"
-                ]
+                output["resolution_specs"][0]["conclusion_mode"] = request.brief["conclusion_mode"]
             request.emit(
                 "agent.model_call.completed",
                 stage,
@@ -132,7 +133,12 @@ class RecoverableV8Provider(FakeProvider):
             )
             return output, {}
 
-        return asyncio.run(run_v8_generation(request, call_component=call_component))
+        runner = (
+            run_v11_generation
+            if request.prompt_version == "brief-to-draft-v11"
+            else run_v8_generation
+        )
+        return asyncio.run(runner(request, call_component=call_component))
 
 
 def _brief(source_record_id: int) -> dict[str, object]:
@@ -186,6 +192,7 @@ def api_database() -> Iterator[tuple[str, Engine, int, str]]:
         os.environ,
         {"DATABASE_URL": database_url, "CASEFILE_MASTER_KEY": master_key},
     ):
+        _clear_projects_before_downgrade(database_url)
         command.downgrade(config, "base")
         command.upgrade(config, "head")
         engine = create_engine(database_url)
@@ -199,6 +206,7 @@ def api_database() -> Iterator[tuple[str, Engine, int, str]]:
             yield database_url, engine, actor_id, master_key
         finally:
             engine.dispose()
+            _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
 
 
@@ -259,12 +267,15 @@ def test_settings_brief_generation_sse_and_completion_gate(
 ) -> None:
     database_url, engine, actor_id, master_key = api_database
     app = create_app(database_url)
-    with patch.dict(
-        os.environ,
-        {
-            "CASEFILE_MASTER_KEY": master_key,
-        },
-    ), TestClient(app) as client:
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "CASEFILE_MASTER_KEY": master_key,
+            },
+        ),
+        TestClient(app) as client,
+    ):
         assert client.get("/health/ready").status_code == 200
         assert client.get("/api/v1/projects").status_code == 401
 
@@ -333,9 +344,20 @@ def test_settings_brief_generation_sse_and_completion_gate(
             )
             assert response.status_code == 404, (method, path, response.text)
 
-        empty = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
-        assert empty.status_code == 200
-        assert empty.json()["content"] is None
+        empty_draft = client.get(
+            f"/api/v1/projects/{project_id}/draft",
+            headers=_identity(actor_id),
+        )
+        assert empty_draft.status_code == 200
+        assert empty_draft.json()["content"] is None
+        empty_exposure_plan = client.get(
+            f"/api/v1/projects/{project_id}/draft/exposure-plan",
+            headers=_identity(actor_id),
+        )
+        assert empty_exposure_plan.status_code == 200
+        assert empty_exposure_plan.json()["draft_id"] == empty_draft.json()["draft_id"]
+        assert empty_exposure_plan.json()["revision"] == 0
+        assert empty_exposure_plan.json()["entries"] == []
 
         source_response = client.post(
             f"/api/v1/projects/{project_id}/sources",
@@ -401,10 +423,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert extract_queued.status_code == 202
         assert worker.run_once() is True
         extract_task = client.get(
-            (
-                f"/api/v1/projects/{project_id}/tasks/"
-                f"{extract_queued.json()['task_run_id']}"
-            ),
+            (f"/api/v1/projects/{project_id}/tasks/{extract_queued.json()['task_run_id']}"),
             headers=_identity(actor_id),
         )
         assert extract_task.json()["result"]["author_anchors"]
@@ -422,6 +441,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "not_a_strategy",
@@ -434,6 +454,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "structure_first",
@@ -469,8 +490,10 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert [step["component_id"] for step in task.json()["component_steps"]] == [
             "context_pack_builder",
             "case_blueprint_planner",
+            "temporal_structure_planner",
             "story_world",
             "evidence_logic",
+            "evidence_matrix",
             "resolution_governance",
             "reference_linker",
             "casefile_compiler",
@@ -487,16 +510,21 @@ def test_settings_brief_generation_sse_and_completion_gate(
             config=WorkerConfig(worker_id="api-recovery-worker"),
             provider_factory=lambda _task: recoverable_provider,
         )
-        recoverable_queued = client.post(
-            f"/api/v1/projects/{project_id}/tasks/generate",
-            headers=_identity(actor_id),
-            json={
-                "brief_version_id": confirmed.json()["brief_version_id"],
-                "expected_draft_revision": 1,
-                "provider": "deepseek",
-                "candidate_strategy": "atmosphere_first",
-            },
-        )
+        with patch(
+            "casefile.application.workflow_service.prompt_version_for_task",
+            return_value="brief-to-draft-v11",
+        ):
+            recoverable_queued = client.post(
+                f"/api/v1/projects/{project_id}/tasks/generate",
+                headers=_identity(actor_id),
+                json={
+                    "brief_version_id": confirmed.json()["brief_version_id"],
+                    "expected_draft_id": empty_draft.json()["draft_id"],
+                    "expected_draft_revision": 1,
+                    "provider": "deepseek",
+                    "candidate_strategy": "atmosphere_first",
+                },
+            )
         assert recoverable_queued.status_code == 202
         recoverable_task_id = recoverable_queued.json()["task_run_id"]
         assert recovery_worker.run_once() is True
@@ -517,6 +545,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/tasks/{recoverable_task_id}/resume",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "expected_brief_revision": updated.json()["draft_revision"],
             },
@@ -530,13 +559,12 @@ def test_settings_brief_generation_sse_and_completion_gate(
         ).json()
         assert recovered_task["status"] == "succeeded"
         assert recovered_task["attempt_count"] == 2
+        assert recovered_task["prompt_version"] == "brief-to-draft-v11"
         second_attempt_steps = [
             step for step in recovered_task["component_steps"] if step["attempt_no"] == 2
         ]
         assert {
-            step["component_id"]
-            for step in second_attempt_steps
-            if step["status"] == "reused"
+            step["component_id"] for step in second_attempt_steps if step["status"] == "reused"
         } >= {"case_blueprint_planner", "story_world", "resolution_governance"}
         assert any(
             step["component_id"] == "evidence_logic" and step["status"] == "succeeded"
@@ -554,6 +582,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             headers=_identity(actor_id),
             json={
                 "brief_version_id": confirmed.json()["brief_version_id"],
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 1,
                 "provider": "deepseek",
                 "candidate_strategy": "reasoning_first",
@@ -617,7 +646,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         adopted = client.post(
             f"/api/v1/projects/{project_id}/draft-candidates/{task_id}/adopt",
             headers=_identity(actor_id),
-            json={"expected_draft_revision": 1},
+            json={"expected_current_draft_id": empty_draft.json()["draft_id"]},
         )
         assert adopted.status_code == 200
         assert adopted.json()["adopted"] is True
@@ -630,6 +659,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/tasks/{stale_task_id}/resume",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": empty_draft.json()["draft_id"],
                 "expected_draft_revision": 2,
                 "expected_brief_revision": updated.json()["draft_revision"],
             },
@@ -674,12 +704,9 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert stale_candidate["can_adopt"] is False
         stale_adoption = client.post(
-            (
-                f"/api/v1/projects/{project_id}/draft-candidates/"
-                f"{recoverable_task_id}/adopt"
-            ),
+            (f"/api/v1/projects/{project_id}/draft-candidates/{recoverable_task_id}/adopt"),
             headers=_identity(actor_id),
-            json={"expected_draft_revision": 2},
+            json={"expected_current_draft_id": empty_draft.json()["draft_id"]},
         )
         assert stale_adoption.status_code == 409
         assert stale_adoption.json()["code"] == "candidate_brief_stale"
@@ -704,7 +731,121 @@ def test_settings_brief_generation_sse_and_completion_gate(
 
         draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id))
         assert draft.json()["revision"] == 2
-        assert draft.json()["content"]["schema_version"] == "1.0"
+        assert draft.json()["content"]["schema_version"] == "2.0"
+
+        event_id = draft.json()["content"]["events"][0]["id"]
+        time_preview = client.post(
+            f"/api/v1/projects/{project_id}/draft/events/{event_id}/time-preview",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 2,
+                "proposed_time": {
+                    "kind": "exact",
+                    "value": "2042-06-01T20:15",
+                    "precision": "minute",
+                },
+            },
+        )
+        assert time_preview.status_code == 200
+        assert time_preview.json()["can_confirm"] is True
+        assert time_preview.json()["draft_id"] == adopted.json()["draft_id"]
+        assert time_preview.json()["base_revision"] == 2
+        assert (
+            client.get(f"/api/v1/projects/{project_id}/draft", headers=_identity(actor_id)).json()[
+                "revision"
+            ]
+            == 2
+        )
+
+        invalid_time_preview = client.post(
+            f"/api/v1/projects/{project_id}/draft/events/{event_id}/time-preview",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 2,
+                "proposed_time": {
+                    "kind": "range",
+                    "start": "2042-06-01T20:20",
+                    "end": "2042-06-01T20:10",
+                    "precision": "minute",
+                },
+            },
+        )
+        assert invalid_time_preview.status_code == 200
+        assert invalid_time_preview.json()["can_confirm"] is False
+        assert invalid_time_preview.json()["validation"]["issues"][0]["code"] == (
+            "invalid_time_range"
+        )
+
+        factual_events = draft.json()["content"]["events"]
+        exposure_entries = [
+            {
+                "entry_key": f"exposure_{event['id']}",
+                "title": event["title"],
+                "note": None,
+                "refs": [{"object_type": "event", "object_id": event["id"]}],
+            }
+            for event in reversed(factual_events)
+        ]
+        exposure_plan = client.put(
+            f"/api/v1/projects/{project_id}/draft/exposure-plan",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 0,
+                "entries": exposure_entries,
+            },
+        )
+        assert exposure_plan.status_code == 200, exposure_plan.text
+        assert exposure_plan.headers["X-CaseFile-Exposure-Plan-Revision"] == "1"
+        assert exposure_plan.json()["revision"] == 1
+        assert [item["refs"][0]["object_id"] for item in exposure_plan.json()["entries"]] == [
+            event["id"] for event in reversed(factual_events)
+        ]
+        current_exposure_plan = client.get(
+            f"/api/v1/projects/{project_id}/draft/exposure-plan",
+            headers=_identity(actor_id),
+        )
+        assert current_exposure_plan.json() == exposure_plan.json()
+        unchanged_draft = client.get(
+            f"/api/v1/projects/{project_id}/draft",
+            headers=_identity(actor_id),
+        ).json()
+        assert unchanged_draft["revision"] == 2
+        assert [event["time"] for event in unchanged_draft["content"]["events"]] == [
+            event["time"] for event in factual_events
+        ]
+        stale_exposure_plan = client.put(
+            f"/api/v1/projects/{project_id}/draft/exposure-plan",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 0,
+                "entries": exposure_entries,
+            },
+        )
+        assert stale_exposure_plan.status_code == 409
+        assert stale_exposure_plan.json()["code"] == "exposure_plan_revision_conflict"
+        with engine.connect() as connection:
+            counts = {
+                table_name: connection.scalar(
+                    text(f"SELECT count(*) FROM {table_name} WHERE project_id = :project_id"),
+                    {"project_id": project_id},
+                )
+                for table_name in (
+                    "exposure_plans",
+                    "exposure_plan_revisions",
+                    "exposure_plan_entries",
+                    "exposure_plan_entry_refs",
+                )
+            }
+            assert counts == {
+                "exposure_plans": 1,
+                "exposure_plan_revisions": 1,
+                "exposure_plan_entries": len(exposure_entries),
+                "exposure_plan_entry_refs": len(exposure_entries),
+            }
 
         workbench_context = client.get(
             f"/api/v1/projects/{project_id}/workbench-context",
@@ -716,17 +857,13 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert context["validation"] == {
             "status": "passed",
             "validator": "casefile.contracts.validate_casefile",
-            "schema_version": "1.0",
+            "schema_version": "2.0",
             "issue_count": 0,
             "issues": [],
             "reason": None,
         }
-        assert context["sources"][0]["trace_id"] == (
-            f"source_records:{source['source_record_id']}"
-        )
-        assert context["sources"][0]["content_text"] == (
-            "一艘渡轮每天午夜会重新驶回同一座码头。"
-        )
+        assert context["sources"][0]["trace_id"] == (f"source_records:{source['source_record_id']}")
+        assert context["sources"][0]["content_text"] == ("一艘渡轮每天午夜会重新驶回同一座码头。")
         adoption_fact = next(
             entry
             for entry in context["audit_entries"]
@@ -734,11 +871,21 @@ def test_settings_brief_generation_sse_and_completion_gate(
         )
         assert adoption_fact["source_table"] == "draft_operations"
         assert adoption_fact["details"]["result_revision"] == 2
+        exposure_fact = next(
+            entry
+            for entry in context["audit_entries"]
+            if entry["action"] == "exposure_plan.revised"
+        )
+        assert exposure_fact["source_table"] == "audit_events"
+        assert exposure_fact["details"]["revision"] == 1
 
         thread_response = client.post(
             f"/api/v1/projects/{project_id}/agent/threads",
             headers=_identity(actor_id),
-            json={},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 2,
+            },
         )
         assert thread_response.status_code == 201
         thread_id = thread_response.json()["thread_id"]
@@ -746,6 +893,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 2,
                 "content": "请通读整个卷宗并给出一条可审阅建议。",
                 "provider": "deepseek",
             },
@@ -779,24 +928,25 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert patch_set["operations"][0]["field_path"] == "/description"
 
         applied = client.post(
-            (
-                f"/api/v1/projects/{project_id}/agent/patch-sets/"
-                f"{patch_set['patch_set_id']}/apply"
-            ),
+            (f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set['patch_set_id']}/apply"),
             headers=_identity(actor_id),
-            json={"expected_revision": 2, "operation_ids": None},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 2,
+                "operation_ids": None,
+            },
         )
         assert applied.status_code == 200
         assert applied.json()["status"] == "applied"
         assert applied.json()["draft_revision"] == 3
 
         undone = client.post(
-            (
-                f"/api/v1/projects/{project_id}/agent/patch-sets/"
-                f"{patch_set['patch_set_id']}/undo"
-            ),
+            (f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set['patch_set_id']}/undo"),
             headers=_identity(actor_id),
-            json={"expected_revision": 3},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 3,
+            },
         )
         assert undone.status_code == 200
         assert undone.json()["status"] == "undone"
@@ -826,7 +976,11 @@ def test_settings_brief_generation_sse_and_completion_gate(
         rejected_chat = client.post(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
-            json={"content": "再给一条建议，这次我会整批不采用。"},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 4,
+                "content": "再给一条建议，这次我会整批不采用。",
+            },
         )
         assert rejected_chat.status_code == 202
         assert chat_worker.run_once() is True
@@ -841,7 +995,11 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 f"{rejected_patch['patch_set_id']}/apply"
             ),
             headers=_identity(actor_id),
-            json={"expected_revision": 4, "operation_ids": []},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 4,
+                "operation_ids": [],
+            },
         )
         assert rejected.status_code == 200
         assert rejected.json()["status"] == "rejected"
@@ -851,6 +1009,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}",
             headers=_identity(actor_id),
             json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 4,
                 "title": "午夜回航审阅",
                 "is_pinned": True,
                 "archived": True,
@@ -862,6 +1022,10 @@ def test_settings_brief_generation_sse_and_completion_gate(
         archived_send = client.post(
             f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
             headers=_identity(actor_id),
-            json={"content": "归档线程不能继续发送。"},
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_draft_revision": 4,
+                "content": "归档线程不能继续发送。",
+            },
         )
         assert archived_send.status_code == 409
