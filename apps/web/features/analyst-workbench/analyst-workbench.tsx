@@ -1647,17 +1647,6 @@ function AnalystWorkbenchSurface({
                 </button>
               ))}
             </div>
-            <div className={styles.canvasMeta} data-selection={selectedObject ? "object" : "none"}>
-              <span>同步定位</span>
-              <b>
-                {selectedObject
-                  ? `${objectKindLabels[selectedObject.kind]} · ${selectedObject.label} / ${selectedObject.id}`
-                  : "尚未选择对象"}
-              </b>
-              {selectedEvent ? (
-                <small>关联事件 · {selectedEvent.time} / {selectedEvent.id}</small>
-              ) : null}
-            </div>
           </header>
           <div className={styles.canvasContent} data-view={view}>
             {view === "timeline" ? (

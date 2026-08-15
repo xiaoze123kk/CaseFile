@@ -1255,7 +1255,6 @@ describe("production analyst workbench", () => {
     );
 
     const canvas = container.querySelector("#analyst-canvas") as HTMLElement;
-    const expectedSelection = "假设 · 记录曾被改写 / hyp_record_tampered";
     const views = [
       ["时间线", "timeline"],
       ["关系图", "relations"],
@@ -1276,7 +1275,6 @@ describe("production analyst workbench", () => {
         "data-selected-object-id",
         "hyp_record_tampered",
       );
-      expect(within(canvas).getByText(expectedSelection)).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: new RegExp(label) })).toHaveAttribute(
         "aria-selected",
         "true",

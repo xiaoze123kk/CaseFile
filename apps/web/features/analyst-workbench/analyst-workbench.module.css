@@ -149,7 +149,6 @@
 .brandBlock small,
 .caseIdentity span,
 .topStatus small,
-.canvasMeta span,
 .railEyebrow,
 .sectionHeader span,
 .sectionHeader small,
@@ -752,20 +751,6 @@
 .viewTabs button[aria-selected="true"] { color: var(--ink); background: var(--paper-high); box-shadow: inset 0 -2px var(--primary); font-weight: 650; }
 .viewTabs button span { display: grid; width: 21px; height: 21px; place-items: center; color: var(--primary-strong); border: 1px solid rgba(199, 139, 60, 0.42); font-family: "STSong", "SimSun", serif; font-size: 11px; }
 
-.canvasMeta {
-  display: flex;
-  min-width: 142px;
-  justify-content: center;
-  flex-direction: column;
-  padding: 0 13px;
-  border-left: 1px solid var(--rule);
-  text-align: right;
-}
-
-.canvasMeta span { color: var(--ink-faint); }
-.canvasMeta b { margin-top: 3px; color: var(--ink); font-family: "Cascadia Mono", Consolas, monospace; font-size: 10px; }
-.canvasMeta small { margin-top: 2px; color: var(--ink-muted); font-size: 9px; white-space: nowrap; }
-
 .canvasContent {
   min-width: 0;
   min-height: 0;
@@ -1309,7 +1294,6 @@
   .objectRail { grid-template-rows: auto minmax(0, 1fr); }
   .projectTree { padding-top: 12px; }
   .canvas { grid-template-rows: 52px minmax(0, 1fr); }
-  .canvasMeta { display: none; }
   .viewTabs { width: 100%; }
   .viewTabs button { flex: 1 0 auto; justify-content: center; }
   .viewTabs button span { display: none; }
