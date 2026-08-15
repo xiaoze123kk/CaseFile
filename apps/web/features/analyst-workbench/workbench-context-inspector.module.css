@@ -156,7 +156,7 @@
 }
 
 .contextSectionHeader h3 {
-  margin: 0;
+  margin: 0 auto 0 0;
   color: #292c2c;
   font: 600 15px/1.3 "Noto Serif SC", "STSong", SimSun, serif;
 }
@@ -164,6 +164,46 @@
 .contextSectionHeader span {
   color: #777a75;
   font-size: 11px;
+}
+
+.sectionToggle,
+.groupToggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: #777a75;
+  border: 1px solid #d6d1c5;
+  background: #fbfaf6;
+}
+
+.sectionToggle {
+  width: 28px;
+  height: 28px;
+}
+
+.groupToggle {
+  width: 22px;
+  height: 22px;
+}
+
+.sectionToggle:hover,
+.groupToggle:hover {
+  color: #87561f;
+  border-color: rgba(199, 139, 60, 0.5);
+  background: rgba(199, 139, 60, 0.1);
+}
+
+.sectionToggle svg,
+.groupToggle svg {
+  width: 14px;
+  height: 14px;
+  transform: rotate(180deg);
+  transition: transform 140ms ease;
+}
+
+.sectionToggle[data-collapsed="true"] svg,
+.groupToggle[data-collapsed="true"] svg {
+  transform: rotate(90deg);
 }
 
 .contextEmpty {
@@ -319,14 +359,14 @@
 .relationGroupHeader {
   display: flex;
   min-width: 0;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin: 4px 0 7px;
 }
 
 .relationGroupHeader h4 {
-  margin: 0;
+  margin: 0 auto 0 0;
   color: #292c2c;
   font: 600 13px/1.4 "Noto Serif SC", "STSong", SimSun, serif;
 }

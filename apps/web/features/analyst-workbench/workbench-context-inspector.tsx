@@ -25,6 +25,7 @@ import {
 import { WorkbenchObjectEditor } from "./workbench-object-editor";
 import type { ObjectSaveResult } from "./workbench-object-persistence";
 import { formatCaseWallClock } from "./workbench-presenters";
+import { WorkbenchIcon } from "./workbench-icon";
 import styles from "./workbench-context-inspector.module.css";
 
 export function CandidatePreviewFactBoundary({
@@ -54,6 +55,38 @@ export function CandidatePreviewFactBoundary({
       <strong>{copy.title}</strong>
       <p>{copy.detail}</p>
     </div>
+  );
+}
+
+function SectionToggleButton({
+  collapsed,
+  controls,
+  label,
+  onToggle,
+  variant = "section",
+}: {
+  collapsed: boolean;
+  controls: string;
+  label: string;
+  onToggle: () => void;
+  variant?: "section" | "group";
+}) {
+  const className = variant === "section"
+    ? styles.sectionToggle
+    : styles.groupToggle;
+  return (
+    <button
+      aria-controls={controls}
+      aria-expanded={!collapsed}
+      aria-label={`${collapsed ? "展开" : "收起"}${label}`}
+      className={className}
+      data-collapsed={collapsed}
+      onClick={onToggle}
+      title={collapsed ? `展开${label}` : `收起${label}`}
+      type="button"
+    >
+      <WorkbenchIcon name="chevron" />
+    </button>
   );
 }
 
@@ -225,6 +258,9 @@ function RelationContextSection({
   onSelectRelatedEvent: (eventId: string) => void;
 }) {
   const titleId = "context-relations-title";
+  const bodyId = "context-relations-body";
+  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const relationCount = modelRelations
     ? modelRelations.totals.all
     : relatedEvents.length;
@@ -232,6 +268,13 @@ function RelationContextSection({
   const hasRelations = modelRelations
     ? relationCount + incomingCount > 0
     : relatedEvents.length > 0;
+  const groupIsCollapsed = (groupId: string) => collapsedGroups[groupId] ?? false;
+  const toggleGroup = (groupId: string) => {
+    setCollapsedGroups((groups) => ({
+      ...groups,
+      [groupId]: !groups[groupId],
+    }));
+  };
 
   return (
     <section aria-labelledby={titleId} aria-label="关系上下文" className={styles.contextSection}>
@@ -240,83 +283,122 @@ function RelationContextSection({
         <span>
           {relationCount} 项关系{incomingCount ? ` · 被 ${incomingCount} 个字段引用` : ""}
         </span>
+        <SectionToggleButton
+          collapsed={collapsed}
+          controls={bodyId}
+          label="关系上下文"
+          onToggle={() => setCollapsed((value) => !value)}
+        />
       </header>
-      {writeLocked ? <CandidatePreviewFactBoundary area="relations" /> : null}
-      {!hasRelations ? (
-        <p className={styles.contextEmpty}>
-          当前对象没有关系依据；它既不引用其他对象，也未被其他对象引用。
-        </p>
-      ) : null}
-      {modelRelations ? (
-        <div className={styles.relationGroups}>
-          {modelRelations.groups.map((group) => (
-            <section aria-label={group.title} className={styles.relationGroup} key={group.id}>
-              <header className={styles.relationGroupHeader}>
-                <h4>{group.title}</h4>
-                <span>{group.relations.length}</span>
-              </header>
+      <div hidden={collapsed} id={bodyId}>
+        {writeLocked ? <CandidatePreviewFactBoundary area="relations" /> : null}
+        {!hasRelations ? (
+          <p className={styles.contextEmpty}>
+            当前对象没有关系依据；它既不引用其他对象，也未被其他对象引用。
+          </p>
+        ) : null}
+        {modelRelations ? (
+          <div className={styles.relationGroups}>
+            {modelRelations.groups.map((group) => {
+              const groupBodyId = `relations-group-${group.id}`;
+              const groupCollapsed = groupIsCollapsed(group.id);
+              return (
+                <section aria-label={group.title} className={styles.relationGroup} key={group.id}>
+                  <header className={styles.relationGroupHeader}>
+                    <h4>{group.title}</h4>
+                    <span>{group.relations.length}</span>
+                    <SectionToggleButton
+                      collapsed={groupCollapsed}
+                      controls={groupBodyId}
+                      label={group.title}
+                      onToggle={() => toggleGroup(group.id)}
+                      variant="group"
+                    />
+                  </header>
+                  <div hidden={groupCollapsed} id={groupBodyId}>
+                    <ol className={styles.relationList}>
+                      {group.relations.map((relation) => (
+                        <RelationItem
+                          key={relation.id}
+                          onSelectObject={onSelectObject}
+                          onSelectRelatedEvent={onSelectRelatedEvent}
+                          relation={relation}
+                          selectedObjectId={selectedObject?.id ?? ""}
+                        />
+                      ))}
+                    </ol>
+                  </div>
+                </section>
+              );
+            })}
+            {modelRelations.incoming.length ? (
+              <section aria-label="反向引用" className={styles.relationGroup}>
+                <header className={styles.relationGroupHeader}>
+                  <h4>反向引用</h4>
+                  <span>被 {modelRelations.incoming.length} 个字段引用</span>
+                  <SectionToggleButton
+                    collapsed={groupIsCollapsed("incoming")}
+                    controls="relations-group-incoming"
+                    label="反向引用"
+                    onToggle={() => toggleGroup("incoming")}
+                    variant="group"
+                  />
+                </header>
+                <div hidden={groupIsCollapsed("incoming")} id="relations-group-incoming">
+                  <ol className={styles.incomingList}>
+                    {modelRelations.incoming.map((incoming) => (
+                      <IncomingReferenceItem
+                        incoming={incoming}
+                        key={incoming.id}
+                        onSelectObject={onSelectObject}
+                        onSelectRelatedEvent={onSelectRelatedEvent}
+                      />
+                    ))}
+                  </ol>
+                </div>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+        {!realData && relatedEvents.length ? (
+          <section aria-label="参与事件" className={styles.relationGroup}>
+            <header className={styles.relationGroupHeader}>
+              <h4>参与事件</h4>
+              <span>{relatedEvents.length}</span>
+              <SectionToggleButton
+                collapsed={groupIsCollapsed("related-events")}
+                controls="relations-group-related-events"
+                label="参与事件"
+                onToggle={() => toggleGroup("related-events")}
+                variant="group"
+              />
+            </header>
+            <div hidden={groupIsCollapsed("related-events")} id="relations-group-related-events">
               <ol className={styles.relationList}>
-                {group.relations.map((relation) => (
-                  <RelationItem
-                    key={relation.id}
-                    onSelectObject={onSelectObject}
-                    onSelectRelatedEvent={onSelectRelatedEvent}
-                    relation={relation}
-                    selectedObjectId={selectedObject?.id ?? ""}
-                  />
-                ))}
+                {relatedEvents
+                  .filter((event) => event.id !== selectedObject?.id)
+                  .map((event) => (
+                    <li key={event.id}>
+                      <button
+                        className={styles.relationItem}
+                        onClick={() => onSelectRelatedEvent(event.id)}
+                        type="button"
+                      >
+                        <span className={styles.relationSentence}>
+                          <strong>{selectedObject?.label ?? "当前对象"}</strong>
+                          <em>{fixtureEventVerb(selectedObject?.kind)}</em>
+                          <b aria-hidden="true">→</b>
+                          <strong>{event.label}</strong>
+                        </span>
+                        <small>{formatCaseWallClock(event.time)} · 事件</small>
+                      </button>
+                    </li>
+                  ))}
               </ol>
-            </section>
-          ))}
-          {modelRelations.incoming.length ? (
-            <section aria-label="反向引用" className={styles.relationGroup}>
-              <header className={styles.relationGroupHeader}>
-                <h4>反向引用</h4>
-                <span>被 {modelRelations.incoming.length} 个字段引用</span>
-              </header>
-              <ol className={styles.incomingList}>
-                {modelRelations.incoming.map((incoming) => (
-                  <IncomingReferenceItem
-                    incoming={incoming}
-                    key={incoming.id}
-                    onSelectObject={onSelectObject}
-                    onSelectRelatedEvent={onSelectRelatedEvent}
-                  />
-                ))}
-              </ol>
-            </section>
-          ) : null}
-        </div>
-      ) : null}
-      {!realData && relatedEvents.length ? (
-        <section aria-label="参与事件" className={styles.relationGroup}>
-          <header className={styles.relationGroupHeader}>
-            <h4>参与事件</h4>
-            <span>{relatedEvents.length}</span>
-          </header>
-          <ol className={styles.relationList}>
-            {relatedEvents
-              .filter((event) => event.id !== selectedObject?.id)
-              .map((event) => (
-                <li key={event.id}>
-                  <button
-                    className={styles.relationItem}
-                    onClick={() => onSelectRelatedEvent(event.id)}
-                    type="button"
-                  >
-                    <span className={styles.relationSentence}>
-                      <strong>{selectedObject?.label ?? "当前对象"}</strong>
-                      <em>{fixtureEventVerb(selectedObject?.kind)}</em>
-                      <b aria-hidden="true">→</b>
-                      <strong>{event.label}</strong>
-                    </span>
-                    <small>{formatCaseWallClock(event.time)} · 事件</small>
-                  </button>
-                </li>
-              ))}
-          </ol>
-        </section>
-      ) : null}
+            </div>
+          </section>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -436,7 +518,9 @@ function RecentChangesSection({
   onRetry?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const titleId = "context-recent-changes-title";
+  const bodyId = "context-recent-changes-body";
 
   if (writeLocked) {
     return <CandidatePreviewFactBoundary area="audit" />;
@@ -492,39 +576,17 @@ function RecentChangesSection({
       <header className={styles.contextSectionHeader}>
         <h3 id={titleId}>最近变更</h3>
         <span>{entries.length}</span>
+        <SectionToggleButton
+          collapsed={collapsed}
+          controls={bodyId}
+          label="最近变更"
+          onToggle={() => setCollapsed((value) => !value)}
+        />
       </header>
-      {recent.length ? (
-        <ol className={styles.changeList}>
-          {recent.map((entry) => (
-            <li key={entry.id}>
-              <time>{entry.time}</time>
-              <div>
-                <span>{entry.actor}</span>
-                <strong>{entry.action}</strong>
-                <small>{entry.detail}</small>
-              </div>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className={styles.contextEmpty}>当前工作稿还没有变更记录。</p>
-      )}
-      {entries.length ? (
-        <button
-          aria-expanded={expanded}
-          className={styles.expandButton}
-          onClick={() => setExpanded((value) => !value)}
-          type="button"
-        >
-          {expanded ? "收起完整历史" : "查看完整历史"}
-        </button>
-      ) : null}
-      {expanded && entries.length ? (
-        realData ? (
-          <WorkbenchAuditPanel onRetry={onRetry ?? (() => undefined)} state={state} />
-        ) : (
+      <div hidden={collapsed} id={bodyId}>
+        {recent.length ? (
           <ol className={styles.changeList}>
-            {entries.map((entry) => (
+            {recent.map((entry) => (
               <li key={entry.id}>
                 <time>{entry.time}</time>
                 <div>
@@ -535,8 +597,38 @@ function RecentChangesSection({
               </li>
             ))}
           </ol>
-        )
-      ) : null}
+        ) : (
+          <p className={styles.contextEmpty}>当前工作稿还没有变更记录。</p>
+        )}
+        {entries.length ? (
+          <button
+            aria-expanded={expanded}
+            className={styles.expandButton}
+            onClick={() => setExpanded((value) => !value)}
+            type="button"
+          >
+            {expanded ? "收起完整历史" : "查看完整历史"}
+          </button>
+        ) : null}
+        {expanded && entries.length ? (
+          realData ? (
+            <WorkbenchAuditPanel onRetry={onRetry ?? (() => undefined)} state={state} />
+          ) : (
+            <ol className={styles.changeList}>
+              {entries.map((entry) => (
+                <li key={entry.id}>
+                  <time>{entry.time}</time>
+                  <div>
+                    <span>{entry.actor}</span>
+                    <strong>{entry.action}</strong>
+                    <small>{entry.detail}</small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )
+        ) : null}
+      </div>
     </section>
   );
 }

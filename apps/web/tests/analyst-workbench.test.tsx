@@ -993,6 +993,34 @@ describe("analyst workbench", () => {
     expect(forwardButton).toBeDisabled();
   });
 
+  it("collapses and expands relation context sections in the local sample", () => {
+    renderWorkbench();
+    const relationContext = screen.getByRole("region", {
+      name: "关系上下文",
+    });
+    const sectionToggle = within(relationContext).getByRole("button", {
+      name: "收起关系上下文",
+    });
+    fireEvent.click(sectionToggle);
+    expect(sectionToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(relationContext).queryByRole("region", { name: "参与事件" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(relationContext).getByRole("button", {
+        name: "展开关系上下文",
+      }),
+    );
+    const events = within(relationContext).getByRole("region", {
+      name: "参与事件",
+    });
+    fireEvent.click(
+      within(events).getByRole("button", { name: "收起参与事件" }),
+    );
+    expect(within(events).queryByRole("list")).not.toBeInTheDocument();
+  });
+
   it("switches the complete workbench seed and keeps candidate navigation in the title row", () => {
     const { container } = renderWorkbench(<CandidateSeedHarness />);
 

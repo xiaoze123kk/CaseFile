@@ -972,6 +972,68 @@ describe("production analyst workbench", () => {
     expect(incoming).toHaveTextContent("参与者");
   });
 
+  it("collapses and expands context sections and relation groups on demand", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+
+    const inspector = screen.getByRole("complementary", {
+      name: "对象上下文",
+    });
+    const relationContext = within(inspector).getByRole("region", {
+      name: "关系上下文",
+    });
+    const relationToggle = within(relationContext).getByRole("button", {
+      name: "收起关系上下文",
+    });
+    expect(relationToggle).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(relationToggle);
+    expect(relationToggle).toHaveAttribute("aria-expanded", "false");
+    expect(relationToggle).toHaveAccessibleName("展开关系上下文");
+    expect(
+      within(relationContext).queryByRole("region", { name: "直接关系" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(relationContext).getByRole("button", {
+        name: "展开关系上下文",
+      }),
+    );
+    const direct = within(relationContext).getByRole("region", {
+      name: "直接关系",
+    });
+    const directToggle = within(direct).getByRole("button", {
+      name: "收起直接关系",
+    });
+    fireEvent.click(directToggle);
+    expect(
+      within(direct).queryByRole("list"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(relationContext).getByRole("region", { name: "反向引用" }),
+    ).toBeInTheDocument();
+
+    const changes = within(inspector).getByRole("region", {
+      name: "最近变更",
+    });
+    const changesToggle = within(changes).getByRole("button", {
+      name: "收起最近变更",
+    });
+    fireEvent.click(changesToggle);
+    expect(changesToggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(changes).queryByRole("list")).not.toBeInTheDocument();
+    fireEvent.click(
+      within(changes).getByRole("button", { name: "展开最近变更" }),
+    );
+    expect(within(changes).getByText("采用 Draft 候选")).toBeInTheDocument();
+  });
+
   it("attaches author-language citations to fields with exact source spans", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
