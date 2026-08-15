@@ -945,7 +945,7 @@ def test_idea_generation_input_passes_preferences() -> None:
     ).split("\n", 1)
     payload = json.loads(payload_text)
 
-    assert introduction.startswith("请自主创作三个差异明确的创意方向")
+    assert introduction.startswith("请根据 preferences 中提供的时代、场景、氛围与关键词偏好")
     assert payload["preferences"] == {
         "eras": ["中世纪"],
         "settings": ["太空"],
@@ -958,7 +958,7 @@ def test_fake_idea_generation_reflects_preferences() -> None:
     result = FakeProvider().generate_ideas(
         IdeaGenerationRequest(
             task_run_id=0,
-            prompt_version="idea-generation-v2",
+            prompt_version="idea-generation-v3",
             regenerate=False,
             existing_concepts=(),
             input_hash="a" * 64,
@@ -975,9 +975,14 @@ def test_fake_idea_generation_reflects_preferences() -> None:
         )
     )
 
-    concepts = [candidate.concept for candidate in result.candidate.candidates]
-    assert len(concepts) == 3
-    assert all("中世纪背景下" in concept for concept in concepts)
-    assert all("太空" in concept for concept in concepts)
-    assert all("恐怖氛围的" in concept for concept in concepts)
-    assert all("时间循环" in concept for concept in concepts)
+    candidates = result.candidate.candidates
+    assert len(candidates) == 3
+    medieval_professions = {"骑士", "炼金术士", "修道院抄写员", "行会商人", "巡夜人"}
+    for candidate in candidates:
+        assert "中世纪背景下" in candidate.concept
+        assert "太空" in candidate.concept
+        assert "恐怖氛围的" in candidate.concept
+        assert "时间循环" in candidate.concept
+        assert "令人不安的异象" in candidate.core_suspense
+        assert "窒息感" in candidate.target_experience
+        assert any(prof in candidate.concept for prof in medieval_professions)

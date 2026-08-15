@@ -41,7 +41,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_to_draft": "brief-to-draft-v15",
     "casefile_chat": "casefile-chat-v1",
     "reverse_parse": "reverse-parse-v1",
-    "idea_generation": "idea-generation-v2",
+    "idea_generation": "idea-generation-v3",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
@@ -183,6 +183,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("idea_generation", "idea-generation-v2"): {
         "system": "eebc2c8b8ba4b49e7a36f1cfef49d2569b9831a2da5906d7f5c91cecd3149682"
+    },
+    ("idea_generation", "idea-generation-v3"): {
+        "system": "e594b7ecc1dd04ce8d26f425e68918d0174bdb7f4e7123e9ffe538d2352035db"
     },
 }
 
