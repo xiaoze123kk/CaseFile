@@ -18,7 +18,6 @@ import {
   objectSubtypeLabel,
   reliabilityLabel,
 } from "./workbench-presenters";
-import { WorkbenchIcon } from "./workbench-icon";
 import styles from "./workbench-object-editor.module.css";
 
 type SaveResult = "saved" | "conflict" | "error" | { status: "error"; message: string };
@@ -208,39 +207,36 @@ function defaultConclusionForResolution(
   };
 }
 
-function KnowledgeReferenceChip({
+function KnowledgeItem({
   reference,
   onSelectObject,
 }: {
   reference: DetailReference;
   onSelectObject: (objectId: string) => void;
 }) {
-  const content = (
-    <>
-      <strong>{reference.label}</strong>
-      <small>{reference.kindLabel}</small>
-    </>
-  );
   if (reference.selectable && !reference.missing) {
     return (
       <button
-        className={styles.knowledgeRefChip}
+        aria-label={`查看${reference.kindLabel}“${reference.label}”`}
+        className={styles.knowledgeItem}
         onClick={() => onSelectObject(reference.id)}
         title={`查看${reference.kindLabel}“${reference.label}”`}
         type="button"
       >
-        {content}
+        {reference.label}
+        <small>{reference.kindLabel}</small>
       </button>
     );
   }
   return (
-    <span className={styles.knowledgeRefChip} data-missing={reference.missing}>
-      {content}
+    <span className={styles.knowledgeItem} data-missing={reference.missing}>
+      {reference.label}
+      <small>{reference.kindLabel}</small>
     </span>
   );
 }
 
-function KnowledgeCategory({
+function KnowledgeCognitionLine({
   label,
   references,
   tone,
@@ -252,61 +248,84 @@ function KnowledgeCategory({
   onSelectObject: (objectId: string) => void;
 }) {
   return (
-    <div className={styles.knowledgeCategory} data-tone={tone}>
-      <span className={styles.knowledgeCategoryLabel}>
+    <div className={styles.cognitionLine}>
+      <span className={styles.cognitionLabel} data-tone={tone}>
         {label}
-        <b>{references.length}</b>
       </span>
-      <div className={styles.knowledgeCategoryItems}>
+      <div className={styles.cognitionValues}>
         {references.length
           ? references.map((reference) => (
-              <KnowledgeReferenceChip
+              <KnowledgeItem
                 key={reference.id}
                 onSelectObject={onSelectObject}
                 reference={reference}
               />
             ))
-          : <span className={styles.knowledgeCategoryEmpty}>无</span>}
+          : <span className={styles.cognitionEmpty}>—（无）</span>}
       </div>
     </div>
   );
 }
 
-function KnowledgeEventAnchor({
-  reference,
+function KnowledgeMilestone({
+  state,
   onSelectObject,
 }: {
-  reference: DetailReference;
+  state: DetailKnowledgeState;
   onSelectObject: (objectId: string) => void;
 }) {
-  const content = (
+  const eventContent = (
     <>
-      <span className={styles.knowledgeEventBadge}>
-        <WorkbenchIcon name="clock" />
-        事件
-      </span>
-      <strong>{reference.label}</strong>
+      <span className={styles.milestoneEventName}>{state.asOf.label}</span>
+      <span className={styles.milestoneEventTag}>事件</span>
     </>
   );
-  if (reference.selectable && !reference.missing) {
-    return (
-      <button
-        aria-label={`跳转查看截至事件“${reference.label}”`}
-        className={styles.knowledgeEventAnchor}
-        onClick={() => onSelectObject(reference.id)}
-        type="button"
-      >
-        {content}
-      </button>
-    );
-  }
   return (
-    <span
-      className={styles.knowledgeEventAnchor}
-      data-missing={reference.missing}
-    >
-      {content}
-    </span>
+    <li className={styles.knowledgeMilestone}>
+      <span aria-hidden="true" className={styles.milestoneNode} />
+      <div className={styles.milestoneBody}>
+        <div className={styles.milestoneHeading}>
+          <span className={styles.milestoneAsOf}>截至</span>
+          {state.asOf.selectable && !state.asOf.missing ? (
+            <button
+              aria-label={`跳转查看截至事件“${state.asOf.label}”`}
+              className={styles.milestoneEvent}
+              onClick={() => onSelectObject(state.asOf.id)}
+              type="button"
+            >
+              {eventContent}
+            </button>
+          ) : (
+            <span
+              className={styles.milestoneEvent}
+              data-missing={state.asOf.missing}
+            >
+              {eventContent}
+            </span>
+          )}
+        </div>
+        <div className={styles.cognitionLines}>
+          <KnowledgeCognitionLine
+            label="已知"
+            onSelectObject={onSelectObject}
+            references={state.known}
+            tone="known"
+          />
+          <KnowledgeCognitionLine
+            label="相信"
+            onSelectObject={onSelectObject}
+            references={state.believes}
+            tone="believed"
+          />
+          <KnowledgeCognitionLine
+            label="错误认知"
+            onSelectObject={onSelectObject}
+            references={state.falseBeliefs}
+            tone="false"
+          />
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -318,40 +337,13 @@ function KnowledgeStateList({
   onSelectObject: (objectId: string) => void;
 }) {
   return (
-    <ol className={styles.knowledgeStateList}>
+    <ol className={styles.knowledgeTimeline}>
       {states.map((state, index) => (
-        <li className={styles.knowledgeState} key={`${state.asOf.id || "story-start"}-${index}`}>
-          <div className={styles.knowledgeAnchorRow}>
-            <span className={styles.knowledgeAnchorPrefix}>
-              <WorkbenchIcon name="clock" />
-              <b>截至</b>
-            </span>
-            <KnowledgeEventAnchor
-              onSelectObject={onSelectObject}
-              reference={state.asOf}
-            />
-          </div>
-          <div className={styles.knowledgeCategories}>
-            <KnowledgeCategory
-              label="已知"
-              onSelectObject={onSelectObject}
-              references={state.known}
-              tone="known"
-            />
-            <KnowledgeCategory
-              label="相信"
-              onSelectObject={onSelectObject}
-              references={state.believes}
-              tone="believed"
-            />
-            <KnowledgeCategory
-              label="错误认知"
-              onSelectObject={onSelectObject}
-              references={state.falseBeliefs}
-              tone="false"
-            />
-          </div>
-        </li>
+        <KnowledgeMilestone
+          key={`${state.asOf.id || "story-start"}-${index}`}
+          onSelectObject={onSelectObject}
+          state={state}
+        />
       ))}
     </ol>
   );

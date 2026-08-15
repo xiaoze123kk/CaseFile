@@ -1053,7 +1053,7 @@ describe("production analyst workbench", () => {
     expect(within(editor).getAllByText("已知")).toHaveLength(2);
     expect(within(editor).getAllByText("相信")).toHaveLength(2);
     expect(within(editor).getAllByText("错误认知")).toHaveLength(2);
-    expect(within(editor).getAllByText("无")).toHaveLength(3);
+    expect(within(editor).getAllByText("—（无）")).toHaveLength(3);
 
     const knownChip = within(editor).getByRole("button", {
       name: /门禁记录/,
