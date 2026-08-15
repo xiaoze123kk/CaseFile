@@ -34,6 +34,37 @@ const spatialModeOrder: WorkbenchSpatialMode[] = [
   "topology",
 ];
 
+interface SpatialModelCacheEntry {
+  key: string;
+  map: WorkbenchMapModel;
+}
+
+const spatialModelCache = new WeakMap<CaseFileDocument, SpatialModelCacheEntry>();
+
+function spatialModelInputKey(
+  caseFile: CaseFileDocument,
+  timelineEvents: WorkbenchTimelineEvent[],
+): string {
+  return JSON.stringify({
+    locations: caseFile.locations.map((location) => ({
+      id: location.id,
+      name: location.name,
+      description: location.description,
+      parent_ref: location.parent_ref,
+      adjacency_refs: location.adjacency_refs,
+      travel_times: location.travel_times,
+      spatial_position: location.spatial_position,
+    })),
+    events: timelineEvents.map((event) => ({
+      id: event.id,
+      label: event.label,
+      time: event.time,
+      locationId: event.refs.locationId,
+      relatedObjectIds: event.relatedObjectIds,
+    })),
+  });
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -335,6 +366,18 @@ export function filterWorkbenchSpatialView(
 }
 
 export function buildWorkbenchSpatialModel(
+  caseFile: CaseFileDocument,
+  timelineEvents: WorkbenchTimelineEvent[],
+): WorkbenchMapModel {
+  const key = spatialModelInputKey(caseFile, timelineEvents);
+  const cached = spatialModelCache.get(caseFile);
+  if (cached?.key === key) return cached.map;
+  const map = buildWorkbenchSpatialModelUncached(caseFile, timelineEvents);
+  spatialModelCache.set(caseFile, { key, map });
+  return map;
+}
+
+function buildWorkbenchSpatialModelUncached(
   caseFile: CaseFileDocument,
   timelineEvents: WorkbenchTimelineEvent[],
 ): WorkbenchMapModel {

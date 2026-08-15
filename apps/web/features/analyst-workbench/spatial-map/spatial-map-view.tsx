@@ -28,6 +28,8 @@ import {
 import {
   createSpatialRenderer,
   resolveMapTileConfiguration,
+  type SpatialRenderCallbacks,
+  type SpatialRenderSelection,
   type SpatialRenderer,
   type SpatialViewport,
 } from "./spatial-renderer";
@@ -165,6 +167,8 @@ export function SpatialMapView({
     mode: WorkbenchSpatialMode;
     viewport: SpatialViewport | null;
   } | null>(null);
+  const spatialCallbacksRef = useRef<SpatialRenderCallbacks | null>(null);
+  const spatialSelectionRef = useRef<SpatialRenderSelection | null>(null);
   const [layersByMode, setLayersByMode] = useState(initialLayerState);
   const [requestedMode, setRequestedMode] = useState<WorkbenchSpatialMode | null>(
     map.defaultMode,
@@ -232,18 +236,76 @@ export function SpatialMapView({
       ? { ...activeBaseLocation, position: editSession.preview }
       : activeBaseLocation;
   const activeSpatialId = activeBaseLocation?.spatialId ?? null;
+  const editLocationId = editSession?.locationId ?? null;
+  const editPreview = editSession?.preview ?? null;
+  const selectedLocationId = useMemo(
+    () =>
+      currentView?.locations.find(
+        (location) => location.locationId === selectedObjectId,
+      )?.locationId ?? null,
+    [currentView, selectedObjectId],
+  );
+  const spatialSelection = useMemo<SpatialRenderSelection>(
+    () => ({
+      activeSpatialId,
+      selectedEventId,
+      selectedLocationId,
+      selectedObjectId,
+    }),
+    [activeSpatialId, selectedEventId, selectedLocationId, selectedObjectId],
+  );
   const visibleView = useMemo(() => {
     if (!currentView) return null;
     const filtered = filterWorkbenchSpatialView(currentView, layers);
     return {
       ...filtered,
       locations: filtered.locations.map((location) =>
-        editSession?.locationId === location.locationId
-          ? { ...location, position: editSession.preview }
+        editLocationId === location.locationId && editPreview
+          ? { ...location, position: editPreview }
           : location,
       ),
     };
-  }, [currentView, editSession, layers]);
+  }, [currentView, editLocationId, editPreview, layers]);
+
+  function buildSpatialCallbacks(): SpatialRenderCallbacks {
+    return {
+      onActivateLocation(location) {
+        const accepted = location.locationId
+          ? onSelectLocation(location.locationId)
+          : location.events[0]
+            ? onSelectEvent(location.events[0].eventId)
+            : true;
+        if (!accepted) return;
+        setOpenedSpatialId(location.spatialId);
+        rendererRef.current?.focusLocation(location.spatialId);
+      },
+      onClearSelection() {
+        if (onClearSelection()) setOpenedSpatialId(null);
+      },
+      onPreviewPosition(location, position) {
+        if (!editSession || editSession.locationId !== location.locationId) return;
+        const dirty = !positionsEqual(editSession.baseline, position);
+        setEditSession({
+          ...editSession,
+          preview: position,
+          dirty,
+          latestChanged: false,
+          notice: dirty ? "本地预览尚未写入当前工作稿。" : null,
+          status: "idle",
+        });
+        onPositionEditStateChange?.(true, dirty);
+      },
+      onTileError() {
+        setTileUnavailable(true);
+      },
+    };
+  }
+
+  useEffect(() => {
+    spatialSelectionRef.current = spatialSelection;
+    spatialCallbacksRef.current = buildSpatialCallbacks();
+    rendererRef.current?.setCallbacks(spatialCallbacksRef.current);
+  });
 
   useEffect(() => {
     if (selectedLocation?.source !== "inferred" || layers.unconfirmed) return;
@@ -285,51 +347,19 @@ export function SpatialMapView({
 
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer || !visibleView) return;
+    const spatialCallbacks = spatialCallbacksRef.current;
+    if (!renderer || !visibleView || !spatialCallbacks) return;
     renderer.render(
       visibleView,
-      {
-        activeSpatialId,
-        selectedEventId,
-        selectedLocationId:
-          currentView?.locations.find(
-            (location) => location.locationId === selectedObjectId,
-          )?.locationId ?? null,
-        selectedObjectId,
+      spatialSelectionRef.current ?? {
+        activeSpatialId: null,
+        selectedEventId: null,
+        selectedLocationId: null,
+        selectedObjectId: null,
       },
+      spatialCallbacks,
       {
-        onActivateLocation(location) {
-          const accepted = location.locationId
-            ? onSelectLocation(location.locationId)
-            : location.events[0]
-              ? onSelectEvent(location.events[0].eventId)
-              : true;
-          if (!accepted) return;
-          setOpenedSpatialId(location.spatialId);
-          renderer.focusLocation(location.spatialId);
-        },
-        onClearSelection() {
-          if (onClearSelection()) setOpenedSpatialId(null);
-        },
-        onPreviewPosition(location, position) {
-          if (!editSession || editSession.locationId !== location.locationId) return;
-          const dirty = !positionsEqual(editSession.baseline, position);
-          setEditSession({
-            ...editSession,
-            preview: position,
-            dirty,
-            latestChanged: false,
-            notice: dirty ? "本地预览尚未写入当前工作稿。" : null,
-            status: "idle",
-          });
-          onPositionEditStateChange?.(true, dirty);
-        },
-        onTileError() {
-          setTileUnavailable(true);
-        },
-      },
-      {
-        editableLocationId: editSession?.locationId ?? null,
+        editableLocationId: editLocationId,
         layers,
       },
     );
@@ -340,21 +370,16 @@ export function SpatialMapView({
       renderer.invalidateSize();
       pendingViewportRef.current = null;
     }
+  }, [editLocationId, layers, mode, visibleView]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (spatialSelectionRef.current) {
+      renderer.updateSelection(spatialSelectionRef.current);
+    }
     if (activeSpatialId) renderer.focusLocation(activeSpatialId);
-  }, [
-    activeSpatialId,
-    currentView,
-    editSession,
-    layers,
-    mode,
-    onClearSelection,
-    onPositionEditStateChange,
-    onSelectEvent,
-    onSelectLocation,
-    selectedEventId,
-    selectedObjectId,
-    visibleView,
-  ]);
+  }, [activeSpatialId, mode, selectedEventId, selectedLocationId, selectedObjectId]);
 
   useEffect(() => {
     const container = containerRef.current;

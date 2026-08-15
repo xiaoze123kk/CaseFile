@@ -5,6 +5,7 @@ import type {
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
   WorkbenchSpatialPosition,
+  WorkbenchSpatialRelation,
   WorkbenchSpatialView,
 } from "../workbench-real-data-types";
 
@@ -54,6 +55,8 @@ export interface SpatialRenderer {
     callbacks: SpatialRenderCallbacks,
     options: SpatialRenderOptions,
   ) => void;
+  setCallbacks: (callbacks: SpatialRenderCallbacks) => void;
+  updateSelection: (selection: SpatialRenderSelection) => void;
   fitAll: () => void;
   focusLocation: (spatialId: string) => void;
   zoomIn: () => void;
@@ -229,6 +232,35 @@ function isSelected(
   );
 }
 
+type SpatialLabelTier = "none" | "important" | "all";
+
+const spatialLabelTierClasses: Record<SpatialLabelTier, string> = {
+  none: "casefile-spatial-marker--labels-none",
+  important: "casefile-spatial-marker--labels-important",
+  all: "casefile-spatial-marker--labels-all",
+};
+
+function locationHasSpatialContent(location: WorkbenchSpatialLocation): boolean {
+  return location.events.length > 0 || location.relatedObjectIds.length > 0;
+}
+
+function resolveLabelTier(
+  mode: WorkbenchSpatialMode,
+  zoom: number,
+  location: WorkbenchSpatialLocation,
+  selected: boolean,
+): SpatialLabelTier {
+  if (selected) return "all";
+  // Geographic map: far zoom shows only locations carrying events or object
+  // relations. Planar maps start at zoom 1 with the full 0..100 canvas, so
+  // only zooming out beyond that hides secondary labels.
+  const farThreshold = mode === "geographic" ? 8 : 1;
+  if (zoom < farThreshold) {
+    return locationHasSpatialContent(location) ? "important" : "none";
+  }
+  return "all";
+}
+
 export function createSpatialRenderer(input: {
   container: HTMLElement;
   mode: WorkbenchSpatialMode;
@@ -249,7 +281,18 @@ export function createSpatialRenderer(input: {
   const markers = L.layerGroup().addTo(map);
   const relations = L.layerGroup().addTo(map);
   const markerById = new Map<string, L.Marker>();
+  const locationBySpatialId = new Map<string, WorkbenchSpatialLocation>();
+  const relationLineById = new Map<
+    string,
+    { line: L.Polyline; relation: WorkbenchSpatialRelation }
+  >();
+  const relationArrows: Array<{
+    arrow: L.Marker;
+    from: L.LatLng;
+    to: L.LatLng;
+  }> = [];
   let callbacks: SpatialRenderCallbacks | null = null;
+  let currentSelection: SpatialRenderSelection | null = null;
   let tileErrorReported = false;
 
   if (input.mode === "geographic") {
@@ -266,6 +309,9 @@ export function createSpatialRenderer(input: {
         })
         .addTo(map);
     }
+    L.control
+      .scale({ imperial: false, maxWidth: 180, position: "bottomleft" })
+      .addTo(map);
     map.setView([30, 105], 3);
   } else {
     map.setMaxBounds(
@@ -288,6 +334,103 @@ export function createSpatialRenderer(input: {
     callbacks?.onClearSelection();
   });
 
+  function activeLocationId(
+    selection: SpatialRenderSelection | null,
+  ): string | null {
+    return selection?.selectedLocationId ?? selection?.activeSpatialId ?? null;
+  }
+
+  function isRelationActive(
+    relation: WorkbenchSpatialRelation,
+    selection: SpatialRenderSelection | null,
+  ): boolean {
+    const locationId = activeLocationId(selection);
+    return Boolean(
+      locationId &&
+        (relation.fromLocationId === locationId ||
+          relation.toLocationId === locationId),
+    );
+  }
+
+  function bindRelationTooltip(
+    line: L.Polyline,
+    relation: WorkbenchSpatialRelation,
+    permanent: boolean,
+  ) {
+    line.unbindTooltip();
+    line.bindTooltip(
+      relation.kind === "travel" ? `→ ${relation.label}` : relation.label,
+      {
+        className: `casefile-spatial-relation-label casefile-spatial-relation-label--${relation.kind}`,
+        direction: "center",
+        interactive: false,
+        permanent,
+      },
+    );
+  }
+
+  function applyMarkerState(
+    marker: L.Marker,
+    location: WorkbenchSpatialLocation,
+    selection: SpatialRenderSelection,
+  ) {
+    const element = marker.getElement();
+    if (!element) return;
+    const selected = isSelected(location, selection);
+    element.classList.toggle("is-selected", selected);
+    element.setAttribute("aria-pressed", String(selected));
+    const labelTier = resolveLabelTier(
+      input.mode,
+      map.getZoom(),
+      location,
+      selected,
+    );
+    element.classList.remove(
+      spatialLabelTierClasses.none,
+      spatialLabelTierClasses.important,
+      spatialLabelTierClasses.all,
+    );
+    element.classList.add(spatialLabelTierClasses[labelTier]);
+  }
+
+  function updateRelationDecorations() {
+    for (const { line, relation } of relationLineById.values()) {
+      bindRelationTooltip(
+        line,
+        relation,
+        isRelationActive(relation, currentSelection),
+      );
+    }
+    for (const { arrow, from, to } of relationArrows) {
+      const arrowElement = arrow.getElement()?.firstElementChild;
+      if (!(arrowElement instanceof HTMLElement)) continue;
+      const fromPoint = map.project(from, map.getZoom());
+      const toPoint = map.project(to, map.getZoom());
+      const angle =
+        (Math.atan2(toPoint.y - fromPoint.y, toPoint.x - fromPoint.x) * 180) /
+        Math.PI;
+      arrowElement.style.transform = `rotate(${angle}deg)`;
+    }
+  }
+
+  const emptySelection: SpatialRenderSelection = {
+    activeSpatialId: null,
+    selectedEventId: null,
+    selectedLocationId: null,
+    selectedObjectId: null,
+  };
+
+  map.on("zoomend", () => {
+    for (const [spatialId, marker] of markerById) {
+      const location = locationBySpatialId.get(spatialId);
+      if (location) {
+        applyMarkerState(marker, location, currentSelection ?? emptySelection);
+      }
+    }
+    updateRelationDecorations();
+  });
+  map.on("moveend", updateRelationDecorations);
+
   function render(
     view: WorkbenchSpatialView,
     selection: SpatialRenderSelection,
@@ -295,9 +438,13 @@ export function createSpatialRenderer(input: {
     options: SpatialRenderOptions,
   ) {
     callbacks = nextCallbacks;
+    currentSelection = selection;
     markers.clearLayers();
     relations.clearLayers();
     markerById.clear();
+    locationBySpatialId.clear();
+    relationLineById.clear();
+    relationArrows.length = 0;
 
     const locationById = new Map(
       view.locations.flatMap((location) =>
@@ -311,31 +458,54 @@ export function createSpatialRenderer(input: {
       const fromCoordinate = markerCoordinate(input.mode, from);
       const toCoordinate = markerCoordinate(input.mode, to);
       if (!fromCoordinate || !toCoordinate) continue;
-      const line = L.polyline([fromCoordinate, toCoordinate], {
-        bubblingMouseEvents: false,
+      const fromPoint = L.latLng(fromCoordinate);
+      const toPoint = L.latLng(toCoordinate);
+      const line = L.polyline([fromPoint, toPoint], {
+        // Interactive lines are required for hover-revealed tooltips; click
+        // events still bubble to the map and clear the current selection.
+        bubblingMouseEvents: true,
         className: `casefile-spatial-relation casefile-spatial-relation--${relation.kind}`,
         color: relation.kind === "travel" ? "#a27321" : "#2f5d62",
         dashArray: relation.kind === "travel" ? "7 7" : undefined,
-        interactive: false,
+        interactive: true,
         opacity: 0.86,
         weight: relation.kind === "travel" ? 2 : 2.5,
       });
-      line.bindTooltip(
-        relation.kind === "travel" ? `→ ${relation.label}` : relation.label,
-        {
-          className: `casefile-spatial-relation-label casefile-spatial-relation-label--${relation.kind}`,
-          direction: "center",
-          interactive: false,
-          permanent: true,
-        },
-      );
       line.addTo(relations);
+      relationLineById.set(relation.relationId, { line, relation });
+      if (relation.kind === "travel") {
+        const arrow = L.marker(
+          L.latLng(
+            (fromPoint.lat + toPoint.lat) / 2,
+            (fromPoint.lng + toPoint.lng) / 2,
+          ),
+          {
+            bubblingMouseEvents: false,
+            interactive: false,
+            keyboard: false,
+            icon: L.divIcon({
+              className: "casefile-spatial-relation-arrow",
+              html: '<span aria-hidden="true"></span>',
+              iconAnchor: [7, 7],
+              iconSize: [14, 14],
+            }),
+          },
+        );
+        arrow.addTo(relations);
+        relationArrows.push({ arrow, from: fromPoint, to: toPoint });
+      }
     }
 
     for (const location of view.locations) {
       const coordinate = markerCoordinate(input.mode, location);
       if (!coordinate) continue;
       const selected = isSelected(location, selection);
+      const labelTier = resolveLabelTier(
+        input.mode,
+        map.getZoom(),
+        location,
+        selected,
+      );
       const editable =
         Boolean(location.locationId) &&
         options.editableLocationId === location.locationId;
@@ -344,7 +514,7 @@ export function createSpatialRenderer(input: {
         bubblingMouseEvents: false,
         draggable: editable,
         icon: L.divIcon({
-          className: `casefile-spatial-marker casefile-spatial-marker--${location.source}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""}`,
+          className: `casefile-spatial-marker casefile-spatial-marker--${location.source}${selected ? " is-selected" : ""}${editable ? " is-editable" : ""} ${spatialLabelTierClasses[labelTier]}`,
           html: markerHtml(location, options.layers.events, editable),
           iconAnchor: [22, 22],
           iconSize: [220, 44],
@@ -390,7 +560,10 @@ export function createSpatialRenderer(input: {
       });
       marker.addTo(markers);
       markerById.set(location.spatialId, marker);
+      locationBySpatialId.set(location.spatialId, location);
     }
+
+    updateRelationDecorations();
   }
 
   function fitAll() {
@@ -409,6 +582,17 @@ export function createSpatialRenderer(input: {
 
   return {
     render,
+    setCallbacks(nextCallbacks) {
+      callbacks = nextCallbacks;
+    },
+    updateSelection(selection) {
+      currentSelection = selection;
+      for (const [spatialId, marker] of markerById) {
+        const location = locationBySpatialId.get(spatialId);
+        if (location) applyMarkerState(marker, location, selection);
+      }
+      updateRelationDecorations();
+    },
     fitAll,
     focusLocation(spatialId) {
       const marker = markerById.get(spatialId);

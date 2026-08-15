@@ -369,4 +369,25 @@ describe("workbench spatial model", () => {
     expect(model.views.topology.locations).toHaveLength(2);
     expect(model.counts.events).toBe(1);
   });
+
+  it("reuses the same map model while spatial inputs stay unchanged", () => {
+    const file = caseFile([
+      location("loc_anchor", {
+        adjacentIds: ["loc_inferred"],
+        position: { coordinate_system: "schematic", x: 35, y: 40 },
+      }),
+      location("loc_inferred", { adjacentIds: ["loc_anchor"] }),
+    ]);
+    const events = [timelineEvent("evt_anchor", "loc_anchor")];
+
+    const first = buildWorkbenchSpatialModel(file, events);
+    const second = buildWorkbenchSpatialModel(file, events);
+    const changed = buildWorkbenchSpatialModel(file, [
+      timelineEvent("evt_anchor", "loc_anchor"),
+      timelineEvent("evt_extra", "loc_anchor"),
+    ]);
+
+    expect(second).toBe(first);
+    expect(changed).not.toBe(first);
+  });
 });

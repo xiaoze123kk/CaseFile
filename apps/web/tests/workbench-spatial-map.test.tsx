@@ -146,7 +146,7 @@ beforeEach(() => {
   vi.mocked(createSpatialRenderer).mockImplementation(({ container, mode }) => {
     let currentViewport = { center: [50, 50] as [number, number], zoom: 1 };
     const renderer: SpatialRenderer = {
-      render(view, selection, callbacks, options) {
+      render: vi.fn((view, selection, callbacks, options) => {
         container.replaceChildren();
         for (const location of view.locations) {
           const marker = document.createElement("button");
@@ -187,11 +187,13 @@ beforeEach(() => {
           container.append(marker);
         }
         if (reportTileError && mode === "geographic") callbacks.onTileError();
-      },
+      }),
       fitAll: vi.fn(),
       focusLocation: vi.fn(),
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
+      setCallbacks: vi.fn(),
+      updateSelection: vi.fn(),
       getViewport: vi.fn(() => currentViewport),
       setViewport: vi.fn((viewport) => {
         currentViewport = viewport;
@@ -241,6 +243,45 @@ describe("spatial map view", () => {
       center: [50, 50],
       zoom: 1,
     });
+  });
+
+  it("does not rebuild marker layers when only callback identities change", async () => {
+    const { props, rerender } = renderMap();
+    await screen.findByRole("button", { name: "地理地点 marker" });
+
+    expect(renderers[0].renderer.render).toHaveBeenCalledTimes(1);
+    rerender(
+      <SpatialMapView
+        {...props}
+        onSelectLocation={vi.fn(() => true)}
+        onSelectEvent={vi.fn(() => true)}
+      />,
+    );
+
+    expect(renderers[0].renderer.render).toHaveBeenCalledTimes(1);
+    expect(renderers[0].renderer.setCallbacks).toHaveBeenCalled();
+  });
+
+  it("updates selection incrementally instead of rebuilding map layers", async () => {
+    const onSelectLocation = vi.fn(() => true);
+    renderMap({ onSelectLocation });
+    const marker = await screen.findByRole("button", {
+      name: "地理地点 marker",
+    });
+
+    const renderCalls = renderers[0].renderer.render.mock.calls.length;
+    const updateCalls = renderers[0].renderer.updateSelection.mock.calls.length;
+    fireEvent.click(marker);
+
+    await waitFor(() =>
+      expect(renderers[0].renderer.updateSelection).toHaveBeenCalledTimes(
+        updateCalls + 1,
+      ),
+    );
+    expect(renderers[0].renderer.updateSelection).toHaveBeenLastCalledWith(
+      expect.objectContaining({ activeSpatialId: "loc_geo" }),
+    );
+    expect(renderers[0].renderer.render).toHaveBeenCalledTimes(renderCalls);
   });
 
   it("supports keyboard markers and event selection inside the location preview", async () => {
