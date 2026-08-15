@@ -611,7 +611,7 @@ describe("production analyst workbench", () => {
     expect(mocks.loadProject).not.toHaveBeenCalled();
 
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
-    expect(within(editor).getByText("候选预览，只读")).toBeInTheDocument();
+    expect(within(editor).queryByText("候选预览，只读")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(
@@ -1683,16 +1683,21 @@ describe("production analyst workbench", () => {
       within(graph).getByRole("button", { name: /值班员/ }),
     ).toHaveAttribute("data-related", "true");
 
-    fireEvent.click(
-      within(graph).getByRole("button", { name: /值班员/ }),
-    );
+    const operatorNode = within(graph).getByRole("button", {
+      name: /值班员/,
+    });
+    fireEvent.click(operatorNode);
+    expect(
+      screen.queryByRole("heading", { name: "值班员" }),
+    ).not.toBeInTheDocument();
+    expect(operatorNode).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(operatorNode, { ctrlKey: true });
     expect(screen.getByRole("heading", { name: "值班员" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "实体，2 个匹配" }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      within(graph).getByRole("button", { name: /值班员/ }),
-    ).toHaveAttribute("aria-pressed", "true");
+    expect(operatorNode).toHaveAttribute("aria-pressed", "true");
     expect(container.querySelector('[data-mobile-region="inspector"]')).toBeTruthy();
     expect(
       consoleError.mock.calls.filter(([message]) =>

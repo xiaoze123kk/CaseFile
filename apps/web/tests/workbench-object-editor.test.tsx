@@ -94,7 +94,7 @@ describe("workbench object editor", () => {
     renderEditor("ent_researcher", { readOnly: true });
     const editor = screen.getByRole("region", { name: "对象详情（只读）" });
 
-    expect(within(editor).getByText("候选预览，只读")).toBeInTheDocument();
+    expect(within(editor).queryByText("候选预览，只读")).not.toBeInTheDocument();
     expect(within(editor).queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
     expect(within(editor).queryByRole("textbox")).not.toBeInTheDocument();
   });

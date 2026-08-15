@@ -761,11 +761,15 @@ export function WorkbenchObjectEditor({
 
       <details className={styles.technicalDetails}><summary>技术信息</summary><dl><div><dt>当前工作稿</dt><dd>{revisionLabel ?? `工作稿 R${revision}`}</dd></div>{currentDetail.technicalDetails.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></details>
 
-      {navigationNotice || notice ? <p className={styles.objectEditorNotice} role="status">{navigationNotice ?? notice}</p> : null}
-      <footer className={styles.editorFooter}>
-        <span>{readOnly ? readOnlyReason ?? "候选预览，只读" : dirty ? "有未保存修改" : "已与服务端同步"}</span>
-        {!readOnly ? <div className={styles.footerActions}>{editing ? <><button className={styles.cancelButton} disabled={saving} onClick={cancelChanges} type="button">取消修改</button><button disabled={!dirty || saving} onClick={() => void save()} type="button">{saving ? "正在保存…" : "保存修改"}</button></> : null}</div> : null}
-      </footer>
+      {navigationNotice || notice || readOnlyReason ? <p className={styles.objectEditorNotice} role="status">{navigationNotice ?? notice ?? readOnlyReason}</p> : null}
+      {!readOnly && editing ? (
+        <footer className={styles.editorFooter}>
+          <div className={styles.footerActions}>
+            <button className={styles.cancelButton} disabled={saving} onClick={cancelChanges} type="button">取消修改</button>
+            <button disabled={!dirty || saving} onClick={() => void save()} type="button">{saving ? "正在保存…" : "保存修改"}</button>
+          </div>
+        </footer>
+      ) : null}
     </section>
   );
 }

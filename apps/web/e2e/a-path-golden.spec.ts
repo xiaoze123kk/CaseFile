@@ -485,7 +485,7 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
       name: `服务端修订 R${currentDraft!.revision}`,
     }),
   ).toBeVisible();
-  await expect(page.getByText("已与服务端同步", { exact: true })).toBeVisible();
+  await expect(page.getByText("已与服务端同步", { exact: true })).toHaveCount(0);
   await attachPageEvidence(testInfo, page, "09-real-workbench");
 
   const draftAId = currentDraft!.draft_id;

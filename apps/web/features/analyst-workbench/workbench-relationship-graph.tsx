@@ -176,11 +176,14 @@ export function RelationshipGraph({
           identity={identity}
           key={`${identity.scope}:${identity.revision}:${identity.view}`}
           legend={
-            <span data-kind="focus">铜色线索表示当前聚焦关系</span>
+            <span data-kind="focus">
+              铜色线索表示当前聚焦关系 · Ctrl + 左键选中节点
+            </span>
           }
           nodeLegend={nodeLegend}
           nodes={sceneNodes}
           onActivateNode={onSelectObject}
+          requireModifierForNodeSelection
         />
       ) : (
         <p className={styles.viewNote}>当前工作稿没有可展示的关系节点。</p>
