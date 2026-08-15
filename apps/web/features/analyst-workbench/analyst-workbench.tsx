@@ -61,6 +61,15 @@ import {
   WorkbenchObjectDirectory,
 } from "./workbench-object-directory";
 import {
+  createObjectNavigationHistory,
+  moveObjectHistoryBack,
+  moveObjectHistoryForward,
+  objectFocusBackTarget,
+  objectFocusForwardTarget,
+  recordObjectFocus,
+  type ObjectFocusFrame,
+} from "./workbench-navigation-history";
+import {
   CandidatePreviewFactBoundary,
   WorkbenchContextInspector,
 } from "./workbench-context-inspector";
@@ -898,6 +907,12 @@ function AnalystWorkbenchSurface({
   const [view, setView] = useState<WorkbenchView>("timeline");
   const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
   const [selectedObjectId, setSelectedObjectId] = useState(seed.defaultObjectId);
+  const [objectHistory, setObjectHistory] = useState(() =>
+    createObjectNavigationHistory({
+      objectId: seed.defaultObjectId,
+      view: "timeline",
+    }),
+  );
   const [selectedIssueId, setSelectedIssueId] = useState(seed.defaultIssueId);
   const [issueStatuses, setIssueStatuses] = useState<Record<string, IssueStatus>>(
     () => createIssueStatuses(seed),
@@ -1128,6 +1143,62 @@ function AnalystWorkbenchSurface({
     return true;
   }
 
+  const objectHistoryBackFrame = objectFocusBackTarget(objectHistory);
+  const objectHistoryForwardFrame = objectFocusForwardTarget(objectHistory);
+
+  function objectFocusLabel(frame: ObjectFocusFrame | null) {
+    if (!frame) return "";
+    if (frame.objectId === null) return "空选择";
+    return getObject(seed, frame.objectId)?.label ?? frame.objectId;
+  }
+
+  function commitObjectFocus(frame: ObjectFocusFrame) {
+    setObjectHistory((history) => recordObjectFocus(history, frame));
+  }
+
+  function restoreObjectFocus(frame: ObjectFocusFrame): boolean {
+    if (frame.objectId === null) {
+      if (blockDirtyObjectNavigation(null)) return false;
+      setSelectedEventId(null);
+      setSelectedObjectId(null);
+      setObjectEditorNavigationNotice(null);
+    } else {
+      const object = getObject(seed, frame.objectId);
+      if (!object) return false;
+      if (blockDirtyObjectNavigation(object.id)) return false;
+      setSelectedObjectId(object.id);
+      const conclusionEventId = seed.conclusions?.find(
+        (conclusion) => conclusion.resolutionSpecId === object.id,
+      )?.relatedEventIds[0];
+      const eventId = object.kind === "event"
+        ? object.id
+        : conclusionEventId ?? object.relatedEventIds[0];
+      setSelectedEventId(eventId ?? null);
+      setObjectEditorNavigationNotice(null);
+    }
+    if (frame.view !== view) setView(frame.view);
+    return true;
+  }
+
+  function navigateObjectHistory(direction: "back" | "forward") {
+    const frame = direction === "back"
+      ? objectHistoryBackFrame
+      : objectHistoryForwardFrame;
+    if (!frame) {
+      announce(direction === "back"
+        ? "已经是最早的对象上下文记录。"
+        : "已经是最新的对象上下文记录。");
+      return;
+    }
+    if (!restoreObjectFocus(frame)) return;
+    setObjectHistory((history) => direction === "back"
+      ? moveObjectHistoryBack(history)
+      : moveObjectHistoryForward(history));
+    announce(direction === "back"
+      ? `已后退到${frame.objectId === null ? "空选择" : `对象“${objectFocusLabel(frame)}”`}。`
+      : `已前进到${frame.objectId === null ? "空选择" : `对象“${objectFocusLabel(frame)}”`}。`);
+  }
+
   function updateObjectEditorDirty(dirty: boolean) {
     setObjectEditorDirty(dirty);
     if (!dirty) setObjectEditorNavigationNotice(null);
@@ -1163,6 +1234,10 @@ function AnalystWorkbenchSurface({
     setSubtypeFilter("all");
     if (!options.preserveView) setView("timeline");
     setMobileRegion("canvas");
+    commitObjectFocus({
+      objectId: event.id,
+      view: options.preserveView ? view : "timeline",
+    });
     announce(
       options.preserveView
         ? `已在空间卷宗中选择事件“${event.label}”。`
@@ -1195,6 +1270,7 @@ function AnalystWorkbenchSurface({
     if (realData) {
       if (!preserveCanvas) setMobileRegion("inspector");
     }
+    commitObjectFocus({ objectId: object.id, view });
     announce(`已选择${objectKindLabels[object.kind]}“${object.label}”，相关事件已高亮。`);
     return true;
   }
@@ -1205,6 +1281,7 @@ function AnalystWorkbenchSurface({
     setSelectedObjectId(null);
     setSelectedIssueId(null);
     setObjectEditorNavigationNotice(null);
+    commitObjectFocus({ objectId: null, view });
     announce("已清除空间卷宗选择。");
     return true;
   }
@@ -1214,7 +1291,8 @@ function AnalystWorkbenchSurface({
     if (!issue || (issue.eventId && blockDirtyObjectNavigation(issue.eventId))) return;
     setSelectedIssueId(issue.id);
     if (issue.eventId) setSelectedEventId(issue.eventId);
-    setSelectedObjectId(issue.targetObjectId ?? issue.eventId);
+    const focusObjectId = issue.targetObjectId ?? issue.eventId ?? null;
+    setSelectedObjectId(focusObjectId);
     setObjectQuery("");
     setKindFilter("event");
     setSubtypeFilter("all");
@@ -1222,6 +1300,7 @@ function AnalystWorkbenchSurface({
     setMobileRegion("canvas");
     setManualEditing(false);
     setManualValue(issue.patchAfter);
+    commitObjectFocus({ objectId: focusObjectId, view: "evidence" });
     announce(`已打开${issue.severity}问题“${issue.title}”，主画布切换到证据与知识状态对照。`);
   }
 
@@ -1275,6 +1354,7 @@ function AnalystWorkbenchSurface({
     setManualValue(seed.validationIssues[0]?.patchAfter ?? "");
     setAuditEntries([...seed.initialAuditEntries]);
     setAgentOpen(false);
+    commitObjectFocus({ objectId: seed.defaultObjectId, view: "timeline" });
     announce(`工作台数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
   }
 
@@ -1728,6 +1808,30 @@ function AnalystWorkbenchSurface({
           <header className={styles.inspectorHeader}>
             <div><span>对象上下文</span><strong>{getObject(seed, selectedObjectId)?.label ?? selectedEvent?.label ?? "尚未选择对象"}</strong></div>
             <div className={styles.inspectorHeaderActions}>
+              <div aria-label="对象上下文导航历史" className={styles.historyControls} role="group">
+                <button
+                  aria-label="后退到上一个对象"
+                  className={styles.historyButton}
+                  data-direction="back"
+                  disabled={!objectHistoryBackFrame}
+                  onClick={() => navigateObjectHistory("back")}
+                  title={objectHistoryBackFrame ? `后退：${objectFocusLabel(objectHistoryBackFrame)}` : undefined}
+                  type="button"
+                >
+                  <WorkbenchIcon name="chevron" />
+                </button>
+                <button
+                  aria-label="前进到下一个对象"
+                  className={styles.historyButton}
+                  data-direction="forward"
+                  disabled={!objectHistoryForwardFrame}
+                  onClick={() => navigateObjectHistory("forward")}
+                  title={objectHistoryForwardFrame ? `前进：${objectFocusLabel(objectHistoryForwardFrame)}` : undefined}
+                  type="button"
+                >
+                  <WorkbenchIcon name="chevron" />
+                </button>
+              </div>
               <button
                 aria-label="收起对象上下文"
                 aria-expanded={inspectorOpen}

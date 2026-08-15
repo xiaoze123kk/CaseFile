@@ -938,6 +938,61 @@ describe("analyst workbench", () => {
     ).toBeInTheDocument();
   });
 
+  it("moves the object context back and forward across directory selections", () => {
+    renderWorkbench();
+    const directory = screen.getByRole("region", { name: "对象目录结果" });
+    const context = screen.getByRole("region", {
+      name: "对象上下文（本地样例）",
+    });
+    const heading = () => within(context).getByRole("heading", { level: 2 });
+    const initialTitle = heading().textContent ?? "";
+    const backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    const forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
+
+    expect(backButton).toBeDisabled();
+    expect(forwardButton).toBeDisabled();
+
+    let firstTitle: string | null = null;
+    for (const button of within(directory).getAllByRole("button")) {
+      fireEvent.click(button);
+      const title = heading().textContent;
+      if (title && title !== initialTitle) {
+        firstTitle = title;
+        break;
+      }
+    }
+    expect(firstTitle).not.toBeNull();
+
+    let secondTitle: string | null = null;
+    for (const button of within(directory).getAllByRole("button")) {
+      fireEvent.click(button);
+      const title = heading().textContent;
+      if (title && title !== initialTitle && title !== firstTitle) {
+        secondTitle = title;
+        break;
+      }
+    }
+    expect(secondTitle).not.toBeNull();
+
+    fireEvent.click(backButton);
+    expect(heading()).toHaveTextContent(firstTitle as string);
+
+    fireEvent.click(backButton);
+    expect(heading()).toHaveTextContent(initialTitle);
+    expect(backButton).toBeDisabled();
+
+    fireEvent.click(forwardButton);
+    expect(heading()).toHaveTextContent(firstTitle as string);
+
+    fireEvent.click(forwardButton);
+    expect(heading()).toHaveTextContent(secondTitle as string);
+    expect(forwardButton).toBeDisabled();
+  });
+
   it("switches the complete workbench seed and keeps candidate navigation in the title row", () => {
     const { container } = renderWorkbench(<CandidateSeedHarness />);
 

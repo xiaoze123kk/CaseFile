@@ -997,6 +997,64 @@ describe("production analyst workbench", () => {
     ).toBeInTheDocument();
   });
 
+  it("moves object context back and forward like browser history", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const editor = () => screen.getByRole("region", { name: "对象详情与编辑" });
+    const editorHeading = () => within(editor()).getByRole("heading", { level: 2 });
+    const backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    const forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
+    expect(backButton).toBeDisabled();
+    expect(forwardButton).toBeDisabled();
+
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+    expect(editorHeading()).toHaveTextContent("真实调查员");
+
+    // 在关系图视角选择门禁记录：历史帧应记下“关系图”这个视角
+    fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /门禁记录/ }),
+    );
+    expect(editorHeading()).toHaveTextContent("门禁记录");
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /值班员/ }),
+    );
+    expect(editorHeading()).toHaveTextContent("值班员");
+
+    fireEvent.click(backButton);
+    expect(editorHeading()).toHaveTextContent("门禁记录");
+    expect(
+      screen.getByRole("tab", { name: /关系图/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(backButton);
+    expect(editorHeading()).toHaveTextContent("真实调查员");
+    expect(
+      screen.getByRole("tab", { name: /时间线/ }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(backButton).toBeDisabled();
+
+    fireEvent.click(forwardButton);
+    expect(editorHeading()).toHaveTextContent("门禁记录");
+    expect(
+      screen.getByRole("tab", { name: /关系图/ }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(forwardButton);
+    expect(editorHeading()).toHaveTextContent("值班员");
+    expect(forwardButton).toBeDisabled();
+  });
+
   it("highlights only real events related to the selected Resolution conclusion", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithConclusion(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
@@ -1319,13 +1377,29 @@ describe("production analyst workbench", () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    const backButton = screen.getByRole("button", {
+      name: "后退到上一个对象",
+    });
+    const forwardButton = screen.getByRole("button", {
+      name: "前进到下一个对象",
+    });
+
+    // 先制造一条前进目标，让脏编辑保护同样覆盖历史导航
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /门禁记录/ }),
+    );
+    fireEvent.click(backButton);
+
     await beginQuickEdit();
     const name = screen.getByRole("textbox", { name: "名称" });
-    const directory = screen.getByRole("region", { name: "对象目录结果" });
     fireEvent.change(name, { target: { value: "未保存的调查员名称" } });
     fireEvent.click(
       within(directory).getByRole("button", { name: /门禁记录/ }),
     );
+    fireEvent.click(forwardButton);
 
     expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
       "未保存的调查员名称",

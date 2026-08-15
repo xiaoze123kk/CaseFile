@@ -1077,6 +1077,25 @@
 .inspectorHeader span { color: var(--primary-strong); }
 .inspectorHeader strong { overflow: hidden; margin-top: 4px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .inspectorHeaderActions { display: flex !important; align-items: center; flex-direction: row !important; gap: 8px; }
+.historyControls { display: flex; align-items: center; gap: 5px; }
+.historyButton {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: transparent;
+}
+.historyButton:hover:not(:disabled) {
+  color: var(--primary-strong);
+  border-color: rgba(199, 139, 60, 0.5);
+  background: var(--primary-soft);
+}
+.historyButton:disabled { color: rgba(99, 103, 99, 0.45); cursor: default; }
+.historyButton svg { width: 16px; height: 16px; }
+.historyButton[data-direction="back"] svg { transform: rotate(-90deg); }
+.historyButton[data-direction="forward"] svg { transform: rotate(90deg); }
 .inspectorToggle {
   display: grid;
   width: 28px;
