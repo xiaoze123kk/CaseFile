@@ -668,3 +668,34 @@ export const conclusionModeLabels: Record<string, string> = {
   agent_proposed: "Agent 提出候选结论",
   open: "保持开放",
 };
+
+export const ideaEraOptions = [
+  "古代",
+  "中世纪",
+  "近代",
+  "现代",
+  "近未来",
+  "远未来",
+] as const;
+
+export const ideaSettingOptions = [
+  "都市",
+  "乡村",
+  "校园",
+  "医院",
+  "太空",
+  "海洋",
+  "宫廷",
+  "末日废土",
+] as const;
+
+export const ideaAtmosphereOptions = [
+  "温馨",
+  "恐怖",
+  "悬疑",
+  "轻松",
+  "科幻",
+  "暗黑",
+  "浪漫",
+  "热血",
+] as const;

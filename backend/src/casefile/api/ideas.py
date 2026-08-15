@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
+from pydantic import BaseModel
 
 from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.application.idea_service import IdeaService
+
+
+class IdeaGenerateBody(BaseModel):
+    """可选的创作偏好：时代、场景、氛围与自由关键词（均为软约束）。"""
+
+    preferences: dict[str, Any] | None = None
 
 
 def ideas_router() -> APIRouter:
@@ -26,8 +33,10 @@ def ideas_router() -> APIRouter:
         project_id: int,
         actor: ActorDependency,
         session: SessionDependency,
+        body: Annotated[IdeaGenerateBody | None, Body()] = None,
     ) -> dict[str, Any]:
-        return IdeaService(session).create_generation_task(actor, project_id)
+        preferences = body.preferences if body else None
+        return IdeaService(session).create_generation_task(actor, project_id, preferences)
 
     @router.post("/projects/{project_id}/ideas/{idea_id}/bookmark")
     def bookmark_idea(

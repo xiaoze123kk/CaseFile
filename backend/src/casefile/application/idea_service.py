@@ -60,6 +60,7 @@ class IdeaService:
         *,
         regenerate: bool = False,
         existing_concepts: tuple[str, ...] = (),
+        preferences: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         from casefile.agent_runtime import (
             DeepSeekAgentsProvider,
@@ -72,7 +73,11 @@ class IdeaService:
         from casefile.data_postgres.models.identity import UserProviderSetting
 
         input_hash = _json_hash(
-            {"regenerate": regenerate, "existing_concepts": list(existing_concepts)}
+            {
+                "regenerate": regenerate,
+                "existing_concepts": list(existing_concepts),
+                "preferences": preferences or {},
+            }
         )
         prompt_version = prompt_version_for_task("idea_generation")
 
@@ -111,6 +116,7 @@ class IdeaService:
                     max_turns=8,
                     emit=emit,
                     network_retries=1,
+                    preferences=preferences,
                 )
                 if setting.provider == "openai":
                     result = OpenAIAgentsProvider().generate_ideas(request)
@@ -136,6 +142,7 @@ class IdeaService:
             max_turns=8,
             emit=emit,
             network_retries=0,
+            preferences=preferences,
         )
         result = FakeProvider().generate_ideas(request)
         candidates: list[dict[str, Any]] = result.candidate.model_dump(mode="json").get(
@@ -162,12 +169,17 @@ class IdeaService:
 
     # ── Mutations ────────────────────────────────────────────────────
 
-    def create_generation_task(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
+    def create_generation_task(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        preferences: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         self.session.rollback()
         with self.session.begin():
             self._ensure_owned(actor_user_id, project_id)
             batch_id = uuid.uuid4().hex[:12]
-            candidates = self._generate()
+            candidates = self._generate(preferences=preferences)
             now = datetime.now(UTC)
             created: list[dict[str, Any]] = []
             for ordinal, content in enumerate(candidates, start=1):

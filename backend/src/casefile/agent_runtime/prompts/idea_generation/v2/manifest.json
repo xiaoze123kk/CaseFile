@@ -1,0 +1,8 @@
+{
+  "agent_id": "idea_generation",
+  "version": "idea-generation-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "eebc2c8b8ba4b49e7a36f1cfef49d2569b9831a2da5906d7f5c91cecd3149682",
+  "previous_version": "idea-generation-v1",
+  "change_summary": "新增时代、场景、氛围与关键词偏好作为软约束，允许作者自由组合偏好生成创意方向。"
+}

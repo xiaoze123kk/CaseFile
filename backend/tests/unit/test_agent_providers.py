@@ -33,8 +33,9 @@ from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     GenerationPlan,
     GenerationRequest,
+    IdeaGenerationRequest,
 )
-from casefile.agent_runtime.prompt import casefile_chat_input
+from casefile.agent_runtime.prompt import casefile_chat_input, idea_generation_input
 from casefile.agent_runtime.prompt_repository import PromptRepositoryError
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
@@ -930,3 +931,58 @@ def test_provider_transport_errors_have_stable_failure_codes() -> None:
         )
         == "provider_rate_limited"
     )
+
+
+def test_idea_generation_input_passes_preferences() -> None:
+    introduction, payload_text = idea_generation_input(
+        "a" * 64,
+        preferences={
+            "eras": ["中世纪"],
+            "settings": ["太空"],
+            "atmospheres": ["恐怖"],
+            "keywords": ["时间循环"],
+        },
+    ).split("\n", 1)
+    payload = json.loads(payload_text)
+
+    assert introduction.startswith("请根据 preferences 中提供的时代、场景、氛围与关键词偏好")
+    assert payload["preferences"] == {
+        "eras": ["中世纪"],
+        "settings": ["太空"],
+        "atmospheres": ["恐怖"],
+        "keywords": ["时间循环"],
+    }
+
+
+def test_fake_idea_generation_reflects_preferences() -> None:
+    result = FakeProvider().generate_ideas(
+        IdeaGenerationRequest(
+            task_run_id=0,
+            prompt_version="idea-generation-v3",
+            regenerate=False,
+            existing_concepts=(),
+            input_hash="a" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=8,
+            emit=lambda _event_type, _stage, _payload: None,
+            preferences={
+                "eras": ["中世纪"],
+                "settings": ["太空"],
+                "atmospheres": ["恐怖"],
+                "keywords": ["时间循环"],
+            },
+        )
+    )
+
+    candidates = result.candidate.candidates
+    assert len(candidates) == 3
+    medieval_professions = {"骑士", "炼金术士", "修道院抄写员", "行会商人", "巡夜人"}
+    for candidate in candidates:
+        assert "中世纪背景下" in candidate.concept
+        assert "太空" in candidate.concept
+        assert "恐怖氛围的" in candidate.concept
+        assert "时间循环" in candidate.concept
+        assert "令人不安的异象" in candidate.core_suspense
+        assert "窒息感" in candidate.target_experience
+        assert any(prof in candidate.concept for prof in medieval_professions)

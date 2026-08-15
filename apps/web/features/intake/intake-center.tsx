@@ -18,6 +18,7 @@ import {
   archiveIdea,
   regenerateIdea,
   createCaseProject,
+  type IdeaGenerationPreferences,
 } from "@/features/case-session/case-session-api";
 
 import {
@@ -251,60 +252,88 @@ export function IntakeCenter() {
   const [briefReviewPending, setBriefReviewPending] = useState(false);
   const [confirmingExample, setConfirmingExample] = useState(false);
 
+  // ── 当前建案路径（A/B/C）：决定路由高亮与步骤归属 ──────────────────
+  const [activePath, setActivePath] = useState<"A" | "B" | "C">("A");
+
   // ── Path B: Idea Generation ───────────────────────────────────────────
   const [showIdeaGeneration, setShowIdeaGeneration] = useState(false);
   const [ideaProjectId, setIdeaProjectId] = useState<number | null>(null);
   const [ideaCandidates, setIdeaCandidates] = useState<IdeaCandidateView[]>([]);
   const [pastBatches, setPastBatches] = useState<Record<string, IdeaCandidateView[]>>({});
   const [ideaGenerating, setIdeaGenerating] = useState(false);
+  const [regeneratingIds, setRegeneratingIds] = useState<number[]>([]);
 
   // ── Path C: Reverse Parse ────────────────────────────────────────────
   const [showReverseParse, setShowReverseParse] = useState(false);
 
-  const handlePathB = async () => {
+  const ideaFromRecord = (idea: RawIdeaRecord): IdeaCandidateView => ({
+    id: idea.id as number,
+    batch_id: idea.batch_id as string,
+    ordinal: idea.ordinal as number,
+    content: idea.content as IdeaCandidateView["content"],
+    status: (idea.status ?? "active") as IdeaCandidateView["status"],
+    bookmarked: (idea.bookmarked ?? false) as boolean,
+    created_at: (idea.created_at ?? null) as string | null,
+  });
+
+  const pastBatchesFromRecord = (
+    batches: Record<string, unknown>,
+  ): Record<string, IdeaCandidateView[]> => {
+    const pastMap: Record<string, IdeaCandidateView[]> = {};
+    for (const [key, val] of Object.entries(batches)) {
+      pastMap[key] = (val as RawIdeaRecord[]).map(ideaFromRecord);
+    }
+    return pastMap;
+  };
+
+  // 进入路径 B：只恢复已有创意，不自动重新生成；生成由用户显式触发。
+  const enterPathB = async () => {
     if (ideaGenerating) return;
-    // 立即切换到路径 B 界面（组件自带 generating 加载态），
-    // 避免异步建案/生成期间停留在路径 A，也避免完成后覆盖用户已切换的路径。
-    setShowReverseParse(false);
+    setActivePath("B");
     setShowIdeaGeneration(true);
-    setIdeaGenerating(true);
+    setShowReverseParse(false);
     setError(null);
     try {
-      const project = activeProjectId
-        ? { id: activeProjectId }
-        : await createCaseProject("帮我想一个");
+      // 优先复用已有 ideaProjectId，避免“切回 A 再切回 B”时误建新项目，
+      // 导致界面上的候选归属到另一个项目，收藏/淘汰/重新生成全部失效。
+      const project = ideaProjectId !== null
+        ? { id: ideaProjectId }
+        : activeProjectId
+          ? { id: activeProjectId }
+          : await createCaseProject("帮我想一个");
       setIdeaProjectId(project.id);
 
-      // Fetch past ideas for inspiration browsing
+      // 恢复历史创意批次；已有创意时直接展示最近一批，不重新生成。
       try {
         const past = await fetchIdeas(project.id);
-        const castIdea = (idea: RawIdeaRecord): IdeaCandidateView => ({
-          id: idea.id as number,
-          batch_id: idea.batch_id as string,
-          ordinal: idea.ordinal as number,
-          content: idea.content as IdeaCandidateView["content"],
-          status: (idea.status ?? "active") as IdeaCandidateView["status"],
-          bookmarked: (idea.bookmarked ?? false) as boolean,
-          created_at: (idea.created_at ?? null) as string | null,
-        });
-        const pastMap: Record<string, IdeaCandidateView[]> = {};
-        for (const [key, val] of Object.entries(past.batches ?? {})) {
-          pastMap[key] = (val as RawIdeaRecord[]).map(castIdea);
-        }
+        const pastMap = pastBatchesFromRecord(past.batches ?? {});
         setPastBatches(pastMap);
+        if (ideaCandidates.length === 0) {
+          const batchIds = Object.keys(pastMap).sort();
+          const latestBatchId = batchIds[batchIds.length - 1];
+          if (latestBatchId) setIdeaCandidates(pastMap[latestBatchId] ?? []);
+        }
       } catch { /* silently ignore */ }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "打开创意方向失败。");
+    }
+  };
 
-      const result = await generateIdeas(project.id);
-      const cast = (idea: Record<string, unknown>): IdeaCandidateView => ({
-        id: idea.id as number,
-        batch_id: idea.batch_id as string,
-        ordinal: idea.ordinal as number,
-        content: idea.content as IdeaCandidateView["content"],
-        status: (idea.status ?? "active") as IdeaCandidateView["status"],
-        bookmarked: (idea.bookmarked ?? false) as boolean,
-        created_at: (idea.created_at ?? null) as string | null,
-      });
-      setIdeaCandidates((result.ideas ?? []).map(cast));
+  // 显式“生成创意候选”：每次点击都重新生成一批，并把偏好传给后端。
+  const generateAll = async (preferences?: IdeaGenerationPreferences) => {
+    if (ideaGenerating) return;
+    setError(null);
+    setIdeaGenerating(true);
+    try {
+      const project = ideaProjectId !== null
+        ? { id: ideaProjectId }
+        : activeProjectId
+          ? { id: activeProjectId }
+          : await createCaseProject("帮我想一个");
+      setIdeaProjectId(project.id);
+      const result = await generateIdeas(project.id, preferences);
+      setIdeaCandidates((result.ideas ?? []).map(ideaFromRecord));
+      await refetchIdeasForProject(project.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "生成创意失败。");
     } finally {
@@ -326,27 +355,21 @@ export function IntakeCenter() {
     }
   };
 
-  const refetchIdeas = async () => {
-    if (!ideaProjectId) return;
+  const refetchIdeasForProject = async (projectId: number) => {
     try {
-      const past = await fetchIdeas(ideaProjectId);
-      const castIdea = (idea: RawIdeaRecord): IdeaCandidateView => ({
-        id: idea.id as number, batch_id: idea.batch_id as string, ordinal: idea.ordinal as number,
-        content: idea.content as IdeaCandidateView["content"],
-        status: (idea.status ?? "active") as IdeaCandidateView["status"],
-        bookmarked: (idea.bookmarked ?? false) as boolean,
-        created_at: (idea.created_at ?? null) as string | null,
-      });
-      const all: Record<string, IdeaCandidateView[]> = {};
-      for (const [key, val] of Object.entries(past.batches ?? {})) {
-        all[key] = (val as RawIdeaRecord[]).map(castIdea);
-      }
+      const past = await fetchIdeas(projectId);
+      const all = pastBatchesFromRecord(past.batches ?? {});
       setPastBatches(all);
       setIdeaCandidates((prev) => {
         const latestBatchId = prev[0]?.batch_id;
         return latestBatchId ? (all[latestBatchId] ?? prev) : prev;
       });
     } catch { /* noop */ }
+  };
+
+  const refetchIdeas = async () => {
+    if (!ideaProjectId) return;
+    await refetchIdeasForProject(ideaProjectId);
   };
 
   const handleBookmarkIdea = async (ideaId: number) => {
@@ -367,10 +390,14 @@ export function IntakeCenter() {
 
   const handleRegenerateIdea = async (ideaId: number) => {
     if (!ideaProjectId) return;
+    if (regeneratingIds.includes(ideaId)) return;
+    setRegeneratingIds((prev) => [...prev, ideaId]);
     try {
       await regenerateIdea(ideaProjectId, ideaId);
       await refetchIdeas();
-    } catch { /* noop */ }
+    } catch { /* noop */ } finally {
+      setRegeneratingIds((prev) => prev.filter((id) => id !== ideaId));
+    }
   };
 
   useEffect(() => {
@@ -535,6 +562,9 @@ export function IntakeCenter() {
       setAuthorAnswerSuggestion(null);
       setAuthorAnswerError(null);
     }
+    // 步骤条切换始终退出 B/C 入口界面，只显示目标步骤自身。
+    setShowIdeaGeneration(false);
+    setShowReverseParse(false);
     setStep(target);
     setError(null);
     announce("已切换到" + intakeSteps[targetIndex].label + "。");
@@ -903,12 +933,23 @@ export function IntakeCenter() {
     setDialogueRevisionPending(false);
     setBriefReviewPending(false);
     setConfirmingExample(false);
+    setActivePath("A");
+    setShowIdeaGeneration(false);
+    setShowReverseParse(false);
+    setIdeaProjectId(null);
+    setIdeaCandidates([]);
+    setPastBatches({});
+    setRegeneratingIds([]);
     setError(null);
     announce("已恢复未建案状态；后续操作将创建新项目。");
   }
 
   async function restoreProject(projectId: number) {
     stashCurrentSession();
+    // 历史恢复统一回到路径 A 的步骤视图，退出 B/C 入口界面。
+    setActivePath("A");
+    setShowIdeaGeneration(false);
+    setShowReverseParse(false);
     try {
       await loadProject(projectId);
       setSourceDirty(false);
@@ -960,6 +1001,10 @@ export function IntakeCenter() {
     (mode) => mode.value === brief.resolutionMode,
   );
   const intakeFrozen = state.frozenBriefVersion !== null;
+  // B/C 路径处于各自入口界面时，主工作区只渲染入口，不渲染 01–05 步骤视图。
+  const inEntryView =
+    (activePath === "B" && showIdeaGeneration) ||
+    (activePath === "C" && showReverseParse);
 
   return (
     <div
@@ -1146,13 +1191,7 @@ export function IntakeCenter() {
           <div className={styles.routeList}>
             {intakeRoutes.map((route) => {
               const available = route.state === "available";
-              const isActive = route.code === "A"
-                ? !showIdeaGeneration && !showReverseParse
-                : route.code === "B"
-                  ? showIdeaGeneration
-                  : route.code === "C"
-                    ? showReverseParse
-                    : false;
+              const isActive = route.code === activePath;
               return (
                 <button
                   aria-current={isActive ? "step" : undefined}
@@ -1161,9 +1200,9 @@ export function IntakeCenter() {
                   key={route.code}
                   type="button"
                   onClick={
-                    route.code === "B" ? handlePathB
-                      : route.code === "A" ? () => { setShowIdeaGeneration(false); setShowReverseParse(false); }
-                      : route.code === "C" ? () => { setShowIdeaGeneration(false); setShowReverseParse(true); }
+                    route.code === "B" ? enterPathB
+                      : route.code === "A" ? () => { setActivePath("A"); setShowIdeaGeneration(false); setShowReverseParse(false); }
+                      : route.code === "C" ? () => { setActivePath("C"); setShowIdeaGeneration(false); setShowReverseParse(true); }
                       : undefined
                   }
                 >
@@ -1186,18 +1225,19 @@ export function IntakeCenter() {
         </aside>
 
         <main className={styles.focusPlane}>
-          {showReverseParse ? (
+          {activePath === "C" && showReverseParse ? (
             <ReverseParseStage onFormed={() => setShowReverseParse(false)} />
-          ) : showIdeaGeneration ? (
+          ) : activePath === "B" && showIdeaGeneration ? (
             <IdeaCandidatesStage
               ideas={ideaCandidates}
               pastBatches={pastBatches}
               generating={ideaGenerating}
+              regeneratingIds={regeneratingIds}
               onSelect={handleSelectIdea}
               onBookmark={handleBookmarkIdea}
               onArchive={handleArchiveIdea}
               onRegenerate={handleRegenerateIdea}
-              onGenerateAll={handlePathB}
+              onGenerateAll={generateAll}
             />
           ) : step === "idea" ? (
             <section className={stageStyles.stepView} aria-labelledby="idea-step-title">
@@ -1465,7 +1505,7 @@ export function IntakeCenter() {
             </section>
           ) : null}
 
-          {step === "questions" ? (
+          {!inEntryView && step === "questions" ? (
             <section
               className={stageStyles.stepView}
               aria-labelledby="questions-step-title"
@@ -1658,7 +1698,7 @@ export function IntakeCenter() {
             </section>
           ) : null}
 
-          {step === "confirmation" && briefGenerationPending ? (
+          {!inEntryView && step === "confirmation" && briefGenerationPending ? (
             <section
               aria-busy="true"
               aria-labelledby="confirmation-loading-title"
@@ -1694,7 +1734,7 @@ export function IntakeCenter() {
             </section>
           ) : null}
 
-          {step === "confirmation" && !briefGenerationPending ? (
+          {!inEntryView && step === "confirmation" && !briefGenerationPending ? (
             <section className={stageStyles.stepView} aria-labelledby="confirmation-step-title">
               <header className={stageStyles.stepHero}>
                 <div>
@@ -2139,9 +2179,9 @@ export function IntakeCenter() {
             </section>
           ) : null}
 
-          {step === "review" ? <BriefReviewStage /> : null}
+          {!inEntryView && step === "review" ? <BriefReviewStage /> : null}
 
-          {step === "candidates" ? <DraftCandidatesStage /> : null}
+          {!inEntryView && step === "candidates" ? <DraftCandidatesStage /> : null}
         </main>
 
         <aside aria-label="实时简报映射" className={styles.liveBrief}>

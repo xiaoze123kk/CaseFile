@@ -479,20 +479,66 @@ class FakeProvider:
         ]
         SCALES = ["短篇（2-4 小时）", "中篇（5-8 小时）", "中篇（6-10 小时）", "长篇（15-25 小时）"]
 
+        prefs = request.preferences or {}
+        pref_settings = [str(s) for s in (prefs.get("settings") or [])]
+        pref_eras = [str(e) for e in (prefs.get("eras") or [])]
+        pref_atmospheres = [str(a) for a in (prefs.get("atmospheres") or [])]
+        pref_keywords = [str(k) for k in (prefs.get("keywords") or [])]
+
+        ERA_PROFESSIONS = {
+            "古代": ["游侠", "宫廷画师", "驿站驿丞", "江湖郎中", "仵作"],
+            "中世纪": ["骑士", "炼金术士", "修道院抄写员", "行会商人", "巡夜人"],
+            "近代": ["私家侦探", "报社记者", "医生", "钟表匠", "海员"],
+            "现代": ["法医", "黑客", "调查记者", "档案管理员", "心理治疗师"],
+            "近未来": ["AI工程师", "无人机调度员", "记忆修复师", "基因顾问", "数据审计员"],
+            "远未来": ["太空站研究员", "星际商贩", "量子考古学家", "殖民舰队领航员", "轨道清洁工"],
+        }
+        ATMOSPHERE_HINTS = {
+            "温馨": ("温暖而细腻的异常", "在温情中逐步靠近真相的安心感"),
+            "恐怖": ("令人不安的异象", "在压抑与恐惧中步步逼近真相的窒息感"),
+            "悬疑": ("环环相扣的谜团", "在层层反转中拼合真相的解谜快感"),
+            "轻松": ("轻松有趣的小谜团", "在幽默与轻松中推进调查的愉悦感"),
+            "科幻": ("超越常识的技术谜团", "在硬核设定中探索未来的沉浸感"),
+            "暗黑": ("深埋的黑暗真相", "在灰暗基调中直面人性的压抑感"),
+            "浪漫": ("与情感交织的谜题", "在情感与推理交织中的沉浸感"),
+            "热血": ("充满张力的对抗", "在高燃节奏中追逐真相的刺激感"),
+        }
+
+        def pick_profession(era: str) -> str:
+            if era:
+                pool = ERA_PROFESSIONS.get(era)
+                if pool:
+                    return random.choice(pool)
+            return random.choice(PROFESSIONS)
+
         chosen = []
         for i in range(3):
-            prof = random.choice(PROFESSIONS)
-            sett = random.choice(SETTINGS)
+            era = random.choice(pref_eras) if pref_eras else ""
+            setting = random.choice(pref_settings) if pref_settings else random.choice(SETTINGS)
+            atmosphere = random.choice(pref_atmospheres) if pref_atmospheres else ""
+            prof = pick_profession(era)
             prem = random.choice(PREMISES)
+
+            era_text = f"{era}背景下，" if era else ""
+            atm_text = f"{atmosphere}氛围的" if atmosphere else ""
+            concept = f"{era_text}{atm_text}{prof}在{setting}——{prem}"
+            if pref_keywords:
+                concept += f"，围绕「{'、'.join(pref_keywords)}」展开"
+            concept += "。"
+
+            hint = ATMOSPHERE_HINTS.get(atmosphere) if atmosphere else None
+            suspense_core = hint[0] if hint else "看似平常的迹象中隐藏的模式"
+            experience = hint[1] if hint else random.choice(EXPERIENCES)
+
             chosen.append({
-                "concept": f"{prof}在{sett}——{prem}。",
+                "concept": concept,
                 "core_suspense": (
-                    f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自"
+                    f"主角必须从{suspense_core}中锁定真相，同时应对来自"
                     f"{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。"
                 ),
                 "reasoning_type": REASONING_TYPES[i % len(REASONING_TYPES)],
                 "conclusion_mode": CONCLUSION_MODES[i % len(CONCLUSION_MODES)],
-                "target_experience": random.choice(EXPERIENCES),
+                "target_experience": experience,
                 "design_risk": random.choice(RISKS),
                 "scale_estimate": random.choice(SCALES),
             })
@@ -871,6 +917,7 @@ class OpenAIAgentsProvider:
                     request.input_hash,
                     regenerate=request.regenerate,
                     existing_concepts=request.existing_concepts,
+                    preferences=request.preferences,
                 ),
                 output_type=IdeaCandidateSet,
                 stage="generating_ideas",
@@ -1174,6 +1221,7 @@ class DeepSeekAgentsProvider:
                     request.input_hash,
                     regenerate=request.regenerate,
                     existing_concepts=request.existing_concepts,
+                    preferences=request.preferences,
                 ),
                 output_type=IdeaCandidateSet,
                 stage="generating_ideas",

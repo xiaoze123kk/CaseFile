@@ -81,6 +81,11 @@ class CaseFileService:
                 self.session.flush()
             return _project_view(owned)
 
+    def clear_archived_projects(self, actor_user_id: int) -> dict[str, Any]:
+        with self.session.begin():
+            cleared = self.projects.clear_archived(actor_user_id)
+            return {"cleared": cleared}
+
     def get_draft(self, actor_user_id: int, project_id: int) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id)

@@ -374,6 +374,7 @@ class IdeaGenerationRequest:
     max_turns: int
     emit: EventSink
     network_retries: int = 2
+    preferences: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
