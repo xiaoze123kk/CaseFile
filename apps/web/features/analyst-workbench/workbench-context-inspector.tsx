@@ -15,6 +15,11 @@ import {
   type ContextChangeEntry,
   type ContextSourceEvidence,
 } from "./workbench-context-inspector-model";
+import type {
+  ContextIncomingReference,
+  ContextRelation,
+  ContextRelationModel,
+} from "./workbench-relation-model";
 import {
   WorkbenchAuditPanel,
   type WorkbenchContextState,
@@ -28,7 +33,7 @@ import styles from "./workbench-context-inspector.module.css";
 export function CandidatePreviewFactBoundary({
   area,
 }: {
-  area: "sources" | "audit";
+  area: "sources" | "audit" | "relations";
 }) {
   const copy = {
     sources: {
@@ -40,6 +45,11 @@ export function CandidatePreviewFactBoundary({
       title: "候选尚未进入当前工作稿",
       detail:
         "GET 预览不会产生采用或编辑审计；明确采用后才会新增只追加事实。",
+    },
+    relations: {
+      title: "关系按候选预览内容计算",
+      detail:
+        "采用候选前，这些关系不会写入当前工作稿；与当前工作稿的对象关系可能不同。",
     },
   }[area];
   return (
@@ -134,22 +144,26 @@ export function WorkbenchContextInspector({
           onDirtyChange={onDirtyChange}
           onSave={onSave}
           onSelectObject={onSelectObject}
-          onSelectRelatedEvent={onSelectRelatedEvent}
           readOnly={readOnly}
           readOnlyReason={readOnlyReason}
-          relatedEvents={relatedEvents}
           revision={revision}
           revisionLabel={revisionLabel}
           saving={saving}
           selectedObjectId={selectedObjectId}
         />
       ) : (
-        <FixtureObjectContext
-          onSelectRelatedEvent={onSelectRelatedEvent}
-          relatedEvents={relatedEvents}
-          selectedObject={selectedObject}
-        />
+        <FixtureObjectContext selectedObject={selectedObject} />
       )}
+
+      <RelationContextSection
+        modelRelations={model?.relations ?? null}
+        onSelectObject={onSelectObject}
+        onSelectRelatedEvent={onSelectRelatedEvent}
+        realData={document !== null}
+        relatedEvents={relatedEvents}
+        selectedObject={selectedObject}
+        writeLocked={writeLocked}
+      />
 
       <SourceEvidenceSection
         fixtureSources={fixtureSources}
@@ -175,12 +189,8 @@ export function WorkbenchContextInspector({
 
 function FixtureObjectContext({
   selectedObject,
-  relatedEvents,
-  onSelectRelatedEvent,
 }: {
   selectedObject: CaseObject | null;
-  relatedEvents: TimelineEvent[];
-  onSelectRelatedEvent: (eventId: string) => void;
 }) {
   if (!selectedObject) {
     return (
@@ -214,26 +224,221 @@ function FixtureObjectContext({
           <div><dt>编号</dt><dd>{selectedObject.code}</dd></div>
         </dl>
       </section>
-      {relatedEvents.length ? (
-        <section className={styles.contextSection}>
-          <header className={styles.contextSectionHeader}>
-            <h3>关联事件</h3>
+    </section>
+  );
+}
+
+function RelationContextSection({
+  realData,
+  writeLocked,
+  modelRelations,
+  selectedObject,
+  relatedEvents,
+  onSelectObject,
+  onSelectRelatedEvent,
+}: {
+  realData: boolean;
+  writeLocked: boolean;
+  modelRelations: ContextRelationModel | null;
+  selectedObject: CaseObject | null;
+  relatedEvents: TimelineEvent[];
+  onSelectObject: (objectId: string) => void;
+  onSelectRelatedEvent: (eventId: string) => void;
+}) {
+  const titleId = "context-relations-title";
+  const relationCount = modelRelations
+    ? modelRelations.totals.all
+    : relatedEvents.length;
+  const incomingCount = modelRelations?.totals.incoming ?? 0;
+  const hasRelations = modelRelations
+    ? relationCount + incomingCount > 0
+    : relatedEvents.length > 0;
+
+  return (
+    <section aria-labelledby={titleId} aria-label="关系上下文" className={styles.contextSection}>
+      <header className={styles.contextSectionHeader}>
+        <h3 id={titleId}>关系上下文</h3>
+        <span>
+          {relationCount} 项关系{incomingCount ? ` · 被 ${incomingCount} 个字段引用` : ""}
+        </span>
+      </header>
+      {writeLocked ? <CandidatePreviewFactBoundary area="relations" /> : null}
+      {!hasRelations ? (
+        <p className={styles.contextEmpty}>
+          当前对象没有关系依据；它既不引用其他对象，也未被其他对象引用。
+        </p>
+      ) : null}
+      {modelRelations ? (
+        <div className={styles.relationGroups}>
+          {modelRelations.groups.map((group) => (
+            <section aria-label={group.title} className={styles.relationGroup} key={group.id}>
+              <header className={styles.relationGroupHeader}>
+                <h4>{group.title}</h4>
+                <span>{group.relations.length}</span>
+              </header>
+              <ol className={styles.relationList}>
+                {group.relations.map((relation) => (
+                  <RelationItem
+                    key={relation.id}
+                    onSelectObject={onSelectObject}
+                    onSelectRelatedEvent={onSelectRelatedEvent}
+                    relation={relation}
+                    selectedObjectId={selectedObject?.id ?? ""}
+                  />
+                ))}
+              </ol>
+            </section>
+          ))}
+          {modelRelations.incoming.length ? (
+            <section aria-label="反向引用" className={styles.relationGroup}>
+              <header className={styles.relationGroupHeader}>
+                <h4>反向引用</h4>
+                <span>被 {modelRelations.incoming.length} 个字段引用</span>
+              </header>
+              <ol className={styles.incomingList}>
+                {modelRelations.incoming.map((incoming) => (
+                  <IncomingReferenceItem
+                    incoming={incoming}
+                    key={incoming.id}
+                    onSelectObject={onSelectObject}
+                    onSelectRelatedEvent={onSelectRelatedEvent}
+                  />
+                ))}
+              </ol>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+      {!realData && relatedEvents.length ? (
+        <section aria-label="参与事件" className={styles.relationGroup}>
+          <header className={styles.relationGroupHeader}>
+            <h4>参与事件</h4>
             <span>{relatedEvents.length}</span>
           </header>
-          <ol className={styles.fixtureEvents}>
-            {relatedEvents.map((event) => (
-              <li key={event.id}>
-                <button onClick={() => onSelectRelatedEvent(event.id)} type="button">
-                  <time dateTime={event.time}>{formatCaseWallClock(event.time)}</time>
-                  <strong>{event.label}</strong>
-                </button>
-              </li>
-            ))}
+          <ol className={styles.relationList}>
+            {relatedEvents
+              .filter((event) => event.id !== selectedObject?.id)
+              .map((event) => (
+                <li key={event.id}>
+                  <button
+                    className={styles.relationItem}
+                    onClick={() => onSelectRelatedEvent(event.id)}
+                    type="button"
+                  >
+                    <span className={styles.relationSentence}>
+                      <strong>{selectedObject?.label ?? "当前对象"}</strong>
+                      <em>{fixtureEventVerb(selectedObject?.kind)}</em>
+                      <b aria-hidden="true">→</b>
+                      <strong>{event.label}</strong>
+                    </span>
+                    <small>{formatCaseWallClock(event.time)} · 事件</small>
+                  </button>
+                </li>
+              ))}
           </ol>
         </section>
       ) : null}
     </section>
   );
+}
+
+function RelationItem({
+  relation,
+  selectedObjectId,
+  onSelectObject,
+  onSelectRelatedEvent,
+}: {
+  relation: ContextRelation;
+  selectedObjectId: string;
+  onSelectObject: (objectId: string) => void;
+  onSelectRelatedEvent: (eventId: string) => void;
+}) {
+  const navigate = () => {
+    if (relation.counterpart.objectType === "event") {
+      onSelectRelatedEvent(relation.counterpart.id);
+    } else {
+      onSelectObject(relation.counterpart.id);
+    }
+  };
+  const sentence = (
+    <span className={styles.relationSentence}>
+      <strong data-current={relation.subject.id === selectedObjectId}>
+        {relation.subject.label}
+      </strong>
+      <em>{relation.verb}</em>
+      <b aria-hidden="true">{relation.arrow}</b>
+      <strong data-current={relation.object.id === selectedObjectId}>
+        {relation.object.label}
+      </strong>
+    </span>
+  );
+  const detail = (
+    <small>
+      {relation.counterpart.kindLabel}{relation.fieldLabel ? ` · ${relation.fieldLabel}` : ""}
+    </small>
+  );
+  return (
+    <li>
+      {relation.counterpart.selectable && !relation.counterpart.missing ? (
+        <button className={styles.relationItem} onClick={navigate} type="button">
+          {sentence}
+          {detail}
+        </button>
+      ) : (
+        <div className={styles.relationItem} data-missing={relation.counterpart.missing}>
+          {sentence}
+          {detail}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function IncomingReferenceItem({
+  incoming,
+  onSelectObject,
+  onSelectRelatedEvent,
+}: {
+  incoming: ContextIncomingReference;
+  onSelectObject: (objectId: string) => void;
+  onSelectRelatedEvent: (eventId: string) => void;
+}) {
+  const navigate = () => {
+    if (incoming.source.objectType === "event") {
+      onSelectRelatedEvent(incoming.sourceObjectId);
+    } else {
+      onSelectObject(incoming.sourceObjectId);
+    }
+  };
+  const content = (
+    <>
+      <span className={styles.incomingSentence}>
+        <strong>{incoming.source.label}</strong>
+        <small>{incoming.source.kindLabel}</small>
+        <em>{incoming.fieldLabel}</em>
+      </span>
+      <i>引用当前对象</i>
+    </>
+  );
+  return (
+    <li>
+      {incoming.source.selectable && !incoming.source.missing ? (
+        <button className={styles.incomingItem} onClick={navigate} type="button">
+          {content}
+        </button>
+      ) : (
+        <div className={styles.incomingItem}>{content}</div>
+      )}
+    </li>
+  );
+}
+
+function fixtureEventVerb(kind: CaseObject["kind"] | undefined) {
+  if (kind === "person") return "参与";
+  if (kind === "evidence") return "作为证据出现在";
+  if (kind === "location") return "发生地指向";
+  if (kind === "event") return "关联";
+  return "关联";
 }
 
 function SourceEvidenceSection({

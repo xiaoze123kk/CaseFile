@@ -896,14 +896,14 @@ describe("production analyst workbench", () => {
     );
 
     expect(screen.getByRole("heading", { name: "门禁记录" })).toBeInTheDocument();
-    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
-    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
-      name: "关联事件",
-    }).parentElement as HTMLElement;
-    const eventLink = within(relatedEventArticle).getByRole("button", {
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    const informationGroup = within(relationContext).getByRole("region", {
+      name: "信息来源",
+    });
+    const eventLink = within(informationGroup).getByRole("button", {
       name: /门禁开启/,
     });
-    expect(eventLink).toHaveTextContent("2026年8月7日 09:00");
+    expect(eventLink).toHaveTextContent("来源于");
     expect(eventLink).not.toHaveTextContent("evt_gate_opened");
 
     fireEvent.click(eventLink);
@@ -918,6 +918,38 @@ describe("production analyst workbench", () => {
     expect(
       within(directory).getByRole("button", { name: /门禁开启/ }),
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("explains relations with verbs and reverse references in the context inspector", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    const direct = within(relationContext).getByRole("region", {
+      name: "直接关系",
+    });
+    expect(direct).toHaveTextContent("核对记录");
+    expect(direct).toHaveTextContent("值班员");
+
+    const events = within(relationContext).getByRole("region", {
+      name: "参与事件",
+    });
+    expect(events).toHaveTextContent("参与了");
+    expect(events).toHaveTextContent("门禁开启");
+
+    const incoming = within(relationContext).getByRole("region", {
+      name: "反向引用",
+    });
+    expect(incoming).toHaveTextContent("被 2 个字段引用");
+    expect(incoming).toHaveTextContent("关系起点");
+    expect(incoming).toHaveTextContent("参与者");
   });
 
   it("highlights only real events related to the selected Resolution conclusion", async () => {
@@ -1229,8 +1261,13 @@ describe("production analyst workbench", () => {
     );
 
     expect(screen.getByRole("heading", { name: "记录曾被改写" })).toBeInTheDocument();
-    expect(screen.getByText("此对象没有关联事件")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "关联事件" })).not.toBeInTheDocument();
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    expect(
+      within(relationContext).getByRole("region", { name: "推理作用" }),
+    ).toHaveTextContent("试图回答");
+    expect(
+      within(relationContext).queryByRole("region", { name: "参与事件" }),
+    ).not.toBeInTheDocument();
   });
 
   it("blocks object and related-event navigation until edits are saved or cancelled", async () => {
@@ -1261,20 +1298,21 @@ describe("production analyst workbench", () => {
     await beginQuickEdit();
     const content = screen.getByRole("textbox", { name: "正文" });
     fireEvent.change(content, { target: { value: "未保存的门禁正文" } });
-    const relatedEvents = screen.getByRole("region", { name: "关联信息" });
-    const relatedEventArticle = within(relatedEvents).getByRole("heading", {
-      name: "关联事件",
-    }).parentElement as HTMLElement;
-    fireEvent.click(
-      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
-    );
+    const relationContext = screen.getByRole("region", { name: "关系上下文" });
+    const informationGroup = within(relationContext).getByRole("region", {
+      name: "信息来源",
+    });
+    const eventLink = within(informationGroup).getByRole("button", {
+      name: /门禁开启/,
+    });
+    fireEvent.click(eventLink);
     expect(screen.getByRole("textbox", { name: "正文" })).toHaveValue(
       "未保存的门禁正文",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "取消修改" }));
     fireEvent.click(
-      within(relatedEventArticle).getByRole("button", { name: /门禁开启/ }),
+      within(informationGroup).getByRole("button", { name: /门禁开启/ }),
     );
     expect(screen.getByRole("heading", { name: "门禁开启" })).toBeInTheDocument();
   });

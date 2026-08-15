@@ -235,6 +235,16 @@
 .associations time { color: #87561f; font-size: 11px; }
 .associations ol strong { overflow-wrap: anywhere; font-size: 12px; }
 
+.associationHint {
+  margin: 0;
+  padding: 9px 11px;
+  color: #87561f;
+  border-left: 2px solid #c78b3c;
+  background: rgba(199, 139, 60, 0.08);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .structureLocks { display: grid; gap: 7px; padding: 13px; border: 1px solid rgba(217, 92, 89, 0.45); background: #fbfaf6; }
 .structureLocks h3 { margin-bottom: 2px; }
 .structureLocks article { padding: 9px; border-left: 2px solid #d95c59; background: #f3f1eb; }

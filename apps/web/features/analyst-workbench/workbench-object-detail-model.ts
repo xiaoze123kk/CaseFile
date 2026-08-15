@@ -1,7 +1,10 @@
-import type { ObjectRef } from "@casefile/contracts";
-
 import type { CaseFileDocument } from "@/lib/api-client";
 
+import {
+  REFERENCE_FIELD_LABELS,
+  type TypedObjectRef,
+  walkObjectReferences,
+} from "./workbench-reference-index";
 import {
   classificationLabel,
   conclusionSlotLabel,
@@ -25,7 +28,7 @@ export type DetailCollection =
   | "hypotheses";
 
 export type DetailObject = CaseFileDocument[DetailCollection][number];
-type TypedObjectRef = ObjectRef & { object_id: string; object_type: string };
+export type { TypedObjectRef } from "./workbench-reference-index";
 
 export interface DetailReference {
   id: string;
@@ -104,29 +107,24 @@ const collectionObjectTypes: Record<DetailCollection, string> = {
 };
 
 const fieldPathLabels: Record<string, string> = {
+  ...REFERENCE_FIELD_LABELS,
   aliases: "别名",
   availability: "可获得性",
   capabilities: "能力",
   classification: "叙事分类",
   content: "正文",
   description: "说明",
-  effect_refs: "结果事件",
   entity_type: "实体类型",
-  falsifier_refs: "证伪条件",
   goals: "目标",
   information_type: "信息类型",
   knowledge_states: "知识状态",
-  location_ref: "发生地点",
   name: "名称",
-  observed_by_refs: "观察者",
-  participant_refs: "参与者",
   proposition: "命题",
   reliability: "可靠度",
   score: "支持度",
   secrets: "秘密",
   spatial_position: "空间位置",
   status: "状态",
-  supports_claim_refs: "支持论断",
   tags: "标签",
   time: "卷宗时间",
   title: "标题",
@@ -230,7 +228,7 @@ function catalogEntry(
   };
 }
 
-function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailReference> {
+export function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailReference> {
   const entries = [
     ...document.resolution_specs.map((item) => catalogEntry(item, "resolution_spec", true)),
     ...document.entities.map((item) => catalogEntry(item, "entity", true)),
@@ -247,7 +245,7 @@ function buildReferenceCatalog(document: CaseFileDocument): Map<string, DetailRe
   return new Map(entries.map((entry) => [entry.id, entry]));
 }
 
-function resolveReference(
+export function resolveReference(
   ref: TypedObjectRef,
   catalog: Map<string, DetailReference>,
 ): DetailReference {
@@ -366,18 +364,9 @@ function formatTravelTimes(
 
 function allReferences(object: unknown): TypedObjectRef[] {
   const references = new Map<string, TypedObjectRef>();
-  const visit = (value: unknown) => {
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    const record = asRecord(value);
-    if (!record) return;
-    const ref = asObjectRef(record);
-    if (ref) references.set(`${ref.object_type}:${ref.object_id}`, ref);
-    Object.values(record).forEach(visit);
-  };
-  visit(object);
+  walkObjectReferences(object, (reference) => {
+    references.set(`${reference.object_type}:${reference.object_id}`, reference);
+  });
   return [...references.values()];
 }
 

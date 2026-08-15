@@ -91,6 +91,42 @@ describe("workbench context inspector model", () => {
       changes: 1,
     });
     expect(model.counts.associations).toBeGreaterThan(0);
+    expect(model.counts.relations).toBeGreaterThan(0);
+    expect(model.counts.incoming).toBeGreaterThan(0);
+
+    const events = model.relations.groups.find((group) => group.id === "events");
+    expect(events?.relations.some((relation) =>
+      relation.verb === "发现" &&
+      relation.subject.id === "ent_researcher" &&
+      relation.object.id === "evt_restart_seven",
+    )).toBe(true);
+
+    const information = model.relations.groups.find(
+      (group) => group.id === "information",
+    );
+    expect(information?.relations.some((relation) =>
+      relation.verb === "知道" &&
+      relation.subject.id === "ent_researcher" &&
+      relation.object.id === "info_restart_log",
+    )).toBe(true);
+
+    const direct = model.relations.groups.find((group) => group.id === "direct");
+    expect(direct?.relations.some((relation) =>
+      relation.verb === "研究员维护备用系统" &&
+      relation.subject.id === "ent_researcher" &&
+      relation.object.id === "ent_backup_system",
+    )).toBe(true);
+
+    expect(model.relations.incoming).toHaveLength(3);
+    expect(model.relations.incoming.some((reference) =>
+      reference.sourceObjectId === "evt_restart_seven" &&
+      reference.fieldLabel === "观察者" &&
+      reference.fieldPath.includes("observed_by_refs"),
+    )).toBe(true);
+    expect(model.relations.incoming.some((reference) =>
+      reference.sourceObjectId === "rel_researcher_controls_backup" &&
+      reference.fieldLabel === "关系起点",
+    )).toBe(true);
 
     expect(model.sourceEvidence).toHaveLength(1);
     expect(model.sourceEvidence[0]).toMatchObject({
@@ -114,8 +150,22 @@ describe("workbench context inspector model", () => {
     expect(model.identity).toBeNull();
     expect(model.sourceEvidence).toEqual([]);
     expect(model.recentChanges).toEqual([]);
+    expect(model.relations).toEqual({
+      groups: [],
+      incoming: [],
+      totals: {
+        all: 0,
+        direct: 0,
+        events: 0,
+        information: 0,
+        reasoning: 0,
+        incoming: 0,
+      },
+    });
     expect(model.counts).toEqual({
       associations: 0,
+      relations: 0,
+      incoming: 0,
       sources: 0,
       changes: 0,
     });

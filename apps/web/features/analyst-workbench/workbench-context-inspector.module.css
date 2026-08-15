@@ -354,6 +354,171 @@
   font-size: 12px;
 }
 
+.relationGroups {
+  display: grid;
+  gap: 12px;
+}
+
+.relationGroup {
+  min-width: 0;
+}
+
+.relationGroupHeader {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 7px;
+}
+
+.relationGroupHeader h4 {
+  margin: 0;
+  color: #292c2c;
+  font: 600 13px/1.4 "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.relationGroupHeader span {
+  color: #777a75;
+  font-size: 11px;
+}
+
+.relationList,
+.incomingList {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relationList li,
+.incomingList li {
+  min-width: 0;
+}
+
+.relationItem {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  align-content: center;
+  gap: 4px;
+  padding: 8px 10px;
+  color: #292c2c;
+  border: 1px solid #e0dbd1;
+  background: #f3f1eb;
+  text-align: left;
+}
+
+button.relationItem {
+  cursor: pointer;
+}
+
+button.relationItem:hover {
+  border-color: #c78b3c;
+  background: #fbfaf6;
+}
+
+.relationItem[data-missing="true"] {
+  border-style: dashed;
+}
+
+.relationSentence {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 6px;
+}
+
+.relationSentence strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.relationSentence [data-current="true"] {
+  color: #87561f;
+}
+
+.relationSentence em {
+  flex: none;
+  color: #87561f;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.relationSentence b {
+  flex: none;
+  color: #777a75;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.relationItem small {
+  overflow-wrap: anywhere;
+  color: #777a75;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.incomingItem {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  align-content: center;
+  gap: 3px;
+  padding: 8px 10px;
+  color: #292c2c;
+  border: 1px solid #e0dbd1;
+  background: #fbfaf6;
+  text-align: left;
+}
+
+button.incomingItem {
+  cursor: pointer;
+}
+
+button.incomingItem:hover {
+  border-color: #c78b3c;
+}
+
+.incomingSentence {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 7px;
+}
+
+.incomingSentence strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.incomingSentence small {
+  color: #777a75;
+  font-size: 11px;
+}
+
+.incomingSentence em {
+  color: #87561f;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 650;
+}
+
+.incomingItem > i {
+  color: #777a75;
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.4;
+}
+
 @media (max-width: 420px) {
   .contextInspector {
     gap: 12px;

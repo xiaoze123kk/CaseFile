@@ -6,6 +6,10 @@ import type {
 } from "@/lib/api-client";
 
 import { buildObjectDetailModel } from "./workbench-object-detail-model";
+import {
+  buildContextRelations,
+  type ContextRelationModel,
+} from "./workbench-relation-model";
 
 export interface ContextSourceEvidence {
   id: string;
@@ -39,8 +43,11 @@ export interface ContextInspectorModel {
   } | null;
   sourceEvidence: ContextSourceEvidence[];
   recentChanges: ContextChangeEntry[];
+  relations: ContextRelationModel;
   counts: {
     associations: number;
+    relations: number;
+    incoming: number;
     sources: number;
     changes: number;
   };
@@ -119,6 +126,10 @@ export function buildContextInspectorModel(
   const detail = buildObjectDetailModel(document, objectId);
   const sources = context?.sources ?? [];
   const changes = context?.audit_entries ?? [];
+  const relations = objectId
+    ? buildContextRelations(document, objectId)
+    : { groups: [], incoming: [], totals: { all: 0, direct: 0, events: 0, information: 0, reasoning: 0, incoming: 0 } };
+  const relationCount = relations.totals.all + relations.totals.incoming;
   return {
     objectId,
     identity: detail
@@ -136,12 +147,11 @@ export function buildContextInspectorModel(
       : null,
     sourceEvidence: sources.map(mapSourceEvidence),
     recentChanges: changes.map(mapChangeEntry),
+    relations,
     counts: {
-      associations: detail
-        ? detail.sourceReferences.length +
-          detail.references.length +
-          detail.relationships.length
-        : 0,
+      associations: relationCount,
+      relations: relations.totals.all,
+      incoming: relations.totals.incoming,
       sources: sources.length,
       changes: changes.length,
     },

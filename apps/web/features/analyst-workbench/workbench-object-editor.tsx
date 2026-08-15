@@ -3,7 +3,6 @@
 import type { CaseFileDocument } from "@/lib/api-client";
 import { useMemo, useState } from "react";
 
-import type { TimelineEvent } from "./analyst-fixture";
 import {
   buildObjectDetailModel,
   findWorkbenchDetailObject,
@@ -13,7 +12,6 @@ import {
 } from "./workbench-object-detail-model";
 import {
   classificationLabel,
-  formatCaseWallClock,
   objectSubtypeLabel,
   reliabilityLabel,
 } from "./workbench-presenters";
@@ -253,11 +251,9 @@ export function WorkbenchObjectEditor({
   revision,
   revisionLabel,
   saving,
-  relatedEvents,
   navigationNotice,
   onDirtyChange,
   onSelectObject,
-  onSelectRelatedEvent,
   onSave,
   readOnly = false,
   readOnlyReason,
@@ -267,11 +263,9 @@ export function WorkbenchObjectEditor({
   revision: number;
   revisionLabel?: string;
   saving: boolean;
-  relatedEvents: TimelineEvent[];
   navigationNotice: string | null;
   onDirtyChange: (dirty: boolean) => void;
   onSelectObject: (objectId: string) => void;
-  onSelectRelatedEvent: (eventId: string) => void;
   onSave?: (objectId: string, changes: Record<string, unknown>) => Promise<SaveResult>;
   readOnly?: boolean;
   readOnlyReason?: string;
@@ -543,7 +537,7 @@ export function WorkbenchObjectEditor({
     </>;
   }
 
-  const associationCount = currentDetail.sourceReferences.length + currentDetail.references.length + currentDetail.relationships.length + relatedEvents.length;
+  const associationCount = currentDetail.sourceReferences.length + currentDetail.references.length + currentDetail.relationships.length;
 
   return (
     <section aria-label={readOnly ? "对象详情（只读）" : "对象详情与编辑"} className={styles.objectEditor} data-editing={editing}>
@@ -565,13 +559,11 @@ export function WorkbenchObjectEditor({
 
       {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject)}</details> : null}</>}
 
-      {associationCount ? <section aria-label="关联信息" className={styles.associations}>
-        <header><h3>关联信息</h3><span>{associationCount} 项依据</span></header>
-        {currentDetail.sourceReferences.length ? <article><h4>来源</h4><div className={styles.associationList}>{currentDetail.sourceReferences.map((reference) => <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}</div></article> : null}
-        {currentDetail.references.length ? <article><h4>提及对象</h4><div className={styles.associationList}>{currentDetail.references.map((reference) => reference.selectable ? <button key={reference.id} onClick={() => onSelectObject(reference.id)} type="button"><strong>{reference.label}</strong><small>{reference.kindLabel}</small></button> : <span data-missing={reference.missing} key={reference.id}><strong>{reference.label}</strong><small>{reference.kindLabel}</small></span>)}</div></article> : null}
-        {currentDetail.relationships.length ? <article><h4>关系</h4><div className={styles.associationList}>{currentDetail.relationships.map((relationship) => relationship.counterpart.selectable ? <button key={`${relationship.title}-${relationship.counterpart.id}`} onClick={() => onSelectObject(relationship.counterpart.id)} type="button"><strong>{relationship.title} · {relationship.counterpart.label}</strong><small>{relationship.counterpart.kindLabel}</small></button> : <span key={`${relationship.title}-${relationship.counterpart.id}`}><strong>{relationship.title} · {relationship.counterpart.label}</strong><small>{relationship.counterpart.kindLabel}</small></span>)}</div></article> : null}
-        {relatedEvents.length ? <article><h4>关联事件</h4><ol>{relatedEvents.map((event) => <li key={event.id}><button onClick={() => onSelectRelatedEvent(event.id)} type="button"><time dateTime={event.time}>{formatCaseWallClock(event.time)}</time><strong>{event.label}</strong></button></li>)}</ol></article> : null}
-      </section> : null}
+      {associationCount ? (
+        <p className={styles.associationHint}>
+          {associationCount} 项关联依据已转入下方「关系上下文」按语义与动词展示。
+        </p>
+      ) : null}
 
       {currentDetail.structureLocks.length ? <section aria-label="结构约束" className={styles.structureLocks}><h3>结构约束</h3>{currentDetail.structureLocks.map((lock) => <article key={lock.title}><strong>{lock.title}</strong><p>{lock.reason}</p><span>{lock.fields.join("、")}</span></article>)}</section> : null}
 
