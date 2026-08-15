@@ -77,10 +77,15 @@ export type Location = CoreMetadata & {
   travel_times: {
     to_ref: ObjectRef;
     minutes: number;
+    route_geometry?: RouteGeometry;
   }[];
   visibility_rules: string[];
   [k: string]: unknown;
 };
+/**
+ * Source-derived route polyline; the coordinate system must match the map mode where it is rendered.
+ */
+export type RouteGeometry = Wgs84RouteGeometry | SchematicRouteGeometry;
 export type Event = CoreMetadata & {
   id: string;
   title: string;
@@ -322,6 +327,7 @@ export interface CaseFile {
   entities: Entity[];
   relationships: Relationship[];
   locations: Location[];
+  spatial_scenes?: SpatialScene[];
   events: Event[];
   information_units: InformationUnit[];
   claims: Claim[];
@@ -369,11 +375,62 @@ export interface SchematicSpatialPosition {
   coordinate_system: "schematic";
   x: number;
   y: number;
+  scene_id?: string;
+  floor_id?: string;
 }
 export interface Wgs84SpatialPosition {
   coordinate_system: "wgs84";
   latitude: number;
   longitude: number;
+}
+export interface Wgs84RouteGeometry {
+  coordinate_system: "wgs84";
+  /**
+   * @minItems 2
+   */
+  points: [Wgs84RoutePoint, Wgs84RoutePoint, ...Wgs84RoutePoint[]];
+}
+export interface Wgs84RoutePoint {
+  latitude: number;
+  longitude: number;
+}
+export interface SchematicRouteGeometry {
+  coordinate_system: "schematic";
+  /**
+   * @minItems 2
+   */
+  points: [ScenePoint, ScenePoint, ...ScenePoint[]];
+}
+/**
+ * A point in the normalized 0..100 schematic scene domain.
+ */
+export interface ScenePoint {
+  x: number;
+  y: number;
+}
+export interface SpatialScene {
+  scene_id: string;
+  name: string;
+  background_image_url?: string;
+  image_width?: number;
+  image_height?: number;
+  floors?: SpatialSceneFloor[];
+  regions?: SpatialSceneRegion[];
+}
+export interface SpatialSceneFloor {
+  floor_id: string;
+  label: string;
+  background_image_url?: string;
+  image_width?: number;
+  image_height?: number;
+}
+export interface SpatialSceneRegion {
+  region_id: string;
+  name: string;
+  /**
+   * @minItems 3
+   */
+  geometry: [ScenePoint, ScenePoint, ScenePoint, ...ScenePoint[]];
 }
 export interface ExactTemporalPosition {
   kind: "exact";

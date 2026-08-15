@@ -91,6 +91,73 @@ def test_runtime_rejects_dangling_and_wrong_type_references() -> None:
     assert "reference_type_mismatch" in _error_codes(wrong_type)
 
 
+def test_runtime_accepts_and_cross_checks_spatial_scene_references() -> None:
+    document = _load("restart_loop.casefile.json")
+    document["spatial_scenes"] = [
+        {
+            "scene_id": "scn_mansion",
+            "name": "庄园",
+            "background_image_url": "https://example.test/mansion.png",
+            "image_width": 1200,
+            "image_height": 800,
+            "floors": [
+                {
+                    "floor_id": "floor_1",
+                    "label": "1F",
+                    "background_image_url": "https://example.test/floor-1.png",
+                }
+            ],
+            "regions": [
+                {
+                    "region_id": "region_hall",
+                    "name": "大厅",
+                    "geometry": [
+                        {"x": 0, "y": 0},
+                        {"x": 20, "y": 0},
+                        {"x": 20, "y": 20},
+                    ],
+                }
+            ],
+        }
+    ]
+    document["locations"][0]["spatial_position"] = {
+        "coordinate_system": "schematic",
+        "x": 10,
+        "y": 20,
+        "scene_id": "scn_mansion",
+        "floor_id": "floor_1",
+    }
+    validate_casefile(document)
+
+    missing_scene = copy.deepcopy(document)
+    missing_scene["locations"][0]["spatial_position"]["scene_id"] = "scn_missing"
+    assert "missing_scene_reference" in _error_codes(missing_scene)
+
+    missing_floor = copy.deepcopy(document)
+    missing_floor["locations"][0]["spatial_position"]["floor_id"] = "floor_missing"
+    assert "floor_scene_mismatch" in _error_codes(missing_floor)
+
+    floor_without_scene = copy.deepcopy(document)
+    del floor_without_scene["locations"][0]["spatial_position"]["scene_id"]
+    assert "floor_without_scene" in _error_codes(floor_without_scene)
+
+    duplicate_scene = copy.deepcopy(document)
+    duplicate_scene["spatial_scenes"].append(copy.deepcopy(document["spatial_scenes"][0]))
+    assert "duplicate_scene_id" in _error_codes(duplicate_scene)
+
+    duplicate_floor = copy.deepcopy(document)
+    duplicate_floor["spatial_scenes"][0]["floors"].append(
+        copy.deepcopy(document["spatial_scenes"][0]["floors"][0])
+    )
+    assert "duplicate_floor_id" in _error_codes(duplicate_floor)
+
+    duplicate_region = copy.deepcopy(document)
+    duplicate_region["spatial_scenes"][0]["regions"].append(
+        copy.deepcopy(document["spatial_scenes"][0]["regions"][0])
+    )
+    assert "duplicate_region_id" in _error_codes(duplicate_region)
+
+
 def test_runtime_rejects_deterministic_semantic_invariants() -> None:
     duplicate_step = _load("restart_loop.casefile.json")
     duplicate_step["reasoning_paths"][0]["steps"].append(

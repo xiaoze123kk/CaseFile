@@ -11,7 +11,9 @@
       "properties": {
         "coordinate_system": {"const": "schematic"},
         "x": {"type": "number", "minimum": 0, "maximum": 100},
-        "y": {"type": "number", "minimum": 0, "maximum": 100}
+        "y": {"type": "number", "minimum": 0, "maximum": 100},
+        "scene_id": {"type": "string", "pattern": "^scn_[a-z0-9][a-z0-9_]{0,56}$"},
+        "floor_id": {"type": "string", "pattern": "^floor_[a-z0-9][a-z0-9_]{0,54}$"}
       }
     },
     "Wgs84SpatialPosition": {
@@ -24,6 +26,112 @@
         "latitude": {"type": "number", "minimum": -90, "maximum": 90},
         "longitude": {"type": "number", "minimum": -180, "maximum": 180}
       }
+    },
+    "ScenePoint": {
+      "title": "ScenePoint",
+      "description": "A point in the normalized 0..100 schematic scene domain.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": {"type": "number", "minimum": 0, "maximum": 100},
+        "y": {"type": "number", "minimum": 0, "maximum": 100}
+      }
+    },
+    "Wgs84RoutePoint": {
+      "title": "Wgs84RoutePoint",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+        "longitude": {"type": "number", "minimum": -180, "maximum": 180}
+      }
+    },
+    "SpatialSceneFloor": {
+      "title": "SpatialSceneFloor",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["floor_id", "label"],
+      "properties": {
+        "floor_id": {"type": "string", "pattern": "^floor_[a-z0-9][a-z0-9_]{0,54}$"},
+        "label": {"type": "string", "minLength": 1},
+        "background_image_url": {"type": "string", "minLength": 1},
+        "image_width": {"type": "number", "exclusiveMinimum": 0},
+        "image_height": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "SpatialSceneRegion": {
+      "title": "SpatialSceneRegion",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["region_id", "name", "geometry"],
+      "properties": {
+        "region_id": {"type": "string", "pattern": "^region_[a-z0-9][a-z0-9_]{0,51}$"},
+        "name": {"type": "string", "minLength": 1},
+        "geometry": {
+          "type": "array",
+          "minItems": 3,
+          "items": {"$ref": "#/$defs/ScenePoint"}
+        }
+      }
+    },
+    "SpatialScene": {
+      "title": "SpatialScene",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "name"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scn_[a-z0-9][a-z0-9_]{0,56}$"},
+        "name": {"type": "string", "minLength": 1},
+        "background_image_url": {"type": "string", "minLength": 1},
+        "image_width": {"type": "number", "exclusiveMinimum": 0},
+        "image_height": {"type": "number", "exclusiveMinimum": 0},
+        "floors": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SpatialSceneFloor"}
+        },
+        "regions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SpatialSceneRegion"}
+        }
+      }
+    },
+    "Wgs84RouteGeometry": {
+      "title": "Wgs84RouteGeometry",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_system", "points"],
+      "properties": {
+        "coordinate_system": {"const": "wgs84"},
+        "points": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/Wgs84RoutePoint"}
+        }
+      }
+    },
+    "SchematicRouteGeometry": {
+      "title": "SchematicRouteGeometry",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["coordinate_system", "points"],
+      "properties": {
+        "coordinate_system": {"const": "schematic"},
+        "points": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/$defs/ScenePoint"}
+        }
+      }
+    },
+    "RouteGeometry": {
+      "title": "RouteGeometry",
+      "description": "Source-derived route polyline; the coordinate system must match the map mode where it is rendered.",
+      "oneOf": [
+        {"$ref": "#/$defs/Wgs84RouteGeometry"},
+        {"$ref": "#/$defs/SchematicRouteGeometry"}
+      ]
     },
     "WallClockTime": {
       "title": "WallClockTime",
@@ -317,7 +425,8 @@
                 "required": ["to_ref", "minutes"],
                 "properties": {
                   "to_ref": {"$ref": "common.schema.json#/$defs/ObjectRef"},
-                  "minutes": {"type": "number", "minimum": 0}
+                  "minutes": {"type": "number", "minimum": 0},
+                  "route_geometry": {"$ref": "#/$defs/RouteGeometry"}
                 }
               }
             },
