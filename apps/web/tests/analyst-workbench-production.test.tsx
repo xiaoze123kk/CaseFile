@@ -549,7 +549,9 @@ describe("production analyst workbench", () => {
     ).toBeDisabled();
     expect(screen.getByRole("tab", { name: /导出预览/u })).toBeDisabled();
     expect(screen.getByRole("tab", { name: /编译中心/u })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "重新验证" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "重新验证" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /补丁审阅/u })).not.toBeInTheDocument();
     expect(mocks.patchCaseDraftObject).not.toHaveBeenCalled();
   });
 
@@ -627,25 +629,39 @@ describe("production analyst workbench", () => {
     expect(secondLayoutKey).not.toBe(firstLayoutKey);
   });
 
-  it("renders real validation, SourceRecord content, trace ids, and audit provenance", async () => {
+  it("renders creator-first source evidence and audit changes without validator tabs", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("tab", { name: "验证问题0" }));
-    expect(await screen.findByText("确定性验证已通过")).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /引用来源/u })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /补丁审阅/u })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "引用来源1" }));
+    const inspector = screen.getByRole("complementary", {
+      name: "对象上下文",
+    });
+    expect(within(inspector).getByText("来源依据")).toBeInTheDocument();
+    expect(within(inspector).getByText("作者原稿")).toBeInTheDocument();
+    expect(within(inspector).getByText("作者提交的真实原稿正文。")).toBeInTheDocument();
+    expect(within(inspector).queryByText("source_records:12")).not.toBeInTheDocument();
+
+    expect(within(inspector).getByText("最近变更")).toBeInTheDocument();
+    expect(within(inspector).getByText("采用 Draft 候选")).toBeInTheDocument();
+    expect(within(inspector).queryByText("来源 draft_operations #31")).not.toBeInTheDocument();
+
+    // 完整审计技术层保留在二级展开中
+    fireEvent.click(within(inspector).getByRole("button", { name: "查看完整历史" }));
+    expect(screen.getByText("来源 draft_operations #31")).toBeInTheDocument();
+
+    // 技术来源详情下沉到来源抽屉，仍可核对 trace id 与正文
+    fireEvent.click(within(inspector).getByRole("button", { name: "查看原文 →" }));
     expect(screen.getAllByText("source_records:12").length).toBeGreaterThan(0);
     expect(screen.getAllByText("作者提交的真实原稿正文。").length).toBeGreaterThan(0);
     expect(screen.getAllByText("src_gate_log").length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole("tab", { name: "审计记录1" }));
-    expect(screen.getByText("采用 Draft 候选")).toBeInTheDocument();
-    expect(screen.getByText("来源 draft_operations #31")).toBeInTheDocument();
   });
 
-  it("renders deterministic validator codes and JSON paths without fixture issues", async () => {
+  it("keeps deterministic validator codes and JSON paths out of the persistent inspector", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext.mockResolvedValueOnce(
       makeContext({
@@ -677,13 +693,15 @@ describe("production analyst workbench", () => {
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     await screen.findByText("1 个问题");
-    fireEvent.click(screen.getByRole("tab", { name: "验证问题1" }));
-    expect(screen.getByText("引用的对象不存在")).toBeInTheDocument();
-    expect(screen.getByText("missing_reference · /events/0/location_ref")).toBeInTheDocument();
+    expect(screen.queryByText("引用的对象不存在")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("missing_reference · /events/0/location_ref"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /验证问题/u })).not.toBeInTheDocument();
     expect(screen.queryByText("时间知识冲突")).not.toBeInTheDocument();
   });
 
-  it("keeps a context read failure recoverable without hiding the real Draft", async () => {
+  it("keeps a context read failure recoverable inside source evidence and recent changes", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext
       .mockRejectedValueOnce(
@@ -697,8 +715,8 @@ describe("production analyst workbench", () => {
     render(<AnalystWorkbench requestedProjectId={42} />);
 
     expect((await screen.findAllByText("真实调查员")).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("tab", { name: "引用来源0" }));
-    expect(screen.getAllByRole("alert")[0]).toHaveTextContent("数据库暂时不可用");
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts[0]).toHaveTextContent("数据库暂时不可用");
     fireEvent.click(screen.getAllByRole("button", { name: "重新读取" })[0]);
     expect((await screen.findAllByText("作者提交的真实原稿正文。")).length).toBeGreaterThan(0);
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledTimes(2);

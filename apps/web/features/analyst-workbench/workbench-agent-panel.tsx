@@ -61,7 +61,7 @@ function composeAgentReply(
           return `· ${item.label}（${item.code}）：被 ${referenced} 处推理引用`;
         })
         .join("\n") || "· 卷宗中暂无证据对象";
-    return `证据链摘要：\n\n${lines}\n\n问题依据可到检查器的“引用来源”核对。`;
+    return `证据链摘要：\n\n${lines}\n\n问题依据可到对象上下文的“来源依据”核对。`;
   }
   if (/对比|竞争/.test(prompt)) {
     const lines =
@@ -85,7 +85,7 @@ function composeAgentReply(
       unresolvedCount > 0 ? `阻断（${unresolvedCount} 个问题）` : "通过"
     }\n· 作者批准 — 待确认\n\n${
       unresolvedCount > 0
-        ? `先处理检查器中的 ${unresolvedCount} 个问题。`
+        ? `先处理证据对比中的 ${unresolvedCount} 个问题。`
         : "门禁通过，可以生成导出包。"
     }`;
   }

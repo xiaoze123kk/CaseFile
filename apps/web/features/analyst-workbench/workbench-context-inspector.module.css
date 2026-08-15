@@ -1,0 +1,390 @@
+.contextInspector {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+  padding: 16px;
+  color: #292c2c;
+  background: #f3f1eb;
+  font: 13px/1.6 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+}
+
+.contextEmptyState {
+  display: grid;
+  min-height: 260px;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  padding: 24px;
+  color: #636763;
+  text-align: center;
+}
+
+.contextEmptyState > span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: #87561f;
+  border: 1px solid rgba(199, 139, 60, 0.5);
+  font: 600 11px/1 "Cascadia Mono", Consolas, monospace;
+}
+
+.contextEmptyState strong {
+  color: #292c2c;
+  font: 600 17px/1.3 "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.contextEmptyState p {
+  max-width: 32ch;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.previewBoundary {
+  padding: 13px;
+  border: 1px solid rgba(53, 164, 111, 0.4);
+  background: #fbfaf6;
+}
+
+.previewBoundary strong {
+  color: #256f4b;
+  font-size: 13px;
+}
+
+.previewBoundary p {
+  margin: 6px 0 0;
+  color: #636763;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.fixtureContext {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
+.fixtureHeader {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid #c78b3c;
+}
+
+.fixtureIndex {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: #fbfaf6;
+  background: #292c2c;
+  font: 600 17px/1 "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.fixtureIdentity {
+  min-width: 0;
+}
+
+.fixtureIdentity p {
+  margin: 0 0 3px;
+  color: #87561f;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+
+.fixtureIdentity h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: 600 20px/1.25 "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.fixtureIdentity > span {
+  display: block;
+  margin-top: 5px;
+  color: #636763;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.fixtureBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fixtureBadges span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 2px 8px;
+  color: #636763;
+  border: 1px solid #d6d1c5;
+  background: #fbfaf6;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fixtureBadges [data-tone="confirmation"] {
+  color: #256f4b;
+  border-color: rgba(53, 164, 111, 0.4);
+}
+
+.fixtureBadges [data-tone="confidence"],
+.fixtureBadges [data-tone="revision"] {
+  color: #87561f;
+  border-color: rgba(199, 139, 60, 0.5);
+}
+
+.contextSection {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #d6d1c5;
+  background: #fbfaf6;
+}
+
+.contextSectionHeader {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.contextSectionHeader h3 {
+  margin: 0;
+  color: #292c2c;
+  font: 600 15px/1.3 "Noto Serif SC", "STSong", SimSun, serif;
+}
+
+.contextSectionHeader span {
+  color: #777a75;
+  font-size: 11px;
+}
+
+.contextEmpty {
+  margin: 0;
+  color: #777a75;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.sourceList {
+  display: grid;
+  gap: 8px;
+}
+
+.sourceCard {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid #e0dbd1;
+  background: #f3f1eb;
+}
+
+.sourceCard header {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sourceCard header span {
+  color: #87561f;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.sourceCard header :is(small, time) {
+  color: #777a75;
+  font-size: 11px;
+}
+
+.sourceCard p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #292c2c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.sourceCard button,
+.retryButton,
+.expandButton {
+  min-height: 44px;
+  padding: 0 12px;
+  color: #292c2c;
+  border: 1px solid #bdb8ad;
+  background: #fbfaf6;
+  font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+}
+
+.sourceCard button {
+  justify-self: start;
+}
+
+.sourceCard button:hover,
+.retryButton:hover,
+.expandButton:hover {
+  border-color: #c78b3c;
+  background: #f3f1eb;
+}
+
+.retryButton,
+.expandButton {
+  margin-top: 10px;
+}
+
+.changeList {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changeList li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid #e5e1d8;
+}
+
+.changeList li:first-child {
+  border-top: 0;
+}
+
+.changeList time {
+  color: #87561f;
+  font: 11px/1.5 "Cascadia Mono", Consolas, monospace;
+}
+
+.changeList li > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.changeList li span {
+  color: #777a75;
+  font-size: 11px;
+}
+
+.changeList strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.changeList small {
+  overflow-wrap: anywhere;
+  color: #777a75;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.fixtureFacts {
+  display: grid;
+  margin: 0;
+}
+
+.fixtureFacts div {
+  display: grid;
+  grid-template-columns: minmax(56px, 0.4fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid #e5e1d8;
+}
+
+.fixtureFacts div:first-child {
+  border-top: 0;
+}
+
+.fixtureFacts dt {
+  color: #777a75;
+  font-size: 12px;
+}
+
+.fixtureFacts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #292c2c;
+}
+
+.fixtureEvents {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fixtureEvents button {
+  display: grid;
+  width: 100%;
+  min-height: 44px;
+  grid-template-columns: minmax(96px, 0.8fr) minmax(0, 1.2fr);
+  gap: 8px;
+  padding: 8px;
+  color: #292c2c;
+  border: 1px solid #e0dbd1;
+  background: #fbfaf6;
+  text-align: left;
+}
+
+.fixtureEvents button:hover {
+  border-color: #c78b3c;
+}
+
+.fixtureEvents time {
+  color: #87561f;
+  font-size: 11px;
+}
+
+.fixtureEvents strong {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+@media (max-width: 420px) {
+  .contextInspector {
+    gap: 12px;
+    padding: 13px;
+  }
+
+  .contextSection {
+    padding: 11px;
+  }
+
+  .fixtureHeader {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .fixtureIndex {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+  }
+
+  .fixtureIdentity h2 {
+    font-size: 18px;
+  }
+
+  .changeList li {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+
+  .fixtureEvents button,
+  .fixtureFacts div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

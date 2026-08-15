@@ -135,7 +135,7 @@ export function ExportView({
           <button disabled={!ready} type="button">
             {realData ? "正式导出尚未接入" : "生成导出包"}
           </button>
-          {realData ? <p>当前页面仅从真实工作稿派生开发预览。</p> : !ready ? <p>先处理右侧检查器中的 S0/S1 问题。</p> : null}
+          {realData ? <p>当前页面仅从真实工作稿派生开发预览。</p> : !ready ? <p>先处理主画布证据对比中的 S0/S1 问题。</p> : null}
         </div>
       </div>
     </section>

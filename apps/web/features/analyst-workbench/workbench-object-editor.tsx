@@ -556,7 +556,9 @@ export function WorkbenchObjectEditor({
         </div>
         <div className={styles.headerActions}>
           <span className={styles.statusBadge}>{currentDetail.confirmationLabel}</span>
-          <span className={styles.confidenceBadge}>{currentDetail.confidenceLabel}</span>
+          {currentDetail.confidence !== null ? (
+            <span className={styles.confidenceBadge}>{currentDetail.confidenceLabel}</span>
+          ) : null}
           {!readOnly && !editing ? <button onClick={() => { setEditing(true); setNotice(null); }} type="button">编辑</button> : null}
         </div>
       </header>

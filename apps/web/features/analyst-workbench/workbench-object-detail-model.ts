@@ -58,6 +58,7 @@ export interface DetailStructureLock {
 
 export interface ObjectDetailModel {
   collection: DetailCollection;
+  confidence: number | null;
   confidenceLabel: string;
   confirmationLabel: string;
   coreSections: DetailSection[];
@@ -67,6 +68,7 @@ export interface ObjectDetailModel {
   moreSections: DetailSection[];
   references: DetailReference[];
   relationships: DetailRelationship[];
+  revision: number;
   sourceReferences: DetailReference[];
   structureLocks: DetailStructureLock[];
   subtypeLabel: string;
@@ -710,6 +712,7 @@ export function buildObjectDetailModel(
 
   return {
     collection,
+    confidence: typeof record.confidence === "number" ? record.confidence : null,
     confidenceLabel: confidenceLabel(
       typeof record.confidence === "number" ? record.confidence : null,
     ),
@@ -724,6 +727,7 @@ export function buildObjectDetailModel(
     moreSections: eventReasoning ? [eventReasoning, ...moreSections] : moreSections,
     references,
     relationships: relationshipsFor(document, object.id, catalog),
+    revision: typeof record.revision === "number" ? record.revision : 0,
     sourceReferences,
     structureLocks: structureLocksFor(document, object.id),
     subtypeLabel: objectSubtypeLabel(subtype),

@@ -382,12 +382,14 @@ test("A 路径真实服务覆盖只读预览、窄屏、显式采用与指标", 
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: "重新验证" }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: /采用为当前工作稿/ }),
   ).toHaveCount(0);
-  await page.getByRole("tab", { name: "补丁审阅" }).click();
-  await expect(page.getByText("候选预览不允许补丁操作", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "补丁审阅" })).toHaveCount(0);
+  await expect(
+    page.getByText("候选预览不读取当前工作稿来源", { exact: true }),
+  ).toBeVisible();
   await attachPageEvidence(testInfo, page, "08-read-only-candidate-preview");
 
   const draftAfterPreview = await responseJson<DraftView>(
