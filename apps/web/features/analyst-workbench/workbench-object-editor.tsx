@@ -10,6 +10,7 @@ import {
   type DetailObject,
   type ObjectDetailModel,
 } from "./workbench-object-detail-model";
+import type { ContextFieldCitation } from "./workbench-provenance-model";
 import {
   classificationLabel,
   objectSubtypeLabel,
@@ -207,9 +208,37 @@ function defaultConclusionForResolution(
 function renderField(
   field: DetailField,
   onSelectObject: (objectId: string) => void,
+  fieldCitations: ContextFieldCitation[],
+  onOpenSources?: () => void,
 ) {
   if (field.kind === "text") {
-    return <div key={field.label}><dt>{field.label}</dt><dd>{field.value}</dd></div>;
+    const citations = fieldCitations.filter((citation) =>
+      citation.fieldLabel === field.label && citation.fieldValue === field.value,
+    );
+    return (
+      <div key={field.label}>
+        <dt>{field.label}</dt>
+        <dd>
+          {field.value}
+          {citations.length ? (
+            <span className={styles.citationChips}>
+              {citations.flatMap((citation) => citation.matches.map((match) => (
+                <button
+                  aria-label={`来源：${match.sourceLabel}`}
+                  className={styles.citationChip}
+                  key={`${citation.fieldLabel}:${match.sourceRecordId}`}
+                  onClick={() => onOpenSources?.()}
+                  title={`${citation.fieldLabel} · 第 ${match.span.paragraphNo} 段`}
+                  type="button"
+                >
+                  {match.sourceLabel}
+                </button>
+              )))}
+            </span>
+          ) : null}
+        </dd>
+      </div>
+    );
   }
   if (field.kind === "list") {
     return (
@@ -236,11 +265,13 @@ function renderField(
 function renderSections(
   sections: ObjectDetailModel["coreSections"],
   onSelectObject: (objectId: string) => void,
+  fieldCitations: ContextFieldCitation[],
+  onOpenSources?: () => void,
 ) {
   return sections.map((section) => (
     <section className={styles.detailSection} key={section.title}>
       <h3>{section.title}</h3>
-      <dl>{section.fields.map((field) => renderField(field, onSelectObject))}</dl>
+      <dl>{section.fields.map((field) => renderField(field, onSelectObject, fieldCitations, onOpenSources))}</dl>
     </section>
   ));
 }
@@ -252,8 +283,10 @@ export function WorkbenchObjectEditor({
   revisionLabel,
   saving,
   navigationNotice,
+  fieldCitations = [],
   onDirtyChange,
   onSelectObject,
+  onOpenSources,
   onSave,
   readOnly = false,
   readOnlyReason,
@@ -264,8 +297,10 @@ export function WorkbenchObjectEditor({
   revisionLabel?: string;
   saving: boolean;
   navigationNotice: string | null;
+  fieldCitations?: ContextFieldCitation[];
   onDirtyChange: (dirty: boolean) => void;
   onSelectObject: (objectId: string) => void;
+  onOpenSources?: () => void;
   onSave?: (objectId: string, changes: Record<string, unknown>) => Promise<SaveResult>;
   readOnly?: boolean;
   readOnlyReason?: string;
@@ -557,7 +592,7 @@ export function WorkbenchObjectEditor({
         </div>
       </header>
 
-      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject)}</details> : null}</>}
+      {editing ? <section aria-label="快速编辑" className={styles.quickEdit}><header><h3>快速编辑</h3><p>仅修改安全字段；关系和推理条件保持不变。</p></header><div className={styles.objectEditorFields}>{renderQuickEditFields()}</div></section> : <>{renderSections(currentDetail.coreSections, onSelectObject, fieldCitations, onOpenSources)}{currentDetail.moreSections.length ? <details className={styles.moreDetails}><summary>更多创作信息</summary>{renderSections(currentDetail.moreSections, onSelectObject, fieldCitations, onOpenSources)}</details> : null}</>}
 
       {associationCount ? (
         <p className={styles.associationHint}>

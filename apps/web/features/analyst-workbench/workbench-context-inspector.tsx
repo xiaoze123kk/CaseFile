@@ -15,6 +15,7 @@ import {
   type ContextChangeEntry,
   type ContextSourceEvidence,
 } from "./workbench-context-inspector-model";
+import type { ContextSourceDerivation } from "./workbench-provenance-model";
 import type {
   ContextIncomingReference,
   ContextRelation,
@@ -139,9 +140,11 @@ export function WorkbenchContextInspector({
       {document ? (
         <WorkbenchObjectEditor
           document={document}
+          fieldCitations={writeLocked ? [] : model?.provenance.citations ?? []}
           key={selectedObjectId}
           navigationNotice={navigationNotice}
           onDirtyChange={onDirtyChange}
+          onOpenSources={onOpenSources}
           onSave={onSave}
           onSelectObject={onSelectObject}
           readOnly={readOnly}
@@ -167,6 +170,7 @@ export function WorkbenchContextInspector({
 
       <SourceEvidenceSection
         fixtureSources={fixtureSources}
+        modelDerivations={model?.provenance.derivations ?? []}
         modelSources={model?.sourceEvidence ?? []}
         onOpenSources={onOpenSources}
         onRetry={onReloadContext}
@@ -446,6 +450,7 @@ function SourceEvidenceSection({
   writeLocked,
   state,
   modelSources,
+  modelDerivations,
   fixtureSources,
   onRetry,
   onOpenSources,
@@ -454,6 +459,7 @@ function SourceEvidenceSection({
   writeLocked: boolean;
   state: WorkbenchContextState;
   modelSources: ContextSourceEvidence[];
+  modelDerivations: ContextSourceDerivation[];
   fixtureSources: SourceItem[];
   onRetry?: () => void;
   onOpenSources: () => void;
@@ -523,16 +529,27 @@ function SourceEvidenceSection({
       </header>
       {modelSources.length ? (
         <div className={styles.sourceList}>
-          {modelSources.map((source) => (
-            <article className={styles.sourceCard} key={source.id}>
-              <header>
-                <span>{source.kindLabel}</span>
-                <time dateTime={source.createdAt}>{formatContextTime(source.createdAt)}</time>
-              </header>
-              <p>{source.excerpt}</p>
-              <button onClick={onOpenSources} type="button">查看原文 →</button>
-            </article>
-          ))}
+          {modelSources.map((source) => {
+            const derivation = modelDerivations.find((item) =>
+              item.source.source_record_id === Number(source.id.replace("source-", "")),
+            );
+            return (
+              <article className={styles.sourceCard} key={source.id}>
+                <header>
+                  <span>{source.kindLabel}</span>
+                  <time dateTime={source.createdAt}>{formatContextTime(source.createdAt)}</time>
+                </header>
+                {derivation ? (
+                  <p className={styles.sourceLineage}>
+                    <strong>{derivation.label}</strong>
+                    <span>{derivation.originNote}</span>
+                  </p>
+                ) : null}
+                <p>{source.excerpt}</p>
+                <button onClick={onOpenSources} type="button">查看原文 →</button>
+              </article>
+            );
+          })}
         </div>
       ) : (
         <p className={styles.contextEmpty}>当前工作稿没有登记来源记录。</p>

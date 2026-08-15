@@ -188,6 +188,9 @@ function makeCaseFile(entityName = "真实调查员"): CaseFile {
         cause_refs: [],
         effect_refs: [],
         observed_by_refs: [],
+        source_refs: [
+          { object_type: "source_fragment", object_id: "src_gate_log" },
+        ],
       },
     ],
     information_units: [
@@ -413,6 +416,18 @@ function makeContext(
         generated_by_task_run_id: null,
         created_by_user_id: 1,
         created_at: "2026-08-07T12:00:00Z",
+      },
+      {
+        trace_id: "source_records:13",
+        source_table: "source_records",
+        source_record_id: 13,
+        source_kind: "human_revision",
+        content_text: "作者修订：九点整门禁被值班员开启。 值班员确认了这条记录。",
+        content_hash: "b".repeat(64),
+        parent_source_record_id: 12,
+        generated_by_task_run_id: null,
+        created_by_user_id: 1,
+        created_at: "2026-08-07T12:10:00Z",
       },
     ],
     contract_source_refs: [
@@ -655,7 +670,9 @@ describe("production analyst workbench", () => {
     expect(screen.getByText("来源 draft_operations #31")).toBeInTheDocument();
 
     // 技术来源详情下沉到来源抽屉，仍可核对 trace id 与正文
-    fireEvent.click(within(inspector).getByRole("button", { name: "查看原文 →" }));
+    fireEvent.click(
+      within(inspector).getAllByRole("button", { name: "查看原文 →" })[0],
+    );
     expect(screen.getAllByText("source_records:12").length).toBeGreaterThan(0);
     expect(screen.getAllByText("作者提交的真实原稿正文。").length).toBeGreaterThan(0);
     expect(screen.getAllByText("src_gate_log").length).toBeGreaterThan(0);
@@ -950,6 +967,34 @@ describe("production analyst workbench", () => {
     expect(incoming).toHaveTextContent("被 2 个字段引用");
     expect(incoming).toHaveTextContent("关系起点");
     expect(incoming).toHaveTextContent("参与者");
+  });
+
+  it("attaches author-language citations to fields with exact source spans", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /门禁记录/ }),
+    );
+
+    const editor = screen.getByRole("region", { name: "对象详情与编辑" });
+    const citation = await within(editor).findByRole("button", {
+      name: "来源：你的修订 ②",
+    });
+    expect(citation).toHaveTextContent("你的修订 ②");
+    fireEvent.click(citation);
+
+    const drawer = screen.getByRole("region", {
+      name: "来源与运行记录抽屉",
+    });
+    expect(
+      within(drawer).getByText(
+        "作者修订：九点整门禁被值班员开启。 值班员确认了这条记录。",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("highlights only real events related to the selected Resolution conclusion", async () => {

@@ -7,9 +7,16 @@ import type {
 
 import { buildObjectDetailModel } from "./workbench-object-detail-model";
 import {
+  buildContextProvenanceModel,
+  sourceKindLabel,
+  type ContextProvenanceModel,
+} from "./workbench-provenance-model";
+import {
   buildContextRelations,
   type ContextRelationModel,
 } from "./workbench-relation-model";
+
+export { sourceKindLabel } from "./workbench-provenance-model";
 
 export interface ContextSourceEvidence {
   id: string;
@@ -44,6 +51,7 @@ export interface ContextInspectorModel {
   sourceEvidence: ContextSourceEvidence[];
   recentChanges: ContextChangeEntry[];
   relations: ContextRelationModel;
+  provenance: ContextProvenanceModel;
   counts: {
     associations: number;
     relations: number;
@@ -51,12 +59,6 @@ export interface ContextInspectorModel {
     sources: number;
     changes: number;
   };
-}
-
-export function sourceKindLabel(kind: WorkbenchSourceView["source_kind"]) {
-  if (kind === "human_original") return "作者原稿";
-  if (kind === "human_revision") return "作者修订";
-  return "Agent 建议";
 }
 
 export function sourceExcerpt(content: string, maxLength = 140) {
@@ -130,6 +132,7 @@ export function buildContextInspectorModel(
     ? buildContextRelations(document, objectId)
     : { groups: [], incoming: [], totals: { all: 0, direct: 0, events: 0, information: 0, reasoning: 0, incoming: 0 } };
   const relationCount = relations.totals.all + relations.totals.incoming;
+  const provenance = buildContextProvenanceModel(document, objectId, context);
   return {
     objectId,
     identity: detail
@@ -148,6 +151,7 @@ export function buildContextInspectorModel(
     sourceEvidence: sources.map(mapSourceEvidence),
     recentChanges: changes.map(mapChangeEntry),
     relations,
+    provenance,
     counts: {
       associations: relationCount,
       relations: relations.totals.all,
