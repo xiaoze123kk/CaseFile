@@ -29,11 +29,24 @@ function location(
   id: string,
   input: {
     position?: CaseFile["locations"][number]["spatial_position"];
+    sceneId?: string;
+    floorId?: string;
     parentId?: string;
     adjacentIds?: string[];
-    travelTimes?: Array<{ toId: string; minutes: number }>;
+    travelTimes?: Array<{
+      toId: string;
+      minutes: number;
+      routeGeometry?: CaseFile["locations"][number]["travel_times"][number]["route_geometry"];
+    }>;
   } = {},
 ): CaseFile["locations"][number] {
+  const position = input.position
+    ? {
+        ...input.position,
+        ...(input.sceneId ? { scene_id: input.sceneId } : {}),
+        ...(input.floorId ? { floor_id: input.floorId } : {}),
+      }
+    : undefined;
   return {
     ...metadata(),
     id,
@@ -44,13 +57,19 @@ function location(
     travel_times: (input.travelTimes ?? []).map((travelTime) => ({
       to_ref: ref("location", travelTime.toId),
       minutes: travelTime.minutes,
+      ...(travelTime.routeGeometry
+        ? { route_geometry: travelTime.routeGeometry }
+        : {}),
     })),
     visibility_rules: [],
-    ...(input.position ? { spatial_position: input.position } : {}),
+    ...(position ? { spatial_position: position } : {}),
   };
 }
 
-function caseFile(locations: CaseFile["locations"]): CaseFile {
+function caseFile(
+  locations: CaseFile["locations"],
+  spatialScenes: CaseFile["spatial_scenes"] = [],
+): CaseFile {
   return {
     schema_version: "2.0",
     casefile_id: "case_spatial_test",
@@ -66,6 +85,7 @@ function caseFile(locations: CaseFile["locations"]): CaseFile {
     entities: [],
     relationships: [],
     locations,
+    ...(spatialScenes?.length ? { spatial_scenes: spatialScenes } : {}),
     events: [],
     information_units: [],
     claims: [],
@@ -405,5 +425,235 @@ describe("workbench spatial model", () => {
 
     expect(second).toBe(first);
     expect(changed).not.toBe(first);
+  });
+
+  it("binds schematic locations to case scenes and exposes floors and regions", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile(
+        [
+          location("loc_lobby", {
+            sceneId: "scn_mansion",
+            floorId: "floor_1",
+            position: { coordinate_system: "schematic", x: 12, y: 34 },
+          }),
+          location("loc_attic", {
+            sceneId: "scn_mansion",
+            floorId: "floor_2",
+            position: { coordinate_system: "schematic", x: 70, y: 82 },
+          }),
+        ],
+        [
+          {
+            scene_id: "scn_mansion",
+            name: "庄园",
+            background_image_url: "https://example.test/mansion.png",
+            image_width: 1200,
+            image_height: 800,
+            floors: [
+              {
+                floor_id: "floor_1",
+                label: "1F",
+                background_image_url: "https://example.test/floor-1.png",
+              },
+              { floor_id: "floor_2", label: "2F" },
+            ],
+            regions: [
+              {
+                region_id: "region_hall",
+                name: "大厅",
+                geometry: [
+                  { x: 0, y: 0 },
+                  { x: 20, y: 0 },
+                  { x: 20, y: 20 },
+                ],
+              },
+            ],
+          },
+        ],
+      ),
+      [],
+    );
+
+    expect(model.counts.scenes).toBe(1);
+    expect(model.scenes?.[0]).toEqual(
+      expect.objectContaining({
+        sceneId: "scn_mansion",
+        name: "庄园",
+        backgroundImageUrl: "https://example.test/mansion.png",
+        imageWidth: 1200,
+        imageHeight: 800,
+      }),
+    );
+    expect(model.scenes?.[0].floors.map((floor) => floor.floorId)).toEqual([
+      "floor_1",
+      "floor_2",
+    ]);
+    expect(model.views.scene.locations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          locationId: "loc_lobby",
+          position: {
+            kind: "planar",
+            x: 12,
+            y: 34,
+            sceneId: "scn_mansion",
+            floorId: "floor_1",
+          },
+        }),
+        expect.objectContaining({
+          locationId: "loc_attic",
+          position: {
+            kind: "planar",
+            x: 70,
+            y: 82,
+            sceneId: "scn_mansion",
+            floorId: "floor_2",
+          },
+        }),
+      ]),
+    );
+    expect(model.views.scene.regions?.[0]).toEqual(
+      expect.objectContaining({
+        regionId: "region_hall",
+        sceneId: "scn_mansion",
+        name: "大厅",
+      }),
+    );
+  });
+
+  it("treats broken scene references as unlocated data problems instead of scene anchors", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile([
+        location("loc_broken_scene", {
+          sceneId: "scn_missing",
+          position: { coordinate_system: "schematic", x: 10, y: 10 },
+        }),
+        location("loc_broken_floor", {
+          sceneId: "scn_mansion",
+          floorId: "floor_missing",
+          position: { coordinate_system: "schematic", x: 20, y: 20 },
+        }),
+      ], [
+        {
+          scene_id: "scn_mansion",
+          name: "庄园",
+          floors: [{ floor_id: "floor_1", label: "1F" }],
+        },
+      ]),
+      [],
+    );
+
+    expect(model.unlocatedLocationIds).toEqual([
+      "loc_broken_floor",
+      "loc_broken_scene",
+    ]);
+    expect(model.unlocatedLocations.map((entry) => entry.reason)).toEqual([
+      "dangling_scene_reference",
+      "dangling_scene_reference",
+    ]);
+    expect(model.views.scene.locations).toEqual([]);
+  });
+
+  it("only upgrades travel relations with source geometry to the route kind", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile([
+        location("loc_a", {
+          travelTimes: [
+            {
+              toId: "loc_b",
+              minutes: 8,
+              routeGeometry: {
+                coordinate_system: "schematic",
+                points: [
+                  { x: 10, y: 10 },
+                  { x: 30, y: 25 },
+                  { x: 60, y: 60 },
+                ],
+              },
+            },
+            {
+              toId: "loc_c",
+              minutes: 12,
+            },
+          ],
+          position: { coordinate_system: "schematic", x: 10, y: 10 },
+        }),
+        location("loc_b", {
+          position: { coordinate_system: "schematic", x: 60, y: 60 },
+        }),
+        location("loc_c", {
+          position: { coordinate_system: "schematic", x: 80, y: 80 },
+        }),
+      ]),
+      [],
+    );
+
+    expect(model.views.scene.relations).toEqual([
+      expect.objectContaining({
+        relationId: "travel:loc_a:loc_b:8",
+        kind: "route",
+        routeGeometry: {
+          kind: "planar",
+          points: [
+            { x: 10, y: 10 },
+            { x: 30, y: 25 },
+            { x: 60, y: 60 },
+          ],
+        },
+      }),
+      expect.objectContaining({
+        relationId: "travel:loc_a:loc_c:12",
+        kind: "travel",
+        routeGeometry: null,
+      }),
+    ]);
+  });
+
+  it("keeps wgs84 route geometry in geographic mode without inventing plan geometry", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile([
+        location("loc_geo_a", {
+          travelTimes: [
+            {
+              toId: "loc_geo_b",
+              minutes: 5,
+              routeGeometry: {
+                coordinate_system: "wgs84",
+                points: [
+                  { latitude: 31, longitude: 121 },
+                  { latitude: 31.05, longitude: 121.08 },
+                  { latitude: 31.1, longitude: 121.1 },
+                ],
+              },
+            },
+          ],
+          position: {
+            coordinate_system: "wgs84",
+            latitude: 31,
+            longitude: 121,
+          },
+        }),
+        location("loc_geo_b", {
+          position: {
+            coordinate_system: "wgs84",
+            latitude: 31.1,
+            longitude: 121.1,
+          },
+        }),
+      ]),
+      [],
+    );
+
+    expect(model.views.geographic.relations[0]).toEqual(
+      expect.objectContaining({ kind: "route" }),
+    );
+    expect(model.views.geographic.relations[0].routeGeometry).toEqual({
+      kind: "wgs84",
+      points: [
+        { latitude: 31, longitude: 121 },
+        { latitude: 31.05, longitude: 121.08 },
+        { latitude: 31.1, longitude: 121.1 },
+      ],
+    });
   });
 });

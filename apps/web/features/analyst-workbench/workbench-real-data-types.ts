@@ -76,6 +76,7 @@ export type SpatialLayerId =
   | "locations"
   | "events"
   | "relations"
+  | "regions"
   | "unconfirmed";
 
 export type SpatialLayerVisibility = Record<SpatialLayerId, boolean>;
@@ -221,6 +222,8 @@ export type WorkbenchSpatialPosition =
       kind: "planar";
       x: number;
       y: number;
+      sceneId?: string;
+      floorId?: string;
     };
 
 export interface WorkbenchSpatialEvent {
@@ -240,25 +243,64 @@ export interface WorkbenchSpatialLocation {
   relatedObjectIds: string[];
 }
 
+export interface WorkbenchSceneFloor {
+  floorId: string;
+  label: string;
+  backgroundImageUrl: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+}
+
+export interface WorkbenchSceneRegion {
+  regionId: string;
+  sceneId: string;
+  name: string;
+  geometry: Array<{ x: number; y: number }>;
+}
+
+export interface WorkbenchSpatialScene {
+  sceneId: string;
+  name: string;
+  backgroundImageUrl: string | null;
+  imageWidth: number | null;
+  imageHeight: number | null;
+  floors: WorkbenchSceneFloor[];
+  regions: WorkbenchSceneRegion[];
+}
+
+export type WorkbenchRouteGeometry =
+  | {
+      kind: "wgs84";
+      points: Array<{ latitude: number; longitude: number }>;
+    }
+  | {
+      kind: "planar";
+      points: Array<{ x: number; y: number }>;
+    };
+
 export interface WorkbenchSpatialRelation {
   relationId: string;
-  kind: "adjacency" | "travel";
+  kind: "adjacency" | "travel" | "route";
   fromLocationId: string;
   toLocationId: string;
   direction: "directed" | "undirected";
   label: string;
   minutes: number | null;
+  routeGeometry: WorkbenchRouteGeometry | null;
 }
 
 export interface WorkbenchSpatialView {
   mode: WorkbenchSpatialMode;
   locations: WorkbenchSpatialLocation[];
   relations: WorkbenchSpatialRelation[];
+  /** Scene-mode polygon regions; absent in geographic/topology views. */
+  regions?: WorkbenchSceneRegion[];
 }
 
 export type WorkbenchUnlocatedReason =
   | "no_coordinates"
-  | "dangling_topology";
+  | "dangling_topology"
+  | "dangling_scene_reference";
 
 export interface WorkbenchUnlocatedLocation {
   locationId: string;
@@ -270,6 +312,8 @@ export interface WorkbenchMapModel {
   availableModes: WorkbenchSpatialMode[];
   defaultMode: WorkbenchSpatialMode | null;
   views: Record<WorkbenchSpatialMode, WorkbenchSpatialView>;
+  /** Case-bound scene registry; empty when the document has no spatial_scenes. */
+  scenes?: WorkbenchSpatialScene[];
   unlocatedLocationIds: string[];
   unlocatedLocations: WorkbenchUnlocatedLocation[];
   counts: {
@@ -279,6 +323,7 @@ export interface WorkbenchMapModel {
     scene: number;
     inferred: number;
     unlocated: number;
+    scenes?: number;
   };
 }
 

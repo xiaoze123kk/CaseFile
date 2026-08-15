@@ -7,11 +7,15 @@ import { creatorLabel } from "./workbench-presenters";
 import type {
   WorkbenchMapModel,
   SpatialLayerVisibility,
+  WorkbenchRouteGeometry,
+  WorkbenchSceneFloor,
+  WorkbenchSceneRegion,
   WorkbenchSpatialEvent,
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
   WorkbenchSpatialPosition,
   WorkbenchSpatialRelation,
+  WorkbenchSpatialScene,
   WorkbenchSpatialView,
   WorkbenchTimelineEvent,
   WorkbenchUnlocatedReason,
@@ -19,8 +23,18 @@ import type {
 
 type ContractLocation = CaseFileDocument["locations"][number];
 
+type ContractTravelTime = ContractLocation["travel_times"][number];
+
+type ContractScene = NonNullable<CaseFileDocument["spatial_scenes"]>[number];
+
 type ContractSpatialPosition =
-  | { kind: "schematic"; x: number; y: number }
+  | {
+      kind: "schematic";
+      x: number;
+      y: number;
+      sceneId: string | null;
+      floorId: string | null;
+    }
   | { kind: "wgs84"; latitude: number; longitude: number };
 
 interface PlanarPosition {
@@ -56,6 +70,7 @@ function spatialModelInputKey(
       travel_times: location.travel_times,
       spatial_position: location.spatial_position,
     })),
+    spatial_scenes: caseFile.spatial_scenes ?? [],
     events: timelineEvents.map((event) => ({
       id: event.id,
       label: event.label,
@@ -83,7 +98,9 @@ function readReferenceId(reference: ObjectRef | null | undefined): string | null
 function unlocatedReason(
   location: ContractLocation,
   locationIds: Set<string>,
+  brokenSceneReferenceIds: Set<string>,
 ): WorkbenchUnlocatedReason {
+  if (brokenSceneReferenceIds.has(location.id)) return "dangling_scene_reference";
   const references = [
     location.parent_ref,
     ...location.adjacency_refs,
@@ -100,6 +117,10 @@ function unlocatedReason(
   return hasDanglingReference ? "dangling_topology" : "no_coordinates";
 }
 
+function readSceneReference(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 function readSpatialPosition(
   location: ContractLocation,
 ): ContractSpatialPosition | null {
@@ -109,7 +130,13 @@ function readSpatialPosition(
     const x = finiteNumber(position.x);
     const y = finiteNumber(position.y);
     return x !== null && y !== null && x >= 0 && x <= 100 && y >= 0 && y <= 100
-      ? { kind: "schematic", x, y }
+      ? {
+          kind: "schematic",
+          x,
+          y,
+          sceneId: readSceneReference(position.scene_id),
+          floorId: readSceneReference(position.floor_id),
+        }
       : null;
   }
   const latitude = finiteNumber(position.latitude);
@@ -131,6 +158,97 @@ function hashString(value: string): number {
     hash = Math.imul(hash, 16777619);
   }
   return hash >>> 0;
+}
+
+function positiveFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : null;
+}
+
+function nonEmptyUrl(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readRouteGeometry(travelTime: ContractTravelTime): WorkbenchRouteGeometry | null {
+  const geometry = travelTime.route_geometry;
+  if (!geometry) return null;
+  if (geometry.coordinate_system === "wgs84") {
+    const points = geometry.points
+      .map((point) => ({
+        latitude: finiteNumber(point.latitude),
+        longitude: finiteNumber(point.longitude),
+      }))
+      .filter(
+        (point): point is { latitude: number; longitude: number } =>
+          point.latitude !== null && point.longitude !== null,
+      )
+      .filter(
+        (point) =>
+          point.latitude >= -90 &&
+          point.latitude <= 90 &&
+          point.longitude >= -180 &&
+          point.longitude <= 180,
+      );
+    return points.length >= 2 ? { kind: "wgs84", points } : null;
+  }
+  const points = geometry.points
+    .map((point) => ({ x: finiteNumber(point.x), y: finiteNumber(point.y) }))
+    .filter(
+      (point): point is { x: number; y: number } =>
+        point.x !== null && point.y !== null,
+    )
+    .filter(
+      (point) => point.x >= 0 && point.x <= 100 && point.y >= 0 && point.y <= 100,
+    );
+  return points.length >= 2 ? { kind: "planar", points } : null;
+}
+
+function readSceneFloor(
+  floor: NonNullable<ContractScene["floors"]>[number],
+): WorkbenchSceneFloor {
+  return {
+    floorId: floor.floor_id,
+    label: floor.label,
+    backgroundImageUrl: nonEmptyUrl(floor.background_image_url),
+    imageWidth: positiveFiniteNumber(floor.image_width),
+    imageHeight: positiveFiniteNumber(floor.image_height),
+  };
+}
+
+function readSceneRegion(
+  sceneId: string,
+  region: NonNullable<ContractScene["regions"]>[number],
+): WorkbenchSceneRegion | null {
+  const geometry = region.geometry
+    .map((point) => ({ x: finiteNumber(point.x), y: finiteNumber(point.y) }))
+    .filter(
+      (point): point is { x: number; y: number } =>
+        point.x !== null && point.y !== null,
+    )
+    .filter(
+      (point) => point.x >= 0 && point.x <= 100 && point.y >= 0 && point.y <= 100,
+    );
+  return geometry.length >= 3
+    ? { regionId: region.region_id, sceneId, name: region.name, geometry }
+    : null;
+}
+
+function readSpatialScenes(
+  caseFile: CaseFileDocument,
+): WorkbenchSpatialScene[] {
+  return (caseFile.spatial_scenes ?? []).map((scene) => ({
+    sceneId: scene.scene_id,
+    name: scene.name,
+    backgroundImageUrl: nonEmptyUrl(scene.background_image_url),
+    imageWidth: positiveFiniteNumber(scene.image_width),
+    imageHeight: positiveFiniteNumber(scene.image_height),
+    floors: (scene.floors ?? []).map(readSceneFloor),
+    regions: (scene.regions ?? []).flatMap((region) => {
+      const parsed = readSceneRegion(scene.scene_id, region);
+      return parsed ? [parsed] : [];
+    }),
+  }));
 }
 
 function initialGrid(ids: string[]): Map<string, { x: number; y: number }> {
@@ -207,6 +325,7 @@ function buildTopologyPositions(
 
   for (let iteration = 0; iteration < 24; iteration += 1) {
     const next = new Map(positions);
+    let largestShift = 0;
     for (const id of [...inferredIds].sort()) {
       const neighbors = neighborWeights.get(id);
       if (!neighbors?.size) continue;
@@ -225,6 +344,14 @@ function buildTopologyPositions(
       const angle = ((hashString(id) % 360) * Math.PI) / 180;
       const targetX = weightedX / totalWeight + Math.cos(angle) * 4;
       const targetY = weightedY / totalWeight + Math.sin(angle) * 4;
+      const current = positions.get(id);
+      if (current) {
+        largestShift = Math.max(
+          largestShift,
+          Math.abs(targetX * 0.76 + anchor.x * 0.24 - current.x),
+          Math.abs(targetY * 0.76 + anchor.y * 0.24 - current.y),
+        );
+      }
       next.set(id, {
         x: clamp(targetX * 0.76 + anchor.x * 0.24, 3, 97),
         y: clamp(targetY * 0.76 + anchor.y * 0.24, 3, 97),
@@ -232,6 +359,7 @@ function buildTopologyPositions(
       });
     }
     for (const [id, position] of next) positions.set(id, position);
+    if (largestShift < 0.01) break;
   }
   return positions;
 }
@@ -323,6 +451,7 @@ function buildSpatialRelations(
         direction: "undirected",
         label: "相邻",
         minutes: null,
+        routeGeometry: null,
       });
     }
     for (const travelTime of location.travel_times) {
@@ -339,6 +468,7 @@ function buildSpatialRelations(
         direction: "directed",
         label: `${travelTime.minutes} 分钟`,
         minutes: travelTime.minutes,
+        routeGeometry: readRouteGeometry(travelTime),
       });
     }
   }
@@ -347,26 +477,45 @@ function buildSpatialRelations(
   );
 }
 
+function routeGeometryMatchesMode(
+  geometry: WorkbenchRouteGeometry,
+  mode: WorkbenchSpatialMode,
+): boolean {
+  return mode === "geographic"
+    ? geometry.kind === "wgs84"
+    : geometry.kind === "planar";
+}
+
 function relationsForLocations(
   relations: WorkbenchSpatialRelation[],
   locations: WorkbenchSpatialLocation[],
+  mode: WorkbenchSpatialMode,
 ): WorkbenchSpatialRelation[] {
   const visibleIds = new Set(
     locations.flatMap((location) =>
       location.locationId ? [location.locationId] : [],
     ),
   );
-  return relations.filter(
-    (relation) =>
-      visibleIds.has(relation.fromLocationId) &&
-      visibleIds.has(relation.toLocationId),
-  );
+  return relations
+    .filter(
+      (relation) =>
+        visibleIds.has(relation.fromLocationId) &&
+        visibleIds.has(relation.toLocationId),
+    )
+    .map((relation) =>
+      relation.kind === "travel" &&
+      relation.routeGeometry &&
+      routeGeometryMatchesMode(relation.routeGeometry, mode)
+        ? { ...relation, kind: "route" as const }
+        : relation,
+    );
 }
 
 export const defaultSpatialLayerVisibility: SpatialLayerVisibility = {
   locations: true,
   events: true,
   relations: false,
+  regions: false,
   unconfirmed: false,
 };
 
@@ -381,8 +530,9 @@ export function filterWorkbenchSpatialView(
     ...view,
     locations,
     relations: layers.relations
-      ? relationsForLocations(view.relations, locations)
+      ? relationsForLocations(view.relations, locations, view.mode)
       : [],
+    regions: layers.regions ? view.regions : [],
   };
 }
 
@@ -402,12 +552,36 @@ function buildWorkbenchSpatialModelUncached(
   caseFile: CaseFileDocument,
   timelineEvents: WorkbenchTimelineEvent[],
 ): WorkbenchMapModel {
+  const locationIndexById = new Map(
+    caseFile.locations.map((location, index) => [location.id, index]),
+  );
   const positions = new Map(
     caseFile.locations.map((location) => [location.id, readSpatialPosition(location)]),
   );
-  const locationIds = new Set(caseFile.locations.map((location) => location.id));
+  const locationIds = new Set(locationIndexById.keys());
   const spatialRelations = buildSpatialRelations(caseFile.locations);
   const eventMap = eventsByLocation(timelineEvents);
+  const scenes = readSpatialScenes(caseFile);
+  const sceneIds = new Set(scenes.map((scene) => scene.sceneId));
+  const floorIdsByScene = new Map(
+    scenes.map((scene) => [
+      scene.sceneId,
+      new Set(scene.floors.map((floor) => floor.floorId)),
+    ]),
+  );
+  const brokenSceneReferenceIds = new Set<string>();
+  for (const [locationId, position] of positions) {
+    if (position?.kind !== "schematic") continue;
+    const hasBrokenScene =
+      Boolean(position.sceneId && !sceneIds.has(position.sceneId)) ||
+      Boolean(
+        position.floorId &&
+          (!position.sceneId ||
+            !floorIdsByScene.get(position.sceneId)?.has(position.floorId)),
+      );
+    if (hasBrokenScene) brokenSceneReferenceIds.add(locationId);
+  }
+
   const geographicLocations = caseFile.locations
     .flatMap((location, locationIndex) => {
       const position = positions.get(location.id);
@@ -443,30 +617,47 @@ function buildWorkbenchSpatialModelUncached(
   const neighborWeights = buildNeighborWeights(planarLocations);
   const inferredIds = planarLocations
     .filter(
-      (location) => !explicitById.has(location.id) && Boolean(neighborWeights.get(location.id)?.size),
+      (location) =>
+        !explicitById.has(location.id) &&
+        Boolean(neighborWeights.get(location.id)?.size),
     )
     .map((location) => location.id)
     .sort();
   const inferredIdSet = new Set(inferredIds);
-  const unlocatedLocationIds = planarLocations
-    .filter((location) => !explicitById.has(location.id) && !inferredIdSet.has(location.id))
-    .map((location) => location.id)
-    .sort();
+  const unlocatedLocationIds = [
+    ...new Set(
+      [
+        ...planarLocations
+          .filter(
+            (location) =>
+              !explicitById.has(location.id) && !inferredIdSet.has(location.id),
+          )
+          .map((location) => location.id),
+        ...brokenSceneReferenceIds,
+      ].sort(),
+    ),
+  ];
 
   const sceneLocations = planarLocations
     .flatMap((location) => {
-      const position = explicitById.get(location.id);
-      return position
-        ? [
-            makeSpatialLocation({
-              location,
-              locationIndex: caseFile.locations.findIndex((item) => item.id === location.id),
-              source: "schematic",
-              position: { kind: "planar", ...position },
-              events: eventMap.get(location.id) ?? [],
-            }),
-          ]
-        : [];
+      if (brokenSceneReferenceIds.has(location.id)) return [];
+      const position = positions.get(location.id);
+      if (position?.kind !== "schematic") return [];
+      return [
+        makeSpatialLocation({
+          location,
+          locationIndex: locationIndexById.get(location.id) ?? 0,
+          source: "schematic",
+          position: {
+            kind: "planar",
+            x: position.x,
+            y: position.y,
+            ...(position.sceneId ? { sceneId: position.sceneId } : {}),
+            ...(position.floorId ? { floorId: position.floorId } : {}),
+          },
+          events: eventMap.get(location.id) ?? [],
+        }),
+      ];
     })
     .sort((left, right) => left.spatialId.localeCompare(right.spatialId));
 
@@ -486,7 +677,7 @@ function buildWorkbenchSpatialModelUncached(
       return [
         makeSpatialLocation({
           location,
-          locationIndex: caseFile.locations.findIndex((item) => item.id === location.id),
+          locationIndex: locationIndexById.get(location.id) ?? 0,
           source: position.inferred ? "inferred" : "schematic",
           position: { kind: "planar", x: position.x, y: position.y },
           events: eventMap.get(location.id) ?? [],
@@ -495,22 +686,28 @@ function buildWorkbenchSpatialModelUncached(
     })
     .sort((left, right) => left.spatialId.localeCompare(right.spatialId));
 
+  const allRegions = scenes.flatMap((scene) => scene.regions);
   const views: WorkbenchMapModel["views"] = {
     geographic: {
       mode: "geographic",
       locations: geographicLocations,
-      relations: relationsForLocations(spatialRelations, geographicLocations),
+      relations: relationsForLocations(
+        spatialRelations,
+        geographicLocations,
+        "geographic",
+      ),
     },
     scene: {
       mode: "scene",
       locations: sceneLocations,
-      relations: relationsForLocations(spatialRelations, sceneLocations),
+      relations: relationsForLocations(spatialRelations, sceneLocations, "scene"),
+      regions: allRegions,
     },
     topology: {
       mode: "topology",
       locations: inferredIds.length ? topologyLocations : [],
       relations: inferredIds.length
-        ? relationsForLocations(spatialRelations, topologyLocations)
+        ? relationsForLocations(spatialRelations, topologyLocations, "topology")
         : [],
     },
   };
@@ -521,21 +718,23 @@ function buildWorkbenchSpatialModelUncached(
     (count, events) => count + events.length,
     0,
   );
+  const unlocatedLocationIdSet = new Set(unlocatedLocationIds);
   return {
     availableModes,
     defaultMode: availableModes[0] ?? null,
     views,
+    scenes,
     unlocatedLocationIds,
     unlocatedLocations: caseFile.locations
-      .filter((location) => unlocatedLocationIds.includes(location.id))
+      .filter((location) => unlocatedLocationIdSet.has(location.id))
       .map((location) => ({
         locationId: location.id,
         label: creatorLabel(location.name, {
           kind: "location",
-          index: caseFile.locations.findIndex((item) => item.id === location.id),
+          index: locationIndexById.get(location.id) ?? 0,
           description: location.description,
         }),
-        reason: unlocatedReason(location, locationIds),
+        reason: unlocatedReason(location, locationIds, brokenSceneReferenceIds),
       }))
       .sort((left, right) => left.locationId.localeCompare(right.locationId)),
     counts: {
@@ -545,6 +744,7 @@ function buildWorkbenchSpatialModelUncached(
       scene: sceneLocations.length,
       inferred: inferredIds.length,
       unlocated: unlocatedLocationIds.length,
+      scenes: scenes.length,
     },
   };
 }

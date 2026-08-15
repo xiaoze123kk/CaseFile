@@ -2,6 +2,7 @@ import type {
   SpatialLayerId,
   SpatialLayerVisibility,
   WorkbenchMapModel,
+  WorkbenchSceneRegion,
   WorkbenchSpatialRelation,
   WorkbenchUnlocatedReason,
 } from "../workbench-real-data-types";
@@ -15,12 +16,14 @@ const layerCopy: Array<{
   { id: "locations", label: "地点", detail: "明确坐标" },
   { id: "events", label: "事件", detail: "地点聚合" },
   { id: "relations", label: "空间关系", detail: "只读核对" },
+  { id: "regions", label: "场景区域", detail: "卷宗多边形" },
   { id: "unconfirmed", label: "待确认位置", detail: "推算与未定位" },
 ];
 
 const unlocatedReasonCopy: Record<WorkbenchUnlocatedReason, string> = {
   no_coordinates: "尚无坐标",
   dangling_topology: "空间引用指向不存在的地点",
+  dangling_scene_reference: "场景或楼层引用不存在",
 };
 
 export function SpatialStatusStrip({ counts }: { counts: WorkbenchMapModel["counts"] }) {
@@ -47,7 +50,9 @@ export function SpatialAuditPanel({
   mobileOpen,
   desktopCollapsed,
   highlightedUnlocatedId,
+  regions,
   relations,
+  sceneName,
   unlocatedLocations,
   onMobileOpenChange,
   onDesktopCollapsedChange,
@@ -58,7 +63,9 @@ export function SpatialAuditPanel({
   mobileOpen: boolean;
   desktopCollapsed: boolean;
   highlightedUnlocatedId: string | null;
+  regions: WorkbenchSceneRegion[];
   relations: WorkbenchSpatialRelation[];
+  sceneName: string | null;
   unlocatedLocations: WorkbenchMapModel["unlocatedLocations"];
   onMobileOpenChange: (open: boolean) => void;
   onDesktopCollapsedChange: (collapsed: boolean) => void;
@@ -130,12 +137,12 @@ export function SpatialAuditPanel({
         {layers.relations ? (
           <section className={styles.relationAudit}>
             <strong>空间关系 · {relations.length}</strong>
-            <p>关系连线不代表实际路线。</p>
+            <p>虚线与相邻关系不代表实际路线；实线路线来自卷宗 geometry。</p>
             {relations.length ? (
               <ol aria-label="当前可见空间关系">
                 {relations.map((relation) => (
                   <li key={relation.relationId}>
-                    <span>{relation.kind === "travel" ? "→" : "—"}</span>
+                    <span>{relation.kind === "route" ? "⇢" : relation.kind === "travel" ? "→" : "—"}</span>
                     <b>{relation.fromLocationId}</b>
                     <small>{relation.label}</small>
                     <b>{relation.toLocationId}</b>
@@ -144,6 +151,30 @@ export function SpatialAuditPanel({
               </ol>
             ) : (
               <small>当前可见地点之间没有可展示的空间关系。</small>
+            )}
+          </section>
+        ) : null}
+        {layers.regions ? (
+          <section className={styles.regionAudit}>
+            <strong>
+              场景区域 · {regions.length}
+              {sceneName ? ` · ${sceneName}` : ""}
+            </strong>
+            <p>区域只来自卷宗数据；未配置时不渲染任何多边形。</p>
+            {regions.length ? (
+              <ol aria-label="当前可见场景区域">
+                {regions.map((region) => (
+                  <li key={`${region.sceneId}:${region.regionId}`}>
+                    <i aria-hidden="true" />
+                    <b>{region.name}</b>
+                    <small>
+                      {region.regionId} · {region.geometry.length} 个顶点
+                    </small>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <small>当前场景没有可展示的区域。</small>
             )}
           </section>
         ) : null}

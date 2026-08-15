@@ -152,6 +152,7 @@
   font: 700 7px/1 "Cascadia Mono", Consolas, monospace;
 }
 .searchResults button[data-kind="scene"] > span { color: var(--spatial-red); border-color: rgba(169, 38, 9, 0.45); background: rgba(169, 38, 9, 0.05); }
+.searchResults button[data-kind="scene-region"] > span { color: #1f5c3d; border-color: rgba(31, 92, 61, 0.5); background: rgba(31, 92, 61, 0.06); }
 .searchResults button[data-kind="topology"] > span,
 .searchResults button[data-kind="unlocated"] > span { color: var(--spatial-warning); border-color: rgba(162, 115, 33, 0.55); background: rgba(162, 115, 33, 0.07); }
 .searchResults button b {
@@ -336,6 +337,77 @@
 }
 .mapStatus p { margin: 0; font-size: 10px; line-height: 1.45; }
 
+.sceneDock {
+  position: absolute;
+  z-index: 630;
+  top: 52px;
+  left: 50%;
+  display: flex;
+  max-width: min(680px, calc(100% - 560px));
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  border: 1px solid rgba(26, 28, 25, 0.32);
+  background: rgba(250, 250, 245, 0.95);
+  box-shadow: 0 6px 18px rgba(26, 28, 25, 0.12);
+  transform: translateX(-50%);
+}
+.sceneSelect {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  border-left: 3px solid var(--spatial-red);
+}
+.sceneSelect span {
+  color: #73746f;
+  font: 700 7px/1 "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.08em;
+}
+.sceneSelect select {
+  min-height: 34px;
+  max-width: 160px;
+  padding: 0 8px;
+  color: var(--spatial-ink);
+  border: 1px solid rgba(26, 28, 25, 0.32);
+  background: #fff;
+  font-size: 9px;
+}
+.floorTabs {
+  display: inline-flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow-x: auto;
+  border: 1px solid rgba(26, 28, 25, 0.28);
+  background: #f3f2eb;
+}
+.floorTabs button {
+  min-width: 52px;
+  min-height: 36px;
+  padding: 0 10px;
+  color: #595b56;
+  border: 0;
+  border-left: 1px solid rgba(26, 28, 25, 0.2);
+  background: transparent;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.floorTabs button:first-child { border-left: 0; }
+.floorTabs button:hover { color: var(--spatial-red); background: #fff; }
+.floorTabs button[aria-pressed="true"] {
+  color: #fff;
+  background: var(--spatial-ink);
+  box-shadow: inset 0 -3px var(--spatial-red);
+}
+.sceneSelect select:focus-visible,
+.floorTabs button:focus-visible {
+  outline: 2px solid var(--spatial-red);
+  outline-offset: 1px;
+}
+
 .mapControls {
   position: absolute;
   z-index: 620;
@@ -480,24 +552,29 @@
 .auditPanel label b { font-size: 10px; }
 .auditPanel label small { color: #777872; font-size: 8px; }
 .relationAudit,
+.regionAudit,
 .unlocatedAudit {
   padding: 9px 10px 11px;
   border-top: 1px solid rgba(26, 28, 25, 0.16);
 }
 .relationAudit > strong,
+.regionAudit > strong,
 .unlocatedAudit > strong {
   display: block;
   font: 700 9px/1.35 "Cascadia Mono", Consolas, monospace;
 }
-.relationAudit > p {
+.relationAudit > p,
+.regionAudit > p {
   margin: 4px 0 7px;
   color: #765a1c;
   font-size: 8px;
   line-height: 1.45;
 }
 .relationAudit > small,
+.regionAudit > small,
 .unlocatedAudit > small { display: block; margin-top: 6px; color: #70716c; font-size: 8px; line-height: 1.5; }
 .relationAudit ol,
+.regionAudit ol,
 .unlocatedAudit ol { margin: 7px 0 0; padding: 0; list-style: none; }
 .relationAudit li {
   display: grid;
@@ -512,6 +589,25 @@
 .relationAudit li > span { color: var(--spatial-warning); font-size: 11px; }
 .relationAudit li b { overflow: hidden; font: 600 7px/1.2 "Cascadia Mono", Consolas, monospace; text-overflow: ellipsis; }
 .relationAudit li small { color: #777872; font-size: 7px; white-space: nowrap; }
+.regionAudit li {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 0;
+  border-top: 1px dotted rgba(26, 28, 25, 0.18);
+  grid-template-columns: 12px minmax(0, 1fr);
+}
+.regionAudit li i {
+  width: 0;
+  height: 0;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid var(--spatial-survey);
+  border-left: 6px solid transparent;
+  opacity: 0.72;
+}
+.regionAudit li b { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.regionAudit li small { color: #777872; font: 7px/1.2 "Cascadia Mono", Consolas, monospace; }
 .unlocatedAudit li + li { border-top: 1px dotted rgba(26, 28, 25, 0.18); }
 .unlocatedAudit li[data-highlighted] {
   margin: 2px -4px;
@@ -875,6 +971,43 @@
   font: 700 7px/1 "Cascadia Mono", Consolas, monospace;
   white-space: nowrap;
 }
+:global(.casefile-spatial-cluster) {
+  display: grid !important;
+  width: 44px !important;
+  height: 44px !important;
+  place-items: center;
+  border: 0 !important;
+  background: transparent !important;
+}
+:global(.casefile-spatial-cluster__body) {
+  position: relative;
+  display: grid;
+  box-sizing: border-box;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #fff;
+  border: 2px solid var(--spatial-paper);
+  border-radius: 50%;
+  background: var(--spatial-survey);
+  box-shadow: 0 0 0 2px var(--spatial-survey), 0 3px 9px rgba(26, 28, 25, 0.28);
+  font: 700 11px/1 "Bahnschrift", "Microsoft YaHei", sans-serif;
+}
+:global(.casefile-spatial-cluster__body i) {
+  position: absolute;
+  inset: -6px;
+  border: 1px dashed rgba(47, 93, 98, 0.65);
+  border-radius: 50%;
+}
+:global(.casefile-spatial-cluster:hover .casefile-spatial-cluster__body),
+:global(.casefile-spatial-cluster:focus-visible .casefile-spatial-cluster__body) {
+  background: var(--spatial-ink);
+  box-shadow: 0 0 0 2px var(--spatial-ink), 0 4px 12px rgba(26, 28, 25, 0.34);
+}
+:global(.casefile-spatial-cluster:focus-visible) {
+  outline: 3px solid var(--spatial-red);
+  outline-offset: 2px;
+}
 :global(.casefile-spatial-marker.is-editable .casefile-spatial-marker__stamp) {
   animation: spatial-edit-pulse 1.4s ease-in-out infinite;
 }
@@ -892,6 +1025,20 @@
   border-bottom: 4px solid transparent;
   border-left: 9px solid #a27321;
 }
+:global(.casefile-spatial-relation-arrow--route span) { border-left-color: #1f5c3d; }
+:global(.casefile-spatial-region) {
+  stroke-linejoin: round;
+}
+:global(.casefile-spatial-region-label) {
+  padding: 2px 6px !important;
+  color: #2f5d62 !important;
+  border: 1px solid rgba(47, 93, 98, 0.55) !important;
+  border-radius: 0 !important;
+  background: rgba(250, 250, 245, 0.94) !important;
+  box-shadow: none !important;
+  font: 700 8px/1.2 "Cascadia Mono", Consolas, monospace !important;
+}
+:global(.casefile-spatial-region-label::before) { display: none !important; }
 :global(.casefile-spatial-relation-label) {
   padding: 2px 5px !important;
   color: var(--spatial-ink) !important;
@@ -903,6 +1050,7 @@
 }
 :global(.casefile-spatial-relation-label::before) { display: none !important; }
 :global(.casefile-spatial-relation-label--travel) { color: #765a1c !important; }
+:global(.casefile-spatial-relation-label--route) { color: #1f5c3d !important; }
 :global(.leaflet-control-attribution) {
   color: #565752;
   background: rgba(250, 250, 245, 0.88) !important;
@@ -924,6 +1072,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   :global(.casefile-spatial-marker.is-editable .casefile-spatial-marker__stamp) { animation: none; }
+  :global(.leaflet-zoom-animated) { transition: none !important; }
 }
 
 @media (max-width: 700px) {
@@ -947,6 +1096,14 @@
   .statusStrip dt { justify-content: center; gap: 4px; font-size: 7px; }
   .statusStrip dd { font-size: 12px; }
   .mapStatus { top: 8px; max-width: calc(100% - 16px); }
+  .sceneDock {
+    top: 50px;
+    right: 8px;
+    left: 8px;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+  .sceneDock .floorTabs { max-width: 100%; }
   .auditToggle {
     position: absolute;
     z-index: 660;

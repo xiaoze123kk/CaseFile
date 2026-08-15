@@ -13,9 +13,11 @@ import type {
   SpatialPositionPayload,
   SpatialPositionSaveResult,
   WorkbenchMapModel,
+  WorkbenchSceneRegion,
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
   WorkbenchSpatialPosition,
+  WorkbenchSpatialScene,
   WorkbenchUnlocatedReason,
 } from "../workbench-real-data-types";
 import {
@@ -46,11 +48,56 @@ const modeLabels: Record<WorkbenchSpatialMode, string> = {
 const unlocatedReasonLabels: Record<WorkbenchUnlocatedReason, string> = {
   no_coordinates: "尚无坐标",
   dangling_topology: "空间引用指向不存在的地点",
+  dangling_scene_reference: "场景或楼层引用不存在",
 };
 
-interface SpatialSearchResult {
-  location: WorkbenchSpatialLocation;
-  mode: WorkbenchSpatialMode;
+type SpatialSearchResult =
+  | {
+      kind: "location";
+      location: WorkbenchSpatialLocation;
+      mode: WorkbenchSpatialMode;
+    }
+  | {
+      kind: "region";
+      region: WorkbenchSceneRegion;
+      mode: "scene";
+    };
+
+interface SpatialSceneSelection {
+  sceneId: string;
+  /** Explicitly null means "all floors"; absent state means automatic. */
+  floorId: string | null;
+}
+
+function sceneForLocation(
+  location: WorkbenchSpatialLocation,
+  scenes: WorkbenchMapModel["scenes"],
+): string | null {
+  const position = location.position;
+  if (position.kind !== "planar" || !position.sceneId) {
+    return null;
+  }
+  const sceneId = position.sceneId;
+  return scenes?.some((scene) => scene.sceneId === sceneId) ? sceneId : null;
+}
+
+function spatialDimensionLabel(
+  location: WorkbenchSpatialLocation,
+  scenes: WorkbenchMapModel["scenes"],
+): string | null {
+  const position = location.position;
+  if (position.kind !== "planar" || !scenes?.length) return null;
+  const sceneId = sceneForLocation(location, scenes);
+  const scene = scenes.find((candidate) => candidate.sceneId === sceneId);
+  if (!scene) return position.sceneId ?? null;
+  const floorId = position.floorId;
+  if (floorId) {
+    const floor = scene.floors.find(
+      (candidate) => candidate.floorId === floorId,
+    );
+    if (floor) return `${scene.name} · ${floor.label}`;
+  }
+  return scene.name;
 }
 
 function cloneDefaultLayers(): SpatialLayerVisibility {
@@ -115,7 +162,13 @@ function payloadToPosition(
         latitude: payload.latitude,
         longitude: payload.longitude,
       }
-    : { kind: "planar", x: payload.x, y: payload.y };
+    : {
+        kind: "planar",
+        x: payload.x,
+        y: payload.y,
+        ...(payload.scene_id ? { sceneId: payload.scene_id } : {}),
+        ...(payload.floor_id ? { floorId: payload.floor_id } : {}),
+      };
 }
 
 function positionToPayload(
@@ -127,7 +180,13 @@ function positionToPayload(
         latitude: position.latitude,
         longitude: position.longitude,
       }
-    : { coordinate_system: "schematic", x: position.x, y: position.y };
+    : {
+        coordinate_system: "schematic",
+        x: position.x,
+        y: position.y,
+        ...(position.sceneId ? { scene_id: position.sceneId } : {}),
+        ...(position.floorId ? { floor_id: position.floorId } : {}),
+      };
 }
 
 export interface SpatialMapViewProps {
@@ -181,6 +240,7 @@ export function SpatialMapView({
   } | null>(null);
   const spatialCallbacksRef = useRef<SpatialRenderCallbacks | null>(null);
   const spatialSelectionRef = useRef<SpatialRenderSelection | null>(null);
+  const pendingRegionFocusRef = useRef<string | null>(null);
   const [layersByMode, setLayersByMode] = useState(initialLayerState);
   const [requestedMode, setRequestedMode] = useState<WorkbenchSpatialMode | null>(
     map.defaultMode,
@@ -197,9 +257,14 @@ export function SpatialMapView({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchActiveIndex, setSearchActiveIndex] = useState(0);
   const [interactionNotice, setInteractionNotice] = useState<string | null>(null);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [tileUnavailable, setTileUnavailable] = useState(false);
+  const [sceneSelection, setSceneSelection] = useState<SpatialSceneSelection | null>(
+    null,
+  );
+  const [sceneErrorSignature, setSceneErrorSignature] = useState<string | null>(null);
   const tileConfiguration = useMemo(
     () =>
       resolveMapTileConfiguration(
@@ -208,7 +273,7 @@ export function SpatialMapView({
       ),
     [],
   );
-  const sceneBackground = useMemo(
+  const environmentSceneBackground = useMemo(
     () =>
       resolveSceneBackgroundConfiguration(
         process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL,
@@ -263,6 +328,78 @@ export function SpatialMapView({
   const activeSpatialId = activeBaseLocation?.spatialId ?? null;
   const editLocationId = editSession?.locationId ?? null;
   const editPreview = editSession?.preview ?? null;
+  const scenes = useMemo(() => map.scenes ?? [], [map.scenes]);
+  const activePositionSceneId =
+    activeLocation?.position.kind === "planar"
+      ? activeLocation.position.sceneId ?? null
+      : null;
+  const activePositionFloorId =
+    activeLocation?.position.kind === "planar"
+      ? activeLocation.position.floorId ?? null
+      : null;
+  const requestedSceneId = sceneSelection?.sceneId ?? null;
+  let activeScene: WorkbenchSpatialScene | null = null;
+  if (requestedSceneId) {
+    const found = scenes.find((scene) => scene.sceneId === requestedSceneId);
+    if (found) activeScene = found;
+  }
+  if (!activeScene && activePositionSceneId) {
+    const found = scenes.find((scene) => scene.sceneId === activePositionSceneId);
+    if (found) activeScene = found;
+  }
+  if (!activeScene && scenes[0]) activeScene = scenes[0];
+  const activeSceneId = activeScene?.sceneId ?? null;
+  const activeFloorId = (() => {
+    if (!activeScene) return null;
+    if (sceneSelection && sceneSelection.sceneId === activeScene.sceneId) {
+      const requestedFloorId = sceneSelection.floorId;
+      if (
+        requestedFloorId === null ||
+        activeScene.floors.some((floor) => floor.floorId === requestedFloorId)
+      ) {
+        return requestedFloorId;
+      }
+    }
+    if (
+      activePositionSceneId === activeScene.sceneId &&
+      activePositionFloorId &&
+      activeScene.floors.some((floor) => floor.floorId === activePositionFloorId)
+    ) {
+      return activePositionFloorId;
+    }
+    return activeScene.floors[0]?.floorId ?? null;
+  })();
+  const activeSceneBackground = activeScene?.floors.find(
+    (floor) => floor.floorId === activeFloorId,
+  ) ?? null;
+  const sceneBackground = useMemo(() => {
+    if (mode !== "scene") return null;
+    const sceneImageUrl =
+      activeSceneBackground?.backgroundImageUrl ??
+      activeScene?.backgroundImageUrl ??
+      environmentSceneBackground?.url ??
+      null;
+    if (!sceneImageUrl) return null;
+    return resolveSceneBackgroundConfiguration(sceneImageUrl, {
+      alt: activeSceneBackground
+        ? `场景图：${activeScene?.name ?? ""} ${activeSceneBackground.label}`
+        : activeScene
+          ? `场景图：${activeScene.name}`
+          : environmentSceneBackground?.alt ?? "场景底图",
+      imageWidth:
+        activeSceneBackground?.imageWidth ?? activeScene?.imageWidth ?? null,
+      imageHeight:
+        activeSceneBackground?.imageHeight ?? activeScene?.imageHeight ?? null,
+    });
+  }, [
+    activeScene,
+    activeSceneBackground,
+    environmentSceneBackground,
+    mode,
+  ]);
+  const sceneBackgroundSignature = sceneBackground
+    ? JSON.stringify(sceneBackground)
+    : null;
   const selectedLocationId = useMemo(
     () =>
       currentView?.locations.find(
@@ -279,9 +416,47 @@ export function SpatialMapView({
     }),
     [activeSpatialId, selectedEventId, selectedLocationId, selectedObjectId],
   );
-  const visibleView = useMemo(() => {
+  const sceneView = useMemo(() => {
     if (!currentView) return null;
-    const filtered = filterWorkbenchSpatialView(currentView, layers);
+    if (mode !== "scene" || !activeSceneId) return currentView;
+    const locations = currentView.locations.filter((location) => {
+      if (location.position.kind !== "planar") return false;
+      if (
+        location.position.sceneId &&
+        location.position.sceneId !== activeSceneId
+      ) {
+        return false;
+      }
+      if (
+        activeFloorId &&
+        location.position.floorId &&
+        location.position.floorId !== activeFloorId
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const visibleIds = new Set(
+      locations.flatMap((location) =>
+        location.locationId ? [location.locationId] : [],
+      ),
+    );
+    return {
+      ...currentView,
+      locations,
+      relations: currentView.relations.filter(
+        (relation) =>
+          visibleIds.has(relation.fromLocationId) &&
+          visibleIds.has(relation.toLocationId),
+      ),
+      regions: (currentView.regions ?? []).filter(
+        (region) => region.sceneId === activeSceneId,
+      ),
+    };
+  }, [activeFloorId, activeSceneId, currentView, mode]);
+  const visibleView = useMemo(() => {
+    if (!sceneView) return null;
+    const filtered = filterWorkbenchSpatialView(sceneView, layers);
     return {
       ...filtered,
       locations: filtered.locations.map((location) =>
@@ -290,7 +465,7 @@ export function SpatialMapView({
           : location,
       ),
     };
-  }, [currentView, editLocationId, editPreview, layers]);
+  }, [editLocationId, editPreview, layers, sceneView]);
 
   const spatialSearchIndex = useMemo(() => {
     const bySpatialId = new Map<string, SpatialSearchResult>();
@@ -298,39 +473,64 @@ export function SpatialMapView({
       for (const location of map.views[candidateMode].locations) {
         if (!bySpatialId.has(location.spatialId)) {
           bySpatialId.set(location.spatialId, {
+            kind: "location",
             location,
             mode: candidateMode,
           });
         }
       }
     }
+    for (const scene of scenes) {
+      for (const region of scene.regions) {
+        bySpatialId.set(`region:${region.sceneId}:${region.regionId}`, {
+          kind: "region",
+          region,
+          mode: "scene",
+        });
+      }
+    }
     return [...bySpatialId.values()].sort((left, right) =>
-      left.location.spatialId.localeCompare(right.location.spatialId),
+      (left.kind === "location"
+        ? left.location.spatialId
+        : left.region.regionId
+      ).localeCompare(
+        right.kind === "location" ? right.location.spatialId : right.region.regionId,
+      ),
     );
-  }, [map]);
+  }, [map, scenes]);
 
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
   const spatialSearchResults = useMemo(() => {
     if (!normalizedSearchQuery) {
-      return { located: [], unlocated: [] };
+      return { located: [] as SpatialSearchResult[], unlocated: [] };
     }
     const matches = (label: string, id: string | null) =>
       label.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery) ||
       Boolean(id?.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery));
     const located = spatialSearchIndex
-      .filter(
-        ({ location }) =>
+      .filter((result) => {
+        if (result.kind === "region") {
+          return (
+            matches(result.region.name, result.region.regionId) ||
+            matches(result.region.sceneId, null)
+          );
+        }
+        const location = result.location;
+        const dimension = spatialDimensionLabel(location, scenes);
+        return (
           matches(location.label, location.locationId) ||
+          Boolean(dimension?.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery)) ||
           location.events.some((event) =>
             event.label.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery),
-          ),
-      )
+          )
+        );
+      })
       .slice(0, 5);
     const unlocated = map.unlocatedLocations
       .filter((location) => matches(location.label, location.locationId))
       .slice(0, 3);
     return { located, unlocated };
-  }, [map.unlocatedLocations, normalizedSearchQuery, spatialSearchIndex]);
+  }, [map.unlocatedLocations, normalizedSearchQuery, scenes, spatialSearchIndex]);
 
   function buildSpatialCallbacks(): SpatialRenderCallbacks {
     return {
@@ -362,6 +562,9 @@ export function SpatialMapView({
       },
       onTileError() {
         setTileUnavailable(true);
+      },
+      onSceneBackgroundError() {
+        setSceneErrorSignature(sceneBackgroundSignature);
       },
     };
   }
@@ -426,7 +629,8 @@ export function SpatialMapView({
       {
         editableLocationId: editLocationId,
         layers,
-        sceneBackground: mode === "scene" ? sceneBackground : null,
+        sceneBackground,
+        regions: visibleView.regions ?? [],
       },
     );
     const pendingViewport = pendingViewportRef.current;
@@ -436,7 +640,20 @@ export function SpatialMapView({
       renderer.invalidateSize();
       pendingViewportRef.current = null;
     }
+    const pendingRegionFocus = pendingRegionFocusRef.current;
+    if (pendingRegionFocus && mode === "scene") {
+      renderer.focusRegion(pendingRegionFocus);
+      pendingRegionFocusRef.current = null;
+    }
   }, [editLocationId, layers, mode, sceneBackground, visibleView]);
+
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    const pendingRegionFocus = pendingRegionFocusRef.current;
+    if (!renderer || !pendingRegionFocus || mode !== "scene") return;
+    renderer.focusRegion(pendingRegionFocus);
+    pendingRegionFocusRef.current = null;
+  }, [mode, sceneSelection]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -478,6 +695,8 @@ export function SpatialMapView({
     setInteractionNotice(null);
     setInitializationError(null);
     setTileUnavailable(false);
+    setSceneErrorSignature(null);
+    pendingRegionFocusRef.current = null;
     setRequestedMode(nextMode);
   }
 
@@ -519,6 +738,22 @@ export function SpatialMapView({
     }));
   }
 
+  function selectScene(sceneId: string) {
+    const scene = scenes.find((candidate) => candidate.sceneId === sceneId);
+    if (!scene) return;
+    setSceneSelection({
+      sceneId,
+      floorId: scene.floors[0]?.floorId ?? null,
+    });
+    setSceneErrorSignature(null);
+  }
+
+  function selectFloor(floorId: string | null) {
+    if (!activeSceneId) return;
+    setSceneSelection({ sceneId: activeSceneId, floorId });
+    setSceneErrorSignature(null);
+  }
+
   function clearSelection() {
     if (onClearSelection()) setOpenedSpatialId(null);
   }
@@ -538,17 +773,45 @@ export function SpatialMapView({
 
   function chooseSearchResult(result: SpatialSearchResult) {
     if (blockSearchWhileEditing()) return;
-    const accepted = result.location.locationId
-      ? onSelectLocation(result.location.locationId)
-      : result.location.events[0]
-        ? onSelectEvent(result.location.events[0].eventId)
+    if (result.kind === "region") {
+      const scene = scenes.find(
+        (candidate) => candidate.sceneId === result.region.sceneId,
+      );
+      setRequestedMode("scene");
+      setSceneSelection({
+        sceneId: result.region.sceneId,
+        floorId: scene?.floors[0]?.floorId ?? null,
+      });
+      setOpenedSpatialId(null);
+      pendingRegionFocusRef.current = `${result.region.sceneId}:${result.region.regionId}`;
+      setInteractionNotice(
+        `已定位到区域「${result.region.name}」；区域只来自卷宗数据。`,
+      );
+      setHighlightedUnlocatedId(null);
+      setSearchQuery("");
+      setSearchActiveIndex(0);
+      setSearchFocused(false);
+      return;
+    }
+    const location = result.location;
+    const accepted = location.locationId
+      ? onSelectLocation(location.locationId)
+      : location.events[0]
+        ? onSelectEvent(location.events[0].eventId)
         : true;
     if (!accepted) return;
+    if (location.position.kind === "planar" && location.position.sceneId) {
+      setSceneSelection({
+        sceneId: location.position.sceneId,
+        floorId: location.position.floorId ?? null,
+      });
+    }
     setRequestedMode(result.mode);
-    setOpenedSpatialId(result.location.spatialId);
+    setOpenedSpatialId(location.spatialId);
     setInteractionNotice(null);
     setHighlightedUnlocatedId(null);
     setSearchQuery("");
+    setSearchActiveIndex(0);
     setSearchFocused(false);
   }
 
@@ -562,11 +825,13 @@ export function SpatialMapView({
     setAuditOpen(true);
     setHighlightedUnlocatedId(locationId);
     setSearchQuery("");
+    setSearchActiveIndex(0);
     setSearchFocused(false);
   }
 
   function clearSearch() {
     setSearchQuery("");
+    setSearchActiveIndex(0);
     setSearchFocused(false);
     setHighlightedUnlocatedId(null);
   }
@@ -702,17 +967,32 @@ export function SpatialMapView({
     }
   }
 
+  const sceneBackgroundFailed =
+    mode === "scene" &&
+    sceneErrorSignature !== null &&
+    sceneErrorSignature === sceneBackgroundSignature;
   const statusMessage =
     mode === "geographic" && tileConfiguration.kind === "error"
       ? tileConfiguration.message
       : mode === "geographic" && tileUnavailable
         ? "底图暂不可用；真实坐标点仍可核对。"
-        : initializationError ?? interactionNotice;
+        : sceneBackgroundFailed
+          ? "场景底图加载失败，已回退网格纸；地点坐标仍可核对。"
+          : initializationError ?? interactionNotice;
   const effectiveReadOnlyReason =
     readOnlyReason ??
     (!onSaveSpatialPosition
       ? "此视图只读；只有当前工作稿可以编辑位置。"
       : null);
+  const searchOptionCount =
+    spatialSearchResults.located.length + spatialSearchResults.unlocated.length;
+  const activeSearchOptionIndex = Math.min(
+    Math.max(0, searchActiveIndex),
+    Math.max(0, searchOptionCount - 1),
+  );
+  const activeSearchOptionId = searchOptionCount
+    ? `spatial-search-option-${activeSearchOptionIndex}`
+    : undefined;
   const editActionLabel =
     mode === "topology" && activeBaseLocation?.source === "schematic"
       ? "转到场景图编辑"
@@ -731,11 +1011,15 @@ export function SpatialMapView({
           <small>{meta}</small>
           <div className={styles.searchBox} role="search">
             <input
+              aria-activedescendant={activeSearchOptionId}
               aria-autocomplete="list"
               aria-controls="spatial-search-results"
-              aria-label="搜索地点或事件"
+              aria-label="搜索地点、事件或区域"
               autoComplete="off"
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setSearchActiveIndex(0);
+              }}
               onFocus={() => setSearchFocused(true)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") {
@@ -743,16 +1027,32 @@ export function SpatialMapView({
                   clearSearch();
                   return;
                 }
-                if (event.key !== "Enter") return;
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  if (!searchOptionCount) return;
+                  event.preventDefault();
+                  setSearchActiveIndex((current) =>
+                    event.key === "ArrowDown"
+                      ? Math.min(searchOptionCount - 1, current + 1)
+                      : Math.max(0, current - 1),
+                  );
+                  return;
+                }
+                if (event.key !== "Enter" || !searchOptionCount) return;
                 event.preventDefault();
-                const firstLocated = spatialSearchResults.located[0];
-                if (firstLocated) chooseSearchResult(firstLocated);
-                else if (spatialSearchResults.unlocated[0]) {
-                  chooseUnlocatedResult(spatialSearchResults.unlocated[0].locationId);
+                if (activeSearchOptionIndex < spatialSearchResults.located.length) {
+                  chooseSearchResult(
+                    spatialSearchResults.located[activeSearchOptionIndex],
+                  );
+                } else {
+                  chooseUnlocatedResult(
+                    spatialSearchResults.unlocated[
+                      activeSearchOptionIndex - spatialSearchResults.located.length
+                    ].locationId,
+                  );
                 }
               }}
               onBlur={() => setSearchFocused(false)}
-              placeholder="搜索地点 / 事件"
+              placeholder="搜索地点 / 事件 / 区域"
               type="search"
               value={searchQuery}
             />
@@ -775,43 +1075,69 @@ export function SpatialMapView({
                 {spatialSearchResults.located.length ||
                 spatialSearchResults.unlocated.length ? (
                   <>
-                    {spatialSearchResults.located.map((result) => (
-                      <button
-                        aria-selected={false}
-                        data-kind={result.mode}
-                        key={`${result.mode}:${result.location.spatialId}`}
-                        onClick={() => chooseSearchResult(result)}
-                        onMouseDown={(event) => event.preventDefault()}
-                        role="option"
-                        type="button"
-                      >
-                        <span>{modeLabels[result.mode]}</span>
-                        <b>{result.location.label}</b>
-                        <small>
-                          {result.location.locationId ?? "本地样例"} · {result.location.events.length} 个事件
-                        </small>
-                      </button>
-                    ))}
-                    {spatialSearchResults.unlocated.map((location) => (
-                      <button
-                        aria-selected={false}
-                        data-kind="unlocated"
-                        key={`unlocated:${location.locationId}`}
-                        onClick={() => chooseUnlocatedResult(location.locationId)}
-                        onMouseDown={(event) => event.preventDefault()}
-                        role="option"
-                        type="button"
-                      >
-                        <span>未定位</span>
-                        <b>{location.label}</b>
-                        <small>
-                          {location.locationId} · {unlocatedReasonLabels[location.reason]}
-                        </small>
-                      </button>
-                    ))}
+                    {spatialSearchResults.located.map((result, index) => {
+                      const key =
+                        result.kind === "region"
+                          ? `region:${result.region.sceneId}:${result.region.regionId}`
+                          : `${result.mode}:${result.location.spatialId}`;
+                      const label =
+                        result.kind === "region"
+                          ? result.region.name
+                          : result.location.label;
+                      const dimension =
+                        result.kind === "location"
+                          ? spatialDimensionLabel(result.location, scenes)
+                          : null;
+                      const detail =
+                        result.kind === "region"
+                          ? `${result.region.sceneId} · 卷宗区域`
+                          : `${result.location.locationId ?? "本地样例"} · ${result.location.events.length} 个事件${dimension ? ` · ${dimension}` : ""}`;
+                      return (
+                        <button
+                          aria-selected={index === activeSearchOptionIndex}
+                          data-kind={result.kind === "region" ? "scene-region" : result.mode}
+                          id={`spatial-search-option-${index}`}
+                          key={key}
+                          onClick={() => chooseSearchResult(result)}
+                          onMouseDown={(event) => event.preventDefault()}
+                          role="option"
+                          type="button"
+                        >
+                          <span>
+                            {result.kind === "region"
+                              ? "场景区域"
+                              : modeLabels[result.mode]}
+                          </span>
+                          <b>{label}</b>
+                          <small>{detail}</small>
+                        </button>
+                      );
+                    })}
+                    {spatialSearchResults.unlocated.map((location, index) => {
+                      const optionIndex =
+                        spatialSearchResults.located.length + index;
+                      return (
+                        <button
+                          aria-selected={optionIndex === activeSearchOptionIndex}
+                          data-kind="unlocated"
+                          id={`spatial-search-option-${optionIndex}`}
+                          key={`unlocated:${location.locationId}`}
+                          onClick={() => chooseUnlocatedResult(location.locationId)}
+                          onMouseDown={(event) => event.preventDefault()}
+                          role="option"
+                          type="button"
+                        >
+                          <span>未定位</span>
+                          <b>{location.label}</b>
+                          <small>
+                            {location.locationId} · {unlocatedReasonLabels[location.reason]}
+                          </small>
+                        </button>
+                      );
+                    })}
                   </>
                 ) : (
-                  <p>没有匹配的地点或事件。</p>
+                  <p>没有匹配的地点、事件或区域。</p>
                 )}
               </div>
             ) : null}
@@ -834,6 +1160,47 @@ export function SpatialMapView({
       <SpatialStatusStrip counts={map.counts} />
 
       <div className={styles.mapFrame} data-mode={mode ?? "empty"}>
+        {mode === "scene" && activeScene ? (
+          <div className={styles.sceneDock} aria-label="场景与楼层">
+            {scenes.length > 1 ? (
+              <label className={styles.sceneSelect}>
+                <span>场景</span>
+                <select
+                  aria-label="选择场景"
+                  onChange={(event) => selectScene(event.target.value)}
+                  value={activeScene.sceneId}
+                >
+                  {scenes.map((scene) => (
+                    <option key={scene.sceneId} value={scene.sceneId}>
+                      {scene.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {activeScene.floors.length ? (
+              <div className={styles.floorTabs} role="group" aria-label="楼层">
+                <button
+                  aria-pressed={activeFloorId === null}
+                  onClick={() => selectFloor(null)}
+                  type="button"
+                >
+                  全部
+                </button>
+                {activeScene.floors.map((floor) => (
+                  <button
+                    aria-pressed={activeFloorId === floor.floorId}
+                    key={floor.floorId}
+                    onClick={() => selectFloor(floor.floorId)}
+                    type="button"
+                  >
+                    {floor.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {mode ? (
           <div
             aria-label={`${modeLabels[mode]}画布`}
@@ -850,7 +1217,9 @@ export function SpatialMapView({
         )}
         {mode && currentView?.locations.length && !visibleView?.locations.length ? (
           <div className={styles.layerEmptyState} role="status">
-            当前图层组合没有可见地点；可在空间核验中开启地点或待确认位置。
+            {mode === "scene" && activeScene
+              ? "当前楼层没有可见地点；切换楼层，或在空间核验中开启地点与待确认位置。"
+              : "当前图层组合没有可见地点；可在空间核验中开启地点或待确认位置。"}
           </div>
         ) : null}
         {statusMessage ? (
@@ -868,7 +1237,9 @@ export function SpatialMapView({
           onMobileOpenChange={setAuditOpen}
           onOpenUnlocated={onOpenLocationDetails}
           onToggleLayer={toggleLayer}
+          regions={visibleView?.regions ?? []}
           relations={visibleView?.relations ?? []}
+          sceneName={activeScene?.name ?? null}
           unlocatedLocations={map.unlocatedLocations}
         />
         {mode ? (
