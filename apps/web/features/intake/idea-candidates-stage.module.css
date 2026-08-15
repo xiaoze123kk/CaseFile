@@ -3,19 +3,34 @@
 }
 
 .header {
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.header::before {
+  content: "IDEA DOCK / 灵感舱";
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--red);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 .title {
-  font-size: var(--font-heading-sm);
-  font-weight: 600;
-  margin: 0 0 0.25rem;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: var(--font-heading);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 0.3rem;
 }
 
 .subtitle {
   color: var(--ink-muted);
   margin: 0;
   font-size: var(--font-caption);
+  line-height: 1.6;
 }
 
 .loading {
@@ -28,8 +43,8 @@
 }
 
 .spinner {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 1.6rem;
+  height: 1.6rem;
   border: 2px solid var(--hairline);
   border-top-color: var(--red);
   border-radius: 50%;
@@ -42,43 +57,86 @@
 
 .empty {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
   padding: 3rem 0;
+  text-align: center;
+}
+
+.empty::before {
+  content: "◈";
+  color: var(--red-line);
+  font-size: 2rem;
+  line-height: 1;
 }
 
 .primaryBtn {
-  padding: 0.5rem 1.5rem;
+  padding: 0.55rem 1.6rem;
   background: var(--red);
   color: var(--paper-high);
   border: 1px solid var(--red-line);
   border-radius: 4px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
   font-size: var(--font-ui);
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 0 rgba(61, 45, 26, 0.18);
   cursor: pointer;
 }
 
-.primaryBtn:hover {
-  opacity: 0.88;
+.primaryBtn:hover:not(:disabled) {
+  background: #a32108;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(61, 45, 26, 0.22);
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.75rem;
+  gap: 0.9rem;
 }
 
 .card {
-  border: 1px solid var(--rule);
-  border-radius: 7px;
-  padding: 1.1rem;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.65rem;
+  padding: 1.1rem 1.1rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
   background: var(--paper-high);
-  transition: border-color 0.15s;
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.018) 1px, transparent 1px);
+  background-size: 16px 16px, 16px 16px;
+  box-shadow: 0 1px 0 rgba(61, 45, 26, 0.08);
+  transition:
+    border-color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  border-radius: 7px 7px 0 0;
+  background: var(--red);
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
 }
 
 .card:hover {
   border-color: var(--red-line);
+  box-shadow: 0 6px 18px rgba(61, 45, 26, 0.14);
+  transform: translateY(-2px);
+}
+
+.card:hover::before {
+  opacity: 1;
 }
 
 .bookmarked {
@@ -91,116 +149,157 @@
 
 .cardTop {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .ordinal {
-  font-size: var(--font-micro);
-  color: var(--ink-faint);
-  font-weight: 500;
+  display: grid;
+  min-width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0 6px;
+  background: var(--red);
+  color: var(--paper-high);
+  border: 1px solid var(--red-line);
+  border-radius: 4px;
+  font: 10px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.06em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 
 .starBadge {
   font-size: var(--font-micro);
   background: var(--warning-soft);
   color: var(--warning);
-  padding: 0.05rem 0.35rem;
+  padding: 0.06rem 0.4rem;
   border-radius: 3px;
+  letter-spacing: 0.04em;
 }
 
 .concept {
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
   font-size: var(--font-body);
-  font-weight: 600;
+  font-weight: 700;
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .fields {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
+  gap: 0.5rem;
   margin: 0;
   flex: 1;
 }
 
 .field {
   margin: 0;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--hairline);
 }
 
 .fieldLabel {
   font-size: var(--font-micro);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--ink-faint);
-  margin-bottom: 0.1rem;
+  margin-bottom: 0.12rem;
 }
 
 .field dd {
   margin: 0;
   font-size: var(--font-label);
-  line-height: 1.5;
+  line-height: 1.55;
+  color: var(--ink-muted);
 }
 
 .actions {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.35rem;
   align-items: center;
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--hairline);
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--rule);
 }
 
 .selectBtn {
   flex: 1;
-  padding: 0.35rem 0.5rem;
+  padding: 0.42rem 0.6rem;
   background: var(--red);
   color: var(--paper-high);
   border: 1px solid var(--red-line);
   border-radius: 4px;
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
   font-size: var(--font-label);
+  letter-spacing: 0.02em;
   cursor: pointer;
 }
 
-.selectBtn:hover {
-  opacity: 0.88;
+.selectBtn:hover:not(:disabled) {
+  background: #a32108;
 }
 
 .iconBtn {
-  padding: 0.25rem 0.4rem;
-  background: transparent;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  background: var(--paper-low);
   border: 1px solid var(--rule);
   border-radius: 4px;
   cursor: pointer;
   font-size: var(--font-label);
   line-height: 1;
   color: var(--ink-muted);
+  transition:
+    color 0.12s ease-out,
+    border-color 0.12s ease-out,
+    background 0.12s ease-out;
 }
 
-.iconBtn:hover {
-  background: var(--paper-low);
+.iconBtn:hover:not(:disabled) {
+  background: var(--paper-high);
   border-color: var(--red-line);
+  color: var(--red);
 }
 
 .archived {
-  margin-top: 1rem;
+  margin-top: 1.1rem;
 }
 
 .archived summary {
   cursor: pointer;
   color: var(--ink-muted);
   font-size: var(--font-caption);
-  padding: 0.4rem 0;
+  padding: 0.45rem 0;
 }
 
 .preferences {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  border: 1px solid var(--hairline);
+  gap: 0.6rem;
+  padding: 0.85rem 0.9rem;
+  margin-bottom: 1.1rem;
+  border: 1px solid var(--rule);
   border-radius: 7px;
   background: var(--paper-low);
+  background-image:
+    linear-gradient(rgba(26, 28, 25, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 28, 25, 0.02) 1px, transparent 1px);
+  background-size: 14px 14px, 14px 14px;
+  position: relative;
+}
+
+.preferences::before {
+  content: "DIRECTION / 创作方向";
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--red);
+  font: 9px "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .prefRow {
@@ -214,28 +313,35 @@
   min-width: 3rem;
   font-size: var(--font-micro);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--ink-faint);
 }
 
 .chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.35rem;
 }
 
 .chip {
-  padding: 0.2rem 0.55rem;
-  background: transparent;
+  padding: 0.24rem 0.6rem;
+  background: var(--paper-high);
   border: 1px solid var(--rule);
   border-radius: 999px;
   cursor: pointer;
   font-size: var(--font-label);
   color: var(--ink-muted);
+  transition:
+    color 0.12s ease-out,
+    border-color 0.12s ease-out,
+    background 0.12s ease-out,
+    transform 0.12s ease-out;
 }
 
-.chip:hover {
+.chip:hover:not(:disabled) {
   border-color: var(--red-line);
+  color: var(--red);
+  transform: translateY(-1px);
 }
 
 .chip:disabled {
@@ -247,14 +353,27 @@
   background: var(--red);
   color: var(--paper-high);
   border-color: var(--red-line);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+}
+
+.chipActive:hover:not(:disabled) {
+  color: var(--paper-high);
 }
 
 .prefInput {
   flex: 1;
-  padding: 0.35rem 0.6rem;
+  padding: 0.4rem 0.65rem;
   border: 1px solid var(--rule);
   border-radius: 4px;
+  background: var(--paper-high);
   font-size: var(--font-label);
+  transition: border-color 0.12s ease-out, box-shadow 0.12s ease-out;
+}
+
+.prefInput:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px var(--red-soft);
 }
 
 .prefInput:disabled {
@@ -264,7 +383,8 @@
 .toolbar {
   display: flex;
   justify-content: center;
-  padding-top: 1rem;
+  gap: 0.6rem;
+  padding-top: 1.1rem;
 }
 
 .primaryBtn:disabled,
@@ -277,9 +397,11 @@
 .regenerating {
   font-size: var(--font-micro);
   color: var(--red);
-  background: var(--warning-soft);
-  padding: 0.05rem 0.4rem;
+  background: var(--red-soft);
+  border: 1px solid var(--red-line);
+  padding: 0.06rem 0.4rem;
   border-radius: 3px;
+  letter-spacing: 0.04em;
 }
 
 @media (max-width: 768px) {
