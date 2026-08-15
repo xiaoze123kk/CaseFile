@@ -6,16 +6,13 @@ import { useMemo, useState } from "react";
 import {
   objectKindLabels,
   type CaseObject,
-  type SourceItem,
   type TimelineEvent,
   type WorkbenchAuditEntry,
 } from "./analyst-fixture";
 import {
   buildContextInspectorModel,
   type ContextChangeEntry,
-  type ContextSourceEvidence,
 } from "./workbench-context-inspector-model";
-import type { ContextSourceDerivation } from "./workbench-provenance-model";
 import type {
   ContextIncomingReference,
   ContextRelation,
@@ -28,7 +25,6 @@ import {
 import { WorkbenchObjectEditor } from "./workbench-object-editor";
 import type { ObjectSaveResult } from "./workbench-object-persistence";
 import { formatCaseWallClock } from "./workbench-presenters";
-import type { WorkbenchModel } from "./workbench-real-data-types";
 import styles from "./workbench-context-inspector.module.css";
 
 export function CandidatePreviewFactBoundary({
@@ -65,9 +61,7 @@ export function WorkbenchContextInspector({
   document,
   selectedObjectId,
   selectedObject,
-  selectedEventId,
   relatedEvents,
-  seed,
   auditEntries,
   contextState,
   writeLocked,
@@ -87,9 +81,7 @@ export function WorkbenchContextInspector({
   document: CaseFileDocument | null;
   selectedObjectId: string | null;
   selectedObject: CaseObject | null;
-  selectedEventId: string | null;
   relatedEvents: TimelineEvent[];
-  seed: WorkbenchModel;
   auditEntries: WorkbenchAuditEntry[];
   contextState: WorkbenchContextState;
   writeLocked: boolean;
@@ -129,12 +121,6 @@ export function WorkbenchContextInspector({
     );
   }
 
-  const fixtureSources = seed.sourceItems.filter(
-    (source) =>
-      source.eventId === selectedEventId ||
-      (selectedObject?.relatedEventIds.includes(source.eventId) ?? false),
-  );
-
   return (
     <div className={styles.contextInspector}>
       {document ? (
@@ -165,17 +151,6 @@ export function WorkbenchContextInspector({
         realData={document !== null}
         relatedEvents={relatedEvents}
         selectedObject={selectedObject}
-        writeLocked={writeLocked}
-      />
-
-      <SourceEvidenceSection
-        fixtureSources={fixtureSources}
-        modelDerivations={model?.provenance.derivations ?? []}
-        modelSources={model?.sourceEvidence ?? []}
-        onOpenSources={onOpenSources}
-        onRetry={onReloadContext}
-        realData={document !== null}
-        state={contextState}
         writeLocked={writeLocked}
       />
 
@@ -445,119 +420,6 @@ function fixtureEventVerb(kind: CaseObject["kind"] | undefined) {
   return "关联";
 }
 
-function SourceEvidenceSection({
-  realData,
-  writeLocked,
-  state,
-  modelSources,
-  modelDerivations,
-  fixtureSources,
-  onRetry,
-  onOpenSources,
-}: {
-  realData: boolean;
-  writeLocked: boolean;
-  state: WorkbenchContextState;
-  modelSources: ContextSourceEvidence[];
-  modelDerivations: ContextSourceDerivation[];
-  fixtureSources: SourceItem[];
-  onRetry?: () => void;
-  onOpenSources: () => void;
-}) {
-  const titleId = "context-source-evidence-title";
-  if (writeLocked) {
-    return <CandidatePreviewFactBoundary area="sources" />;
-  }
-  if (!realData) {
-    return (
-      <section aria-labelledby={titleId} className={styles.contextSection}>
-        <header className={styles.contextSectionHeader}>
-          <h3 id={titleId}>来源依据</h3>
-          <span>{fixtureSources.length}</span>
-        </header>
-        {fixtureSources.length ? (
-          <div className={styles.sourceList}>
-            {fixtureSources.map((source) => (
-              <article className={styles.sourceCard} key={source.id}>
-                <header>
-                  <span>{fixtureSourceKindLabel(source.kind)}</span>
-                  <small>{source.meta}</small>
-                </header>
-                <p>{source.excerpt}</p>
-                <button onClick={onOpenSources} type="button">打开来源 →</button>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className={styles.contextEmpty}>当前对象还没有直接来源依据。</p>
-        )}
-      </section>
-    );
-  }
-
-  if (state.loading) {
-    return (
-      <section aria-busy="true" aria-labelledby={titleId} className={styles.contextSection}>
-        <header className={styles.contextSectionHeader}>
-          <h3 id={titleId}>来源依据</h3>
-        </header>
-        <p className={styles.contextEmpty}>正在读取来源正文…</p>
-      </section>
-    );
-  }
-  if (state.error) {
-    return (
-      <section aria-labelledby={titleId} className={styles.contextSection} role="alert">
-        <header className={styles.contextSectionHeader}>
-          <h3 id={titleId}>来源依据</h3>
-        </header>
-        <p className={styles.contextEmpty}>{state.error}</p>
-        {onRetry ? (
-          <button className={styles.retryButton} onClick={onRetry} type="button">
-            重新读取
-          </button>
-        ) : null}
-      </section>
-    );
-  }
-
-  return (
-    <section aria-labelledby={titleId} className={styles.contextSection}>
-      <header className={styles.contextSectionHeader}>
-        <h3 id={titleId}>来源依据</h3>
-        <span>{modelSources.length}</span>
-      </header>
-      {modelSources.length ? (
-        <div className={styles.sourceList}>
-          {modelSources.map((source) => {
-            const derivation = modelDerivations.find((item) =>
-              item.source.source_record_id === Number(source.id.replace("source-", "")),
-            );
-            return (
-              <article className={styles.sourceCard} key={source.id}>
-                <header>
-                  <span>{source.kindLabel}</span>
-                  <time dateTime={source.createdAt}>{formatContextTime(source.createdAt)}</time>
-                </header>
-                {derivation ? (
-                  <p className={styles.sourceLineage}>
-                    <strong>{derivation.label}</strong>
-                    <span>{derivation.originNote}</span>
-                  </p>
-                ) : null}
-                <p>{source.excerpt}</p>
-                <button onClick={onOpenSources} type="button">查看原文 →</button>
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <p className={styles.contextEmpty}>当前工作稿没有登记来源记录。</p>
-      )}
-    </section>
-  );
-}
-
 function RecentChangesSection({
   realData,
   writeLocked,
@@ -677,26 +539,6 @@ function RecentChangesSection({
       ) : null}
     </section>
   );
-}
-
-function fixtureSourceKindLabel(kind: "audio" | "transcript" | "record" | "retrieval") {
-  if (kind === "audio") return "证词录音";
-  if (kind === "transcript") return "转写文本";
-  if (kind === "record") return "卷宗记录";
-  return "检索命中";
-}
-
-function formatContextTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(date);
 }
 
 function formatContextClock(value: string) {

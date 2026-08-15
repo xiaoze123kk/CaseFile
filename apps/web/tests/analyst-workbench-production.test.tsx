@@ -644,7 +644,7 @@ describe("production analyst workbench", () => {
     expect(secondLayoutKey).not.toBe(firstLayoutKey);
   });
 
-  it("renders creator-first source evidence and audit changes without validator tabs", async () => {
+  it("renders object context and audit changes without the source section or validator tabs", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     render(<AnalystWorkbench requestedProjectId={42} />);
 
@@ -656,10 +656,10 @@ describe("production analyst workbench", () => {
     const inspector = screen.getByRole("complementary", {
       name: "对象上下文",
     });
-    expect(within(inspector).getByText("来源依据")).toBeInTheDocument();
-    expect(within(inspector).getByText("作者原稿")).toBeInTheDocument();
-    expect(within(inspector).getByText("作者提交的真实原稿正文。")).toBeInTheDocument();
-    expect(within(inspector).queryByText("source_records:12")).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("来源依据")).not.toBeInTheDocument();
+    expect(
+      within(inspector).queryByText("作者提交的真实原稿正文。"),
+    ).not.toBeInTheDocument();
 
     expect(within(inspector).getByText("最近变更")).toBeInTheDocument();
     expect(within(inspector).getByText("采用 Draft 候选")).toBeInTheDocument();
@@ -669,13 +669,16 @@ describe("production analyst workbench", () => {
     fireEvent.click(within(inspector).getByRole("button", { name: "查看完整历史" }));
     expect(screen.getByText("来源 draft_operations #31")).toBeInTheDocument();
 
-    // 技术来源详情下沉到来源抽屉，仍可核对 trace id 与正文
+    // 技术来源详情下沉到底部来源抽屉，仍可核对 trace id 与正文
+    const drawer = screen.getByRole("region", { name: "来源与运行记录抽屉" });
     fireEvent.click(
-      within(inspector).getAllByRole("button", { name: "查看原文 →" })[0],
+      within(drawer).getByRole("button", { name: /来源抽屉/ }),
     );
-    expect(screen.getAllByText("source_records:12").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("作者提交的真实原稿正文。").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("src_gate_log").length).toBeGreaterThan(0);
+    expect(within(drawer).getAllByText("source_records:12").length).toBeGreaterThan(0);
+    expect(
+      within(drawer).getAllByText("作者提交的真实原稿正文。").length,
+    ).toBeGreaterThan(0);
+    expect(within(drawer).getAllByText("src_gate_log").length).toBeGreaterThan(0);
   });
 
   it("keeps deterministic validator codes and JSON paths out of the persistent inspector", async () => {
@@ -718,7 +721,7 @@ describe("production analyst workbench", () => {
     expect(screen.queryByText("时间知识冲突")).not.toBeInTheDocument();
   });
 
-  it("keeps a context read failure recoverable inside source evidence and recent changes", async () => {
+  it("keeps a context read failure recoverable inside recent changes", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext
       .mockRejectedValueOnce(
@@ -735,7 +738,7 @@ describe("production analyst workbench", () => {
     const alerts = screen.getAllByRole("alert");
     expect(alerts[0]).toHaveTextContent("数据库暂时不可用");
     fireEvent.click(screen.getAllByRole("button", { name: "重新读取" })[0]);
-    expect((await screen.findAllByText("作者提交的真实原稿正文。")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("采用 Draft 候选")).length).toBeGreaterThan(0);
     expect(mocks.fetchWorkbenchContext).toHaveBeenCalledTimes(2);
   });
 

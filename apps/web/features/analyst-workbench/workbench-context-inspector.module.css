@@ -173,70 +173,6 @@
   line-height: 1.6;
 }
 
-.sourceList {
-  display: grid;
-  gap: 8px;
-}
-
-.sourceCard {
-  display: grid;
-  min-width: 0;
-  gap: 7px;
-  padding: 10px;
-  border: 1px solid #e0dbd1;
-  background: #f3f1eb;
-}
-
-.sourceCard header {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.sourceCard header span {
-  color: #87561f;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.sourceCard header :is(small, time) {
-  color: #777a75;
-  font-size: 11px;
-}
-
-.sourceCard p {
-  margin: 0;
-  overflow-wrap: anywhere;
-  color: #292c2c;
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.sourceLineage {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 3px 7px;
-  padding: 6px 8px;
-  border-left: 2px solid #c78b3c;
-  background: rgba(199, 139, 60, 0.08);
-}
-
-.sourceLineage strong {
-  color: #87561f;
-  font-size: 11px;
-  font-weight: 650;
-}
-
-.sourceLineage span {
-  color: #636763;
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.sourceCard button,
 .retryButton,
 .expandButton {
   min-height: 44px;
@@ -247,11 +183,6 @@
   font: 600 12px/1 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
 }
 
-.sourceCard button {
-  justify-self: start;
-}
-
-.sourceCard button:hover,
 .retryButton:hover,
 .expandButton:hover {
   border-color: #c78b3c;

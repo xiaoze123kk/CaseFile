@@ -1875,8 +1875,6 @@ function AnalystWorkbenchSurface({
                   : undefined
               }
               saving={savingObject}
-              seed={seed}
-              selectedEventId={selectedEventId}
               selectedObject={selectedObject ?? null}
               selectedObjectId={selectedObjectId}
               writeLocked={writeLocked}

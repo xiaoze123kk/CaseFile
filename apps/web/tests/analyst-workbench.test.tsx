@@ -159,7 +159,7 @@ describe("analyst workbench", () => {
     await waitFor(() => expect(trigger).toHaveFocus());
   });
 
-  it("provides text alternatives for the graph and direct access to source evidence", () => {
+  it("provides text alternatives for the graph and transcript access", () => {
     renderWorkbench();
 
     fireEvent.click(screen.getByRole("tab", { name: /关系图/ }));
