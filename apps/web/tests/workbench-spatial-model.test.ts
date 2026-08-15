@@ -207,6 +207,22 @@ describe("workbench spatial model", () => {
       ),
     ).toEqual([]);
     expect(model.availableModes).toEqual(["scene"]);
+    expect(model.unlocatedLocations[0].reason).toBe("no_coordinates");
+  });
+
+  it("distinguishes an unlocated place whose spatial references dangle", () => {
+    const model = buildWorkbenchSpatialModel(
+      caseFile([
+        location("loc_anchor", {
+          position: { coordinate_system: "schematic", x: 40, y: 40 },
+        }),
+        location("loc_orphan", { adjacentIds: ["loc_missing_target"] }),
+      ]),
+      [],
+    );
+
+    expect(model.unlocatedLocationIds).toEqual(["loc_orphan"]);
+    expect(model.unlocatedLocations[0].reason).toBe("dangling_topology");
   });
 
   it("aggregates events and related objects under one primary location marker", () => {

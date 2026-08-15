@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpatialMapView } from "@/features/analyst-workbench/spatial-map/spatial-map-view";
 import {
   createSpatialRenderer,
+  type SpatialRenderOptions,
+  type SpatialRenderSelection,
   type SpatialRenderer,
 } from "@/features/analyst-workbench/spatial-map/spatial-renderer";
 import type {
@@ -75,7 +77,13 @@ function mapModel(): WorkbenchMapModel {
       topology: { mode: "topology", locations: [], relations: [] },
     },
     unlocatedLocationIds: ["loc_missing"],
-    unlocatedLocations: [{ locationId: "loc_missing", label: "未定位地点" }],
+    unlocatedLocations: [
+      {
+        locationId: "loc_missing",
+        label: "未定位地点",
+        reason: "no_coordinates",
+      },
+    ],
     counts: {
       locations: 3,
       events: 1,
@@ -137,16 +145,25 @@ const renderers: Array<{
   renderer: SpatialRenderer;
 }> = [];
 let reportTileError = false;
+let renderCallCount = 0;
+let updateSelectionCalls: SpatialRenderSelection[] = [];
+let renderOptionsCalls: SpatialRenderOptions[] = [];
 
 beforeEach(() => {
   reportTileError = false;
+  renderCallCount = 0;
+  updateSelectionCalls = [];
+  renderOptionsCalls = [];
   renderers.length = 0;
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_TILE_URL;
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION;
+  delete process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL;
   vi.mocked(createSpatialRenderer).mockImplementation(({ container, mode }) => {
     let currentViewport = { center: [50, 50] as [number, number], zoom: 1 };
     const renderer: SpatialRenderer = {
       render: vi.fn((view, selection, callbacks, options) => {
+        renderCallCount += 1;
+        renderOptionsCalls.push(options);
         container.replaceChildren();
         for (const location of view.locations) {
           const marker = document.createElement("button");
@@ -193,7 +210,9 @@ beforeEach(() => {
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
       setCallbacks: vi.fn(),
-      updateSelection: vi.fn(),
+      updateSelection: vi.fn((selection) => {
+        updateSelectionCalls.push(selection);
+      }),
       getViewport: vi.fn(() => currentViewport),
       setViewport: vi.fn((viewport) => {
         currentViewport = viewport;
@@ -211,6 +230,7 @@ afterEach(() => {
   vi.clearAllMocks();
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_TILE_URL;
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION;
+  delete process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL;
 });
 
 describe("spatial map view", () => {
@@ -249,7 +269,7 @@ describe("spatial map view", () => {
     const { props, rerender } = renderMap();
     await screen.findByRole("button", { name: "地理地点 marker" });
 
-    expect(renderers[0].renderer.render).toHaveBeenCalledTimes(1);
+    expect(renderCallCount).toBe(1);
     rerender(
       <SpatialMapView
         {...props}
@@ -258,7 +278,7 @@ describe("spatial map view", () => {
       />,
     );
 
-    expect(renderers[0].renderer.render).toHaveBeenCalledTimes(1);
+    expect(renderCallCount).toBe(1);
     expect(renderers[0].renderer.setCallbacks).toHaveBeenCalled();
   });
 
@@ -269,19 +289,79 @@ describe("spatial map view", () => {
       name: "地理地点 marker",
     });
 
-    const renderCalls = renderers[0].renderer.render.mock.calls.length;
-    const updateCalls = renderers[0].renderer.updateSelection.mock.calls.length;
+    const renderCalls = renderCallCount;
+    const updateCalls = updateSelectionCalls.length;
     fireEvent.click(marker);
 
     await waitFor(() =>
-      expect(renderers[0].renderer.updateSelection).toHaveBeenCalledTimes(
-        updateCalls + 1,
-      ),
+      expect(updateSelectionCalls).toHaveLength(updateCalls + 1),
     );
-    expect(renderers[0].renderer.updateSelection).toHaveBeenLastCalledWith(
+    expect(updateSelectionCalls.at(-1)).toEqual(
       expect.objectContaining({ activeSpatialId: "loc_geo" }),
     );
-    expect(renderers[0].renderer.render).toHaveBeenCalledTimes(renderCalls);
+    expect(renderCallCount).toBe(renderCalls);
+  });
+
+  it("searches a location and jumps to its matching map mode", async () => {
+    const onSelectLocation = vi.fn(() => true);
+    renderMap({ onSelectLocation });
+    const search = screen.getByRole("searchbox", { name: "搜索地点或事件" });
+
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "场景" } });
+    fireEvent.click(await screen.findByRole("option", { name: /场景地点/u }));
+
+    expect(onSelectLocation).toHaveBeenCalledWith("loc_scene");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "场景图" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    expect(await screen.findByRole("dialog")).toHaveTextContent("明确场景坐标");
+  });
+
+  it("search reveals unlocated reasons and highlights the audit entry", async () => {
+    renderMap();
+    const search = screen.getByRole("searchbox", { name: "搜索地点或事件" });
+
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "未定位" } });
+    fireEvent.click(await screen.findByRole("option", { name: /尚无坐标/u }));
+
+    expect(
+      screen.getByRole("checkbox", { name: /待确认位置推算与未定位/u }),
+    ).toBeChecked();
+    const entry = screen.getByText("未定位地点", { selector: "b" }).closest("li");
+    expect(entry).toHaveAttribute("data-highlighted", "true");
+    expect(entry).toHaveTextContent("尚无坐标");
+  });
+
+  it("turns the event layer off together with the location layer", async () => {
+    renderMap();
+    await screen.findByRole("button", { name: "地理地点 marker" });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /地点明确坐标/u }));
+
+    const events = screen.getByRole("checkbox", { name: /事件地点关闭时不可用/u });
+    expect(events).toBeDisabled();
+    expect(events).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "地理地点 marker" })).toBeNull();
+  });
+
+  it("passes a deployment scene image to the scene renderer only", async () => {
+    process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL =
+      "https://example.test/floor-plan.png";
+    renderMap();
+    await screen.findByRole("button", { name: "地理地点 marker" });
+
+    fireEvent.click(screen.getByRole("button", { name: "场景图" }));
+    await screen.findByRole("button", { name: "场景地点 marker" });
+
+    expect(renderOptionsCalls[0]?.sceneBackground).toBeNull();
+    expect(renderOptionsCalls.at(-1)?.sceneBackground).toEqual({
+      url: "https://example.test/floor-plan.png",
+    });
   });
 
   it("supports keyboard markers and event selection inside the location preview", async () => {

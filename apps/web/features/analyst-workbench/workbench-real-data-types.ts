@@ -256,12 +256,22 @@ export interface WorkbenchSpatialView {
   relations: WorkbenchSpatialRelation[];
 }
 
+export type WorkbenchUnlocatedReason =
+  | "no_coordinates"
+  | "dangling_topology";
+
+export interface WorkbenchUnlocatedLocation {
+  locationId: string;
+  label: string;
+  reason: WorkbenchUnlocatedReason;
+}
+
 export interface WorkbenchMapModel {
   availableModes: WorkbenchSpatialMode[];
   defaultMode: WorkbenchSpatialMode | null;
   views: Record<WorkbenchSpatialMode, WorkbenchSpatialView>;
   unlocatedLocationIds: string[];
-  unlocatedLocations: Array<{ locationId: string; label: string }>;
+  unlocatedLocations: WorkbenchUnlocatedLocation[];
   counts: {
     locations: number;
     events: number;

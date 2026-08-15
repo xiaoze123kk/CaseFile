@@ -16,6 +16,7 @@ import type {
   WorkbenchSpatialLocation,
   WorkbenchSpatialMode,
   WorkbenchSpatialPosition,
+  WorkbenchUnlocatedReason,
 } from "../workbench-real-data-types";
 import {
   SpatialAuditPanel,
@@ -28,6 +29,7 @@ import {
 import {
   createSpatialRenderer,
   resolveMapTileConfiguration,
+  resolveSceneBackgroundConfiguration,
   type SpatialRenderCallbacks,
   type SpatialRenderSelection,
   type SpatialRenderer,
@@ -40,6 +42,16 @@ const modeLabels: Record<WorkbenchSpatialMode, string> = {
   scene: "场景图",
   topology: "自动布局",
 };
+
+const unlocatedReasonLabels: Record<WorkbenchUnlocatedReason, string> = {
+  no_coordinates: "尚无坐标",
+  dangling_topology: "空间引用指向不存在的地点",
+};
+
+interface SpatialSearchResult {
+  location: WorkbenchSpatialLocation;
+  mode: WorkbenchSpatialMode;
+}
 
 function cloneDefaultLayers(): SpatialLayerVisibility {
   return { ...defaultSpatialLayerVisibility };
@@ -179,6 +191,12 @@ export function SpatialMapView({
   const [openedSpatialId, setOpenedSpatialId] = useState<string | null>(null);
   const [editSession, setEditSession] = useState<SpatialEditSession | null>(null);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [auditDesktopCollapsed, setAuditDesktopCollapsed] = useState(false);
+  const [highlightedUnlocatedId, setHighlightedUnlocatedId] = useState<string | null>(
+    null,
+  );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [interactionNotice, setInteractionNotice] = useState<string | null>(null);
   const [initializationError, setInitializationError] = useState<string | null>(null);
   const [tileUnavailable, setTileUnavailable] = useState(false);
@@ -187,6 +205,13 @@ export function SpatialMapView({
       resolveMapTileConfiguration(
         process.env.NEXT_PUBLIC_CASEFILE_MAP_TILE_URL,
         process.env.NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION,
+      ),
+    [],
+  );
+  const sceneBackground = useMemo(
+    () =>
+      resolveSceneBackgroundConfiguration(
+        process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL,
       ),
     [],
   );
@@ -266,6 +291,46 @@ export function SpatialMapView({
       ),
     };
   }, [currentView, editLocationId, editPreview, layers]);
+
+  const spatialSearchIndex = useMemo(() => {
+    const bySpatialId = new Map<string, SpatialSearchResult>();
+    for (const candidateMode of map.availableModes) {
+      for (const location of map.views[candidateMode].locations) {
+        if (!bySpatialId.has(location.spatialId)) {
+          bySpatialId.set(location.spatialId, {
+            location,
+            mode: candidateMode,
+          });
+        }
+      }
+    }
+    return [...bySpatialId.values()].sort((left, right) =>
+      left.location.spatialId.localeCompare(right.location.spatialId),
+    );
+  }, [map]);
+
+  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
+  const spatialSearchResults = useMemo(() => {
+    if (!normalizedSearchQuery) {
+      return { located: [], unlocated: [] };
+    }
+    const matches = (label: string, id: string | null) =>
+      label.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery) ||
+      Boolean(id?.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery));
+    const located = spatialSearchIndex
+      .filter(
+        ({ location }) =>
+          matches(location.label, location.locationId) ||
+          location.events.some((event) =>
+            event.label.toLocaleLowerCase("zh-CN").includes(normalizedSearchQuery),
+          ),
+      )
+      .slice(0, 5);
+    const unlocated = map.unlocatedLocations
+      .filter((location) => matches(location.label, location.locationId))
+      .slice(0, 3);
+    return { located, unlocated };
+  }, [map.unlocatedLocations, normalizedSearchQuery, spatialSearchIndex]);
 
   function buildSpatialCallbacks(): SpatialRenderCallbacks {
     return {
@@ -361,6 +426,7 @@ export function SpatialMapView({
       {
         editableLocationId: editLocationId,
         layers,
+        sceneBackground: mode === "scene" ? sceneBackground : null,
       },
     );
     const pendingViewport = pendingViewportRef.current;
@@ -370,7 +436,7 @@ export function SpatialMapView({
       renderer.invalidateSize();
       pendingViewportRef.current = null;
     }
-  }, [editLocationId, layers, mode, visibleView]);
+  }, [editLocationId, layers, mode, sceneBackground, visibleView]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
@@ -430,6 +496,20 @@ export function SpatialMapView({
       );
       return;
     }
+    if (layer === "locations" && layers.locations) {
+      // Event markers are count badges attached to location markers, so
+      // hiding locations without hiding events would leave a checked but
+      // invisible layer behind.
+      setLayersByMode((current) => ({
+        ...current,
+        [controlMode]: {
+          ...current[controlMode],
+          locations: false,
+          events: false,
+        },
+      }));
+      return;
+    }
     setLayersByMode((current) => ({
       ...current,
       [controlMode]: {
@@ -441,6 +521,54 @@ export function SpatialMapView({
 
   function clearSelection() {
     if (onClearSelection()) setOpenedSpatialId(null);
+  }
+
+  function blockSearchWhileEditing(): boolean {
+    if (!editSession) return false;
+    setEditSession((current) =>
+      current
+        ? {
+            ...current,
+            notice: "请先保存或取消位置预览，再定位其他地点。",
+          }
+        : current,
+    );
+    return true;
+  }
+
+  function chooseSearchResult(result: SpatialSearchResult) {
+    if (blockSearchWhileEditing()) return;
+    const accepted = result.location.locationId
+      ? onSelectLocation(result.location.locationId)
+      : result.location.events[0]
+        ? onSelectEvent(result.location.events[0].eventId)
+        : true;
+    if (!accepted) return;
+    setRequestedMode(result.mode);
+    setOpenedSpatialId(result.location.spatialId);
+    setInteractionNotice(null);
+    setHighlightedUnlocatedId(null);
+    setSearchQuery("");
+    setSearchFocused(false);
+  }
+
+  function chooseUnlocatedResult(locationId: string) {
+    if (blockSearchWhileEditing()) return;
+    setLayersByMode((current) => ({
+      ...current,
+      [controlMode]: { ...current[controlMode], unconfirmed: true },
+    }));
+    setAuditDesktopCollapsed(false);
+    setAuditOpen(true);
+    setHighlightedUnlocatedId(locationId);
+    setSearchQuery("");
+    setSearchFocused(false);
+  }
+
+  function clearSearch() {
+    setSearchQuery("");
+    setSearchFocused(false);
+    setHighlightedUnlocatedId(null);
   }
 
   function startPositionEdit() {
@@ -601,6 +729,93 @@ export function SpatialMapView({
         </div>
         <div className={styles.headerMeta}>
           <small>{meta}</small>
+          <div className={styles.searchBox} role="search">
+            <input
+              aria-autocomplete="list"
+              aria-controls="spatial-search-results"
+              aria-label="搜索地点或事件"
+              autoComplete="off"
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  clearSearch();
+                  return;
+                }
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                const firstLocated = spatialSearchResults.located[0];
+                if (firstLocated) chooseSearchResult(firstLocated);
+                else if (spatialSearchResults.unlocated[0]) {
+                  chooseUnlocatedResult(spatialSearchResults.unlocated[0].locationId);
+                }
+              }}
+              onBlur={() => setSearchFocused(false)}
+              placeholder="搜索地点 / 事件"
+              type="search"
+              value={searchQuery}
+            />
+            {searchQuery ? (
+              <button
+                aria-label="清除搜索"
+                className={styles.searchClear}
+                onClick={clearSearch}
+                type="button"
+              >
+                ×
+              </button>
+            ) : null}
+            {searchFocused && searchQuery.trim() ? (
+              <div
+                className={styles.searchResults}
+                id="spatial-search-results"
+                role="listbox"
+              >
+                {spatialSearchResults.located.length ||
+                spatialSearchResults.unlocated.length ? (
+                  <>
+                    {spatialSearchResults.located.map((result) => (
+                      <button
+                        aria-selected={false}
+                        data-kind={result.mode}
+                        key={`${result.mode}:${result.location.spatialId}`}
+                        onClick={() => chooseSearchResult(result)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        role="option"
+                        type="button"
+                      >
+                        <span>{modeLabels[result.mode]}</span>
+                        <b>{result.location.label}</b>
+                        <small>
+                          {result.location.locationId ?? "本地样例"} · {result.location.events.length} 个事件
+                        </small>
+                      </button>
+                    ))}
+                    {spatialSearchResults.unlocated.map((location) => (
+                      <button
+                        aria-selected={false}
+                        data-kind="unlocated"
+                        key={`unlocated:${location.locationId}`}
+                        onClick={() => chooseUnlocatedResult(location.locationId)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        role="option"
+                        type="button"
+                      >
+                        <span>未定位</span>
+                        <b>{location.label}</b>
+                        <small>
+                          {location.locationId} · {unlocatedReasonLabels[location.reason]}
+                        </small>
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <p>没有匹配的地点或事件。</p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <div aria-label="空间呈现模式" className={styles.modeTabs} role="group">
             {map.availableModes.map((candidateMode) => (
               <button
@@ -645,8 +860,11 @@ export function SpatialMapView({
           </div>
         ) : null}
         <SpatialAuditPanel
+          desktopCollapsed={auditDesktopCollapsed}
+          highlightedUnlocatedId={highlightedUnlocatedId}
           layers={layers}
           mobileOpen={auditOpen}
+          onDesktopCollapsedChange={setAuditDesktopCollapsed}
           onMobileOpenChange={setAuditOpen}
           onOpenUnlocated={onOpenLocationDetails}
           onToggleLayer={toggleLayer}
@@ -662,8 +880,14 @@ export function SpatialMapView({
         ) : null}
         {mode && mode !== "geographic" ? (
           <div className={styles.planarLegend}>
-            <span>无比例测绘底板</span>
-            <small>仅表达卷宗中的位置与拓扑，不代表真实道路或边界</small>
+            <span>
+              {mode === "scene" && sceneBackground ? "场景底图" : "无比例测绘底板"}
+            </span>
+            <small>
+              {mode === "scene" && sceneBackground
+                ? "平面图仅作为场景参照；地点坐标仍以卷宗为准"
+                : "仅表达卷宗中的位置与拓扑，不代表真实道路或边界"}
+            </small>
           </div>
         ) : null}
         {activeLocation ? (
@@ -691,6 +915,8 @@ export function SpatialMapView({
             className={styles.unlocatedStatus}
             onClick={() => {
               if (!layers.unconfirmed) toggleLayer("unconfirmed");
+              setAuditDesktopCollapsed(false);
+              setHighlightedUnlocatedId(null);
               setAuditOpen(true);
             }}
             type="button"

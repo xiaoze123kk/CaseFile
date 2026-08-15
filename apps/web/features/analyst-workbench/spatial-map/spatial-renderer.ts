@@ -43,9 +43,22 @@ export interface SpatialRenderCallbacks {
   onTileError: () => void;
 }
 
+export interface SceneBackgroundConfig {
+  url: string;
+}
+
 export interface SpatialRenderOptions {
   editableLocationId: string | null;
   layers: SpatialLayerVisibility;
+  /** Optional deployment-level floor plan shown in planar modes. */
+  sceneBackground?: SceneBackgroundConfig | null;
+}
+
+export function resolveSceneBackgroundConfiguration(
+  url: string | undefined,
+): SceneBackgroundConfig | null {
+  const normalizedUrl = url?.trim() ?? "";
+  return normalizedUrl ? { url: normalizedUrl } : null;
 }
 
 export interface SpatialRenderer {
@@ -293,6 +306,7 @@ export function createSpatialRenderer(input: {
   }> = [];
   let callbacks: SpatialRenderCallbacks | null = null;
   let currentSelection: SpatialRenderSelection | null = null;
+  let sceneImage: L.ImageOverlay | null = null;
   let tileErrorReported = false;
 
   if (input.mode === "geographic") {
@@ -445,6 +459,30 @@ export function createSpatialRenderer(input: {
     locationBySpatialId.clear();
     relationLineById.clear();
     relationArrows.length = 0;
+
+    if (input.mode !== "geographic" && options.sceneBackground?.url) {
+      // CRS.Simple planar maps use a 0..100 casefile domain. The image
+      // top-left is anchored at (x=0, y=100) and its bottom-right at
+      // (x=100, y=0), matching the planar marker coordinate mapping.
+      const sceneBounds = L.latLngBounds(
+        L.latLng(100, 0),
+        L.latLng(0, 100),
+      );
+      if (!sceneImage) {
+        sceneImage = L.imageOverlay(options.sceneBackground.url, sceneBounds, {
+          className: "casefile-spatial-scene-image",
+          interactive: false,
+          opacity: 0.92,
+          pane: "tilePane",
+        }).addTo(map);
+      } else {
+        sceneImage.setUrl(options.sceneBackground.url);
+        sceneImage.setBounds(sceneBounds);
+      }
+    } else if (sceneImage) {
+      sceneImage.remove();
+      sceneImage = null;
+    }
 
     const locationById = new Map(
       view.locations.flatMap((location) =>

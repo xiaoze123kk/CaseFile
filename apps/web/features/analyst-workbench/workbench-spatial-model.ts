@@ -14,6 +14,7 @@ import type {
   WorkbenchSpatialRelation,
   WorkbenchSpatialView,
   WorkbenchTimelineEvent,
+  WorkbenchUnlocatedReason,
 } from "./workbench-real-data-types";
 
 type ContractLocation = CaseFileDocument["locations"][number];
@@ -77,6 +78,26 @@ function readReferenceId(reference: ObjectRef | null | undefined): string | null
   return reference && typeof reference.object_id === "string"
     ? reference.object_id
     : null;
+}
+
+function unlocatedReason(
+  location: ContractLocation,
+  locationIds: Set<string>,
+): WorkbenchUnlocatedReason {
+  const references = [
+    location.parent_ref,
+    ...location.adjacency_refs,
+    ...location.travel_times.map((travelTime) => travelTime.to_ref),
+  ];
+  const hasDanglingReference = references.some((reference) => {
+    const referenceId = readReferenceId(reference);
+    return (
+      referenceId !== null &&
+      referenceId !== location.id &&
+      !locationIds.has(referenceId)
+    );
+  });
+  return hasDanglingReference ? "dangling_topology" : "no_coordinates";
 }
 
 function readSpatialPosition(
@@ -384,6 +405,7 @@ function buildWorkbenchSpatialModelUncached(
   const positions = new Map(
     caseFile.locations.map((location) => [location.id, readSpatialPosition(location)]),
   );
+  const locationIds = new Set(caseFile.locations.map((location) => location.id));
   const spatialRelations = buildSpatialRelations(caseFile.locations);
   const eventMap = eventsByLocation(timelineEvents);
   const geographicLocations = caseFile.locations
@@ -513,6 +535,7 @@ function buildWorkbenchSpatialModelUncached(
           index: caseFile.locations.findIndex((item) => item.id === location.id),
           description: location.description,
         }),
+        reason: unlocatedReason(location, locationIds),
       }))
       .sort((left, right) => left.locationId.localeCompare(right.locationId)),
     counts: {

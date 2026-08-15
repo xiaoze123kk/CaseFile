@@ -71,6 +71,104 @@
   white-space: nowrap;
 }
 
+.searchBox {
+  position: relative;
+  min-width: 132px;
+  flex: 0 1 248px;
+}
+.searchBox input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  padding: 0 36px 0 11px;
+  color: var(--spatial-ink);
+  border: 1px solid rgba(26, 28, 25, 0.32);
+  background: #fff;
+  font-size: 10px;
+}
+.searchBox input::-webkit-search-cancel-button { display: none; }
+.searchBox input:focus {
+  border-color: var(--spatial-survey);
+  outline: 2px solid var(--spatial-red);
+  outline-offset: -1px;
+}
+.searchClear {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  color: #6b6c67;
+  border: 0;
+  background: transparent;
+  font: 400 18px/1 "Bahnschrift", sans-serif;
+}
+.searchClear:hover { color: var(--spatial-red); background: rgba(169, 38, 9, 0.07); }
+.searchResults {
+  position: absolute;
+  z-index: 720;
+  top: 48px;
+  right: 0;
+  width: min(344px, 88vw);
+  max-height: min(440px, calc(100vh - 150px));
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid rgba(26, 28, 25, 0.42);
+  border-top: 4px solid var(--spatial-survey);
+  background: rgba(250, 250, 245, 0.98);
+  box-shadow: 0 12px 30px rgba(26, 28, 25, 0.2);
+}
+.searchResults button {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  gap: 2px 8px;
+  padding: 7px 8px;
+  color: var(--spatial-ink);
+  border: 0;
+  border-bottom: 1px dotted rgba(26, 28, 25, 0.16);
+  background: transparent;
+  grid-template-columns: 56px minmax(0, 1fr);
+  text-align: left;
+}
+.searchResults button:last-child { border-bottom: 0; }
+.searchResults button:hover,
+.searchResults button:focus-visible {
+  background: rgba(47, 93, 98, 0.08);
+  outline: 2px solid var(--spatial-red);
+  outline-offset: -2px;
+}
+.searchResults button > span {
+  display: grid;
+  grid-row: 1 / span 2;
+  min-height: 18px;
+  place-items: center;
+  color: var(--spatial-survey);
+  border: 1px solid rgba(47, 93, 98, 0.45);
+  background: rgba(47, 93, 98, 0.06);
+  font: 700 7px/1 "Cascadia Mono", Consolas, monospace;
+}
+.searchResults button[data-kind="scene"] > span { color: var(--spatial-red); border-color: rgba(169, 38, 9, 0.45); background: rgba(169, 38, 9, 0.05); }
+.searchResults button[data-kind="topology"] > span,
+.searchResults button[data-kind="unlocated"] > span { color: var(--spatial-warning); border-color: rgba(162, 115, 33, 0.55); background: rgba(162, 115, 33, 0.07); }
+.searchResults button b {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.searchResults button small {
+  overflow: hidden;
+  color: #777872;
+  font: 8px/1.3 "Cascadia Mono", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.searchResults p { margin: 0; padding: 12px 10px; color: #6b6c67; font-size: 9px; }
+
 .modeTabs {
   display: inline-flex;
   flex: 0 0 auto;
@@ -367,6 +465,11 @@
   grid-template-columns: 18px minmax(0, 1fr);
 }
 .auditPanel fieldset label:hover { background: rgba(47, 93, 98, 0.07); }
+.auditPanel fieldset label[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.auditPanel fieldset label[data-disabled]:hover { background: transparent; }
 .auditPanel input {
   width: 17px;
   height: 17px;
@@ -410,6 +513,19 @@
 .relationAudit li b { overflow: hidden; font: 600 7px/1.2 "Cascadia Mono", Consolas, monospace; text-overflow: ellipsis; }
 .relationAudit li small { color: #777872; font-size: 7px; white-space: nowrap; }
 .unlocatedAudit li + li { border-top: 1px dotted rgba(26, 28, 25, 0.18); }
+.unlocatedAudit li[data-highlighted] {
+  margin: 2px -4px;
+  padding: 3px 4px;
+  background: rgba(162, 115, 33, 0.1);
+  box-shadow: inset 3px 0 var(--spatial-warning);
+}
+.unlocatedAudit li[data-reason="dangling_topology"] i {
+  border: 0;
+  border-right: 6px solid transparent;
+  border-left: 6px solid transparent;
+  border-bottom: 11px dashed var(--spatial-warning);
+  background: transparent;
+}
 .unlocatedAudit li button {
   display: grid;
   width: 100%;
@@ -820,8 +936,10 @@
     padding: 8px;
   }
   .heading h2 { font-size: 13px; }
-  .headerMeta { justify-content: space-between; gap: 7px; }
+  .headerMeta { flex-wrap: wrap; justify-content: space-between; gap: 7px; }
   .headerMeta > small { display: none; }
+  .searchBox { flex: 1 1 160px; }
+  .searchResults { position: fixed; top: auto; right: 8px; bottom: 8px; left: 8px; width: auto; max-height: 60vh; }
   .modeTabs { width: 100%; }
   .modeTabs button { min-width: 0; min-height: 44px; flex: 1 1 0; padding: 0 5px; }
   .mapCanvas { min-height: 210px; }

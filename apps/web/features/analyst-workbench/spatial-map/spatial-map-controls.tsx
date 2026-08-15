@@ -1,10 +1,9 @@
-import { useState } from "react";
-
 import type {
   SpatialLayerId,
   SpatialLayerVisibility,
   WorkbenchMapModel,
   WorkbenchSpatialRelation,
+  WorkbenchUnlocatedReason,
 } from "../workbench-real-data-types";
 import styles from "./spatial-map.module.css";
 
@@ -18,6 +17,11 @@ const layerCopy: Array<{
   { id: "relations", label: "空间关系", detail: "只读核对" },
   { id: "unconfirmed", label: "待确认位置", detail: "推算与未定位" },
 ];
+
+const unlocatedReasonCopy: Record<WorkbenchUnlocatedReason, string> = {
+  no_coordinates: "尚无坐标",
+  dangling_topology: "空间引用指向不存在的地点",
+};
 
 export function SpatialStatusStrip({ counts }: { counts: WorkbenchMapModel["counts"] }) {
   const items = [
@@ -41,29 +45,33 @@ export function SpatialStatusStrip({ counts }: { counts: WorkbenchMapModel["coun
 export function SpatialAuditPanel({
   layers,
   mobileOpen,
+  desktopCollapsed,
+  highlightedUnlocatedId,
   relations,
   unlocatedLocations,
   onMobileOpenChange,
+  onDesktopCollapsedChange,
   onOpenUnlocated,
   onToggleLayer,
 }: {
   layers: SpatialLayerVisibility;
   mobileOpen: boolean;
+  desktopCollapsed: boolean;
+  highlightedUnlocatedId: string | null;
   relations: WorkbenchSpatialRelation[];
   unlocatedLocations: WorkbenchMapModel["unlocatedLocations"];
   onMobileOpenChange: (open: boolean) => void;
+  onDesktopCollapsedChange: (collapsed: boolean) => void;
   onOpenUnlocated: (locationId: string) => void;
   onToggleLayer: (layer: SpatialLayerId) => void;
 }) {
-  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
-
   function closeAuditPanel() {
-    setDesktopCollapsed(true);
+    onDesktopCollapsedChange(true);
     onMobileOpenChange(false);
   }
 
   function toggleAuditPanel() {
-    setDesktopCollapsed(false);
+    onDesktopCollapsedChange(false);
     onMobileOpenChange(!mobileOpen);
   }
 
@@ -100,16 +108,24 @@ export function SpatialAuditPanel({
         </header>
         <fieldset>
           <legend>图层</legend>
-          {layerCopy.map((layer) => (
-            <label key={layer.id}>
-              <input
-                checked={layers[layer.id]}
-                onChange={() => onToggleLayer(layer.id)}
-                type="checkbox"
-              />
-              <span><b>{layer.label}</b><small>{layer.detail}</small></span>
-            </label>
-          ))}
+          {layerCopy.map((layer) => {
+            const disabled =
+              layer.id === "events" && !layers.locations;
+            return (
+              <label data-disabled={disabled || undefined} key={layer.id}>
+                <input
+                  checked={disabled ? false : layers[layer.id]}
+                  disabled={disabled}
+                  onChange={() => onToggleLayer(layer.id)}
+                  type="checkbox"
+                />
+                <span>
+                  <b>{layer.label}</b>
+                  <small>{disabled ? "地点关闭时不可用" : layer.detail}</small>
+                </span>
+              </label>
+            );
+          })}
         </fieldset>
         {layers.relations ? (
           <section className={styles.relationAudit}>
@@ -137,10 +153,19 @@ export function SpatialAuditPanel({
             {unlocatedLocations.length ? (
               <ol aria-label="未定位地点">
                 {unlocatedLocations.map((location) => (
-                  <li key={location.locationId}>
+                  <li
+                    data-highlighted={
+                      highlightedUnlocatedId === location.locationId || undefined
+                    }
+                    data-reason={location.reason}
+                    key={location.locationId}
+                  >
                     <button onClick={() => onOpenUnlocated(location.locationId)} type="button">
                       <i aria-hidden="true" />
-                      <span><b>{location.label}</b><small>{location.locationId}</small></span>
+                      <span>
+                        <b>{location.label}</b>
+                        <small>{location.locationId} · {unlocatedReasonCopy[location.reason]}</small>
+                      </span>
                     </button>
                   </li>
                 ))}
