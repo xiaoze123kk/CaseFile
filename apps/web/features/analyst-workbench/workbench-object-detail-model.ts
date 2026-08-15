@@ -38,10 +38,18 @@ export interface DetailReference {
   selectable: boolean;
 }
 
+export interface DetailKnowledgeState {
+  asOf: DetailReference;
+  known: DetailReference[];
+  believes: DetailReference[];
+  falseBeliefs: DetailReference[];
+}
+
 export type DetailField =
   | { kind: "text"; label: string; value: string }
   | { kind: "list"; label: string; values: string[] }
-  | { kind: "references"; label: string; references: DetailReference[] };
+  | { kind: "references"; label: string; references: DetailReference[] }
+  | { kind: "knowledge_states"; label: string; states: DetailKnowledgeState[] };
 
 export interface DetailSection {
   fields: DetailField[];
@@ -329,23 +337,33 @@ function formatSpatialPosition(value: unknown): string {
   return "未标注空间位置";
 }
 
-function formatKnowledgeStates(
+const STORY_START_EVENT: DetailReference = {
+  id: "",
+  kindLabel: "事件",
+  label: "卷宗起点",
+  missing: false,
+  selectable: false,
+};
+
+function knowledgeStatesField(
   value: unknown,
   catalog: Map<string, DetailReference>,
-): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
+): DetailField | null {
+  if (!Array.isArray(value)) return null;
+  const states = value.flatMap((item) => {
     const state = asRecord(item);
     if (!state) return [];
     const asOf = asObjectRef(state.as_of_event_ref);
-    const asOfLabel = asOf
-      ? resolveReference(asOf, catalog).label
-      : "卷宗起点";
-    const known = referencesFor(state.knows_refs, catalog).length;
-    const believes = referencesFor(state.believes_refs, catalog).length;
-    const falseBeliefs = referencesFor(state.false_belief_refs, catalog).length;
-    return [`截至 ${asOfLabel}：已知 ${known} 项 · 相信 ${believes} 项 · 错误认知 ${falseBeliefs} 项`];
+    return [{
+      asOf: asOf ? resolveReference(asOf, catalog) : STORY_START_EVENT,
+      known: referencesFor(state.knows_refs, catalog),
+      believes: referencesFor(state.believes_refs, catalog),
+      falseBeliefs: referencesFor(state.false_belief_refs, catalog),
+    }];
   });
+  return states.length
+    ? { kind: "knowledge_states" as const, label: "知识状态", states }
+    : null;
 }
 
 function formatTravelTimes(
@@ -557,7 +575,7 @@ function sectionsFor(
             creatorListField("目标", object.goals),
             creatorListField("秘密", object.secrets),
             creatorListField("能力", object.capabilities),
-            listField("知识状态", formatKnowledgeStates(object.knowledge_states, catalog)),
+            knowledgeStatesField(object.knowledge_states, catalog),
           ]),
         ]),
         ...commonMore,

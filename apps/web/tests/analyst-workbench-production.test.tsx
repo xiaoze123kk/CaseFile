@@ -309,6 +309,64 @@ function makeDraftWithConclusion(revision: number): DraftView {
   return draft;
 }
 
+function makeDraftWithKnowledgeStates(revision: number): DraftView {
+  const draft = makeDraft(revision);
+  const content = draft.content;
+  if (!content) throw new Error("测试工作稿缺少 CaseFile 内容");
+  const analyst = content.entities[0];
+  if (!analyst) throw new Error("测试工作稿缺少调查员实体");
+  analyst.knowledge_states = [
+    {
+      as_of_event_ref: {
+        object_type: "event",
+        object_id: "evt_gate_opened",
+      },
+      knows_refs: [
+        { object_type: "information_unit", object_id: "info_gate_log" },
+      ],
+      believes_refs: [
+        { object_type: "claim", object_id: "claim_record_tampered" },
+      ],
+      false_belief_refs: [
+        { object_type: "claim", object_id: "claim_gate_sealed" },
+      ],
+    },
+    {
+      as_of_event_ref: null,
+      knows_refs: [],
+      believes_refs: [],
+      false_belief_refs: [],
+    },
+  ];
+  content.claims = [
+    {
+      ...metadata("调查员相信记录曾被改写。"),
+      id: "claim_record_tampered",
+      title: "记录曾被改写",
+      statement: "门禁记录在事件后被改写。",
+      claim_type: "fact",
+      support_refs: [],
+      refute_refs: [],
+      dependency_claim_refs: [],
+      status: "partially_supported",
+      materiality: "critical",
+    },
+    {
+      ...metadata("调查员误以为值班记录未被触碰。"),
+      id: "claim_gate_sealed",
+      title: "值班记录未受损",
+      statement: "值班记录在事件后保持原样。",
+      claim_type: "fact",
+      support_refs: [],
+      refute_refs: [],
+      dependency_claim_refs: [],
+      status: "unresolved",
+      materiality: "major",
+    },
+  ];
+  return draft;
+}
+
 function makeDraftWithScenePosition(revision: number, x: number, y = 36): DraftView {
   const draft = makeDraft(revision);
   const location = draft.content?.locations.find(
@@ -970,6 +1028,44 @@ describe("production analyst workbench", () => {
     expect(incoming).toHaveTextContent("被 2 个字段引用");
     expect(incoming).toHaveTextContent("关系起点");
     expect(incoming).toHaveTextContent("参与者");
+  });
+
+  it("spells out each knowledge state with an event anchor and per-category object chips", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraftWithKnowledgeStates(7));
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    const directory = await screen.findByRole("region", {
+      name: "对象目录结果",
+    });
+    fireEvent.click(
+      within(directory).getByRole("button", { name: /真实调查员/ }),
+    );
+    const editor = screen.getByRole("region", { name: "对象详情与编辑" });
+    fireEvent.click(within(editor).getByText("更多创作信息"));
+
+    const anchor = within(editor).getByRole("button", {
+      name: "跳转查看截至事件“门禁开启”",
+    });
+    expect(within(anchor).getByText("事件")).toBeInTheDocument();
+    expect(anchor).toHaveTextContent("门禁开启");
+    expect(within(editor).getByText("卷宗起点")).toBeInTheDocument();
+
+    expect(within(editor).getAllByText("已知")).toHaveLength(2);
+    expect(within(editor).getAllByText("相信")).toHaveLength(2);
+    expect(within(editor).getAllByText("错误认知")).toHaveLength(2);
+    expect(within(editor).getAllByText("无")).toHaveLength(3);
+
+    const knownChip = within(editor).getByRole("button", {
+      name: /门禁记录/,
+    });
+    expect(knownChip).toHaveTextContent("信息");
+    const believedChip = within(editor).getByText("记录曾被改写");
+    expect(believedChip).toBeInTheDocument();
+    const falseChip = within(editor).getByText("值班记录未受损");
+    expect(falseChip).toBeInTheDocument();
+
+    fireEvent.click(knownChip);
+    expect(screen.getByRole("heading", { name: "门禁记录" })).toBeInTheDocument();
   });
 
   it("collapses and expands context sections and relation groups on demand", async () => {

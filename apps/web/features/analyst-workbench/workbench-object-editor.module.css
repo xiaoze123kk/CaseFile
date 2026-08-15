@@ -138,6 +138,134 @@
 
 .valueList { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .valueList li::before { margin-right: 6px; color: #c78b3c; content: "·"; font-weight: 700; }
+
+.knowledgeStateField dd { display: grid; gap: 10px; }
+.knowledgeStateList { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.knowledgeState {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid #e0dbd1;
+  border-left: 3px solid #c78b3c;
+  background: #f3f1eb;
+}
+.knowledgeAnchorRow {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+.knowledgeAnchorPrefix {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #777a75;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.knowledgeAnchorPrefix svg { width: 13px; height: 13px; color: #87561f; }
+.knowledgeEventAnchor {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 5px;
+  color: #292c2c;
+  border: 1px solid rgba(199, 139, 60, 0.65);
+  background: rgba(199, 139, 60, 0.14);
+  text-align: left;
+}
+button.knowledgeEventAnchor { cursor: pointer; }
+button.knowledgeEventAnchor:hover { border-color: #c78b3c; background: rgba(199, 139, 60, 0.24); }
+.knowledgeEventAnchor[data-missing="true"] { border-style: dashed; }
+.knowledgeEventBadge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  color: #fbfaf6;
+  background: #c78b3c;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.knowledgeEventBadge svg { width: 11px; height: 11px; }
+.knowledgeEventAnchor strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font: 600 13px/1.5 "Noto Serif SC", "STSong", SimSun, serif;
+}
+.knowledgeCategories { display: grid; gap: 7px; }
+.knowledgeCategory {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.knowledgeCategoryLabel {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.knowledgeCategoryLabel b {
+  font: 600 10px/1 "Cascadia Mono", Consolas, monospace;
+  opacity: 0.75;
+}
+.knowledgeCategory[data-tone="known"] .knowledgeCategoryLabel {
+  color: #256f4b;
+  border-color: rgba(53, 164, 111, 0.45);
+  background: rgba(53, 164, 111, 0.1);
+}
+.knowledgeCategory[data-tone="believed"] .knowledgeCategoryLabel {
+  color: #2c5d8a;
+  border-color: rgba(63, 119, 168, 0.45);
+  background: rgba(63, 119, 168, 0.1);
+}
+.knowledgeCategory[data-tone="false"] .knowledgeCategoryLabel {
+  color: #8d3b39;
+  border-color: rgba(190, 84, 80, 0.5);
+  background: rgba(190, 84, 80, 0.1);
+}
+.knowledgeCategoryItems {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.knowledgeRefChip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  color: #292c2c;
+  border: 1px solid #e0dbd1;
+  background: #fbfaf6;
+  font: 12px/1.5 "Segoe UI Variable Text", "Microsoft YaHei", sans-serif;
+  text-align: left;
+}
+button.knowledgeRefChip { cursor: pointer; }
+button.knowledgeRefChip:hover { border-color: #c78b3c; background: #fbfaf6; }
+.knowledgeRefChip strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }
+.knowledgeRefChip small { color: #777a75; font-size: 10px; white-space: nowrap; }
+.knowledgeRefChip[data-missing="true"] { color: #8d5452; border-style: dashed; }
+.knowledgeCategoryEmpty { padding: 3px 0; color: #9a9d96; font-size: 11px; }
 .referenceList { display: grid; gap: 5px; }
 .referenceList :is(button, span),
 .associationList :is(button, span) {
@@ -206,7 +334,9 @@
 .headerActions > button:focus-visible,
 .footerActions button:focus-visible,
 .referenceList button:focus-visible,
-.associationList button:focus-visible { outline: 2px solid #c78b3c; }
+.associationList button:focus-visible,
+.knowledgeEventAnchor:focus-visible,
+.knowledgeRefChip:focus-visible { outline: 2px solid #c78b3c; }
 .objectEditorWide { grid-column: 1 / -1; }
 .conclusionEditNote {
   grid-column: 1 / -1;
@@ -307,6 +437,8 @@
   .headerActions > button { width: 100%; margin-left: 0; }
   .detailSection dl > div,
   .technicalDetails dl > div { grid-template-columns: 1fr; gap: 2px; }
+  .knowledgeCategory { grid-template-columns: 1fr; gap: 4px; }
+  .knowledgeCategoryLabel { justify-self: start; }
   .objectEditorFields { grid-template-columns: 1fr; }
   .objectEditorWide { grid-column: auto; }
   .associations ol button { grid-template-columns: 1fr; gap: 2px; }

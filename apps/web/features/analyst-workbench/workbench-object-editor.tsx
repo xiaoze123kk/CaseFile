@@ -7,7 +7,9 @@ import {
   buildObjectDetailModel,
   findWorkbenchDetailObject,
   type DetailField,
+  type DetailKnowledgeState,
   type DetailObject,
+  type DetailReference,
   type ObjectDetailModel,
 } from "./workbench-object-detail-model";
 import type { ContextFieldCitation } from "./workbench-provenance-model";
@@ -16,6 +18,7 @@ import {
   objectSubtypeLabel,
   reliabilityLabel,
 } from "./workbench-presenters";
+import { WorkbenchIcon } from "./workbench-icon";
 import styles from "./workbench-object-editor.module.css";
 
 type SaveResult = "saved" | "conflict" | "error" | { status: "error"; message: string };
@@ -205,6 +208,155 @@ function defaultConclusionForResolution(
   };
 }
 
+function KnowledgeReferenceChip({
+  reference,
+  onSelectObject,
+}: {
+  reference: DetailReference;
+  onSelectObject: (objectId: string) => void;
+}) {
+  const content = (
+    <>
+      <strong>{reference.label}</strong>
+      <small>{reference.kindLabel}</small>
+    </>
+  );
+  if (reference.selectable && !reference.missing) {
+    return (
+      <button
+        className={styles.knowledgeRefChip}
+        onClick={() => onSelectObject(reference.id)}
+        title={`查看${reference.kindLabel}“${reference.label}”`}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <span className={styles.knowledgeRefChip} data-missing={reference.missing}>
+      {content}
+    </span>
+  );
+}
+
+function KnowledgeCategory({
+  label,
+  references,
+  tone,
+  onSelectObject,
+}: {
+  label: string;
+  references: DetailReference[];
+  tone: "known" | "believed" | "false";
+  onSelectObject: (objectId: string) => void;
+}) {
+  return (
+    <div className={styles.knowledgeCategory} data-tone={tone}>
+      <span className={styles.knowledgeCategoryLabel}>
+        {label}
+        <b>{references.length}</b>
+      </span>
+      <div className={styles.knowledgeCategoryItems}>
+        {references.length
+          ? references.map((reference) => (
+              <KnowledgeReferenceChip
+                key={reference.id}
+                onSelectObject={onSelectObject}
+                reference={reference}
+              />
+            ))
+          : <span className={styles.knowledgeCategoryEmpty}>无</span>}
+      </div>
+    </div>
+  );
+}
+
+function KnowledgeEventAnchor({
+  reference,
+  onSelectObject,
+}: {
+  reference: DetailReference;
+  onSelectObject: (objectId: string) => void;
+}) {
+  const content = (
+    <>
+      <span className={styles.knowledgeEventBadge}>
+        <WorkbenchIcon name="clock" />
+        事件
+      </span>
+      <strong>{reference.label}</strong>
+    </>
+  );
+  if (reference.selectable && !reference.missing) {
+    return (
+      <button
+        aria-label={`跳转查看截至事件“${reference.label}”`}
+        className={styles.knowledgeEventAnchor}
+        onClick={() => onSelectObject(reference.id)}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <span
+      className={styles.knowledgeEventAnchor}
+      data-missing={reference.missing}
+    >
+      {content}
+    </span>
+  );
+}
+
+function KnowledgeStateList({
+  states,
+  onSelectObject,
+}: {
+  states: DetailKnowledgeState[];
+  onSelectObject: (objectId: string) => void;
+}) {
+  return (
+    <ol className={styles.knowledgeStateList}>
+      {states.map((state, index) => (
+        <li className={styles.knowledgeState} key={`${state.asOf.id || "story-start"}-${index}`}>
+          <div className={styles.knowledgeAnchorRow}>
+            <span className={styles.knowledgeAnchorPrefix}>
+              <WorkbenchIcon name="clock" />
+              <b>截至</b>
+            </span>
+            <KnowledgeEventAnchor
+              onSelectObject={onSelectObject}
+              reference={state.asOf}
+            />
+          </div>
+          <div className={styles.knowledgeCategories}>
+            <KnowledgeCategory
+              label="已知"
+              onSelectObject={onSelectObject}
+              references={state.known}
+              tone="known"
+            />
+            <KnowledgeCategory
+              label="相信"
+              onSelectObject={onSelectObject}
+              references={state.believes}
+              tone="believed"
+            />
+            <KnowledgeCategory
+              label="错误认知"
+              onSelectObject={onSelectObject}
+              references={state.falseBeliefs}
+              tone="false"
+            />
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function renderField(
   field: DetailField,
   onSelectObject: (objectId: string) => void,
@@ -245,6 +397,19 @@ function renderField(
       <div key={field.label}>
         <dt>{field.label}</dt>
         <dd><ul className={styles.valueList}>{field.values.map((value) => <li key={value}>{value}</li>)}</ul></dd>
+      </div>
+    );
+  }
+  if (field.kind === "knowledge_states") {
+    return (
+      <div className={styles.knowledgeStateField} key={field.label}>
+        <dt>{field.label}</dt>
+        <dd>
+          <KnowledgeStateList
+            onSelectObject={onSelectObject}
+            states={field.states}
+          />
+        </dd>
       </div>
     );
   }
