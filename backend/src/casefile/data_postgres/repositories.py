@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from casefile.data_postgres.models import (
@@ -109,7 +109,7 @@ class ProjectRepository:
                 & (Draft.casefile_id == CaseFile.id)
                 & (Draft.id == CaseFile.current_draft_id),
             )
-            .where(Project.owner_user_id == owner_user_id)
+            .where(Project.owner_user_id == owner_user_id, Project.status != "cleared")
             .order_by(Project.updated_at.desc(), Project.id.desc())
         )
         return [OwnedDraft(*row) for row in self.session.execute(statement).all()]
@@ -209,6 +209,25 @@ class ProjectRepository:
         owned.casefile.status = "draft"
         owned.casefile.archived_at = None
         owned.draft.document_status = "draft"
+
+    def clear_archived(self, owner_user_id: int) -> int:
+        """把该用户所有已归档项目软删除（标记 cleared），返回受影响行数。"""
+        archived_ids = list(
+            self.session.scalars(
+                select(Project.id).where(
+                    Project.owner_user_id == owner_user_id,
+                    Project.status == "archived",
+                )
+            )
+        )
+        if not archived_ids:
+            return 0
+        self.session.execute(
+            update(Project)
+            .where(Project.id.in_(archived_ids))
+            .values(status="cleared")
+        )
+        return len(archived_ids)
 
 
 class DraftRepository:

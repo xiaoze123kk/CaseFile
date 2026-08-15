@@ -749,6 +749,13 @@ export async function unarchiveProject(actorId: number, projectId: number) {
   });
 }
 
+export async function clearArchivedProjects(actorId: number) {
+  return apiRequest<{ cleared: number }>("/projects/clear-archived", {
+    actorId,
+    method: "POST",
+  });
+}
+
 export function errorMessage(error: unknown) {
   if (error instanceof ApiError) {
     const localizedMessages: Record<string, string> = {

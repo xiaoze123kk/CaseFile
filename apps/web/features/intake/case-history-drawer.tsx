@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   archiveProject,
+  clearArchivedProjects,
   listProjects,
   unarchiveProject,
   type BriefIntakeView,
@@ -86,6 +87,8 @@ export function CaseHistoryDrawer({
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (): Promise<CaseHistoryEntry[]> => {
@@ -185,6 +188,26 @@ export function CaseHistoryDrawer({
     }
   }
 
+  function requestClearArchived() {
+    setConfirmClear(true);
+    setError(null);
+  }
+
+  async function handleClearArchived() {
+    setClearing(true);
+    setError(null);
+    try {
+      const result = await clearArchivedProjects(LOCAL_ACTOR_ID);
+      setConfirmClear(false);
+      setEntries(await refresh());
+      onNotice(`已清空 ${result.cleared} 份封存卷宗。`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "清空归档失败。");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   return (
     <div
       aria-hidden={!open}
@@ -260,18 +283,53 @@ export function CaseHistoryDrawer({
             </section>
 
             <section className={styles.traySection} data-archived>
-              <button
-                aria-expanded={archivedOpen}
-                className={styles.archivedToggle}
-                onClick={() => setArchivedOpen((value) => !value)}
-                type="button"
-              >
-                <span>
-                  已归档
-                  <b>{archivedEntries.length}</b>
-                </span>
-                <em>{archivedOpen ? "收起" : "展开"}</em>
-              </button>
+              <div className={styles.archivedRow}>
+                <button
+                  aria-expanded={archivedOpen}
+                  className={styles.archivedToggle}
+                  onClick={() => setArchivedOpen((value) => !value)}
+                  type="button"
+                >
+                  <span>
+                    已归档
+                    <b>{archivedEntries.length}</b>
+                  </span>
+                  <em>{archivedOpen ? "收起" : "展开"}</em>
+                </button>
+                {archivedEntries.length > 0 && !confirmClear ? (
+                  <button
+                    className={styles.clearArchiveBtn}
+                    onClick={requestClearArchived}
+                    type="button"
+                  >
+                    清空归档
+                  </button>
+                ) : null}
+              </div>
+              {confirmClear ? (
+                <div className={styles.clearConfirm} role="alert">
+                  <span>
+                    将清空 {archivedEntries.length} 份封存卷宗，且不可恢复。
+                  </span>
+                  <div>
+                    <button
+                      className={styles.clearConfirmDo}
+                      disabled={clearing}
+                      onClick={() => void handleClearArchived()}
+                      type="button"
+                    >
+                      {clearing ? "清空中…" : "确认清空"}
+                    </button>
+                    <button
+                      disabled={clearing}
+                      onClick={() => setConfirmClear(false)}
+                      type="button"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {archivedOpen ? (
                 archivedEntries.length === 0 ? (
                   <p className={styles.emptyTray}>没有封存的卷宗。</p>

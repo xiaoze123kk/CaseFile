@@ -46,10 +46,11 @@ class Project(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "projects"
     __table_args__ = (
         CheckConstraint("length(btrim(title)) > 0", name="title_not_blank"),
-        CheckConstraint("status IN ('active', 'archived')", name="status_allowed"),
+        CheckConstraint("status IN ('active', 'archived', 'cleared')", name="status_allowed"),
         CheckConstraint(
             "(status = 'active' AND archived_at IS NULL) OR "
-            "(status = 'archived' AND archived_at IS NOT NULL)",
+            "(status = 'archived' AND archived_at IS NOT NULL) OR "
+            "(status = 'cleared' AND archived_at IS NOT NULL)",
             name="archive_state_consistent",
         ),
         CheckConstraint("jsonb_typeof(profile_jsonb) = 'object'", name="profile_is_object"),

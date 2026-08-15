@@ -181,6 +181,72 @@
   color: var(--red);
 }
 
+.archivedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.archivedRow .archivedToggle {
+  flex: 1;
+}
+
+.clearArchiveBtn {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--red-line);
+  background: transparent;
+  color: var(--red);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.clearArchiveBtn:hover {
+  background: var(--red-soft);
+}
+
+.clearConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--red-line);
+  background: var(--red-soft);
+}
+
+.clearConfirm > span {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.clearConfirm > div {
+  display: flex;
+  gap: 8px;
+}
+
+.clearConfirm button {
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--red-line);
+  background: transparent;
+  color: var(--red);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.clearConfirm button.clearConfirmDo {
+  background: var(--red);
+  color: white;
+}
+
+.clearConfirm button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
 .trayList {
   display: grid;
   gap: 10px;
