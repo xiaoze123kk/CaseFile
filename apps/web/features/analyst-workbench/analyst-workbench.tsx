@@ -79,7 +79,6 @@ import { RelationshipGraph } from "./workbench-relationship-graph";
 import { TimelineOverview } from "./timeline/timeline-overview";
 import {
   CompileCenterView,
-  DossierView,
   ExportView,
 } from "./workbench-secondary-views";
 import {
@@ -1725,9 +1724,6 @@ function AnalystWorkbenchSurface({
                 }
                 title={seed.caseMeta.mapTitle}
               />
-            ) : null}
-            {view === "dossier" ? (
-              selectedEvent ? <DossierView seed={seed} selectedEventId={selectedEventId} /> : <section className={styles.realEmptyState}><strong>没有可编辑的事件卷宗</strong><p>可以从右侧“对象详情”编辑实体、信息、地点或假设。</p></section>
             ) : null}
             {view === "export" ? <ExportView seed={seed} unresolvedCount={unresolvedCount} /> : null}
             {view === "compile" ? (

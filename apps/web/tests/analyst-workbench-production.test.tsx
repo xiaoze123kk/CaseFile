@@ -928,7 +928,7 @@ describe("production analyst workbench", () => {
     expect(timeline).not.toHaveTextContent("最终结论");
   });
 
-  it("keeps a Current Draft object synchronized across all eight permanent views", async () => {
+  it("keeps a Current Draft object synchronized across all permanent views", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);
 
@@ -947,11 +947,12 @@ describe("production analyst workbench", () => {
       ["关系图", "relations"],
       ["推理分析", "reasoning"],
       ["地图", "map"],
-      ["卷宗编辑器", "dossier"],
       ["导出预览", "export"],
       ["编译中心", "compile"],
       ["证据对比", "evidence"],
     ] as const;
+
+    expect(screen.queryByRole("tab", { name: /卷宗编辑器/ })).not.toBeInTheDocument();
 
     for (const [label, view] of views) {
       fireEvent.click(screen.getByRole("tab", { name: new RegExp(label) }));
