@@ -33,8 +33,9 @@ from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     GenerationPlan,
     GenerationRequest,
+    IdeaGenerationRequest,
 )
-from casefile.agent_runtime.prompt import casefile_chat_input
+from casefile.agent_runtime.prompt import casefile_chat_input, idea_generation_input
 from casefile.agent_runtime.prompt_repository import PromptRepositoryError
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
@@ -930,3 +931,53 @@ def test_provider_transport_errors_have_stable_failure_codes() -> None:
         )
         == "provider_rate_limited"
     )
+
+
+def test_idea_generation_input_passes_preferences() -> None:
+    introduction, payload_text = idea_generation_input(
+        "a" * 64,
+        preferences={
+            "eras": ["中世纪"],
+            "settings": ["太空"],
+            "atmospheres": ["恐怖"],
+            "keywords": ["时间循环"],
+        },
+    ).split("\n", 1)
+    payload = json.loads(payload_text)
+
+    assert introduction.startswith("请自主创作三个差异明确的创意方向")
+    assert payload["preferences"] == {
+        "eras": ["中世纪"],
+        "settings": ["太空"],
+        "atmospheres": ["恐怖"],
+        "keywords": ["时间循环"],
+    }
+
+
+def test_fake_idea_generation_reflects_preferences() -> None:
+    result = FakeProvider().generate_ideas(
+        IdeaGenerationRequest(
+            task_run_id=0,
+            prompt_version="idea-generation-v2",
+            regenerate=False,
+            existing_concepts=(),
+            input_hash="a" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=8,
+            emit=lambda _event_type, _stage, _payload: None,
+            preferences={
+                "eras": ["中世纪"],
+                "settings": ["太空"],
+                "atmospheres": ["恐怖"],
+                "keywords": ["时间循环"],
+            },
+        )
+    )
+
+    concepts = [candidate.concept for candidate in result.candidate.candidates]
+    assert len(concepts) == 3
+    assert all("中世纪背景下" in concept for concept in concepts)
+    assert all("太空" in concept for concept in concepts)
+    assert all("恐怖氛围的" in concept for concept in concepts)
+    assert all("时间循环" in concept for concept in concepts)

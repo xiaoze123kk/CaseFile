@@ -479,13 +479,31 @@ class FakeProvider:
         ]
         SCALES = ["短篇（2-4 小时）", "中篇（5-8 小时）", "中篇（6-10 小时）", "长篇（15-25 小时）"]
 
+        prefs = request.preferences or {}
+        pref_settings = [str(s) for s in (prefs.get("settings") or [])]
+        pref_eras = [str(e) for e in (prefs.get("eras") or [])]
+        pref_atmospheres = [str(a) for a in (prefs.get("atmospheres") or [])]
+        pref_keywords = [str(k) for k in (prefs.get("keywords") or [])]
+
+        def pick_setting() -> str:
+            return random.choice(pref_settings) if pref_settings else random.choice(SETTINGS)
+
+        def concept_prefix() -> str:
+            era = f"{random.choice(pref_eras)}背景下，" if pref_eras else ""
+            atm = f"{random.choice(pref_atmospheres)}氛围的" if pref_atmospheres else ""
+            return era + atm
+
         chosen = []
         for i in range(3):
             prof = random.choice(PROFESSIONS)
-            sett = random.choice(SETTINGS)
+            sett = pick_setting()
             prem = random.choice(PREMISES)
+            concept = f"{concept_prefix()}{prof}在{sett}——{prem}"
+            if pref_keywords:
+                concept += f"，融入「{'、'.join(pref_keywords)}」元素"
+            concept += "。"
             chosen.append({
-                "concept": f"{prof}在{sett}——{prem}。",
+                "concept": concept,
                 "core_suspense": (
                     f"主角必须从看似平常的迹象中锁定隐藏的模式，同时应对来自"
                     f"{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。"
@@ -871,6 +889,7 @@ class OpenAIAgentsProvider:
                     request.input_hash,
                     regenerate=request.regenerate,
                     existing_concepts=request.existing_concepts,
+                    preferences=request.preferences,
                 ),
                 output_type=IdeaCandidateSet,
                 stage="generating_ideas",
@@ -1174,6 +1193,7 @@ class DeepSeekAgentsProvider:
                     request.input_hash,
                     regenerate=request.regenerate,
                     existing_concepts=request.existing_concepts,
+                    preferences=request.preferences,
                 ),
                 output_type=IdeaCandidateSet,
                 stage="generating_ideas",

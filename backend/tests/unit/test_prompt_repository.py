@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
@@ -40,7 +41,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_to_draft": "brief-to-draft-v15",
     "casefile_chat": "casefile-chat-v1",
     "reverse_parse": "reverse-parse-v1",
-    "idea_generation": "idea-generation-v1",
+    "idea_generation": "idea-generation-v2",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
@@ -179,6 +180,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("idea_generation", "idea-generation-v1"): {
         "system": "2cf1e5fadf31f06d8e39ef023dba579b0b1e95fba421d3fdb39ba07631a37c2a"
+    },
+    ("idea_generation", "idea-generation-v2"): {
+        "system": "eebc2c8b8ba4b49e7a36f1cfef49d2569b9831a2da5906d7f5c91cecd3149682"
     },
 }
 

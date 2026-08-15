@@ -809,10 +809,24 @@ export async function adoptDraftCandidateWithReconciliation(
 
 // ── Idea Generation (Path B: "帮我想一个") ──────────────────────────────
 
-export async function generateIdeas(projectId: number) {
+export interface IdeaGenerationPreferences {
+  eras: string[];
+  settings: string[];
+  atmospheres: string[];
+  keywords: string[];
+}
+
+export async function generateIdeas(
+  projectId: number,
+  preferences?: IdeaGenerationPreferences,
+) {
   return apiRequest<{ project_id: number; batch_id: string; ideas: Record<string, unknown>[] }>(
     `/projects/${projectId}/ideas/generate`,
-    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+    {
+      actorId: LOCAL_ACTOR_ID,
+      method: "POST",
+      body: preferences ? { preferences } : undefined,
+    },
   );
 }
 
