@@ -151,6 +151,12 @@ class SchematicSpatialPosition(BaseModel):
     coordinate_system: Literal['schematic']
     x: Annotated[float, Field(ge=0.0, le=100.0)]
     y: Annotated[float, Field(ge=0.0, le=100.0)]
+    scene_id: Annotated[str | None, Field(pattern='^scn_[a-z0-9][a-z0-9_]{0,56}$')] = (
+        None
+    )
+    floor_id: Annotated[str | None, Field(pattern='^floor_[a-z0-9][a-z0-9_]{0,54}$')] = (
+        None
+    )
 
 
 class Wgs84SpatialPosition(BaseModel):
@@ -161,6 +167,88 @@ class Wgs84SpatialPosition(BaseModel):
     coordinate_system: Literal['wgs84']
     latitude: Annotated[float, Field(ge=-90.0, le=90.0)]
     longitude: Annotated[float, Field(ge=-180.0, le=180.0)]
+
+
+class ScenePoint(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    x: Annotated[float, Field(ge=0.0, le=100.0)]
+    y: Annotated[float, Field(ge=0.0, le=100.0)]
+
+
+class Wgs84RoutePoint(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    latitude: Annotated[float, Field(ge=-90.0, le=90.0)]
+    longitude: Annotated[float, Field(ge=-180.0, le=180.0)]
+
+
+class SpatialSceneFloor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    floor_id: Annotated[str, Field(pattern='^floor_[a-z0-9][a-z0-9_]{0,54}$')]
+    label: Annotated[str, Field(min_length=1)]
+    background_image_url: Annotated[str | None, Field(min_length=1)] = None
+    image_width: Annotated[float | None, Field(gt=0.0)] = None
+    image_height: Annotated[float | None, Field(gt=0.0)] = None
+
+
+class SpatialSceneRegion(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    region_id: Annotated[str, Field(pattern='^region_[a-z0-9][a-z0-9_]{0,51}$')]
+    name: Annotated[str, Field(min_length=1)]
+    geometry: Annotated[list[ScenePoint], Field(min_length=3)]
+
+
+class SpatialScene(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scn_[a-z0-9][a-z0-9_]{0,56}$')]
+    name: Annotated[str, Field(min_length=1)]
+    background_image_url: Annotated[str | None, Field(min_length=1)] = None
+    image_width: Annotated[float | None, Field(gt=0.0)] = None
+    image_height: Annotated[float | None, Field(gt=0.0)] = None
+    floors: list[SpatialSceneFloor] | None = None
+    regions: list[SpatialSceneRegion] | None = None
+
+
+class Wgs84RouteGeometry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    coordinate_system: Literal['wgs84']
+    points: Annotated[list[Wgs84RoutePoint], Field(min_length=2)]
+
+
+class SchematicRouteGeometry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    coordinate_system: Literal['schematic']
+    points: Annotated[list[ScenePoint], Field(min_length=2)]
+
+
+class RouteGeometry(RootModel[Wgs84RouteGeometry | SchematicRouteGeometry]):
+    root: Annotated[
+        Wgs84RouteGeometry | SchematicRouteGeometry,
+        Field(
+            description='Source-derived route polyline; the coordinate system must match the map mode where it is rendered.',
+            title='RouteGeometry',
+        ),
+    ]
 
 
 class WallClockTime(RootModel[str]):
@@ -426,6 +514,13 @@ class TravelTime(BaseModel):
     )
     to_ref: ObjectRef
     minutes: Annotated[float, Field(ge=0.0)]
+    route_geometry: Annotated[
+        Wgs84RouteGeometry | SchematicRouteGeometry | None,
+        Field(
+            description='Source-derived route polyline; the coordinate system must match the map mode where it is rendered.',
+            title='RouteGeometry',
+        ),
+    ] = None
 
 
 class VisibilityRule(RootModel[str]):
@@ -1210,6 +1305,7 @@ class Schema_1(BaseModel):
     entities: list[Entity]
     relationships: list[Relationship]
     locations: list[Location]
+    spatial_scenes: list[SpatialScene] | None = None
     events: list[Event]
     information_units: list[InformationUnit]
     claims: list[Claim]

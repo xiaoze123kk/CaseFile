@@ -77,9 +77,15 @@ from ._internal import (
     ResolutionConclusion,
     ResolutionSpec,
     ReviewStatus,
+    RouteGeometry,
     RuleId,
+    ScenePoint,
+    SchematicRouteGeometry,
     SchematicSpatialPosition,
     Secret,
+    SpatialScene,
+    SpatialSceneFloor,
+    SpatialSceneRegion,
     Status,
     Status1,
     Status2,
@@ -115,10 +121,12 @@ from ._internal import (
     Visibility,
     VisibilityRule,
     WallClockTime,
+    Wgs84RouteGeometry,
+    Wgs84RoutePoint,
     Wgs84SpatialPosition,
 )
 
-__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "ActorRef", "ActorType", "AgentComponentStepView", "AgentDiagnosticIssue", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "BriefStrategyOption", "BriefStrategyOptionsResult", "CandidateStrategy", "Capability", "Category", "Claim", "ClaimType", "Classification", "ConclusionMode", "ConfirmationStatus", "Constraint", "CoreMetadata", "Direction", "EditingContracts", "Effect", "Entity", "EntityType", "Event", "EvidenceAssessment", "Extensions", "Goal", "Hypothesis", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "JsonPointer", "KnowledgeState", "Level", "Location", "LockType", "Materiality", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "Outcome", "OutputMessageId", "PatchOperation", "PathType", "Provider", "QuestionType", "ReasoningPath", "RecommendedStrategy", "Relation", "Relationship", "Reliability", "RequiredSlot", "ResolutionConclusion", "ResolutionSpec", "ReviewStatus", "RuleId", "SchematicSpatialPosition", "Secret", "Status", "Status1", "Status2", "Status3", "Step", "Strategy", "Strength", "Strength1", "Strength2", "StructureLock", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "TemporalPosition", "TemporalPosition1", "TemporalPosition2", "TemporalPosition3", "TemporalPosition4", "TemporalPosition5", "TemporalPrecision", "Tradeoff", "Trait", "TravelTime", "TruthStatus", "UnresolvedGap", "Value", "Value1", "ValueType", "Visibility", "VisibilityRule", "WallClockTime", "Wgs84SpatialPosition"]
+__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "ActorRef", "ActorType", "AgentComponentStepView", "AgentDiagnosticIssue", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "BriefStrategyOption", "BriefStrategyOptionsResult", "CandidateStrategy", "Capability", "Category", "Claim", "ClaimType", "Classification", "ConclusionMode", "ConfirmationStatus", "Constraint", "CoreMetadata", "Direction", "EditingContracts", "Effect", "Entity", "EntityType", "Event", "EvidenceAssessment", "Extensions", "Goal", "Hypothesis", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "JsonPointer", "KnowledgeState", "Level", "Location", "LockType", "Materiality", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "Outcome", "OutputMessageId", "PatchOperation", "PathType", "Provider", "QuestionType", "ReasoningPath", "RecommendedStrategy", "Relation", "Relationship", "Reliability", "RequiredSlot", "ResolutionConclusion", "ResolutionSpec", "ReviewStatus", "RouteGeometry", "RuleId", "ScenePoint", "SchematicRouteGeometry", "SchematicSpatialPosition", "Secret", "SpatialScene", "SpatialSceneFloor", "SpatialSceneRegion", "Status", "Status1", "Status2", "Status3", "Step", "Strategy", "Strength", "Strength1", "Strength2", "StructureLock", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "TemporalPosition", "TemporalPosition1", "TemporalPosition2", "TemporalPosition3", "TemporalPosition4", "TemporalPosition5", "TemporalPrecision", "Tradeoff", "Trait", "TravelTime", "TruthStatus", "UnresolvedGap", "Value", "Value1", "ValueType", "Visibility", "VisibilityRule", "WallClockTime", "Wgs84RouteGeometry", "Wgs84RoutePoint", "Wgs84SpatialPosition"]
 
 from .public import (
     Brief,

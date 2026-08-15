@@ -64,6 +64,12 @@ _PUBLIC_INTEGRITY_MESSAGES = {
     "conclusion_required_slot_missing": "答案结论缺少必填答案槽位",
     "conclusion_basis_missing": "答案结论必须关联同题假设和有效推理路径",
     "undetermined_basis_missing": "未定论必须列出并存解释、分析路径和证据缺口",
+    "duplicate_scene_id": "场景 ID 重复",
+    "duplicate_floor_id": "同一场景内楼层 ID 重复",
+    "duplicate_region_id": "同一场景内区域 ID 重复",
+    "missing_scene_reference": "地点引用的场景不存在",
+    "floor_without_scene": "引用楼层时必须同时指定场景",
+    "floor_scene_mismatch": "楼层不属于地点引用的场景",
 }
 
 
@@ -243,6 +249,78 @@ def _validate_integrity(
                 travel_time["to_ref"],
                 "location",
                 f"/locations/{location_index}/travel_times/{travel_index}/to_ref",
+            )
+
+    scene_ids: set[str] = set()
+    floor_ids_by_scene: dict[str, set[str]] = {}
+    for scene_index, scene in enumerate(document.get("spatial_scenes", [])):
+        scene_id = scene["scene_id"]
+        scene_base = f"/spatial_scenes/{scene_index}"
+        if scene_id in scene_ids:
+            errors.append(
+                _error(
+                    "duplicate_scene_id",
+                    f"{scene_base}/scene_id",
+                    f"scene_id {scene_id!r} is already declared",
+                )
+            )
+        scene_ids.add(scene_id)
+        floor_ids: set[str] = set()
+        region_ids: set[str] = set()
+        for floor_index, floor in enumerate(scene.get("floors", [])):
+            floor_id = floor["floor_id"]
+            if floor_id in floor_ids:
+                errors.append(
+                    _error(
+                        "duplicate_floor_id",
+                        f"{scene_base}/floors/{floor_index}/floor_id",
+                        f"floor_id {floor_id!r} is already declared in scene {scene_id!r}",
+                    )
+                )
+            floor_ids.add(floor_id)
+        for region_index, region in enumerate(scene.get("regions", [])):
+            region_id = region["region_id"]
+            if region_id in region_ids:
+                errors.append(
+                    _error(
+                        "duplicate_region_id",
+                        f"{scene_base}/regions/{region_index}/region_id",
+                        f"region_id {region_id!r} is already declared in scene {scene_id!r}",
+                    )
+                )
+            region_ids.add(region_id)
+        floor_ids_by_scene[scene_id] = floor_ids
+
+    for location_index, location in enumerate(document["locations"]):
+        position = location.get("spatial_position")
+        if not position or position.get("coordinate_system") != "schematic":
+            continue
+        position_base = f"/locations/{location_index}/spatial_position"
+        scene_id = position.get("scene_id")
+        floor_id = position.get("floor_id")
+        if scene_id and scene_id not in scene_ids:
+            errors.append(
+                _error(
+                    "missing_scene_reference",
+                    f"{position_base}/scene_id",
+                    f"scene_id {scene_id!r} is not declared in spatial_scenes",
+                )
+            )
+        if floor_id and not scene_id:
+            errors.append(
+                _error(
+                    "floor_without_scene",
+                    f"{position_base}/floor_id",
+                    "floor_id requires a scene_id on the same schematic position",
+                )
+            )
+        if scene_id and floor_id and floor_id not in floor_ids_by_scene.get(scene_id, set()):
+            errors.append(
+                _error(
+                    "floor_scene_mismatch",
+                    f"{position_base}/floor_id",
+                    f"floor_id {floor_id!r} is not declared in scene {scene_id!r}",
+                )
             )
     for event_index, event in enumerate(document["events"]):
         _optional_declared_type(

@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpatialMapView } from "@/features/analyst-workbench/spatial-map/spatial-map-view";
 import {
   createSpatialRenderer,
+  type SpatialRenderOptions,
+  type SpatialRenderSelection,
   type SpatialRenderer,
 } from "@/features/analyst-workbench/spatial-map/spatial-renderer";
 import type {
@@ -75,7 +77,13 @@ function mapModel(): WorkbenchMapModel {
       topology: { mode: "topology", locations: [], relations: [] },
     },
     unlocatedLocationIds: ["loc_missing"],
-    unlocatedLocations: [{ locationId: "loc_missing", label: "未定位地点" }],
+    unlocatedLocations: [
+      {
+        locationId: "loc_missing",
+        label: "未定位地点",
+        reason: "no_coordinates",
+      },
+    ],
     counts: {
       locations: 3,
       events: 1,
@@ -113,6 +121,106 @@ function topologyMapModel(): WorkbenchMapModel {
   };
 }
 
+function sceneMapModel(): WorkbenchMapModel {
+  const firstFloor: WorkbenchSpatialLocation = {
+    spatialId: "loc_f1",
+    locationId: "loc_f1",
+    label: "一楼门厅",
+    source: "schematic",
+    position: {
+      kind: "planar",
+      x: 12,
+      y: 34,
+      sceneId: "scn_mansion",
+      floorId: "floor_1",
+    },
+    events: [],
+    relatedObjectIds: [],
+  };
+  const secondFloor: WorkbenchSpatialLocation = {
+    spatialId: "loc_f2",
+    locationId: "loc_f2",
+    label: "二楼书房",
+    source: "schematic",
+    position: {
+      kind: "planar",
+      x: 70,
+      y: 80,
+      sceneId: "scn_mansion",
+      floorId: "floor_2",
+    },
+    events: [],
+    relatedObjectIds: [],
+  };
+  return {
+    availableModes: ["scene"],
+    defaultMode: "scene",
+    views: {
+      geographic: { mode: "geographic", locations: [], relations: [] },
+      scene: {
+        mode: "scene",
+        locations: [firstFloor, secondFloor],
+        relations: [],
+        regions: [
+          {
+            regionId: "region_hall",
+            sceneId: "scn_mansion",
+            name: "大厅",
+            geometry: [
+              { x: 0, y: 0 },
+              { x: 20, y: 0 },
+              { x: 20, y: 20 },
+            ],
+          },
+        ],
+      },
+      topology: { mode: "topology", locations: [], relations: [] },
+    },
+    scenes: [
+      {
+        sceneId: "scn_mansion",
+        name: "庄园",
+        backgroundImageUrl: "https://example.test/mansion.png",
+        imageWidth: 1200,
+        imageHeight: 800,
+        floors: [
+          {
+            floorId: "floor_1",
+            label: "1F",
+            backgroundImageUrl: "https://example.test/floor-1.png",
+            imageWidth: 1200,
+            imageHeight: 800,
+          },
+          { floorId: "floor_2", label: "2F", backgroundImageUrl: null, imageWidth: null, imageHeight: null },
+        ],
+        regions: [
+          {
+            regionId: "region_hall",
+            sceneId: "scn_mansion",
+            name: "大厅",
+            geometry: [
+              { x: 0, y: 0 },
+              { x: 20, y: 0 },
+              { x: 20, y: 20 },
+            ],
+          },
+        ],
+      },
+    ],
+    unlocatedLocationIds: [],
+    unlocatedLocations: [],
+    counts: {
+      locations: 2,
+      events: 0,
+      geographic: 0,
+      scene: 2,
+      inferred: 0,
+      unlocated: 0,
+      scenes: 1,
+    },
+  };
+}
+
 function renderMap(
   overrides: Partial<React.ComponentProps<typeof SpatialMapView>> = {},
 ) {
@@ -137,16 +245,25 @@ const renderers: Array<{
   renderer: SpatialRenderer;
 }> = [];
 let reportTileError = false;
+let renderCallCount = 0;
+let updateSelectionCalls: SpatialRenderSelection[] = [];
+let renderOptionsCalls: SpatialRenderOptions[] = [];
 
 beforeEach(() => {
   reportTileError = false;
+  renderCallCount = 0;
+  updateSelectionCalls = [];
+  renderOptionsCalls = [];
   renderers.length = 0;
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_TILE_URL;
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION;
+  delete process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL;
   vi.mocked(createSpatialRenderer).mockImplementation(({ container, mode }) => {
     let currentViewport = { center: [50, 50] as [number, number], zoom: 1 };
     const renderer: SpatialRenderer = {
-      render(view, selection, callbacks, options) {
+      render: vi.fn((view, selection, callbacks, options) => {
+        renderCallCount += 1;
+        renderOptionsCalls.push(options);
         container.replaceChildren();
         for (const location of view.locations) {
           const marker = document.createElement("button");
@@ -187,11 +304,16 @@ beforeEach(() => {
           container.append(marker);
         }
         if (reportTileError && mode === "geographic") callbacks.onTileError();
-      },
+      }),
       fitAll: vi.fn(),
       focusLocation: vi.fn(),
+      focusRegion: vi.fn(),
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
+      setCallbacks: vi.fn(),
+      updateSelection: vi.fn((selection) => {
+        updateSelectionCalls.push(selection);
+      }),
       getViewport: vi.fn(() => currentViewport),
       setViewport: vi.fn((viewport) => {
         currentViewport = viewport;
@@ -209,6 +331,7 @@ afterEach(() => {
   vi.clearAllMocks();
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_TILE_URL;
   delete process.env.NEXT_PUBLIC_CASEFILE_MAP_ATTRIBUTION;
+  delete process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL;
 });
 
 describe("spatial map view", () => {
@@ -240,6 +363,106 @@ describe("spatial map view", () => {
     expect(renderers[2].renderer.setViewport).toHaveBeenCalledWith({
       center: [50, 50],
       zoom: 1,
+    });
+  });
+
+  it("does not rebuild marker layers when only callback identities change", async () => {
+    const { props, rerender } = renderMap();
+    await screen.findByRole("button", { name: "地理地点 marker" });
+
+    expect(renderCallCount).toBe(1);
+    rerender(
+      <SpatialMapView
+        {...props}
+        onSelectLocation={vi.fn(() => true)}
+        onSelectEvent={vi.fn(() => true)}
+      />,
+    );
+
+    expect(renderCallCount).toBe(1);
+    expect(renderers[0].renderer.setCallbacks).toHaveBeenCalled();
+  });
+
+  it("updates selection incrementally instead of rebuilding map layers", async () => {
+    const onSelectLocation = vi.fn(() => true);
+    renderMap({ onSelectLocation });
+    const marker = await screen.findByRole("button", {
+      name: "地理地点 marker",
+    });
+
+    const renderCalls = renderCallCount;
+    const updateCalls = updateSelectionCalls.length;
+    fireEvent.click(marker);
+
+    await waitFor(() =>
+      expect(updateSelectionCalls).toHaveLength(updateCalls + 1),
+    );
+    expect(updateSelectionCalls.at(-1)).toEqual(
+      expect.objectContaining({ activeSpatialId: "loc_geo" }),
+    );
+    expect(renderCallCount).toBe(renderCalls);
+  });
+
+  it("searches a location and jumps to its matching map mode", async () => {
+    const onSelectLocation = vi.fn(() => true);
+    renderMap({ onSelectLocation });
+    const search = screen.getByRole("searchbox", { name: "搜索地点、事件或区域" });
+
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "场景" } });
+    fireEvent.click(await screen.findByRole("option", { name: /场景地点/u }));
+
+    expect(onSelectLocation).toHaveBeenCalledWith("loc_scene");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "场景图" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    expect(await screen.findByRole("dialog")).toHaveTextContent("明确场景坐标");
+  });
+
+  it("search reveals unlocated reasons and highlights the audit entry", async () => {
+    renderMap();
+    const search = screen.getByRole("searchbox", { name: "搜索地点、事件或区域" });
+
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "未定位" } });
+    fireEvent.click(await screen.findByRole("option", { name: /尚无坐标/u }));
+
+    expect(
+      screen.getByRole("checkbox", { name: /待确认位置推算与未定位/u }),
+    ).toBeChecked();
+    const entry = screen.getByText("未定位地点", { selector: "b" }).closest("li");
+    expect(entry).toHaveAttribute("data-highlighted", "true");
+    expect(entry).toHaveTextContent("尚无坐标");
+  });
+
+  it("turns the event layer off together with the location layer", async () => {
+    renderMap();
+    await screen.findByRole("button", { name: "地理地点 marker" });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /地点明确坐标/u }));
+
+    const events = screen.getByRole("checkbox", { name: /事件地点关闭时不可用/u });
+    expect(events).toBeDisabled();
+    expect(events).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "地理地点 marker" })).toBeNull();
+  });
+
+  it("passes a deployment scene image to the scene renderer only", async () => {
+    process.env.NEXT_PUBLIC_CASEFILE_MAP_SCENE_IMAGE_URL =
+      "https://example.test/floor-plan.png";
+    renderMap();
+    await screen.findByRole("button", { name: "地理地点 marker" });
+
+    fireEvent.click(screen.getByRole("button", { name: "场景图" }));
+    await screen.findByRole("button", { name: "场景地点 marker" });
+
+    expect(renderOptionsCalls[0]?.sceneBackground).toBeNull();
+    expect(renderOptionsCalls.at(-1)?.sceneBackground).toEqual({
+      url: "https://example.test/floor-plan.png",
+      alt: "场景底图",
     });
   });
 
@@ -324,6 +547,7 @@ describe("spatial map view", () => {
       direction: "undirected",
       label: "相邻",
       minutes: null,
+      routeGeometry: null,
     });
     renderMap({ map: model });
 
@@ -334,7 +558,9 @@ describe("spatial map view", () => {
     expect(screen.getByText("真实坐标").parentElement).toHaveTextContent("2");
 
     fireEvent.click(screen.getByRole("checkbox", { name: /空间关系只读核对/u }));
-    expect(screen.getByText("关系连线不代表实际路线。")).toBeInTheDocument();
+    expect(
+      screen.getByText(/虚线与相邻关系不代表实际路线/u),
+    ).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "当前可见空间关系" })).toHaveTextContent(
       "loc_geo",
     );
@@ -531,5 +757,57 @@ describe("spatial map view", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByText(/候选预览只读/u)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑位置" })).toBeNull();
+  });
+
+  it("switches scene floors in place without rebuilding the renderer", async () => {
+    renderMap({ map: sceneMapModel() });
+
+    expect(await screen.findByRole("button", { name: "一楼门厅 marker" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "二楼书房 marker" })).toBeNull();
+    expect(screen.getByRole("button", { name: "1F" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "2F" }));
+
+    expect(await screen.findByRole("button", { name: "二楼书房 marker" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "一楼门厅 marker" })).toBeNull();
+    expect(renderers).toHaveLength(1);
+    expect(renderers[0].renderer.destroy).not.toHaveBeenCalled();
+  });
+
+  it("searches case-bound regions and focuses their scene polygon", async () => {
+    renderMap({ map: sceneMapModel() });
+    const search = screen.getByRole("searchbox", { name: "搜索地点、事件或区域" });
+
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "大厅" } });
+    fireEvent.click(await screen.findByRole("option", { name: /大厅/u }));
+
+    expect(screen.getByText(/已定位到区域「大厅」/u)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(renderers[0].renderer.focusRegion).toHaveBeenCalledWith(
+        "scn_mansion:region_hall",
+      ),
+    );
+  });
+
+  it("navigates search suggestions with arrow keys and aria-activedescendant", async () => {
+    renderMap({ map: sceneMapModel() });
+    const search = screen.getByRole("searchbox", { name: "搜索地点、事件或区域" });
+
+    fireEvent.focus(search);
+    fireEvent.change(search, { target: { value: "楼" } });
+    const first = await screen.findByRole("option", { name: /一楼门厅/u });
+
+    expect(search).toHaveAttribute("aria-activedescendant", "spatial-search-option-0");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(search).toHaveAttribute("aria-activedescendant", "spatial-search-option-1");
+    expect(first).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("option", { name: /二楼书房/u })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 });

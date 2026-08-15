@@ -43,6 +43,10 @@
     "entities": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Entity"}},
     "relationships": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Relationship"}},
     "locations": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Location"}},
+    "spatial_scenes": {
+      "type": "array",
+      "items": {"$ref": "objects.schema.json#/$defs/SpatialScene"}
+    },
     "events": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Event"}},
     "information_units": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/InformationUnit"}},
     "claims": {"type": "array", "items": {"$ref": "objects.schema.json#/$defs/Claim"}},
