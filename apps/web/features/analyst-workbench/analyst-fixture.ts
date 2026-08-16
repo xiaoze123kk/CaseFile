@@ -341,6 +341,14 @@ export const caseObjects: CaseObject[] = [
     meta: "仍缺身份闭环",
     relatedEventIds: ["EV-1800", "EV-1825"],
   },
+  {
+    id: "HYP-001",
+    kind: "hypothesis",
+    label: "外部入侵者",
+    code: "竞争假设 / 31%",
+    meta: "无法解释 R4 覆盖",
+    relatedEventIds: ["EV-1825"],
+  },
 ];
 
 export const timelineEvents: TimelineEvent[] = [
@@ -460,6 +468,7 @@ export const graphNodes: GraphNode[] = [
   { objectId: "EVD-113", x: 77, y: 75 },
   { objectId: "LOC-007", x: 49, y: 86 },
   { objectId: "HYP-002", x: 87, y: 49 },
+  { objectId: "HYP-001", x: 88, y: 70 },
 ];
 
 export const graphEdges: GraphEdge[] = [
@@ -469,6 +478,7 @@ export const graphEdges: GraphEdge[] = [
   { from: "EVD-113", to: "EV-1825", label: "后知" },
   { from: "LOC-007", to: "EV-1825", label: "发生于" },
   { from: "HYP-002", to: "EV-1825", label: "支持" },
+  { from: "HYP-001", to: "EV-1825", label: "反驳" },
 ];
 
 export const initialAuditEntries = [
@@ -564,6 +574,65 @@ export const defaultWorkbenchSeed: WorkbenchSeed = {
       conclusion: "内部接应者",
       outcome: "contested",
       hypothesisId: "HYP-002",
+    },
+  ],
+  reasoningGroups: [
+    {
+      resolutionSpecId: "res_main",
+      question: "第五人权限如何进入码头",
+      hypotheses: [
+        { id: "HYP-002", title: "内部接应者", outcome: "contested" },
+        { id: "HYP-001", title: "外部入侵者", outcome: "eliminated" },
+      ],
+      information: [
+        { id: "EVD-071", title: "07 号门禁记录", reliability: "high" },
+        { id: "EVD-113", title: "海关电台录音 A-13", reliability: "high" },
+        { id: "EVD-209", title: "检修通道监控", reliability: "medium" },
+      ],
+      assessments: [
+        {
+          hypothesisId: "HYP-002",
+          informationId: "EVD-071",
+          effect: "supports",
+          strength: "strong",
+          rationale: "门禁覆盖签名属于内部 R4 权限，与内部接应解释一致。",
+        },
+        {
+          hypothesisId: "HYP-002",
+          informationId: "EVD-113",
+          effect: "supports",
+          strength: "moderate",
+          rationale: "录音首次给出内部代号，为内部接应提供术语闭环。",
+        },
+        {
+          hypothesisId: "HYP-002",
+          informationId: "EVD-209",
+          effect: "contradicts",
+          strength: "weak",
+          rationale: "监控缺口无法直接证明内部接应者存在。",
+        },
+        {
+          hypothesisId: "HYP-001",
+          informationId: "EVD-071",
+          effect: "contradicts",
+          strength: "strong",
+          rationale: "覆盖签名需要内部 R4 权限，外部入侵无法解释。",
+        },
+        {
+          hypothesisId: "HYP-001",
+          informationId: "EVD-113",
+          effect: "neutral",
+          strength: "weak",
+          rationale: "录音未提及外部人员，无法支持外部入侵解释。",
+        },
+        {
+          hypothesisId: "HYP-001",
+          informationId: "EVD-209",
+          effect: "supports",
+          strength: "moderate",
+          rationale: "监控缺口可能对应外部人员破坏设备。",
+        },
+      ],
     },
   ],
   mapMarkers: defaultMapMarkers,

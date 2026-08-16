@@ -1282,7 +1282,7 @@ describe("production analyst workbench", () => {
     }
 
     expect(
-      screen.getByText("“记录曾被改写”暂无可对照证据"),
+      screen.getByText("当前问题只有一个假设，至少需要两个解释才能比较。"),
     ).toBeInTheDocument();
     expect(screen.queryByText("角色提前知道“第五人权限”")).not.toBeInTheDocument();
     expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();

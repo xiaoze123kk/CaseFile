@@ -84,6 +84,7 @@ import {
 } from "./workbench-real-data";
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
+import { EvidenceComparisonView } from "./workbench-evidence-comparison";
 import { TimelineOverview } from "./timeline/timeline-overview";
 import {
   CompileCenterView,
@@ -905,6 +906,7 @@ function AnalystWorkbenchSurface({
     loading: false,
   };
   const [view, setView] = useState<WorkbenchView>("timeline");
+  const [evidenceTab, setEvidenceTab] = useState<"matrix" | "issues">("matrix");
   const [selectedEventId, setSelectedEventId] = useState(seed.defaultEventId);
   const [selectedObjectId, setSelectedObjectId] = useState(seed.defaultObjectId);
   const [objectHistory, setObjectHistory] = useState(() =>
@@ -1297,6 +1299,7 @@ function AnalystWorkbenchSurface({
     setKindFilter("event");
     setSubtypeFilter("all");
     setView("evidence");
+    setEvidenceTab("issues");
     setMobileRegion("canvas");
     setManualEditing(false);
     setManualValue(issue.patchAfter);
@@ -1339,6 +1342,7 @@ function AnalystWorkbenchSurface({
       return;
     }
     setView("timeline");
+    setEvidenceTab("matrix");
     setSelectedEventId(seed.defaultEventId);
     setSelectedObjectId(seed.defaultObjectId);
     setSelectedIssueId(seed.defaultIssueId);
@@ -1773,22 +1777,54 @@ function AnalystWorkbenchSurface({
               <CompileCenterView seed={seed} unresolvedCount={unresolvedCount} />
             ) : null}
             {view === "evidence" ? (
-              <EvidenceComparison
-                editing={manualEditing}
-                issueId={visibleSelectedIssueId}
-                issueStatuses={visibleIssueStatuses}
-                manualValue={manualValue}
-                onManualValueChange={setManualValue}
-                onRejectPatch={rejectPatch}
-                onRequestPatch={requestPatch}
-                onResolveIssue={resolveIssue}
-                onSaveManual={() => resolveIssue("manual")}
-                onSelectIssue={openIssue}
-                onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
-                selectedObjectId={selectedObjectId}
-                seed={seed}
-                status={selectedStatus}
-              />
+              <div className={styles.evidenceView}>
+                <div
+                  aria-label="证据对比子视图"
+                  className={styles.evidenceTabs}
+                  role="tablist"
+                >
+                  <button
+                    aria-selected={evidenceTab === "matrix"}
+                    onClick={() => setEvidenceTab("matrix")}
+                    role="tab"
+                    type="button"
+                  >
+                    证据矩阵
+                  </button>
+                  <button
+                    aria-selected={evidenceTab === "issues"}
+                    onClick={() => setEvidenceTab("issues")}
+                    role="tab"
+                    type="button"
+                  >
+                    验证问题
+                  </button>
+                </div>
+                {evidenceTab === "matrix" ? (
+                  <EvidenceComparisonView
+                    onSelectObject={(objectId) => selectObject(objectId)}
+                    seed={seed}
+                    selectedObjectId={selectedObjectId}
+                  />
+                ) : (
+                  <EvidenceComparison
+                    editing={manualEditing}
+                    issueId={visibleSelectedIssueId}
+                    issueStatuses={visibleIssueStatuses}
+                    manualValue={manualValue}
+                    onManualValueChange={setManualValue}
+                    onRejectPatch={rejectPatch}
+                    onRequestPatch={requestPatch}
+                    onResolveIssue={resolveIssue}
+                    onSaveManual={() => resolveIssue("manual")}
+                    onSelectIssue={openIssue}
+                    onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
+                    selectedObjectId={selectedObjectId}
+                    seed={seed}
+                    status={selectedStatus}
+                  />
+                )}
+              </div>
             ) : null}
           </div>
         </main>
