@@ -49,6 +49,14 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     ResolutionGovernanceIRV2,
     TemporalPlannerInputV3,
 )
+from casefile.agent_runtime.models import (
+    CaseFileChatCandidate,
+    ChatExecutorInputV1,
+    ChatIntentRouterInputV1,
+    ChatRewriteInputV1,
+    ChatTaskUnderstandingOutput,
+    QueryRewriteOutput,
+)
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 
@@ -118,6 +126,9 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "brief-to-draft-governance-input-v5": GovernanceDraftInputV5,
         "brief-to-draft-evidence-repair-input-v1": EvidenceRepairInputV1,
         "brief-to-draft-matrix-evaluation-input-v1": MatrixEvaluationInputV1,
+        "casefile-chat-intent-input-v1": ChatIntentRouterInputV1,
+        "casefile-chat-rewrite-input-v1": ChatRewriteInputV1,
+        "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -132,6 +143,9 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "resolution-governance-ir-v1": ResolutionGovernanceIRV1,
         "resolution-governance-ir-v2": ResolutionGovernanceIRV2,
         "matrix-evaluation-v1": MatrixEvaluationOutputV1,
+        "casefile-chat-task-understanding-v1": ChatTaskUnderstandingOutput,
+        "casefile-chat-rewrite-v1": QueryRewriteOutput,
+        "casefile-chat-output-v1": CaseFileChatCandidate,
     }
 )
 TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType({"no-tools-v1": frozenset()})
@@ -144,6 +158,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("brief-to-draft-pipeline-v13", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v14", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v15", TOOLSET_VERSION),
+        ("casefile-single-agent-v2", TOOLSET_VERSION),
     }
 )
 

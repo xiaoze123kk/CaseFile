@@ -48,13 +48,41 @@ from casefile.agent_runtime import (
     ReverseParseRequest,
     ReverseParseResult,
 )
+from casefile.agent_runtime.chat_intent import (
+    INTENT_ROUTER_VERSION,
+    RuleRoute,
+    normalize_routing_hint,
+    resolve_intent_mentions,
+    resolve_rule_route,
+    route_public_payload,
+    task_understanding_for_rule,
+    task_understanding_from_output,
+)
+from casefile.agent_runtime.chat_routing import (
+    fallback_route,
+    route_llm_task,
+    routing_policy,
+)
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.agent_runtime.models import (
+    ChatTaskUnderstanding,
+    QueryRewriteResult,
+    RouteDecision,
+    RouteSpecificRewriteRequest,
+    agent_state_to_jsonable,
+)
 from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
 )
 from casefile.agent_runtime.prompt import COMPONENT_GENERATION_PROMPT_VERSIONS
 from casefile.agent_runtime.providers import ProviderProtocolError
+from casefile.agent_runtime.query_rewrite import (
+    build_llm_rewrite,
+    build_rule_rewrite,
+    preservation_lint,
+    route_specific_rewrite_strategy,
+)
 from casefile.application.brief_intake_service import BriefIntakeService
 from casefile.application.casefile_v1 import (
     generation_candidate_summary,
@@ -85,6 +113,7 @@ from casefile.data_postgres.models import (
     BriefVersion,
     SourceRecord,
     TaskAttempt,
+    TaskEvent,
     TaskRun,
     UserProviderSetting,
 )
@@ -99,6 +128,203 @@ def provider_for_task(task: TaskRun) -> AgentProvider:
     if task.provider == "deepseek":
         return DeepSeekAgentsProvider()
     raise RuntimeError(f"Unsupported provider frozen on TaskRun: {task.provider}")
+
+
+@dataclass(frozen=True, slots=True)
+class ReusedChatRouting:
+    task_understanding: ChatTaskUnderstanding
+    route: RouteDecision
+    rewrite: QueryRewriteResult
+
+
+def _resolve_chat_route(
+    request: CaseFileChatRequest,
+    *,
+    budget: dict[str, Any] | None = None,
+    provider: AgentProvider | None = None,
+    previous: ReusedChatRouting | None = None,
+) -> CaseFileChatRequest:
+    """R2 cascade: rule → LLM intent → confidence gate → rewrite."""
+
+    if not request.routing_hint:
+        return request
+    if previous is not None:
+        return replace(
+            request,
+            task_understanding=previous.task_understanding,
+            route=previous.route,
+            rewrite=previous.rewrite,
+        )
+    rule = resolve_rule_route(request)
+    if rule is not None:
+        understanding = task_understanding_for_rule(rule)
+        route = routing_policy(
+            understanding,
+            budget=budget,
+            profile=rule.profile,
+            rewrite_strategy=_rewrite_strategy_for_rule(rule),
+            route_source=rule.route_source,
+        )
+        return replace(
+            request,
+            task_understanding=understanding,
+            route=route,
+            rewrite=build_rule_rewrite(understanding, request.message),
+        )
+    if provider is None:
+        return _fallback_chat_request(request, reason_codes=("router_unavailable",))
+    try:
+        intent_result = provider.understand_intent(request)
+        understanding = task_understanding_from_output(intent_result.candidate)
+        understanding = resolve_intent_mentions(understanding, request)
+        rewrite = build_llm_rewrite(
+            understanding,
+            request.message,
+            intent_result.candidate.canonical_query,
+        )
+        route = route_llm_task(
+            understanding,
+            budget=budget,
+            rewrite_strategy=rewrite.rewrite_decision,
+        )
+        selected_strategy = route_specific_rewrite_strategy(understanding)
+        if selected_strategy in {"MULTI_QUERY", "DECOMPOSE"}:
+            route = replace(route, rewrite_strategy=selected_strategy)
+        rewrite = _post_route_rewrite(
+            request,
+            provider,
+            understanding,
+            route,
+            rewrite,
+        )
+        return replace(
+            request,
+            task_understanding=understanding,
+            route=route,
+            rewrite=rewrite,
+        )
+    except Exception as error:
+        reason_code = _router_failure_reason(error)
+        return _fallback_chat_request(
+            request,
+            reason_codes=(reason_code,),
+        )
+
+
+def _fallback_chat_request(
+    request: CaseFileChatRequest,
+    *,
+    reason_codes: tuple[str, ...],
+) -> CaseFileChatRequest:
+    route = fallback_route(reason_codes=reason_codes)
+    understanding = _fallback_task_understanding(route)
+    return replace(
+        request,
+        task_understanding=understanding,
+        route=route,
+        rewrite=build_llm_rewrite(understanding, request.message, request.message),
+    )
+
+
+def _post_route_rewrite(
+    request: CaseFileChatRequest,
+    provider: AgentProvider,
+    understanding: ChatTaskUnderstanding,
+    route: RouteDecision,
+    conservative: QueryRewriteResult,
+) -> QueryRewriteResult:
+    if route.rewrite_strategy not in {"MULTI_QUERY", "DECOMPOSE"}:
+        return conservative
+    result = provider.rewrite_for_route(
+        RouteSpecificRewriteRequest(
+            task_run_id=request.task_run_id,
+            prompt_version=request.prompt_version,
+            original_query=request.message,
+            normalized_query=conservative.normalized_query,
+            conservative_canonical_query=conservative.canonical_query,
+            primary_intent=understanding.primary_intent,
+            sub_intents=understanding.sub_intents,
+            constraints=understanding.constraints,
+            rewrite_strategy=route.rewrite_strategy,
+            route_profile=str(route.routes[0]["profile"]),
+            input_hash=request.input_hash,
+            model_id=request.model_id,
+            api_key=request.api_key,
+            max_turns=request.max_turns,
+            emit=request.emit,
+            network_retries=request.network_retries,
+        )
+    )
+    candidate = result.candidate
+    canonical = candidate.canonical_query.strip() or conservative.canonical_query
+    checks = preservation_lint_for_rewrite(request.message, canonical)
+    if not all(checks.values()):
+        return conservative
+    return QueryRewriteResult(
+        original_query=request.message,
+        normalized_query=conservative.normalized_query,
+        canonical_query=canonical,
+        retrieval_queries=tuple(candidate.retrieval_queries),
+        rewrite_decision=candidate.rewrite_decision,
+        preservation_checks=checks,
+    )
+
+
+def preservation_lint_for_rewrite(original: str, canonical: str) -> dict[str, Any]:
+    return preservation_lint(original, canonical)
+
+
+def _router_failure_reason(error: Exception) -> str:
+    if isinstance(error, ProviderProtocolError):
+        return "intent_router_provider_failure"
+    return "intent_router_unexpected_failure"
+
+
+def _rewrite_strategy_for_rule(rule: RuleRoute) -> str:
+    if rule.reason_code == "rule_ui:issue_action":
+        return "KEEP"
+    return "CONTEXTUALIZE"
+
+
+def _fallback_task_understanding(route: RouteDecision) -> ChatTaskUnderstanding:
+    return ChatTaskUnderstanding(
+        primary_intent="question",
+        confidence=route.confidence,
+        risk_level="low",
+        ambiguous=True,
+        reason_codes=route.reason_codes,
+    )
+
+
+def _chat_intent_event_payload(request: CaseFileChatRequest) -> dict[str, Any]:
+    understanding = request.task_understanding
+    if understanding is None:
+        return {"router_version": INTENT_ROUTER_VERSION, "primary_intent": None}
+    return {
+        "router_version": INTENT_ROUTER_VERSION,
+        "route_source": request.route.route_source if request.route is not None else None,
+        "primary_intent": understanding.primary_intent,
+        "sub_intents": list(understanding.sub_intents),
+        "risk_level": understanding.risk_level,
+        "confidence": understanding.confidence,
+        "reason_codes": list(understanding.reason_codes),
+        "state": agent_state_to_jsonable(understanding),
+    }
+
+
+def _chat_rewrite_event_payload(request: CaseFileChatRequest) -> dict[str, Any]:
+    rewrite = request.rewrite
+    route = request.route
+    if rewrite is None:
+        return {"router_version": INTENT_ROUTER_VERSION, "rewrite_decision": None}
+    return {
+        "router_version": INTENT_ROUTER_VERSION,
+        "route_hash": None if route is None else route.route_hash,
+        "rewrite_decision": rewrite.rewrite_decision,
+        "retrieval_query_count": len(rewrite.retrieval_queries),
+        "preservation_checks": rewrite.preservation_checks,
+        "rewrite": agent_state_to_jsonable(rewrite),
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +652,23 @@ class Worker:
                 return
             if task_snapshot.task_type == "casefile_chat":
                 chat_request = self._load_chat_request(task_snapshot, api_key)
+                previous_routing = self._load_previous_chat_routing(task_snapshot.id)
+                chat_request = _resolve_chat_route(
+                    chat_request,
+                    budget=task_snapshot.budget_jsonb,
+                    provider=provider,
+                    previous=previous_routing,
+                )
+                if chat_request.route is not None:
+                    if previous_routing is None:
+                        self._emit_chat_routing_events(task_run_id, chat_request)
+                        if chat_request.route.route_source == "fallback":
+                            self._emit(
+                                task_run_id,
+                                "router.fallback",
+                                "routing",
+                                route_public_payload(chat_request.route),
+                            )
                 chat_result = provider.chat(chat_request)
                 candidate = chat_result.candidate.model_dump(mode="json")
                 usage = chat_result.usage
@@ -433,6 +676,7 @@ class Worker:
                     task_run_id,
                     attempt_id,
                     chat_result,
+                    route=chat_request.route,
                 )
                 return
             if task_snapshot.task_type != "brief_to_draft":
@@ -665,6 +909,27 @@ class Worker:
             if role not in {"user", "assistant"} or not isinstance(content, str) or not content:
                 raise RuntimeError("Frozen CaseFile chat history entry is invalid")
             history.append({"role": role, "content": content})
+        raw_validation = frozen_input.get("validation")
+        validation: dict[str, Any] = {}
+        validation_issues: tuple[dict[str, Any], ...] = ()
+        if isinstance(raw_validation, dict):
+            validation = raw_validation
+            raw_issues = raw_validation.get("issues")
+            if isinstance(raw_issues, list):
+                validation_issues = tuple(
+                    item for item in raw_issues if isinstance(item, dict)
+                )
+        focus = frozen_input.get("focus")
+        if not isinstance(focus, dict):
+            focus = {}
+        routing_hint: dict[str, Any] = {}
+        raw_routing_hint = frozen_input.get("routing_hint")
+        if raw_routing_hint is not None:
+            if not isinstance(raw_routing_hint, dict):
+                raise RuntimeError("Frozen CaseFile chat routing_hint is invalid")
+            if frozen_input.get("router_version") != INTENT_ROUTER_VERSION:
+                raise RuntimeError("Frozen CaseFile chat router version is invalid")
+            routing_hint = normalize_routing_hint(raw_routing_hint)
         return CaseFileChatRequest(
             task_run_id=task.id,
             prompt_version=task.prompt_version,
@@ -677,7 +942,87 @@ class Worker:
             api_key=api_key,
             max_turns=int(task.budget_jsonb.get("max_turns", 12)),
             emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
+            validation_issues=validation_issues,
+            validation=validation,
+            focus=focus,
+            routing_hint=routing_hint,
             network_retries=_network_retries(task),
+        )
+
+    def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
+        """Reuse the latest route decision on retry; never classify twice."""
+
+        with self.session_factory() as session:
+            route_event = session.scalar(
+                select(TaskEvent)
+                .where(
+                    TaskEvent.task_run_id == task_run_id,
+                    TaskEvent.event_type == "route.decided",
+                )
+                .order_by(TaskEvent.sequence_no.desc())
+                .limit(1)
+            )
+            if route_event is None:
+                return None
+            intent_event = session.scalar(
+                select(TaskEvent)
+                .where(
+                    TaskEvent.task_run_id == task_run_id,
+                    TaskEvent.event_type == "intent.understood",
+                )
+                .order_by(TaskEvent.sequence_no.desc())
+                .limit(1)
+            )
+            rewrite_event = session.scalar(
+                select(TaskEvent)
+                .where(
+                    TaskEvent.task_run_id == task_run_id,
+                    TaskEvent.event_type == "query.rewritten",
+                )
+                .order_by(TaskEvent.sequence_no.desc())
+                .limit(1)
+            )
+        if intent_event is None or rewrite_event is None:
+            return None
+        intent_payload = intent_event.payload_jsonb
+        rewrite_payload = rewrite_event.payload_jsonb
+        state = intent_payload.get("state")
+        rewrite = rewrite_payload.get("rewrite")
+        if not isinstance(state, dict) or not isinstance(rewrite, dict):
+            return None
+        return ReusedChatRouting(
+            task_understanding=ChatTaskUnderstanding(**state),
+            route=RouteDecision(**route_event.payload_jsonb),
+            rewrite=QueryRewriteResult(**rewrite),
+        )
+
+    def _emit_chat_routing_events(
+        self,
+        task_run_id: int,
+        request: CaseFileChatRequest,
+    ) -> None:
+        """Emit the R1 deterministic routing audit trail before the model call."""
+
+        route = request.route
+        if route is None:
+            return
+        self._emit(
+            task_run_id,
+            "intent.understood",
+            "routing",
+            _chat_intent_event_payload(request),
+        )
+        self._emit(
+            task_run_id,
+            "route.decided",
+            "routing",
+            route_public_payload(route),
+        )
+        self._emit(
+            task_run_id,
+            "query.rewritten",
+            "routing",
+            _chat_rewrite_event_payload(request),
         )
 
     def _complete_chat(
@@ -685,6 +1030,8 @@ class Worker:
         task_run_id: int,
         attempt_id: int,
         result: CaseFileChatResult,
+        *,
+        route: RouteDecision | None = None,
     ) -> None:
         suggestions: list[dict[str, Any]] = []
         for suggestion in result.candidate.suggestions:
@@ -703,13 +1050,24 @@ class Worker:
                 }
             )
         with self.session_factory() as session:
+            route_payload = (
+                None
+                if route is None
+                else cast(dict[str, Any], agent_state_to_jsonable(route))
+            )
             WorkflowService(session).complete_chat_task(
                 task_run_id,
                 attempt_id,
                 answer=result.candidate.answer,
                 referenced_object_ids=result.candidate.referenced_object_ids,
+                referenced_event_ids=result.candidate.referenced_event_ids,
+                referenced_validation_issue_ids=(
+                    result.candidate.referenced_validation_issue_ids
+                ),
+                suggested_view=result.candidate.suggested_view,
                 suggestions=suggestions,
                 usage=result.usage,
+                route=route_payload,
             )
 
     def _complete_polish(
@@ -1214,7 +1572,10 @@ def _persist_agent_execution_event(
 ) -> None:
     """Project component execution events into queryable step/call audit rows."""
 
-    if task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS:
+    if (
+        task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS
+        and task.prompt_version != "casefile-chat-v2"
+    ):
         return
     component_id = payload.get("component_id")
     if not isinstance(component_id, str) or not component_id:
@@ -1269,6 +1630,33 @@ def _persist_agent_execution_event(
         .order_by(AgentStepRun.execution_no.desc())
         .with_for_update(of=AgentStepRun)
     )
+    if step is None and event_type == "agent.model_call.started":
+        # R2 chat router/rewriter providers emit model-call events directly.
+        # Materialize the owning StepRun lazily so the audit chain stays complete.
+        execution_no = int(
+            session.scalar(
+                select(func.coalesce(func.max(AgentStepRun.execution_no), 0) + 1).where(
+                    AgentStepRun.task_attempt_id == attempt.id,
+                    AgentStepRun.component_id == component_id,
+                )
+            )
+            or 1
+        )
+        step = AgentStepRun(
+            project_id=task.project_id,
+            task_run_id=task.id,
+            task_attempt_id=attempt.id,
+            component_id=component_id,
+            parent_component_id=None,
+            execution_no=execution_no,
+            status="running",
+            input_hash=str(payload.get("input_hash") or task.input_hash),
+            upstream_hashes_jsonb=dict(payload.get("upstream_hashes") or {}),
+            ir_schema_id=str(payload.get("schema_id") or "unknown"),
+            component_version=task.prompt_version,
+        )
+        session.add(step)
+        session.flush()
     if step is None:
         return
     if event_type in {"agent.step.completed", "agent.step.failed", "agent.step.reused"}:
@@ -1345,6 +1733,15 @@ def _persist_agent_execution_event(
             else None
         )
         model_call.finished_at = now
+        if (
+            step.status == "running"
+            and event_type == "agent.model_call.completed"
+            and component_id in {"intent_router", "query_rewriter"}
+        ):
+            step.status = "succeeded"
+            step.output_hash = step.output_hash or _optional_hash(payload.get("output_hash"))
+            step.usage_jsonb = dict(payload.get("usage") or step.usage_jsonb or {})
+            step.finished_at = now
 
 
 def _record_component_coordinator_failure(

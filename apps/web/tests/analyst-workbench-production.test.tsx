@@ -1288,6 +1288,48 @@ describe("production analyst workbench", () => {
     expect(screen.queryByText("Agent 建议")).not.toBeInTheDocument();
   });
 
+  it("offers 让 Agent 处理 on the selected validation issue in real data", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    mocks.fetchWorkbenchContext.mockResolvedValueOnce(
+      makeContext({
+        validation: {
+          status: "failed",
+          validator: "casefile.contracts.validate_casefile",
+          schema_version: "2.0",
+          issue_count: 1,
+          issues: [
+            {
+              issue_id: "validator:issue-1",
+              code: "CF-E-RESOLUTION-001",
+              path: "/proposition",
+              message: "记录改写假设缺少目标结论的支撑。",
+              severity: "error",
+              target: {
+                object_ref: {
+                  object_type: "hypothesis",
+                  object_id: "hyp_record_tampered",
+                },
+                field_path: "/proposition",
+              },
+            },
+          ],
+          reason: null,
+        },
+      }),
+    );
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    fireEvent.click(
+      await screen.findByRole("tab", { name: /证据对比/ }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "让 Agent 处理" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "请求 Agent 补丁" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps location and event selection inside the Current Draft map view", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     const { container } = render(<AnalystWorkbench requestedProjectId={42} />);

@@ -11,6 +11,14 @@ import rfc8785
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.chat_intent import (
+    INTENT_ROUTER_VERSION,
+    normalize_routing_hint,
+    route_allows_suggestions,
+    route_public_payload,
+    route_result_summary,
+    route_suggestion_policy,
+)
 from casefile.agent_runtime.credentials import encrypt_api_key
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
@@ -28,6 +36,12 @@ from casefile.application.agent_collaboration import (
 )
 from casefile.application.agent_collaboration import (
     find_frozen_object as _find_frozen_object,
+)
+from casefile.application.agent_collaboration import (
+    focused_patch_target_ids as _focused_patch_target_ids,
+)
+from casefile.application.agent_collaboration import (
+    freeze_agent_focus as _freeze_agent_focus,
 )
 from casefile.application.agent_collaboration import (
     frozen_object_ids as _frozen_object_ids,
@@ -51,6 +65,7 @@ from casefile.application.task_cancellation import (
 )
 from casefile.application.task_events import append_task_event
 from casefile.application.v1_editing import EDITABLE_FIELDS, V1EditingService
+from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_brief_validation import (
     require_confirmed_atomics as _require_confirmed_atomics,
 )
@@ -89,6 +104,9 @@ from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
 DEFAULT_PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.6-sol"
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
+SUPPORTED_CHAT_VIEWS = frozenset(
+    {"timeline", "relations", "reasoning", "map", "export", "compile", "evidence"}
+)
 DEFAULT_BUDGET: dict[str, Any] = {
     "max_turns": 12,
     "network_retries": 2,
@@ -319,6 +337,8 @@ class WorkflowService:
         expected_draft_revision: int,
         content: str,
         provider: str = DEFAULT_PROVIDER,
+        focus: dict[str, Any] | None = None,
+        routing_hint: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
         content = content.strip()
@@ -403,8 +423,23 @@ class WorkflowService:
                 thread.title = _auto_thread_title(content)
             now = datetime.now(UTC)
             thread.last_message_at = now
+            casefile = build_casefile_document(self.session, owned)
+            focus_values = focus if isinstance(focus, dict) else None
+            validation_snapshot = WorkbenchReadModel(
+                self.session
+            ).validation_snapshot(owned)
+            known_issue_ids = frozenset(
+                str(item["issue_id"])
+                for item in validation_snapshot.get("issues", [])
+                if isinstance(item, dict) and item.get("issue_id")
+            )
+            frozen_focus = _freeze_agent_focus(
+                casefile,
+                focus_values,
+                known_issue_ids,
+            )
             frozen_input = {
-                "casefile": build_casefile_document(self.session, owned),
+                "casefile": casefile,
                 "history": [
                     {
                         "role": message.role,
@@ -414,6 +449,15 @@ class WorkflowService:
                     if message.content_text is not None
                 ],
                 "message": content,
+                "focus": frozen_focus,
+                "validation": validation_snapshot,
+                "context_policy_version": "agent-focus-v1",
+                "routing_hint": (
+                    {"entrypoint": "free_text", "preset_id": None}
+                    if routing_hint is None
+                    else normalize_routing_hint(routing_hint)
+                ),
+                "router_version": INTENT_ROUTER_VERSION,
             }
             task = self._new_task(
                 owned,
@@ -450,8 +494,12 @@ class WorkflowService:
         *,
         answer: str,
         referenced_object_ids: list[str],
+        referenced_event_ids: list[str],
+        referenced_validation_issue_ids: list[str],
+        suggested_view: str | None = None,
         suggestions: list[dict[str, Any]],
         usage: dict[str, Any],
+        route: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist one structured chat result; intended as the Worker completion hook."""
 
@@ -502,6 +550,28 @@ class WorkflowService:
             if not isinstance(frozen_casefile, dict):
                 raise RuntimeError("CaseFile chat TaskRun has no frozen CaseFile")
 
+            # Route permission enforcement runs before reference/whitelist checks:
+            # a denied route must not let a model's extra suggestions fail the task.
+            suppressed_count = 0
+            suggestion_policy = (
+                None if route is None else route_suggestion_policy(route)
+            )
+            if route is not None and not route_allows_suggestions(route):
+                if suggestions:
+                    suppressed_count = len(suggestions)
+                    suggestions = []
+                    _append_event(
+                        self.session,
+                        task,
+                        "route.suggestions_suppressed",
+                        "routing",
+                        {
+                            **route_public_payload(route),
+                            "suggestion_policy": suggestion_policy,
+                            "suppressed_count": suppressed_count,
+                        },
+                    )
+
             registry_rows = list(
                 self.session.scalars(
                     select(CaseFileObject).where(
@@ -515,6 +585,55 @@ class WorkflowService:
             missing_references = sorted(set(referenced) - frozen_object_ids)
             if missing_references:
                 raise RuntimeError(f"Chat result references unknown objects: {missing_references}")
+
+            referenced_events = _unique_strings(referenced_event_ids)
+            frozen_event_ids = {
+                str(value["id"])
+                for value in frozen_casefile.get("events", [])
+                if isinstance(value, dict) and isinstance(value.get("id"), str)
+            }
+            missing_events = sorted(set(referenced_events) - frozen_event_ids)
+            if missing_events:
+                raise RuntimeError(
+                    f"Chat result references unknown events: {missing_events}"
+                )
+
+            referenced_issues = _unique_strings(referenced_validation_issue_ids)
+            known_issue_ids = WorkbenchReadModel(
+                self.session
+            ).validation_issue_ids(owned)
+            missing_issues = sorted(set(referenced_issues) - known_issue_ids)
+            if missing_issues:
+                raise RuntimeError(
+                    f"Chat result references unknown validation issues: {missing_issues}"
+                )
+
+            focused_target_ids = _focused_patch_target_ids(
+                task.input_jsonb.get("focus")
+            )
+            if focused_target_ids is not None:
+                off_focus_targets = sorted(
+                    {
+                        str(item["object_id"])
+                        for item in suggestions
+                        if isinstance(item, dict)
+                        and isinstance(item.get("object_id"), str)
+                        and item["object_id"] not in focused_target_ids
+                    }
+                )
+                if off_focus_targets:
+                    raise RuntimeError(
+                        "Chat suggestions must target objects bound to the "
+                        f"focused validation issue: {off_focus_targets}"
+                    )
+
+            resolved_view = (
+                None if suggested_view is None else str(suggested_view).strip() or None
+            )
+            if resolved_view is not None and resolved_view not in SUPPORTED_CHAT_VIEWS:
+                raise RuntimeError(
+                    f"Chat result suggests an unsupported view: {resolved_view}"
+                )
 
             stale = owned.draft.revision != task.input_draft_revision
             patch_set: AgentPatchSet | None = None
@@ -586,12 +705,26 @@ class WorkflowService:
                     patch_operations.append(patch_operation)
 
             now = datetime.now(UTC)
-            result_payload = {
+            routing_summary = (
+                None
+                if route is None
+                else route_result_summary(
+                    route,
+                    suggestion_policy=suggestion_policy,
+                    suppressed_count=suppressed_count,
+                )
+            )
+            result_payload: dict[str, Any] = {
                 "answer": answer,
                 "referenced_object_ids": referenced,
+                "referenced_event_ids": referenced_events,
+                "referenced_validation_issue_ids": referenced_issues,
+                "suggested_view": resolved_view,
                 "patch_set_id": None if patch_set is None else patch_set.id,
                 "stale": stale,
             }
+            if routing_summary is not None:
+                result_payload["routing"] = routing_summary
             output_message.status = "completed"
             output_message.content_text = answer
             thread.last_message_at = now
@@ -610,6 +743,15 @@ class WorkflowService:
             task.completed_at = now
             task.leased_by = None
             task.lease_expires_at = None
+            if route is not None:
+                assert routing_summary is not None
+                _append_event(
+                    self.session,
+                    task,
+                    "route.outcome",
+                    "completed",
+                    {**routing_summary, "succeeded": True},
+                )
             _append_event(
                 self.session,
                 task,
@@ -621,6 +763,7 @@ class WorkflowService:
                     "stale": stale,
                     "suggestion_count": len(suggestions),
                     "usage": usage,
+                    **({} if routing_summary is None else {"routing": routing_summary}),
                 },
             )
             self.session.flush()

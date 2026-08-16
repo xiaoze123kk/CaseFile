@@ -39,7 +39,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
     "brief_to_draft": "brief-to-draft-v15",
-    "casefile_chat": "casefile-chat-v1",
+    "casefile_chat": "casefile-chat-v2",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v3",
 }
@@ -173,7 +173,19 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
     },
     ("casefile_chat", "casefile-chat-v1"): {
-        "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
+        "system": "7aa26994abd7ba7b7178b32e8d24140ed35fcf04c6944f41695f84e5b56020e3"
+    },
+    ("casefile_chat", "casefile-chat-v2"): {
+        "fragment:shared": "332493fc2cd740cccc2eba6a6001c83cd07ef6420ff9d914344afb6f04595218",
+        "fragment:router": "c97eab22f6bc585ef92f3aae519dce68c25f940e4c145cbaa3c9f9eb1b2fad16",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "0fc37ced86123fffb8e76bff449e501ab49cd4b54d3531583549b28ddc9e1dff",  # noqa: E501
+        "fragment:executor-analysis": "b8027cb42586b0d37539772f3dfeb060f7a0c9de5d4ee70531c8aa9d085f20c1",  # noqa: E501
+        "fragment:executor-issue": "d2b5757b2e3235d701532bab01259a7a1e0d257613e4449e188a0b6f68704430",  # noqa: E501
+        "fragment:executor-edit": "d4b4abdf0b40fa65654718ca825448cbd01db8adf495f5e42fb7cc4dc5e0afc2",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
     ("reverse_parse", "reverse-parse-v1"): {
         "system": "d2eaa75d1f9fabde23a0c48318abcc5542fdff1dd110bd60ffe6363878604299"
@@ -334,8 +346,44 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "它永远只是 proposed" in v15.component_prompts["governance"]
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
-    assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
-    assert "未列入能力白名单" in prompts["casefile_chat"]
+    legacy_chat = load_prompt("casefile_chat", "casefile-chat-v1")
+    assert "`editable_fields_by_collection`" in legacy_chat.system_prompt
+    assert "未列入能力白名单" in legacy_chat.system_prompt
+    assert "工作台预设指令规则" in legacy_chat.system_prompt
+    assert "全卷宗体检" in legacy_chat.system_prompt
+    assert "门禁结论必须逐字遵从 `validation` 快照" in legacy_chat.system_prompt
+    assert "不得声称与工作台编译中心不同的结论" in legacy_chat.system_prompt
+    v2_chat = load_prompt("casefile_chat", "casefile-chat-v2")
+    assert v2_chat.package is not None
+    assert set(v2_chat.package.components) == {
+        "router",
+        "rewrite",
+        "chat",
+        "analysis",
+        "issue",
+        "edit",
+        "gate",
+        "clarify",
+        "scope",
+    }
+    assert v2_chat.package.runtime_agent_version == AGENT_VERSION
+    assert (
+        v2_chat.package.components["router"].output_schema_id
+        == "casefile-chat-task-understanding-v1"
+    )
+    assert (
+        v2_chat.package.components["rewrite"].output_schema_id
+        == "casefile-chat-rewrite-v1"
+    )
+    assert all(
+        component.output_schema_id == "casefile-chat-output-v1"
+        for component_id, component in v2_chat.package.components.items()
+        if component_id not in {"router", "rewrite"}
+    )
+    assert "危险混淆优先级" in v2_chat.component_prompts["router"]
+    assert "`original_query` 永远权威" in v2_chat.component_prompts["rewrite"]
+    assert "门禁结论必须逐字遵从" in v2_chat.component_prompts["gate"]
+    assert "不得对不可执行动作" in v2_chat.component_prompts["scope"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:

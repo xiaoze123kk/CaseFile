@@ -471,6 +471,103 @@ export interface TaskEventView {
   occurred_at: string;
 }
 
+export interface AgentChatFocus {
+  object_ids: string[];
+  event_ids: string[];
+  validation_issue_ids: string[];
+  view: string | null;
+}
+
+export type AgentChatEntrypoint = "free_text" | "preset" | "issue_action";
+
+export interface AgentChatRoutingHint {
+  entrypoint: AgentChatEntrypoint;
+  preset_id?: string;
+}
+
+export type AgentSuggestedView =
+  | "timeline"
+  | "relations"
+  | "reasoning"
+  | "map"
+  | "export"
+  | "compile"
+  | "evidence";
+
+export interface AgentThreadView {
+  thread_id: number;
+  title: string;
+  title_source: "auto" | "user";
+  is_pinned: boolean;
+  status: "active" | "archived";
+  last_message_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AgentPatchOperationView {
+  operation_id: number;
+  operation_key: string;
+  ordinal: number;
+  object_id: string | null;
+  object_type: string | null;
+  operation_type: string;
+  field_path: string;
+  expected_object_revision: number | null;
+  old_value: unknown;
+  new_value: unknown;
+  reason: string;
+  decision: string | null;
+  reviewed_at: string | null;
+}
+
+export interface AgentPatchSetView {
+  patch_set_id: number;
+  thread_id: number;
+  source_message_id: number;
+  task_run_id: number | null;
+  base_draft_revision: number;
+  reason_summary: string | null;
+  status: "pending" | "stale" | "applied" | "undone" | "rejected";
+  is_stale: boolean;
+  applied_from_revision: number | null;
+  applied_to_revision: number | null;
+  undone_to_revision: number | null;
+  operations: AgentPatchOperationView[];
+  validation_warning: boolean;
+  validator_issues: Record<string, unknown>[];
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AgentMessageView {
+  message_id: number;
+  thread_id: number;
+  sequence_no: number;
+  role: "user" | "assistant" | "system";
+  status: "pending" | "completed" | "failed";
+  content: string | null;
+  task: TaskView | null;
+  referenced_object_ids: string[];
+  referenced_event_ids: string[];
+  referenced_validation_issue_ids: string[];
+  suggested_view: AgentSuggestedView | null;
+  patch_set: AgentPatchSetView | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface AgentSendMessageView {
+  thread: AgentThreadView;
+  user_message: AgentMessageView;
+  assistant_message: AgentMessageView;
+  task: TaskView;
+}
+
+export interface AgentPatchApplyResult extends AgentPatchSetView {
+  draft_revision: number;
+}
+
 export interface DraftView {
   project_id: number;
   casefile_id: number;
@@ -732,6 +829,143 @@ export async function fetchWorkbenchContext(actorId: number, projectId: number) 
   return apiRequest<WorkbenchContextView>(
     `/projects/${projectId}/workbench-context`,
     { actorId },
+  );
+}
+
+export async function listAgentThreads(
+  actorId: number,
+  projectId: number,
+  options: { query?: string; includeArchived?: boolean } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.query) params.set("query", options.query);
+  if (options.includeArchived) params.set("include_archived", "true");
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return apiRequest<AgentThreadView[]>(
+    `/projects/${projectId}/agent/threads${query}`,
+    { actorId },
+  );
+}
+
+export async function createAgentThread(
+  actorId: number,
+  projectId: number,
+  draftId: number,
+  draftRevision: number,
+  title?: string,
+) {
+  return apiRequest<AgentThreadView>(`/projects/${projectId}/agent/threads`, {
+    actorId,
+    method: "POST",
+    body: {
+      expected_draft_id: draftId,
+      expected_draft_revision: draftRevision,
+      ...(title === undefined ? {} : { title }),
+    },
+  });
+}
+
+export async function updateAgentThread(
+  actorId: number,
+  projectId: number,
+  threadId: number,
+  draftId: number,
+  draftRevision: number,
+  changes: { title?: string; is_pinned?: boolean; archived?: boolean },
+) {
+  return apiRequest<AgentThreadView>(
+    `/projects/${projectId}/agent/threads/${threadId}`,
+    {
+      actorId,
+      method: "PATCH",
+      body: {
+        expected_draft_id: draftId,
+        expected_draft_revision: draftRevision,
+        ...changes,
+      },
+    },
+  );
+}
+
+export async function listAgentMessages(
+  actorId: number,
+  projectId: number,
+  threadId: number,
+  afterSequence = 0,
+) {
+  return apiRequest<AgentMessageView[]>(
+    `/projects/${projectId}/agent/threads/${threadId}/messages?after_sequence=${afterSequence}`,
+    { actorId },
+  );
+}
+
+export async function sendAgentMessage(
+  actorId: number,
+  projectId: number,
+  threadId: number,
+  draftId: number,
+  draftRevision: number,
+  content: string,
+  provider: ProviderName = "openai",
+  focus?: AgentChatFocus,
+  routingHint?: AgentChatRoutingHint,
+) {
+  return apiRequest<AgentSendMessageView>(
+    `/projects/${projectId}/agent/threads/${threadId}/messages`,
+    {
+      actorId,
+      method: "POST",
+      body: {
+        expected_draft_id: draftId,
+        expected_draft_revision: draftRevision,
+        content,
+        provider,
+        ...(focus === undefined ? {} : { focus }),
+        ...(routingHint === undefined ? {} : { routing_hint: routingHint }),
+      },
+    },
+  );
+}
+
+export async function applyAgentPatchSet(
+  actorId: number,
+  projectId: number,
+  patchSetId: number,
+  draftId: number,
+  expectedRevision: number,
+  operationIds: number[] | null,
+) {
+  return apiRequest<AgentPatchApplyResult>(
+    `/projects/${projectId}/agent/patch-sets/${patchSetId}/apply`,
+    {
+      actorId,
+      method: "POST",
+      body: {
+        expected_draft_id: draftId,
+        expected_revision: expectedRevision,
+        ...(operationIds === null ? {} : { operation_ids: operationIds }),
+      },
+    },
+  );
+}
+
+export async function undoAgentPatchSet(
+  actorId: number,
+  projectId: number,
+  patchSetId: number,
+  draftId: number,
+  expectedRevision: number,
+) {
+  return apiRequest<AgentPatchApplyResult>(
+    `/projects/${projectId}/agent/patch-sets/${patchSetId}/undo`,
+    {
+      actorId,
+      method: "POST",
+      body: {
+        expected_draft_id: draftId,
+        expected_revision: expectedRevision,
+      },
+    },
   );
 }
 

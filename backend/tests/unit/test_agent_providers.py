@@ -8,18 +8,10 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
+import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import BaseModel, ValidationError
-
-import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
@@ -62,6 +54,13 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile, ObjectRef
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -703,6 +702,15 @@ def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() ->
         api_key=None,
         max_turns=2,
         emit=lambda _event_type, _stage, _payload: None,
+        validation={
+            "status": "passed",
+            "validator": "casefile.contracts.validate_casefile",
+            "schema_version": "casefile-v1",
+            "issue_count": 0,
+            "issues": [],
+            "reason": None,
+        },
+        focus={"object_ids": ["ent_1"]},
     )
 
     introduction, payload_text = casefile_chat_input(request).split("\n", 1)
@@ -714,6 +722,9 @@ def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() ->
     }
     assert "tags" in payload["editable_fields_by_collection"]["entities"]
     assert "revision" not in payload["editable_fields_by_collection"]["entities"]
+    assert payload["validation"]["status"] == "passed"
+    assert payload["validation"]["issue_count"] == 0
+    assert payload["focus"] == {"object_ids": ["ent_1"]}
 
 
 @pytest.mark.parametrize(

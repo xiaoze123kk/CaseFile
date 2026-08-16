@@ -211,6 +211,16 @@ def workflow_router() -> APIRouter:
             expected_draft_revision=payload.expected_draft_revision,
             content=payload.content,
             provider=payload.provider,
+            focus=(
+                None
+                if payload.focus is None
+                else payload.focus.model_dump()
+            ),
+            routing_hint=(
+                None
+                if payload.routing_hint is None
+                else payload.routing_hint.model_dump()
+            ),
         )
 
     @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply")
