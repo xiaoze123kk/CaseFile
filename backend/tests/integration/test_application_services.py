@@ -38,6 +38,7 @@ from casefile.application.snapshot import casefile_content_hash
 from casefile.application.v1_editing import V1EditingService
 from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_service import WorkflowService
+from casefile.benchmark.feedback_export import export_feedback_fixtures
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
     AgentModelCall,
@@ -1901,6 +1902,21 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
                 "对整个卷宗做一次体检，并说明时间线与推理的收束情况。"
             )
             assert feedback_events[0]["payload"]["original"]["route"]["intent"] == "analysis"
+
+        with factory() as session:
+            exported = export_feedback_fixtures(factory, project_id=project_id)
+            assert exported["schema_version"] == "casefile-chat-feedback-export-v1"
+            assert exported["fixture_count"] == 1
+            exported_fixture = exported["fixtures"][0]
+            exported_source = exported["sources"][0]
+            assert exported_fixture["expected_primary_intent"] == "question"
+            assert exported_fixture["expected_prompt_component"] == "chat"
+            assert exported_fixture["message"] == (
+                "对整个卷宗做一次体检，并说明时间线与推理的收束情况。"
+            )
+            assert exported_fixture["casefile"]["entities"]
+            assert exported_source["observed_intent"] == "analysis"
+            assert exported_source["project_id"] == project_id
 
         with factory() as session:
             draft = CaseFileService(session).get_draft(actor_id, project_id)

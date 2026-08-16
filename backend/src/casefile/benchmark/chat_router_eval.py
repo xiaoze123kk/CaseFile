@@ -72,6 +72,8 @@ class ChatRouterFixture:
     focus: dict[str, Any] | None = None
     history: tuple[dict[str, str], ...] = ()
     dangerous_pair: tuple[str, str] | None = None
+    casefile: dict[str, Any] | None = None
+    validation_issues: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,7 +318,7 @@ def _request_for_fixture(
     return CaseFileChatRequest(
         task_run_id=task_run_id,
         prompt_version="casefile-chat-v2",
-        casefile=_EVAL_CASEFILE,
+        casefile=fixture.casefile or _EVAL_CASEFILE,
         history=fixture.history,
         message=fixture.message,
         editable_fields_by_collection={"entities": ("description", "name")},
@@ -327,7 +329,11 @@ def _request_for_fixture(
         emit=lambda _event_type, _stage, _payload: None,
         focus=focus,
         validation=_EVAL_CASEFILE,
-        validation_issues=_VALIDATION_ISSUES,
+        validation_issues=(
+            _VALIDATION_ISSUES
+            if fixture.validation_issues is None
+            else fixture.validation_issues
+        ),
         routing_hint=fixture.hint,
     )
 
