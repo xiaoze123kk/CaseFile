@@ -85,6 +85,7 @@ import {
 import { ReasoningGraphView } from "./workbench-reasoning-graph";
 import { RelationshipGraph } from "./workbench-relationship-graph";
 import { EvidenceComparisonView } from "./workbench-evidence-comparison";
+import { ValidationIssuePanel } from "./workbench-validation-issues";
 import { TimelineOverview } from "./timeline/timeline-overview";
 import {
   CompileCenterView,
@@ -148,13 +149,6 @@ const drawerTabs: Array<{ id: DrawerTab; label: string; count?: number }> = [
   { id: "logs", label: "模型日志摘要", count: 4 },
   { id: "retrieval", label: "检索命中", count: 3 },
 ];
-
-function statusLabel(status: IssueStatus) {
-  if (status === "patch-ready") return "补丁待审批";
-  if (status === "resolved") return "已解决";
-  if (status === "exception") return "已知例外";
-  return "待处理";
-}
 
 function currentClock() {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -230,137 +224,6 @@ function FocusTrapDialog({
         </footer>
       </section>
     </div>
-  );
-}
-
-function EvidenceComparison({
-  seed,
-  issueId,
-  issueStatuses,
-  selectedObjectId,
-  status,
-  manualValue,
-  editing,
-  onManualValueChange,
-  onStartEditing,
-  onSaveManual,
-  onSelectIssue,
-  onRequestPatch,
-  onRejectPatch,
-  onResolveIssue,
-}: {
-  seed: WorkbenchSeed;
-  issueId: string | null;
-  issueStatuses: Record<string, IssueStatus>;
-  selectedObjectId: string | null;
-  status: IssueStatus;
-  manualValue: string;
-  editing: boolean;
-  onManualValueChange: (value: string) => void;
-  onStartEditing: () => void;
-  onSaveManual: () => void;
-  onSelectIssue: (issueId: string) => void;
-  onRequestPatch: () => void;
-  onRejectPatch: () => void;
-  onResolveIssue: (action: "approve" | "exception") => void;
-}) {
-  const issue =
-    seed.validationIssues.find((item) => item.id === issueId) ??
-    seed.validationIssues[0];
-  const selectedObject = getObject(seed, selectedObjectId);
-  if (!issue) {
-    return (
-      <section className={styles.realEmptyState} aria-labelledby="evidence-heading">
-        <span>证据对比</span>
-        <strong id="evidence-heading">
-          {selectedObject
-            ? `“${selectedObject.label}”暂无可对照证据`
-            : "尚未选择对象"}
-        </strong>
-        <p>
-          {selectedObject
-            ? `当前工作稿未提供与${objectKindLabels[selectedObject.kind]}“${selectedObject.label}”关联的验证对照。可以继续在右侧对象上下文核对对象详情和来源依据。`
-            : "从左侧对象目录选择一个对象后，可在这里核对关联证据。"}
-        </p>
-      </section>
-    );
-  }
-  return (
-    <section className={styles.evidenceCompare} aria-labelledby="evidence-heading">
-      <header className={styles.sectionHeader}>
-        <div><span>证据 × 知识状态</span><h2 id="evidence-heading">{issue.title}</h2></div>
-        <small>{issue.severity} · {statusLabel(status)}</small>
-      </header>
-      <div className={styles.evidenceIssueBar} aria-label="验证问题列表">
-        {seed.validationIssues.map((item) => {
-          const itemStatus = issueStatuses[item.id] ?? "open";
-          return (
-            <button
-              aria-pressed={item.id === issueId}
-              data-status={itemStatus}
-              key={item.id}
-              onClick={() => onSelectIssue(item.id)}
-              type="button"
-            >
-              <span data-severity={item.severity}>{item.severity}</span>
-              <span>
-                <strong>{item.title}</strong>
-                <small>{statusLabel(itemStatus)}</small>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      <div className={styles.knowledgeSequence}>
-        <article>
-          <span>事件前已知</span>
-          <strong>22:31 前</strong>
-          <p>{issue.beforeKnowledge}</p>
-        </article>
-        <i aria-hidden="true" />
-        <article data-conflict="true">
-          <span>事件声称</span>
-          <strong>{getEvent(seed, issue.eventId)?.time}</strong>
-          <p>{issue.eventClaim}</p>
-        </article>
-        <i aria-hidden="true" />
-        <article>
-          <span>证据实际进入</span>
-          <strong>22:40</strong>
-          <p>{issue.afterKnowledge}</p>
-        </article>
-      </div>
-      <div className={styles.diffPanel}>
-        <header><span>建议修订</span><b>人工批准前不会写入正式版本</b></header>
-        <div className={styles.diffLine} data-kind="remove"><b>−</b><p>{issue.patchBefore}</p></div>
-        <div className={styles.diffLine} data-kind="add"><b>+</b><p>{issue.patchAfter}</p></div>
-        {editing ? (
-          <label className={styles.manualEditor}>
-            <span>人工修订文本</span>
-            <textarea autoFocus onChange={(event) => onManualValueChange(event.target.value)} rows={4} value={manualValue} />
-            <button onClick={onSaveManual} type="button">保存并局部重算</button>
-          </label>
-        ) : (
-          <button className={styles.textAction} onClick={onStartEditing} type="button">改为人工修正</button>
-        )}
-        {status !== "resolved" && status !== "exception" ? (
-          <div className={styles.evidenceActions}>
-            {status === "patch-ready" ? (
-              <>
-                <span>Agent 建议已生成，等待人工批准。</span>
-                <button onClick={onRejectPatch} type="button">退回待处理</button>
-                <button onClick={() => onResolveIssue("approve")} type="button">批准并局部重算</button>
-              </>
-            ) : (
-              <>
-                <button onClick={onRequestPatch} type="button">请求 Agent 补丁</button>
-                <button onClick={() => onResolveIssue("exception")} type="button">标记已知例外</button>
-              </>
-            )}
-          </div>
-        ) : null}
-      </div>
-    </section>
   );
 }
 
@@ -1807,7 +1670,7 @@ function AnalystWorkbenchSurface({
                     selectedObjectId={selectedObjectId}
                   />
                 ) : (
-                  <EvidenceComparison
+                  <ValidationIssuePanel
                     editing={manualEditing}
                     issueId={visibleSelectedIssueId}
                     issueStatuses={visibleIssueStatuses}
@@ -1818,6 +1681,7 @@ function AnalystWorkbenchSurface({
                     onResolveIssue={resolveIssue}
                     onSaveManual={() => resolveIssue("manual")}
                     onSelectIssue={openIssue}
+                    onSelectObject={(objectId) => selectObject(objectId)}
                     onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
                     selectedObjectId={selectedObjectId}
                     seed={seed}

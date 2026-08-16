@@ -779,6 +779,50 @@ describe("production analyst workbench", () => {
     expect(screen.queryByText("时间知识冲突")).not.toBeInTheDocument();
   });
 
+  it("renders a deterministic validator issue with rule, path, and target in the evidence view", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    mocks.fetchWorkbenchContext.mockResolvedValueOnce(
+      makeContext({
+        validation: {
+          status: "failed",
+          validator: "casefile.contracts.validate_casefile",
+          schema_version: "2.0",
+          issue_count: 1,
+          issues: [
+            {
+              issue_id: "validator:missing-ref",
+              code: "missing_reference",
+              path: "/events/0/location_ref",
+              message: "引用的对象不存在",
+              severity: "error",
+              target: {
+                object_ref: { object_type: "event", object_id: "evt_gate_opened" },
+                field_path: "/location_ref",
+              },
+            },
+          ],
+          reason: null,
+        },
+      }),
+    );
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /证据对比/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "验证问题" }));
+
+    expect(
+      screen.getByRole("heading", { name: "引用的对象不存在" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("missing_reference")).toBeInTheDocument();
+    expect(screen.getByText("/events/0/location_ref")).toBeInTheDocument();
+    expect(screen.getByText("/location_ref")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "定位到目标对象：门禁开启" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("事件前已知")).not.toBeInTheDocument();
+    expect(screen.queryByText("请求 Agent 补丁")).not.toBeInTheDocument();
+  });
+
   it("keeps a context read failure recoverable inside recent changes", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext

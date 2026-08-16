@@ -101,6 +101,7 @@ export interface ValidationIssue {
   targetObjectId?: string | null;
   targetObjectType?: string | null;
   fieldPath?: string;
+  jsonPath?: string;
 }
 
 export interface SourceItem {
