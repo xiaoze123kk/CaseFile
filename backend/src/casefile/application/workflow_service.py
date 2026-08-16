@@ -487,6 +487,117 @@ class WorkflowService:
                 "task": task_result,
             }
 
+    def submit_agent_routing_feedback(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        thread_id: int,
+        message_id: int,
+        *,
+        correct_intent: str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Record one human correction for a completed, route-bearing assistant message."""
+
+        resolved_note = None if note is None else note.strip() or None
+        if correct_intent is None and resolved_note is None:
+            raise ApplicationError(
+                "agent_routing_feedback_empty",
+                "路由反馈必须包含正确意图或备注。",
+                status_code=422,
+            )
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            thread = self._agent_thread(owned, thread_id)
+            message = self.session.scalar(
+                select(AgentMessage).where(
+                    AgentMessage.id == message_id,
+                    AgentMessage.thread_id == thread.id,
+                    AgentMessage.project_id == owned.project.id,
+                )
+            )
+            if message is None:
+                raise ApplicationError(
+                    "agent_message_not_found",
+                    "找不到该 Agent 消息。",
+                    status_code=404,
+                )
+            if message.role != "assistant" or message.status != "completed":
+                raise ApplicationError(
+                    "agent_routing_feedback_unavailable",
+                    "只有已完成的 Agent 回复可以提交路由反馈。",
+                    status_code=409,
+                )
+            task = self.session.scalar(
+                select(TaskRun).where(TaskRun.output_message_id == message.id)
+            )
+            if (
+                task is None
+                or task.task_type != "casefile_chat"
+                or not isinstance(task.result_jsonb, dict)
+                or not isinstance(task.result_jsonb.get("routing"), dict)
+            ):
+                raise ApplicationError(
+                    "agent_routing_not_available",
+                    "这条回复没有可纠错的路由结果。",
+                    status_code=409,
+                )
+            existing = self.session.scalar(
+                select(TaskEvent.id)
+                .where(
+                    TaskEvent.task_run_id == task.id,
+                    TaskEvent.event_type == "router.feedback",
+                )
+                .limit(1)
+            )
+            if existing is not None:
+                raise ApplicationError(
+                    "agent_routing_feedback_exists",
+                    "这条回复已经提交过路由反馈。",
+                    status_code=409,
+                )
+            latest_payload: dict[str, dict[str, Any] | None] = {
+                "query.rewritten": None,
+                "intent.understood": None,
+            }
+            for event_type in tuple(latest_payload):
+                event = self.session.scalar(
+                    select(TaskEvent)
+                    .where(
+                        TaskEvent.task_run_id == task.id,
+                        TaskEvent.event_type == event_type,
+                    )
+                    .order_by(TaskEvent.sequence_no.desc())
+                    .limit(1)
+                )
+                if event is not None and isinstance(event.payload_jsonb, dict):
+                    latest_payload[event_type] = event.payload_jsonb
+            payload = {
+                "message_id": message.id,
+                "task_run_id": task.id,
+                "correct_intent": correct_intent,
+                "note": resolved_note,
+                "original": {
+                    "query": task.input_jsonb.get("message"),
+                    "routing_hint": task.input_jsonb.get("routing_hint") or {},
+                    "intent": latest_payload["intent.understood"],
+                    "rewrite": latest_payload["query.rewritten"],
+                    "route": task.result_jsonb["routing"],
+                },
+            }
+            _append_event(
+                self.session,
+                task,
+                "router.feedback",
+                "feedback",
+                payload,
+            )
+            return {
+                "message_id": message.id,
+                "task_run_id": task.id,
+                "acknowledged": True,
+            }
+
     def complete_chat_task(
         self,
         task_run_id: int,
@@ -500,6 +611,7 @@ class WorkflowService:
         suggestions: list[dict[str, Any]],
         usage: dict[str, Any],
         route: dict[str, Any] | None = None,
+        tools: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist one structured chat result; intended as the Worker completion hook."""
 
@@ -714,6 +826,9 @@ class WorkflowService:
                     suppressed_count=suppressed_count,
                 )
             )
+            tool_metrics = tools or usage.get("tool_metrics") or {}
+            if routing_summary is not None:
+                routing_summary["tool_metrics"] = tool_metrics
             result_payload: dict[str, Any] = {
                 "answer": answer,
                 "referenced_object_ids": referenced,
@@ -722,6 +837,7 @@ class WorkflowService:
                 "suggested_view": resolved_view,
                 "patch_set_id": None if patch_set is None else patch_set.id,
                 "stale": stale,
+                "tool_metrics": tool_metrics,
             }
             if routing_summary is not None:
                 result_payload["routing"] = routing_summary

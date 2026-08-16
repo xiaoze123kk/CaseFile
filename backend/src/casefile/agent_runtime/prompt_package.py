@@ -148,7 +148,18 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-output-v1": CaseFileChatCandidate,
     }
 )
-TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType({"no-tools-v1": frozenset()})
+TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "no-tools-v1": frozenset(),
+        "chat-read-v1": frozenset({"search_casefile", "get_casefile_object"}),
+        "chat-issue-v1": frozenset(
+            {"search_casefile", "get_casefile_object", "get_validation_issues"}
+        ),
+        "chat-edit-v1": frozenset(
+            {"search_casefile", "get_casefile_object", "validate_patch_proposal"}
+        ),
+    }
+)
 RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
     {
         ("brief-to-draft-pipeline-v9", TOOLSET_VERSION),

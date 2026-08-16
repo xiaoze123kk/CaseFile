@@ -1844,10 +1844,12 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
             )
             assert outcome["payload"]["succeeded"] is True
             assert outcome["payload"]["route_hash"] == routed_request.route.route_hash
+            assert outcome["payload"]["tool_metrics"]["calls"] == 0
 
             task = workflow.get_task(actor_id, project_id, chat_task_id)
             assert task["result"]["routing"]["suppressed_count"] == 2
             assert task["result"]["routing"]["suggestion_policy"] == "deny"
+            assert task["result"]["tool_metrics"]["calls"] == 0
 
             messages = workflow.list_agent_messages(
                 actor_id,
@@ -1865,6 +1867,40 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
                 )
             )
             assert patch_sets == []
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            feedback = workflow.submit_agent_routing_feedback(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                int(assistant["message_id"]),
+                correct_intent="question",
+            )
+            assert feedback["acknowledged"] is True
+            with pytest.raises(ApplicationError, match="已经提交过路由反馈"):
+                workflow.submit_agent_routing_feedback(
+                    actor_id,
+                    project_id,
+                    thread["thread_id"],
+                    int(assistant["message_id"]),
+                    note="重复反馈",
+                )
+            feedback_events = [
+                event
+                for event in workflow.list_task_events(
+                    actor_id,
+                    project_id,
+                    chat_task_id,
+                )
+                if event["event_type"] == "router.feedback"
+            ]
+            assert len(feedback_events) == 1
+            assert feedback_events[0]["payload"]["correct_intent"] == "question"
+            assert feedback_events[0]["payload"]["original"]["query"] == (
+                "对整个卷宗做一次体检，并说明时间线与推理的收束情况。"
+            )
+            assert feedback_events[0]["payload"]["original"]["route"]["intent"] == "analysis"
 
         with factory() as session:
             draft = CaseFileService(session).get_draft(actor_id, project_id)

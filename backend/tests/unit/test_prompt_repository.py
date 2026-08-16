@@ -176,13 +176,13 @@ EXPECTED_RELEASE_HASHES = {
         "system": "7aa26994abd7ba7b7178b32e8d24140ed35fcf04c6944f41695f84e5b56020e3"
     },
     ("casefile_chat", "casefile-chat-v2"): {
-        "fragment:shared": "332493fc2cd740cccc2eba6a6001c83cd07ef6420ff9d914344afb6f04595218",
+        "fragment:shared": "e128cfd443879ff26c2af3ea6f732d0b86e930267bcf0578d44f95a801b89d95",  # noqa: E501
         "fragment:router": "c97eab22f6bc585ef92f3aae519dce68c25f940e4c145cbaa3c9f9eb1b2fad16",
         "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
-        "fragment:executor-chat": "0fc37ced86123fffb8e76bff449e501ab49cd4b54d3531583549b28ddc9e1dff",  # noqa: E501
-        "fragment:executor-analysis": "b8027cb42586b0d37539772f3dfeb060f7a0c9de5d4ee70531c8aa9d085f20c1",  # noqa: E501
-        "fragment:executor-issue": "d2b5757b2e3235d701532bab01259a7a1e0d257613e4449e188a0b6f68704430",  # noqa: E501
-        "fragment:executor-edit": "d4b4abdf0b40fa65654718ca825448cbd01db8adf495f5e42fb7cc4dc5e0afc2",  # noqa: E501
+        "fragment:executor-chat": "7e182c6ee59da7dcbd21a01baab00758f22cba5060bf4863ae0bfd63b2b066a8",  # noqa: E501
+        "fragment:executor-analysis": "319ba419d64f08714c71f122d7bde4077ad8f68dd2089ec75efcf74079d72ef5",  # noqa: E501
+        "fragment:executor-issue": "85d6e264fa23994f1d66e4228be71c0eabfe55a148392b90d42a54b56a561071",  # noqa: E501
+        "fragment:executor-edit": "2b02079feef132cd4916a3922c4f0f01c0fd27beaea05cbf779db2bb46338fee",  # noqa: E501
         "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
         "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
@@ -384,6 +384,15 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "`original_query` 永远权威" in v2_chat.component_prompts["rewrite"]
     assert "门禁结论必须逐字遵从" in v2_chat.component_prompts["gate"]
     assert "不得对不可执行动作" in v2_chat.component_prompts["scope"]
+    assert v2_chat.package.components["chat"].tool_policy_id == "chat-read-v1"
+    assert v2_chat.package.components["analysis"].tool_policy_id == "chat-read-v1"
+    assert v2_chat.package.components["issue"].tool_policy_id == "chat-issue-v1"
+    assert v2_chat.package.components["edit"].tool_policy_id == "chat-edit-v1"
+    assert (
+        v2_chat.package.components["gate"].tool_policy_id == "no-tools-v1"
+    )
+    assert "只能调用系统明确给出的工具" in v2_chat.component_prompts["analysis"]
+    assert "`validate_patch_proposal`" in v2_chat.component_prompts["edit"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:

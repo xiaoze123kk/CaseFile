@@ -1,5 +1,11 @@
 """Single-Agent Brief runtime with swappable model providers."""
 
+from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_VERSION,
+    ChatToolContext,
+    ChatToolMetrics,
+    chat_tool_manifest,
+)
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
@@ -55,6 +61,10 @@ from casefile.agent_runtime.providers import (
 
 __all__ = [
     "AgentProvider",
+    "CHAT_TOOLSET_VERSION",
+    "ChatToolContext",
+    "ChatToolMetrics",
+    "chat_tool_manifest",
     "BriefAnchorExtractCandidate",
     "BriefAnchorExtractRequest",
     "BriefAnchorExtractResult",

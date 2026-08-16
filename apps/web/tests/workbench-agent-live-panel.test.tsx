@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   listAgentMessages: vi.fn(),
   listAgentThreads: vi.fn(),
   sendAgentMessage: vi.fn(),
+  sendAgentRoutingFeedback: vi.fn(),
   undoAgentPatchSet: vi.fn(),
   waitForTask: vi.fn(),
 }));
@@ -47,6 +48,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     listAgentMessages: mocks.listAgentMessages,
     listAgentThreads: mocks.listAgentThreads,
     sendAgentMessage: mocks.sendAgentMessage,
+    sendAgentRoutingFeedback: mocks.sendAgentRoutingFeedback,
     undoAgentPatchSet: mocks.undoAgentPatchSet,
   };
 });
@@ -260,6 +262,61 @@ describe("workbench agent live panel", () => {
     expect(
       screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" }),
     ).not.toBeDisabled();
+  });
+
+  it("renders the routing chip and submits one route-error correction", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.sendAgentRoutingFeedback.mockResolvedValue({
+      message_id: 2,
+      task_run_id: 77,
+      acknowledged: true,
+    });
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "这是分析结论。",
+        task: makeTask({
+          status: "succeeded",
+          result: {
+            answer: "这是分析结论。",
+            referenced_object_ids: [],
+            referenced_event_ids: [],
+            referenced_validation_issue_ids: [],
+            suggested_view: null,
+            patch_set_id: null,
+            stale: false,
+            routing: {
+              route_source: "llm",
+              intent: "analysis",
+              route_hash: "h",
+            },
+          },
+        }),
+      }),
+    ]);
+
+    renderPanel();
+
+    expect(await screen.findByText("AI 理解 · 分析")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "路由错误" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "正确的意图" }), {
+      target: { value: "question" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() =>
+      expect(mocks.sendAgentRoutingFeedback).toHaveBeenCalledWith(
+        1,
+        1,
+        11,
+        2,
+        "question",
+      ),
+    );
+    expect(await screen.findByText("已记录反馈：问答")).toBeInTheDocument();
   });
 
   it("renders four kinds of clickable references and routes them into the workbench", async () => {

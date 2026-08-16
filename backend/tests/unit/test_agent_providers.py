@@ -8,10 +8,18 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
-import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ValidationError
+
+import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
@@ -26,6 +34,8 @@ from casefile.agent_runtime.models import (
     GenerationPlan,
     GenerationRequest,
     IdeaGenerationRequest,
+    QueryRewriteResult,
+    RouteDecision,
 )
 from casefile.agent_runtime.prompt import casefile_chat_input, idea_generation_input
 from casefile.agent_runtime.prompt_repository import PromptRepositoryError
@@ -54,13 +64,6 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile, ObjectRef
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -686,6 +689,90 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
         ("model.started", "responding"),
         ("model.completed", "responding"),
     ]
+
+
+def test_fake_provider_chat_consumes_retrieval_queries_under_route_budget() -> None:
+    emitted: list[tuple[str, str, dict[str, Any]]] = []
+    result = FakeProvider().chat(
+        CaseFileChatRequest(
+            task_run_id=30,
+            prompt_version="casefile-chat-v2",
+            casefile={
+                "entities": [{"id": "ent_1", "name": "张三"}],
+                "events": [{"id": "evt_1", "title": "三号库区失火"}],
+            },
+            history=(),
+            message="当时谁在库区",
+            editable_fields_by_collection={"entities": ("name",)},
+            input_hash="a" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=6,
+            emit=lambda event_type, stage, payload: emitted.append(
+                (event_type, stage, payload)
+            ),
+            route=RouteDecision(
+                execution_profile={
+                    "toolset": ["search_casefile"],
+                    "max_tool_calls": 3,
+                    "max_turns": 4,
+                }
+            ),
+            rewrite=QueryRewriteResult(
+                original_query="当时谁在库区",
+                normalized_query="当时谁在库区",
+                canonical_query="当时谁在库区",
+                retrieval_queries=("张三", "三号库区失火"),
+                rewrite_decision="MULTI_QUERY",
+            ),
+        )
+    )
+
+    assert result.tools.calls == 2
+    assert result.tools.successful_calls == 2
+    assert result.tools.adopted_results == 2
+    assert set(result.tools.retrieved_object_ids) == {"ent_1", "evt_1"}
+    assert result.usage["tool_metrics"]["retrieved_object_ids"] == ["ent_1", "evt_1"]
+    assert [entry[0] for entry in emitted if entry[0] == "tool.completed"] == [
+        "tool.completed",
+        "tool.completed",
+    ]
+
+
+def test_fake_provider_chat_stops_retrieval_when_budget_is_exhausted() -> None:
+    result = FakeProvider().chat(
+        CaseFileChatRequest(
+            task_run_id=31,
+            prompt_version="casefile-chat-v2",
+            casefile={"entities": [{"id": "ent_1", "name": "张三"}]},
+            history=(),
+            message="检索",
+            editable_fields_by_collection={},
+            input_hash="b" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=4,
+            emit=lambda _event_type, _stage, _payload: None,
+            route=RouteDecision(
+                execution_profile={
+                    "toolset": ["search_casefile"],
+                    "max_tool_calls": 1,
+                    "max_turns": 4,
+                }
+            ),
+            rewrite=QueryRewriteResult(
+                original_query="检索",
+                normalized_query="检索",
+                canonical_query="检索",
+                retrieval_queries=("张三", "张三 卷宗"),
+                rewrite_decision="MULTI_QUERY",
+            ),
+        )
+    )
+
+    assert result.tools.calls == 2
+    assert result.tools.successful_calls == 1
+    assert result.tools.budget_exhausted == 1
 
 
 def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() -> None:

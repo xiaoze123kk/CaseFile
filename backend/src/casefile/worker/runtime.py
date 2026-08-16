@@ -1068,6 +1068,7 @@ class Worker:
                 suggestions=suggestions,
                 usage=result.usage,
                 route=route_payload,
+                tools=result.tools.as_dict(),
             )
 
     def _complete_polish(

@@ -11,7 +11,7 @@
   "fragments": {
     "shared": {
       "file": "shared.md",
-      "sha256": "332493fc2cd740cccc2eba6a6001c83cd07ef6420ff9d914344afb6f04595218"
+      "sha256": "e128cfd443879ff26c2af3ea6f732d0b86e930267bcf0578d44f95a801b89d95"
     },
     "router": {
       "file": "router.md",
@@ -23,19 +23,19 @@
     },
     "executor-chat": {
       "file": "executor-chat.md",
-      "sha256": "0fc37ced86123fffb8e76bff449e501ab49cd4b54d3531583549b28ddc9e1dff"
+      "sha256": "7e182c6ee59da7dcbd21a01baab00758f22cba5060bf4863ae0bfd63b2b066a8"
     },
     "executor-analysis": {
       "file": "executor-analysis.md",
-      "sha256": "b8027cb42586b0d37539772f3dfeb060f7a0c9de5d4ee70531c8aa9d085f20c1"
+      "sha256": "319ba419d64f08714c71f122d7bde4077ad8f68dd2089ec75efcf74079d72ef5"
     },
     "executor-issue": {
       "file": "executor-issue.md",
-      "sha256": "d2b5757b2e3235d701532bab01259a7a1e0d257613e4449e188a0b6f68704430"
+      "sha256": "85d6e264fa23994f1d66e4228be71c0eabfe55a148392b90d42a54b56a561071"
     },
     "executor-edit": {
       "file": "executor-edit.md",
-      "sha256": "d4b4abdf0b40fa65654718ca825448cbd01db8adf495f5e42fb7cc4dc5e0afc2"
+      "sha256": "2b02079feef132cd4916a3922c4f0f01c0fd27beaea05cbf779db2bb46338fee"
     },
     "executor-gate": {
       "file": "executor-gate.md",
@@ -67,25 +67,25 @@
       "instruction_fragments": ["shared", "executor-chat"],
       "input_contract_id": "casefile-chat-prompt-input-v1",
       "output_schema_id": "casefile-chat-output-v1",
-      "tool_policy_id": "no-tools-v1"
+      "tool_policy_id": "chat-read-v1"
     },
     "analysis": {
       "instruction_fragments": ["shared", "executor-analysis"],
       "input_contract_id": "casefile-chat-prompt-input-v1",
       "output_schema_id": "casefile-chat-output-v1",
-      "tool_policy_id": "no-tools-v1"
+      "tool_policy_id": "chat-read-v1"
     },
     "issue": {
       "instruction_fragments": ["shared", "executor-issue"],
       "input_contract_id": "casefile-chat-prompt-input-v1",
       "output_schema_id": "casefile-chat-output-v1",
-      "tool_policy_id": "no-tools-v1"
+      "tool_policy_id": "chat-issue-v1"
     },
     "edit": {
       "instruction_fragments": ["shared", "executor-edit"],
       "input_contract_id": "casefile-chat-prompt-input-v1",
       "output_schema_id": "casefile-chat-output-v1",
-      "tool_policy_id": "no-tools-v1"
+      "tool_policy_id": "chat-edit-v1"
     },
     "gate": {
       "instruction_fragments": ["shared", "executor-gate"],

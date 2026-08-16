@@ -11,7 +11,7 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Literal, Protocol, cast
 
-from agents import Agent, ModelSettings, RunConfig, Runner
+from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
@@ -28,6 +28,12 @@ from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generatio
 from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
 from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
+from casefile.agent_runtime.chat_tools import (
+    ChatToolContext,
+    ChatToolMetrics,
+    chat_tool_manifest,
+    search_casefile_records,
+)
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -421,6 +427,76 @@ def _fake_intent_constraints(
     )
 
 
+def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
+    """FakeProvider consumes route-scoped retrieval queries deterministically."""
+
+    metrics = ChatToolMetrics()
+    route = request.route
+    if route is None:
+        return metrics
+    toolset = route.execution_profile.get("toolset") or []
+    if "search_casefile" not in toolset:
+        return metrics
+    max_calls = route.execution_profile.get("max_tool_calls")
+    max_calls = max_calls if isinstance(max_calls, int) else 0
+    queries = (
+        list(request.rewrite.retrieval_queries)
+        if request.rewrite is not None and request.rewrite.retrieval_queries
+        else [request.rewrite.canonical_query if request.rewrite is not None else request.message]
+    )
+    for query in queries:
+        metrics.calls += 1
+        if metrics.calls > max_calls:
+            metrics.budget_exhausted += 1
+            request.emit(
+                "tool.completed",
+                "responding",
+                {
+                    "tool": "search_casefile",
+                    "valid": False,
+                    "reason_code": "tool_budget_exhausted",
+                },
+            )
+            break
+        results = search_casefile_records(request.casefile, query)
+        for result in results:
+            object_id = str(result["id"])
+            if object_id not in metrics.retrieved_object_ids:
+                metrics.retrieved_object_ids.append(object_id)
+        metrics.valid_calls += 1
+        metrics.successful_calls += 1
+        metrics.adopted_results += min(1, len(results))
+        request.emit(
+            "tool.completed",
+            "responding",
+            {
+                "tool": "search_casefile",
+                "valid": True,
+                "query": query,
+                "result_count": len(results),
+                "object_ids": [str(result["id"]) for result in results],
+            },
+        )
+    return metrics
+
+
+def _chat_tool_runtime(
+    request: CaseFileChatRequest,
+) -> tuple[list[Tool] | None, ChatToolContext | None, int | None]:
+    route = request.route
+    if route is None:
+        return None, None, None
+    manifest = chat_tool_manifest(route)
+    if not manifest:
+        return None, None, None
+    max_turns = route.execution_profile.get("max_turns")
+    return (
+        manifest,
+        ChatToolContext(request=request, route=route),
+        max_turns if isinstance(max_turns, int) and max_turns > 0 else None,
+    )
+
+
 class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
 
@@ -800,6 +876,7 @@ class FakeProvider:
             for object_id in _casefile_object_ids(request.casefile)
             if object_id in request.message
         ]
+        metrics = _fake_chat_tool_metrics(request)
         candidate = CaseFileChatCandidate(
             answer=(
                 "我已结合当前完整卷宗阅读了这条消息。"
@@ -808,9 +885,10 @@ class FakeProvider:
             referenced_object_ids=referenced,
             suggestions=[],
         )
-        usage = _zero_usage()
+        usage: dict[str, Any] = _zero_usage()
+        usage["tool_metrics"] = metrics.as_dict()
         request.emit("model.completed", "responding", {"usage": usage})
-        return CaseFileChatResult(candidate=candidate, usage=usage)
+        return CaseFileChatResult(candidate=candidate, usage=usage, tools=metrics)
 
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
         request.emit("model.started", "understanding", {"model_id": request.model_id})
@@ -1253,6 +1331,7 @@ class OpenAIAgentsProvider:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
@@ -1260,11 +1339,15 @@ class OpenAIAgentsProvider:
                 input_text=input_text,
                 output_type=CaseFileChatCandidate,
                 stage="responding",
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
             )
         )
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(candidate),
             usage=usage,
+            tools=context.metrics if context is not None else ToolMetrics(),
         )
 
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
@@ -1401,6 +1484,9 @@ class OpenAIAgentsProvider:
         stage: str,
         component_id: str | None = None,
         schema_id: str | None = None,
+        tools: list[Tool] | None = None,
+        context: ChatToolContext | None = None,
+        max_turns: int | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -1424,6 +1510,9 @@ class OpenAIAgentsProvider:
             tracing_disabled=False,
             component_id=component_id,
             schema_id=schema_id,
+            tools=tools,
+            context=context,
+            max_turns=max_turns,
         )
 
 
@@ -1590,6 +1679,12 @@ class DeepSeekAgentsProvider:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
         instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
+        output_protocol = (
+            "json_object"
+            if tools
+            else _deepseek_v8_output_protocol(request.model_id)
+        )
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
@@ -1597,11 +1692,16 @@ class DeepSeekAgentsProvider:
                 input_text=input_text,
                 output_type=CaseFileChatCandidate,
                 stage="responding",
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+                deepseek_output_protocol=output_protocol,
             )
         )
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(candidate),
             usage=usage,
+            tools=context.metrics if context is not None else ToolMetrics(),
         )
 
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
@@ -1720,6 +1820,10 @@ class DeepSeekAgentsProvider:
         stage: str,
         component_id: str | None = None,
         schema_id: str | None = None,
+        tools: list[Tool] | None = None,
+        context: ChatToolContext | None = None,
+        max_turns: int | None = None,
+        deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
         return await _run_auxiliary_agent(
@@ -1734,7 +1838,13 @@ class DeepSeekAgentsProvider:
             tracing_disabled=True,
             component_id=component_id,
             schema_id=schema_id,
-            deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
+            deepseek_output_protocol=(
+                deepseek_output_protocol
+                or _deepseek_v8_output_protocol(request.model_id)
+            ),
+            tools=tools,
+            context=context,
+            max_turns=max_turns,
         )
 
     def create_model(
@@ -1789,6 +1899,9 @@ async def _run_auxiliary_agent(
     component_id: str | None = None,
     schema_id: str | None = None,
     deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+    tools: list[Tool] | None = None,
+    context: ChatToolContext | None = None,
+    max_turns: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
         "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
@@ -1822,6 +1935,17 @@ async def _run_auxiliary_agent(
                 stage,
                 {"from": "strict_tool", "to": protocol, "reason_code": reason},
             )
+    if protocol == "strict_tool" and tools:
+        protocol = "json_object"
+        request.emit(
+            "model.output_protocol_fallback",
+            stage,
+            {
+                "from": "strict_tool",
+                "to": protocol,
+                "reason_code": "chat_tools_require_json_object_loop",
+            },
+        )
 
     for attempt_no in range(1, 4):
         raw_output_text: str | None = None
@@ -1892,19 +2016,32 @@ async def _run_auxiliary_agent(
                     instructions=resolved_instructions,
                     model=model,
                     model_settings=model_settings,
-                    tools=[],
+                    tools=tools or [],
                     output_type=agent_output_type,
                 )
-                result = await Runner.run(
-                    agent,
-                    current_input,
-                    max_turns=request.max_turns,
-                    run_config=RunConfig(
-                        workflow_name=f"CaseFile {stage}",
-                        tracing_disabled=tracing_disabled,
-                        trace_include_sensitive_data=False,
-                    ),
-                )
+                if context is None:
+                    result = await Runner.run(
+                        agent,
+                        current_input,
+                        max_turns=max_turns or request.max_turns,
+                        run_config=RunConfig(
+                            workflow_name=f"CaseFile {stage}",
+                            tracing_disabled=tracing_disabled,
+                            trace_include_sensitive_data=False,
+                        ),
+                    )
+                else:
+                    result = await Runner.run(
+                        agent,
+                        current_input,
+                        context=context,
+                        max_turns=max_turns or request.max_turns,
+                        run_config=RunConfig(
+                            workflow_name=f"CaseFile {stage}",
+                            tracing_disabled=tracing_disabled,
+                            trace_include_sensitive_data=False,
+                        ),
+                    )
                 usage_records.append(_usage_json(result.context_wrapper.usage))
                 final_output = getattr(result, "final_output", None)
                 if isinstance(final_output, str):
@@ -1952,6 +2089,8 @@ async def _run_auxiliary_agent(
                     },
                 )
             usage = _merge_structured_usage(usage_records)
+            if context is not None:
+                usage["tool_metrics"] = context.metrics.as_dict()
             request.emit("model.completed", stage, {"usage": usage})
             if component_id:
                 serialized_output = json.dumps(

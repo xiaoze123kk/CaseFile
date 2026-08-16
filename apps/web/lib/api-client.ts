@@ -423,6 +423,7 @@ export interface TaskView {
     | BriefIntakeSynthesizeResult
     | BriefStrategyOptionsResult
     | GenerationCandidateSummary
+    | AgentChatTaskResult
     | null;
   error_code: string | null;
   failure: TaskFailure | null;
@@ -483,6 +484,45 @@ export type AgentChatEntrypoint = "free_text" | "preset" | "issue_action";
 export interface AgentChatRoutingHint {
   entrypoint: AgentChatEntrypoint;
   preset_id?: string;
+}
+
+export type AgentRoutingCorrectIntent =
+  | "question"
+  | "analysis"
+  | "explain_issue"
+  | "edit_request"
+  | "validate_request"
+  | "unsupported_action"
+  | "clarify"
+  | "out_of_scope";
+
+export interface AgentRoutingFeedbackResult {
+  message_id: number;
+  task_run_id: number;
+  acknowledged: true;
+}
+
+export interface AgentChatRoutingSummary {
+  router_version?: string;
+  route_hash?: string;
+  route_source?: string;
+  intent?: string | null;
+  rewrite_strategy?: string;
+  suggestion_policy?: string;
+  suppressed_count?: number;
+  tool_metrics?: Record<string, unknown>;
+}
+
+export interface AgentChatTaskResult {
+  answer: string;
+  referenced_object_ids: string[];
+  referenced_event_ids: string[];
+  referenced_validation_issue_ids: string[];
+  suggested_view: AgentSuggestedView | null;
+  patch_set_id: number | null;
+  stale: boolean;
+  routing?: AgentChatRoutingSummary;
+  tool_metrics?: Record<string, unknown>;
 }
 
 export type AgentSuggestedView =
@@ -922,6 +962,27 @@ export async function sendAgentMessage(
         provider,
         ...(focus === undefined ? {} : { focus }),
         ...(routingHint === undefined ? {} : { routing_hint: routingHint }),
+      },
+    },
+  );
+}
+
+export async function sendAgentRoutingFeedback(
+  actorId: number,
+  projectId: number,
+  threadId: number,
+  messageId: number,
+  correctIntent?: AgentRoutingCorrectIntent,
+  note?: string,
+) {
+  return apiRequest<AgentRoutingFeedbackResult>(
+    `/projects/${projectId}/agent/threads/${threadId}/messages/${messageId}/routing-feedback`,
+    {
+      actorId,
+      method: "POST",
+      body: {
+        ...(correctIntent === undefined ? {} : { correct_intent: correctIntent }),
+        ...(note === undefined || note.trim() === "" ? {} : { note: note.trim() }),
       },
     },
   );

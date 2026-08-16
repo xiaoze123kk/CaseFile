@@ -221,6 +221,29 @@ class AgentMessageCreateRequest(StrictRequest):
     routing_hint: AgentChatRoutingHint | None = None
 
 
+class AgentRoutingFeedbackRequest(StrictRequest):
+    correct_intent: (
+        Literal[
+            "question",
+            "analysis",
+            "explain_issue",
+            "edit_request",
+            "validate_request",
+            "unsupported_action",
+            "clarify",
+            "out_of_scope",
+        ]
+        | None
+    ) = None
+    note: str | None = Field(default=None, max_length=2_000)
+
+    @model_validator(mode="after")
+    def has_feedback(self) -> Self:
+        if self.correct_intent is None and (self.note is None or not self.note.strip()):
+            raise ValueError("correct_intent or note is required")
+        return self
+
+
 class AgentPatchApplyRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)

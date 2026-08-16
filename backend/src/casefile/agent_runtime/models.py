@@ -501,6 +501,7 @@ class BriefStrategyOptionsResult:
 class CaseFileChatResult:
     candidate: CaseFileChatCandidate
     usage: dict[str, Any]
+    tools: ToolMetrics = field(default_factory=ToolMetrics)
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,11 +9,13 @@ import {
   listAgentMessages,
   listAgentThreads,
   sendAgentMessage,
+  sendAgentRoutingFeedback,
   undoAgentPatchSet,
   type AgentChatFocus,
   type AgentChatRoutingHint,
   type AgentMessageView,
   type AgentPatchSetView,
+  type AgentRoutingCorrectIntent,
   type AgentSuggestedView,
   type AgentThreadView,
   type TaskView,
@@ -64,6 +66,48 @@ const operationDecisionLabels: Record<string, string> = {
   accepted: "已采纳",
   rejected: "已拒绝",
 };
+
+const routingIntentLabels: Record<AgentRoutingCorrectIntent, string> = {
+  question: "问答",
+  analysis: "分析",
+  explain_issue: "问题解释",
+  edit_request: "修改请求",
+  validate_request: "验证请求",
+  unsupported_action: "不可执行",
+  clarify: "需要澄清",
+  out_of_scope: "超出范围",
+};
+
+const routingSourceLabels: Record<string, string> = {
+  rule_preset: "预设路由",
+  rule_ui: "界面路由",
+  llm: "AI 理解",
+  fallback: "降级路由",
+};
+
+function routingSummaryFor(message: AgentMessageView): {
+  route_source: string | null;
+  intent: string | null;
+} | null {
+  const result = message.task?.result;
+  if (result === null || result === undefined) return null;
+  const routing =
+    typeof result === "object" && result !== null && "routing" in result
+      ? (result as { routing?: unknown }).routing
+      : null;
+  if (routing === null || routing === undefined || typeof routing !== "object") {
+    return null;
+  }
+  const summary = routing as {
+    route_source?: unknown;
+    intent?: unknown;
+  };
+  return {
+    route_source:
+      typeof summary.route_source === "string" ? summary.route_source : null,
+    intent: typeof summary.intent === "string" ? summary.intent : null,
+  };
+}
 
 function displayValue(value: unknown): string {
   const text =
@@ -143,6 +187,9 @@ export function AgentLivePanel({
   const [liveTasks, setLiveTasks] = useState<Record<number, TaskView>>({});
   const [creatingThread, setCreatingThread] = useState(false);
   const [patchBusyId, setPatchBusyId] = useState<number | null>(null);
+  const [feedbackByMessage, setFeedbackByMessage] = useState<
+    Record<number, AgentRoutingCorrectIntent>
+  >({});
 
   const followsRef = useRef(new Map<number, AbortController>());
   const followedTaskIdsRef = useRef(new Set<number>());
@@ -426,6 +473,29 @@ export function AgentLivePanel({
     if (previousUser?.content) void send(previousUser.content);
   }
 
+  async function submitRoutingFeedback(
+    message: AgentMessageView,
+    correctIntent: AgentRoutingCorrectIntent,
+  ) {
+    setMessagesError(null);
+    try {
+      await sendAgentRoutingFeedback(
+        LOCAL_ACTOR_ID,
+        projectId,
+        message.thread_id,
+        message.message_id,
+        correctIntent,
+      );
+      setFeedbackByMessage((previous) => ({
+        ...previous,
+        [message.message_id]: correctIntent,
+      }));
+    } catch (caught) {
+      setMessagesError(errorMessage(caught));
+      throw caught;
+    }
+  }
+
   function updatePatchSet(patchSet: AgentPatchSetView) {
     setMessages((previous) =>
       previous.map((message) =>
@@ -565,6 +635,18 @@ export function AgentLivePanel({
                 <p className={styles.agentMessage} data-role={message.role}>
                   {message.content}
                 </p>
+              ) : null}
+              {message.role === "assistant" &&
+              message.status === "completed" &&
+              routingSummaryFor(message) !== null ? (
+                <RoutingFeedback
+                  intent={routingSummaryFor(message)?.intent ?? null}
+                  onSubmitted={(correctIntent) =>
+                    submitRoutingFeedback(message, correctIntent)
+                  }
+                  routeSource={routingSummaryFor(message)?.route_source ?? null}
+                  submittedIntent={feedbackByMessage[message.message_id]}
+                />
               ) : null}
               {message.role === "assistant" &&
               message.status === "completed" &&
@@ -724,6 +806,96 @@ export function AgentLivePanel({
         ) : null}
       </form>
     </section>
+  );
+}
+
+function RoutingFeedback({
+  routeSource,
+  intent,
+  submittedIntent,
+  onSubmitted,
+}: {
+  routeSource: string | null;
+  intent: string | null;
+  submittedIntent?: AgentRoutingCorrectIntent;
+  onSubmitted: (intent: AgentRoutingCorrectIntent) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [selection, setSelection] = useState<AgentRoutingCorrectIntent | "">("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit() {
+    if (selection === "" || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmitted(selection);
+      setEditing(false);
+    } catch {
+      // The panel surfaces the API error near the message list.
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className={styles.agentRouteMeta} aria-label="意图路由">
+      <span className={styles.agentRouteChip}>
+        {routingSourceLabels[routeSource ?? ""] ?? routeSource ?? "路由"}
+        {intent !== null
+          ? ` · ${routingIntentLabels[intent as AgentRoutingCorrectIntent] ?? intent}`
+          : ""}
+      </span>
+      {submittedIntent ? (
+        <span className={styles.agentRouteSubmitted}>
+          已记录反馈：{routingIntentLabels[submittedIntent]}
+        </span>
+      ) : editing ? (
+        <span className={styles.agentRouteFeedback}>
+          <select
+            aria-label="正确的意图"
+            onChange={(event) =>
+              setSelection(event.target.value as AgentRoutingCorrectIntent)
+            }
+            value={selection}
+          >
+            <option value="" disabled>
+              选择正确意图
+            </option>
+            {(
+              Object.entries(routingIntentLabels) as Array<
+                [AgentRoutingCorrectIntent, string]
+              >
+            ).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <button
+            disabled={selection === "" || submitting}
+            onClick={() => void submit()}
+            type="button"
+          >
+            {submitting ? "提交中…" : "提交反馈"}
+          </button>
+          <button
+            disabled={submitting}
+            onClick={() => setEditing(false)}
+            type="button"
+          >
+            取消
+          </button>
+        </span>
+      ) : (
+        <button
+          className={styles.agentRouteFeedbackButton}
+          onClick={() => setEditing(true)}
+          type="button"
+        >
+          路由错误
+        </button>
+      )}
+    </div>
   );
 }
 
