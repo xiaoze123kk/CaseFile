@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,12 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "chat-outcome":
+        from casefile.benchmark.chat_outcome_eval import main as chat_outcome_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        chat_outcome_main()
+        return
     parser = argparse.ArgumentParser(description="Run the CaseFile Brief-to-Draft benchmark")
     parser.add_argument("--fixture", type=Path, help="Single fixture file to run")
     parser.add_argument(
