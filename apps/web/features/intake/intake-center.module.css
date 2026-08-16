@@ -706,7 +706,7 @@
   position: relative;
   min-height: calc(100svh - 202px);
   margin: 16px 0;
-  overflow: hidden;
+  overflow: clip;
   background:
     var(--paper);
 }
