@@ -12,12 +12,13 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
+
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.chat_feedback_metrics import run_chat_feedback_metrics
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
