@@ -11,6 +11,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from casefile.agent_runtime.brief_to_draft_runtime import (
+    BriefToDraftSpec,
+    resolve_pipeline_spec,
+    schema_id_for_component,
+)
 from casefile.agent_runtime.brief_to_draft_v8.compiler import (
     LinkedDraftV1,
     LinkerValidationError,
@@ -21,7 +26,6 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
     BLUEPRINT_COLLECTIONS,
     DOMAIN_COLLECTIONS,
     CaseBlueprintV1,
-    DraftContextPackV1,
     EvidenceLogicIR,
     EvidenceLogicIRV1,
     EvidenceLogicIRV2,
@@ -30,33 +34,24 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
 )
 from casefile.agent_runtime.brief_to_draft_v11.contracts import (
     CoordinatePairV1,
-    DraftContextPackV2,
     EventIRV2,
     RelativeTemporalPositionIRV2,
     StoryWorldIRV2,
     Wgs84SpatialPositionIRV2,
 )
 from casefile.agent_runtime.brief_to_draft_v12.contracts import (
-    DraftContextPackV3,
     StoryWorldIRV3,
     TemporalPlanV1,
     temporal_plan_issues,
     temporal_story_issues,
 )
-from casefile.agent_runtime.brief_to_draft_v14.contracts import DraftContextPackV4
 from casefile.agent_runtime.brief_to_draft_v15.contracts import (
-    DraftContextPackV5,
     ResolutionGovernanceIRV2,
 )
 from casefile.agent_runtime.brief_to_draft_v15.matrix import (
     evaluate_evidence_matrix,
 )
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
-from casefile.agent_runtime.prompt import (
-    COMPETITION_MATRIX_PROMPT_VERSIONS,
-    PROMPT_PACKAGE_GENERATION_VERSIONS,
-    TEMPORAL_PLAN_PROMPT_VERSIONS,
-)
 from casefile.agent_runtime.prompt_package import (
     PromptPackageError,
     output_type_for_component,
@@ -90,13 +85,6 @@ _STEP_SCHEMA = {
     "casefile_compiler": "casefile-v1",
     "quality_repair_gate": "casefile-v1",
 }
-_V8_PROMPT_COMPONENTS = frozenset({"planner", "story", "evidence", "governance"})
-_V12_PROMPT_COMPONENTS = frozenset({"planner", "temporal", "story", "evidence", "governance"})
-_V15_PROMPT_COMPONENTS = frozenset(
-    {"planner", "temporal", "story", "evidence", "matrix", "governance"}
-)
-_PACKAGE_PROMPT_VERSIONS = PROMPT_PACKAGE_GENERATION_VERSIONS
-
 _CREATOR_TEXT_FIELDS = frozenset(
     {
         "accepted_answer_texts",
@@ -208,32 +196,23 @@ async def run_v8_generation(
     """Run the six business stages with one bounded targeted domain repair."""
 
     _validate_frozen_prompt_release(request)
-    is_v11 = request.prompt_version == "brief-to-draft-v11"
-    uses_temporal_plan = request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
-    uses_v2_context = is_v11 or uses_temporal_plan
-    uses_v15 = request.prompt_version == "brief-to-draft-v15"
-    uses_competition_matrix = request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
+    spec = resolve_pipeline_spec(request.prompt_version)
+    features = spec.features
+    uses_temporal_plan = features.temporal_plan
+    uses_v2_context = features.v2_context
+    uses_v15 = features.governance_v2
+    uses_competition_matrix = features.competition_matrix
     usage_records: list[dict[str, Any]] = []
     tools = ToolMetrics()
     repaired_components: set[str] = set()
-    context = _build_context_pack(request)
+    context = _build_context_pack(request, spec)
     prior_repair_issues = _request_repair_issues(request)
     _deterministic_step(
         request,
         "context_pack_builder",
         "context_building",
         context.model_dump(mode="json"),
-        schema_id=(
-            "draft-context-pack-v5"
-            if uses_v15
-            else "draft-context-pack-v4"
-            if request.prompt_version == "brief-to-draft-v14"
-            else "draft-context-pack-v3"
-            if uses_temporal_plan
-            else "draft-context-pack-v2"
-            if is_v11
-            else "draft-context-pack-v1"
-        ),
+        schema_id=spec.context_schema_id,
     )
 
     planner_input: dict[str, Any] = {"context_pack": context.model_dump(mode="json")}
@@ -265,15 +244,12 @@ async def run_v8_generation(
         error = ContractValidationError(blueprint_path_issues)
         _emit_quality_gate_failure(request, error)
         raise error
-    language_repair_allowed = request.prompt_version in {
-        "brief-to-draft-v14",
-        "brief-to-draft-v15",
-    }
+    language_repair_allowed = features.language_gate
     needs_blueprint_repair = bool(blueprint_path_issues) or (
         language_repair_allowed and bool(_blueprint_creator_chinese_issues(blueprint))
     )
     if needs_blueprint_repair:
-        repair_budget = 2 if uses_v15 else 1
+        repair_budget = features.blueprint_repair_budget
         for _ in range(repair_budget):
             combined_issues = [
                 *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
@@ -376,7 +352,7 @@ async def run_v8_generation(
             if evidence_logic is None:
                 raise RuntimeError("v15 governance requires completed Evidence Logic")
             input_payload["evidence_logic"] = evidence_logic.model_dump(mode="json")
-        if request.prompt_version == "brief-to-draft-v8":
+        if not spec.prompt_package:
             input_payload.update(
                 {
                     "reference_instruction": (
@@ -415,10 +391,10 @@ async def run_v8_generation(
         return output_type.model_validate(output), usage
 
     evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
-        EvidenceLogicIRV2 if uses_competition_matrix else EvidenceLogicIRV1
+        spec.evidence_output_type
     )
     story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3] = (
-        StoryWorldIRV3 if uses_temporal_plan else StoryWorldIRV2 if is_v11 else StoryWorldIRV1
+        spec.story_output_type
     )
     parallel_domain_tasks = [
         draft_domain(
@@ -434,12 +410,12 @@ async def run_v8_generation(
             _repair_issues_for_component(prior_repair_issues, "evidence_logic"),
         ),
     ]
-    if not uses_v15:
+    if spec.governance_runs_in_parallel:
         parallel_domain_tasks.append(
             draft_domain(
                 "resolution_governance",
                 "governance",
-                ResolutionGovernanceIRV1,
+                spec.governance_output_type,
                 _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
             )
         )
@@ -482,7 +458,7 @@ async def run_v8_generation(
                 evidence_output_type,
                 matrix_issues,
                 previous_output=evidence,
-                input_contract_id="brief-to-draft-evidence-repair-input-v1",
+                input_contract_id=spec.evidence_repair_input_contract_id,
             )
             usage_records.append(evidence_usage)
             repaired_components.add("evidence_logic")
@@ -1311,18 +1287,13 @@ def _extract_allowed_wgs84_coordinates(brief: dict[str, Any]) -> list[Coordinate
 def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
     """Fail before resume reuse when the frozen Bundle or Package is unavailable."""
 
+    spec = resolve_pipeline_spec(request.prompt_version)
     definition = load_prompt("brief_to_draft", request.prompt_version)
-    if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
+    if spec.prompt_package:
         package = definition.package
         if package is None:
             raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
-        expected_components = (
-            _V15_PROMPT_COMPONENTS
-            if request.prompt_version == "brief-to-draft-v15"
-            else _V12_PROMPT_COMPONENTS
-            if request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
-            else _V8_PROMPT_COMPONENTS
-        )
+        expected_components = spec.prompt_components
         if set(package.components) != expected_components:
             raise PromptRepositoryError(
                 f"Prompt Package {request.prompt_version} must define "
@@ -1338,7 +1309,7 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
                 "Frozen TaskRun toolset_version does not match Prompt Package"
             )
         return
-    if set(definition.component_prompts) != _V8_PROMPT_COMPONENTS:
+    if set(definition.component_prompts) != spec.prompt_components:
         raise PromptRepositoryError(
             f"Prompt Bundle {request.prompt_version} must define "
             "planner, story, evidence, and governance components"
@@ -1347,30 +1318,9 @@ def _validate_frozen_prompt_release(request: GenerationRequest) -> None:
 
 def _build_context_pack(
     request: GenerationRequest,
-) -> (
-    DraftContextPackV1
-    | DraftContextPackV2
-    | DraftContextPackV3
-    | DraftContextPackV4
-    | DraftContextPackV5
-):
-    context_type: (
-        type[DraftContextPackV1]
-        | type[DraftContextPackV2]
-        | type[DraftContextPackV3]
-        | type[DraftContextPackV4]
-        | type[DraftContextPackV5]
-    ) = (
-        DraftContextPackV5
-        if request.prompt_version == "brief-to-draft-v15"
-        else DraftContextPackV4
-        if request.prompt_version == "brief-to-draft-v14"
-        else DraftContextPackV3
-        if request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS
-        else DraftContextPackV2
-        if request.prompt_version == "brief-to-draft-v11"
-        else DraftContextPackV1
-    )
+    spec: BriefToDraftSpec,
+) -> BaseModel:
+    context_type = spec.context_pack_type
     payload = {
         "task_run_id": request.task_run_id,
         "prompt_bundle_version": request.prompt_version,
@@ -1444,23 +1394,10 @@ async def _model_step(
     input_payload: dict[str, Any],
     input_contract_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    if component_id == "story_world" and request.prompt_version in TEMPORAL_PLAN_PROMPT_VERSIONS:
-        schema_id = "story-world-ir-v3"
-    elif component_id == "story_world" and request.prompt_version == "brief-to-draft-v11":
-        schema_id = "story-world-ir-v2"
-    elif (
-        component_id == "evidence_logic"
-        and request.prompt_version in COMPETITION_MATRIX_PROMPT_VERSIONS
-    ):
-        schema_id = "evidence-logic-ir-v2"
-    elif component_id == "resolution_governance" and request.prompt_version == "brief-to-draft-v15":
-        schema_id = "resolution-governance-ir-v2"
-    elif component_id == "evidence_matrix" and request.prompt_version == "brief-to-draft-v15":
-        schema_id = "matrix-evaluation-v1"
-    else:
-        schema_id = _STEP_SCHEMA[component_id]
+    spec = resolve_pipeline_spec(request.prompt_version)
+    schema_id = schema_id_for_component(spec, component_id) or _STEP_SCHEMA[component_id]
     package_metadata: dict[str, str] = {}
-    if request.prompt_version in _PACKAGE_PROMPT_VERSIONS:
+    if spec.prompt_package:
         definition = load_prompt("brief_to_draft", request.prompt_version)
         if definition.package is None:
             raise PromptRepositoryError(f"Prompt Package {request.prompt_version} is unavailable")
@@ -1745,7 +1682,7 @@ def _quality_gate(
                         )
         if description_issues:
             raise ContractValidationError(description_issues)
-        if request.prompt_version in {"brief-to-draft-v14", "brief-to-draft-v15"}:
+        if resolve_pipeline_spec(request.prompt_version).features.language_gate:
             creator_language_issues = _creator_chinese_issues(candidate)
             if creator_language_issues:
                 raise ContractValidationError(creator_language_issues)
