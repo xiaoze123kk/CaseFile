@@ -749,3 +749,135 @@ def test_brief_intake_initializes_legacy_projects_once_and_keeps_review_closed(
         assert recovered_source_only["current_source"]["source_record_id"] == (
             source_only["source_record_id"]
         )
+
+
+def test_brief_intake_reopens_for_revision_and_adopts_a_new_version(
+    intake_database: tuple[str, Engine, int, int, str],
+) -> None:
+    database_url, _engine, actor_id, _stranger_id, master_key = intake_database
+    app = create_app(database_url)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}), TestClient(app) as client:
+        project = client.post(
+            "/api/v1/projects",
+            headers=_identity(actor_id),
+            json={"title": "简报修订回归", "description": None, "profile": {}},
+        )
+        project_id = project.json()["id"]
+        source = client.post(
+            f"/api/v1/projects/{project_id}/sources",
+            headers=_identity(actor_id),
+            json={
+                "source_kind": "human_original",
+                "content_text": "修订前的最初想法。",
+            },
+        ).json()
+        source_id = source["source_record_id"]
+        brief = client.put(
+            f"/api/v1/projects/{project_id}/brief",
+            headers=_identity(actor_id),
+            json={
+                "expected_revision": 1,
+                "content": {
+                    "source_record_ids": [source_id],
+                    "creative_intent": "修订前的创作意图。",
+                    "reasoning_proposition": "修订前的核心命题。",
+                    "resolution_mode": "open",
+                    "conclusion_mode": "open_interpretation",
+                    "author_answer": None,
+                    "author_anchors": [],
+                    "boundary_text": None,
+                    "creative_constraints": [],
+                    "core_selling_points": ["修订前的卖点"],
+                    "content_outline": ["修订前的骨架"],
+                    "scope_estimate": "短篇",
+                    "risk_notes": [],
+                },
+            },
+        )
+        assert brief.status_code == 200
+        brief_draft_revision = brief.json()["draft_revision"]
+
+        frozen = client.post(
+            f"/api/v1/projects/{project_id}/brief/confirm",
+            headers=_identity(actor_id),
+            json={"expected_revision": brief_draft_revision},
+        )
+        assert frozen.status_code == 201
+        assert frozen.json()["version_no"] == 1
+
+        before_revision = client.get(
+            f"/api/v1/projects/{project_id}/brief-intake",
+            headers=_identity(actor_id),
+        ).json()
+        assert before_revision["stage"] == "brief_review"
+        assert before_revision["revision"] == 1
+
+        reopened = client.post(
+            f"/api/v1/projects/{project_id}/brief-intake/revision",
+            headers=_identity(actor_id),
+        )
+        assert reopened.status_code == 200
+        assert reopened.json()["stage"] == "confirmation"
+        assert reopened.json()["revision"] == 2
+
+        candidate = client.post(
+            f"/api/v1/projects/{project_id}/brief-intake/candidates",
+            headers=_identity(actor_id),
+            json={
+                "expected_intake_revision": 2,
+                "parent_candidate_id": None,
+                "content": _manual_candidate("简报修订后的概念"),
+                "activate": True,
+            },
+        )
+        assert candidate.status_code == 201
+        assert candidate.json()["stage"] == "confirmation"
+        assert candidate.json()["revision"] == 3
+        candidate_id = candidate.json()["current_candidate_id"]
+
+        adopted = client.post(
+            (
+                f"/api/v1/projects/{project_id}/brief-intake/candidates/"
+                f"{candidate_id}/adopt"
+            ),
+            headers=_identity(actor_id),
+            json={
+                "expected_intake_revision": 3,
+                "expected_brief_revision": brief_draft_revision,
+            },
+        )
+        assert adopted.status_code == 200
+        assert adopted.json()["intake"]["stage"] == "brief_review"
+        revised_brief = adopted.json()["brief"]
+        assert revised_brief["draft_revision"] == brief_draft_revision + 1
+        assert revised_brief["current_version_id"] is None
+        assert revised_brief["content"]["creative_intent"] == "简报修订后的概念"
+
+        # 补上正式审阅要求确认的原子规则，再重新冻结。
+        reviewed = client.put(
+            f"/api/v1/projects/{project_id}/brief",
+            headers=_identity(actor_id),
+            json={
+                "expected_revision": revised_brief["draft_revision"],
+                "content": {
+                    **revised_brief["content"],
+                    "creative_constraints": [
+                        {
+                            "constraint_id": "constraint_revision_keep",
+                            "statement": "必须保留记录被人为改写这一事实。",
+                            "strength": "hard",
+                        }
+                    ],
+                },
+            },
+        )
+        assert reviewed.status_code == 200
+
+        # 旧版本仍留在历史中，重新冻结生成 V2 而不是覆盖 V1。
+        refrozen = client.post(
+            f"/api/v1/projects/{project_id}/brief/confirm",
+            headers=_identity(actor_id),
+            json={"expected_revision": reviewed.json()["draft_revision"]},
+        )
+        assert refrozen.status_code == 201
+        assert refrozen.json()["version_no"] == 2

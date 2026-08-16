@@ -606,6 +606,13 @@ function buildFakeBackend() {
         },
       };
     },
+    beginBriefRevision: vi.fn(async (projectId: number) => {
+      if (projectId === 1) {
+        formalBriefReview = false;
+        revision += 1;
+      }
+      return intakeView();
+    }),
     listProjects: async () => projects,
     archiveProject: async (_actorId: number, projectId: number) => {
       projects = projects.map((project) =>
@@ -1269,17 +1276,30 @@ describe("intake center", () => {
 
     // 建立简报修订后，审阅与深稿候选在重新冻结前必须不可达。
     fireEvent.click(screen.getByRole("button", { name: "建立简报修订" }));
-    expect(
-      screen.getByRole("heading", {
-        name: "确认整体方向，再交给正式审阅。",
-      }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", {
+          name: "确认整体方向，再交给正式审阅。",
+        }),
+      ).toBeInTheDocument(),
+    );
     expect(
       screen.getByRole("button", { name: "04 审阅 创作简报审阅" }),
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "05 采用 深稿候选与采用" }),
     ).toBeDisabled();
+    expect(fake.backend.beginBriefRevision).toHaveBeenCalledWith(1);
+
+    // 修订已在服务端重开，第 3 步修改后必须能再次进入正式审阅。
+    fireEvent.click(
+      screen.getByRole("button", { name: /进入创作简报审阅/u }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "把生成依据逐条钉在纸面上。" }),
+      ).toBeInTheDocument(),
+    );
   }, 15_000);
 
   it("lets the author form a brief when the agent decides no questions are needed", async () => {

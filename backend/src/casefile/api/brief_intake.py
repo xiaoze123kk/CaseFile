@@ -30,6 +30,14 @@ def brief_intake_router() -> APIRouter:
     ) -> dict[str, Any]:
         return BriefIntakeService(session).get(actor, project_id)
 
+    @router.post("/projects/{project_id}/brief-intake/revision")
+    def begin_brief_intake_revision(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return BriefIntakeService(session).begin_revision(actor, project_id)
+
     @router.put("/projects/{project_id}/brief-intake/source")
     def update_brief_intake_source(
         project_id: int,

@@ -78,8 +78,10 @@ export function DraftCandidatesStage() {
   const [notice, setNotice] = useState("先选择策略，再生成一份完整深稿。");
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [adoptingCandidateId, setAdoptingCandidateId] = useState<string | null>(null);
+  const [revisionPending, setRevisionPending] = useState(false);
   const analysisStartedRef = useRef(false);
   const adoptionInFlightRef = useRef(false);
+  const revisionInFlightRef = useRef(false);
 
   const currentCandidates = useMemo(
     () => state.draftCandidates.filter(
@@ -249,6 +251,24 @@ export function DraftCandidatesStage() {
       }
     } catch (error) {
       setGenerationError(error instanceof Error ? error.message : "停止任务失败");
+    }
+  }
+
+  async function beginRevision() {
+    if (revisionInFlightRef.current) return;
+    revisionInFlightRef.current = true;
+    setRevisionPending(true);
+    setGenerationError(null);
+    try {
+      await beginBriefRevision();
+      setNotice("已建立简报修订：回到第 3 步修改，完成后重新提交审阅。");
+    } catch (error) {
+      setGenerationError(
+        error instanceof Error ? error.message : "简报修订未建立，请稍后重试。",
+      );
+    } finally {
+      revisionInFlightRef.current = false;
+      setRevisionPending(false);
     }
   }
 
@@ -576,7 +596,13 @@ export function DraftCandidatesStage() {
 
       <footer className={styles.candidatesFooter}>
         <p aria-live="polite">{notice}</p>
-        <button disabled={generating} onClick={beginBriefRevision} type="button">建立简报修订</button>
+        <button
+          disabled={generating || revisionPending}
+          onClick={() => void beginRevision()}
+          type="button"
+        >
+          {revisionPending ? "正在建立简报修订…" : "建立简报修订"}
+        </button>
       </footer>
     </section>
   );

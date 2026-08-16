@@ -41,6 +41,7 @@ import {
   adoptBriefCandidate,
   adoptDraftCandidateWithReconciliation,
   answerQuestion,
+  beginBriefRevision as beginBriefRevisionRequest,
   cancelTask,
   confirmBrief,
   createBriefCandidate,
@@ -467,7 +468,7 @@ interface CaseSessionContextValue {
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
   previewCandidate: (candidateId: string | null) => void;
   adoptCandidate: (candidateId: string) => Promise<number | false>;
-  beginBriefRevision: () => void;
+  beginBriefRevision: () => Promise<void>;
   candidateStatus: (
     candidate: SessionWorkbenchCandidate,
   ) => WorkbenchCandidateStatus;
@@ -1529,7 +1530,15 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     return outcome.adoption?.draft_id ?? outcome.facts?.draft.draft_id ?? false;
   }, []);
 
-  const beginBriefRevision = useCallback(() => {
+  const beginBriefRevision = useCallback(async () => {
+    const projectId = projectIdRef.current;
+    if (projectId === null) {
+      throw new CaseSessionError("当前会话尚未建案。");
+    }
+    // 先持久化“建立简报修订”：服务端把 Intake 从 brief_review 重开为
+    // confirmation，后续第 3 步的保存/采用请求才会被状态机接受。
+    const intake = await beginBriefRevisionRequest(projectId);
+    intakeRef.current = intake;
     dispatch({ type: "begin_revision" });
   }, []);
 

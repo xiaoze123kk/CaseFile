@@ -61,6 +61,23 @@ class BriefIntakeService:
             intake = self._ensure_intake(owned)
             return self._view(owned, intake)
 
+    def begin_revision(
+        self, actor_user_id: int, project_id: int
+    ) -> dict[str, Any]:
+        """Reopen a frozen intake for a new brief revision cycle.
+
+        The formal brief version stays immutable in history; the current
+        pointer is detached again when the author adopts a revised candidate.
+        """
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            intake = self._ensure_intake(owned, lock=True)
+            if intake.stage == "brief_review":
+                intake.stage = "confirmation"
+                intake.revision += 1
+                self.session.flush()
+            return self._view(owned, intake)
+
     def update_source(
         self,
         actor_user_id: int,
@@ -342,12 +359,7 @@ class BriefIntakeService:
                         "received_revision": expected_brief_revision,
                     },
                 )
-            if brief.current_version_id is not None:
-                raise ApplicationError(
-                    "brief_intake_formal_version_exists",
-                    "已确认的创作简报版本已经存在，请进入正式审阅继续操作。",
-                    status_code=409,
-                )
+            starting_revision = brief.current_version_id is not None
 
             source = self._require_source(intake)
             projected = project_candidate_to_brief(
@@ -357,6 +369,9 @@ class BriefIntakeService:
             if brief.draft_jsonb != projected:
                 brief.draft_jsonb = projected
                 brief.draft_revision += 1
+            if starting_revision:
+                # 简报修订重新采用：旧版本保留在 BriefVersion 历史中，
+                # 当前指针解除，下一次确认冻结会生成新的版本号。
                 brief.current_version_id = None
             intake.current_candidate_id = candidate.id
             intake.adopted_candidate_id = candidate.id
