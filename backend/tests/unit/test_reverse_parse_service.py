@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from casefile.application.reverse_parse_service import ReverseParseService
 from casefile.data_postgres.models import ImportedDocument, ParseItem
 

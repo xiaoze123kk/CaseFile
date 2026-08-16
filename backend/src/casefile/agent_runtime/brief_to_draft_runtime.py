@@ -93,6 +93,10 @@ _STAGES_V15 = (
     "compile_quality_gate",
 )
 
+EvidenceOutputType = type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2]
+GovernanceOutputType = type[ResolutionGovernanceIRV1] | type[ResolutionGovernanceIRV2]
+StoryOutputType = type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3]
+
 
 @dataclass(frozen=True, slots=True)
 class FeatureFlags:
@@ -116,11 +120,11 @@ class BriefToDraftSpec:
     agent_version: str
     context_pack_type: type[BaseModel]
     context_schema_id: str
-    story_output_type: type[BaseModel]
+    story_output_type: StoryOutputType
     story_schema_id: str
-    evidence_output_type: type[BaseModel]
+    evidence_output_type: EvidenceOutputType
     evidence_schema_id: str
-    governance_output_type: type[BaseModel]
+    governance_output_type: GovernanceOutputType
     governance_schema_id: str
     prompt_components: frozenset[str]
     prompt_package: bool
@@ -326,9 +330,12 @@ def schema_id_for_component(
 __all__ = [
     "BriefToDraftSpec",
     "CompilerFeature",
+    "EvidenceOutputType",
     "FeatureFlags",
+    "GovernanceOutputType",
     "PipelineStage",
     "StoryFeature",
+    "StoryOutputType",
     "resolve_pipeline_spec",
     "schema_id_for_component",
     "supported_pipeline_versions",
