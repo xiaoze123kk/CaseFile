@@ -318,6 +318,48 @@ class PipelineContext:
         )
         return output_type.model_validate(output), usage
 
+    async def draft_temporal_plan(
+        self,
+        repair_issues: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Draft or repair the temporal plan and bind it into the context."""
+
+        if self.context_pack is None or self.blueprint is None:
+            raise RuntimeError("temporal planning requires context and blueprint stages")
+        temporal_output, temporal_usage = await _model_step(
+            self.request,
+            self.call_component,
+            component_id="temporal_structure_planner",
+            prompt_component="temporal",
+            stage="temporal_planning",
+            output_type=TemporalPlanV1,
+            input_payload={
+                "context_pack": self.context_pack.model_dump(mode="json"),
+                "blueprint": self.blueprint.model_dump(mode="json"),
+                **({"targeted_repair_issues": repair_issues} if repair_issues else {}),
+            },
+        )
+        self.usage_records.append(temporal_usage)
+        self.temporal_plan = TemporalPlanV1.model_validate(temporal_output)
+        plan_issues = temporal_plan_issues(self.temporal_plan, self.blueprint)
+        if plan_issues:
+            raise LinkerValidationError(plan_issues)
+
+    def rejoin_temporal_story(self) -> None:
+        """Re-apply the current temporal plan to the current Story output."""
+
+        if self.temporal_plan is None or self.story_output is None:
+            raise RuntimeError("temporal rejoin requires a temporal plan and story output")
+        if self.spec.story_feature is not None:
+            self.story = self.spec.story_feature.with_temporal_plan(
+                self.story_output,
+                self.temporal_plan,
+            )
+            return
+        if not isinstance(self.story_output, StoryWorldIRV3):
+            raise RuntimeError("temporal-planning rejoin requires StoryWorldIRV3")
+        self.story = _with_temporal_plan(self.story_output, self.temporal_plan)
+
 
 class _ContextPackStage:
     stage_id = "context_pack"
@@ -415,38 +457,15 @@ class _TemporalPlanStage:
     async def run(self, ctx: PipelineContext) -> None:
         if not ctx.uses_temporal_plan:
             return
-        if ctx.context_pack is None or ctx.blueprint is None:
-            raise RuntimeError("temporal-planning stage requires context and blueprint")
-        temporal_output, temporal_usage = await _model_step(
-            ctx.request,
-            ctx.call_component,
-            component_id="temporal_structure_planner",
-            prompt_component="temporal",
-            stage="temporal_planning",
-            output_type=TemporalPlanV1,
-            input_payload={
-                "context_pack": ctx.context_pack.model_dump(mode="json"),
-                "blueprint": ctx.blueprint.model_dump(mode="json"),
-                **(
-                    {
-                        "targeted_repair_issues": _repair_issues_for_component(
-                            ctx.prior_repair_issues, "temporal_structure_planner"
-                        )
-                    }
-                    if _repair_issues_for_component(
-                        ctx.prior_repair_issues, "temporal_structure_planner"
-                    )
-                    else {}
-                ),
-            },
+        repair_issues = _repair_issues_for_component(
+            ctx.prior_repair_issues,
+            "temporal_structure_planner",
         )
-        ctx.usage_records.append(temporal_usage)
-        ctx.temporal_plan = TemporalPlanV1.model_validate(temporal_output)
-        plan_issues = temporal_plan_issues(ctx.temporal_plan, ctx.blueprint)
-        if plan_issues:
-            error = ContractValidationError(plan_issues)
+        try:
+            await ctx.draft_temporal_plan(repair_issues)
+        except LinkerValidationError as error:
             _emit_quality_gate_failure(ctx.request, error)
-            raise error
+            raise ContractValidationError(error.errors) from error
 
 
 class _DomainDraftStage:
@@ -689,6 +708,16 @@ class _CompileQualityGateStage:
                 if ctx.uses_v15 and "evidence_logic" in affected:
                     affected.add("resolution_governance")
                 if ctx.uses_v15:
+                    if "temporal_structure_planner" in affected:
+                        await ctx.draft_temporal_plan(
+                            [
+                                issue
+                                for issue in issues
+                                if issue.get("component_id") == "temporal_structure_planner"
+                            ]
+                        )
+                        ctx.repaired_components.add("temporal_structure_planner")
+                        ctx.rejoin_temporal_story()
                     if "story_world" in affected:
                         value, usage = await ctx.draft_domain(
                             "story_world",
@@ -793,6 +822,16 @@ class _CompileQualityGateStage:
                         ctx.repaired_components.add("resolution_governance")
                         ctx.governance = ctx.spec.governance_output_type.model_validate(value)
                     continue
+                if "temporal_structure_planner" in affected:
+                    await ctx.draft_temporal_plan(
+                        [
+                            issue
+                            for issue in issues
+                            if issue.get("component_id") == "temporal_structure_planner"
+                        ]
+                    )
+                    ctx.repaired_components.add("temporal_structure_planner")
+                    ctx.rejoin_temporal_story()
                 repair_tasks = []
                 repair_order: list[str] = []
                 for component_id, prompt_component, output_type in (
@@ -1881,6 +1920,86 @@ def _compile_step(
     return candidate
 
 
+def _brief_quality_requirement_issues(
+    brief: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    schema_id: str,
+) -> list[dict[str, Any]]:
+    """Translate machine-readable Brief quality requirements into repair issues.
+
+    Acceptance scenarios previously checked these properties only after a
+    successful candidate was persisted. Putting them in the quality gate makes
+    them part of the recoverable contract: the gate fails, the issue is routed
+    to the owning component, and the normal repair/worker budget retries it.
+    """
+
+    requirements = brief.get("quality_requirements")
+    if not isinstance(requirements, dict):
+        return []
+    issues: list[dict[str, Any]] = []
+
+    temporal_time_kinds = requirements.get("temporal_time_kinds")
+    if isinstance(temporal_time_kinds, list) and temporal_time_kinds:
+        required = [str(kind) for kind in temporal_time_kinds]
+        present = {
+            event.get("time", {}).get("kind")
+            for event in candidate.get("events", [])
+            if isinstance(event, dict)
+        }
+        missing = [kind for kind in required if kind not in present]
+        if missing:
+            issues.append(
+                {
+                    "code": "frozen_temporal_time_kinds_missing",
+                    "path": "/events",
+                    "message": (
+                        "事件时间必须同时包含 Brief 冻结要求的时间种类："
+                        + "、".join(sorted(missing))
+                        + "。"
+                    ),
+                    "component_id": "temporal_structure_planner",
+                    "failure_layer": "temporal_grounding",
+                    "schema_id": schema_id,
+                }
+            )
+
+    if requirements.get("spatial_scene_topology") is True:
+        locations = candidate.get("locations", [])
+        has_schematic = any(
+            isinstance(item, dict)
+            and item.get("spatial_position", {}).get("coordinate_system") == "schematic"
+            for item in locations
+        )
+        has_topology = any(
+            isinstance(item, dict)
+            and (
+                item.get("parent_ref") is not None
+                or bool(item.get("adjacency_refs"))
+                or bool(item.get("travel_times"))
+            )
+            for item in locations
+        )
+        if not has_schematic or not has_topology:
+            issues.append(
+                {
+                    "code": "frozen_spatial_scene_topology_missing",
+                    "path": "/locations",
+                    "message": (
+                        "地点必须使用 schematic 示意坐标"
+                        "（spatial_position.coordinate_system 为 schematic），"
+                        "且至少包含一条指向其他地点的拓扑关系"
+                        "（parent_ref、adjacency_refs 或 travel_times，"
+                        "引用不得指向自身）。"
+                    ),
+                    "component_id": "story_world",
+                    "failure_layer": "spatial_grounding",
+                    "schema_id": schema_id,
+                }
+            )
+    return issues[:50]
+
+
 def _quality_gate(
     request: GenerationRequest,
     candidate: dict[str, Any],
@@ -1913,6 +2032,13 @@ def _quality_gate(
                         )
         if description_issues:
             raise ContractValidationError(description_issues)
+        quality_requirement_issues = _brief_quality_requirement_issues(
+            request.brief,
+            candidate,
+            schema_id=schema_id,
+        )
+        if quality_requirement_issues:
+            raise ContractValidationError(quality_requirement_issues)
         if resolve_pipeline_spec(request.prompt_version).features.language_gate:
             creator_language_issues = _creator_chinese_issues(candidate)
             if creator_language_issues:
@@ -1958,7 +2084,7 @@ def _quality_gate(
             "component_id": "quality_repair_gate",
             "schema_id": "casefile-v1",
             "output_hash": _json_hash(candidate),
-            "gate_count": 6,
+            "gate_count": 7,
         },
     )
 
@@ -1967,7 +2093,7 @@ def _affected_domain_components(error: ContractValidationError) -> set[str]:
     affected: set[str] = set()
     for issue in error.errors:
         component_id = issue.get("component_id")
-        if component_id in DOMAIN_COLLECTIONS:
+        if component_id in DOMAIN_COLLECTIONS or component_id == "temporal_structure_planner":
             affected.add(str(component_id))
             continue
         path = str(issue.get("path") or "")

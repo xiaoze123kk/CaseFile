@@ -251,6 +251,17 @@ export type Brief = {
   content_outline?: string[] | null;
   scope_estimate?: string | null;
   risk_notes?: string[] | null;
+  quality_requirements?: {
+    /**
+     * @minItems 1
+     * @maxItems 5
+     */
+    temporal_time_kinds?: [
+      "exact" | "approximate" | "range" | "relative" | "unknown",
+      ...("exact" | "approximate" | "range" | "relative" | "unknown")[]
+    ];
+    spatial_scene_topology?: boolean;
+  };
 };
 /**
  * Immutable, reviewable candidate produced during the pre-Brief intake workflow.

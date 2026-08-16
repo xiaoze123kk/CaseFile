@@ -90,6 +90,25 @@ class RiskNotes(RootModel[list[RiskNote]]):
     root: Annotated[list[RiskNote], Field(max_length=12)]
 
 
+class TemporalTimeKind(StrEnum):
+    exact = 'exact'
+    approximate = 'approximate'
+    range = 'range'
+    relative = 'relative'
+    unknown = 'unknown'
+
+
+class QualityRequirements(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    temporal_time_kinds: Annotated[
+        list[TemporalTimeKind] | None, Field(max_length=5, min_length=1)
+    ] = None
+    spatial_scene_topology: bool | None = None
+
+
 class Schema(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -108,3 +127,4 @@ class Schema(BaseModel):
     content_outline: ContentOutline | None = None
     scope_estimate: ScopeEstimate | None = None
     risk_notes: RiskNotes | None = None
+    quality_requirements: QualityRequirements | None = None

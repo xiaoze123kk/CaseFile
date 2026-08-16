@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from math import ceil
 from pathlib import Path
@@ -22,6 +22,12 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from sqlalchemy import Engine, create_engine, func, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session, sessionmaker
+
 from casefile.agent_runtime.brief_to_draft_v8.ir import EvidenceLogicIRV2
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
     _evidence_assessment_issues,
@@ -51,11 +57,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
-from sqlalchemy import Engine, create_engine, func, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, sessionmaker
 
 pytestmark = [
     pytest.mark.postgres,
@@ -93,6 +94,7 @@ class AcceptanceScenario:
     reasoning_proposition: str
     author_answer: str
     boundary_text: str
+    quality_requirements: dict[str, Any] = field(default_factory=dict)
 
 
 _LEGACY_SCENARIO = AcceptanceScenario(
@@ -114,6 +116,7 @@ _V11_SCENARIOS = (
         reasoning_proposition="谁在监控中断区间进入了档案室？",
         author_answer="管理员在该区间进入档案室并取走记录。",
         boundary_text="时间不得添加时区，也不得把区间压缩为单点。",
+        quality_requirements={"temporal_time_kinds": ["exact", "range"]},
     ),
     AcceptanceScenario(
         scenario_id="time_uncertain_relative",
@@ -136,6 +139,7 @@ _V11_SCENARIOS = (
         reasoning_proposition="嫌疑人如何从控制室抵达档案室？",
         author_answer="嫌疑人沿相邻通道步行三分钟抵达档案室。",
         boundary_text="不得添加真实地理坐标。",
+        quality_requirements={"spatial_scene_topology": True},
     ),
     AcceptanceScenario(
         scenario_id="spatial_wgs84",
@@ -208,6 +212,7 @@ class LiveAcceptanceConfig:
     repeats: int
     report_path: Path | None
     scenario_filter: str
+    repair_attempts: int
 
 
 def _filtered_scenarios(
@@ -521,6 +526,7 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
             config.source_database_url,
             engine,
             provider=config.provider,
+            structural_repair_attempts=config.repair_attempts,
         )
         factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         with patch.dict(
@@ -598,6 +604,16 @@ def _live_config() -> LiveAcceptanceConfig:
         prompt_version_for_task("brief_to_draft"),
     ).strip()
     try:
+        repair_attempts = int(
+            os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS", "5")
+        )
+    except ValueError:
+        pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS must be an integer.")
+    if not 0 <= repair_attempts <= 10:
+        pytest.fail(
+            "CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS must be between 0 and 10."
+        )
+    try:
         load_prompt("brief_to_draft", prompt_version)
     except PromptRepositoryError:
         pytest.fail(
@@ -615,6 +631,7 @@ def _live_config() -> LiveAcceptanceConfig:
         scenario_filter=os.getenv(
             "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER", ""
         ).strip(),
+        repair_attempts=repair_attempts,
     )
 
 
@@ -644,6 +661,7 @@ def _copy_configured_provider_setting(
     target_engine: Engine,
     *,
     provider: str,
+    structural_repair_attempts: int = 5,
 ) -> tuple[int, str]:
     source_engine = create_engine(source_database_url)
     try:
@@ -699,11 +717,14 @@ def _copy_configured_provider_setting(
             key_version=key_version,
             secret_last_four=last_four,
             credential_status="unverified",
-            default_budget_jsonb=(
-                dict(row["default_budget_jsonb"])
-                if isinstance(row["default_budget_jsonb"], dict)
-                else {}
-            ),
+            default_budget_jsonb={
+                **(
+                    dict(row["default_budget_jsonb"])
+                    if isinstance(row["default_budget_jsonb"], dict)
+                    else {}
+                ),
+                "structural_repair_attempts": structural_repair_attempts,
+            },
         )
         session.add(setting)
         session.flush()
@@ -914,6 +935,7 @@ def _brief(
             {"anchor_id": "anchor_live_answer", "statement": scenario.author_answer}
         ],
         "boundary_text": scenario.boundary_text,
+        "quality_requirements": scenario.quality_requirements,
         "creative_constraints": [
             {
                 "constraint_id": "constraint_live_unique",

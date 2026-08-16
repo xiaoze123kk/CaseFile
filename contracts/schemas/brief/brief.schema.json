@@ -114,6 +114,23 @@
         },
         {"type": "null"}
       ]
+    },
+    "quality_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "temporal_time_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["exact", "approximate", "range", "relative", "unknown"]
+          },
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true
+        },
+        "spatial_scene_topology": {"type": "boolean"}
+      }
     }
   },
   "allOf": [

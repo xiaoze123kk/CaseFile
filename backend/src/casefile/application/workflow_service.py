@@ -92,7 +92,7 @@ SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 DEFAULT_BUDGET: dict[str, Any] = {
     "max_turns": 12,
     "network_retries": 2,
-    "structural_repair_attempts": 2,
+    "structural_repair_attempts": 5,
 }
 
 _append_event = append_task_event

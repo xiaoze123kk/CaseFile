@@ -442,7 +442,7 @@ class Worker:
             repair_limit = (
                 0
                 if task_snapshot.prompt_version == "brief-to-draft-v7"
-                else int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 2))
+                else int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 5))
             )
             feedback = generation_request.repair_feedback
             feedback_history: list[dict[str, Any]] = list(feedback)
