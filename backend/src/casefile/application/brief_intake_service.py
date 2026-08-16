@@ -532,6 +532,14 @@ class BriefIntakeService:
                     question.question_key for question in existing_questions
                 }
                 is_additional = task.input_jsonb.get("mode") == "additional"
+                if is_additional:
+                    # 追加模式允许模型返回空集；即使模型违反 Prompt，也必须
+                    # 把与已有问题（尤其是已回答问题）重复的问题在写入前过滤，
+                    # 保证页面永远不会再次出现同一条问题。
+                    normalized = deduplicate_additional_questions(
+                        existing_questions,
+                        normalized,
+                    )
                 for question in normalized:
                     if is_additional:
                         question["required"] = False
@@ -1129,6 +1137,35 @@ class BriefIntakeService:
         return owned
 
 
+def deduplicate_additional_questions(
+    existing_questions: list[BriefIntakeQuestion],
+    questions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Drop additional questions that repeat an existing question prompt.
+
+    Prompts are compared after removing punctuation and whitespace so minor
+    wording or punctuation drift from a provider is still caught.
+    """
+    seen = {
+        _question_prompt_fingerprint(question.prompt)
+        for question in existing_questions
+    }
+    kept: list[dict[str, Any]] = []
+    for question in questions:
+        fingerprint = _question_prompt_fingerprint(question["prompt"])
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        kept.append(question)
+    for ordinal, question in enumerate(kept, start=1):
+        question["ordinal"] = ordinal
+    return kept
+
+
+def _question_prompt_fingerprint(prompt: str) -> str:
+    return "".join(char.casefold() for char in prompt if char.isalnum())
+
+
 def validate_question_set(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     try:
         model = BriefIntakeQuestionSetContract.model_validate({"questions": questions})
@@ -1363,6 +1400,7 @@ def _time(value: datetime | None) -> str | None:
 
 __all__ = [
     "BriefIntakeService",
+    "deduplicate_additional_questions",
     "project_candidate_to_brief",
     "validate_candidate_content",
     "validate_question_set",

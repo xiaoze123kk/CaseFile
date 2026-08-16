@@ -1442,6 +1442,41 @@ describe("intake center", () => {
     );
   });
 
+  it("keeps answered questions and their answers when generating more questions", async () => {
+    renderIntake();
+
+    fireEvent.change(screen.getByLabelText("写下最初想法"), {
+      target: { value: "一名档案员发现三份可靠记录指向一段不存在的时间。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /继续关键追问/u }));
+    await flush();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "找出是谁伪造了那段不存在的时间。",
+      }),
+    );
+    expect(
+      screen.getByDisplayValue("找出是谁伪造了那段不存在的时间。"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "再生成一些问题" }),
+    );
+    await flush();
+
+    expect(
+      screen.getByDisplayValue("找出是谁伪造了那段不存在的时间。"),
+    ).toBeInTheDocument();
+    // 已回答的原问题只保留一份，追加批次不再产生同题卡片。
+    expect(
+      screen.getAllByText("玩家最终必须回答哪一个问题？"),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText("还需要多少组相互矛盾的记录，才能支撑核心推理？"),
+    ).toBeInTheDocument();
+  });
+
   it("falls back to the next provider and retries with a fresh intake revision when questions auth fails", async () => {
     fake.backend.setConfiguredProviders(["openai", "deepseek"]);
     fake.backend.setFailOpenaiAuth(true);

@@ -457,11 +457,38 @@ def test_brief_intake_appends_optional_question_batches(
             headers=_identity(actor_id),
         ).json()
         assert len(first_batch["questions"]) == 2
+        hard_question = next(item for item in first_batch["questions"] if item["required"])
+        optional_question = next(
+            item for item in first_batch["questions"] if not item["required"]
+        )
+
+        answered = client.patch(
+            (
+                f"/api/v1/projects/{project_id}/brief-intake/questions/"
+                f"{hard_question['question_key']}"
+            ),
+            headers=_identity(actor_id),
+            json={
+                "expected_intake_revision": 4,
+                "answer_mode": "suggestion",
+                "suggestion_index": 0,
+            },
+        )
+        assert answered.status_code == 200
+        pending = client.patch(
+            (
+                f"/api/v1/projects/{project_id}/brief-intake/questions/"
+                f"{optional_question['question_key']}"
+            ),
+            headers=_identity(actor_id),
+            json={"expected_intake_revision": 5, "answer_mode": "pending"},
+        )
+        assert pending.status_code == 200
 
         additional = client.post(
             f"/api/v1/projects/{project_id}/tasks/brief-intake-questions",
             headers=_identity(actor_id),
-            json={"expected_intake_revision": 4, "provider": "openai"},
+            json={"expected_intake_revision": 6, "provider": "openai"},
         )
         assert additional.status_code == 202
         assert worker.run_once() is True
@@ -470,7 +497,8 @@ def test_brief_intake_appends_optional_question_batches(
             headers=_identity(actor_id),
         ).json()
 
-        assert combined["revision"] == 6
+        assert combined["revision"] == 8
+        assert combined["hard_questions_resolved"] is True
         assert len(combined["questions"]) == 4
         assert [question["ordinal"] for question in combined["questions"]] == [1, 2, 3, 4]
         assert len({question["question_key"] for question in combined["questions"]}) == 4
@@ -481,6 +509,19 @@ def test_brief_intake_appends_optional_question_batches(
         assert all(
             not question["required"] for question in combined["questions"][2:]
         )
+        recovered_hard = next(
+            item
+            for item in combined["questions"]
+            if item["question_key"] == hard_question["question_key"]
+        )
+        recovered_optional = next(
+            item
+            for item in combined["questions"]
+            if item["question_key"] == optional_question["question_key"]
+        )
+        assert recovered_hard["answer_status"] == "suggestion_accepted"
+        assert recovered_hard["answer_text"] == hard_question["suggestions"][0]
+        assert recovered_optional["answer_status"] == "pending"
 
 
 def test_brief_intake_archives_stale_tasks_and_allows_manual_recovery(

@@ -661,6 +661,7 @@ export function IntakeCenter() {
     setQuestionGenerationMode("additional");
     try {
       await requestMoreQuestions();
+      setAnswersDirty(false);
       announce("已补充新的追问；已有问题和回答保持不变。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "补充追问任务未完成。");
