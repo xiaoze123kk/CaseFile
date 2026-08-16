@@ -1969,12 +1969,40 @@
   white-space: nowrap;
 }
 
-.evidenceMatrixCell:hover { background: rgba(199, 139, 60, 0.08); }
-.evidenceMatrixCell[data-effect="supports"] { color: var(--success); background: rgba(53, 164, 111, 0.09); }
-.evidenceMatrixCell[data-effect="contradicts"] { color: var(--issue-strong); background: var(--issue-soft); }
-.evidenceMatrixCell[data-effect="neutral"] { color: #286e75; background: rgba(39, 122, 131, 0.12); }
-.evidenceMatrixCell[data-effect="unassessed"] { color: var(--ink-faint); }
-.evidenceMatrixCell[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--primary); }
+/* 判定效果用「左侧实色条 + 饱和底色 + 深色文字」三重视觉编码，四态一眼可辨 */
+.evidenceMatrixCell[data-effect="supports"] {
+  color: #1c6b4a;
+  background: rgba(47, 158, 110, 0.18);
+  box-shadow: inset 3px 0 0 #2f9e6e;
+  font-weight: 650;
+}
+
+.evidenceMatrixCell[data-effect="contradicts"] {
+  color: #9c3836;
+  background: rgba(217, 83, 79, 0.18);
+  box-shadow: inset 3px 0 0 #d9534f;
+  font-weight: 650;
+}
+
+.evidenceMatrixCell[data-effect="neutral"] {
+  color: #2b5f8f;
+  background: rgba(74, 134, 196, 0.16);
+  box-shadow: inset 3px 0 0 #4a86c4;
+  font-weight: 650;
+}
+
+.evidenceMatrixCell[data-effect="unassessed"] {
+  color: var(--ink-faint);
+  background: rgba(41, 44, 44, 0.03);
+  box-shadow: inset 3px 0 0 rgba(136, 139, 132, 0.5);
+  font-weight: 400;
+}
+
+.evidenceMatrixCell:hover { filter: brightness(1.06); }
+.evidenceMatrixCell[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
 
 .evidenceCellDetail {
   flex: 0 0 auto;
@@ -2056,9 +2084,9 @@
   font-weight: 650;
 }
 
-.evidenceCellDetail[data-effect="supports"] .evidenceCellEffect { color: var(--success); border-color: rgba(53, 164, 111, 0.5); }
-.evidenceCellDetail[data-effect="contradicts"] .evidenceCellEffect { color: var(--issue-strong); border-color: rgba(217, 92, 89, 0.5); }
-.evidenceCellDetail[data-effect="neutral"] .evidenceCellEffect { color: #286e75; border-color: rgba(39, 122, 131, 0.5); }
+.evidenceCellDetail[data-effect="supports"] .evidenceCellEffect { color: #2f9e6e; border-color: rgba(47, 158, 110, 0.5); }
+.evidenceCellDetail[data-effect="contradicts"] .evidenceCellEffect { color: #d9534f; border-color: rgba(217, 83, 79, 0.5); }
+.evidenceCellDetail[data-effect="neutral"] .evidenceCellEffect { color: #4a86c4; border-color: rgba(74, 134, 196, 0.5); }
 
 .evidenceCellDetail > p {
   margin: 8px 12px 10px;
