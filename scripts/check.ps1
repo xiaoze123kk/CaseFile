@@ -47,6 +47,11 @@ try {
 
     Push-Location $backendRoot
     try {
+        & $python -m casefile.benchmark chat-outcome --mode calibrate
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat outcome M0 calibration failed."
+        }
+
         if ($SkipPostgres) {
             & $python -m pytest -m "not postgres"
         } else {
