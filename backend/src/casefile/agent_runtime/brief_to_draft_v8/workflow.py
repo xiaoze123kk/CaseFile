@@ -8,13 +8,16 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_features import PipelineStage
 from casefile.agent_runtime.brief_to_draft_runtime import (
     BriefToDraftSpec,
+    EvidenceOutputType,
+    FeatureFlags,
+    StoryOutputType,
     resolve_pipeline_spec,
     schema_id_for_component,
 )
@@ -213,7 +216,7 @@ class PipelineContext:
     result: GenerationResult | None = None
 
     @property
-    def features(self) -> Any:
+    def features(self) -> FeatureFlags:
         return self.spec.features
 
     @property
@@ -474,12 +477,8 @@ class _DomainDraftStage:
     async def run(self, ctx: PipelineContext) -> None:
         if ctx.blueprint is None:
             raise RuntimeError("domain draft stage requires a blueprint")
-        evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
-            ctx.spec.evidence_output_type
-        )
-        story_output_type: (
-            type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3]
-        ) = ctx.spec.story_output_type
+        evidence_output_type: EvidenceOutputType = ctx.spec.evidence_output_type
+        story_output_type: StoryOutputType = ctx.spec.story_output_type
         parallel_domain_tasks = [
             ctx.draft_domain(
                 "story_world",
@@ -521,11 +520,14 @@ class _DomainDraftStage:
                     raise RuntimeError("temporal-planning versions must use StoryWorldIRV3")
                 ctx.story = _with_temporal_plan(ctx.story_output, ctx.temporal_plan)
         else:
-            if not isinstance(ctx.story_output, (StoryWorldIRV1, StoryWorldIRV2)) and (
-                ctx.spec.story_feature is None
-            ):
-                raise RuntimeError("legacy brief-to-draft must use a compiler-compatible Story IR")
-            ctx.story = ctx.story_output
+            if not isinstance(ctx.story_output, (StoryWorldIRV1, StoryWorldIRV2)):
+                if ctx.spec.story_feature is None:
+                    raise RuntimeError(
+                        "legacy brief-to-draft must use a compiler-compatible Story IR"
+                    )
+                ctx.story = cast(StoryWorldIRV1 | StoryWorldIRV2, ctx.story_output)
+            else:
+                ctx.story = ctx.story_output
         ctx.evidence = _evidence_from_output(
             domain_results[1][0],
             evidence_output_type,
@@ -560,12 +562,15 @@ class _DomainDraftStage:
                         "competition matrix repair must return EvidenceLogicIRV2"
                     )
             if ctx.uses_v15:
+                context_pack = ctx.context_pack
+                if context_pack is None:
+                    raise RuntimeError("v15 evidence matrix requires a context pack")
                 ctx.evidence, matrix_usage = await evaluate_evidence_matrix(
                     ctx.request,
                     ctx.call_component,
                     ctx.blueprint,
                     ctx.evidence,
-                    context_payload=ctx.context_pack.model_dump(mode="json"),
+                    context_payload=context_pack.model_dump(mode="json"),
                     hypotheses_by_resolution=_hypotheses_by_resolution(ctx.evidence),
                     used_information_by_hypothesis=_used_information_by_hypothesis(
                         ctx.evidence
@@ -789,12 +794,15 @@ class _CompileQualityGateStage:
                             raise RuntimeError(
                                 "v15 evidence repair requires EvidenceLogicIRV2"
                             ) from error
+                        context_pack = ctx.context_pack
+                        if context_pack is None:
+                            raise RuntimeError("v15 repair lost its context pack") from error
                         ctx.evidence, matrix_usage = await evaluate_evidence_matrix(
                             ctx.request,
                             ctx.call_component,
                             ctx.blueprint,
                             ctx.evidence,
-                            context_payload=ctx.context_pack.model_dump(mode="json"),
+                            context_payload=context_pack.model_dump(mode="json"),
                             hypotheses_by_resolution=_hypotheses_by_resolution(ctx.evidence),
                             used_information_by_hypothesis=_used_information_by_hypothesis(
                                 ctx.evidence

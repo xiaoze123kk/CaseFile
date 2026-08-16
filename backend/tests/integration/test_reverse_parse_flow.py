@@ -7,14 +7,13 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import _test_database_url
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, update
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.api.app import create_app
 from casefile.data_postgres.models.reverse_parse import ImportedDocument, ParseItem
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, update
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

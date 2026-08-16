@@ -7,13 +7,11 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
+import casefile.agent_runtime.providers as providers_module
+import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-import casefile.agent_runtime.providers as providers_module
-import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
@@ -33,6 +31,7 @@ from casefile.agent_runtime.structured_output import (
     validate_model_json,
 )
 from casefile.contracts import ContractValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class _StrictSchemaFixture(BaseModel):

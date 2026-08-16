@@ -19,10 +19,6 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -56,6 +52,9 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -690,6 +689,11 @@ def test_historical_worker_exhausts_structural_repairs_without_persisting_candid
             attempt = session.scalar(
                 select(TaskAttempt).where(TaskAttempt.task_run_id == task_run_id)
             )
+            task_row = session.get(TaskRun, task_run_id)
+            assert task_row is not None
+            expected_calls = (
+                int(task_row.budget_jsonb["structural_repair_attempts"]) + 1
+            )
 
         assert task["status"] == "failed"
         assert task["error_code"] == "candidate_validation_failed"
@@ -705,10 +709,10 @@ def test_historical_worker_exhausts_structural_repairs_without_persisting_candid
                 },
             ],
         }
-        assert provider.calls == 3
+        assert provider.calls == expected_calls
         assert attempt is not None
         assert attempt.candidate_jsonb is None
-        assert len(attempt.validation_errors_jsonb) == 3
+        assert len(attempt.validation_errors_jsonb) == expected_calls
         assert draft["content"] is None
         assert events[-1]["event_type"] == "task.failed"
         assert events[-1]["payload"]["failure"] == task["failure"]

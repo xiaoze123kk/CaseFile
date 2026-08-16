@@ -378,6 +378,9 @@ def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
             )
             assert task_row is not None
             assert attempt_one is not None
+            expected_quality_steps = (
+                int(task_row.budget_jsonb["structural_repair_attempts"]) + 1
+            )
             attempt_one_steps = list(
                 session.scalars(
                     select(AgentStepRun).where(
@@ -396,7 +399,7 @@ def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
             for step in attempt_one_steps
             if step.component_id == "quality_repair_gate"
         ]
-        assert len(quality_steps) == 3
+        assert len(quality_steps) == expected_quality_steps
         assert all(step.status == "failed" for step in quality_steps)
         assert not any(
             step.component_id == "run_coordinator" for step in attempt_one_steps

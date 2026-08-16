@@ -11,10 +11,6 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import Engine, create_engine, inspect, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
@@ -33,6 +29,9 @@ from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
+from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROFILE: dict[str, object] = {}
