@@ -6,11 +6,13 @@ import asyncio
 import json
 import re
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any
 
 from pydantic import BaseModel
 
+from casefile.agent_runtime.brief_to_draft_features import PipelineStage
 from casefile.agent_runtime.brief_to_draft_runtime import (
     BriefToDraftSpec,
     resolve_pipeline_spec,
@@ -188,135 +190,50 @@ _LABELED_COORDINATE_PATTERNS = (
 )
 
 
-async def run_v8_generation(
-    request: GenerationRequest,
-    *,
-    call_component: ComponentCall,
-    spec: BriefToDraftSpec | None = None,
-) -> GenerationResult:
-    """Run the six business stages with one bounded targeted domain repair."""
+@dataclass(slots=True)
+class PipelineContext:
+    """Shared mutable state threaded through ordered pipeline stages."""
 
-    _validate_frozen_prompt_release(request)
-    if spec is None:
-        spec = resolve_pipeline_spec(request.prompt_version)
-    features = spec.features
-    uses_temporal_plan = features.temporal_plan
-    uses_v2_context = features.v2_context
-    uses_v15 = features.governance_v2
-    uses_competition_matrix = features.competition_matrix
-    usage_records: list[dict[str, Any]] = []
-    tools = ToolMetrics()
-    repaired_components: set[str] = set()
-    context = _build_context_pack(request, spec)
-    prior_repair_issues = _request_repair_issues(request)
-    _deterministic_step(
-        request,
-        "context_pack_builder",
-        "context_building",
-        context.model_dump(mode="json"),
-        schema_id=spec.context_schema_id,
-    )
-
-    planner_input: dict[str, Any] = {"context_pack": context.model_dump(mode="json")}
-    if uses_v2_context:
-        planner_repairs = [
-            issue
-            for issue in prior_repair_issues
-            if issue.get("component_id") == "case_blueprint_planner"
-        ]
-        if planner_repairs:
-            planner_input["targeted_repair_issues"] = planner_repairs
-    planner_output, planner_usage = await _model_step(
-        request,
-        call_component,
-        component_id="case_blueprint_planner",
-        prompt_component="planner",
-        stage="planning",
-        output_type=CaseBlueprintV1,
-        input_payload=planner_input,
-    )
-    usage_records.append(planner_usage)
-    blueprint = CaseBlueprintV1.model_validate(planner_output)
-    blueprint_path_issues = (
-        _blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15)
-        if uses_v2_context
-        else []
-    )
-    if blueprint_path_issues and not uses_v15:
-        error = ContractValidationError(blueprint_path_issues)
-        _emit_quality_gate_failure(request, error)
-        raise error
-    language_repair_allowed = features.language_gate
-    needs_blueprint_repair = bool(blueprint_path_issues) or (
-        language_repair_allowed and bool(_blueprint_creator_chinese_issues(blueprint))
-    )
-    if needs_blueprint_repair:
-        repair_budget = features.blueprint_repair_budget
-        for _ in range(repair_budget):
-            combined_issues = [
-                *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
-                *_blueprint_creator_chinese_issues(blueprint),
-            ]
-            if not combined_issues:
-                break
-            repaired_components.add("case_blueprint_planner")
-            repaired_output, repaired_usage = await _model_step(
-                request,
-                call_component,
-                component_id="case_blueprint_planner",
-                prompt_component="planner",
-                stage="planning",
-                output_type=CaseBlueprintV1,
-                input_payload={
-                    "context_pack": context.model_dump(mode="json"),
-                    "targeted_repair_issues": combined_issues,
-                },
-            )
-            usage_records.append(repaired_usage)
-            blueprint = CaseBlueprintV1.model_validate(repaired_output)
-        remaining_blueprint_issues = [
-            *_blueprint_path_plan_issues(blueprint, explicit_targets=uses_v15),
-            *_blueprint_creator_chinese_issues(blueprint),
-        ]
-        if remaining_blueprint_issues:
-            error = ContractValidationError(remaining_blueprint_issues)
-            _emit_quality_gate_failure(request, error, recoverable=False)
-            raise error
-
+    request: GenerationRequest
+    call_component: ComponentCall
+    spec: BriefToDraftSpec
+    usage_records: list[dict[str, Any]] = field(default_factory=list)
+    tools: ToolMetrics = field(default_factory=ToolMetrics)
+    repaired_components: set[str] = field(default_factory=set)
+    prior_repair_issues: list[dict[str, Any]] = field(default_factory=list)
+    context_pack: BaseModel | None = None
+    blueprint: CaseBlueprintV1 | None = None
     temporal_plan: TemporalPlanV1 | None = None
-    if uses_temporal_plan:
-        temporal_output, temporal_usage = await _model_step(
-            request,
-            call_component,
-            component_id="temporal_structure_planner",
-            prompt_component="temporal",
-            stage="temporal_planning",
-            output_type=TemporalPlanV1,
-            input_payload={
-                "context_pack": context.model_dump(mode="json"),
-                "blueprint": blueprint.model_dump(mode="json"),
-                **(
-                    {
-                        "targeted_repair_issues": _repair_issues_for_component(
-                            prior_repair_issues, "temporal_structure_planner"
-                        )
-                    }
-                    if _repair_issues_for_component(
-                        prior_repair_issues, "temporal_structure_planner"
-                    )
-                    else {}
-                ),
-            },
-        )
-        usage_records.append(temporal_usage)
-        temporal_plan = TemporalPlanV1.model_validate(temporal_output)
-        plan_issues = temporal_plan_issues(temporal_plan, blueprint)
-        if plan_issues:
-            error = ContractValidationError(plan_issues)
-            _emit_quality_gate_failure(request, error)
-            raise error
+    story_output: StoryWorldIRV1 | StoryWorldIRV2 | StoryWorldIRV3 | None = None
+    story: StoryWorldIRV1 | StoryWorldIRV2 | None = None
+    evidence: EvidenceLogicIR | None = None
+    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2 | None = None
+    linked: LinkedDraftV1 | None = None
+    candidate: dict[str, Any] | None = None
+    result: GenerationResult | None = None
+
+    @property
+    def features(self) -> Any:
+        return self.spec.features
+
+    @property
+    def uses_temporal_plan(self) -> bool:
+        return self.features.temporal_plan
+
+    @property
+    def uses_v2_context(self) -> bool:
+        return self.features.v2_context
+
+    @property
+    def uses_v15(self) -> bool:
+        return self.features.governance_v2
+
+    @property
+    def uses_competition_matrix(self) -> bool:
+        return self.features.competition_matrix
 
     async def draft_domain(
+        self,
         component_id: str,
         prompt_component: str,
         output_type: type[BaseModel],
@@ -326,35 +243,42 @@ async def run_v8_generation(
         previous_output: EvidenceLogicIRV2 | None = None,
         input_contract_id: str | None = None,
     ) -> tuple[BaseModel, dict[str, Any]]:
+        """Draft one domain component against the shared stage context."""
+
+        if self.context_pack is None or self.blueprint is None:
+            raise RuntimeError("domain drafting requires context pack and blueprint stages")
         reference_contract = (
             _V11_STORY_REFERENCE_CONTRACT
-            if uses_v2_context and component_id == "story_world"
+            if self.uses_v2_context and component_id == "story_world"
             else _DOMAIN_REFERENCE_CONTRACTS[component_id]
         )
         input_payload: dict[str, Any] = {
-            "context_pack": context.model_dump(mode="json"),
-            "blueprint": blueprint.model_dump(mode="json"),
-            "reference_directory": _reference_directory(blueprint),
+            "context_pack": self.context_pack.model_dump(mode="json"),
+            "blueprint": self.blueprint.model_dump(mode="json"),
+            "reference_directory": _reference_directory(self.blueprint),
             "reference_contract": reference_contract,
-            "allowed_reference_values": _allowed_reference_values(blueprint, reference_contract),
+            "allowed_reference_values": _allowed_reference_values(
+                self.blueprint,
+                reference_contract,
+            ),
             **({"targeted_repair_issues": repair_issues} if repair_issues else {}),
         }
         if previous_output is not None:
             input_payload["previous_output"] = previous_output.model_dump(mode="json")
-        if uses_temporal_plan:
-            if temporal_plan is None:
+        if self.uses_temporal_plan:
+            if self.temporal_plan is None:
                 raise RuntimeError("temporal-planning versions require a temporal plan")
-            input_payload["temporal_plan"] = temporal_plan.model_dump(mode="json")
-        if uses_v2_context:
+            input_payload["temporal_plan"] = self.temporal_plan.model_dump(mode="json")
+        if self.uses_v2_context:
             input_payload["allowed_wgs84_coordinates"] = [
                 item.model_dump(mode="json")
-                for item in _extract_allowed_wgs84_coordinates(request.brief)
+                for item in _extract_allowed_wgs84_coordinates(self.request.brief)
             ]
-        if uses_v15 and component_id == "resolution_governance":
+        if self.uses_v15 and component_id == "resolution_governance":
             if evidence_logic is None:
                 raise RuntimeError("v15 governance requires completed Evidence Logic")
             input_payload["evidence_logic"] = evidence_logic.model_dump(mode="json")
-        if not spec.prompt_package:
+        if not self.spec.prompt_package:
             input_payload.update(
                 {
                     "reference_instruction": (
@@ -380,11 +304,11 @@ async def run_v8_generation(
                     ),
                 }
             )
-        if spec.story_feature is not None and component_id == "story_world":
-            input_payload.update(spec.story_feature.domain_input_fields(request))
+        if self.spec.story_feature is not None and component_id == "story_world":
+            input_payload.update(self.spec.story_feature.domain_input_fields(self.request))
         output, usage = await _model_step(
-            request,
-            call_component,
+            self.request,
+            self.call_component,
             component_id=component_id,
             prompt_component=prompt_component,
             stage="domain_drafting",
@@ -394,349 +318,613 @@ async def run_v8_generation(
         )
         return output_type.model_validate(output), usage
 
-    evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
-        spec.evidence_output_type
-    )
-    story_output_type: type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3] = (
-        spec.story_output_type
-    )
-    parallel_domain_tasks = [
-        draft_domain(
-            "story_world",
-            "story",
-            story_output_type,
-            _repair_issues_for_component(prior_repair_issues, "story_world"),
-        ),
-        draft_domain(
-            "evidence_logic",
-            "evidence",
-            evidence_output_type,
-            _repair_issues_for_component(prior_repair_issues, "evidence_logic"),
-        ),
-    ]
-    if spec.governance_runs_in_parallel:
-        parallel_domain_tasks.append(
-            draft_domain(
-                "resolution_governance",
-                "governance",
-                spec.governance_output_type,
-                _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
-            )
+
+class _ContextPackStage:
+    stage_id = "context_pack"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        ctx.context_pack = _build_context_pack(ctx.request, ctx.spec)
+        ctx.prior_repair_issues = _request_repair_issues(ctx.request)
+        _deterministic_step(
+            ctx.request,
+            "context_pack_builder",
+            "context_building",
+            ctx.context_pack.model_dump(mode="json"),
+            schema_id=ctx.spec.context_schema_id,
         )
-    domain_results = await asyncio.gather(*parallel_domain_tasks)
-    story_output: StoryWorldIRV1 | StoryWorldIRV2 | StoryWorldIRV3 = (
-        story_output_type.model_validate(domain_results[0][0])
-    )
-    story: StoryWorldIRV1 | StoryWorldIRV2
-    if uses_temporal_plan:
-        if temporal_plan is None:
-            raise RuntimeError("temporal-planning versions require a temporal plan")
-        if spec.story_feature is not None:
-            story = spec.story_feature.with_temporal_plan(story_output, temporal_plan)
-        else:
-            if not isinstance(story_output, StoryWorldIRV3):
-                raise RuntimeError(
-                    "temporal-planning versions must use StoryWorldIRV3"
-                )
-            story = _with_temporal_plan(story_output, temporal_plan)
-    else:
-        if not isinstance(story_output, (StoryWorldIRV1, StoryWorldIRV2)) and (
-            spec.story_feature is None
-        ):
-            raise RuntimeError("legacy brief-to-draft must use a compiler-compatible Story IR")
-        story = story_output
-    evidence: EvidenceLogicIR = _evidence_from_output(
-        domain_results[1][0],
-        evidence_output_type,
-    )
-    usage_records.extend(result[1] for result in domain_results)
-    if uses_competition_matrix:
-        if not isinstance(evidence, EvidenceLogicIRV2):
-            raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
-        for _ in range(2):
-            matrix_issues = _evidence_assessment_issues(
-                evidence,
-                strict_competition=uses_v2_context,
-                blueprint=blueprint,
-                use_explicit_targets=uses_v15,
-                include_matrix=not uses_v15,
-            )
-            if not matrix_issues:
+
+
+class _BlueprintPlannerStage:
+    stage_id = "blueprint_planner"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        if ctx.context_pack is None:
+            raise RuntimeError("planner stage requires a context pack")
+        planner_input: dict[str, Any] = {
+            "context_pack": ctx.context_pack.model_dump(mode="json")
+        }
+        if ctx.uses_v2_context:
+            planner_repairs = [
+                issue
+                for issue in ctx.prior_repair_issues
+                if issue.get("component_id") == "case_blueprint_planner"
+            ]
+            if planner_repairs:
+                planner_input["targeted_repair_issues"] = planner_repairs
+        planner_output, planner_usage = await _model_step(
+            ctx.request,
+            ctx.call_component,
+            component_id="case_blueprint_planner",
+            prompt_component="planner",
+            stage="planning",
+            output_type=CaseBlueprintV1,
+            input_payload=planner_input,
+        )
+        ctx.usage_records.append(planner_usage)
+        ctx.blueprint = CaseBlueprintV1.model_validate(planner_output)
+        blueprint_path_issues = (
+            _blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15)
+            if ctx.uses_v2_context
+            else []
+        )
+        if blueprint_path_issues and not ctx.uses_v15:
+            error = ContractValidationError(blueprint_path_issues)
+            _emit_quality_gate_failure(ctx.request, error)
+            raise error
+        language_repair_allowed = ctx.features.language_gate
+        needs_blueprint_repair = bool(blueprint_path_issues) or (
+            language_repair_allowed and bool(_blueprint_creator_chinese_issues(ctx.blueprint))
+        )
+        if not needs_blueprint_repair:
+            return
+        for _ in range(ctx.features.blueprint_repair_budget):
+            combined_issues = [
+                *_blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15),
+                *_blueprint_creator_chinese_issues(ctx.blueprint),
+            ]
+            if not combined_issues:
                 break
-            evidence_value, evidence_usage = await draft_domain(
+            ctx.repaired_components.add("case_blueprint_planner")
+            repaired_output, repaired_usage = await _model_step(
+                ctx.request,
+                ctx.call_component,
+                component_id="case_blueprint_planner",
+                prompt_component="planner",
+                stage="planning",
+                output_type=CaseBlueprintV1,
+                input_payload={
+                    "context_pack": ctx.context_pack.model_dump(mode="json"),
+                    "targeted_repair_issues": combined_issues,
+                },
+            )
+            ctx.usage_records.append(repaired_usage)
+            ctx.blueprint = CaseBlueprintV1.model_validate(repaired_output)
+        remaining_blueprint_issues = [
+            *_blueprint_path_plan_issues(ctx.blueprint, explicit_targets=ctx.uses_v15),
+            *_blueprint_creator_chinese_issues(ctx.blueprint),
+        ]
+        if remaining_blueprint_issues:
+            error = ContractValidationError(remaining_blueprint_issues)
+            _emit_quality_gate_failure(ctx.request, error, recoverable=False)
+            raise error
+
+
+class _TemporalPlanStage:
+    stage_id = "temporal_plan"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        if not ctx.uses_temporal_plan:
+            return
+        if ctx.context_pack is None or ctx.blueprint is None:
+            raise RuntimeError("temporal-planning stage requires context and blueprint")
+        temporal_output, temporal_usage = await _model_step(
+            ctx.request,
+            ctx.call_component,
+            component_id="temporal_structure_planner",
+            prompt_component="temporal",
+            stage="temporal_planning",
+            output_type=TemporalPlanV1,
+            input_payload={
+                "context_pack": ctx.context_pack.model_dump(mode="json"),
+                "blueprint": ctx.blueprint.model_dump(mode="json"),
+                **(
+                    {
+                        "targeted_repair_issues": _repair_issues_for_component(
+                            ctx.prior_repair_issues, "temporal_structure_planner"
+                        )
+                    }
+                    if _repair_issues_for_component(
+                        ctx.prior_repair_issues, "temporal_structure_planner"
+                    )
+                    else {}
+                ),
+            },
+        )
+        ctx.usage_records.append(temporal_usage)
+        ctx.temporal_plan = TemporalPlanV1.model_validate(temporal_output)
+        plan_issues = temporal_plan_issues(ctx.temporal_plan, ctx.blueprint)
+        if plan_issues:
+            error = ContractValidationError(plan_issues)
+            _emit_quality_gate_failure(ctx.request, error)
+            raise error
+
+
+class _DomainDraftStage:
+    stage_id = "domain_draft"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        if ctx.blueprint is None:
+            raise RuntimeError("domain draft stage requires a blueprint")
+        evidence_output_type: type[EvidenceLogicIRV1] | type[EvidenceLogicIRV2] = (
+            ctx.spec.evidence_output_type
+        )
+        story_output_type: (
+            type[StoryWorldIRV1] | type[StoryWorldIRV2] | type[StoryWorldIRV3]
+        ) = ctx.spec.story_output_type
+        parallel_domain_tasks = [
+            ctx.draft_domain(
+                "story_world",
+                "story",
+                story_output_type,
+                _repair_issues_for_component(ctx.prior_repair_issues, "story_world"),
+            ),
+            ctx.draft_domain(
                 "evidence_logic",
                 "evidence",
                 evidence_output_type,
-                matrix_issues,
-                previous_output=evidence,
-                input_contract_id=spec.evidence_repair_input_contract_id,
-            )
-            usage_records.append(evidence_usage)
-            repaired_components.add("evidence_logic")
-            evidence = _evidence_from_output(evidence_value, evidence_output_type)
-            if not isinstance(evidence, EvidenceLogicIRV2):
-                raise RuntimeError("competition matrix repair must return EvidenceLogicIRV2")
-        if uses_v15:
-            evidence, matrix_usage = await evaluate_evidence_matrix(
-                request,
-                call_component,
-                blueprint,
-                evidence,
-                context_payload=context.model_dump(mode="json"),
-                hypotheses_by_resolution=_hypotheses_by_resolution(evidence),
-                used_information_by_hypothesis=_used_information_by_hypothesis(evidence),
-                model_step=_model_step,
-            )
-            usage_records.extend(matrix_usage)
-    governance: ResolutionGovernanceIRV1 | ResolutionGovernanceIRV2
-    if uses_v15:
-        if not isinstance(evidence, EvidenceLogicIRV2):
-            raise RuntimeError("v15 governance requires EvidenceLogicIRV2")
-        governance_output, governance_usage = await draft_domain(
-            "resolution_governance",
-            "governance",
-            ResolutionGovernanceIRV2,
-            _repair_issues_for_component(prior_repair_issues, "resolution_governance"),
-            evidence_logic=evidence,
-        )
-        governance = ResolutionGovernanceIRV2.model_validate(governance_output)
-        usage_records.append(governance_usage)
-    else:
-        governance = ResolutionGovernanceIRV1.model_validate(domain_results[2][0])
-
-    for gate_attempt in range(2):
-        try:
-            if uses_competition_matrix:
-                if not isinstance(evidence, EvidenceLogicIRV2):
-                    raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
-                matrix_issues = _evidence_assessment_issues(
-                    evidence,
-                    strict_competition=uses_v2_context,
-                    blueprint=blueprint,
-                    use_explicit_targets=uses_v15,
-                )
-                if matrix_issues:
-                    raise LinkerValidationError(matrix_issues)
-            if uses_v2_context and spec.story_feature is None:
-                if not isinstance(story, StoryWorldIRV2):
-                    raise RuntimeError("v11+ spatial runtimes must compile through StoryWorldIRV2")
-                story_issues = _v11_story_issues(
-                    story,
-                    _extract_allowed_wgs84_coordinates(request.brief),
-                )
-                if story_issues:
-                    raise LinkerValidationError(story_issues)
-            if uses_temporal_plan:
-                if not isinstance(story_output, StoryWorldIRV3) or temporal_plan is None:
-                    raise RuntimeError("temporal-planning versions require a temporal plan")
-                temporal_issues = temporal_story_issues(story_output, temporal_plan)
-                if temporal_issues:
-                    raise LinkerValidationError(temporal_issues)
-            if spec.story_feature is not None:
-                feature_issues = spec.story_feature.validate_story(
-                    story,
-                    request=request,
-                )
-                if feature_issues:
-                    raise LinkerValidationError(feature_issues)
-            linked = _link_step(request, blueprint, story, evidence, governance)
-            candidate = _compile_step(request, linked, spec)
-            _quality_gate(
-                request,
-                candidate,
-                recoverable=gate_attempt == 0,
-            )
-            tools.calls = (
-                (6 if uses_v15 else 5 if uses_temporal_plan else 4) + len(repaired_components)
-            )
-            tools.valid_calls = tools.calls
-            tools.successful_calls = tools.calls
-            tools.planned_object_ids = {entry.object_id for entry in linked.id_directory.values()}
-            return GenerationResult(
-                candidate=candidate,
-                usage=_merge_usage(usage_records),
-                tools=tools,
-            )
-        except ContractValidationError as error:
-            issues = [_diagnostic_issue(value) for value in error.errors[:50]]
-            if not isinstance(error, _PersistedQualityGateError):
-                _emit_quality_gate_failure(
-                    request,
-                    error,
-                    issues=issues,
-                    recoverable=gate_attempt == 0,
-                )
-            if gate_attempt or _requires_planner_repair(error):
-                raise
-            affected = _affected_domain_components(error)
-            if not affected:
-                raise
-            if uses_v15 and "evidence_logic" in affected:
-                affected.add("resolution_governance")
-            if uses_v15:
-                if "story_world" in affected:
-                    value, usage = await draft_domain(
-                        "story_world",
-                        "story",
-                        story_output_type,
-                        [
-                            issue
-                            for issue in issues
-                            if issue.get("component_id") == "story_world"
-                        ],
-                    )
-                    usage_records.append(usage)
-                    repaired_components.add("story_world")
-                    repaired_story = story_output_type.model_validate(value)
-                    if uses_temporal_plan:
-                        if temporal_plan is None:
-                            raise RuntimeError(
-                                "temporal-planning repair lost temporal plan"
-                            ) from error
-                        story_output = repaired_story
-                        if spec.story_feature is not None:
-                            story = spec.story_feature.with_temporal_plan(
-                                repaired_story,
-                                temporal_plan,
-                            )
-                        else:
-                            if not isinstance(repaired_story, StoryWorldIRV3):
-                                raise RuntimeError(
-                                    "temporal-planning repair lost StoryWorldIRV3"
-                                ) from error
-                            story = _with_temporal_plan(repaired_story, temporal_plan)
-                    else:
-                        if not isinstance(repaired_story, (StoryWorldIRV1, StoryWorldIRV2)):
-                            raise RuntimeError(
-                                "legacy brief-to-draft repair returned an incompatible Story IR"
-                            ) from error
-                        story = repaired_story
-                if "evidence_logic" in affected:
-                    if not isinstance(evidence, EvidenceLogicIRV2):
-                        raise RuntimeError(
-                            "v15 evidence repair requires EvidenceLogicIRV2"
-                        ) from error
-                    value, usage = await draft_domain(
-                        "evidence_logic",
-                        "evidence",
-                        evidence_output_type,
-                        [
-                            issue
-                            for issue in issues
-                            if issue.get("component_id") == "evidence_logic"
-                        ],
-                        previous_output=evidence,
-                        input_contract_id="brief-to-draft-evidence-repair-input-v1",
-                    )
-                    usage_records.append(usage)
-                    repaired_components.add("evidence_logic")
-                    evidence = _evidence_from_output(value, evidence_output_type)
-                    if not isinstance(evidence, EvidenceLogicIRV2):
-                        raise RuntimeError(
-                            "v15 evidence repair requires EvidenceLogicIRV2"
-                        ) from error
-                    evidence, matrix_usage = await evaluate_evidence_matrix(
-                        request,
-                        call_component,
-                        blueprint,
-                        evidence,
-                        context_payload=context.model_dump(mode="json"),
-                        hypotheses_by_resolution=_hypotheses_by_resolution(evidence),
-                        used_information_by_hypothesis=_used_information_by_hypothesis(evidence),
-                        model_step=_model_step,
-                    )
-                    usage_records.extend(matrix_usage)
-                if "resolution_governance" in affected:
-                    if not isinstance(evidence, EvidenceLogicIRV2):
-                        raise RuntimeError(
-                            "v15 governance repair requires EvidenceLogicIRV2"
-                        ) from error
-                    value, usage = await draft_domain(
-                        "resolution_governance",
-                        "governance",
-                        ResolutionGovernanceIRV2,
-                        [
-                            issue
-                            for issue in issues
-                            if issue.get("component_id") == "resolution_governance"
-                        ],
-                        evidence_logic=evidence,
-                    )
-                    usage_records.append(usage)
-                    repaired_components.add("resolution_governance")
-                    governance = ResolutionGovernanceIRV2.model_validate(value)
-                continue
-            repair_tasks = []
-            repair_order: list[str] = []
-            for component_id, prompt_component, output_type in (
-                ("story_world", "story", story_output_type),
-                ("evidence_logic", "evidence", evidence_output_type),
-                (
+                _repair_issues_for_component(ctx.prior_repair_issues, "evidence_logic"),
+            ),
+        ]
+        if ctx.spec.governance_runs_in_parallel:
+            parallel_domain_tasks.append(
+                ctx.draft_domain(
                     "resolution_governance",
                     "governance",
-                    ResolutionGovernanceIRV1,
-                ),
-            ):
-                if component_id not in affected:
-                    continue
-                repair_order.append(component_id)
-                repair_kwargs: dict[str, Any] = {}
-                if component_id == "evidence_logic" and uses_competition_matrix:
-                    if not isinstance(evidence, EvidenceLogicIRV2):
-                        raise RuntimeError(
-                            "competition matrix evidence repair requires EvidenceLogicIRV2"
-                        ) from error
-                    repair_kwargs["previous_output"] = evidence
-                    repair_kwargs["input_contract_id"] = (
-                        "brief-to-draft-evidence-repair-input-v1"
-                    )
-                repair_tasks.append(
-                    draft_domain(
-                        component_id,
-                        prompt_component,
-                        output_type,
-                        [issue for issue in issues if issue.get("component_id") == component_id],
-                        **repair_kwargs,
-                    )
+                    ctx.spec.governance_output_type,
+                    _repair_issues_for_component(
+                        ctx.prior_repair_issues,
+                        "resolution_governance",
+                    ),
                 )
-            repaired = await asyncio.gather(*repair_tasks)
-            for component_id, (value, usage) in zip(repair_order, repaired, strict=True):
-                usage_records.append(usage)
-                repaired_components.add(component_id)
-                if component_id == "story_world":
-                    repaired_story = story_output_type.model_validate(value)
-                    if uses_temporal_plan:
-                        if temporal_plan is None:
-                            raise RuntimeError(
-                                "temporal-planning repair lost temporal plan"
-                            ) from error
-                        story_output = repaired_story
-                        if spec.story_feature is not None:
-                            story = spec.story_feature.with_temporal_plan(
-                                repaired_story,
-                                temporal_plan,
-                            )
-                        else:
-                            if not isinstance(repaired_story, StoryWorldIRV3):
-                                raise RuntimeError(
-                                    "temporal-planning repair lost StoryWorldIRV3"
-                                ) from error
-                            story = _with_temporal_plan(repaired_story, temporal_plan)
-                    else:
-                        if not isinstance(repaired_story, (StoryWorldIRV1, StoryWorldIRV2)):
-                            raise RuntimeError(
-                                "legacy brief-to-draft repair returned an incompatible Story IR"
-                            ) from error
-                        story = repaired_story
-                elif component_id == "evidence_logic":
-                    evidence = (
-                        EvidenceLogicIRV2.model_validate(value)
-                        if uses_competition_matrix
-                        else EvidenceLogicIRV1.model_validate(value)
+            )
+        domain_results = await asyncio.gather(*parallel_domain_tasks)
+        ctx.story_output = story_output_type.model_validate(domain_results[0][0])
+        if ctx.uses_temporal_plan:
+            if ctx.temporal_plan is None:
+                raise RuntimeError("temporal-planning versions require a temporal plan")
+            if ctx.spec.story_feature is not None:
+                ctx.story = ctx.spec.story_feature.with_temporal_plan(
+                    ctx.story_output,
+                    ctx.temporal_plan,
+                )
+            else:
+                if not isinstance(ctx.story_output, StoryWorldIRV3):
+                    raise RuntimeError("temporal-planning versions must use StoryWorldIRV3")
+                ctx.story = _with_temporal_plan(ctx.story_output, ctx.temporal_plan)
+        else:
+            if not isinstance(ctx.story_output, (StoryWorldIRV1, StoryWorldIRV2)) and (
+                ctx.spec.story_feature is None
+            ):
+                raise RuntimeError("legacy brief-to-draft must use a compiler-compatible Story IR")
+            ctx.story = ctx.story_output
+        ctx.evidence = _evidence_from_output(
+            domain_results[1][0],
+            evidence_output_type,
+        )
+        ctx.usage_records.extend(result[1] for result in domain_results)
+        if ctx.uses_competition_matrix:
+            if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                raise RuntimeError("competition matrix versions must use EvidenceLogicIRV2")
+            for _ in range(2):
+                matrix_issues = _evidence_assessment_issues(
+                    ctx.evidence,
+                    strict_competition=ctx.uses_v2_context,
+                    blueprint=ctx.blueprint,
+                    use_explicit_targets=ctx.uses_v15,
+                    include_matrix=not ctx.uses_v15,
+                )
+                if not matrix_issues:
+                    break
+                evidence_value, evidence_usage = await ctx.draft_domain(
+                    "evidence_logic",
+                    "evidence",
+                    evidence_output_type,
+                    matrix_issues,
+                    previous_output=ctx.evidence,
+                    input_contract_id=ctx.spec.evidence_repair_input_contract_id,
+                )
+                ctx.usage_records.append(evidence_usage)
+                ctx.repaired_components.add("evidence_logic")
+                ctx.evidence = _evidence_from_output(evidence_value, evidence_output_type)
+                if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                    raise RuntimeError(
+                        "competition matrix repair must return EvidenceLogicIRV2"
                     )
-                else:
-                    governance = ResolutionGovernanceIRV1.model_validate(value)
-    raise RuntimeError("brief-to-draft v8 quality gate exhausted")
+            if ctx.uses_v15:
+                ctx.evidence, matrix_usage = await evaluate_evidence_matrix(
+                    ctx.request,
+                    ctx.call_component,
+                    ctx.blueprint,
+                    ctx.evidence,
+                    context_payload=ctx.context_pack.model_dump(mode="json"),
+                    hypotheses_by_resolution=_hypotheses_by_resolution(ctx.evidence),
+                    used_information_by_hypothesis=_used_information_by_hypothesis(
+                        ctx.evidence
+                    ),
+                    model_step=_model_step,
+                )
+                ctx.usage_records.extend(matrix_usage)
+        if ctx.spec.governance_runs_in_parallel:
+            ctx.governance = ctx.spec.governance_output_type.model_validate(
+                domain_results[2][0]
+            )
+
+
+class _ResolutionGovernanceStage:
+    stage_id = "resolution_governance"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        if ctx.spec.governance_runs_in_parallel:
+            return
+        if not ctx.uses_v15:
+            return
+        if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+            raise RuntimeError("v15 governance requires completed Evidence Logic")
+        governance_output, governance_usage = await ctx.draft_domain(
+            "resolution_governance",
+            "governance",
+            ctx.spec.governance_output_type,
+            _repair_issues_for_component(
+                ctx.prior_repair_issues,
+                "resolution_governance",
+            ),
+            evidence_logic=ctx.evidence,
+        )
+        ctx.governance = ctx.spec.governance_output_type.model_validate(governance_output)
+        ctx.usage_records.append(governance_usage)
+
+
+class _CompileQualityGateStage:
+    stage_id = "compile_quality_gate"
+
+    async def run(self, ctx: PipelineContext) -> None:
+        if (
+            ctx.blueprint is None
+            or ctx.story is None
+            or ctx.evidence is None
+            or ctx.governance is None
+            or ctx.context_pack is None
+        ):
+            raise RuntimeError("compile stage requires completed domain stages")
+        story_output_type = ctx.spec.story_output_type
+        evidence_output_type = ctx.spec.evidence_output_type
+        for gate_attempt in range(2):
+            try:
+                if ctx.uses_competition_matrix:
+                    if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                        raise RuntimeError(
+                            "competition matrix versions must use EvidenceLogicIRV2"
+                        )
+                    matrix_issues = _evidence_assessment_issues(
+                        ctx.evidence,
+                        strict_competition=ctx.uses_v2_context,
+                        blueprint=ctx.blueprint,
+                        use_explicit_targets=ctx.uses_v15,
+                    )
+                    if matrix_issues:
+                        raise LinkerValidationError(matrix_issues)
+                if ctx.uses_v2_context and ctx.spec.story_feature is None:
+                    if not isinstance(ctx.story, StoryWorldIRV2):
+                        raise RuntimeError(
+                            "v11+ spatial runtimes must compile through StoryWorldIRV2"
+                        )
+                    story_issues = _v11_story_issues(
+                        ctx.story,
+                        _extract_allowed_wgs84_coordinates(ctx.request.brief),
+                    )
+                    if story_issues:
+                        raise LinkerValidationError(story_issues)
+                if ctx.uses_temporal_plan:
+                    if not isinstance(ctx.story_output, StoryWorldIRV3) or (
+                        ctx.temporal_plan is None
+                    ):
+                        raise RuntimeError("temporal-planning versions require a temporal plan")
+                    temporal_issues = temporal_story_issues(
+                        ctx.story_output,
+                        ctx.temporal_plan,
+                    )
+                    if temporal_issues:
+                        raise LinkerValidationError(temporal_issues)
+                if ctx.spec.story_feature is not None:
+                    feature_issues = ctx.spec.story_feature.validate_story(
+                        ctx.story,
+                        request=ctx.request,
+                    )
+                    if feature_issues:
+                        raise LinkerValidationError(feature_issues)
+                linked = _link_step(
+                    ctx.request,
+                    ctx.blueprint,
+                    ctx.story,
+                    ctx.evidence,
+                    ctx.governance,
+                )
+                candidate = _compile_step(ctx.request, linked, ctx.spec)
+                _quality_gate(
+                    ctx.request,
+                    candidate,
+                    recoverable=gate_attempt == 0,
+                )
+                ctx.tools.calls = (
+                    (6 if ctx.uses_v15 else 5 if ctx.uses_temporal_plan else 4)
+                    + len(ctx.repaired_components)
+                )
+                ctx.tools.valid_calls = ctx.tools.calls
+                ctx.tools.successful_calls = ctx.tools.calls
+                ctx.tools.planned_object_ids = {
+                    entry.object_id for entry in linked.id_directory.values()
+                }
+                ctx.linked = linked
+                ctx.candidate = candidate
+                ctx.result = GenerationResult(
+                    candidate=candidate,
+                    usage=_merge_usage(ctx.usage_records),
+                    tools=ctx.tools,
+                )
+                return
+            except ContractValidationError as error:
+                issues = [_diagnostic_issue(value) for value in error.errors[:50]]
+                if not isinstance(error, _PersistedQualityGateError):
+                    _emit_quality_gate_failure(
+                        ctx.request,
+                        error,
+                        issues=issues,
+                        recoverable=gate_attempt == 0,
+                    )
+                if gate_attempt or _requires_planner_repair(error):
+                    raise
+                affected = _affected_domain_components(error)
+                if not affected:
+                    raise
+                if ctx.uses_v15 and "evidence_logic" in affected:
+                    affected.add("resolution_governance")
+                if ctx.uses_v15:
+                    if "story_world" in affected:
+                        value, usage = await ctx.draft_domain(
+                            "story_world",
+                            "story",
+                            story_output_type,
+                            [
+                                issue
+                                for issue in issues
+                                if issue.get("component_id") == "story_world"
+                            ],
+                        )
+                        ctx.usage_records.append(usage)
+                        ctx.repaired_components.add("story_world")
+                        repaired_story = story_output_type.model_validate(value)
+                        if ctx.uses_temporal_plan:
+                            if ctx.temporal_plan is None:
+                                raise RuntimeError(
+                                    "temporal-planning repair lost temporal plan"
+                                ) from error
+                            ctx.story_output = repaired_story
+                            if ctx.spec.story_feature is not None:
+                                ctx.story = ctx.spec.story_feature.with_temporal_plan(
+                                    repaired_story,
+                                    ctx.temporal_plan,
+                                )
+                            else:
+                                if not isinstance(repaired_story, StoryWorldIRV3):
+                                    raise RuntimeError(
+                                        "temporal-planning repair lost StoryWorldIRV3"
+                                    ) from error
+                                ctx.story = _with_temporal_plan(
+                                    repaired_story,
+                                    ctx.temporal_plan,
+                                )
+                        else:
+                            if not isinstance(
+                                repaired_story,
+                                (StoryWorldIRV1, StoryWorldIRV2),
+                            ):
+                                raise RuntimeError(
+                                    "legacy brief-to-draft repair returned an "
+                                    "incompatible Story IR"
+                                ) from error
+                            ctx.story = repaired_story
+                    if "evidence_logic" in affected:
+                        if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                            raise RuntimeError(
+                                "v15 evidence repair requires EvidenceLogicIRV2"
+                            ) from error
+                        value, usage = await ctx.draft_domain(
+                            "evidence_logic",
+                            "evidence",
+                            evidence_output_type,
+                            [
+                                issue
+                                for issue in issues
+                                if issue.get("component_id") == "evidence_logic"
+                            ],
+                            previous_output=ctx.evidence,
+                            input_contract_id=ctx.spec.evidence_repair_input_contract_id,
+                        )
+                        ctx.usage_records.append(usage)
+                        ctx.repaired_components.add("evidence_logic")
+                        ctx.evidence = _evidence_from_output(
+                            value,
+                            evidence_output_type,
+                        )
+                        if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                            raise RuntimeError(
+                                "v15 evidence repair requires EvidenceLogicIRV2"
+                            ) from error
+                        ctx.evidence, matrix_usage = await evaluate_evidence_matrix(
+                            ctx.request,
+                            ctx.call_component,
+                            ctx.blueprint,
+                            ctx.evidence,
+                            context_payload=ctx.context_pack.model_dump(mode="json"),
+                            hypotheses_by_resolution=_hypotheses_by_resolution(ctx.evidence),
+                            used_information_by_hypothesis=_used_information_by_hypothesis(
+                                ctx.evidence
+                            ),
+                            model_step=_model_step,
+                        )
+                        ctx.usage_records.extend(matrix_usage)
+                    if "resolution_governance" in affected:
+                        if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                            raise RuntimeError(
+                                "v15 governance repair requires EvidenceLogicIRV2"
+                            ) from error
+                        value, usage = await ctx.draft_domain(
+                            "resolution_governance",
+                            "governance",
+                            ctx.spec.governance_output_type,
+                            [
+                                issue
+                                for issue in issues
+                                if issue.get("component_id") == "resolution_governance"
+                            ],
+                            evidence_logic=ctx.evidence,
+                        )
+                        ctx.usage_records.append(usage)
+                        ctx.repaired_components.add("resolution_governance")
+                        ctx.governance = ctx.spec.governance_output_type.model_validate(value)
+                    continue
+                repair_tasks = []
+                repair_order: list[str] = []
+                for component_id, prompt_component, output_type in (
+                    ("story_world", "story", story_output_type),
+                    ("evidence_logic", "evidence", evidence_output_type),
+                    ("resolution_governance", "governance", ctx.spec.governance_output_type),
+                ):
+                    if component_id not in affected:
+                        continue
+                    repair_order.append(component_id)
+                    repair_kwargs: dict[str, Any] = {}
+                    if component_id == "evidence_logic" and ctx.uses_competition_matrix:
+                        if not isinstance(ctx.evidence, EvidenceLogicIRV2):
+                            raise RuntimeError(
+                                "competition matrix evidence repair requires "
+                                "EvidenceLogicIRV2"
+                            ) from error
+                        repair_kwargs["previous_output"] = ctx.evidence
+                        repair_kwargs["input_contract_id"] = (
+                            ctx.spec.evidence_repair_input_contract_id
+                        )
+                    repair_tasks.append(
+                        ctx.draft_domain(
+                            component_id,
+                            prompt_component,
+                            output_type,
+                            [
+                                issue
+                                for issue in issues
+                                if issue.get("component_id") == component_id
+                            ],
+                            **repair_kwargs,
+                        )
+                    )
+                repaired = await asyncio.gather(*repair_tasks)
+                for component_id, (value, usage) in zip(
+                    repair_order, repaired, strict=True
+                ):
+                    ctx.usage_records.append(usage)
+                    ctx.repaired_components.add(component_id)
+                    if component_id == "story_world":
+                        repaired_story = story_output_type.model_validate(value)
+                        if ctx.uses_temporal_plan:
+                            if ctx.temporal_plan is None:
+                                raise RuntimeError(
+                                    "temporal-planning repair lost temporal plan"
+                                ) from error
+                            ctx.story_output = repaired_story
+                            if ctx.spec.story_feature is not None:
+                                ctx.story = ctx.spec.story_feature.with_temporal_plan(
+                                    repaired_story,
+                                    ctx.temporal_plan,
+                                )
+                            else:
+                                if not isinstance(repaired_story, StoryWorldIRV3):
+                                    raise RuntimeError(
+                                        "temporal-planning repair lost StoryWorldIRV3"
+                                    ) from error
+                                ctx.story = _with_temporal_plan(
+                                    repaired_story,
+                                    ctx.temporal_plan,
+                                )
+                        else:
+                            if not isinstance(
+                                repaired_story,
+                                (StoryWorldIRV1, StoryWorldIRV2),
+                            ):
+                                raise RuntimeError(
+                                    "legacy brief-to-draft repair returned an "
+                                    "incompatible Story IR"
+                                ) from error
+                            ctx.story = repaired_story
+                    elif component_id == "evidence_logic":
+                        ctx.evidence = (
+                            EvidenceLogicIRV2.model_validate(value)
+                            if ctx.uses_competition_matrix
+                            else EvidenceLogicIRV1.model_validate(value)
+                        )
+                    else:
+                        ctx.governance = ctx.spec.governance_output_type.model_validate(value)
+        raise RuntimeError("brief-to-draft v8 quality gate exhausted")
+
+
+_PIPELINE_STAGES: dict[str, PipelineStage] = {
+    stage.stage_id: stage
+    for stage in (
+        _ContextPackStage(),
+        _BlueprintPlannerStage(),
+        _TemporalPlanStage(),
+        _DomainDraftStage(),
+        _ResolutionGovernanceStage(),
+        _CompileQualityGateStage(),
+    )
+}
+
+
+def register_pipeline_stage(stage: PipelineStage) -> None:
+    """Register an ordered execution-graph stage for future specs."""
+
+    if stage.stage_id in _PIPELINE_STAGES:
+        raise ValueError(f"brief-to-draft pipeline stage already registered: {stage.stage_id}")
+    _PIPELINE_STAGES[stage.stage_id] = stage
+
+
+def registered_pipeline_stage_ids() -> frozenset[str]:
+    """Return stage ids currently available to the execution graph."""
+
+    return frozenset(_PIPELINE_STAGES)
+
+
+async def run_v8_generation(
+    request: GenerationRequest,
+    *,
+    call_component: ComponentCall,
+    spec: BriefToDraftSpec | None = None,
+) -> GenerationResult:
+    """Run the ordered stage graph with one bounded targeted domain repair."""
+
+    _validate_frozen_prompt_release(request)
+    if spec is None:
+        spec = resolve_pipeline_spec(request.prompt_version)
+    ctx = PipelineContext(request=request, call_component=call_component, spec=spec)
+    for stage_id in spec.stages:
+        stage = _PIPELINE_STAGES.get(stage_id)
+        if stage is None:
+            raise RuntimeError(
+                f"no brief-to-draft pipeline stage registered for {stage_id!r}"
+            )
+        await stage.run(ctx)
+    if ctx.result is None:
+        raise RuntimeError("brief-to-draft stage graph finished without a result")
+    return ctx.result
 
 
 def _request_repair_issues(request: GenerationRequest) -> list[dict[str, Any]]:

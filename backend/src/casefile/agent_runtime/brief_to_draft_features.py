@@ -10,8 +10,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from casefile.agent_runtime.brief_to_draft_v8.workflow import PipelineContext
     from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
     from casefile.agent_runtime.models import GenerationRequest
+
+
+class PipelineStage(Protocol):
+    """One ordered, replaceable stage of the brief-to-draft execution graph."""
+
+    stage_id: str
+
+    async def run(self, context: PipelineContext) -> None:
+        """Advance the shared :class:`PipelineContext` by one stage."""
+        ...
 
 
 class StoryFeature(Protocol):
@@ -58,4 +69,4 @@ class CompilerFeature(Protocol):
         ...
 
 
-__all__ = ["CompilerFeature", "StoryFeature"]
+__all__ = ["CompilerFeature", "PipelineStage", "StoryFeature"]

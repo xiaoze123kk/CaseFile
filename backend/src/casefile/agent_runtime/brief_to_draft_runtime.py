@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_features import (
     CompilerFeature,
+    PipelineStage,
     StoryFeature,
 )
 from casefile.agent_runtime.brief_to_draft_v8.ir import (
@@ -70,6 +71,28 @@ _V15_PROMPT_COMPONENTS = frozenset(
     {"planner", "temporal", "story", "evidence", "matrix", "governance"}
 )
 
+_STAGES_LEGACY = (
+    "context_pack",
+    "blueprint_planner",
+    "domain_draft",
+    "compile_quality_gate",
+)
+_STAGES_TEMPORAL = (
+    "context_pack",
+    "blueprint_planner",
+    "temporal_plan",
+    "domain_draft",
+    "compile_quality_gate",
+)
+_STAGES_V15 = (
+    "context_pack",
+    "blueprint_planner",
+    "temporal_plan",
+    "domain_draft",
+    "resolution_governance",
+    "compile_quality_gate",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class FeatureFlags:
@@ -101,6 +124,7 @@ class BriefToDraftSpec:
     governance_schema_id: str
     prompt_components: frozenset[str]
     prompt_package: bool
+    stages: tuple[str, ...] = _STAGES_LEGACY
     governance_runs_in_parallel: bool = True
     features: FeatureFlags = field(default_factory=FeatureFlags)
     evidence_repair_input_contract_id: str | None = None
@@ -182,6 +206,7 @@ _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
         governance_schema_id="resolution-governance-ir-v1",
         prompt_components=_V12_PROMPT_COMPONENTS,
         prompt_package=True,
+        stages=_STAGES_TEMPORAL,
         features=FeatureFlags(
             v2_context=True,
             temporal_plan=True,
@@ -202,6 +227,7 @@ _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
         governance_schema_id="resolution-governance-ir-v1",
         prompt_components=_V12_PROMPT_COMPONENTS,
         prompt_package=True,
+        stages=_STAGES_TEMPORAL,
         features=FeatureFlags(
             v2_context=True,
             temporal_plan=True,
@@ -222,6 +248,7 @@ _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
         governance_schema_id="resolution-governance-ir-v1",
         prompt_components=_V12_PROMPT_COMPONENTS,
         prompt_package=True,
+        stages=_STAGES_TEMPORAL,
         features=FeatureFlags(
             v2_context=True,
             temporal_plan=True,
@@ -243,6 +270,7 @@ _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
         governance_schema_id="resolution-governance-ir-v2",
         prompt_components=_V15_PROMPT_COMPONENTS,
         prompt_package=True,
+        stages=_STAGES_V15,
         governance_runs_in_parallel=False,
         features=FeatureFlags(
             v2_context=True,
@@ -299,6 +327,7 @@ __all__ = [
     "BriefToDraftSpec",
     "CompilerFeature",
     "FeatureFlags",
+    "PipelineStage",
     "StoryFeature",
     "resolve_pipeline_spec",
     "schema_id_for_component",

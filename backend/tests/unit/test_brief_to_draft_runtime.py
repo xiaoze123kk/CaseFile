@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
@@ -28,6 +29,8 @@ from casefile.agent_runtime.brief_to_draft_v8.ir import (
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
     _build_context_pack,
     _with_temporal_plan,
+    register_pipeline_stage,
+    registered_pipeline_stage_ids,
     run_v8_generation,
 )
 from casefile.agent_runtime.models import CandidateStrategy, GenerationRequest
@@ -62,6 +65,44 @@ def test_specs_bind_prompt_component_sets() -> None:
     assert resolve_pipeline_spec("brief-to-draft-v15").prompt_components == temporal | {
         "matrix"
     }
+
+
+def test_specs_bind_ordered_execution_graphs() -> None:
+    legacy = (
+        "context_pack",
+        "blueprint_planner",
+        "domain_draft",
+        "compile_quality_gate",
+    )
+    temporal = (
+        "context_pack",
+        "blueprint_planner",
+        "temporal_plan",
+        "domain_draft",
+        "compile_quality_gate",
+    )
+    v15 = (
+        "context_pack",
+        "blueprint_planner",
+        "temporal_plan",
+        "domain_draft",
+        "resolution_governance",
+        "compile_quality_gate",
+    )
+    for version in {
+        "brief-to-draft-v8",
+        "brief-to-draft-v9",
+        "brief-to-draft-v10",
+        "brief-to-draft-v11",
+    }:
+        assert resolve_pipeline_spec(version).stages == legacy
+    for version in {
+        "brief-to-draft-v12",
+        "brief-to-draft-v13",
+        "brief-to-draft-v14",
+    }:
+        assert resolve_pipeline_spec(version).stages == temporal
+    assert resolve_pipeline_spec("brief-to-draft-v15").stages == v15
 
 
 def test_feature_flags_translate_the_historical_version_branches() -> None:
@@ -335,3 +376,69 @@ def test_run_v12_generation_delegates_temporal_join_to_story_feature() -> None:
         "validate_story",
     ]
     assert result.candidate["schema_version"] == request.schema_version
+
+
+class RecordingStage:
+    """Minimal PipelineStage plugin for graph-order tests."""
+
+    def __init__(self, stage_id: str, calls: list[str]) -> None:
+        self.stage_id = stage_id
+        self.calls = calls
+
+    async def run(self, ctx: Any) -> None:
+        self.calls.append(self.stage_id)
+        assert ctx.blueprint is not None
+
+
+def test_registered_stage_runs_in_spec_graph_order() -> None:
+    stage_id = f"probe_{uuid4().hex[:8]}"
+    calls: list[str] = []
+    register_pipeline_stage(RecordingStage(stage_id, calls))
+    spec = replace(
+        resolve_pipeline_spec("brief-to-draft-v8"),
+        stages=(
+            "context_pack",
+            "blueprint_planner",
+            stage_id,
+            "domain_draft",
+            "compile_quality_gate",
+        ),
+    )
+    request = replace(
+        _request("brief-to-draft-v8"),
+        brief={"conclusion_mode": "unique"},
+    )
+
+    result = asyncio.run(
+        run_v8_generation(request, call_component=_fake_call_component, spec=spec)
+    )
+
+    assert calls == [stage_id]
+    assert result.candidate["title"] == "v8 可恢复生成样例"
+
+
+def test_unknown_stage_fails_closed() -> None:
+    spec = replace(
+        resolve_pipeline_spec("brief-to-draft-v8"),
+        stages=("context_pack", "not_registered_stage"),
+    )
+    request = replace(
+        _request("brief-to-draft-v8"),
+        brief={"conclusion_mode": "unique"},
+    )
+
+    with pytest.raises(RuntimeError, match="no brief-to-draft pipeline stage"):
+        asyncio.run(
+            run_v8_generation(request, call_component=_fake_call_component, spec=spec)
+        )
+
+
+def test_builtin_stage_registry_is_complete() -> None:
+    assert {
+        "context_pack",
+        "blueprint_planner",
+        "temporal_plan",
+        "domain_draft",
+        "resolution_governance",
+        "compile_quality_gate",
+    } <= registered_pipeline_stage_ids()
