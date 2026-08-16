@@ -16,7 +16,8 @@ param(
     [ValidateSet("deepseek", "openai")][string]$Provider = "deepseek",
     [ValidateSet("brief-to-draft-v8", "brief-to-draft-v9", "brief-to-draft-v10", "brief-to-draft-v11", "brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15")][string]$PromptVersion = "brief-to-draft-v15",
     [string]$ReportPath = "",
-    [string]$Scenarios = ""
+    [string]$Scenarios = "",
+    [ValidateRange(0, 10)][int]$RepairAttempts = 5
 )
 
 $ErrorActionPreference = "Stop"
@@ -73,6 +74,7 @@ $env:CASEFILE_LIVE_ACCEPTANCE_REPEATS = "$Repeats"
 $env:CASEFILE_LIVE_ACCEPTANCE_PROVIDER = $Provider
 $env:CASEFILE_LIVE_ACCEPTANCE_PROMPT_VERSION = $PromptVersion
 $env:CASEFILE_LIVE_ACCEPTANCE_REPORT_PATH = $reportFile
+$env:CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS = "$RepairAttempts"
 if (-not [string]::IsNullOrWhiteSpace($Scenarios)) {
     $env:CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER = $Scenarios
 }

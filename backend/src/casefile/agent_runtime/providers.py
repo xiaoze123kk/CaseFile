@@ -19,6 +19,7 @@ from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
 
+from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v9.workflow import run_v9_generation
 from casefile.agent_runtime.brief_to_draft_v10.workflow import run_v10_generation
@@ -185,6 +186,22 @@ def _partition_output_model(partition: str) -> type[BaseModel]:
 _PARTITION_MODELS = {
     partition: _partition_output_model(partition) for partition in _PARTITION_FIELDS
 }
+
+_BRIEF_TO_DRAFT_RUNNERS = {
+    "brief-to-draft-v9": run_v9_generation,
+    "brief-to-draft-v10": run_v10_generation,
+    "brief-to-draft-v11": run_v11_generation,
+    "brief-to-draft-v12": run_v12_generation,
+    "brief-to-draft-v13": run_v13_generation,
+    "brief-to-draft-v14": run_v14_generation,
+    "brief-to-draft-v15": run_v15_generation,
+}
+
+
+def _brief_to_draft_runner(prompt_version: str):
+    """Resolve the workflow runner for one frozen prompt version."""
+
+    return _BRIEF_TO_DRAFT_RUNNERS.get(prompt_version, run_v8_generation)
 
 
 class FakeProvider:
@@ -605,14 +622,9 @@ class FakeProvider:
                     output = _fake_matrix_evaluation_output(json.loads(input_text))
                 else:
                     output = _fake_v8_output(output_type)
-                    if request.prompt_version in {
-                        "brief-to-draft-v10",
-                        "brief-to-draft-v11",
-                        "brief-to-draft-v12",
-                        "brief-to-draft-v13",
-                        "brief-to-draft-v14",
-                        "brief-to-draft-v15",
-                    }:
+                    if resolve_pipeline_spec(
+                        request.prompt_version
+                    ).features.competition_matrix:
                         _add_fake_v10_matrix_plan(output_type, output)
                     if output_type.__name__ in {
                         "ResolutionGovernanceIRV1",
@@ -639,23 +651,7 @@ class FakeProvider:
                 )
                 return output, usage
 
-            runner = (
-                run_v15_generation
-                if request.prompt_version == "brief-to-draft-v15"
-                else run_v14_generation
-                if request.prompt_version == "brief-to-draft-v14"
-                else run_v13_generation
-                if request.prompt_version == "brief-to-draft-v13"
-                else run_v12_generation
-                if request.prompt_version == "brief-to-draft-v12"
-                else run_v11_generation
-                if request.prompt_version == "brief-to-draft-v11"
-                else run_v10_generation
-                if request.prompt_version == "brief-to-draft-v10"
-                else run_v9_generation
-                if request.prompt_version == "brief-to-draft-v9"
-                else run_v8_generation
-            )
+            runner = _brief_to_draft_runner(request.prompt_version)
             return asyncio.run(runner(request, call_component=call_component))
         system_prompt_for_task("brief_to_draft", request.prompt_version)
         request.emit("tool.started", "planning", {"tool": "plan_object_ids"})
@@ -1005,23 +1001,7 @@ class OpenAIAgentsProvider:
                     schema_id=schema_id,
                 )
 
-            runner = (
-                run_v15_generation
-                if request.prompt_version == "brief-to-draft-v15"
-                else run_v14_generation
-                if request.prompt_version == "brief-to-draft-v14"
-                else run_v13_generation
-                if request.prompt_version == "brief-to-draft-v13"
-                else run_v12_generation
-                if request.prompt_version == "brief-to-draft-v12"
-                else run_v11_generation
-                if request.prompt_version == "brief-to-draft-v11"
-                else run_v10_generation
-                if request.prompt_version == "brief-to-draft-v10"
-                else run_v9_generation
-                if request.prompt_version == "brief-to-draft-v9"
-                else run_v8_generation
-            )
+            runner = _brief_to_draft_runner(request.prompt_version)
             return await runner(request, call_component=call_component)
         if request.prompt_version == "brief-to-draft-v7":
             return await _run_partitioned_generation(
@@ -1301,23 +1281,7 @@ class DeepSeekAgentsProvider:
                     deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
                 )
 
-            runner = (
-                run_v15_generation
-                if request.prompt_version == "brief-to-draft-v15"
-                else run_v14_generation
-                if request.prompt_version == "brief-to-draft-v14"
-                else run_v13_generation
-                if request.prompt_version == "brief-to-draft-v13"
-                else run_v12_generation
-                if request.prompt_version == "brief-to-draft-v12"
-                else run_v11_generation
-                if request.prompt_version == "brief-to-draft-v11"
-                else run_v10_generation
-                if request.prompt_version == "brief-to-draft-v10"
-                else run_v9_generation
-                if request.prompt_version == "brief-to-draft-v9"
-                else run_v8_generation
-            )
+            runner = _brief_to_draft_runner(request.prompt_version)
             return await runner(request, call_component=call_component)
         if request.prompt_version == "brief-to-draft-v7":
             return await _run_partitioned_generation(

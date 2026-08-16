@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from casefile.agent_runtime.brief_to_draft_features import CompilerFeature
 from casefile.agent_runtime.brief_to_draft_v8.ir import (
     BLUEPRINT_COLLECTIONS,
     DOMAIN_COLLECTIONS,
@@ -166,6 +167,7 @@ def compile_casefile(
     parent_version_id: str | None,
     schema_version: str = "2.0",
     updated_at: datetime | None = None,
+    compiler_plugins: tuple[CompilerFeature, ...] = (),
 ) -> dict[str, Any]:
     """Compile linked v1 semantic IR into a current contract-valid CaseFile."""
 
@@ -503,6 +505,8 @@ def compile_casefile(
         ],
         "extensions": {},
     }
+    for plugin in compiler_plugins:
+        plugin.compile_document(document, story=linked.story, linked=linked)
     # The current v1 contract marks several nullable fields as required. Preserve
     # those explicit nulls; fields that are genuinely optional remain controlled by
     # the generated contract model rather than by model output.
