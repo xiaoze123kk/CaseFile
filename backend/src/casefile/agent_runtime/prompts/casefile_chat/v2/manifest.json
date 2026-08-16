@@ -15,7 +15,7 @@
     },
     "router": {
       "file": "router.md",
-      "sha256": "c97eab22f6bc585ef92f3aae519dce68c25f940e4c145cbaa3c9f9eb1b2fad16"
+      "sha256": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1"
     },
     "rewrite": {
       "file": "rewrite.md",

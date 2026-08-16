@@ -177,7 +177,7 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("casefile_chat", "casefile-chat-v2"): {
         "fragment:shared": "e128cfd443879ff26c2af3ea6f732d0b86e930267bcf0578d44f95a801b89d95",  # noqa: E501
-        "fragment:router": "c97eab22f6bc585ef92f3aae519dce68c25f940e4c145cbaa3c9f9eb1b2fad16",
+        "fragment:router": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1",
         "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
         "fragment:executor-chat": "7e182c6ee59da7dcbd21a01baab00758f22cba5060bf4863ae0bfd63b2b066a8",  # noqa: E501
         "fragment:executor-analysis": "319ba419d64f08714c71f122d7bde4077ad8f68dd2089ec75efcf74079d72ef5",  # noqa: E501
