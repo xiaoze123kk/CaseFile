@@ -75,7 +75,10 @@ from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
 )
-from casefile.agent_runtime.prompt import COMPONENT_GENERATION_PROMPT_VERSIONS
+from casefile.agent_runtime.prompt import (
+    CHAT_PROMPT_PACKAGE_VERSIONS,
+    COMPONENT_GENERATION_PROMPT_VERSIONS,
+)
 from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.agent_runtime.query_rewrite import (
     build_llm_rewrite,
@@ -947,6 +950,7 @@ class Worker:
             focus=focus,
             routing_hint=routing_hint,
             network_retries=_network_retries(task),
+            toolset_version=task.toolset_version,
         )
 
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
@@ -1575,7 +1579,7 @@ def _persist_agent_execution_event(
 
     if (
         task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS
-        and task.prompt_version != "casefile-chat-v2"
+        and task.prompt_version not in CHAT_PROMPT_PACKAGE_VERSIONS
     ):
         return
     component_id = payload.get("component_id")

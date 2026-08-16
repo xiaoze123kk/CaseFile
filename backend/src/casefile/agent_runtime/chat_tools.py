@@ -19,7 +19,8 @@ from casefile.agent_runtime.models import (
     ToolMetrics,
 )
 
-CHAT_TOOLSET_VERSION = "casefile-chat-tools-v1"
+CHAT_TOOLSET_VERSION = "casefile-chat-tools-v2"
+LEGACY_CHAT_TOOLSET_VERSION = "casefile-chat-tools-v1"
 
 _COLLECTIONS = (
     "resolution_specs",
@@ -37,6 +38,13 @@ _COLLECTIONS = (
 
 _SEARCH_LABEL_FIELDS = ("name", "title", "statement", "proposition", "description")
 _SNIPPET_FIELDS = ("description", "statement", "proposition", "title", "name")
+
+# Tools introduced by the v2 toolset are denied to legacy chat TaskRuns so
+# frozen v1-toolset replays keep their original read surface.
+_V2_ONLY_TOOLS = frozenset({"list_casefile_records", "get_related_objects"})
+_LIST_LIMIT_MAX = 50
+_RELATED_SEED_MAX = 8
+_RELATED_LIMIT_MAX = 40
 
 
 @dataclass(slots=True)
@@ -157,6 +165,153 @@ def find_casefile_object(
     return None
 
 
+def _clamp_tool_count(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return default
+    return max(minimum, min(maximum, int(value)))
+
+
+def list_casefile_collections(casefile: dict[str, Any]) -> list[dict[str, Any]]:
+    """Deterministic collection manifest for the whole frozen CaseFile."""
+
+    return [
+        {
+            "collection": collection,
+            "count": sum(
+                1
+                for item in casefile.get(collection) or []
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+            ),
+        }
+        for collection in _COLLECTIONS
+    ]
+
+
+def page_casefile_records(
+    casefile: dict[str, Any],
+    collection: str,
+    *,
+    offset: int = 0,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """Pure, stable pagination backend shared by the tool, providers, and tests."""
+
+    items = [
+        item
+        for item in casefile.get(collection) or []
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    total = len(items)
+    start = _clamp_tool_count(offset, default=0, minimum=0, maximum=max(0, total))
+    page_limit = _clamp_tool_count(
+        limit, default=20, minimum=1, maximum=_LIST_LIMIT_MAX
+    )
+    records = [
+        {
+            "collection": collection,
+            "id": str(item["id"]),
+            "label": _record_label(item) or str(item["id"]),
+            "snippet": _record_snippet(item),
+        }
+        for item in items[start : start + page_limit]
+    ]
+    return {
+        "collection": collection,
+        "total": total,
+        "offset": start,
+        "limit": page_limit,
+        "records": records,
+    }
+
+
+def _relationship_summary(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(item["id"]),
+        "title": item.get("title"),
+        "from_ref": item.get("from_ref"),
+        "to_ref": item.get("to_ref"),
+        "relationship_type": item.get("relationship_type"),
+        "direction": item.get("direction"),
+        "truth_status": item.get("truth_status"),
+    }
+
+
+def related_casefile_objects(
+    casefile: dict[str, Any],
+    object_ids: list[str],
+    *,
+    relation_types: list[str] | None = None,
+    limit: int = 20,
+) -> dict[str, Any]:
+    """One-hop deterministic relationship expansion over the frozen CaseFile."""
+
+    seeds = set(object_ids)
+    normalized_relation_types: frozenset[str] | None = None
+    if relation_types:
+        normalized_relation_types = frozenset(
+            str(item).strip()
+            for item in relation_types
+            if isinstance(item, str) and item.strip()
+        )
+    page_limit = _clamp_tool_count(
+        limit, default=20, minimum=1, maximum=_RELATED_LIMIT_MAX
+    )
+    hits: list[tuple[dict[str, Any], str | None]] = []
+    for item in casefile.get("relationships") or []:
+        if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+            continue
+        if normalized_relation_types is not None:
+            relationship_type = item.get("relationship_type")
+            if (
+                not isinstance(relationship_type, str)
+                or relationship_type not in normalized_relation_types
+            ):
+                continue
+        from_ref = item.get("from_ref")
+        to_ref = item.get("to_ref")
+        if not isinstance(from_ref, str) or not isinstance(to_ref, str):
+            continue
+        if from_ref in seeds and to_ref in seeds:
+            hits.append((_relationship_summary(item), None))
+        elif from_ref in seeds:
+            hits.append((_relationship_summary(item), to_ref))
+        elif to_ref in seeds:
+            hits.append((_relationship_summary(item), from_ref))
+    selected = hits[:page_limit]
+    objects: list[dict[str, Any]] = []
+    seen_object_ids: set[str] = set()
+    unresolved_refs = [
+        seed for seed in object_ids if find_casefile_object(casefile, seed) is None
+    ]
+    for _summary, neighbor_ref in selected:
+        if neighbor_ref is None:
+            continue
+        if neighbor_ref in seen_object_ids:
+            continue
+        found = find_casefile_object(casefile, neighbor_ref)
+        if found is None:
+            if neighbor_ref not in unresolved_refs:
+                unresolved_refs.append(neighbor_ref)
+            continue
+        seen_object_ids.add(neighbor_ref)
+        collection, neighbor = found
+        objects.append(
+            {
+                "collection": collection,
+                "id": neighbor_ref,
+                "label": _record_label(neighbor) or neighbor_ref,
+                "snippet": _record_snippet(neighbor),
+            }
+        )
+        if len(objects) >= page_limit:
+            break
+    return {
+        "relationships": [summary for summary, _neighbor in selected],
+        "objects": objects,
+        "unresolved_refs": sorted(set(unresolved_refs)),
+    }
+
+
 def _budget_available(context: ChatToolContext) -> bool:
     return context.metrics.calls < context.max_tool_calls
 
@@ -179,7 +334,7 @@ def _emit_completed(
     context.request.emit(
         "tool.completed",
         "responding",
-        {"tool": tool, "toolset_version": CHAT_TOOLSET_VERSION, **payload},
+        {"tool": tool, "toolset_version": context.request.toolset_version, **payload},
     )
 
 
@@ -268,6 +423,182 @@ def get_casefile_object(
         {"object_id": object_id, "collection": collection, "object": item},
         ensure_ascii=False,
     )
+
+
+@function_tool
+def list_casefile_records(
+    wrapper: RunContextWrapper[ChatToolContext],
+    collection: str | None = None,
+    offset: int = 0,
+    limit: int = 20,
+) -> str:
+    """Browse the frozen CaseFile deterministically.
+
+    ``collection=None`` returns the collection manifest with counts. With one
+    collection name, returns a stable page of record summaries; call
+    ``get_casefile_object`` for one record's full content.
+    """
+
+    context = wrapper.context
+    if not _reserve_call(context):
+        context.metrics.budget_exhausted += 1
+        _emit_completed(
+            context,
+            "list_casefile_records",
+            {"valid": False, "reason_code": "tool_budget_exhausted"},
+        )
+        return json.dumps(
+            {"error": "tool_budget_exhausted", "collections": [], "records": []},
+            ensure_ascii=False,
+        )
+    _emit_started(
+        context,
+        "list_casefile_records",
+        {"collection": collection, "offset": offset, "limit": limit},
+    )
+    if collection is None:
+        manifest = list_casefile_collections(context.request.casefile)
+        total = sum(int(entry["count"]) for entry in manifest)
+        context.metrics.valid_calls += 1
+        context.metrics.successful_calls += 1
+        _emit_completed(
+            context,
+            "list_casefile_records",
+            {
+                "valid": True,
+                "mode": "manifest",
+                "collection_count": len(manifest),
+                "total": total,
+            },
+        )
+        return json.dumps(
+            {"collections": manifest, "total": total},
+            ensure_ascii=False,
+        )
+    if collection not in _COLLECTIONS:
+        _emit_completed(
+            context,
+            "list_casefile_records",
+            {"valid": False, "reason_code": "unknown_collection", "collection": collection},
+        )
+        return json.dumps(
+            {"error": "unknown_collection", "collection": collection},
+            ensure_ascii=False,
+        )
+    context.metrics.valid_calls += 1
+    page = page_casefile_records(
+        context.request.casefile,
+        collection,
+        offset=offset,
+        limit=limit,
+    )
+    context.metrics.successful_calls += 1
+    _emit_completed(
+        context,
+        "list_casefile_records",
+        {
+            "valid": True,
+            "collection": collection,
+            "total": page["total"],
+            "result_count": len(page["records"]),
+        },
+    )
+    return json.dumps(page, ensure_ascii=False)
+
+
+@function_tool
+def get_related_objects(
+    wrapper: RunContextWrapper[ChatToolContext],
+    object_ids: list[str],
+    relation_types: list[str] | None = None,
+    max_depth: int = 1,
+    limit: int = 20,
+) -> str:
+    """Expand one-hop relationships around frozen CaseFile object IDs.
+
+    At most 8 seed IDs; ``max_depth`` only accepts 1 in this toolset. Results
+    are summaries; fetch one neighbor's full content with
+    ``get_casefile_object``.
+    """
+
+    context = wrapper.context
+    if not _reserve_call(context):
+        context.metrics.budget_exhausted += 1
+        _emit_completed(
+            context,
+            "get_related_objects",
+            {"valid": False, "reason_code": "tool_budget_exhausted"},
+        )
+        return json.dumps(
+            {"error": "tool_budget_exhausted", "relationships": [], "objects": []},
+            ensure_ascii=False,
+        )
+    _emit_started(
+        context,
+        "get_related_objects",
+        {
+            "object_id_count": len(object_ids),
+            "relation_types": relation_types,
+            "max_depth": max_depth,
+            "limit": limit,
+        },
+    )
+    if max_depth != 1:
+        _emit_completed(
+            context,
+            "get_related_objects",
+            {"valid": False, "reason_code": "invalid_depth", "max_depth": max_depth},
+        )
+        return json.dumps(
+            {"error": "invalid_depth", "max_depth": max_depth},
+            ensure_ascii=False,
+        )
+    seeds = list(
+        dict.fromkeys(
+            str(item).strip()
+            for item in object_ids
+            if isinstance(item, str) and item.strip()
+        )
+    )
+    if not seeds:
+        _emit_completed(
+            context,
+            "get_related_objects",
+            {"valid": False, "reason_code": "object_ids_empty"},
+        )
+        return json.dumps(
+            {"error": "object_ids_empty", "relationships": [], "objects": []},
+            ensure_ascii=False,
+        )
+    if len(seeds) > _RELATED_SEED_MAX:
+        _emit_completed(
+            context,
+            "get_related_objects",
+            {"valid": False, "reason_code": "too_many_seeds", "seed_count": len(seeds)},
+        )
+        return json.dumps(
+            {"error": "too_many_seeds", "seed_count": len(seeds)},
+            ensure_ascii=False,
+        )
+    context.metrics.valid_calls += 1
+    payload = related_casefile_objects(
+        context.request.casefile,
+        seeds,
+        relation_types=relation_types,
+        limit=limit,
+    )
+    context.metrics.successful_calls += 1
+    _emit_completed(
+        context,
+        "get_related_objects",
+        {
+            "valid": True,
+            "relationship_count": len(payload["relationships"]),
+            "object_count": len(payload["objects"]),
+            "unresolved_ref_count": len(payload["unresolved_refs"]),
+        },
+    )
+    return json.dumps(payload, ensure_ascii=False)
 
 
 @function_tool
@@ -401,20 +732,33 @@ def validate_patch_proposal(
 
 
 _CHAT_TOOL_REGISTRY: dict[str, Tool] = {
+    "list_casefile_records": list_casefile_records,
     "search_casefile": search_casefile,
     "get_casefile_object": get_casefile_object,
+    "get_related_objects": get_related_objects,
     "get_validation_issues": get_validation_issues,
     "validate_patch_proposal": validate_patch_proposal,
 }
 
 
-def chat_tool_manifest(route: RouteDecision) -> list[Tool]:
-    """Assemble the model-facing tool list from one frozen RouteDecision."""
+def chat_tool_manifest(
+    route: RouteDecision,
+    *,
+    toolset_version: str = LEGACY_CHAT_TOOLSET_VERSION,
+) -> list[Tool]:
+    """Assemble the model-facing tool list from one frozen RouteDecision.
+
+    Legacy frozen toolset versions only expose the v1 read surface; the
+    ``casefile-chat-tools-v2`` version additionally exposes the list-browse and
+    relationship tools.
+    """
 
     allowed = route.execution_profile.get("toolset") or []
     manifest: list[Tool] = []
     for tool_name in allowed:
         if not isinstance(tool_name, str):
+            continue
+        if tool_name in _V2_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_VERSION:
             continue
         tool = _CHAT_TOOL_REGISTRY.get(tool_name)
         if tool is not None and tool not in manifest:
@@ -424,12 +768,18 @@ def chat_tool_manifest(route: RouteDecision) -> list[Tool]:
 
 __all__ = [
     "CHAT_TOOLSET_VERSION",
+    "LEGACY_CHAT_TOOLSET_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
     "chat_tool_manifest",
     "find_casefile_object",
     "get_casefile_object",
+    "get_related_objects",
     "get_validation_issues",
+    "list_casefile_collections",
+    "list_casefile_records",
+    "page_casefile_records",
+    "related_casefile_objects",
     "search_casefile",
     "search_casefile_records",
     "validate_patch_proposal",

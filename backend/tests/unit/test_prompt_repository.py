@@ -39,7 +39,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
     "brief_to_draft": "brief-to-draft-v15",
-    "casefile_chat": "casefile-chat-v2",
+    "casefile_chat": "casefile-chat-v3",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
 }
@@ -183,6 +183,18 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-analysis": "319ba419d64f08714c71f122d7bde4077ad8f68dd2089ec75efcf74079d72ef5",  # noqa: E501
         "fragment:executor-issue": "85d6e264fa23994f1d66e4228be71c0eabfe55a148392b90d42a54b56a561071",  # noqa: E501
         "fragment:executor-edit": "2b02079feef132cd4916a3922c4f0f01c0fd27beaea05cbf779db2bb46338fee",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
+    ("casefile_chat", "casefile-chat-v3"): {
+        "fragment:shared": "3d69ed5d73350a7e17611f139e1cef998e0825a9ef2605a6bac0a5ab5a394d32",  # noqa: E501
+        "fragment:router": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b40c5081234887f73f4060a3f096e21c00a35f353ad237bf051e688f63948228",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
         "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
         "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
@@ -396,6 +408,18 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     )
     assert "只能调用系统明确给出的工具" in v2_chat.component_prompts["analysis"]
     assert "`validate_patch_proposal`" in v2_chat.component_prompts["edit"]
+    v3_chat = load_prompt("casefile_chat", "casefile-chat-v3")
+    assert v3_chat.package is not None
+    assert v3_chat.package.runtime_agent_version == AGENT_VERSION
+    assert v3_chat.package.runtime_toolset_version == "casefile-chat-tools-v2"
+    assert v3_chat.package.components["chat"].tool_policy_id == "chat-read-v2"
+    assert v3_chat.package.components["analysis"].tool_policy_id == "chat-read-v2"
+    assert v3_chat.package.components["issue"].tool_policy_id == "chat-issue-v2"
+    assert v3_chat.package.components["edit"].tool_policy_id == "chat-edit-v2"
+    assert "`list_casefile_records`" in v3_chat.component_prompts["chat"]
+    assert "`get_related_objects`" in v3_chat.component_prompts["analysis"]
+    assert "`list_casefile_records`" in v3_chat.component_prompts["issue"]
+    assert "`get_related_objects`" in v3_chat.component_prompts["edit"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:

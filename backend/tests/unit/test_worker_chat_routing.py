@@ -244,6 +244,22 @@ def test_v1_tasks_keep_the_legacy_render_path() -> None:
     assert json.loads(input_text.split("\n", 1)[1])["author_message"] == request.message
 
 
+def test_v3_prompt_package_renders_the_v2_read_tool_guidance() -> None:
+    request = make_request(
+        hint={"entrypoint": "preset", "preset_id": "inspect"},
+        prompt_version="casefile-chat-v3",
+    )
+    resolved = _resolve_chat_route(request)
+
+    instructions, input_text = render_chat_executor_prompt(resolved)
+
+    assert "本路由组件为只读分析" in instructions
+    assert "`list_casefile_records`" in instructions
+    assert "`get_related_objects`" in instructions
+    payload = json.loads(input_text)
+    assert payload["routing"]["route"]["route_source"] == "rule_preset"
+
+
 def test_routing_event_payloads_are_json_serializable_and_small() -> None:
     resolved = _resolve_chat_route(
         make_request(hint={"entrypoint": "preset", "preset_id": "gate"})

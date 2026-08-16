@@ -8,10 +8,18 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
-import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ValidationError
+
+import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
@@ -34,6 +42,7 @@ from casefile.agent_runtime.prompt_repository import PromptRepositoryError
 from casefile.agent_runtime.providers import (
     ProviderProtocolError,
     _allocate_plan_ids,
+    _chat_tool_runtime,
     _deepseek_v8_output_protocol,
     _json_schema_instruction,
     _partition_issues,
@@ -56,13 +65,6 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile, ObjectRef
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -772,6 +774,52 @@ def test_fake_provider_chat_stops_retrieval_when_budget_is_exhausted() -> None:
     assert result.tools.calls == 2
     assert result.tools.successful_calls == 1
     assert result.tools.budget_exhausted == 1
+
+
+def test_chat_tool_runtime_filters_v2_tools_by_frozen_toolset_version() -> None:
+    request = CaseFileChatRequest(
+        task_run_id=32,
+        prompt_version="casefile-chat-v3",
+        casefile={"entities": [{"id": "ent_1", "name": "张三"}]},
+        history=(),
+        message="检索",
+        editable_fields_by_collection={},
+        input_hash="b" * 64,
+        model_id="fake",
+        api_key=None,
+        max_turns=4,
+        emit=lambda _event_type, _stage, _payload: None,
+        route=RouteDecision(
+            execution_profile={
+                "toolset": [
+                    "list_casefile_records",
+                    "search_casefile",
+                    "get_casefile_object",
+                    "get_related_objects",
+                ],
+                "max_tool_calls": 6,
+                "max_turns": 4,
+            }
+        ),
+        toolset_version="casefile-generation-tools-v2",
+    )
+
+    legacy_tools, _legacy_context, legacy_max_turns = _chat_tool_runtime(request)
+    v2_request = replace(request, toolset_version="casefile-chat-tools-v2")
+    v2_tools, _v2_context, v2_max_turns = _chat_tool_runtime(v2_request)
+
+    assert [tool.name for tool in (legacy_tools or [])] == [
+        "search_casefile",
+        "get_casefile_object",
+    ]
+    assert [tool.name for tool in (v2_tools or [])] == [
+        "list_casefile_records",
+        "search_casefile",
+        "get_casefile_object",
+        "get_related_objects",
+    ]
+    assert legacy_max_turns == 4
+    assert v2_max_turns == 4
 
 
 def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() -> None:

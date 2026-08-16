@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -114,6 +105,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 
 class GenerationProvider(Protocol):
@@ -434,8 +434,14 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
     route = request.route
     if route is None:
         return metrics
-    toolset = route.execution_profile.get("toolset") or []
-    if "search_casefile" not in toolset:
+    available_tools = {
+        tool.name
+        for tool in chat_tool_manifest(
+            route,
+            toolset_version=request.toolset_version,
+        )
+    }
+    if "search_casefile" not in available_tools:
         return metrics
     max_calls = route.execution_profile.get("max_tool_calls")
     max_calls = max_calls if isinstance(max_calls, int) else 0
@@ -453,6 +459,7 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
                 "responding",
                 {
                     "tool": "search_casefile",
+                    "toolset_version": request.toolset_version,
                     "valid": False,
                     "reason_code": "tool_budget_exhausted",
                 },
@@ -471,6 +478,7 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
             "responding",
             {
                 "tool": "search_casefile",
+                "toolset_version": request.toolset_version,
                 "valid": True,
                 "query": query,
                 "result_count": len(results),
@@ -486,7 +494,10 @@ def _chat_tool_runtime(
     route = request.route
     if route is None:
         return None, None, None
-    manifest = chat_tool_manifest(route)
+    manifest = chat_tool_manifest(
+        route,
+        toolset_version=request.toolset_version,
+    )
     if not manifest:
         return None, None, None
     max_turns = route.execution_profile.get("max_turns")

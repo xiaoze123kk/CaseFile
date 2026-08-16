@@ -19,6 +19,7 @@ from casefile.agent_runtime.chat_intent import (
     route_result_summary,
     route_suggestion_policy,
 )
+from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
 from casefile.agent_runtime.credentials import encrypt_api_key
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
@@ -2140,7 +2141,9 @@ class WorkflowService:
             schema_version=CASEFILE_SCHEMA_VERSION,
             agent_version=agent_version_for_task(task_type, prompt_version),
             prompt_version=prompt_version,
-            toolset_version=TOOLSET_VERSION,
+            toolset_version=(
+                CHAT_TOOLSET_VERSION if task_type == "casefile_chat" else TOOLSET_VERSION
+            ),
             budget_jsonb=dict(setting.default_budget_jsonb),
             usage_jsonb={},
             attempt_count=0,

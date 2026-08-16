@@ -14,7 +14,6 @@ from casefile.agent_runtime.models import (
 )
 from casefile.agent_runtime.prompt_package import render_prompt_package
 from casefile.agent_runtime.prompt_repository import load_prompt
-from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 AGENT_VERSION = "casefile-single-agent-v2"
 V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
@@ -57,6 +56,7 @@ COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
         "brief-to-draft-v15",
     }
 )
+CHAT_PROMPT_PACKAGE_VERSIONS = frozenset({"casefile-chat-v2", "casefile-chat-v3"})
 TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
     {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15"}
 )
@@ -258,7 +258,7 @@ def render_chat_router_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
         "router",
         json.loads(chat_router_input(request)),
         agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
-        toolset_version=TOOLSET_VERSION,
+        toolset_version=definition.package.runtime_toolset_version,
     )
     return rendered.instructions, rendered.input_text
 
@@ -280,7 +280,7 @@ def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]
         component_id,
         _casefile_chat_payload(request),
         agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
-        toolset_version=TOOLSET_VERSION,
+        toolset_version=definition.package.runtime_toolset_version,
     )
     return rendered.instructions, rendered.input_text
 
@@ -298,7 +298,7 @@ def render_chat_rewrite_prompt(
         "rewrite",
         json.loads(rewrite_for_route_input(request)),
         agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
-        toolset_version=TOOLSET_VERSION,
+        toolset_version=definition.package.runtime_toolset_version,
     )
     return rendered.instructions, rendered.input_text
 
