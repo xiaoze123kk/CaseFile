@@ -3,13 +3,14 @@
 from io import BytesIO
 
 import pytest
+from docx import Document
+
 from casefile.importers.text_extraction import (
     MAX_FILE_BYTES,
     ExtractionError,
     extract_text,
     split_blocks,
 )
-from docx import Document
 
 
 def test_extract_text_plain_and_markdown():

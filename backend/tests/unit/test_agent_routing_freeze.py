@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 
 import rfc8785
+
 from casefile.agent_runtime.chat_intent import (
     INTENT_ROUTER_VERSION,
     normalize_routing_hint,

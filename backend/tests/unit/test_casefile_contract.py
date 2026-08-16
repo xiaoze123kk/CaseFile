@@ -9,6 +9,8 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
+
 from casefile.application.casefile_v1 import prepare_generation_candidate
 from casefile.application.snapshot import casefile_content_hash
 from casefile.contracts import (
@@ -17,7 +19,6 @@ from casefile.contracts import (
     public_validation_issues,
     validate_casefile,
 )
-from jsonschema import Draft202012Validator
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FIXTURE_ROOT = REPO_ROOT / "fixtures" / "casefiles"

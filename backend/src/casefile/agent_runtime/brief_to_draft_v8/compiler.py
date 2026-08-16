@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import CaseFile
 from pydantic import ValidationError
 
 from casefile.agent_runtime.brief_to_draft_features import CompilerFeature
@@ -36,6 +35,7 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
 )
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import CaseFile
 
 _PREFIXES = {
     "resolution_specs": "res",

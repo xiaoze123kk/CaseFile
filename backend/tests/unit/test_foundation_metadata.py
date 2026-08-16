@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
 from casefile.data_postgres import models
 from casefile.data_postgres.base import Base
-from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
     "agent_model_calls",
