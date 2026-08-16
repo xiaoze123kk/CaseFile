@@ -1,6 +1,10 @@
-"""Brief-to-draft runtime spec registry contract tests."""
+"""Brief-to-draft runtime spec registry and plugin hook contract tests."""
 
 from __future__ import annotations
+
+import asyncio
+from dataclasses import replace
+from typing import Any
 
 import pytest
 
@@ -11,31 +15,29 @@ from casefile.agent_runtime.brief_to_draft_runtime import (
     schema_id_for_component,
     supported_pipeline_versions,
 )
-from casefile.agent_runtime.brief_to_draft_v8.workflow import _build_context_pack
+from casefile.agent_runtime.brief_to_draft_v8.compiler import (
+    compile_casefile,
+    link_draft,
+)
+from casefile.agent_runtime.brief_to_draft_v8.ir import (
+    CaseBlueprintV1,
+    EvidenceLogicIRV1,
+    ResolutionGovernanceIRV1,
+    StoryWorldIRV1,
+)
+from casefile.agent_runtime.brief_to_draft_v8.workflow import (
+    _build_context_pack,
+    _with_temporal_plan,
+    run_v8_generation,
+)
 from casefile.agent_runtime.models import CandidateStrategy, GenerationRequest
+from casefile.agent_runtime.prompt import V12_GENERATION_AGENT_VERSION
+from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
+from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 VERSIONS = {
     f"brief-to-draft-v{version}" for version in range(8, 16)
 }
-
-
-def _request(prompt_version: str) -> GenerationRequest:
-    return GenerationRequest(
-        task_run_id=1,
-        prompt_version=prompt_version,
-        brief={"creative_intent": "测试案件"},
-        casefile_id="case_test",
-        brief_id="brief_test",
-        brief_version=1,
-        version_id="version_test",
-        version_no=1,
-        parent_version_id=None,
-        model_id="fake",
-        api_key=None,
-        max_turns=8,
-        emit=lambda *args: None,
-        candidate_strategy=CandidateStrategy.BALANCED,
-    )
 
 
 def test_all_component_versions_have_a_frozen_spec() -> None:
@@ -157,3 +159,179 @@ def test_repair_input_contract_preserved_for_matrix_versions() -> None:
         )
     assert resolve_pipeline_spec("brief-to-draft-v8").evidence_repair_input_contract_id is None
     assert resolve_pipeline_spec("brief-to-draft-v9").evidence_repair_input_contract_id is None
+
+
+class RecordingStoryFeature:
+    """Test StoryFeature that records every hook invocation."""
+
+    feature_id = "test-story-feature"
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def domain_input_fields(self, request: GenerationRequest) -> dict[str, Any]:
+        self.calls.append("domain_input_fields")
+        return {}
+
+    def validate_story(
+        self,
+        story: Any,
+        *,
+        request: GenerationRequest,
+    ) -> list[dict[str, Any]]:
+        self.calls.append("validate_story")
+        return []
+
+    def with_temporal_plan(self, story: Any, plan: Any) -> Any:
+        self.calls.append("with_temporal_plan")
+        return story
+
+
+class RecordingTemporalStoryFeature(RecordingStoryFeature):
+    """Delegates to the legacy join so a plugin can replace it wholesale."""
+
+    def with_temporal_plan(self, story: Any, plan: Any) -> Any:
+        self.calls.append("with_temporal_plan")
+        return _with_temporal_plan(story, plan)
+
+
+class TitleCompilerFeature:
+    feature_id = "test-compiler-feature"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def compile_document(
+        self,
+        document: dict[str, Any],
+        *,
+        story: Any,
+        linked: Any,
+    ) -> None:
+        self.calls += 1
+        document["title"] = f"{document['title']}-plugin"
+
+
+def _request(prompt_version: str) -> GenerationRequest:
+    return GenerationRequest(
+        task_run_id=1,
+        prompt_version=prompt_version,
+        brief={"creative_intent": "测试案件"},
+        casefile_id="case_test",
+        brief_id="brief_test",
+        brief_version=1,
+        version_id="draft_test",
+        version_no=1,
+        parent_version_id=None,
+        model_id="fake",
+        api_key=None,
+        max_turns=8,
+        emit=lambda *args: None,
+        candidate_strategy=CandidateStrategy.BALANCED,
+    )
+
+
+async def _fake_call_component(
+    _instructions: str,
+    _input_text: str,
+    output_type: type[Any],
+    _stage: str,
+    _component_id: str,
+    _schema_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    return _fake_v8_output(output_type), {}
+
+
+async def _fake_call_component_v12(
+    _instructions: str,
+    _input_text: str,
+    output_type: type[Any],
+    _stage: str,
+    _component_id: str,
+    _schema_id: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    output = _fake_v8_output(output_type)
+    _add_fake_v10_matrix_plan(output_type, output)
+    return output, {}
+
+
+def test_compiler_plugin_mutates_document_before_validation() -> None:
+    blueprint = CaseBlueprintV1.model_validate(_fake_v8_output(CaseBlueprintV1))
+    story = StoryWorldIRV1.model_validate(_fake_v8_output(StoryWorldIRV1))
+    evidence = EvidenceLogicIRV1.model_validate(_fake_v8_output(EvidenceLogicIRV1))
+    governance = ResolutionGovernanceIRV1.model_validate(
+        _fake_v8_output(ResolutionGovernanceIRV1)
+    )
+    linked = link_draft(
+        blueprint,
+        story,
+        evidence,
+        governance,
+        task_run_id=1,
+    )
+    plugin = TitleCompilerFeature()
+
+    candidate = compile_casefile(
+        linked,
+        casefile_id="case_test",
+        brief_id="brief_test",
+        brief_version=1,
+        version_id="draft_test",
+        version_no=1,
+        parent_version_id=None,
+        compiler_plugins=(plugin,),
+    )
+
+    assert plugin.calls == 1
+    assert candidate["title"].endswith("-plugin")
+
+
+def test_run_v8_generation_invokes_story_and_compiler_hooks() -> None:
+    story_feature = RecordingStoryFeature()
+    compiler_plugin = TitleCompilerFeature()
+    spec = replace(
+        resolve_pipeline_spec("brief-to-draft-v8"),
+        story_feature=story_feature,
+        compiler_plugins=(compiler_plugin,),
+    )
+    request = replace(
+        _request("brief-to-draft-v8"),
+        brief={"conclusion_mode": "unique"},
+    )
+
+    result = asyncio.run(
+        run_v8_generation(request, call_component=_fake_call_component, spec=spec)
+    )
+
+    assert story_feature.calls == ["domain_input_fields", "validate_story"]
+    assert compiler_plugin.calls == 1
+    assert result.candidate["title"].endswith("-plugin")
+
+
+def test_run_v12_generation_delegates_temporal_join_to_story_feature() -> None:
+    story_feature = RecordingTemporalStoryFeature()
+    spec = replace(
+        resolve_pipeline_spec("brief-to-draft-v12"),
+        story_feature=story_feature,
+    )
+    request = replace(
+        _request("brief-to-draft-v12"),
+        brief={"conclusion_mode": "unique"},
+        agent_version=V12_GENERATION_AGENT_VERSION,
+        toolset_version=TOOLSET_VERSION,
+    )
+
+    result = asyncio.run(
+        run_v8_generation(
+            request,
+            call_component=_fake_call_component_v12,
+            spec=spec,
+        )
+    )
+
+    assert story_feature.calls == [
+        "domain_input_fields",
+        "with_temporal_plan",
+        "validate_story",
+    ]
+    assert result.candidate["schema_version"] == request.schema_version

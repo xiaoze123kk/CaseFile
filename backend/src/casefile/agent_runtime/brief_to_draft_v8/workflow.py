@@ -192,11 +192,13 @@ async def run_v8_generation(
     request: GenerationRequest,
     *,
     call_component: ComponentCall,
+    spec: BriefToDraftSpec | None = None,
 ) -> GenerationResult:
     """Run the six business stages with one bounded targeted domain repair."""
 
     _validate_frozen_prompt_release(request)
-    spec = resolve_pipeline_spec(request.prompt_version)
+    if spec is None:
+        spec = resolve_pipeline_spec(request.prompt_version)
     features = spec.features
     uses_temporal_plan = features.temporal_plan
     uses_v2_context = features.v2_context
@@ -378,6 +380,8 @@ async def run_v8_generation(
                     ),
                 }
             )
+        if spec.story_feature is not None and component_id == "story_world":
+            input_payload.update(spec.story_feature.domain_input_fields(request))
         output, usage = await _model_step(
             request,
             call_component,
@@ -425,13 +429,20 @@ async def run_v8_generation(
     )
     story: StoryWorldIRV1 | StoryWorldIRV2
     if uses_temporal_plan:
-        if not isinstance(story_output, StoryWorldIRV3) or temporal_plan is None:
-            raise RuntimeError(
-                "temporal-planning versions must use StoryWorldIRV3 and TemporalPlanV1"
-            )
-        story = _with_temporal_plan(story_output, temporal_plan)
+        if temporal_plan is None:
+            raise RuntimeError("temporal-planning versions require a temporal plan")
+        if spec.story_feature is not None:
+            story = spec.story_feature.with_temporal_plan(story_output, temporal_plan)
+        else:
+            if not isinstance(story_output, StoryWorldIRV3):
+                raise RuntimeError(
+                    "temporal-planning versions must use StoryWorldIRV3"
+                )
+            story = _with_temporal_plan(story_output, temporal_plan)
     else:
-        if not isinstance(story_output, (StoryWorldIRV1, StoryWorldIRV2)):
+        if not isinstance(story_output, (StoryWorldIRV1, StoryWorldIRV2)) and (
+            spec.story_feature is None
+        ):
             raise RuntimeError("legacy brief-to-draft must use a compiler-compatible Story IR")
         story = story_output
     evidence: EvidenceLogicIR = _evidence_from_output(
@@ -506,7 +517,7 @@ async def run_v8_generation(
                 )
                 if matrix_issues:
                     raise LinkerValidationError(matrix_issues)
-            if uses_v2_context:
+            if uses_v2_context and spec.story_feature is None:
                 if not isinstance(story, StoryWorldIRV2):
                     raise RuntimeError("v11+ spatial runtimes must compile through StoryWorldIRV2")
                 story_issues = _v11_story_issues(
@@ -521,8 +532,15 @@ async def run_v8_generation(
                 temporal_issues = temporal_story_issues(story_output, temporal_plan)
                 if temporal_issues:
                     raise LinkerValidationError(temporal_issues)
+            if spec.story_feature is not None:
+                feature_issues = spec.story_feature.validate_story(
+                    story,
+                    request=request,
+                )
+                if feature_issues:
+                    raise LinkerValidationError(feature_issues)
             linked = _link_step(request, blueprint, story, evidence, governance)
-            candidate = _compile_step(request, linked)
+            candidate = _compile_step(request, linked, spec)
             _quality_gate(
                 request,
                 candidate,
@@ -571,12 +589,22 @@ async def run_v8_generation(
                     repaired_components.add("story_world")
                     repaired_story = story_output_type.model_validate(value)
                     if uses_temporal_plan:
-                        if not isinstance(repaired_story, StoryWorldIRV3) or temporal_plan is None:
+                        if temporal_plan is None:
                             raise RuntimeError(
                                 "temporal-planning repair lost temporal plan"
                             ) from error
                         story_output = repaired_story
-                        story = _with_temporal_plan(repaired_story, temporal_plan)
+                        if spec.story_feature is not None:
+                            story = spec.story_feature.with_temporal_plan(
+                                repaired_story,
+                                temporal_plan,
+                            )
+                        else:
+                            if not isinstance(repaired_story, StoryWorldIRV3):
+                                raise RuntimeError(
+                                    "temporal-planning repair lost StoryWorldIRV3"
+                                ) from error
+                            story = _with_temporal_plan(repaired_story, temporal_plan)
                     else:
                         if not isinstance(repaired_story, (StoryWorldIRV1, StoryWorldIRV2)):
                             raise RuntimeError(
@@ -678,12 +706,22 @@ async def run_v8_generation(
                 if component_id == "story_world":
                     repaired_story = story_output_type.model_validate(value)
                     if uses_temporal_plan:
-                        if not isinstance(repaired_story, StoryWorldIRV3) or temporal_plan is None:
+                        if temporal_plan is None:
                             raise RuntimeError(
                                 "temporal-planning repair lost temporal plan"
                             ) from error
                         story_output = repaired_story
-                        story = _with_temporal_plan(repaired_story, temporal_plan)
+                        if spec.story_feature is not None:
+                            story = spec.story_feature.with_temporal_plan(
+                                repaired_story,
+                                temporal_plan,
+                            )
+                        else:
+                            if not isinstance(repaired_story, StoryWorldIRV3):
+                                raise RuntimeError(
+                                    "temporal-planning repair lost StoryWorldIRV3"
+                                ) from error
+                            story = _with_temporal_plan(repaired_story, temporal_plan)
                     else:
                         if not isinstance(repaired_story, (StoryWorldIRV1, StoryWorldIRV2)):
                             raise RuntimeError(
@@ -1605,7 +1643,11 @@ def _link_step(
     return linked
 
 
-def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str, Any]:
+def _compile_step(
+    request: GenerationRequest,
+    linked: LinkedDraftV1,
+    spec: BriefToDraftSpec,
+) -> dict[str, Any]:
     schema_id = f"casefile-v{request.schema_version.split('.', 1)[0]}"
     request.emit(
         "agent.step.started",
@@ -1622,6 +1664,7 @@ def _compile_step(request: GenerationRequest, linked: LinkedDraftV1) -> dict[str
             version_no=request.version_no,
             parent_version_id=request.parent_version_id,
             schema_version=request.schema_version,
+            compiler_plugins=spec.compiler_plugins,
         )
     except ContractValidationError as error:
         request.emit(

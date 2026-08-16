@@ -1,4 +1,4 @@
-"""Versioned runtime specs for brief-to-draft.
+"""Versioned runtime specs and pluggable feature hooks for brief-to-draft.
 
 Every component generation version (v8-v15) executes the same deterministic
 graph in :mod:`casefile.agent_runtime.brief_to_draft_v8.workflow`. Historically
@@ -11,10 +11,13 @@ This module centralizes those differences into a frozen spec registry:
 - :class:`FeatureFlags` describe optional pipeline capabilities.
 - :class:`BriefToDraftSpec` binds one prompt version to its input/output
   contracts, agent runtime, component set, and feature flags.
+- :class:`StoryFeature` and :class:`CompilerFeature` are extension points that
+  let a new capability own its prompt-input fields, story validation, temporal
+  join, and document compilation without editing the shared graph.
 
-Adding a future capability means adding one spec entry (plus any new IR and an
-immutable Prompt Package release). Existing frozen versions keep resolving to
-their original spec and behavior.
+Adding a future capability therefore means: define its IR, implement a feature
+object, add one spec entry, and release a new immutable Prompt Package. Existing
+frozen versions keep resolving to their original spec and behavior.
 """
 
 from __future__ import annotations
@@ -24,6 +27,10 @@ from types import MappingProxyType
 
 from pydantic import BaseModel
 
+from casefile.agent_runtime.brief_to_draft_features import (
+    CompilerFeature,
+    StoryFeature,
+)
 from casefile.agent_runtime.brief_to_draft_v8.ir import (
     DraftContextPackV1,
     EvidenceLogicIRV1,
@@ -97,6 +104,8 @@ class BriefToDraftSpec:
     governance_runs_in_parallel: bool = True
     features: FeatureFlags = field(default_factory=FeatureFlags)
     evidence_repair_input_contract_id: str | None = None
+    story_feature: StoryFeature | None = None
+    compiler_plugins: tuple[CompilerFeature, ...] = ()
 
 
 _PIPELINE_SPECS: dict[str, BriefToDraftSpec] = {
@@ -288,7 +297,9 @@ def schema_id_for_component(
 
 __all__ = [
     "BriefToDraftSpec",
+    "CompilerFeature",
     "FeatureFlags",
+    "StoryFeature",
     "resolve_pipeline_spec",
     "schema_id_for_component",
     "supported_pipeline_versions",
