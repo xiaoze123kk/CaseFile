@@ -21,11 +21,14 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import select
+
 from casefile.agent_runtime import (
     DeepSeekAgentsProvider,
     FakeProvider,
     OpenAIAgentsProvider,
 )
+from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.benchmark.chat_router_eval import (
     ChatRouterEvalReport,
@@ -34,6 +37,8 @@ from casefile.benchmark.chat_router_eval import (
     build_eval_fixtures,
     evaluate_chat_router,
 )
+from casefile.data_postgres.models import UserProviderSetting
+from casefile.data_postgres.session import create_database_engine, create_session_factory
 from casefile.worker.runtime import _resolve_chat_route
 
 ROUTE_ACCURACY_TARGET = 0.90
@@ -224,6 +229,60 @@ def _provider(provider_name: str, api_key: str) -> tuple[Any, str]:
     raise SystemExit(f"Unsupported provider: {provider_name}")
 
 
+def _saved_provider_credential(
+    *,
+    database_url: str | None,
+    actor_id: int,
+    provider_name: str,
+    requested_model: str | None,
+) -> tuple[str, str] | None:
+    """Decrypt the configured provider credential from the application database."""
+
+    if database_url is None:
+        return None
+    if provider_name == "fake":
+        return "fake", requested_model or "fake-live-eval"
+    engine = create_database_engine(database_url)
+    try:
+        with create_session_factory(engine)() as session:
+            setting = session.scalar(
+                select(UserProviderSetting)
+                .where(
+                    UserProviderSetting.user_id == actor_id,
+                    UserProviderSetting.provider == provider_name,
+                    UserProviderSetting.credential_status != "deleted",
+                )
+                .order_by(
+                    UserProviderSetting.validated_at.desc().nulls_last(),
+                    UserProviderSetting.id.desc(),
+                )
+                .limit(1)
+            )
+            if setting is None:
+                raise SystemExit(
+                    f"No saved {provider_name} credential for actor {actor_id} "
+                    f"in {database_url}"
+                )
+            if (
+                setting.secret_ciphertext is None
+                or setting.secret_nonce is None
+                or setting.key_version is None
+            ):
+                raise SystemExit(
+                    f"Saved {provider_name} credential is missing encryption material"
+                )
+            api_key = decrypt_api_key(
+                setting.secret_ciphertext,
+                setting.secret_nonce,
+                user_id=actor_id,
+                provider=provider_name,
+                key_version=setting.key_version,
+            )
+            return api_key, requested_model or setting.model_id
+    finally:
+        engine.dispose()
+
+
 def _load_fixtures(
     baseline: tuple[ChatRouterFixture, ...],
     extra_paths: list[Path] | None,
@@ -245,13 +304,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run the CaseFile chat intent router against a real model"
     )
-    parser.add_argument(
-        "--provider",
-        choices=("openai", "deepseek", "fake"),
-        default="openai",
-    )
+    parser.add_argument("--provider", choices=("openai", "deepseek", "fake"), default="openai")
     parser.add_argument("--model", default=None)
     parser.add_argument("--api-key", default=None)
+    parser.add_argument(
+        "--database-url",
+        default=None,
+        help="Read the saved provider credential from this application database",
+    )
+    parser.add_argument("--actor-id", type=int, default=1)
     parser.add_argument("--fixture-ids", default=None, help="Comma-separated fixture ids")
     parser.add_argument(
         "--extra-fixtures",
@@ -264,12 +325,21 @@ def main() -> None:
     arguments = parser.parse_args()
 
     provider_name = arguments.provider
-    api_key = _resolved_api_key(provider_name, arguments.api_key)
-    model_id = arguments.model or {
-        "openai": "gpt-5.6-sol",
-        "deepseek": "deepseek-chat",
-        "fake": "fake-live-eval",
-    }[provider_name]
+    saved = _saved_provider_credential(
+        database_url=arguments.database_url,
+        actor_id=arguments.actor_id,
+        provider_name=provider_name,
+        requested_model=arguments.model,
+    )
+    if saved is not None:
+        api_key, model_id = saved
+    else:
+        api_key = _resolved_api_key(provider_name, arguments.api_key)
+        model_id = arguments.model or {
+            "openai": "gpt-5.6-sol",
+            "deepseek": "deepseek-chat",
+            "fake": "fake-live-eval",
+        }[provider_name]
     fixtures = _load_fixtures(build_eval_fixtures(), arguments.extra_fixtures)
     if arguments.fixture_ids:
         allowed = {item.strip() for item in arguments.fixture_ids.split(",") if item.strip()}

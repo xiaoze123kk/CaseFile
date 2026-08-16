@@ -233,6 +233,7 @@ def build_eval_fixtures() -> tuple[ChatRouterFixture, ...]:
             "这段描述低置信度地改一下。",
             "question",
             "chat",
+            dangerous_pair=("question", "edit_request"),
         ),
         # 20: mid-confidence non-sensitive clarify also falls back safely.
         free(
@@ -387,7 +388,11 @@ def evaluate_chat_router(
                 route_hits += 1
         if fixture.dangerous_pair is not None:
             dangerous_expected += 1
-            if actual_intent != fixture.expected_primary_intent:
+            # A safe fallback (no patch proposal, no gate verdict) is the gate
+            # working as designed, not a dangerous misroute.
+            if actual_intent != fixture.expected_primary_intent and (
+                route is None or route.route_source != "fallback"
+            ):
                 dangerous_confusions.append(
                     (fixture.fixture_id, fixture.expected_primary_intent, actual_intent)
                 )

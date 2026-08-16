@@ -56,6 +56,7 @@ def test_fixtures_are_legal_and_cover_dangerous_confusions() -> None:
                 "unsupported_action",
                 "validate_request",
                 "analysis",
+                "question",
             }
             assert fixture.expected_primary_intent == fixture.dangerous_pair[0]
     dangerous_pairs = {fixture.dangerous_pair for fixture in fixtures}
