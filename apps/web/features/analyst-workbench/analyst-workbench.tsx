@@ -1683,7 +1683,6 @@ function AnalystWorkbenchSurface({
                     onSelectIssue={openIssue}
                     onSelectObject={(objectId) => selectObject(objectId)}
                     onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
-                    selectedObjectId={selectedObjectId}
                     seed={seed}
                     status={selectedStatus}
                   />

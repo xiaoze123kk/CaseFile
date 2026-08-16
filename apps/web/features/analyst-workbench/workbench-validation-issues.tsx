@@ -4,7 +4,6 @@ import {
   getEvent,
   getObject,
   type IssueStatus,
-  objectKindLabels,
   type WorkbenchSeed,
 } from "./analyst-fixture";
 import { objectTypeLabel } from "./workbench-presenters";
@@ -21,7 +20,6 @@ interface ValidationIssuePanelProps {
   seed: WorkbenchSeed;
   issueId: string | null;
   issueStatuses: Record<string, IssueStatus>;
-  selectedObjectId: string | null;
   status: IssueStatus;
   manualValue: string;
   editing: boolean;
@@ -39,7 +37,6 @@ export function ValidationIssuePanel({
   seed,
   issueId,
   issueStatuses,
-  selectedObjectId,
   status,
   manualValue,
   editing,
@@ -55,21 +52,14 @@ export function ValidationIssuePanel({
   const issue =
     seed.validationIssues.find((item) => item.id === issueId) ??
     seed.validationIssues[0];
-  const selectedObject = getObject(seed, selectedObjectId);
 
   if (!issue) {
     return (
       <section className={styles.realEmptyState} aria-labelledby="evidence-heading">
         <span>验证问题</span>
-        <strong id="evidence-heading">
-          {selectedObject
-            ? `“${selectedObject.label}”没有关联的验证问题`
-            : "没有验证问题"}
-        </strong>
+        <strong id="evidence-heading">当前工作稿没有验证问题</strong>
         <p>
-          {selectedObject
-            ? `当前工作稿未报告与${objectKindLabels[selectedObject.kind]}“${selectedObject.label}”关联的验证问题。`
-            : "当前工作稿已通过确定性验证，或尚未生成可对照的验证问题。"}
+          确定性验证（结构、引用与语义门禁）未发现需要处理的问题。知识状态冲突、时间冲突等更丰富的检查将在后续版本提供。
         </p>
       </section>
     );
