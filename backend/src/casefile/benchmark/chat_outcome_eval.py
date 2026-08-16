@@ -168,9 +168,15 @@ class ChatOutcomeTrialVerdict:
     trial_no: int = 1
     reference_precision: float = 1.0
     reference_recall: float = 1.0
+    reference_valid_count: int = 0
+    reference_total_count: int = 0
+    expected_reference_hits: int = 0
+    expected_reference_total: int = 0
     forbidden_reference_count: int = 0
     duplicate_reference_count: int = 0
     suggestion_legality: float = 1.0
+    suggestion_valid_count: int = 0
+    suggestion_total_count: int = 0
     forbidden_suggestion_count: int = 0
     missing_required_suggestion_count: int = 0
     unnecessary_suggestions: bool = False
@@ -192,9 +198,15 @@ class ChatOutcomeTrialVerdict:
             "trial_no": self.trial_no,
             "reference_precision": self.reference_precision,
             "reference_recall": self.reference_recall,
+            "reference_valid_count": self.reference_valid_count,
+            "reference_total_count": self.reference_total_count,
+            "expected_reference_hits": self.expected_reference_hits,
+            "expected_reference_total": self.expected_reference_total,
             "forbidden_reference_count": self.forbidden_reference_count,
             "duplicate_reference_count": self.duplicate_reference_count,
             "suggestion_legality": self.suggestion_legality,
+            "suggestion_valid_count": self.suggestion_valid_count,
+            "suggestion_total_count": self.suggestion_total_count,
             "forbidden_suggestion_count": self.forbidden_suggestion_count,
             "missing_required_suggestion_count": self.missing_required_suggestion_count,
             "unnecessary_suggestions": self.unnecessary_suggestions,
@@ -564,9 +576,15 @@ def grade_chat_outcome(
         trial_no=trial_no,
         reference_precision=round(reference_precision, 6),
         reference_recall=round(reference_recall, 6),
+        reference_valid_count=valid_reference_count,
+        reference_total_count=total_reference_count,
+        expected_reference_hits=expected_reference_hits,
+        expected_reference_total=expected_reference_total,
         forbidden_reference_count=forbidden_reference_count,
         duplicate_reference_count=duplicate_reference_count,
         suggestion_legality=round(suggestion_legality, 6),
+        suggestion_valid_count=sum(suggestion_scores),
+        suggestion_total_count=len(suggestion_scores),
         forbidden_suggestion_count=forbidden_suggestion_count,
         missing_required_suggestion_count=missing_required_suggestion_count,
         unnecessary_suggestions=unnecessary_suggestions,
