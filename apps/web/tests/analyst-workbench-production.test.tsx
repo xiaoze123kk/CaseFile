@@ -823,6 +823,68 @@ describe("production analyst workbench", () => {
     expect(screen.queryByText("请求 Agent 补丁")).not.toBeInTheDocument();
   });
 
+  it("renders a semantic issue with evidence references and a fix hint", async () => {
+    mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
+    mocks.fetchWorkbenchContext.mockResolvedValueOnce(
+      makeContext({
+        validation: {
+          status: "failed",
+          validator: "casefile.contracts.validate_casefile",
+          schema_version: "2.0",
+          issue_count: 1,
+          issues: [
+            {
+              issue_id: "validator:knowledge-state",
+              code: "knowledge_state_available_before_source",
+              path: "/entities/0/knowledge_states/0/knows_refs/0",
+              message: "角色引用了在其知识状态锚点之后才产生的信息",
+              severity: "S1",
+              target: {
+                object_ref: {
+                  object_type: "entity",
+                  object_id: "ent_real_analyst",
+                },
+                field_path: "/knowledge_states/0/knows_refs/0",
+              },
+              evidence_refs: [
+                { object_type: "information_unit", object_id: "info_gate_log" },
+              ],
+              impact_refs: [
+                { object_type: "entity", object_id: "ent_real_analyst" },
+                { object_type: "event", object_id: "evt_gate_opened" },
+              ],
+              fix_hint: "将知识状态锚点移到信息产生之后，或调整事件时间使该信息更早产生。",
+              explanation:
+                "信息 info_gate_log 由事件 evt_gate_opened 产生，晚于该知识状态锚点事件。",
+            },
+          ],
+          reason: null,
+        },
+      }),
+    );
+    render(<AnalystWorkbench requestedProjectId={42} />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /证据对比/ }));
+    fireEvent.click(screen.getByRole("tab", { name: "验证问题" }));
+
+    expect(
+      screen.getByRole("heading", {
+        name: "角色引用了在其知识状态锚点之后才产生的信息",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("叙事语义")).toBeInTheDocument();
+    expect(
+      screen.getByText("knowledge_state_available_before_source"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/将知识状态锚点移到信息产生之后/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "定位到证据：门禁记录" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "定位到目标对象：真实调查员" }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps a context read failure recoverable inside recent changes", async () => {
     mocks.fetchCaseDraft.mockResolvedValueOnce(makeDraft(7));
     mocks.fetchWorkbenchContext

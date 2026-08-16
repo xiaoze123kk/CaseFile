@@ -552,7 +552,7 @@ export interface WorkbenchValidationIssueView {
   code: string;
   path: string;
   message: string;
-  severity: "error";
+  severity: "error" | "S1" | "S2";
   target: {
     object_ref: {
       object_type: string;
@@ -560,6 +560,16 @@ export interface WorkbenchValidationIssueView {
     } | null;
     field_path: string;
   };
+  evidence_refs?: Array<{
+    object_type: string;
+    object_id: string;
+  }>;
+  impact_refs?: Array<{
+    object_type: string;
+    object_id: string;
+  }>;
+  fix_hint?: string | null;
+  explanation?: string | null;
 }
 
 export interface WorkbenchValidationView {

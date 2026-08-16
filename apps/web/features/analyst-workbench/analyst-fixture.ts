@@ -86,7 +86,7 @@ export interface TimelineEvent {
 
 export interface ValidationIssue {
   id: string;
-  severity: "S0" | "S1" | "error";
+  severity: "S0" | "S1" | "S2" | "error";
   title: string;
   summary: string;
   eventId: string | null;
@@ -102,6 +102,8 @@ export interface ValidationIssue {
   targetObjectType?: string | null;
   fieldPath?: string;
   jsonPath?: string;
+  fixHint?: string;
+  explanation?: string;
 }
 
 export interface SourceItem {

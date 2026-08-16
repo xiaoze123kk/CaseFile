@@ -4,6 +4,7 @@ import {
   getEvent,
   getObject,
   type IssueStatus,
+  objectKindLabels,
   type WorkbenchSeed,
 } from "./analyst-fixture";
 import { objectTypeLabel } from "./workbench-presenters";
@@ -89,13 +90,21 @@ export function ValidationIssuePanel({
   );
 
   if (issue.source === "validator") {
+    const semantic = issue.severity === "S1" || issue.severity === "S2";
     const targetObject = issue.targetObjectId
       ? getObject(seed, issue.targetObjectId)
       : undefined;
+    const evidenceObjects = issue.evidenceIds.flatMap((id) => {
+      const object = getObject(seed, id);
+      return object ? [object] : [];
+    });
     return (
       <section className={styles.evidenceCompare} aria-labelledby="evidence-heading">
         <header className={styles.sectionHeader}>
-          <div><span>确定性验证</span><h2 id="evidence-heading">{issue.title}</h2></div>
+          <div>
+            <span>{semantic ? "叙事语义" : "确定性验证"}</span>
+            <h2 id="evidence-heading">{issue.title}</h2>
+          </div>
           <small>{issue.severity}</small>
         </header>
         {issueBar}
@@ -114,6 +123,27 @@ export function ValidationIssuePanel({
               <dd>{issue.fieldPath || "—"}</dd>
             </div>
           </dl>
+          {issue.explanation ? (
+            <p className={styles.validatorIssueExplanation}>{issue.explanation}</p>
+          ) : null}
+          {evidenceObjects.length ? (
+            <div className={styles.validatorIssueEvidence}>
+              <span>证据引用</span>
+              <div className={styles.validatorIssueEvidenceList}>
+                {evidenceObjects.map((object) => (
+                  <button
+                    aria-label={`定位到证据：${object.label}`}
+                    key={object.id}
+                    onClick={() => onSelectObject(object.id)}
+                    type="button"
+                  >
+                    <strong>{object.label}</strong>
+                    <small>{objectKindLabels[object.kind]}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className={styles.validatorIssueTarget}>
             <span>目标对象</span>
             {targetObject ? (
@@ -130,7 +160,8 @@ export function ValidationIssuePanel({
             )}
           </div>
           <p className={styles.validatorIssueHint}>
-            这是确定性门禁发现的结构或引用问题，需要回到对象编辑修正；不会由 Agent 生成建议补丁。
+            {issue.fixHint ??
+              "这是确定性门禁发现的结构或引用问题，需要回到对象编辑修正；不会由 Agent 生成建议补丁。"}
           </p>
         </div>
       </section>

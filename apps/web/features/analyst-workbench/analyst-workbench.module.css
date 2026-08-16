@@ -2213,3 +2213,54 @@
   font-size: 10px;
   line-height: 1.6;
 }
+
+.validatorIssueExplanation {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.validatorIssueEvidence {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.validatorIssueEvidence > span {
+  flex: 0 0 auto;
+  padding-top: 3px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.validatorIssueEvidenceList {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.validatorIssueEvidenceList button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  color: var(--primary-strong);
+  border: 1px solid rgba(199, 139, 60, 0.46);
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+
+.validatorIssueEvidenceList button:hover { border-color: var(--primary-strong); background: var(--primary-soft); }
+.validatorIssueEvidenceList button strong { font-weight: 650; }
+.validatorIssueEvidenceList button small { color: var(--ink-muted); font-size: 9px; }

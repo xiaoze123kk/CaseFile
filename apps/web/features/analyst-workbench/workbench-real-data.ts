@@ -609,7 +609,7 @@ function buildValidationIssues(
       eventId,
       rule: issue.code,
       jsonPath: issue.path,
-      evidenceIds: [],
+      evidenceIds: (issue.evidence_refs ?? []).map((ref) => ref.object_id),
       beforeKnowledge: "",
       eventClaim: "",
       afterKnowledge: "",
@@ -619,6 +619,8 @@ function buildValidationIssues(
       targetObjectId: objectRef?.object_id ?? null,
       targetObjectType: objectRef?.object_type ?? null,
       fieldPath: issue.target.field_path,
+      fixHint: issue.fix_hint ?? undefined,
+      explanation: issue.explanation ?? undefined,
     };
   });
 }
