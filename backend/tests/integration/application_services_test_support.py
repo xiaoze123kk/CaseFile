@@ -11,23 +11,28 @@ from unittest.mock import patch
 import pytest
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import Engine, create_engine, inspect, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.credentials import generate_master_key
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
     CaseFileChatResult,
+    ChatTaskUnderstandingOutput,
     GenerationRequest,
     GenerationResult,
+    IntentConstraintsOutput,
+    IntentEntitiesOutput,
+    IntentUnderstandingResult,
     ToolMetrics,
 )
 from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError, validate_casefile
-from sqlalchemy import Engine, create_engine, inspect, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PROFILE: dict[str, object] = {}
@@ -179,6 +184,33 @@ class ChatSuggestionProvider(FakeProvider):
         self.invalid_time = invalid_time
         self.requests: list[CaseFileChatRequest] = []
 
+    def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
+        routed = super().understand_intent(request)
+        candidate = ChatTaskUnderstandingOutput(
+            original_query=request.message,
+            normalized_query=request.message,
+            primary_intent="edit_request",
+            sub_intents=["modify_fields"],
+            entities=IntentEntitiesOutput(
+                object_mentions=[],
+                event_mentions=[],
+                issue_mentions=[],
+            ),
+            constraints=IntentConstraintsOutput(
+                preserved_negations=[],
+                preserved_actions=[],
+                output_format="patch_proposal",
+            ),
+            capabilities={"needs_suggestion_generation": True},
+            confidence=0.95,
+            reason_codes=["fixture_suggestion_request"],
+            canonical_query=request.message,
+        )
+        return IntentUnderstandingResult(
+            candidate=candidate,
+            usage=routed.usage,
+        )
+
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         self.requests.append(request)
         entity = request.casefile["entities"][0]
@@ -219,6 +251,7 @@ class ChatSuggestionProvider(FakeProvider):
             {
                 "answer": "我已通读完整卷宗，并整理出可逐项审阅的建议。",
                 "referenced_object_ids": [entity["id"], event["id"]],
+                "referenced_event_ids": [event["id"]],
                 "suggestions": suggestions,
             }
         )

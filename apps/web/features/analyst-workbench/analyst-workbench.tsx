@@ -17,6 +17,7 @@ import {
   ApiError,
   errorMessage,
   fetchWorkbenchContext,
+  type AgentChatRoutingHint,
   type DraftCandidatePreviewView,
   type DraftView,
   type CaseFileDocument,
@@ -46,6 +47,7 @@ import {
 } from "@/features/case-session/case-session-api";
 import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
+import { AgentLivePanel } from "./workbench-agent-live-panel";
 import { AgentPanel } from "./workbench-agent-panel";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
@@ -247,6 +249,8 @@ function EvidenceComparison({
   onRequestPatch,
   onRejectPatch,
   onResolveIssue,
+  onSendToAgent,
+  realData,
 }: {
   seed: WorkbenchSeed;
   issueId: string | null;
@@ -262,6 +266,8 @@ function EvidenceComparison({
   onRequestPatch: () => void;
   onRejectPatch: () => void;
   onResolveIssue: (action: "approve" | "exception") => void;
+  onSendToAgent: (issueId: string) => void;
+  realData: boolean;
 }) {
   const issue =
     seed.validationIssues.find((item) => item.id === issueId) ??
@@ -350,6 +356,10 @@ function EvidenceComparison({
                 <button onClick={onRejectPatch} type="button">退回待处理</button>
                 <button onClick={() => onResolveIssue("approve")} type="button">批准并局部重算</button>
               </>
+            ) : realData ? (
+              <button onClick={() => onSendToAgent(issue.id)} type="button">
+                让 Agent 处理
+              </button>
             ) : (
               <>
                 <button onClick={onRequestPatch} type="button">请求 Agent 补丁</button>
@@ -956,6 +966,11 @@ function AnalystWorkbenchSurface({
     startWidth: number;
   } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentKickoff, setAgentKickoff] = useState<{
+    id: number;
+    prompt: string;
+    routingHint?: AgentChatRoutingHint;
+  } | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1304,6 +1319,21 @@ function AnalystWorkbenchSurface({
     announce(`已打开${issue.severity}问题“${issue.title}”，主画布切换到证据与知识状态对照。`);
   }
 
+  function sendIssueToAgent(issueId: string) {
+    const issue = seed.validationIssues.find((item) => item.id === issueId);
+    if (!issue) return;
+    openIssue(issue.id);
+    setAgentKickoff({
+      id: Date.now(),
+      prompt:
+        `请处理当前焦点中的验证问题“${issue.title}”：先解释规则失败原因，` +
+        "再针对该问题绑定的对象给出可逐项审阅的字段修改建议。",
+      routingHint: { entrypoint: "issue_action" },
+    });
+    setAgentOpen(true);
+    announce(`已把验证问题“${issue.title}”交给 Agent 处理。`);
+  }
+
   function requestPatch() {
     if (!selectedIssue) return;
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: "patch-ready" }));
@@ -1499,8 +1529,8 @@ function AnalystWorkbenchSurface({
           <button aria-label="打开命令面板" onClick={() => setPaletteOpen(true)} type="button"><WorkbenchIcon name="command" /></button>
           <button
             aria-expanded={agentOpen}
-            aria-label={writeLocked ? "候选预览不可使用 Agent" : realData ? "卷宗统筹 Agent 尚未接入" : "打开卷宗统筹 Agent 对话"}
-            disabled={realData}
+            aria-label={writeLocked ? "候选预览不可使用 Agent" : "打开卷宗统筹 Agent 对话"}
+            disabled={writeLocked}
             onClick={() => setAgentOpen(true)}
             type="button"
           >
@@ -1784,7 +1814,9 @@ function AnalystWorkbenchSurface({
                 onResolveIssue={resolveIssue}
                 onSaveManual={() => resolveIssue("manual")}
                 onSelectIssue={openIssue}
+                onSendToAgent={sendIssueToAgent}
                 onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
+                realData={realData}
                 selectedObjectId={selectedObjectId}
                 seed={seed}
                 status={selectedStatus}
@@ -1926,6 +1958,48 @@ function AnalystWorkbenchSurface({
         <section><header><span>卷宗对象</span><small>{matchingPaletteObjects.length}</small></header>{matchingPaletteObjects.map((object) => <button key={object.id} onClick={() => runPaletteAction(() => selectObject(object.id, true))} type="button"><span className={styles.paletteObjectMark}>{objectKindLabels[object.kind].slice(0, 1)}</span><span><strong>{object.label}</strong><small>{object.code}</small></span><i>{object.id}</i></button>)}{matchingPaletteObjects.length === 0 ? <p>没有匹配对象。</p> : null}</section>
       </FocusTrapDialog>
 
+      {agentOpen && realData && projectId !== null && currentDraft ? (
+        <AgentLivePanel
+          draftId={currentDraft.draft_id}
+          draftRevision={draftRevision ?? currentDraft.revision}
+          focus={{
+            object_ids: selectedObjectId ? [selectedObjectId] : [],
+            event_ids: selectedEventId ? [selectedEventId] : [],
+            validation_issue_ids: selectedIssueId ? [selectedIssueId] : [],
+            view,
+          }}
+          kickoff={agentKickoff}
+          onClose={() => {
+            setAgentOpen(false);
+            setAgentKickoff(null);
+          }}
+          onLocateEvent={(eventId) => {
+            selectEvent(eventId, { preserveView: true });
+          }}
+          onLocateIssue={(issueId) => {
+            openIssue(issueId);
+          }}
+          onLocateObject={(objectId) => {
+            selectObject(objectId, true);
+          }}
+          onLocateView={(nextView) => {
+            setView(nextView);
+          }}
+          onDraftChanged={onCurrentDraftChanged ?? (async () => {})}
+          projectId={projectId}
+          referenceLabels={{
+            objects: Object.fromEntries(
+              seed.caseObjects.map((object) => [object.id, object.label]),
+            ),
+            events: Object.fromEntries(
+              seed.timelineEvents.map((event) => [event.id, event.label]),
+            ),
+            issues: Object.fromEntries(
+              seed.validationIssues.map((issue) => [issue.id, issue.title]),
+            ),
+          }}
+        />
+      ) : null}
       {agentOpen && !realData ? (
         <AgentPanel
           onClose={() => setAgentOpen(false)}

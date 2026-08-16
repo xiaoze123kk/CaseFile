@@ -14,6 +14,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
@@ -30,11 +36,6 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -44,7 +45,7 @@ PROFILE: dict[str, object] = {}
 
 class ApiChatProvider(FakeProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        assert request.prompt_version == "casefile-chat-v1"
+        assert request.prompt_version == "casefile-chat-v2"
         resolution = request.casefile["resolution_specs"][0]
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(
@@ -895,7 +896,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_draft_revision": 2,
-                "content": "请通读整个卷宗并给出一条可审阅建议。",
+                "content": "请通读整个卷宗并修改 resolution 说明，给出一条可审阅建议。",
                 "provider": "deepseek",
             },
         )
@@ -906,7 +907,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 text("SELECT prompt_version FROM task_runs WHERE id = :task_run_id"),
                 {"task_run_id": chat_task_id},
             )
-        assert stored_prompt_version == "casefile-chat-v1"
+        assert stored_prompt_version == "casefile-chat-v2"
         chat_worker = Worker(
             factory,
             config=WorkerConfig(worker_id="api-chat-worker"),
@@ -979,7 +980,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_draft_revision": 4,
-                "content": "再给一条建议，这次我会整批不采用。",
+                "content": "再修改一条字段建议，这次我会整批不采用。",
             },
         )
         assert rejected_chat.status_code == 202

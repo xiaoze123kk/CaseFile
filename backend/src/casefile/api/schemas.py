@@ -191,11 +191,57 @@ class AgentThreadUpdateRequest(StrictRequest):
         return self
 
 
+class AgentChatFocus(StrictRequest):
+    object_ids: list[str] = Field(default_factory=list, max_length=50)
+    event_ids: list[str] = Field(default_factory=list, max_length=50)
+    validation_issue_ids: list[str] = Field(default_factory=list, max_length=50)
+    view: str | None = Field(default=None, max_length=64)
+
+
+class AgentChatRoutingHint(StrictRequest):
+    entrypoint: Literal["free_text", "preset", "issue_action"] = "free_text"
+    preset_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def preset_id_matches_entrypoint(self) -> Self:
+        if self.entrypoint == "preset":
+            if self.preset_id is None or not self.preset_id.strip():
+                raise ValueError("preset entrypoint requires preset_id")
+        elif self.preset_id is not None:
+            raise ValueError("preset_id is only allowed for the preset entrypoint")
+        return self
+
+
 class AgentMessageCreateRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_draft_revision: int = Field(ge=1)
     content: str = Field(min_length=1, max_length=100_000)
     provider: Literal["openai", "deepseek"] = "openai"
+    focus: AgentChatFocus | None = None
+    routing_hint: AgentChatRoutingHint | None = None
+
+
+class AgentRoutingFeedbackRequest(StrictRequest):
+    correct_intent: (
+        Literal[
+            "question",
+            "analysis",
+            "explain_issue",
+            "edit_request",
+            "validate_request",
+            "unsupported_action",
+            "clarify",
+            "out_of_scope",
+        ]
+        | None
+    ) = None
+    note: str | None = Field(default=None, max_length=2_000)
+
+    @model_validator(mode="after")
+    def has_feedback(self) -> Self:
+        if self.correct_intent is None and (self.note is None or not self.note.strip()):
+            raise ValueError("correct_intent or note is required")
+        return self
 
 
 class AgentPatchApplyRequest(StrictRequest):

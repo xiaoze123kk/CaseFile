@@ -9,7 +9,12 @@ from casefile.agent_runtime.models import (
     BriefStrategyOptionsRequest,
     CaseFileChatRequest,
     GenerationRequest,
+    RouteSpecificRewriteRequest,
+    chat_state_as_dict,
 )
+from casefile.agent_runtime.prompt_package import render_prompt_package
+from casefile.agent_runtime.prompt_repository import load_prompt
+from casefile.agent_runtime.tools import TOOLSET_VERSION
 
 AGENT_VERSION = "casefile-single-agent-v2"
 V8_GENERATION_AGENT_VERSION = "brief-to-draft-pipeline-v8"
@@ -204,18 +209,98 @@ def idea_generation_input(
 
 
 def casefile_chat_input(request: CaseFileChatRequest) -> str:
+    return (
+        "请根据以下冻结数据回复作者，并仅在必要时提出可审阅的字段修改建议。"
+        "author_message 是本轮请求；其余 JSON 字段提供数据和能力边界。\n"
+        + json.dumps(
+            _casefile_chat_payload(request),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+    )
+
+
+def _casefile_chat_payload(request: CaseFileChatRequest) -> dict[str, Any]:
     payload = {
         "input_hash": request.input_hash,
         "casefile": request.casefile,
         "thread_history": list(request.history),
         "author_message": request.message,
         "editable_fields_by_collection": request.editable_fields_by_collection,
+        "focus": request.focus,
+        "validation": request.validation,
+        "validation_issues": list(request.validation_issues),
     }
-    return (
-        "请根据以下冻结数据回复作者，并仅在必要时提出可审阅的字段修改建议。"
-        "author_message 是本轮请求；其余 JSON 字段提供数据和能力边界。\n"
-        + json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if request.route is not None:
+        # R1 v1 prompt does not interpret this block; it is a data payload that
+        # the v2 prompt package will consume after the R2 prompt switch.
+        routing_payload: dict[str, Any] = {
+            "route": chat_state_as_dict(request.route),
+        }
+        if request.task_understanding is not None:
+            routing_payload["task_understanding"] = chat_state_as_dict(
+                request.task_understanding
+            )
+        if request.rewrite is not None:
+            routing_payload["rewrite"] = chat_state_as_dict(request.rewrite)
+        payload["routing"] = routing_payload
+    return payload
+
+
+def render_chat_router_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
+    """Render the v2 router component; v1 tasks keep the legacy router-free path."""
+
+    definition = load_prompt("casefile_chat", request.prompt_version)
+    if definition.package is None:
+        return definition.system_prompt, chat_router_input(request)
+    rendered = render_prompt_package(
+        definition.package,
+        "router",
+        json.loads(chat_router_input(request)),
+        agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
+        toolset_version=TOOLSET_VERSION,
     )
+    return rendered.instructions, rendered.input_text
+
+
+def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
+    """Render the route-specific v2 executor component; v1 keeps the legacy prompt."""
+
+    definition = load_prompt("casefile_chat", request.prompt_version)
+    if definition.package is None:
+        return definition.system_prompt, casefile_chat_input(request)
+    profile = (
+        request.route.execution_profile if request.route is not None else {}
+    )
+    component_id = str(profile.get("prompt_component") or "chat")
+    if component_id not in definition.package.components:
+        component_id = "chat"
+    rendered = render_prompt_package(
+        definition.package,
+        component_id,
+        _casefile_chat_payload(request),
+        agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
+        toolset_version=TOOLSET_VERSION,
+    )
+    return rendered.instructions, rendered.input_text
+
+
+def render_chat_rewrite_prompt(
+    request: RouteSpecificRewriteRequest,
+) -> tuple[str, str]:
+    """Render the v2 rewrite component for MULTI_QUERY/DECOMPOSE tasks."""
+
+    definition = load_prompt("casefile_chat", request.prompt_version)
+    if definition.package is None:
+        return definition.system_prompt, rewrite_for_route_input(request)
+    rendered = render_prompt_package(
+        definition.package,
+        "rewrite",
+        json.loads(rewrite_for_route_input(request)),
+        agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
+        toolset_version=TOOLSET_VERSION,
+    )
+    return rendered.instructions, rendered.input_text
 
 
 def reverse_parse_input(blocks: list[dict[str, Any]], input_hash: str) -> str:
@@ -231,6 +316,67 @@ def reverse_parse_input(blocks: list[dict[str, Any]], input_hash: str) -> str:
             separators=(",", ":"),
         )
     )
+
+
+def chat_router_input(request: CaseFileChatRequest) -> str:
+    """Build the small intent-understanding payload without the full CaseFile."""
+
+    labels: dict[str, list[str]] = {}
+    for collection in (
+        "entities",
+        "relationships",
+        "locations",
+        "events",
+        "information_units",
+        "claims",
+        "hypotheses",
+        "reasoning_paths",
+    ):
+        for item in request.casefile.get(collection) or []:
+            if not isinstance(item, dict):
+                continue
+            object_id = item.get("id")
+            if not isinstance(object_id, str):
+                continue
+            labels[object_id] = [
+                object_id,
+                str(item.get("name") or ""),
+                str(item.get("title") or ""),
+            ]
+    payload: dict[str, Any] = {
+        "input_hash": request.input_hash,
+        "author_message": request.message,
+        "thread_history": list(request.history)[-6:],
+        "focus": request.focus,
+        "candidate_object_labels": labels,
+        "validation_issues": [
+            {
+                "issue_id": item.get("issue_id"),
+                "title": item.get("title"),
+                "message": item.get("message"),
+            }
+            for item in request.validation_issues
+            if isinstance(item, dict)
+        ],
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def rewrite_for_route_input(request: RouteSpecificRewriteRequest) -> str:
+    """Build the payload for the optional post-route rewrite call."""
+
+    payload: dict[str, Any] = {
+        "input_hash": request.input_hash,
+        "original_query": request.original_query,
+        "normalized_query": request.normalized_query,
+        "conservative_canonical_query": request.conservative_canonical_query,
+        "primary_intent": request.primary_intent,
+        "sub_intents": list(request.sub_intents),
+        "constraints": request.constraints,
+        "rewrite_strategy": request.rewrite_strategy,
+        "route_profile": request.route_profile,
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 __all__ = [
@@ -253,8 +399,13 @@ __all__ = [
     "brief_intake_synthesize_input",
     "brief_strategy_options_input",
     "casefile_chat_input",
+    "chat_router_input",
     "generation_input",
     "idea_generation_input",
     "polish_input",
+    "render_chat_executor_prompt",
+    "render_chat_rewrite_prompt",
+    "render_chat_router_prompt",
     "reverse_parse_input",
+    "rewrite_for_route_input",
 ]

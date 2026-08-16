@@ -19,7 +19,17 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
+from casefile.agent_runtime.chat_routing import routing_policy
+from casefile.agent_runtime.models import (
+    ChatTaskUnderstanding,
+    agent_state_to_jsonable,
+)
 from casefile.application.casefile_v1 import build_casefile_document
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
@@ -28,8 +38,11 @@ from casefile.application.snapshot import casefile_content_hash
 from casefile.application.v1_editing import V1EditingService
 from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_service import WorkflowService
+from casefile.benchmark.feedback_export import export_feedback_fixtures
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
+    AgentModelCall,
+    AgentPatchSet,
     AgentStepRun,
     AuditEvent,
     CaseFileContractRef,
@@ -43,9 +56,6 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -1592,9 +1602,25 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             frozen_input = session.scalar(
                 select(TaskRun.input_jsonb).where(TaskRun.id == chat_task_id)
             )
-            assert set(frozen_input) == {"casefile", "history", "message"}
+            assert set(frozen_input) == {
+                "casefile",
+                "history",
+                "message",
+                "focus",
+                "validation",
+                "context_policy_version",
+                "routing_hint",
+                "router_version",
+            }
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
+            assert frozen_input["focus"]["object_ids"] == []
+            assert frozen_input["context_policy_version"] == "agent-focus-v1"
+            assert frozen_input["routing_hint"] == {
+                "entrypoint": "free_text",
+                "preset_id": None,
+            }
+            assert frozen_input["router_version"] == "casefile-chat-router-v2"
 
         chat_worker = Worker(
             factory,
@@ -1604,6 +1630,31 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert chat_worker.run_once() is True
         assert len(provider.requests) == 1
         assert provider.requests[0].message == "请通读整个卷宗并给出可以审阅的修改建议。"
+        routed_request = provider.requests[0]
+        assert routed_request.route is not None
+        assert routed_request.route.route_source == "llm"
+        assert routed_request.route.execution_profile["prompt_component"] == "edit"
+        assert routed_request.task_understanding is not None
+        assert routed_request.task_understanding.primary_intent == "edit_request"
+
+        with factory() as session:
+            intent_step = session.scalar(
+                select(AgentStepRun).where(
+                    AgentStepRun.task_run_id == chat_task_id,
+                    AgentStepRun.component_id == "intent_router",
+                )
+            )
+            assert intent_step is not None
+            assert intent_step.status == "succeeded"
+            assert intent_step.ir_schema_id == "chat-task-understanding-v1"
+            intent_call = session.scalar(
+                select(AgentModelCall).where(
+                    AgentModelCall.agent_step_run_id == intent_step.id,
+                    AgentModelCall.prompt_component_id == "intent_router",
+                )
+            )
+            assert intent_call is not None
+            assert intent_call.target_schema_id == "chat-task-understanding-v1"
 
         with factory() as session:
             workflow = WorkflowService(session)
@@ -1683,6 +1734,292 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 )
             )
             assert operation_types == ["agent_patch_apply", "agent_patch_undo"]
+
+
+def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    provider = ChatSuggestionProvider()
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="routing-fixture-worker"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="对整个卷宗做一次体检，并说明时间线与推理的收束情况。",
+                routing_hint={"entrypoint": "preset", "preset_id": "inspect"},
+            )
+            chat_task_id = int(queued["task"]["task_run_id"])
+            frozen_input, input_hash = session.execute(
+                select(TaskRun.input_jsonb, TaskRun.input_hash).where(
+                    TaskRun.id == chat_task_id
+                )
+            ).one()
+
+        assert set(frozen_input) == {
+            "casefile",
+            "history",
+            "message",
+            "focus",
+            "validation",
+            "context_policy_version",
+            "routing_hint",
+            "router_version",
+        }
+        assert frozen_input["routing_hint"] == {
+            "entrypoint": "preset",
+            "preset_id": "inspect",
+        }
+        assert frozen_input["router_version"] == INTENT_ROUTER_VERSION
+        assert input_hash == hashlib.sha256(rfc8785.dumps(frozen_input)).hexdigest()
+
+        chat_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="routing-preset-chat-worker"),
+            provider_factory=lambda _task: provider,
+        )
+        assert chat_worker.run_once() is True
+        assert len(provider.requests) == 1
+        routed_request = provider.requests[0]
+        assert routed_request.task_understanding is not None
+        assert routed_request.task_understanding.primary_intent == "analysis"
+        assert routed_request.route is not None
+        assert routed_request.route.route_source == "rule_preset"
+        assert routed_request.route.routes[0]["profile"] == "analysis.healthcheck"
+        assert routed_request.rewrite is not None
+        assert routed_request.rewrite.rewrite_decision == "CONTEXTUALIZE"
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            events = workflow.list_task_events(actor_id, project_id, chat_task_id)
+            routing_event_types = [
+                event["event_type"]
+                for event in events
+                if event["event_type"]
+                in {
+                    "intent.understood",
+                    "route.decided",
+                    "query.rewritten",
+                    "route.suggestions_suppressed",
+                    "route.outcome",
+                }
+            ]
+            assert routing_event_types == [
+                "intent.understood",
+                "route.decided",
+                "query.rewritten",
+                "route.suggestions_suppressed",
+                "route.outcome",
+            ]
+            suppressed = next(
+                event
+                for event in events
+                if event["event_type"] == "route.suggestions_suppressed"
+            )
+            assert suppressed["payload"]["route_source"] == "rule_preset"
+            assert suppressed["payload"]["suggestion_policy"] == "deny"
+            assert suppressed["payload"]["suppressed_count"] == 2
+            outcome = next(
+                event for event in events if event["event_type"] == "route.outcome"
+            )
+            assert outcome["payload"]["succeeded"] is True
+            assert outcome["payload"]["route_hash"] == routed_request.route.route_hash
+            assert outcome["payload"]["tool_metrics"]["calls"] == 0
+
+            task = workflow.get_task(actor_id, project_id, chat_task_id)
+            assert task["result"]["routing"]["suppressed_count"] == 2
+            assert task["result"]["routing"]["suggestion_policy"] == "deny"
+            assert task["result"]["tool_metrics"]["calls"] == 0
+
+            messages = workflow.list_agent_messages(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+            )
+            assistant = messages[-1]
+            assert assistant["status"] == "completed"
+            assert assistant["patch_set"] is None
+            patch_sets = list(
+                session.scalars(
+                    select(AgentPatchSet).where(
+                        AgentPatchSet.task_run_id == chat_task_id
+                    )
+                )
+            )
+            assert patch_sets == []
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            feedback = workflow.submit_agent_routing_feedback(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                int(assistant["message_id"]),
+                correct_intent="question",
+            )
+            assert feedback["acknowledged"] is True
+            with pytest.raises(ApplicationError, match="已经提交过路由反馈"):
+                workflow.submit_agent_routing_feedback(
+                    actor_id,
+                    project_id,
+                    thread["thread_id"],
+                    int(assistant["message_id"]),
+                    note="重复反馈",
+                )
+            feedback_events = [
+                event
+                for event in workflow.list_task_events(
+                    actor_id,
+                    project_id,
+                    chat_task_id,
+                )
+                if event["event_type"] == "router.feedback"
+            ]
+            assert len(feedback_events) == 1
+            assert feedback_events[0]["payload"]["correct_intent"] == "question"
+            assert feedback_events[0]["payload"]["original"]["query"] == (
+                "对整个卷宗做一次体检，并说明时间线与推理的收束情况。"
+            )
+            assert feedback_events[0]["payload"]["original"]["route"]["intent"] == "analysis"
+
+        with factory() as session:
+            exported = export_feedback_fixtures(factory, project_id=project_id)
+            assert exported["schema_version"] == "casefile-chat-feedback-export-v1"
+            assert exported["fixture_count"] == 1
+            exported_fixture = exported["fixtures"][0]
+            exported_source = exported["sources"][0]
+            assert exported_fixture["expected_primary_intent"] == "question"
+            assert exported_fixture["expected_prompt_component"] == "chat"
+            assert exported_fixture["message"] == (
+                "对整个卷宗做一次体检，并说明时间线与推理的收束情况。"
+            )
+            assert exported_fixture["casefile"]["entities"]
+            assert exported_source["observed_intent"] == "analysis"
+            assert exported_source["project_id"] == project_id
+
+        with factory() as session:
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            assert draft["revision"] == 2
+
+
+def test_agent_chat_issue_route_allows_suggestions_and_records_route_outcome(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="issue-route-fixture-worker"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请处理当前焦点中的验证问题。",
+            )
+            chat_task_id = int(queued["task"]["task_run_id"])
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+        entity_id = draft["content"]["entities"][0]["id"]
+        event_id = draft["content"]["events"][0]["id"]
+        claim_id = draft["content"]["claims"][0]["id"]
+
+        claim = Worker(
+            factory,
+            config=WorkerConfig(worker_id="issue-route-completion-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )._claim_next()
+        assert claim is not None
+        assert claim[0] == chat_task_id
+
+        with factory() as session:
+            route = routing_policy(
+                ChatTaskUnderstanding(
+                    primary_intent="explain_issue",
+                    confidence=1.0,
+                    reason_codes=("rule_ui:issue_action",),
+                ),
+                budget={},
+                route_source="rule_ui",
+            )
+            completion = WorkflowService(session).complete_chat_task(
+                chat_task_id,
+                claim[1],
+                answer="已解释失败原因，并给出可逐项审阅的修改建议。",
+                referenced_object_ids=[entity_id, event_id],
+                referenced_event_ids=[event_id],
+                referenced_validation_issue_ids=[],
+                suggestions=[
+                    {
+                        "object_id": entity_id,
+                        "path": "/description",
+                        "value": "负责追查午夜重启原因的研究员。",
+                        "reason": "补充人物在卷宗中的职责。",
+                    },
+                    {
+                        "object_id": claim_id,
+                        "path": "/support_refs",
+                        "value": [],
+                        "reason": "暴露关键主张缺少支撑的语义警告。",
+                    },
+                ],
+                usage={"requests": 1},
+                route=agent_state_to_jsonable(route),
+            )
+
+        assert completion["message"]["status"] == "completed"
+        patch_set = completion["message"]["patch_set"]
+        assert patch_set is not None
+        assert patch_set["status"] == "pending"
+        assert len(patch_set["operations"]) == 2
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            task = workflow.get_task(actor_id, project_id, chat_task_id)
+            events = workflow.list_task_events(actor_id, project_id, chat_task_id)
+            event_types = [event["event_type"] for event in events]
+            assert "route.suggestions_suppressed" not in event_types
+            assert event_types[-2:] == ["route.outcome", "task.succeeded"]
+            assert task["result"]["routing"]["intent"] == "explain_issue"
+            assert task["result"]["routing"]["suggestion_policy"] == "allow"
+            assert task["result"]["routing"]["suppressed_count"] == 0
 
 
 def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
@@ -1894,10 +2231,25 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                     TaskRun.input_draft_revision,
                 ).where(TaskRun.id == first_chat_task_id)
             ).one()
-        assert set(frozen_input) == {"casefile", "history", "message"}
+        assert set(frozen_input) == {
+            "casefile",
+            "history",
+            "message",
+            "focus",
+            "validation",
+            "context_policy_version",
+            "routing_hint",
+            "router_version",
+        }
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []
         assert frozen_input["message"] == "请逐项建议调整研究员、实验室和重启事件。"
+        assert frozen_input["context_policy_version"] == "agent-focus-v1"
+        assert frozen_input["routing_hint"] == {
+            "entrypoint": "free_text",
+            "preset_id": None,
+        }
+        assert frozen_input["router_version"] == "casefile-chat-router-v2"
         assert input_draft_revision == 2
         assert input_hash == hashlib.sha256(rfc8785.dumps(frozen_input)).hexdigest()
 
@@ -1916,6 +2268,8 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 first_claim[1],
                 answer="我整理了三个互相独立、可逐项审阅的修改建议。",
                 referenced_object_ids=[entity_id, location_id, entity_id],
+                referenced_event_ids=[event_id],
+                referenced_validation_issue_ids=[],
                 suggestions=[
                     {
                         "object_id": entity_id,
@@ -1948,6 +2302,8 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         first_patch = first_message["patch_set"]
         assert first_message["status"] == "completed"
         assert first_message["referenced_object_ids"] == [entity_id, location_id]
+        assert first_message["referenced_event_ids"] == [event_id]
+        assert first_message["suggested_view"] is None
         assert first_patch["status"] == "pending"
         assert first_patch["base_draft_revision"] == 2
         assert [
@@ -1994,6 +2350,9 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                 second_claim[1],
                 answer="补充了一条事件标题候选。",
                 referenced_object_ids=[event_id],
+                referenced_event_ids=[event_id],
+                referenced_validation_issue_ids=[],
+                suggested_view="timeline",
                 suggestions=[
                     {
                         "object_id": event_id,
@@ -2012,6 +2371,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         second_patch = second_completion["message"]["patch_set"]
         assert second_patch["status"] == "pending"
         assert second_patch["base_draft_revision"] == 2
+        assert second_completion["message"]["suggested_view"] == "timeline"
 
         first_patch_id = int(first_patch["patch_set_id"])
         selected_operation_ids = [

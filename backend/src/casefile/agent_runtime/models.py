@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
@@ -166,8 +166,172 @@ class CaseFileChatCandidate(StrictAgentOutput):
     """An author-facing answer plus optional changes that still require approval."""
 
     answer: str = Field(min_length=1)
-    referenced_object_ids: list[str] = Field(default_factory=list)
+    referenced_object_ids: list[str] = Field(default_factory=list, max_length=50)
+    referenced_event_ids: list[str] = Field(default_factory=list, max_length=50)
+    referenced_validation_issue_ids: list[str] = Field(
+        default_factory=list, max_length=50
+    )
+    suggested_view: str | None = Field(
+        default=None,
+        pattern=r"^(?:timeline|relations|reasoning|map|export|compile|evidence)$",
+    )
     suggestions: list[CaseFileChatSuggestionCandidate] = Field(default_factory=list)
+
+
+IntentPrimaryLabel = Literal[
+    "question",
+    "analysis",
+    "explain_issue",
+    "edit_request",
+    "validate_request",
+    "unsupported_action",
+    "clarify",
+    "out_of_scope",
+]
+IntentRiskLevel = Literal["low", "medium", "high"]
+IntentComplexity = Literal["low", "medium", "high"]
+
+
+class IntentEntityMention(StrictAgentOutput):
+    """LLM may only emit the mention text; resolved_ref is filled by code."""
+
+    text: str = Field(min_length=1, max_length=200)
+
+
+class IntentEntitiesOutput(StrictAgentOutput):
+    object_mentions: list[IntentEntityMention] = Field(default_factory=list, max_length=20)
+    event_mentions: list[IntentEntityMention] = Field(default_factory=list, max_length=20)
+    issue_mentions: list[IntentEntityMention] = Field(default_factory=list, max_length=20)
+    temporal_mentions: list[str] = Field(default_factory=list, max_length=20)
+
+
+class IntentConstraintsOutput(StrictAgentOutput):
+    preserved_negations: list[str] = Field(default_factory=list, max_length=20)
+    preserved_actions: list[str] = Field(default_factory=list, max_length=20)
+    output_format: Literal["answer", "patch_proposal", "mixed"] = "answer"
+
+
+class ChatTaskUnderstandingOutput(StrictAgentOutput):
+    """One LLM intent call: Task State plus a conservative pre-route canonical."""
+
+    original_query: str = Field(min_length=1, max_length=100_000)
+    normalized_query: str = Field(min_length=1, max_length=100_000)
+    primary_intent: IntentPrimaryLabel
+    sub_intents: list[str] = Field(default_factory=list, max_length=20)
+    entities: IntentEntitiesOutput = Field(default_factory=IntentEntitiesOutput)
+    constraints: IntentConstraintsOutput = Field(default_factory=IntentConstraintsOutput)
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+    complexity: IntentComplexity = "low"
+    multi_step: bool = False
+    risk_level: IntentRiskLevel = "low"
+    ambiguous: bool = False
+    missing_info: list[str] = Field(default_factory=list, max_length=20)
+    confidence: float = Field(ge=0.0, le=1.0)
+    reason_codes: list[str] = Field(default_factory=list, max_length=20)
+    canonical_query: str = Field(min_length=1, max_length=100_000)
+
+
+class QueryRewriteOutput(StrictAgentOutput):
+    """Route-specific LLM rewrite; only invoked for MULTI_QUERY/DECOMPOSE in R2."""
+
+    canonical_query: str = Field(min_length=1, max_length=100_000)
+    retrieval_queries: list[str] = Field(default_factory=list, max_length=10)
+    rewrite_decision: Literal[
+        "KEEP",
+        "CONTEXTUALIZE",
+        "EXPAND",
+        "DECOMPOSE",
+        "MULTI_QUERY",
+    ]
+    preservation_checks: dict[str, bool] = Field(default_factory=dict)
+
+
+class ChatIntentRouterInputV1(StrictAgentOutput):
+    """Prompt Package input contract for the v2 intent router."""
+
+    input_hash: str = Field(min_length=1)
+    author_message: str = Field(min_length=1, max_length=100_000)
+    thread_history: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
+    focus: dict[str, Any] = Field(default_factory=dict)
+    candidate_object_labels: dict[str, list[str]] = Field(default_factory=dict)
+    validation_issues: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
+class ChatRewriteInputV1(StrictAgentOutput):
+    """Prompt Package input contract for the v2 post-route rewriter."""
+
+    input_hash: str = Field(min_length=1)
+    original_query: str = Field(min_length=1, max_length=100_000)
+    normalized_query: str = Field(min_length=1, max_length=100_000)
+    conservative_canonical_query: str = Field(min_length=1, max_length=100_000)
+    primary_intent: str = Field(min_length=1, max_length=64)
+    sub_intents: list[str] = Field(default_factory=list, max_length=20)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    rewrite_strategy: str = Field(min_length=1, max_length=32)
+    route_profile: str = Field(min_length=1, max_length=128)
+
+
+class ChatExecutorInputV1(StrictAgentOutput):
+    """Prompt Package input contract shared by every v2 chat executor component."""
+
+    input_hash: str = Field(min_length=1)
+    casefile: dict[str, Any]
+    thread_history: list[dict[str, Any]] = Field(default_factory=list)
+    author_message: str = Field(min_length=1, max_length=100_000)
+    editable_fields_by_collection: dict[str, list[str]] = Field(default_factory=dict)
+    focus: dict[str, Any] = Field(default_factory=dict)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    validation_issues: list[dict[str, Any]] = Field(default_factory=list)
+    routing: dict[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ChatTaskUnderstanding:
+    """Semantic Task State; Routing Policy consumes this, not the raw user text."""
+
+    primary_intent: str
+    sub_intents: tuple[str, ...] = ()
+    entities: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = field(default_factory=dict)
+    capabilities: dict[str, Any] = field(default_factory=dict)
+    complexity: str = "low"
+    multi_step: bool = False
+    risk_level: str = "low"
+    ambiguous: bool = False
+    missing_info: tuple[str, ...] = ()
+    confidence: float = 1.0
+    reason_codes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RouteDecision:
+    """Policy decision produced by deterministic code; the model never picks routes."""
+
+    router_version: str = "casefile-chat-router-v2"
+    route_source: str = "llm"
+    candidate_routes: tuple[dict[str, Any], ...] = ()
+    routes: tuple[dict[str, Any], ...] = ()
+    execution_mode: str = "serial"
+    merge_strategy: str | None = None
+    rewrite_strategy: str = "KEEP"
+    execution_profile: dict[str, Any] = field(default_factory=dict)
+    confidence: float = 1.0
+    confidence_margin: float = 0.0
+    reason_codes: tuple[str, ...] = ()
+    fallback: str = "question"
+    route_hash: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class QueryRewriteResult:
+    """Dual Representation: original stays authoritative, derived forms are per-executor."""
+
+    original_query: str
+    normalized_query: str
+    canonical_query: str
+    retrieval_queries: tuple[str, ...] = ()
+    rewrite_decision: str = "KEEP"
+    preservation_checks: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +441,13 @@ class CaseFileChatRequest:
     api_key: str | None
     max_turns: int
     emit: EventSink
+    validation_issues: tuple[dict[str, Any], ...] = ()
+    validation: dict[str, Any] = field(default_factory=dict)
+    focus: dict[str, Any] = field(default_factory=dict)
+    routing_hint: dict[str, Any] = field(default_factory=dict)
+    task_understanding: ChatTaskUnderstanding | None = None
+    route: RouteDecision | None = None
+    rewrite: QueryRewriteResult | None = None
     network_retries: int = 2
 
 
@@ -329,6 +500,39 @@ class BriefStrategyOptionsResult:
 @dataclass(frozen=True, slots=True)
 class CaseFileChatResult:
     candidate: CaseFileChatCandidate
+    usage: dict[str, Any]
+    tools: ToolMetrics = field(default_factory=ToolMetrics)
+
+
+@dataclass(frozen=True, slots=True)
+class IntentUnderstandingResult:
+    candidate: ChatTaskUnderstandingOutput
+    usage: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class RouteSpecificRewriteRequest:
+    task_run_id: int
+    prompt_version: str
+    original_query: str
+    normalized_query: str
+    conservative_canonical_query: str
+    primary_intent: str
+    sub_intents: tuple[str, ...]
+    constraints: dict[str, Any]
+    rewrite_strategy: str
+    route_profile: str
+    input_hash: str
+    model_id: str
+    api_key: str | None
+    max_turns: int
+    emit: EventSink
+    network_retries: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class RouteSpecificRewriteResult:
+    candidate: QueryRewriteOutput
     usage: dict[str, Any]
 
 
@@ -439,6 +643,32 @@ class ReverseParseRequest:
 class ReverseParseResult:
     candidate: ReverseParseCandidate
     usage: dict[str, Any]
+
+
+def agent_state_to_jsonable(value: Any) -> Any:
+    """Recursively convert routing state dataclasses/tuples into JSON-ready data."""
+
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: agent_state_to_jsonable(getattr(value, field.name))
+            for field in value.__dataclass_fields__.values()
+        }
+    if isinstance(value, tuple):
+        return [agent_state_to_jsonable(item) for item in value]
+    if isinstance(value, list):
+        return [agent_state_to_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {key: agent_state_to_jsonable(item) for key, item in value.items()}
+    return value
+
+
+def chat_state_as_dict(value: Any) -> dict[str, Any]:
+    """Return one routing state dataclass as a plain dict (tuples become lists)."""
+
+    converted = agent_state_to_jsonable(value)
+    if not isinstance(converted, dict):
+        raise TypeError(f"expected a routing state dataclass, got {type(value).__name__}")
+    return converted
 
 
 def _rate(numerator: int, denominator: int) -> float:

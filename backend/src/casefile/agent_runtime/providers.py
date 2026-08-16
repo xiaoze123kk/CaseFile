@@ -11,7 +11,7 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any, Literal, Protocol, cast
 
-from agents import Agent, ModelSettings, RunConfig, Runner
+from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
@@ -28,6 +28,12 @@ from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generatio
 from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
 from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
+from casefile.agent_runtime.chat_tools import (
+    ChatToolContext,
+    ChatToolMetrics,
+    chat_tool_manifest,
+    search_casefile_records,
+)
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -47,6 +53,7 @@ from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
     CaseFileChatResult,
+    ChatTaskUnderstandingOutput,
     GenerationPlan,
     GenerationRequest,
     GenerationResult,
@@ -54,10 +61,17 @@ from casefile.agent_runtime.models import (
     IdeaCandidateSet,
     IdeaGenerationRequest,
     IdeaGenerationResult,
+    IntentConstraintsOutput,
+    IntentEntitiesOutput,
+    IntentEntityMention,
+    IntentUnderstandingResult,
+    QueryRewriteOutput,
     ReverseParseCandidate,
     ReverseParseItem,
     ReverseParseRequest,
     ReverseParseResult,
+    RouteSpecificRewriteRequest,
+    RouteSpecificRewriteResult,
     StrictAgentOutput,
     ToolMetrics,
 )
@@ -67,10 +81,12 @@ from casefile.agent_runtime.prompt import (
     brief_intake_questions_input,
     brief_intake_synthesize_input,
     brief_strategy_options_input,
-    casefile_chat_input,
     generation_input,
     idea_generation_input,
     polish_input,
+    render_chat_executor_prompt,
+    render_chat_rewrite_prompt,
+    render_chat_router_prompt,
     reverse_parse_input,
 )
 from casefile.agent_runtime.prompt_repository import system_prompt_for_task
@@ -110,6 +126,15 @@ class AgentProvider(GenerationProvider, Protocol):
     def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult: ...
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
+
+    def understand_intent(
+        self, request: CaseFileChatRequest
+    ) -> IntentUnderstandingResult: ...
+
+    def rewrite_for_route(
+        self,
+        request: RouteSpecificRewriteRequest,
+    ) -> RouteSpecificRewriteResult: ...
 
     def intake_questions(
         self, request: BriefIntakeQuestionsRequest
@@ -198,10 +223,278 @@ _BRIEF_TO_DRAFT_RUNNERS = {
 }
 
 
-def _brief_to_draft_runner(prompt_version: str):
+def _brief_to_draft_runner(prompt_version: str) -> Any:
     """Resolve the workflow runner for one frozen prompt version."""
 
     return _BRIEF_TO_DRAFT_RUNNERS.get(prompt_version, run_v8_generation)
+
+
+def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
+    """Deterministic LLM-shaped intent output for FakeProvider tests and Eval."""
+
+    text = message.strip()
+    if any(token in text for token in ("删除", "清空", "覆盖")):
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="unsupported_action",
+            sub_intents=["delete_request"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(preserved_actions=[text]),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_suggestion_generation": False,
+            },
+            risk_level="high",
+            confidence=0.93,
+            reason_codes=["explicit_destructive_verb"],
+            canonical_query=text,
+        )
+    if "别动时间线" in text and "改" in text:
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="edit_request",
+            sub_intents=["modify_description"],
+            entities=_fake_intent_entities(
+                object_mentions=[IntentEntityMention(text="它")],
+                temporal_mentions=["时间线"],
+            ),
+            constraints=_fake_intent_constraints(
+                preserved_negations=["别动时间线"],
+                preserved_actions=["改"],
+                output_format="patch_proposal",
+            ),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_suggestion_generation": True,
+            },
+            risk_level="medium",
+            confidence=0.91,
+            reason_codes=["explicit_edit_verb", "focus_resolved_anaphora"],
+            canonical_query="把焦点对象的描述改得更克制，但别动时间线。",
+        )
+    if any(token in text for token in ("导出前检查", "门禁")):
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="validate_request",
+            sub_intents=["gate_check"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(preserved_actions=["检查"]),
+            capabilities={"needs_validation_snapshot": True},
+            confidence=0.96,
+            reason_codes=["explicit_gate_request"],
+            canonical_query=text,
+        )
+    if any(token in text for token in ("与卷宗无关", "别的项目", "量子")):
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="out_of_scope",
+            sub_intents=[],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(),
+            confidence=0.92,
+            reason_codes=["out_of_scope_markers"],
+            canonical_query=text,
+        )
+    if any(token in text for token in ("下一步怎么做", "该怎么做", "拿不准")):
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="clarify",
+            sub_intents=["request_guidance"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(),
+            confidence=0.8,
+            ambiguous=True,
+            missing_info=["intent_guidance"],
+            reason_codes=["ambiguous_guidance_request"],
+            canonical_query=text,
+        )
+    if "低置信度" in text:
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="edit_request",
+            sub_intents=["modify_description"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(output_format="patch_proposal"),
+            capabilities={"needs_suggestion_generation": True},
+            confidence=0.61,
+            reason_codes=["uncertain_edit"],
+            canonical_query=text,
+        )
+    if any(token in text for token in ("改", "修改", "更新", "调整")):
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="edit_request",
+            sub_intents=["modify_fields"],
+            entities=_fake_intent_entities(
+                object_mentions=[IntentEntityMention(text="它")]
+                if "它" in text
+                else None
+            ),
+            constraints=_fake_intent_constraints(
+                preserved_actions=[
+                    token for token in ("改", "修改", "更新", "调整") if token in text
+                ]
+            ),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_suggestion_generation": True,
+            },
+            risk_level="medium",
+            confidence=0.91,
+            reason_codes=["explicit_edit_verb"],
+            canonical_query=text,
+        )
+    if "验证问题" in text or "规则失败" in text:
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="explain_issue",
+            sub_intents=["explain_failure", "propose_fix"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(output_format="mixed"),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_validation_snapshot": True,
+                "needs_suggestion_generation": True,
+            },
+            confidence=0.9,
+            reason_codes=["validation_issue_focus"],
+            canonical_query=text,
+        )
+    if any(token in text for token in ("体检", "证据链", "候选解释", "对比")):
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="analysis",
+            sub_intents=["read_only_analysis", "compare_candidates"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_relations": True,
+                "needs_validation_snapshot": True,
+            },
+            confidence=0.92,
+            reason_codes=["analysis_markers"],
+            canonical_query=text,
+        )
+    return ChatTaskUnderstandingOutput(
+        original_query=text,
+        normalized_query=text,
+        primary_intent="question",
+        sub_intents=["factual_question"],
+        entities=_fake_intent_entities(),
+        constraints=_fake_intent_constraints(),
+        capabilities={"needs_casefile_retrieval": True},
+        confidence=0.9,
+        reason_codes=["question_markers"],
+        canonical_query=text,
+    )
+
+
+def _fake_intent_entities(
+    *,
+    object_mentions: list[IntentEntityMention] | None = None,
+    event_mentions: list[IntentEntityMention] | None = None,
+    issue_mentions: list[IntentEntityMention] | None = None,
+    temporal_mentions: list[str] | None = None,
+) -> IntentEntitiesOutput:
+    return IntentEntitiesOutput(
+        object_mentions=object_mentions or [],
+        event_mentions=event_mentions or [],
+        issue_mentions=issue_mentions or [],
+        temporal_mentions=temporal_mentions or [],
+    )
+
+
+def _fake_intent_constraints(
+    *,
+    preserved_negations: list[str] | None = None,
+    preserved_actions: list[str] | None = None,
+    output_format: Literal["answer", "patch_proposal", "mixed"] = "answer",
+) -> IntentConstraintsOutput:
+    return IntentConstraintsOutput(
+        preserved_negations=preserved_negations or [],
+        preserved_actions=preserved_actions or [],
+        output_format=output_format,
+    )
+
+
+def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
+    """FakeProvider consumes route-scoped retrieval queries deterministically."""
+
+    metrics = ChatToolMetrics()
+    route = request.route
+    if route is None:
+        return metrics
+    toolset = route.execution_profile.get("toolset") or []
+    if "search_casefile" not in toolset:
+        return metrics
+    max_calls = route.execution_profile.get("max_tool_calls")
+    max_calls = max_calls if isinstance(max_calls, int) else 0
+    queries = (
+        list(request.rewrite.retrieval_queries)
+        if request.rewrite is not None and request.rewrite.retrieval_queries
+        else [request.rewrite.canonical_query if request.rewrite is not None else request.message]
+    )
+    for query in queries:
+        metrics.calls += 1
+        if metrics.calls > max_calls:
+            metrics.budget_exhausted += 1
+            request.emit(
+                "tool.completed",
+                "responding",
+                {
+                    "tool": "search_casefile",
+                    "valid": False,
+                    "reason_code": "tool_budget_exhausted",
+                },
+            )
+            break
+        results = search_casefile_records(request.casefile, query)
+        for result in results:
+            object_id = str(result["id"])
+            if object_id not in metrics.retrieved_object_ids:
+                metrics.retrieved_object_ids.append(object_id)
+        metrics.valid_calls += 1
+        metrics.successful_calls += 1
+        metrics.adopted_results += min(1, len(results))
+        request.emit(
+            "tool.completed",
+            "responding",
+            {
+                "tool": "search_casefile",
+                "valid": True,
+                "query": query,
+                "result_count": len(results),
+                "object_ids": [str(result["id"]) for result in results],
+            },
+        )
+    return metrics
+
+
+def _chat_tool_runtime(
+    request: CaseFileChatRequest,
+) -> tuple[list[Tool] | None, ChatToolContext | None, int | None]:
+    route = request.route
+    if route is None:
+        return None, None, None
+    manifest = chat_tool_manifest(route)
+    if not manifest:
+        return None, None, None
+    max_turns = route.execution_profile.get("max_turns")
+    return (
+        manifest,
+        ChatToolContext(request=request, route=route),
+        max_turns if isinstance(max_turns, int) and max_turns > 0 else None,
+    )
 
 
 class FakeProvider:
@@ -576,13 +869,14 @@ class FakeProvider:
         return IdeaGenerationResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        system_prompt_for_task("casefile_chat", request.prompt_version)
+        render_chat_executor_prompt(request)
         request.emit("model.started", "responding", {"model_id": request.model_id})
         referenced = [
             object_id
             for object_id in _casefile_object_ids(request.casefile)
             if object_id in request.message
         ]
+        metrics = _fake_chat_tool_metrics(request)
         candidate = CaseFileChatCandidate(
             answer=(
                 "我已结合当前完整卷宗阅读了这条消息。"
@@ -591,9 +885,98 @@ class FakeProvider:
             referenced_object_ids=referenced,
             suggestions=[],
         )
-        usage = _zero_usage()
+        usage: dict[str, Any] = _zero_usage()
+        usage["tool_metrics"] = metrics.as_dict()
         request.emit("model.completed", "responding", {"usage": usage})
-        return CaseFileChatResult(candidate=candidate, usage=usage)
+        return CaseFileChatResult(candidate=candidate, usage=usage, tools=metrics)
+
+    def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
+        request.emit("model.started", "understanding", {"model_id": request.model_id})
+        request.emit(
+            "agent.model_call.started",
+            "understanding",
+            {
+                "component_id": "intent_router",
+                "schema_id": "chat-task-understanding-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.model_id,
+            },
+        )
+        candidate = _fake_intent_understanding(request.message)
+        request.emit(
+            "agent.model_call.completed",
+            "understanding",
+            {
+                "component_id": "intent_router",
+                "schema_id": "chat-task-understanding-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(
+                    json.dumps(
+                        candidate.model_dump(mode="json"),
+                        sort_keys=True,
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                ).hexdigest(),
+                "usage": _zero_usage(),
+            },
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "understanding", {"usage": usage})
+        return IntentUnderstandingResult(candidate=candidate, usage=usage)
+
+    def rewrite_for_route(
+        self,
+        request: RouteSpecificRewriteRequest,
+    ) -> RouteSpecificRewriteResult:
+        request.emit("model.started", "rewriting", {"model_id": request.model_id})
+        request.emit(
+            "agent.model_call.started",
+            "rewriting",
+            {
+                "component_id": "query_rewriter",
+                "schema_id": "query-rewrite-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.model_id,
+            },
+        )
+        if request.rewrite_strategy == "MULTI_QUERY":
+            retrieval_queries = [
+                request.conservative_canonical_query,
+                f"{request.conservative_canonical_query} 时间线",
+                f"{request.conservative_canonical_query} 引用关系",
+            ]
+        else:
+            retrieval_queries = []
+        candidate = QueryRewriteOutput(
+            canonical_query=request.conservative_canonical_query,
+            retrieval_queries=retrieval_queries,
+            rewrite_decision=cast(Any, request.rewrite_strategy),
+            preservation_checks={},
+        )
+        request.emit(
+            "agent.model_call.completed",
+            "rewriting",
+            {
+                "component_id": "query_rewriter",
+                "schema_id": "query-rewrite-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(
+                    json.dumps(
+                        candidate.model_dump(mode="json"),
+                        sort_keys=True,
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                ).hexdigest(),
+                "usage": _zero_usage(),
+            },
+        )
+        usage = _zero_usage()
+        request.emit("model.completed", "rewriting", {"usage": usage})
+        return RouteSpecificRewriteResult(candidate=candidate, usage=usage)
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
@@ -652,7 +1035,10 @@ class FakeProvider:
                 return output, usage
 
             runner = _brief_to_draft_runner(request.prompt_version)
-            return asyncio.run(runner(request, call_component=call_component))
+            return cast(
+                GenerationResult,
+                asyncio.run(runner(request, call_component=call_component)),
+            )
         system_prompt_for_task("brief_to_draft", request.prompt_version)
         request.emit("tool.started", "planning", {"tool": "plan_object_ids"})
         resolution_id = f"res_t{request.task_run_id}_01"
@@ -944,20 +1330,66 @@ class OpenAIAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=system_prompt_for_task(
-                    "casefile_chat",
-                    request.prompt_version,
-                ),
-                input_text=casefile_chat_input(request),
+                instructions=instructions,
+                input_text=input_text,
                 output_type=CaseFileChatCandidate,
                 stage="responding",
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
             )
         )
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(candidate),
+            usage=usage,
+            tools=context.metrics if context is not None else ToolMetrics(),
+        )
+
+    def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text = render_chat_router_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=ChatTaskUnderstandingOutput,
+                stage="understanding",
+                component_id="intent_router",
+                schema_id="chat-task-understanding-v1",
+            )
+        )
+        return IntentUnderstandingResult(
+            candidate=ChatTaskUnderstandingOutput.model_validate(candidate),
+            usage=usage,
+        )
+
+    def rewrite_for_route(
+        self,
+        request: RouteSpecificRewriteRequest,
+    ) -> RouteSpecificRewriteResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text = render_chat_rewrite_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=QueryRewriteOutput,
+                stage="rewriting",
+                component_id="query_rewriter",
+                schema_id="query-rewrite-v1",
+            )
+        )
+        return RouteSpecificRewriteResult(
+            candidate=QueryRewriteOutput.model_validate(candidate),
             usage=usage,
         )
 
@@ -971,18 +1403,44 @@ class OpenAIAgentsProvider:
             api_key=request.api_key,
             max_retries=request.network_retries,
         )
-        model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
+        try:
+            model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
+            if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
-            async def call_component(
-                instructions: str,
-                input_text: str,
-                output_type: type[BaseModel],
-                stage: str,
-                component_id: str,
-                schema_id: str,
-            ) -> tuple[dict[str, Any], dict[str, Any]]:
-                return await _run_auxiliary_agent(
+                async def call_component(
+                    instructions: str,
+                    input_text: str,
+                    output_type: type[BaseModel],
+                    stage: str,
+                    component_id: str,
+                    schema_id: str,
+                ) -> tuple[dict[str, Any], dict[str, Any]]:
+                    return await _run_auxiliary_agent(
+                        request,
+                        model=model,
+                        model_settings=ModelSettings(
+                            reasoning=Reasoning(effort="medium"),
+                            verbosity="low",
+                            include_usage=True,
+                            parallel_tool_calls=False,
+                        ),
+                        instructions=instructions,
+                        input_text=input_text,
+                        output_type=output_type,
+                        stage=stage,
+                        structured_output=True,
+                        tracing_disabled=False,
+                        component_id=component_id,
+                        schema_id=schema_id,
+                    )
+
+                runner = _brief_to_draft_runner(request.prompt_version)
+                return cast(
+                    GenerationResult,
+                    await runner(request, call_component=call_component),
+                )
+            if request.prompt_version == "brief-to-draft-v7":
+                return await _run_partitioned_generation(
                     request,
                     model=model,
                     model_settings=ModelSettings(
@@ -991,20 +1449,10 @@ class OpenAIAgentsProvider:
                         include_usage=True,
                         parallel_tool_calls=False,
                     ),
-                    instructions=instructions,
-                    input_text=input_text,
-                    output_type=output_type,
-                    stage=stage,
                     structured_output=True,
                     tracing_disabled=False,
-                    component_id=component_id,
-                    schema_id=schema_id,
                 )
-
-            runner = _brief_to_draft_runner(request.prompt_version)
-            return await runner(request, call_component=call_component)
-        if request.prompt_version == "brief-to-draft-v7":
-            return await _run_partitioned_generation(
+            return await _run_agent(
                 request,
                 model=model,
                 model_settings=ModelSettings(
@@ -1016,18 +1464,8 @@ class OpenAIAgentsProvider:
                 structured_output=True,
                 tracing_disabled=False,
             )
-        return await _run_agent(
-            request,
-            model=model,
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="medium"),
-                verbosity="low",
-                include_usage=True,
-                parallel_tool_calls=False,
-            ),
-            structured_output=True,
-            tracing_disabled=False,
-        )
+        finally:
+            await client.close()
 
     async def _run_auxiliary(
         self,
@@ -1038,6 +1476,7 @@ class OpenAIAgentsProvider:
             | BriefIntakeSynthesizeRequest
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
+            | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
         ),
@@ -1046,28 +1485,41 @@ class OpenAIAgentsProvider:
         input_text: str,
         output_type: type[BaseModel],
         stage: str,
+        component_id: str | None = None,
+        schema_id: str | None = None,
+        tools: list[Tool] | None = None,
+        context: ChatToolContext | None = None,
+        max_turns: int | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        return await _run_auxiliary_agent(
-            request,
-            model=model,
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="low"),
-                verbosity="low",
-                include_usage=True,
-                parallel_tool_calls=False,
-            ),
-            instructions=instructions,
-            input_text=input_text,
-            output_type=output_type,
-            stage=stage,
-            structured_output=True,
-            tracing_disabled=False,
-        )
+        try:
+            return await _run_auxiliary_agent(
+                request,
+                model=model,
+                model_settings=ModelSettings(
+                    reasoning=Reasoning(effort="low"),
+                    verbosity="low",
+                    include_usage=True,
+                    parallel_tool_calls=False,
+                ),
+                instructions=instructions,
+                input_text=input_text,
+                output_type=output_type,
+                stage=stage,
+                structured_output=True,
+                tracing_disabled=False,
+                component_id=component_id,
+                schema_id=schema_id,
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+            )
+        finally:
+            await client.close()
 
 
 class DeepSeekAgentsProvider:
@@ -1232,20 +1684,72 @@ class DeepSeekAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
+        output_protocol = (
+            "json_object"
+            if tools
+            else _deepseek_v8_output_protocol(request.model_id)
+        )
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
-                instructions=system_prompt_for_task(
-                    "casefile_chat",
-                    request.prompt_version,
-                ),
-                input_text=casefile_chat_input(request),
+                instructions=instructions,
+                input_text=input_text,
                 output_type=CaseFileChatCandidate,
                 stage="responding",
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+                deepseek_output_protocol=output_protocol,
             )
         )
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(candidate),
+            usage=usage,
+            tools=context.metrics if context is not None else ToolMetrics(),
+        )
+
+    def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text = render_chat_router_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=ChatTaskUnderstandingOutput,
+                stage="understanding",
+                component_id="intent_router",
+                schema_id="chat-task-understanding-v1",
+            )
+        )
+        return IntentUnderstandingResult(
+            candidate=ChatTaskUnderstandingOutput.model_validate(candidate),
+            usage=usage,
+        )
+
+    def rewrite_for_route(
+        self,
+        request: RouteSpecificRewriteRequest,
+    ) -> RouteSpecificRewriteResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text = render_chat_rewrite_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=QueryRewriteOutput,
+                stage="rewriting",
+                component_id="query_rewriter",
+                schema_id="query-rewrite-v1",
+            )
+        )
+        return RouteSpecificRewriteResult(
+            candidate=QueryRewriteOutput.model_validate(candidate),
             usage=usage,
         )
 
@@ -1256,48 +1760,58 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
-        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
+        client = _model_client(model)
+        try:
+            if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
-            async def call_component(
-                instructions: str,
-                input_text: str,
-                output_type: type[BaseModel],
-                stage: str,
-                component_id: str,
-                schema_id: str,
-            ) -> tuple[dict[str, Any], dict[str, Any]]:
-                return await _run_auxiliary_agent(
+                async def call_component(
+                    instructions: str,
+                    input_text: str,
+                    output_type: type[BaseModel],
+                    stage: str,
+                    component_id: str,
+                    schema_id: str,
+                ) -> tuple[dict[str, Any], dict[str, Any]]:
+                    return await _run_auxiliary_agent(
+                        request,
+                        model=model,
+                        model_settings=_deepseek_model_settings(),
+                        instructions=instructions,
+                        input_text=input_text,
+                        output_type=output_type,
+                        stage=stage,
+                        structured_output=False,
+                        tracing_disabled=True,
+                        component_id=component_id,
+                        schema_id=schema_id,
+                        deepseek_output_protocol=_deepseek_v8_output_protocol(
+                            request.model_id
+                        ),
+                    )
+
+                runner = _brief_to_draft_runner(request.prompt_version)
+                return cast(
+                    GenerationResult,
+                    await runner(request, call_component=call_component),
+                )
+            if request.prompt_version == "brief-to-draft-v7":
+                return await _run_partitioned_generation(
                     request,
                     model=model,
                     model_settings=_deepseek_model_settings(),
-                    instructions=instructions,
-                    input_text=input_text,
-                    output_type=output_type,
-                    stage=stage,
                     structured_output=False,
                     tracing_disabled=True,
-                    component_id=component_id,
-                    schema_id=schema_id,
-                    deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
                 )
-
-            runner = _brief_to_draft_runner(request.prompt_version)
-            return await runner(request, call_component=call_component)
-        if request.prompt_version == "brief-to-draft-v7":
-            return await _run_partitioned_generation(
+            return await _run_agent(
                 request,
                 model=model,
                 model_settings=_deepseek_model_settings(),
                 structured_output=False,
                 tracing_disabled=True,
             )
-        return await _run_agent(
-            request,
-            model=model,
-            model_settings=_deepseek_model_settings(),
-            structured_output=False,
-            tracing_disabled=True,
-        )
+        finally:
+            if client is not None:
+                await client.close()
 
     async def _run_auxiliary(
         self,
@@ -1308,6 +1822,7 @@ class DeepSeekAgentsProvider:
             | BriefIntakeSynthesizeRequest
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
+            | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
         ),
@@ -1316,19 +1831,39 @@ class DeepSeekAgentsProvider:
         input_text: str,
         output_type: type[BaseModel],
         stage: str,
+        component_id: str | None = None,
+        schema_id: str | None = None,
+        tools: list[Tool] | None = None,
+        context: ChatToolContext | None = None,
+        max_turns: int | None = None,
+        deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
-        return await _run_auxiliary_agent(
-            request,
-            model=model,
-            model_settings=_deepseek_model_settings(),
-            instructions=instructions,
-            input_text=input_text,
-            output_type=output_type,
-            stage=stage,
-            structured_output=False,
-            tracing_disabled=True,
-        )
+        client = _model_client(model)
+        try:
+            return await _run_auxiliary_agent(
+                request,
+                model=model,
+                model_settings=_deepseek_model_settings(),
+                instructions=instructions,
+                input_text=input_text,
+                output_type=output_type,
+                stage=stage,
+                structured_output=False,
+                tracing_disabled=True,
+                component_id=component_id,
+                schema_id=schema_id,
+                deepseek_output_protocol=(
+                    deepseek_output_protocol
+                    or _deepseek_v8_output_protocol(request.model_id)
+                ),
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+            )
+        finally:
+            if client is not None:
+                await client.close()
 
     def create_model(
         self,
@@ -1340,6 +1875,7 @@ class DeepSeekAgentsProvider:
             | BriefIntakeSynthesizeRequest
             | BriefStrategyOptionsRequest
             | CaseFileChatRequest
+            | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
         ),
@@ -1364,6 +1900,7 @@ async def _run_auxiliary_agent(
         | BriefIntakeSynthesizeRequest
         | BriefStrategyOptionsRequest
         | CaseFileChatRequest
+        | RouteSpecificRewriteRequest
         | ReverseParseRequest
         | IdeaGenerationRequest
     ),
@@ -1380,6 +1917,9 @@ async def _run_auxiliary_agent(
     component_id: str | None = None,
     schema_id: str | None = None,
     deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+    tools: list[Tool] | None = None,
+    context: ChatToolContext | None = None,
+    max_turns: int | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
         "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
@@ -1413,6 +1953,17 @@ async def _run_auxiliary_agent(
                 stage,
                 {"from": "strict_tool", "to": protocol, "reason_code": reason},
             )
+    if protocol == "strict_tool" and tools:
+        protocol = "json_object"
+        request.emit(
+            "model.output_protocol_fallback",
+            stage,
+            {
+                "from": "strict_tool",
+                "to": protocol,
+                "reason_code": "chat_tools_require_json_object_loop",
+            },
+        )
 
     for attempt_no in range(1, 4):
         raw_output_text: str | None = None
@@ -1483,19 +2034,32 @@ async def _run_auxiliary_agent(
                     instructions=resolved_instructions,
                     model=model,
                     model_settings=model_settings,
-                    tools=[],
+                    tools=tools or [],
                     output_type=agent_output_type,
                 )
-                result = await Runner.run(
-                    agent,
-                    current_input,
-                    max_turns=request.max_turns,
-                    run_config=RunConfig(
-                        workflow_name=f"CaseFile {stage}",
-                        tracing_disabled=tracing_disabled,
-                        trace_include_sensitive_data=False,
-                    ),
-                )
+                if context is None:
+                    result = await Runner.run(
+                        agent,
+                        current_input,
+                        max_turns=max_turns or request.max_turns,
+                        run_config=RunConfig(
+                            workflow_name=f"CaseFile {stage}",
+                            tracing_disabled=tracing_disabled,
+                            trace_include_sensitive_data=False,
+                        ),
+                    )
+                else:
+                    result = await Runner.run(
+                        agent,
+                        current_input,
+                        context=context,
+                        max_turns=max_turns or request.max_turns,
+                        run_config=RunConfig(
+                            workflow_name=f"CaseFile {stage}",
+                            tracing_disabled=tracing_disabled,
+                            trace_include_sensitive_data=False,
+                        ),
+                    )
                 usage_records.append(_usage_json(result.context_wrapper.usage))
                 final_output = getattr(result, "final_output", None)
                 if isinstance(final_output, str):
@@ -1543,6 +2107,8 @@ async def _run_auxiliary_agent(
                     },
                 )
             usage = _merge_structured_usage(usage_records)
+            if context is not None:
+                usage["tool_metrics"] = context.metrics.as_dict()
             request.emit("model.completed", stage, {"usage": usage})
             if component_id:
                 serialized_output = json.dumps(
@@ -2698,6 +3264,13 @@ def _validate_generated_descriptions(candidate: dict[str, Any]) -> None:
                 )
     if issues:
         raise ContractValidationError(issues)
+
+
+def _model_client(model: OpenAIChatCompletionsModel) -> AsyncOpenAI | None:
+    """Return the underlying async client owned by an Agents SDK model."""
+
+    client = getattr(model, "_client", None)
+    return cast(AsyncOpenAI | None, client)
 
 
 def _deepseek_model_settings() -> ModelSettings:

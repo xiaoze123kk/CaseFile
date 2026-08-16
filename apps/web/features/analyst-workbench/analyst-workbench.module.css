@@ -1632,6 +1632,224 @@
 }
 .agentInput button:hover { background: var(--primary-hover); }
 .agentInput button:disabled { opacity: 0.5; cursor: default; }
+.agentPanelLive { grid-template-rows: 58px 40px minmax(0, 1fr) auto auto; }
+.agentThreadBar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--rule-dark);
+}
+.agentThreadSelect {
+  min-width: 0;
+  flex: 1;
+  padding: 6px 8px;
+  color: #e8e4db;
+  border: 1px solid var(--rule-dark);
+  background: #202427;
+  font-size: 9.5px;
+}
+.agentThreadNew {
+  padding: 6px 10px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 9px;
+}
+.agentThreadNew:hover { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.5); }
+.agentThreadNew:disabled { opacity: 0.5; cursor: default; }
+.agentEmpty {
+  align-self: center;
+  max-width: 320px;
+  margin: auto 0;
+  color: #8a918a;
+  font-size: 10.5px;
+  line-height: 1.7;
+  text-align: center;
+}
+.agentFailure {
+  align-self: flex-start;
+  display: flex;
+  max-width: 88%;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px;
+  color: #e3b9a4;
+  border: 1px solid rgba(193, 103, 65, 0.5);
+  background: #322626;
+  border-radius: 10px 10px 10px 2px;
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+.agentFailure strong { color: #f0c9b5; font-size: 10.5px; }
+.agentFailure button {
+  align-self: flex-start;
+  padding: 3px 8px;
+  color: #f0c9b5;
+  border: 1px solid rgba(193, 103, 65, 0.6);
+  background: transparent;
+  font-size: 9px;
+}
+.agentFailure button:hover { color: #ffd8c2; background: rgba(193, 103, 65, 0.18); }
+.agentPatchNotice {
+  align-self: flex-start;
+  max-width: 88%;
+  margin: -2px 0 0;
+  color: #aaa69c;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.agentRefs {
+  display: flex;
+  max-width: 88%;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: flex-start;
+  margin: -2px 0 0;
+}
+.agentRefs button {
+  padding: 3px 8px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 9px;
+}
+.agentRefs button:hover { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.5); }
+.agentRefs button[data-ref-kind="issue"] { color: #e3b9a4; border-color: rgba(193, 103, 65, 0.5); }
+.agentRefs button[data-ref-kind="issue"]:hover { color: #f0c9b5; }
+.agentRefs button[data-ref-kind="view"] { color: #a9c4b0; border-color: rgba(105, 145, 115, 0.5); }
+.agentRefs button[data-ref-kind="view"]:hover { color: #c3ddc9; }
+.agentRouteMeta {
+  display: flex;
+  max-width: 88%;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  align-self: flex-start;
+  margin: -2px 0 0;
+}
+.agentRouteChip {
+  padding: 2px 7px;
+  color: #aaa69c;
+  border: 1px solid var(--rule-dark);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 9px;
+}
+.agentRouteFeedbackButton {
+  padding: 2px 7px;
+  color: #c8b28a;
+  border: 1px solid rgba(224, 173, 101, 0.4);
+  background: transparent;
+  font-size: 9px;
+}
+.agentRouteFeedbackButton:hover { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.7); }
+.agentRouteFeedback {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.agentRouteFeedback select {
+  padding: 3px 6px;
+  color: #e8e4db;
+  border: 1px solid var(--rule-dark);
+  background: #202427;
+  font-size: 9px;
+}
+.agentRouteFeedback button {
+  padding: 3px 8px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 9px;
+}
+.agentRouteFeedback button:hover { color: var(--primary-hover); }
+.agentRouteSubmitted { color: #a9c4b0; font-size: 9px; }
+.agentPatchCard {
+  display: grid;
+  max-width: 88%;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--rule-dark);
+  background: rgba(0, 0, 0, 0.12);
+}
+.agentPatchCard[data-stale] { opacity: 0.62; }
+.agentPatchHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.agentPatchHeader strong { color: var(--ink); font-family: "STSong", "SimSun", serif; font-size: 12px; }
+.agentPatchHeader span { color: #aaa69c; font-size: 9px; }
+.agentPatchReason { margin: 0; color: #aaa69c; font-size: 9px; line-height: 1.5; }
+.agentPatchOps { display: grid; gap: 6px; }
+.agentPatchOp {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.agentPatchOp > input { margin-top: 2px; }
+.agentPatchOp > span { display: grid; gap: 2px; }
+.agentPatchOp strong {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 600;
+}
+.agentPatchOp code {
+  color: #d8b36e;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 400;
+}
+.agentPatchOp small {
+  color: #9a9489;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.agentPatchOp em { color: #a49d90; font-size: 9px; font-style: normal; line-height: 1.5; }
+.agentPatchOp b {
+  color: #c8c1b5;
+  font-size: 9px;
+  font-weight: 600;
+}
+.agentPatchOp b[data-decision="accepted"] { color: #9cbd9f; }
+.agentPatchOp b[data-decision="rejected"] { color: #c9957b; }
+.agentPatchActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.agentPatchActions button {
+  padding: 3px 9px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 9px;
+}
+.agentPatchActions button:hover { color: var(--primary-hover); border-color: rgba(224, 173, 101, 0.5); }
+.agentPatchActions button:disabled { opacity: 0.5; cursor: default; }
+.agentPatchWarning { margin: 0; color: #d8b36e; font-size: 9px; }
+.agentPatchStale { color: #c9957b; font-size: 9px; }
+.agentCancel {
+  padding: 0 12px;
+  color: #d8c5b6;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 10px;
+}
+.agentCancel:hover { color: #f0c9b5; border-color: rgba(193, 103, 65, 0.6); }
+.agentCancel:disabled { opacity: 0.5; cursor: default; }
 
 /* 推理过程图与关系图：共享 React Flow 视口，节点仍保持档案卡片语义。 */
 .reasoningView { display: grid; min-height: 100%; grid-template-rows: auto minmax(0, 1fr) auto; }

@@ -34,6 +34,8 @@ from casefile.agent_runtime.models import (
     GenerationPlan,
     GenerationRequest,
     IdeaGenerationRequest,
+    QueryRewriteResult,
+    RouteDecision,
 )
 from casefile.agent_runtime.prompt import casefile_chat_input, idea_generation_input
 from casefile.agent_runtime.prompt_repository import PromptRepositoryError
@@ -689,6 +691,90 @@ def test_fake_provider_chat_reads_full_casefile_without_mutating_it() -> None:
     ]
 
 
+def test_fake_provider_chat_consumes_retrieval_queries_under_route_budget() -> None:
+    emitted: list[tuple[str, str, dict[str, Any]]] = []
+    result = FakeProvider().chat(
+        CaseFileChatRequest(
+            task_run_id=30,
+            prompt_version="casefile-chat-v2",
+            casefile={
+                "entities": [{"id": "ent_1", "name": "张三"}],
+                "events": [{"id": "evt_1", "title": "三号库区失火"}],
+            },
+            history=(),
+            message="当时谁在库区",
+            editable_fields_by_collection={"entities": ("name",)},
+            input_hash="a" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=6,
+            emit=lambda event_type, stage, payload: emitted.append(
+                (event_type, stage, payload)
+            ),
+            route=RouteDecision(
+                execution_profile={
+                    "toolset": ["search_casefile"],
+                    "max_tool_calls": 3,
+                    "max_turns": 4,
+                }
+            ),
+            rewrite=QueryRewriteResult(
+                original_query="当时谁在库区",
+                normalized_query="当时谁在库区",
+                canonical_query="当时谁在库区",
+                retrieval_queries=("张三", "三号库区失火"),
+                rewrite_decision="MULTI_QUERY",
+            ),
+        )
+    )
+
+    assert result.tools.calls == 2
+    assert result.tools.successful_calls == 2
+    assert result.tools.adopted_results == 2
+    assert set(result.tools.retrieved_object_ids) == {"ent_1", "evt_1"}
+    assert result.usage["tool_metrics"]["retrieved_object_ids"] == ["ent_1", "evt_1"]
+    assert [entry[0] for entry in emitted if entry[0] == "tool.completed"] == [
+        "tool.completed",
+        "tool.completed",
+    ]
+
+
+def test_fake_provider_chat_stops_retrieval_when_budget_is_exhausted() -> None:
+    result = FakeProvider().chat(
+        CaseFileChatRequest(
+            task_run_id=31,
+            prompt_version="casefile-chat-v2",
+            casefile={"entities": [{"id": "ent_1", "name": "张三"}]},
+            history=(),
+            message="检索",
+            editable_fields_by_collection={},
+            input_hash="b" * 64,
+            model_id="fake",
+            api_key=None,
+            max_turns=4,
+            emit=lambda _event_type, _stage, _payload: None,
+            route=RouteDecision(
+                execution_profile={
+                    "toolset": ["search_casefile"],
+                    "max_tool_calls": 1,
+                    "max_turns": 4,
+                }
+            ),
+            rewrite=QueryRewriteResult(
+                original_query="检索",
+                normalized_query="检索",
+                canonical_query="检索",
+                retrieval_queries=("张三", "张三 卷宗"),
+                rewrite_decision="MULTI_QUERY",
+            ),
+        )
+    )
+
+    assert result.tools.calls == 2
+    assert result.tools.successful_calls == 1
+    assert result.tools.budget_exhausted == 1
+
+
 def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() -> None:
     capabilities = editable_fields_by_collection()
     request = CaseFileChatRequest(
@@ -703,6 +789,15 @@ def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() ->
         api_key=None,
         max_turns=2,
         emit=lambda _event_type, _stage, _payload: None,
+        validation={
+            "status": "passed",
+            "validator": "casefile.contracts.validate_casefile",
+            "schema_version": "casefile-v1",
+            "issue_count": 0,
+            "issues": [],
+            "reason": None,
+        },
+        focus={"object_ids": ["ent_1"]},
     )
 
     introduction, payload_text = casefile_chat_input(request).split("\n", 1)
@@ -714,6 +809,9 @@ def test_casefile_chat_input_receives_the_exact_editable_field_capabilities() ->
     }
     assert "tags" in payload["editable_fields_by_collection"]["entities"]
     assert "revision" not in payload["editable_fields_by_collection"]["entities"]
+    assert payload["validation"]["status"] == "passed"
+    assert payload["validation"]["issue_count"] == 0
+    assert payload["focus"] == {"object_ids": ["ent_1"]}
 
 
 @pytest.mark.parametrize(
