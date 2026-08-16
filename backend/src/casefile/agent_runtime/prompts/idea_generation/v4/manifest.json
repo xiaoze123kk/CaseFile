@@ -1,0 +1,8 @@
+{
+  "agent_id": "idea_generation",
+  "version": "idea-generation-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "d0d69a92ad29a1ab6773121cf9b9f7f5ee9a7bc1b6c102d7d6b4835fa348b0b6",
+  "previous_version": "idea-generation-v3",
+  "change_summary": "创意方向字段改为目标中性的受众表述，并明确 CaseFile 为推理底座、不得默认交付对象为玩家。"
+}

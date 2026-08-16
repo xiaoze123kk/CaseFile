@@ -1812,13 +1812,13 @@ export function IntakeCenter() {
                     onChange={(event) =>
                       updateBriefField("concept", event.target.value)
                     }
-                    placeholder="例如：四名玩家在不断重启的空间站中追查事故真相。"
+                    placeholder="例如：四名角色在不断重启的空间站中追查事故真相。"
                     rows={3}
                     value={brief.concept}
                   />
                 </FieldShell>
                 <FieldShell
-                  hint="定义玩家最终必须回答的问题"
+                  hint="定义作品最终必须回答的问题"
                   label="推理目标"
                   required
                   source={brief.sources.reasoningGoal}
