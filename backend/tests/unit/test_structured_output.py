@@ -320,7 +320,11 @@ def test_deepseek_strict_call_uses_beta_forced_tool_and_validates_arguments(
     class FakeClient:
         def __init__(self, **kwargs: Any) -> None:
             captured["client"] = kwargs
+            captured["closed"] = False
             self.chat = SimpleNamespace(completions=FakeCompletions())
+
+        async def close(self) -> None:
+            captured["closed"] = True
 
     monkeypatch.setattr(structured_module, "AsyncOpenAI", FakeClient)
     result = asyncio.run(
@@ -335,6 +339,7 @@ def test_deepseek_strict_call_uses_beta_forced_tool_and_validates_arguments(
     )
 
     assert captured["client"]["base_url"] == "https://api.deepseek.com/beta"
+    assert captured["closed"] is True
     request = captured["request"]
     assert request["tools"][0]["function"]["strict"] is True
     assert request["tool_choice"]["function"]["name"] == STRICT_OUTPUT_TOOL_NAME

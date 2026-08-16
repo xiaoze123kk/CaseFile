@@ -1403,18 +1403,44 @@ class OpenAIAgentsProvider:
             api_key=request.api_key,
             max_retries=request.network_retries,
         )
-        model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
+        try:
+            model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
+            if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
-            async def call_component(
-                instructions: str,
-                input_text: str,
-                output_type: type[BaseModel],
-                stage: str,
-                component_id: str,
-                schema_id: str,
-            ) -> tuple[dict[str, Any], dict[str, Any]]:
-                return await _run_auxiliary_agent(
+                async def call_component(
+                    instructions: str,
+                    input_text: str,
+                    output_type: type[BaseModel],
+                    stage: str,
+                    component_id: str,
+                    schema_id: str,
+                ) -> tuple[dict[str, Any], dict[str, Any]]:
+                    return await _run_auxiliary_agent(
+                        request,
+                        model=model,
+                        model_settings=ModelSettings(
+                            reasoning=Reasoning(effort="medium"),
+                            verbosity="low",
+                            include_usage=True,
+                            parallel_tool_calls=False,
+                        ),
+                        instructions=instructions,
+                        input_text=input_text,
+                        output_type=output_type,
+                        stage=stage,
+                        structured_output=True,
+                        tracing_disabled=False,
+                        component_id=component_id,
+                        schema_id=schema_id,
+                    )
+
+                runner = _brief_to_draft_runner(request.prompt_version)
+                return cast(
+                    GenerationResult,
+                    await runner(request, call_component=call_component),
+                )
+            if request.prompt_version == "brief-to-draft-v7":
+                return await _run_partitioned_generation(
                     request,
                     model=model,
                     model_settings=ModelSettings(
@@ -1423,23 +1449,10 @@ class OpenAIAgentsProvider:
                         include_usage=True,
                         parallel_tool_calls=False,
                     ),
-                    instructions=instructions,
-                    input_text=input_text,
-                    output_type=output_type,
-                    stage=stage,
                     structured_output=True,
                     tracing_disabled=False,
-                    component_id=component_id,
-                    schema_id=schema_id,
                 )
-
-            runner = _brief_to_draft_runner(request.prompt_version)
-            return cast(
-                GenerationResult,
-                await runner(request, call_component=call_component),
-            )
-        if request.prompt_version == "brief-to-draft-v7":
-            return await _run_partitioned_generation(
+            return await _run_agent(
                 request,
                 model=model,
                 model_settings=ModelSettings(
@@ -1451,18 +1464,8 @@ class OpenAIAgentsProvider:
                 structured_output=True,
                 tracing_disabled=False,
             )
-        return await _run_agent(
-            request,
-            model=model,
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="medium"),
-                verbosity="low",
-                include_usage=True,
-                parallel_tool_calls=False,
-            ),
-            structured_output=True,
-            tracing_disabled=False,
-        )
+        finally:
+            await client.close()
 
     async def _run_auxiliary(
         self,
@@ -1493,27 +1496,30 @@ class OpenAIAgentsProvider:
             max_retries=request.network_retries,
         )
         model = OpenAIResponsesModel(model=request.model_id, openai_client=client)
-        return await _run_auxiliary_agent(
-            request,
-            model=model,
-            model_settings=ModelSettings(
-                reasoning=Reasoning(effort="low"),
-                verbosity="low",
-                include_usage=True,
-                parallel_tool_calls=False,
-            ),
-            instructions=instructions,
-            input_text=input_text,
-            output_type=output_type,
-            stage=stage,
-            structured_output=True,
-            tracing_disabled=False,
-            component_id=component_id,
-            schema_id=schema_id,
-            tools=tools,
-            context=context,
-            max_turns=max_turns,
-        )
+        try:
+            return await _run_auxiliary_agent(
+                request,
+                model=model,
+                model_settings=ModelSettings(
+                    reasoning=Reasoning(effort="low"),
+                    verbosity="low",
+                    include_usage=True,
+                    parallel_tool_calls=False,
+                ),
+                instructions=instructions,
+                input_text=input_text,
+                output_type=output_type,
+                stage=stage,
+                structured_output=True,
+                tracing_disabled=False,
+                component_id=component_id,
+                schema_id=schema_id,
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+            )
+        finally:
+            await client.close()
 
 
 class DeepSeekAgentsProvider:
@@ -1754,51 +1760,58 @@ class DeepSeekAgentsProvider:
 
     async def _generate(self, request: GenerationRequest) -> GenerationResult:
         model = self.create_model(request)
-        if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
+        client = _model_client(model)
+        try:
+            if request.prompt_version in COMPONENT_GENERATION_PROMPT_VERSIONS:
 
-            async def call_component(
-                instructions: str,
-                input_text: str,
-                output_type: type[BaseModel],
-                stage: str,
-                component_id: str,
-                schema_id: str,
-            ) -> tuple[dict[str, Any], dict[str, Any]]:
-                return await _run_auxiliary_agent(
+                async def call_component(
+                    instructions: str,
+                    input_text: str,
+                    output_type: type[BaseModel],
+                    stage: str,
+                    component_id: str,
+                    schema_id: str,
+                ) -> tuple[dict[str, Any], dict[str, Any]]:
+                    return await _run_auxiliary_agent(
+                        request,
+                        model=model,
+                        model_settings=_deepseek_model_settings(),
+                        instructions=instructions,
+                        input_text=input_text,
+                        output_type=output_type,
+                        stage=stage,
+                        structured_output=False,
+                        tracing_disabled=True,
+                        component_id=component_id,
+                        schema_id=schema_id,
+                        deepseek_output_protocol=_deepseek_v8_output_protocol(
+                            request.model_id
+                        ),
+                    )
+
+                runner = _brief_to_draft_runner(request.prompt_version)
+                return cast(
+                    GenerationResult,
+                    await runner(request, call_component=call_component),
+                )
+            if request.prompt_version == "brief-to-draft-v7":
+                return await _run_partitioned_generation(
                     request,
                     model=model,
                     model_settings=_deepseek_model_settings(),
-                    instructions=instructions,
-                    input_text=input_text,
-                    output_type=output_type,
-                    stage=stage,
                     structured_output=False,
                     tracing_disabled=True,
-                    component_id=component_id,
-                    schema_id=schema_id,
-                    deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
                 )
-
-            runner = _brief_to_draft_runner(request.prompt_version)
-            return cast(
-                GenerationResult,
-                await runner(request, call_component=call_component),
-            )
-        if request.prompt_version == "brief-to-draft-v7":
-            return await _run_partitioned_generation(
+            return await _run_agent(
                 request,
                 model=model,
                 model_settings=_deepseek_model_settings(),
                 structured_output=False,
                 tracing_disabled=True,
             )
-        return await _run_agent(
-            request,
-            model=model,
-            model_settings=_deepseek_model_settings(),
-            structured_output=False,
-            tracing_disabled=True,
-        )
+        finally:
+            if client is not None:
+                await client.close()
 
     async def _run_auxiliary(
         self,
@@ -1826,26 +1839,31 @@ class DeepSeekAgentsProvider:
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
-        return await _run_auxiliary_agent(
-            request,
-            model=model,
-            model_settings=_deepseek_model_settings(),
-            instructions=instructions,
-            input_text=input_text,
-            output_type=output_type,
-            stage=stage,
-            structured_output=False,
-            tracing_disabled=True,
-            component_id=component_id,
-            schema_id=schema_id,
-            deepseek_output_protocol=(
-                deepseek_output_protocol
-                or _deepseek_v8_output_protocol(request.model_id)
-            ),
-            tools=tools,
-            context=context,
-            max_turns=max_turns,
-        )
+        client = _model_client(model)
+        try:
+            return await _run_auxiliary_agent(
+                request,
+                model=model,
+                model_settings=_deepseek_model_settings(),
+                instructions=instructions,
+                input_text=input_text,
+                output_type=output_type,
+                stage=stage,
+                structured_output=False,
+                tracing_disabled=True,
+                component_id=component_id,
+                schema_id=schema_id,
+                deepseek_output_protocol=(
+                    deepseek_output_protocol
+                    or _deepseek_v8_output_protocol(request.model_id)
+                ),
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+            )
+        finally:
+            if client is not None:
+                await client.close()
 
     def create_model(
         self,
@@ -3246,6 +3264,13 @@ def _validate_generated_descriptions(candidate: dict[str, Any]) -> None:
                 )
     if issues:
         raise ContractValidationError(issues)
+
+
+def _model_client(model: OpenAIChatCompletionsModel) -> AsyncOpenAI | None:
+    """Return the underlying async client owned by an Agents SDK model."""
+
+    client = getattr(model, "_client", None)
+    return cast(AsyncOpenAI | None, client)
 
 
 def _deepseek_model_settings() -> ModelSettings:
