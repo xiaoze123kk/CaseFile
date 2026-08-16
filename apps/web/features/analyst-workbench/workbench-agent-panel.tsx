@@ -2,31 +2,9 @@ import { useEffect, useRef, useState } from "react";
 
 import type { WorkbenchSeed } from "./analyst-fixture";
 import styles from "./analyst-workbench.module.css";
+import { agentPromptPresets } from "./workbench-agent-presets";
 import { WorkbenchIcon } from "./workbench-icon";
 import { reasoningOutcomeLabels } from "./workbench-presenters";
-
-const agentPromptPresets = [
-  {
-    id: "inspect",
-    label: "全卷宗体检",
-    prompt: "对整个卷宗做一次体检，列出待处理问题与推理收束情况。",
-  },
-  {
-    id: "evidence",
-    label: "证据链摘要",
-    prompt: "汇总当前证据链，说明每份关键证据支撑了哪些推理。",
-  },
-  {
-    id: "compare",
-    label: "候选解释对比",
-    prompt: "对比各推理路径的收束状态，指出仍存在竞争的解释。",
-  },
-  {
-    id: "gate",
-    label: "导出前检查",
-    prompt: "按发布门禁检查导出就绪度。",
-  },
-] as const;
 
 interface AgentMessage {
   id: string;

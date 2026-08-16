@@ -119,6 +119,21 @@ def agent_message_view(
             if task is None or not isinstance(task.result_jsonb, dict)
             else list(task.result_jsonb.get("referenced_object_ids", []))
         ),
+        "referenced_event_ids": (
+            []
+            if task is None or not isinstance(task.result_jsonb, dict)
+            else list(task.result_jsonb.get("referenced_event_ids", []))
+        ),
+        "referenced_validation_issue_ids": (
+            []
+            if task is None or not isinstance(task.result_jsonb, dict)
+            else list(task.result_jsonb.get("referenced_validation_issue_ids", []))
+        ),
+        "suggested_view": (
+            None
+            if task is None or not isinstance(task.result_jsonb, dict)
+            else task.result_jsonb.get("suggested_view")
+        ),
         "patch_set": patch_set,
         "created_at": time_view(message.created_at),
         "updated_at": time_view(message.updated_at),

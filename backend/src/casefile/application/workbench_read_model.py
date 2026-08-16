@@ -56,6 +56,22 @@ class WorkbenchReadModel:
                 "audit_entries": self._audit_entries(owned),
             }
 
+    def validation_issue_ids(self, owned: OwnedDraft) -> frozenset[str]:
+        """Return the current validation issue ids for Agent focus pruning."""
+
+        validation = self.validation_snapshot(owned)
+        return frozenset(
+            str(item["issue_id"])
+            for item in validation.get("issues", [])
+            if isinstance(item, dict) and item.get("issue_id")
+        )
+
+    def validation_snapshot(self, owned: OwnedDraft) -> dict[str, Any]:
+        """Return the public validation view without the rest of the read model."""
+
+        _, validation = self._validation(owned)
+        return validation
+
     def _validation(self, owned: OwnedDraft) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         if owned.draft.brief_version_id is None:
             return None, {

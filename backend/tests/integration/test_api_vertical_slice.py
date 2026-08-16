@@ -44,7 +44,7 @@ PROFILE: dict[str, object] = {}
 
 class ApiChatProvider(FakeProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        assert request.prompt_version == "casefile-chat-v1"
+        assert request.prompt_version == "casefile-chat-v2"
         resolution = request.casefile["resolution_specs"][0]
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(
@@ -895,7 +895,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_draft_revision": 2,
-                "content": "请通读整个卷宗并给出一条可审阅建议。",
+                "content": "请通读整个卷宗并修改 resolution 说明，给出一条可审阅建议。",
                 "provider": "deepseek",
             },
         )
@@ -906,7 +906,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 text("SELECT prompt_version FROM task_runs WHERE id = :task_run_id"),
                 {"task_run_id": chat_task_id},
             )
-        assert stored_prompt_version == "casefile-chat-v1"
+        assert stored_prompt_version == "casefile-chat-v2"
         chat_worker = Worker(
             factory,
             config=WorkerConfig(worker_id="api-chat-worker"),
@@ -979,7 +979,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_draft_revision": 4,
-                "content": "再给一条建议，这次我会整批不采用。",
+                "content": "再修改一条字段建议，这次我会整批不采用。",
             },
         )
         assert rejected_chat.status_code == 202

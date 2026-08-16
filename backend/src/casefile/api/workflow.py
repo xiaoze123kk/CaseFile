@@ -15,6 +15,7 @@ from casefile.api.schemas import (
     AgentMessageCreateRequest,
     AgentPatchApplyRequest,
     AgentPatchUndoRequest,
+    AgentRoutingFeedbackRequest,
     AgentThreadCreateRequest,
     AgentThreadUpdateRequest,
     BriefAnchorExtractTaskRequest,
@@ -211,6 +212,38 @@ def workflow_router() -> APIRouter:
             expected_draft_revision=payload.expected_draft_revision,
             content=payload.content,
             provider=payload.provider,
+            focus=(
+                None
+                if payload.focus is None
+                else payload.focus.model_dump()
+            ),
+            routing_hint=(
+                None
+                if payload.routing_hint is None
+                else payload.routing_hint.model_dump()
+            ),
+        )
+
+    @router.post(
+        "/projects/{project_id}/agent/threads/{thread_id}/messages/{message_id}"
+        "/routing-feedback",
+        status_code=201,
+    )
+    def submit_agent_routing_feedback(
+        project_id: int,
+        thread_id: int,
+        message_id: int,
+        payload: AgentRoutingFeedbackRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).submit_agent_routing_feedback(
+            actor,
+            project_id,
+            thread_id,
+            message_id,
+            correct_intent=payload.correct_intent,
+            note=payload.note,
         )
 
     @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply")

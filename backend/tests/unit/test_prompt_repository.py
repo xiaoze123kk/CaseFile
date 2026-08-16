@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     V8_GENERATION_AGENT_VERSION,
@@ -39,7 +38,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
     "brief_to_draft": "brief-to-draft-v15",
-    "casefile_chat": "casefile-chat-v1",
+    "casefile_chat": "casefile-chat-v2",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v3",
 }
@@ -173,7 +172,19 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
     },
     ("casefile_chat", "casefile-chat-v1"): {
-        "system": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388"
+        "system": "7aa26994abd7ba7b7178b32e8d24140ed35fcf04c6944f41695f84e5b56020e3"
+    },
+    ("casefile_chat", "casefile-chat-v2"): {
+        "fragment:shared": "e128cfd443879ff26c2af3ea6f732d0b86e930267bcf0578d44f95a801b89d95",  # noqa: E501
+        "fragment:router": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "7e182c6ee59da7dcbd21a01baab00758f22cba5060bf4863ae0bfd63b2b066a8",  # noqa: E501
+        "fragment:executor-analysis": "319ba419d64f08714c71f122d7bde4077ad8f68dd2089ec75efcf74079d72ef5",  # noqa: E501
+        "fragment:executor-issue": "85d6e264fa23994f1d66e4228be71c0eabfe55a148392b90d42a54b56a561071",  # noqa: E501
+        "fragment:executor-edit": "2b02079feef132cd4916a3922c4f0f01c0fd27beaea05cbf779db2bb46338fee",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
     ("reverse_parse", "reverse-parse-v1"): {
         "system": "d2eaa75d1f9fabde23a0c48318abcc5542fdff1dd110bd60ffe6363878604299"
@@ -334,8 +345,53 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "它永远只是 proposed" in v15.component_prompts["governance"]
     assert "`recommended_strategy`" in prompts["brief_strategy_options"]
     assert "不得生成完整 CaseFile" in prompts["brief_strategy_options"]
-    assert "`editable_fields_by_collection`" in prompts["casefile_chat"]
-    assert "未列入能力白名单" in prompts["casefile_chat"]
+    legacy_chat = load_prompt("casefile_chat", "casefile-chat-v1")
+    assert "`editable_fields_by_collection`" in legacy_chat.system_prompt
+    assert "未列入能力白名单" in legacy_chat.system_prompt
+    assert "工作台预设指令规则" in legacy_chat.system_prompt
+    assert "全卷宗体检" in legacy_chat.system_prompt
+    assert "门禁结论必须逐字遵从 `validation` 快照" in legacy_chat.system_prompt
+    assert "不得声称与工作台编译中心不同的结论" in legacy_chat.system_prompt
+    v2_chat = load_prompt("casefile_chat", "casefile-chat-v2")
+    assert v2_chat.package is not None
+    assert set(v2_chat.package.components) == {
+        "router",
+        "rewrite",
+        "chat",
+        "analysis",
+        "issue",
+        "edit",
+        "gate",
+        "clarify",
+        "scope",
+    }
+    assert v2_chat.package.runtime_agent_version == AGENT_VERSION
+    assert (
+        v2_chat.package.components["router"].output_schema_id
+        == "casefile-chat-task-understanding-v1"
+    )
+    assert (
+        v2_chat.package.components["rewrite"].output_schema_id
+        == "casefile-chat-rewrite-v1"
+    )
+    assert all(
+        component.output_schema_id == "casefile-chat-output-v1"
+        for component_id, component in v2_chat.package.components.items()
+        if component_id not in {"router", "rewrite"}
+    )
+    assert "危险混淆优先级" in v2_chat.component_prompts["router"]
+    assert "`original_query` 永远权威" in v2_chat.component_prompts["rewrite"]
+    assert "门禁结论必须逐字遵从" in v2_chat.component_prompts["gate"]
+    assert "不得对不可执行动作" in v2_chat.component_prompts["scope"]
+    assert v2_chat.package.components["chat"].tool_policy_id == "chat-read-v1"
+    assert v2_chat.package.components["analysis"].tool_policy_id == "chat-read-v1"
+    assert v2_chat.package.components["issue"].tool_policy_id == "chat-issue-v1"
+    assert v2_chat.package.components["edit"].tool_policy_id == "chat-edit-v1"
+    assert (
+        v2_chat.package.components["gate"].tool_policy_id == "no-tools-v1"
+    )
+    assert "只能调用系统明确给出的工具" in v2_chat.component_prompts["analysis"]
+    assert "`validate_patch_proposal`" in v2_chat.component_prompts["edit"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:

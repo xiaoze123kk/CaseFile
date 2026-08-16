@@ -8,6 +8,15 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import rfc8785
+from casefile_contracts import (
+    Brief as BriefContract,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -33,15 +42,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
-from casefile_contracts import (
-    Brief as BriefContract,
-)
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
@@ -59,6 +59,23 @@ class BriefIntakeService:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
             intake = self._ensure_intake(owned)
+            return self._view(owned, intake)
+
+    def begin_revision(
+        self, actor_user_id: int, project_id: int
+    ) -> dict[str, Any]:
+        """Reopen a frozen intake for a new brief revision cycle.
+
+        The formal brief version stays immutable in history; the current
+        pointer is detached again when the author adopts a revised candidate.
+        """
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            intake = self._ensure_intake(owned, lock=True)
+            if intake.stage == "brief_review":
+                intake.stage = "confirmation"
+                intake.revision += 1
+                self.session.flush()
             return self._view(owned, intake)
 
     def update_source(
@@ -342,12 +359,7 @@ class BriefIntakeService:
                         "received_revision": expected_brief_revision,
                     },
                 )
-            if brief.current_version_id is not None:
-                raise ApplicationError(
-                    "brief_intake_formal_version_exists",
-                    "已确认的创作简报版本已经存在，请进入正式审阅继续操作。",
-                    status_code=409,
-                )
+            starting_revision = brief.current_version_id is not None
 
             source = self._require_source(intake)
             projected = project_candidate_to_brief(
@@ -357,6 +369,9 @@ class BriefIntakeService:
             if brief.draft_jsonb != projected:
                 brief.draft_jsonb = projected
                 brief.draft_revision += 1
+            if starting_revision:
+                # 简报修订重新采用：旧版本保留在 BriefVersion 历史中，
+                # 当前指针解除，下一次确认冻结会生成新的版本号。
                 brief.current_version_id = None
             intake.current_candidate_id = candidate.id
             intake.adopted_candidate_id = candidate.id
@@ -517,6 +532,14 @@ class BriefIntakeService:
                     question.question_key for question in existing_questions
                 }
                 is_additional = task.input_jsonb.get("mode") == "additional"
+                if is_additional:
+                    # 追加模式允许模型返回空集；即使模型违反 Prompt，也必须
+                    # 把与已有问题（尤其是已回答问题）重复的问题在写入前过滤，
+                    # 保证页面永远不会再次出现同一条问题。
+                    normalized = deduplicate_additional_questions(
+                        existing_questions,
+                        normalized,
+                    )
                 for question in normalized:
                     if is_additional:
                         question["required"] = False
@@ -1114,6 +1137,35 @@ class BriefIntakeService:
         return owned
 
 
+def deduplicate_additional_questions(
+    existing_questions: list[BriefIntakeQuestion],
+    questions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Drop additional questions that repeat an existing question prompt.
+
+    Prompts are compared after removing punctuation and whitespace so minor
+    wording or punctuation drift from a provider is still caught.
+    """
+    seen = {
+        _question_prompt_fingerprint(question.prompt)
+        for question in existing_questions
+    }
+    kept: list[dict[str, Any]] = []
+    for question in questions:
+        fingerprint = _question_prompt_fingerprint(question["prompt"])
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        kept.append(question)
+    for ordinal, question in enumerate(kept, start=1):
+        question["ordinal"] = ordinal
+    return kept
+
+
+def _question_prompt_fingerprint(prompt: str) -> str:
+    return "".join(char.casefold() for char in prompt if char.isalnum())
+
+
 def validate_question_set(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     try:
         model = BriefIntakeQuestionSetContract.model_validate({"questions": questions})
@@ -1348,6 +1400,7 @@ def _time(value: datetime | None) -> str | None:
 
 __all__ = [
     "BriefIntakeService",
+    "deduplicate_additional_questions",
     "project_candidate_to_brief",
     "validate_candidate_content",
     "validate_question_set",

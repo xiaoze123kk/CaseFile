@@ -48,6 +48,55 @@ def frozen_object_ids(casefile: dict[str, Any]) -> set[str]:
     return result
 
 
+def freeze_agent_focus(
+    casefile: dict[str, Any],
+    focus: dict[str, Any] | None,
+    known_validation_issue_ids: set[str] | frozenset[str] | None = None,
+) -> dict[str, Any]:
+    """Freeze the workbench selection sent with a message, pruning dangling refs.
+
+    The trimmed references are kept in the returned ``pruned`` section so the
+    frozen TaskRun input records both what survived and what was dropped.
+    """
+
+    if not isinstance(focus, dict):
+        focus = {}
+    object_ids = unique_strings([str(value) for value in focus.get("object_ids", []) or []])[:50]
+    event_ids = unique_strings([str(value) for value in focus.get("event_ids", []) or []])[:50]
+    validation_issue_ids = unique_strings(
+        [str(value) for value in focus.get("validation_issue_ids", []) or []]
+    )[:50]
+    view = str(focus.get("view") or "").strip()[:64] or None
+
+    known_object_ids = frozen_object_ids(casefile)
+    known_event_ids = {
+        str(value["id"])
+        for value in casefile.get("events", [])
+        if isinstance(value, dict) and isinstance(value.get("id"), str)
+    }
+    kept_object_ids = [value for value in object_ids if value in known_object_ids]
+    kept_event_ids = [value for value in event_ids if value in known_event_ids]
+    kept_issue_ids = (
+        validation_issue_ids
+        if known_validation_issue_ids is None
+        else [value for value in validation_issue_ids if value in known_validation_issue_ids]
+    )
+
+    return {
+        "object_ids": kept_object_ids,
+        "event_ids": kept_event_ids,
+        "validation_issue_ids": kept_issue_ids,
+        "view": view,
+        "pruned": {
+            "object_ids": [value for value in object_ids if value not in kept_object_ids],
+            "event_ids": [value for value in event_ids if value not in kept_event_ids],
+            "validation_issue_ids": [
+                value for value in validation_issue_ids if value not in kept_issue_ids
+            ],
+        },
+    }
+
+
 def find_frozen_object(casefile: dict[str, Any], object_id: str) -> dict[str, Any]:
     for collection in CASEFILE_OBJECT_COLLECTIONS:
         values = casefile.get(collection, [])
@@ -57,6 +106,28 @@ def find_frozen_object(casefile: dict[str, Any], object_id: str) -> dict[str, An
             if isinstance(value, dict) and value.get("id") == object_id:
                 return value
     raise RuntimeError(f"Frozen CaseFile object is missing: {object_id}")
+
+
+def focused_patch_target_ids(focus: dict[str, Any] | None) -> set[str] | None:
+    """Return the allowed suggestion targets when a validation issue is focused.
+
+    ``None`` means the message had no issue focus, so no extra restriction
+    applies. A non-``None`` empty set means the focus contained an issue but no
+    bound workbench object survived pruning; suggestions are then forbidden.
+    """
+
+    if not isinstance(focus, dict):
+        return None
+    issue_ids = focus.get("validation_issue_ids", []) or []
+    if not issue_ids:
+        return None
+    result: set[str] = set()
+    for key in ("object_ids", "event_ids"):
+        values = focus.get(key, []) or []
+        for value in values:
+            if isinstance(value, str) and value:
+                result.add(value)
+    return result
 
 
 def pointer_top_field(path: str) -> str:
@@ -156,6 +227,7 @@ def _paths_overlap(path: str, locked_path: str) -> bool:
 __all__ = [
     "auto_thread_title",
     "find_frozen_object",
+    "focused_patch_target_ids",
     "frozen_object_ids",
     "frozen_pointer_value",
     "nonblocking_validator_issues",

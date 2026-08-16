@@ -8,7 +8,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as generation_workflow
 from casefile.agent_runtime.brief_to_draft_v8.ir import DraftContextPackV1

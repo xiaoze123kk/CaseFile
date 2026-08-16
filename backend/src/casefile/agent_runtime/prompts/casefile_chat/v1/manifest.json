@@ -2,7 +2,7 @@
   "agent_id": "casefile_chat",
   "version": "casefile-chat-v1",
   "system_prompt_file": "system.md",
-  "system_prompt_sha256": "e11bd0ef758b0aed876712967c1a5c3fbd93b366f30b63d2113de033598d5388",
+  "system_prompt_sha256": "7aa26994abd7ba7b7178b32e8d24140ed35fcf04c6944f41695f84e5b56020e3",
   "previous_version": null,
   "change_summary": "首次发布前中文基线：强化指令隔离、精确引用和动态可编辑字段能力约束。"
 }

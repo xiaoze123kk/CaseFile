@@ -1,0 +1,109 @@
+{
+  "schema_version": 2,
+  "agent_id": "casefile_chat",
+  "version": "casefile-chat-v2",
+  "previous_version": "casefile-chat-v1",
+  "change_summary": "LLM 意图路由 + 置信度闸门 + 路由策略 Prompt Package；router/rewrite 与 executor 组件同版本治理。",
+  "runtime": {
+    "agent_version": "casefile-single-agent-v2",
+    "toolset_version": "casefile-generation-tools-v2"
+  },
+  "fragments": {
+    "shared": {
+      "file": "shared.md",
+      "sha256": "e128cfd443879ff26c2af3ea6f732d0b86e930267bcf0578d44f95a801b89d95"
+    },
+    "router": {
+      "file": "router.md",
+      "sha256": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1"
+    },
+    "rewrite": {
+      "file": "rewrite.md",
+      "sha256": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201"
+    },
+    "executor-chat": {
+      "file": "executor-chat.md",
+      "sha256": "7e182c6ee59da7dcbd21a01baab00758f22cba5060bf4863ae0bfd63b2b066a8"
+    },
+    "executor-analysis": {
+      "file": "executor-analysis.md",
+      "sha256": "319ba419d64f08714c71f122d7bde4077ad8f68dd2089ec75efcf74079d72ef5"
+    },
+    "executor-issue": {
+      "file": "executor-issue.md",
+      "sha256": "85d6e264fa23994f1d66e4228be71c0eabfe55a148392b90d42a54b56a561071"
+    },
+    "executor-edit": {
+      "file": "executor-edit.md",
+      "sha256": "2b02079feef132cd4916a3922c4f0f01c0fd27beaea05cbf779db2bb46338fee"
+    },
+    "executor-gate": {
+      "file": "executor-gate.md",
+      "sha256": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df"
+    },
+    "executor-clarify": {
+      "file": "executor-clarify.md",
+      "sha256": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a"
+    },
+    "executor-scope": {
+      "file": "executor-scope.md",
+      "sha256": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2"
+    }
+  },
+  "components": {
+    "router": {
+      "instruction_fragments": ["router"],
+      "input_contract_id": "casefile-chat-intent-input-v1",
+      "output_schema_id": "casefile-chat-task-understanding-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "rewrite": {
+      "instruction_fragments": ["rewrite"],
+      "input_contract_id": "casefile-chat-rewrite-input-v1",
+      "output_schema_id": "casefile-chat-rewrite-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "chat": {
+      "instruction_fragments": ["shared", "executor-chat"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-read-v1"
+    },
+    "analysis": {
+      "instruction_fragments": ["shared", "executor-analysis"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-read-v1"
+    },
+    "issue": {
+      "instruction_fragments": ["shared", "executor-issue"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-issue-v1"
+    },
+    "edit": {
+      "instruction_fragments": ["shared", "executor-edit"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-edit-v1"
+    },
+    "gate": {
+      "instruction_fragments": ["shared", "executor-gate"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "clarify": {
+      "instruction_fragments": ["shared", "executor-clarify"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "scope": {
+      "instruction_fragments": ["shared", "executor-scope"],
+      "input_contract_id": "casefile-chat-prompt-input-v1",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    }
+  }
+}

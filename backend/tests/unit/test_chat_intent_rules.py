@@ -1,0 +1,180 @@
+"""Rule intent resolution and routing-hint HTTP contract tests."""
+
+from __future__ import annotations
+
+import pytest
+from casefile.agent_runtime.chat_intent import (
+    ALLOWED_PRESET_IDS,
+    PRESET_ROUTE_TABLE,
+    normalize_routing_hint,
+    resolve_rule_route,
+    task_understanding_for_rule,
+)
+from casefile.agent_runtime.models import CaseFileChatRequest
+from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
+from pydantic import ValidationError
+
+
+def make_chat_request(
+    *,
+    hint: dict | None = None,
+    focus: dict | None = None,
+) -> CaseFileChatRequest:
+    return CaseFileChatRequest(
+        task_run_id=1,
+        prompt_version="casefile-chat-v1",
+        casefile={},
+        history=(),
+        message="检查卷宗。",
+        editable_fields_by_collection={},
+        input_hash="a" * 64,
+        model_id="fake",
+        api_key=None,
+        max_turns=6,
+        emit=lambda _event_type, _stage, _payload: None,
+        focus=focus or {},
+        routing_hint=hint or {},
+    )
+
+
+@pytest.mark.parametrize(
+    ("preset_id", "primary_intent", "profile"),
+    [
+        ("inspect", "analysis", "analysis.healthcheck"),
+        ("evidence", "analysis", "analysis.evidence_summary"),
+        ("compare", "analysis", "analysis.comparison"),
+        ("gate", "validate_request", "validate_request.gate_check"),
+    ],
+)
+def test_preset_hints_resolve_to_the_frozen_rule_table(
+    preset_id: str,
+    primary_intent: str,
+    profile: str,
+) -> None:
+    rule = resolve_rule_route(
+        make_chat_request(hint={"entrypoint": "preset", "preset_id": preset_id})
+    )
+
+    assert rule is not None
+    assert rule.route_source == "rule_preset"
+    assert rule.primary_intent == primary_intent
+    assert rule.profile == profile
+    assert rule.reason_code == f"rule_preset:{preset_id}"
+    assert PRESET_ROUTE_TABLE[preset_id]["profile"] == profile
+
+
+def test_issue_action_resolves_only_when_the_focus_has_validation_issue_ids() -> None:
+    rule = resolve_rule_route(
+        make_chat_request(
+            hint={"entrypoint": "issue_action"},
+            focus={
+                "object_ids": ["object:person_1"],
+                "event_ids": ["event:known"],
+                "validation_issue_ids": ["validator:issue-1"],
+            },
+        )
+    )
+
+    assert rule is not None
+    assert rule.route_source == "rule_ui"
+    assert rule.primary_intent == "explain_issue"
+    assert rule.profile == "explain_issue.issue_fix"
+    assert task_understanding_for_rule(rule).confidence == 1.0
+
+
+def test_issue_action_without_validation_issue_focus_does_not_hit_a_rule() -> None:
+    assert (
+        resolve_rule_route(
+            make_chat_request(
+                hint={"entrypoint": "issue_action"},
+                focus={"validation_issue_ids": []},
+            )
+        )
+        is None
+    )
+
+
+def test_no_hint_returns_none_for_the_legacy_path() -> None:
+    assert resolve_rule_route(make_chat_request(hint={})) is None
+
+
+def test_unknown_preset_normalizes_to_free_text_and_does_not_hit_rules() -> None:
+    normalized = normalize_routing_hint(
+        {"entrypoint": "preset", "preset_id": "unknown_preset"}
+    )
+
+    assert normalized == {"entrypoint": "free_text", "preset_id": None}
+    assert resolve_rule_route(make_chat_request(hint=normalized)) is None
+
+
+def test_normalize_routing_hint_rejects_non_preset_preset_id() -> None:
+    assert normalize_routing_hint(
+        {"entrypoint": "free_text", "preset_id": "inspect"}
+    ) == {"entrypoint": "free_text", "preset_id": None}
+    assert normalize_routing_hint(
+        {"entrypoint": "issue_action", "preset_id": "gate"}
+    ) == {"entrypoint": "issue_action", "preset_id": None}
+
+
+def test_normalize_routing_hint_handles_garbage_as_empty() -> None:
+    assert normalize_routing_hint(None) == {}
+    assert normalize_routing_hint("preset") == {}  # type: ignore[arg-type]
+    assert normalize_routing_hint({"entrypoint": "unknown"}) == {
+        "entrypoint": "free_text",
+        "preset_id": None,
+    }
+
+
+def test_rule_task_understanding_marks_gate_as_read_only() -> None:
+    gate_rule = resolve_rule_route(
+        make_chat_request(hint={"entrypoint": "preset", "preset_id": "gate"})
+    )
+    assert gate_rule is not None
+    understanding = task_understanding_for_rule(gate_rule)
+
+    assert understanding.primary_intent == "validate_request"
+    assert understanding.capabilities["needs_validation_snapshot"] is True
+    assert understanding.capabilities["needs_suggestion_generation"] is False
+
+
+def test_preset_hint_schema_requires_preset_id() -> None:
+    with pytest.raises(ValidationError):
+        AgentChatRoutingHint.model_validate({"entrypoint": "preset"})
+    with pytest.raises(ValidationError):
+        AgentChatRoutingHint.model_validate({"entrypoint": "preset", "preset_id": " "})
+
+
+def test_non_preset_hint_schema_rejects_preset_id() -> None:
+    with pytest.raises(ValidationError):
+        AgentChatRoutingHint.model_validate(
+            {"entrypoint": "free_text", "preset_id": "inspect"}
+        )
+
+
+def test_agent_message_request_accepts_all_hint_shapes_and_omits_old_field() -> None:
+    for hint in (
+        {"entrypoint": "free_text"},
+        {"entrypoint": "preset", "preset_id": "inspect"},
+        {"entrypoint": "issue_action"},
+    ):
+        request = AgentMessageCreateRequest.model_validate(
+            {
+                "expected_draft_id": 1,
+                "expected_draft_revision": 1,
+                "content": "检查卷宗。",
+                "routing_hint": hint,
+            }
+        )
+        assert request.routing_hint is not None
+    legacy = AgentMessageCreateRequest.model_validate(
+        {
+            "expected_draft_id": 1,
+            "expected_draft_revision": 1,
+            "content": "旧客户端消息。",
+        }
+    )
+    assert legacy.routing_hint is None
+
+
+def test_allowed_preset_ids_match_rule_table() -> None:
+    assert ALLOWED_PRESET_IDS == frozenset(PRESET_ROUTE_TABLE)

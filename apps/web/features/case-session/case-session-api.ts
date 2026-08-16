@@ -164,6 +164,13 @@ export async function fetchCaseIntake(projectId: number) {
   );
 }
 
+export async function beginBriefRevision(projectId: number) {
+  return apiRequest<BriefIntakeView>(
+    `/projects/${projectId}/brief-intake/revision`,
+    { actorId: LOCAL_ACTOR_ID, method: "POST" },
+  );
+}
+
 export async function persistCaseSource(
   projectId: number,
   intakeRevision: number,

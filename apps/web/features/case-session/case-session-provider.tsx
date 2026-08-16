@@ -41,6 +41,7 @@ import {
   adoptBriefCandidate,
   adoptDraftCandidateWithReconciliation,
   answerQuestion,
+  beginBriefRevision as beginBriefRevisionRequest,
   cancelTask,
   confirmBrief,
   createBriefCandidate,
@@ -467,7 +468,7 @@ interface CaseSessionContextValue {
   selectStrategy: (strategy: CandidateSlotStrategy) => void;
   previewCandidate: (candidateId: string | null) => void;
   adoptCandidate: (candidateId: string) => Promise<number | false>;
-  beginBriefRevision: () => void;
+  beginBriefRevision: () => Promise<void>;
   candidateStatus: (
     candidate: SessionWorkbenchCandidate,
   ) => WorkbenchCandidateStatus;
@@ -655,9 +656,50 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const persistCurrentAnswers = useCallback(async () => {
+    const current = stateRef.current;
+    return startWithFreshIntakeRevision(async () => {
+      const projectId = projectIdRef.current;
+      if (projectId === null || !intakeRef.current) {
+        throw new CaseSessionError("当前会话尚未建案。");
+      }
+      let intake = intakeRef.current;
+      for (const question of intake.questions) {
+        const answer = current.answers[question.question_key];
+        if (!answer) continue;
+        let input: QuestionAnswerInput;
+        if (answer.pending) {
+          input = { mode: "pending" };
+        } else if (answer.source === "agent_suggestion") {
+          const suggestionIndex = question.suggestions.indexOf(answer.text);
+          input =
+            suggestionIndex >= 0
+              ? { mode: "suggestion", suggestionIndex }
+              : { mode: "answer", text: answer.text };
+        } else {
+          input = { mode: "answer", text: answer.text };
+        }
+        intake = await answerQuestion(
+          projectId,
+          intake.revision,
+          question.question_key,
+          input,
+        );
+      }
+      intakeRef.current = intake;
+      return intake;
+    });
+  }, [startWithFreshIntakeRevision]);
+
   const requestQuestions = useCallback(async (forceGeneration: boolean) => {
     const current = stateRef.current;
     let intake = await ensureProjectAndSource(current.sourceText);
+    const hadExistingQuestions = intake.questions.length > 0;
+    if (forceGeneration) {
+      // “再生成一些问题”必须先把页面上尚未落库的回答写入服务端：
+      // 追加任务要带着已有问答去避开重复，完成后的服务端映射也不会清空本地回答。
+      intake = await persistCurrentAnswers();
+    }
     if (forceGeneration || intake.questions.length === 0) {
       await runTaskWithProviderFallback(async (provider) => {
         const task = await startWithFreshIntakeRevision((revision) =>
@@ -673,16 +715,24 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
       intakeRef.current = intake;
     }
     const mapped = mapIntakeToSessionState(intake);
+    const preservedAnswers = { ...mapped.answers };
+    for (const question of mapped.questions) {
+      const localAnswer = current.answers[question.key];
+      if (localAnswer) preservedAnswers[question.key] = localAnswer;
+    }
     dispatch({
       type: "patch",
       patch: {
         step: "questions",
         furthestStep: Math.max(current.furthestStep, 1),
         questions: mapped.questions,
-        answers: mapped.answers,
+        answers:
+          forceGeneration || !hadExistingQuestions
+            ? mapped.answers
+            : preservedAnswers,
       },
     });
-  }, [ensureProjectAndSource, startWithFreshIntakeRevision]);
+  }, [ensureProjectAndSource, persistCurrentAnswers, startWithFreshIntakeRevision]);
 
   const continueToQuestions = useCallback(
     () => requestQuestions(false),
@@ -1529,7 +1579,15 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
     return outcome.adoption?.draft_id ?? outcome.facts?.draft.draft_id ?? false;
   }, []);
 
-  const beginBriefRevision = useCallback(() => {
+  const beginBriefRevision = useCallback(async () => {
+    const projectId = projectIdRef.current;
+    if (projectId === null) {
+      throw new CaseSessionError("当前会话尚未建案。");
+    }
+    // 先持久化“建立简报修订”：服务端把 Intake 从 brief_review 重开为
+    // confirmation，后续第 3 步的保存/采用请求才会被状态机接受。
+    const intake = await beginBriefRevisionRequest(projectId);
+    intakeRef.current = intake;
     dispatch({ type: "begin_revision" });
   }, []);
 

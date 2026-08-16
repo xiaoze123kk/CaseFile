@@ -6,14 +6,13 @@ import json
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator, ValidationError
-
 from casefile_contracts import (
     Brief,
     BriefIntakeCandidate,
     BriefIntakeQuestionSet,
     TaskRun,
 )
+from jsonschema import Draft202012Validator, ValidationError
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[3]

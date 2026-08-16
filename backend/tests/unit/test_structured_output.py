@@ -7,13 +7,11 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
+import casefile.agent_runtime.providers as providers_module
+import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
-
-import casefile.agent_runtime.providers as providers_module
-import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
@@ -33,6 +31,7 @@ from casefile.agent_runtime.structured_output import (
     validate_model_json,
 )
 from casefile.contracts import ContractValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class _StrictSchemaFixture(BaseModel):
@@ -320,7 +319,11 @@ def test_deepseek_strict_call_uses_beta_forced_tool_and_validates_arguments(
     class FakeClient:
         def __init__(self, **kwargs: Any) -> None:
             captured["client"] = kwargs
+            captured["closed"] = False
             self.chat = SimpleNamespace(completions=FakeCompletions())
+
+        async def close(self) -> None:
+            captured["closed"] = True
 
     monkeypatch.setattr(structured_module, "AsyncOpenAI", FakeClient)
     result = asyncio.run(
@@ -335,6 +338,7 @@ def test_deepseek_strict_call_uses_beta_forced_tool_and_validates_arguments(
     )
 
     assert captured["client"]["base_url"] == "https://api.deepseek.com/beta"
+    assert captured["closed"] is True
     request = captured["request"]
     assert request["tools"][0]["function"]["strict"] is True
     assert request["tool_choice"]["function"]["name"] == STRICT_OUTPUT_TOOL_NAME

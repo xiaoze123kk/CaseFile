@@ -8,9 +8,6 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, Field, model_validator
-
-from casefile.agent_runtime.models import StrictAgentOutput
 from casefile_contracts import (
     ClaimType,
     Classification,
@@ -31,6 +28,9 @@ from casefile_contracts import (
     ValueType,
     Visibility,
 )
+from pydantic import AwareDatetime, Field, model_validator
+
+from casefile.agent_runtime.models import StrictAgentOutput
 
 LocalKey = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,79}$")]
 JsonPointer = Annotated[str, Field(pattern=r"^(?:/(?:[^~/]|~[01])*)*$")]

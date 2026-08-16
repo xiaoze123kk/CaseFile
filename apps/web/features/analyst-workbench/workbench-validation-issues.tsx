@@ -32,6 +32,8 @@ interface ValidationIssuePanelProps {
   onRejectPatch: () => void;
   onResolveIssue: (action: "approve" | "exception") => void;
   onSelectObject: (objectId: string) => void;
+  onSendToAgent: (issueId: string) => void;
+  realData: boolean;
 }
 
 export function ValidationIssuePanel({
@@ -49,6 +51,8 @@ export function ValidationIssuePanel({
   onRejectPatch,
   onResolveIssue,
   onSelectObject,
+  onSendToAgent,
+  realData,
 }: ValidationIssuePanelProps) {
   const issue =
     seed.validationIssues.find((item) => item.id === issueId) ??
@@ -215,6 +219,10 @@ export function ValidationIssuePanel({
                 <button onClick={onRejectPatch} type="button">退回待处理</button>
                 <button onClick={() => onResolveIssue("approve")} type="button">批准并局部重算</button>
               </>
+            ) : realData ? (
+              <button onClick={() => onSendToAgent(issue.id)} type="button">
+                让 Agent 处理
+              </button>
             ) : (
               <>
                 <button onClick={onRequestPatch} type="button">请求 Agent 补丁</button>
