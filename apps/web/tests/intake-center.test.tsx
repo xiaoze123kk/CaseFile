@@ -38,7 +38,7 @@ function buildFakeBackend() {
     {
       question_key: "reasoning_goal",
       ordinal: 1,
-      prompt: "玩家最终必须回答哪一个问题？",
+      prompt: "作品最终要回答哪一个核心问题？",
       impact: "这个答案会决定线索如何组织，也会成为后续验证的核心命题。",
       required: true,
       suggestions: [
@@ -1470,7 +1470,7 @@ describe("intake center", () => {
     ).toBeInTheDocument();
     // 已回答的原问题只保留一份，追加批次不再产生同题卡片。
     expect(
-      screen.getAllByText("玩家最终必须回答哪一个问题？"),
+      screen.getAllByText("作品最终要回答哪一个核心问题？"),
     ).toHaveLength(1);
     expect(
       screen.getByText("还需要多少组相互矛盾的记录，才能支撑核心推理？"),
@@ -1491,7 +1491,7 @@ describe("intake center", () => {
       screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("玩家最终必须回答哪一个问题？"),
+      screen.getByText("作品最终要回答哪一个核心问题？"),
     ).toBeInTheDocument();
     // 必答问题未回答时仍应阻断成案；本测试验证 provider 回退与追问补充。
     expect(screen.getByRole("button", { name: /形成创作简报/u })).toBeDisabled();
@@ -1523,7 +1523,7 @@ describe("intake center", () => {
       screen.getByRole("heading", { name: "只问会改变方向的问题。" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("玩家最终必须回答哪一个问题？"),
+      screen.getByText("作品最终要回答哪一个核心问题？"),
     ).toBeInTheDocument();
     expect(
       screen.queryByText("Brief Intake revision is stale"),

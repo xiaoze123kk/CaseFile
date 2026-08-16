@@ -194,7 +194,7 @@ export const defaultQuestions: IntakeQuestion[] = [
   {
     key: "reasoning_goal",
     ordinal: 1,
-    prompt: "玩家最终必须回答哪一个问题？",
+    prompt: "作品最终要回答哪一个核心问题？",
     impact: "这个答案会决定线索如何组织，也会成为后续验证的核心命题。",
     required: true,
     suggestions: [
