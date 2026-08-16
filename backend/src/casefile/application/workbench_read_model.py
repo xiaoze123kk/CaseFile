@@ -13,7 +13,11 @@ from sqlalchemy.orm import Session
 from casefile.application.casefile_v1 import COLLECTION_TYPES
 from casefile.application.errors import not_found
 from casefile.application.snapshot import build_casefile_document
-from casefile.contracts import ContractValidationError, public_validation_issues
+from casefile.contracts import (
+    ContractValidationError,
+    public_validation_issues,
+    validate_casefile_semantics,
+)
 from casefile.data_postgres.models import (
     AuditEvent,
     BriefVersion,
@@ -78,12 +82,12 @@ class WorkbenchReadModel:
                 "issues": [],
                 "reason": "draft_has_no_confirmed_brief",
             }
+        object_index = self._validation_object_index(owned)
         try:
             document = build_casefile_document(self.session, owned)
         except ContractValidationError as error:
-            object_index = self._validation_object_index(owned)
             issues = [
-                _validation_issue(item, object_index)
+                _issue_view(item, object_index, "error")
                 for item in public_validation_issues(error.errors)
             ]
             return None, {
@@ -92,6 +96,20 @@ class WorkbenchReadModel:
                 "schema_version": owned.draft.schema_version,
                 "issue_count": len(issues),
                 "issues": issues,
+                "reason": None,
+            }
+        # 结构通过后，附加上只读的叙事语义检查（不阻断生成门禁）。
+        semantic_issues = [
+            _issue_view(item, object_index, item["severity"])
+            for item in validate_casefile_semantics(document)
+        ]
+        if semantic_issues:
+            return document, {
+                "status": "failed",
+                "validator": "casefile.contracts.validate_casefile",
+                "schema_version": str(document["schema_version"]),
+                "issue_count": len(semantic_issues),
+                "issues": semantic_issues,
                 "reason": None,
             }
         return document, {
@@ -200,9 +218,10 @@ class WorkbenchReadModel:
         return [entry for _occurred_at, entry in entries[:_AUDIT_LIMIT]]
 
 
-def _validation_issue(
-    issue: dict[str, str],
+def _issue_view(
+    issue: dict[str, Any],
     object_index: dict[tuple[str, int], dict[str, str]],
+    severity: str,
 ) -> dict[str, Any]:
     target = _validation_target(issue["path"], object_index)
     object_ref = target["object_ref"]
@@ -223,8 +242,12 @@ def _validation_issue(
         "code": issue["code"],
         "path": issue["path"],
         "message": issue["message"],
-        "severity": "error",
+        "severity": severity,
         "target": target,
+        "evidence_refs": issue.get("evidence_refs", []),
+        "impact_refs": issue.get("impact_refs", []),
+        "fix_hint": issue.get("fix_hint"),
+        "explanation": issue.get("explanation"),
     }
 
 

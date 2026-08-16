@@ -103,7 +103,59 @@ describe("analyst workbench", () => {
     expect(
       within(tablist).getByRole("tab", { name: /证据对比/ }),
     ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "第五人权限如何进入码头" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("tab", { name: "证据矩阵" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("renders the evidence comparison matrix with per-cell assessments", () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: /证据对比/ }));
+
+    expect(
+      screen.getByRole("button", { name: "假设：内部接应者" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "假设：外部入侵者" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "信息：07 号门禁记录" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "07 号门禁记录 对 内部接应者：支持 · 强",
+      }),
+    );
+
+    const detail = screen.getByRole("complementary", {
+      name: "证据判定依据",
+    });
+    expect(
+      within(detail).getByText(/门禁覆盖签名属于内部 R4 权限/),
+    ).toBeInTheDocument();
+    expect(within(detail).getByText(/支持 · 强/)).toBeInTheDocument();
+  });
+
+  it("switches the evidence view between the matrix and validation issues", () => {
+    renderWorkbench();
+    fireEvent.click(screen.getByRole("tab", { name: /证据对比/ }));
+
+    expect(
+      screen.getByRole("heading", { name: "第五人权限如何进入码头" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "验证问题" }));
     expect(screen.getByText("事件前已知")).toBeInTheDocument();
+    expect(screen.getByText("证据实际进入")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "证据矩阵" }));
+    expect(
+      screen.getByRole("heading", { name: "第五人权限如何进入码头" }),
+    ).toBeInTheDocument();
   });
 
   it("moves from an S0 issue to evidence comparison and explicit patch approval", () => {

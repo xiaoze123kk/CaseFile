@@ -35,6 +35,7 @@
 | 路径 | 职责 |
 |---|---|
 | `backend/src/casefile/contracts/` | 加载根目录 v1 Schema 的运行时镜像，执行结构、稳定 ID 引用和确定性语义校验。 |
+| `backend/src/casefile/contracts/semantic_validation.py` | 只读的确定性叙事语义检查：解析事件时间（exact/approximate/range/relative/unknown）并报告知识状态冲突（`knowledge_state_available_before_source`）与时间排他冲突（`temporal_exclusivity_violation`）；产出 severity/evidence_refs/impact_refs/fix_hint/explanation 富 issue，不进生成门禁。 |
 | `backend/src/casefile_contracts/` | 从根目录 Schema 生成、供后端运行时使用的 Pydantic 契约模型；禁止手改。 |
 | `backend/src/casefile/application/commands.py` | 与 HTTP 解耦的 Project、Entity 和 Event 类型化写入命令。 |
 | `backend/src/casefile/application/errors.py` | 应用层稳定错误码、公开消息和传输无关的错误详情。 |
@@ -47,7 +48,7 @@
 | `backend/src/casefile/application/workflow_views.py` | Workflow 实体、部件步骤与公开失败信息的稳定 HTTP 读模型序列化。 |
 | `backend/src/casefile/application/task_events.py` | 在调用方事务中追加单调序号的不可变 TaskEvent。 |
 | `backend/src/casefile/application/task_cancellation.py` | 统一 queued/running TaskRun 的取消终态、Attempt 收敛与 CaseFile Chat pending 消息失败回填。 |
-| `backend/src/casefile/application/workbench_read_model.py` | 按当前 Draft 只读汇总 CaseFile 确定性验证、冻结 Brief 所引用的 SourceRecord 正文与可追溯标识，以及 `audit_events`/`draft_operations` 审计事实。 |
+| `backend/src/casefile/application/workbench_read_model.py` | 按当前 Draft 只读汇总 CaseFile 结构验证与叙事语义验证（`validate_casefile_semantics`）、冻结 Brief 所引用的 SourceRecord 正文与可追溯标识，以及 `audit_events`/`draft_operations` 审计事实。 |
 | `backend/src/casefile/application/timeline.py` | 对 Current Draft 事件时间修改执行只读影响预览，报告事实顺序跨越、相对时间依赖和完整契约验证结果；不得写入 Draft。 |
 | `backend/src/casefile/application/exposure_plan.py` | 读取与修订 Current Draft 的单一线性 Exposure Plan，执行独立 revision 门禁、同 Draft 引用校验和审计；不得推进 Draft revision 或写入 Canon/Event.time。 |
 | `backend/src/casefile/application/a_path_metrics.py` | 只读地从 Brief-to-Draft `AgentModelCall`/`TaskAttempt`/`TaskRun` 分层用量、`TaskEvent` 与采用后的 `draft_operations` 推导 A 路径漏斗、完整重试用量和人工续编指标；同一 Attempt 只消费一个权威层级，不新增分析表。 |

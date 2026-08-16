@@ -1999,3 +1999,486 @@
   .reasoningCanvasCardQuestion { grid-column: 1 / -1; }
   .reasoningCanvasCardToggle { padding: 0 7px; }
 }
+
+/* 证据对比：子视图切换 + 证据 × 假设 矩阵 */
+.evidenceView {
+  display: flex;
+  min-width: 0;
+  min-height: 100%;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.evidenceTabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.evidenceTabs button {
+  min-height: 32px;
+  padding: 0 14px;
+  color: var(--ink-muted);
+  border: 0;
+  border-right: 1px solid var(--rule);
+  background: transparent;
+  font-size: 11px;
+}
+
+.evidenceTabs button:last-child { border-right: 0; }
+.evidenceTabs button[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: inset 0 -2px var(--primary);
+  font-weight: 650;
+}
+
+.evidenceView .evidenceCompare {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.evidenceMatrixView {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid rgba(41, 44, 44, 0.2);
+  background: rgba(251, 250, 246, 0.97);
+  box-shadow: 0 12px 28px rgba(46, 43, 38, 0.06);
+}
+
+.evidenceMatrixControls {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.evidenceGroupPicker {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.evidenceGroupPicker > span {
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.evidenceGroupPicker select {
+  max-width: 280px;
+  padding: 5px 8px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  font-size: 10px;
+}
+
+.evidenceMatrixNotice {
+  margin: 0;
+  padding: 10px 14px;
+  color: #946013;
+  border-bottom: 1px solid var(--rule);
+  background: rgba(217, 154, 62, 0.12);
+  font-size: 10px;
+}
+
+.evidenceMatrixEmpty {
+  display: grid;
+  flex: 1 1 auto;
+  place-content: center;
+  justify-items: center;
+  min-height: 160px;
+  gap: 8px;
+  padding: 24px;
+  color: var(--ink-muted);
+  text-align: center;
+}
+
+.evidenceMatrixEmpty strong {
+  color: var(--ink);
+  font-family: "Noto Serif SC", "STSong", SimSun, serif;
+  font-size: 16px;
+}
+
+.evidenceMatrixEmpty p {
+  max-width: 40ch;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.evidenceMatrixWrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.evidenceMatrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.evidenceMatrix th,
+.evidenceMatrix td {
+  padding: 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: stretch;
+}
+
+.evidenceMatrix thead th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.evidenceMatrix .evidenceMatrixCorner {
+  padding: 9px 12px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.evidenceMatrixHead,
+.evidenceMatrixRowHead {
+  display: flex;
+  width: 100%;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 9px 12px;
+  color: var(--ink);
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.evidenceMatrixHead:hover,
+.evidenceMatrixRowHead:hover { background: rgba(199, 139, 60, 0.06); }
+.evidenceMatrixHead strong,
+.evidenceMatrixRowHead strong { font-size: 11px; font-weight: 650; line-height: 1.4; }
+.evidenceMatrixHead small,
+.evidenceMatrixRowHead small { color: var(--ink-faint); font-size: 9px; }
+.evidenceMatrixHead[aria-pressed="true"],
+.evidenceMatrixRowHead[aria-pressed="true"] { box-shadow: inset 3px 0 var(--primary); }
+
+.evidenceMatrixCell {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  color: var(--ink-muted);
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* 判定效果用「左侧实色条 + 饱和底色 + 深色文字」三重视觉编码，四态一眼可辨 */
+.evidenceMatrixCell[data-effect="supports"] {
+  color: #1c6b4a;
+  background: rgba(47, 158, 110, 0.18);
+  box-shadow: inset 3px 0 0 #2f9e6e;
+  font-weight: 650;
+}
+
+.evidenceMatrixCell[data-effect="contradicts"] {
+  color: #9c3836;
+  background: rgba(217, 83, 79, 0.18);
+  box-shadow: inset 3px 0 0 #d9534f;
+  font-weight: 650;
+}
+
+.evidenceMatrixCell[data-effect="neutral"] {
+  color: #2b5f8f;
+  background: rgba(74, 134, 196, 0.16);
+  box-shadow: inset 3px 0 0 #4a86c4;
+  font-weight: 650;
+}
+
+.evidenceMatrixCell[data-effect="unassessed"] {
+  color: var(--ink-faint);
+  background: rgba(41, 44, 44, 0.03);
+  box-shadow: inset 3px 0 0 rgba(136, 139, 132, 0.5);
+  font-weight: 400;
+}
+
+.evidenceMatrixCell:hover { filter: brightness(1.06); }
+.evidenceMatrixCell[aria-pressed="true"] {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.evidenceCellDetail {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--rule);
+  background: #f7f4ed;
+}
+
+.evidenceCellDetail > header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.evidenceCellDetail > header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.evidenceCellDetail > header span {
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.07em;
+}
+
+.evidenceCellDetail > header strong {
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evidenceCellDetail > header button {
+  flex: 0 0 auto;
+  min-width: 24px;
+  min-height: 24px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.evidenceCellFacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin: 0;
+  padding: 10px 12px 2px;
+  gap: 6px 18px;
+}
+
+.evidenceCellFacts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.evidenceCellFacts dt { color: var(--ink-faint); font-size: 9px; }
+.evidenceCellFacts dd { margin: 0; color: var(--ink); font-size: 10px; }
+
+.evidenceCellEffect {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 20px;
+  align-items: center;
+  margin: 10px 12px 0;
+  padding: 2px 7px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.evidenceCellDetail[data-effect="supports"] .evidenceCellEffect { color: #2f9e6e; border-color: rgba(47, 158, 110, 0.5); }
+.evidenceCellDetail[data-effect="contradicts"] .evidenceCellEffect { color: #d9534f; border-color: rgba(217, 83, 79, 0.5); }
+.evidenceCellDetail[data-effect="neutral"] .evidenceCellEffect { color: #4a86c4; border-color: rgba(74, 134, 196, 0.5); }
+
+.evidenceCellDetail > p {
+  margin: 8px 12px 10px;
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.evidenceCellClaims {
+  margin: 0 12px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.evidenceCellClaims span {
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.evidenceCellClaims p {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+@media (max-width: 700px) {
+  .evidenceView { gap: 8px; }
+  .evidenceTabs { align-self: stretch; }
+  .evidenceTabs button { flex: 1 0 auto; padding: 0 10px; }
+  .evidenceGroupPicker { width: 100%; }
+  .evidenceGroupPicker select { max-width: none; }
+}
+
+/* 确定性验证问题卡片（真实数据） */
+.validatorIssueBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.validatorIssueFacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.validatorIssueFacts > div {
+  display: flex;
+  min-height: 52px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.validatorIssueFacts > div:last-child { border-right: 0; }
+.validatorIssueFacts dt {
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.validatorIssueFacts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.validatorIssueTarget {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.validatorIssueTarget > span {
+  flex: 0 0 auto;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.validatorIssueTarget button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: var(--primary-strong);
+  border: 1px solid rgba(199, 139, 60, 0.46);
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+
+.validatorIssueTarget button:hover { border-color: var(--primary-strong); background: var(--primary-soft); }
+.validatorIssueTarget button strong { font-weight: 650; }
+.validatorIssueTarget button small { color: var(--ink-muted); font-size: 9px; }
+.validatorIssueTarget p { margin: 0; color: var(--ink-muted); font-size: 10px; }
+
+.validatorIssueHint {
+  margin: 0;
+  padding: 10px 12px;
+  color: #946013;
+  border: 1px solid rgba(217, 154, 62, 0.4);
+  background: rgba(217, 154, 62, 0.08);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.validatorIssueExplanation {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--ink-muted);
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.validatorIssueEvidence {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  background: var(--paper-high);
+}
+
+.validatorIssueEvidence > span {
+  flex: 0 0 auto;
+  padding-top: 3px;
+  color: var(--ink-faint);
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.validatorIssueEvidenceList {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.validatorIssueEvidenceList button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  color: var(--primary-strong);
+  border: 1px solid rgba(199, 139, 60, 0.46);
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+
+.validatorIssueEvidenceList button:hover { border-color: var(--primary-strong); background: var(--primary-soft); }
+.validatorIssueEvidenceList button strong { font-weight: 650; }
+.validatorIssueEvidenceList button small { color: var(--ink-muted); font-size: 9px; }

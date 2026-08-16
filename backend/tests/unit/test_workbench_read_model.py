@@ -4,14 +4,15 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
 
+from sqlalchemy.orm import Session
+
 from casefile.application.workbench_read_model import (
     WorkbenchReadModel,
     _contract_source_refs,
-    _validation_issue,
+    _issue_view,
 )
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.repositories import OwnedDraft
-from sqlalchemy.orm import Session
 
 
 def test_validation_failure_returns_stable_localized_issues() -> None:
@@ -74,7 +75,7 @@ def test_validation_issue_identity_survives_contract_reordering() -> None:
         "path": "/events/1/location_ref",
         "message": "引用的对象不存在",
     }
-    original = _validation_issue(
+    original = _issue_view(
         issue,
         {
             ("event", 1): {
@@ -82,8 +83,9 @@ def test_validation_issue_identity_survives_contract_reordering() -> None:
                 "object_id": "evt_gate",
             }
         },
+        "error",
     )
-    reordered = _validation_issue(
+    reordered = _issue_view(
         {**issue, "path": "/events/0/location_ref"},
         {
             ("event", 0): {
@@ -91,6 +93,7 @@ def test_validation_issue_identity_survives_contract_reordering() -> None:
                 "object_id": "evt_gate",
             }
         },
+        "error",
     )
 
     assert reordered["issue_id"] == original["issue_id"]
