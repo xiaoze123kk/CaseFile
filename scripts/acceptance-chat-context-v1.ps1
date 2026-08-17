@@ -19,6 +19,7 @@ param(
     [switch]$SkipQuickGates,
     [switch]$SkipM1Canned,
     [ValidateSet("", "openai", "deepseek", "fake")][string]$LiveProvider = "",
+    [string]$LiveModel = "",
     [string]$LiveTaskIds = "golden-entity-question,golden-event-question,golden-issue-explanation,golden-edit-description,boundary-large-casefile",
     [string]$ReportPath = "tmp/chat-context-v1-acceptance-summary.json"
 )
@@ -186,6 +187,9 @@ try {
             "CASEFILE_CHAT_CONTEXT_LIVE_TASK_IDS=$LiveTaskIds",
             "CASEFILE_CHAT_CONTEXT_LIVE_REPORT=$liveBaselineReport"
         )
+        if (-not [string]::IsNullOrWhiteSpace($LiveModel)) {
+            $liveBaselineEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
+        }
         Remove-Item Env:CASEFILE_CHAT_CONTEXT_ROLLOUT -ErrorAction SilentlyContinue
         Invoke-PytestStep -Name "Live baseline (legacy, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveBaselineEnv
 
@@ -196,6 +200,9 @@ try {
             "CASEFILE_CHAT_CONTEXT_LIVE_TASK_IDS=$LiveTaskIds",
             "CASEFILE_CHAT_CONTEXT_LIVE_REPORT=$liveRolloutReport"
         )
+        if (-not [string]::IsNullOrWhiteSpace($LiveModel)) {
+            $liveRolloutEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
+        }
         Invoke-PytestStep -Name "Live rollout (casefile-chat-context-v1, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveRolloutEnv
         $stepStatus.live = "passed"
 

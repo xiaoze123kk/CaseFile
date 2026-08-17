@@ -9,6 +9,7 @@ inspect the frozen provider request and TaskEvents without duplicating the
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from unittest.mock import patch
@@ -55,6 +56,9 @@ def run_chat_trial(
     master_key: str,
     task: ChatOutcomeTask,
     provider: Any,
+    *,
+    task_provider: str = "openai",
+    message_builder: Callable[[dict[str, Any]], str] | None = None,
 ) -> CannedTrialOutcome:
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         project_id, generation_task_id = _prepare_task(engine, actor_id)
@@ -73,6 +77,13 @@ def run_chat_trial(
             draft_before = CaseFileService(session).get_draft(actor_id, project_id)
             revision_before = int(draft_before["revision"])
             content_before = draft_before["content"]
+            if not isinstance(content_before, dict):
+                raise AssertionError((task.task_id, "adopted draft content is not a casefile"))
+            message = (
+                message_builder(content_before)
+                if message_builder is not None
+                else task.message
+            )
             workflow = WorkflowService(session)
             thread = workflow.create_agent_thread(
                 actor_id,
@@ -87,7 +98,8 @@ def run_chat_trial(
                 thread["thread_id"],
                 expected_draft_id=draft_id,
                 expected_draft_revision=revision_before,
-                content=task.message,
+                content=message,
+                provider=task_provider,
                 focus=None,
                 routing_hint=task.hint,
             )
@@ -112,13 +124,34 @@ def run_chat_trial(
                 thread["thread_id"],
             )
             assistant = next(message for message in messages if message["role"] == "assistant")
-            assert assistant["status"] == "completed"
+            if assistant["status"] != "completed":
+                with factory() as session:
+                    task_row = session.get(TaskRun, chat_task_id)
+                    failed_details = (
+                        None
+                        if task_row is None
+                        else (task_row.status, task_row.error_code, task_row.error_details_jsonb)
+                    )
+                raise AssertionError(
+                    (
+                        task.task_id,
+                        assistant["status"],
+                        assistant.get("error_code"),
+                        assistant.get("error_details"),
+                        failed_details,
+                    )
+                )
         with factory() as session:
             draft_after = CaseFileService(session).get_draft(actor_id, project_id)
         with factory() as session:
             task_row = session.get(TaskRun, chat_task_id)
             assert task_row is not None
-            assert task_row.status == "succeeded"
+            assert task_row.status == "succeeded", (
+                task.task_id,
+                task_row.status,
+                task_row.error_code,
+                task_row.error_details_jsonb,
+            )
             frozen_input = task_row.input_jsonb
             result_jsonb = task_row.result_jsonb
         assert isinstance(frozen_input, dict)
