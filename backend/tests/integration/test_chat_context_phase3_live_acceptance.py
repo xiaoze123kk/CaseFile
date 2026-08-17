@@ -392,12 +392,13 @@ def _run_two_turn_trial(
             focus={"object_ids": [], "event_ids": [], "validation_issue_ids": []},
             expectations=_live_expectations(task, casefile, validation_issues),
         )
+        candidate = _normalized_candidate(
+            persisted_candidate_from_result(result_jsonb, patch_operations),
+            casefile,
+        )
         verdict: ChatOutcomeTrialVerdict = grade_chat_outcome(
             dynamic_task,
-            _normalized_candidate(
-                persisted_candidate_from_result(result_jsonb, patch_operations),
-                casefile,
-            ),
+            candidate,
             allow_suggestions=(
                 routing.get("suggestion_policy") != "deny"
                 if isinstance(routing, dict)
@@ -423,6 +424,11 @@ def _run_two_turn_trial(
             "task_id": task.task_id,
             "passed": verdict.passed,
             "failures": list(verdict.failures),
+            "answer_text": candidate.answer,
+            "referenced_object_ids": list(candidate.referenced_object_ids),
+            "referenced_event_ids": list(candidate.referenced_event_ids),
+            "expected_object_ids": list(dynamic_task.expectations.expected_object_ids),
+            "expected_event_ids": list(dynamic_task.expectations.expected_event_ids),
             "suggestion_valid_count": verdict.suggestion_valid_count,
             "suggestion_total_count": verdict.suggestion_total_count,
             "state_id": state_id,

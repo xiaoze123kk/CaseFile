@@ -35,16 +35,20 @@
 
 ## Live 验收（DeepSeek deepseek-v4-pro，2026-08-17）
 
-- baseline（legacy 全量）：**5/5 通过**。
-- rollout（`casefile-chat-context-v2`）：**4/5 通过**（`pass_rate = 0.8`）。
-- 失败样本：`boundary-large-casefile`，任务状态 `failed / generation_failed`，错误 `Max turns (4) exceeded`。
-- 失败分诊：单独复跑该任务时 rollout 得到 HTTP **402 Insufficient Balance**；结合首次全量跑只有该样本失败、其余 4 个 rollout 线程均正常压缩并落库，归因是 **provider 计费/重试（SDK 4 次重试后包装为 MaxTurnsExceeded）**，不是上下文丢失。
-- 由于 API key 余额耗尽，目前无法取得有效的 pass@1/pass^3 双批数据。
+- 完整 `scripts/benchmark-context.ps1` 重跑（含 quick + PG + live）：
+  - quick gates：ruff / mypy / compileall / non-PG pytest `409 passed`。
+  - PostgreSQL 全量：**480 passed, 7 skipped**；phase2 / phase3 / phase4 rollout gates 全过。
+  - baseline（legacy 全量）：**5/5 通过**。
+  - rollout（`casefile-chat-context-v2`）：**4/5 通过**（`pass_rate = 0.8`），`compacted_threads = 5/5`。
+- 失败样本：`boundary-large-casefile`，失败项 `reference_recall`；线程已正常压缩两次（`state_id` 存在），说明失败不是压缩管线故障。
+- 失败分诊：单独复跑该样本（同 key、同模型、同 rollout）得到 **1/1 通过**，答案列出目标事件 `evt_restart_seven` 与目标对象 `ent_researcher` 并成功命中引用。结合基线同任务稳定通过，归因是 **pro 模型在该大卷宗样本上的随机波动（单样本 recall 方差）**，未复现系统性上下文丢失。
+- 早前一次全量跑中同一样本曾因 API 余额返回 402 而失败，已不作为质量信号。
 
 ## 灰度决策
 
-- 未达到《结果级 Eval 方案》Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次），**v2/v3 不升默认**；默认保持 v1/v4。
-- 余额恢复后补齐：`scripts/benchmark-context.ps1 -SkipQuickGates -SkipPostgresGates -LiveProvider deepseek -LiveModel deepseek-v4-pro`，连续两次达标后再评估是否把 v2/v3 升默认。
+- 本次有效全量跑未达到《结果级 Eval 方案》Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次；v2 `pass_rate = 0.8`），**v2/v3 不升默认**；默认保持 v1/v4。
+- 后续余额允许时补齐多批（每 Task ≥ 3 trials）的 `pass@1 / pass^3`；若连续两批达标再评估是否把 v2/v3 升默认。
+- live 报告 row 已增加 `answer_text / referenced_*_ids / expected_*_ids`，便于失败分诊。
 
 ## 脚本行为
 
