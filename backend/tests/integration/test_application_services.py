@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from dataclasses import replace as dataclasses_replace
 from unittest.mock import patch
 
 import pytest
@@ -2516,6 +2517,170 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         )
         assert second_assistant["patch_set"]["status"] == "rejected"
         assert second_assistant["patch_set"]["is_stale"] is False
+
+
+def test_agent_chat_reference_autofill_only_fills_empty_unique_slots(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+            "CASEFILE_CHAT_REFERENCE_AUTOFILL": "1",
+        },
+    ):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="reference-autofill-fixture-worker"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            entity = draft["content"]["entities"][0]
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请核对关键人物。",
+            )
+        chat_task_id = int(queued["task"]["task_run_id"])
+        claim = Worker(
+            factory,
+            config=WorkerConfig(worker_id="reference-autofill-completion-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )._claim_next()
+        assert claim is not None
+        assert claim[0] == chat_task_id
+
+        with factory() as session:
+            completion = WorkflowService(session).complete_chat_task(
+                chat_task_id,
+                claim[1],
+                answer=f"{entity['name']} 在本案中负责关键调查。",
+                referenced_object_ids=[],
+                referenced_event_ids=[],
+                referenced_validation_issue_ids=[],
+                suggestions=[],
+                usage={"requests": 1},
+            )
+
+        assert completion["message"]["referenced_object_ids"] == [entity["id"]]
+
+        with factory() as session:
+            events = WorkflowService(session).list_task_events(
+                actor_id,
+                project_id,
+                chat_task_id,
+            )
+        autofill_events = [
+            event for event in events if event["event_type"] == "context.reference_autofilled"
+        ]
+        assert len(autofill_events) == 1
+        assert autofill_events[0]["payload"] == {
+            "object_ids": [entity["id"]],
+            "event_ids": [],
+        }
+
+
+def test_agent_chat_unknown_reference_gets_one_controlled_repair_call(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    class RepairingChatProvider(FakeProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.chat_calls = 0
+
+        def chat(self, request):
+            self.chat_calls += 1
+            result = super().chat(request)
+            if self.chat_calls == 1:
+                return dataclasses_replace(
+                    result,
+                    candidate=result.candidate.model_copy(
+                        update={"referenced_object_ids": ["src_fabricated"]}
+                    ),
+                )
+            return result
+
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    provider = RepairingChatProvider()
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="reference-repair-fixture-worker"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请核对关键人物。",
+            )
+        chat_task_id = int(queued["task"]["task_run_id"])
+
+        chat_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="reference-repair-chat-worker"),
+            provider_factory=lambda _task: provider,
+        )
+        assert chat_worker.run_once() is True
+
+        with factory() as session:
+            task = session.get(TaskRun, chat_task_id)
+            assert task is not None
+            assert task.status == "succeeded", (
+                task.status,
+                task.error_code,
+                task.error_details_jsonb,
+            )
+
+        with factory() as session:
+            events = WorkflowService(session).list_task_events(
+                actor_id,
+                project_id,
+                chat_task_id,
+            )
+        assert provider.chat_calls == 2
+        assert [event["event_type"] for event in events].count(
+            "model.reference_repair_started"
+        ) == 1
+        repair_event = next(
+            event for event in events if event["event_type"] == "model.reference_repair_started"
+        )
+        assert repair_event["payload"]["unknown_object_ids"] == ["src_fabricated"]
+        assert repair_event["payload"]["repair_no"] == 1
 
 
 def test_project_archive_unarchive_roundtrip_and_timestamps(

@@ -122,6 +122,7 @@ from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
 from casefile.application.workflow_service import (
+    ChatReferenceValidationError,
     WorkflowService,
     append_task_event,
     source_view,
@@ -805,12 +806,50 @@ class Worker:
                 chat_result = provider.chat(chat_request)
                 candidate = chat_result.candidate.model_dump(mode="json")
                 usage = chat_result.usage
-                self._complete_chat(
-                    task_run_id,
-                    attempt_id,
-                    chat_result,
-                    route=chat_request.route,
-                )
+                repair_attempted = False
+                while True:
+                    try:
+                        self._complete_chat(
+                            task_run_id,
+                            attempt_id,
+                            chat_result,
+                            route=chat_request.route,
+                        )
+                        break
+                    except ChatReferenceValidationError as error:
+                        if repair_attempted:
+                            error.repair_attempted = True
+                            raise
+                        repair_attempted = True
+                        repair_message = (
+                            "上一轮结构化结果被系统拒绝：以下引用 ID 不存在于"
+                            "当前卷宗或验证快照，"
+                            f" objects={list(error.object_ids)!r}, "
+                            f"events={list(error.event_ids)!r}, "
+                            f"validation_issues={list(error.issue_ids)!r}。"
+                            "允许的 ID 只来自当前 casefile 的 records/focus_objects/"
+                            "工具结果以及 validation_issues；禁止 src_*、clm_* 等"
+                            " source/brief 内部 ID。只修正引用槽，保留正文结论。"
+                        )
+                        self._emit(
+                            task_run_id,
+                            "model.reference_repair_started",
+                            "repairing",
+                            {
+                                "repair_no": 1,
+                                "max_repairs": 1,
+                                "unknown_object_ids": list(error.object_ids),
+                                "unknown_event_ids": list(error.event_ids),
+                                "unknown_issue_ids": list(error.issue_ids),
+                            },
+                        )
+                        chat_request = replace(
+                            chat_request,
+                            repair_feedback=(repair_message,),
+                        )
+                        chat_result = provider.chat(chat_request)
+                        candidate = chat_result.candidate.model_dump(mode="json")
+                        usage = _merge_chat_usage((usage, chat_result.usage))
                 self._maybe_compact_chat_thread(
                     task_snapshot,
                     provider,
@@ -2134,6 +2173,11 @@ class Worker:
                 "exception_type": type(error).__name__,
                 "message": safe_message,
                 "public_failure": public_failure,
+                **(
+                    {"repair_attempted": True}
+                    if getattr(error, "repair_attempted", False)
+                    else {}
+                ),
             }
             now = datetime.now(UTC)
             attempt.status = "failed"
@@ -2589,6 +2633,19 @@ def _previous_attempt_repair_feedback(
                 if len(issues) == 50:
                     return ({"issues": issues},)
     return ({"issues": issues},) if issues else ()
+
+
+def _merge_chat_usage(records: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    """Sum numeric token counters and keep the latest tool metrics snapshot."""
+
+    merged: dict[str, Any] = {}
+    for record in records:
+        for key, value in record.items():
+            if isinstance(value, int) and not isinstance(value, bool):
+                merged[key] = int(merged.get(key, 0)) + value
+            else:
+                merged[key] = value
+    return merged
 
 
 def _terminal_attempt_usage(

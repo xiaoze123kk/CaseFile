@@ -487,6 +487,7 @@ class CaseFileChatRequest:
     assembled_input: dict[str, Any] | None = None
     thread_id: int | None = None
     thread_evidence_resolver: ThreadEvidenceResolver | None = None
+    repair_feedback: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)

@@ -20,6 +20,10 @@ from casefile.agent_runtime.chat_intent import (
     route_result_summary,
     route_suggestion_policy,
 )
+from casefile.agent_runtime.chat_reference_autofill import (
+    autofill_chat_references,
+    reference_autofill_enabled,
+)
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_VERSION,
@@ -127,6 +131,32 @@ DEFAULT_BUDGET: dict[str, Any] = {
     "network_retries": 2,
     "structural_repair_attempts": 5,
 }
+
+
+class ChatReferenceValidationError(RuntimeError):
+    """A structured chat candidate references IDs outside the frozen CaseFile.
+
+    The Worker uses the structured fields for one controlled provider repair
+    call before failing the TaskRun.
+    """
+
+    def __init__(
+        self,
+        *,
+        object_ids: tuple[str, ...] = (),
+        event_ids: tuple[str, ...] = (),
+        issue_ids: tuple[str, ...] = (),
+    ) -> None:
+        self.object_ids = tuple(object_ids)
+        self.event_ids = tuple(event_ids)
+        self.issue_ids = tuple(issue_ids)
+        self.repair_attempted = False
+        parts = [
+            f"objects={sorted(self.object_ids)!r}",
+            f"events={sorted(self.event_ids)!r}",
+            f"validation_issues={sorted(self.issue_ids)!r}",
+        ]
+        super().__init__("Chat result references unknown IDs: " + ", ".join(parts))
 
 _append_event = append_task_event
 _event_view = event_view
@@ -764,11 +794,48 @@ class WorkflowService:
                 )
             )
             registries = {row.object_id: row for row in registry_rows}
+
+            # Conservative safety net for F1: only an empty slot is repaired,
+            # only frozen CaseFile record labels are consulted, and an ID is
+            # added only on a unique label match. Never delete or re-rank.
+            autofilled_object_ids: list[str] = []
+            autofilled_event_ids: list[str] = []
+            if reference_autofill_enabled():
+                object_refs = _unique_strings(referenced_object_ids)
+                event_refs = _unique_strings(referenced_event_ids)
+                if not object_refs:
+                    autofilled_object_ids = autofill_chat_references(
+                        answer,
+                        frozen_casefile,
+                    )[0]
+                    referenced_object_ids = [
+                        *referenced_object_ids,
+                        *autofilled_object_ids,
+                    ]
+                if not event_refs:
+                    autofilled_event_ids = autofill_chat_references(
+                        answer,
+                        frozen_casefile,
+                    )[1]
+                    referenced_event_ids = [
+                        *referenced_event_ids,
+                        *autofilled_event_ids,
+                    ]
+                if autofilled_object_ids or autofilled_event_ids:
+                    _append_event(
+                        self.session,
+                        task,
+                        "context.reference_autofilled",
+                        "context",
+                        {
+                            "object_ids": autofilled_object_ids,
+                            "event_ids": autofilled_event_ids,
+                        },
+                    )
+
             referenced = _unique_strings(referenced_object_ids)
             frozen_object_ids = _frozen_object_ids(frozen_casefile)
             missing_references = sorted(set(referenced) - frozen_object_ids)
-            if missing_references:
-                raise RuntimeError(f"Chat result references unknown objects: {missing_references}")
 
             referenced_events = _unique_strings(referenced_event_ids)
             frozen_event_ids = {
@@ -777,19 +844,17 @@ class WorkflowService:
                 if isinstance(value, dict) and isinstance(value.get("id"), str)
             }
             missing_events = sorted(set(referenced_events) - frozen_event_ids)
-            if missing_events:
-                raise RuntimeError(
-                    f"Chat result references unknown events: {missing_events}"
-                )
 
             referenced_issues = _unique_strings(referenced_validation_issue_ids)
             known_issue_ids = WorkbenchReadModel(
                 self.session
             ).validation_issue_ids(owned)
             missing_issues = sorted(set(referenced_issues) - known_issue_ids)
-            if missing_issues:
-                raise RuntimeError(
-                    f"Chat result references unknown validation issues: {missing_issues}"
+            if missing_references or missing_events or missing_issues:
+                raise ChatReferenceValidationError(
+                    object_ids=tuple(missing_references),
+                    event_ids=tuple(missing_events),
+                    issue_ids=tuple(missing_issues),
                 )
 
             focused_target_ids = _focused_patch_target_ids(

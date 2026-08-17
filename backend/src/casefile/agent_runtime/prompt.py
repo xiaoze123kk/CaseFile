@@ -285,6 +285,23 @@ def _chat_executor_component_id(definition: Any, request: CaseFileChatRequest) -
     return component_id
 
 
+def _with_chat_repair_feedback(
+    instructions: str,
+    request: CaseFileChatRequest,
+) -> str:
+    """Append one system-generated repair requirement after reference rejection."""
+
+    if not request.repair_feedback:
+        return instructions
+    lines = "".join(f"- {item}\n" for item in request.repair_feedback)
+    return (
+        instructions.rstrip("\n")
+        + "\n\n系统校验修复要求（最高优先级，必须逐项满足；只修正引用槽，"
+        "不得改写已通过的正文结论）：\n"
+        + lines
+    )
+
+
 def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
     """Render the route-specific executor component.
 
@@ -295,7 +312,10 @@ def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]
 
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
-        return definition.system_prompt, casefile_chat_input(request)
+        return (
+            _with_chat_repair_feedback(definition.system_prompt, request),
+            casefile_chat_input(request),
+        )
     if request.assembled_input is not None:
         rendered = render_prompt_package(
             definition.package,
@@ -304,7 +324,7 @@ def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]
             agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
             toolset_version=definition.package.runtime_toolset_version,
         )
-        return rendered.instructions, rendered.input_text
+        return _with_chat_repair_feedback(rendered.instructions, request), rendered.input_text
     rendered = render_prompt_package(
         definition.package,
         _chat_executor_component_id(definition, request),
@@ -312,7 +332,7 @@ def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]
         agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
         toolset_version=definition.package.runtime_toolset_version,
     )
-    return rendered.instructions, rendered.input_text
+    return _with_chat_repair_feedback(rendered.instructions, request), rendered.input_text
 
 
 def render_chat_rewrite_prompt(
