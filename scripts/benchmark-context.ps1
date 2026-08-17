@@ -18,7 +18,7 @@ The comparison report defaults to tmp/context-benchmark-summary.json.
 param(
     [switch]$SkipQuickGates,
     [switch]$SkipPostgresGates,
-    [ValidateSet("", "openai", "deepseek", "fake")][string]$LiveProvider = "",
+    [ValidateSet("", "openai", "deepseek")][string]$LiveProvider = "",
     [string]$ReportPath = "tmp/context-benchmark-summary.json"
 )
 
@@ -209,7 +209,7 @@ try {
                 "DEEPSEEK_API_KEY"
             )
         }
-        $hasLiveKey = ($LiveProvider -eq "fake")
+        $hasLiveKey = $false
         foreach ($name in $liveKeyNames) {
             $value = [Environment]::GetEnvironmentVariable($name, "Process")
             if (-not [string]::IsNullOrWhiteSpace($value)) {
