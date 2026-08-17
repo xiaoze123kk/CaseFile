@@ -8,7 +8,7 @@
 - 默认 rollout：`casefile-chat-context-v1` + Prompt `casefile-chat-v4`（M0/M1 验收后已冻结，Step 4.3 不改变默认）。
 - 灰度 rollout（环境变量 `CASEFILE_CHAT_CONTEXT_ROLLOUT`）：
   - `casefile-chat-context-v2` → Prompt `casefile-chat-v5`，Rolling Thread Memory。
-  - `casefile-chat-context-v3` → Prompt `casefile-chat-v6` + `casefile-chat-tools-v3`，Dashboard + Context Tools。
+  - `casefile-chat-context-v3` → Prompt `casefile-chat-v7` + `casefile-chat-tools-v3`，Dashboard + Context Tools；v7 增加引用完整性硬约束、question 路由预算与最终自检。
   - `agent-focus-v1` → legacy 全量注入，整组回退通道。
 
 ## 四档确定性 A/B（`scripts/benchmark-context.ps1`）
@@ -29,8 +29,8 @@
 - M0 chat-outcome calibration：30 reference trials 全过。
 - Boundary Continuation Eval（M0 门禁）：全过。
 - 四档 A/B `--gate`：全过。
-- quick gates（ruff / mypy / compileall / non-PostgreSQL pytest）：409 passed。
-- PostgreSQL 全量：478 passed, 7 skipped（Step 4.2 提交时）。
+- quick gates（ruff / mypy / compileall / non-PostgreSQL pytest）：417 passed。
+- PostgreSQL 全量：490 passed, 7 skipped（v3 修复后）。
 - Phase 2 rollout gate（v1）、Phase 3 rollout gate（v2）、Phase 4 rollout gate（v3）：全过，已纳入 `scripts/check.ps1`。
 
 ## Live 验收（DeepSeek deepseek-v4-pro，2026-08-17）
@@ -49,11 +49,37 @@
   - 单样本复跑：baseline 报未知引用 `src_restart_brief` 生成失败，rollout 答文中出现 `ent_researcher` 文本但未写入引用 ID（`reference_recall`）。
   - 归因：v3 批未出现系统性上下文丢失，但 pro 模型在 v6 契约下**引用槽填写方差显著**（答对文本但漏填 ID），且大卷宗样本稳定性不足。
 
+## v3 修复后复批（P0–P2 落地后，2026-08-17）
+
+修复提交：`48a637c`（v7 prompt 配对）、`19a345c`（引用保守自动补全 + 未知引用受控重试）、`ec834d8`（question 轮次预算 + live 温度 0）、`7f7c644`（live 多 trial 配对协议）。live 中 rollout 臂开启 `CASEFILE_CHAT_REFERENCE_AUTOFILL=1`，baseline 臂关闭，温度固定 0。
+
+**Batch 1（5 task × 3 trials，deepseek-v4-pro）**
+
+| arm | pass@1 | pass^3 | compacted_threads |
+|---|---|---|---|
+| baseline legacy | 1.0（5/5） | 0.8（4/5） | — |
+| rollout v3 | 1.0（5/5） | 1.0（5/5） | 5/5 |
+
+- 唯一失败：baseline `golden-entity-question` trial 2，`reference_recall`（答案正确但 `referenced_object_ids` 为空）。
+- rollout 三组 `boundary-large-casefile` 均无 `MaxTurnsExceeded`；大卷宗样本最大 5 requests / 22 tool calls，引用槽全命中。
+- 单任务分诊复跑 `golden-entity-question`：baseline **3/3**、rollout **3/3**（报告见 `tmp/chat-context-v3-live-*-golden-entity-triage.json`）。
+- Batch 1 报告被单任务复跑覆盖，完整行数据记录在当次会话日志；Batch 2 报告已另存。
+
+**Batch 2（5 task × 3 trials，deepseek-v4-pro）**
+
+| arm | pass@1 | pass^3 | compacted_threads |
+|---|---|---|---|
+| baseline legacy | 1.0（5/5） | 1.0（5/5） | — |
+| rollout v3 | 1.0（5/5） | 1.0（5/5） | 5/5 |
+
+报告：`tmp/chat-context-v3-live-baseline-batch2.json`、`tmp/chat-context-v3-live-rollout-batch2.json`；汇总 `tmp/chat-context-v3-live-batch2-summary.json`。
+
 ## 灰度决策
 
-- 本次有效全量跑未达到《结果级 Eval 方案》Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次；v2 `pass_rate = 0.8`，v3 `pass_rate = 0.6`），**v2/v3 不升默认**；默认保持 v1/v4。
-- 后续余额允许时补齐多批（每 Task ≥ 3 trials）的 `pass@1 / pass^3`；若连续两批达标再评估是否把 v2/v3 升默认。
-- live 报告 row 已增加 `answer_text / referenced_*_ids / expected_*_ids`，便于失败分诊。
+- 历史批次（v2/v3 修复前）：v2 `pass_rate = 0.8`、v3 `pass_rate = 0.6`，不升默认。
+- v3 修复后连续两个完整批次满足 Saturation Policy（`pass@1 ≥ 0.95` 且 `pass^3 ≥ 0.90`）：Batch 1 与 Batch 2 的 rollout v3 均为 `pass@1 = 1.0`、`pass^3 = 1.0`，`compacted_threads = 5/5`，且两批均无相对 baseline 的回归。
+- **结论：v3 已达到升级门槛。** 默认 rollout 的切换属于发布决策，需操作者确认后执行；在切换前默认仍为 `casefile-chat-context-v1` + `casefile-chat-v4`。
+- live 报告 row 已增加 `answer_text / referenced_*_ids / expected_*_ids`，失败分诊不需要重新打 API。
 
 ## 脚本行为
 
