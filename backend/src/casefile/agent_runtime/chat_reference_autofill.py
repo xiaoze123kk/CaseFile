@@ -20,6 +20,8 @@ from typing import Any
 from casefile.agent_runtime.chat_tools import CASEFILE_COLLECTIONS
 
 REFERENCE_AUTOFILL_ENV = "CASEFILE_CHAT_REFERENCE_AUTOFILL"
+_CHAT_CONTEXT_ROLLOUT_ENV = "CASEFILE_CHAT_CONTEXT_ROLLOUT"
+_V3_ROLLOUT = "casefile-chat-context-v3"
 
 _OBJECT_COLLECTIONS = tuple(
     collection for collection in CASEFILE_COLLECTIONS if collection != "events"
@@ -29,10 +31,19 @@ _MIN_LABEL_CHARS = 2
 
 
 def reference_autofill_enabled() -> bool:
-    """Resolve the opt-in environment switch (default off, fail closed)."""
+    """Resolve the reference autofill switch.
 
-    value = os.environ.get(REFERENCE_AUTOFILL_ENV, "").strip().lower()
-    return value in {"1", "true", "on", "yes"}
+    The explicit ``CASEFILE_CHAT_REFERENCE_AUTOFILL`` switch always wins
+    (``1``/``true``/``on``/``yes`` enables, anything else disables).  When
+    it is unset, the v3 context rollout enables the safety net by default so
+    production behavior matches the accepted live acceptance arm; all other
+    rollouts keep it off (fail closed).
+    """
+
+    value = os.environ.get(REFERENCE_AUTOFILL_ENV, "").strip()
+    if value:
+        return value.lower() in {"1", "true", "on", "yes"}
+    return os.environ.get(_CHAT_CONTEXT_ROLLOUT_ENV, "") == _V3_ROLLOUT
 
 
 def _normalise(value: object) -> str:

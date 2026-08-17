@@ -35,6 +35,25 @@ def test_reference_autofill_is_opt_in_and_fail_closed() -> None:
         assert reference_autofill_enabled() is False
 
 
+def test_reference_autofill_defaults_on_for_v3_rollout_and_respects_override() -> None:
+    with patch.dict(
+        os.environ,
+        {"CASEFILE_CHAT_CONTEXT_ROLLOUT": "casefile-chat-context-v3"},
+        clear=True,
+    ):
+        assert reference_autofill_enabled() is True
+        with patch.dict(os.environ, {REFERENCE_AUTOFILL_ENV: "0"}):
+            assert reference_autofill_enabled() is False
+        with patch.dict(os.environ, {REFERENCE_AUTOFILL_ENV: "1"}):
+            assert reference_autofill_enabled() is True
+    with patch.dict(
+        os.environ,
+        {"CASEFILE_CHAT_CONTEXT_ROLLOUT": "casefile-chat-context-v1"},
+        clear=True,
+    ):
+        assert reference_autofill_enabled() is False
+
+
 def test_autofill_adds_only_unique_entity_and_event_labels() -> None:
     object_ids, event_ids = autofill_chat_references(
         "林研究员负责主持重启调查。",

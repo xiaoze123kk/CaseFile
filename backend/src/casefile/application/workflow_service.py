@@ -167,12 +167,13 @@ _time = time_view
 
 
 def _chat_context_policy_version() -> str:
-    """Return the frozen chat context policy version.
+    """Return the default or opted-in chat context policy version.
 
-    ``casefile-chat-context-v1`` is the accepted default after M0/M1
-    acceptance. ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2``
-    opts in to the Phase 3 rolling Thread Memory policy,
-    ``casefile-chat-context-v3`` opts in to the Phase 4 Context Tools policy,
+    ``casefile-chat-context-v3`` is the accepted default after two
+    consecutive live batches met the Phase 4 saturation policy.
+    ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2`` opts in to
+    the Phase 3 rolling Thread Memory policy, ``casefile-chat-context-v1``
+    restores the frozen Phase 2 policy (paired with ``casefile-chat-v4``),
     and ``agent-focus-v1`` forces the legacy policy (paired with the legacy
     prompt render in ``_new_task``) for rollback. Unknown rollout values are
     ignored.
@@ -181,11 +182,13 @@ def _chat_context_policy_version() -> str:
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
     if rollout == LEGACY_CONTEXT_POLICY_VERSION:
         return LEGACY_CONTEXT_POLICY_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_VERSION:
+        return CHAT_CONTEXT_POLICY_VERSION
     if rollout == CHAT_CONTEXT_POLICY_V2_VERSION:
         return CHAT_CONTEXT_POLICY_V2_VERSION
     if rollout == CHAT_CONTEXT_POLICY_V3_VERSION:
         return CHAT_CONTEXT_POLICY_V3_VERSION
-    return CHAT_CONTEXT_POLICY_VERSION
+    return CHAT_CONTEXT_POLICY_V3_VERSION
 
 
 def _latest_context_state_ref(

@@ -1,12 +1,13 @@
 # Phase 4 Context Benchmark（Step 4.3 基线）
 
 生成时间：2026-08-17
-基准代码：`feature/casefile-chat-eval-outcome`（Step 4.1 `0854a30` + Step 4.2 `ea87306` + Step 4.3 `7efa897`/`71a2de0`）
+基准代码：`feature/casefile-chat-eval-outcome`（Step 4.1 `0854a30` + Step 4.2 `ea87306` + Step 4.3 `7efa897`/`71a2de0`；v3 修复与升级 `48a637c`→`0a53d06`）
 
 ## 默认版本冻结
 
-- 默认 rollout：`casefile-chat-context-v1` + Prompt `casefile-chat-v4`（M0/M1 验收后已冻结，Step 4.3 不改变默认）。
+- 默认 rollout：`casefile-chat-context-v3` + Prompt `casefile-chat-v7`（2026-08-17 连续两批 live 达标后切换）。
 - 灰度 rollout（环境变量 `CASEFILE_CHAT_CONTEXT_ROLLOUT`）：
+  - `casefile-chat-context-v1` → Prompt `casefile-chat-v4`，Phase 2 冻结回退。
   - `casefile-chat-context-v2` → Prompt `casefile-chat-v5`，Rolling Thread Memory。
   - `casefile-chat-context-v3` → Prompt `casefile-chat-v7` + `casefile-chat-tools-v3`，Dashboard + Context Tools；v7 增加引用完整性硬约束、question 路由预算与最终自检。
   - `agent-focus-v1` → legacy 全量注入，整组回退通道。
@@ -78,7 +79,8 @@
 
 - 历史批次（v2/v3 修复前）：v2 `pass_rate = 0.8`、v3 `pass_rate = 0.6`，不升默认。
 - v3 修复后连续两个完整批次满足 Saturation Policy（`pass@1 ≥ 0.95` 且 `pass^3 ≥ 0.90`）：Batch 1 与 Batch 2 的 rollout v3 均为 `pass@1 = 1.0`、`pass^3 = 1.0`，`compacted_threads = 5/5`，且两批均无相对 baseline 的回归。
-- **结论：v3 已达到升级门槛。** 默认 rollout 的切换属于发布决策，需操作者确认后执行；在切换前默认仍为 `casefile-chat-context-v1` + `casefile-chat-v4`。
+- **2026-08-17 决策：已把默认 rollout 升级为 `casefile-chat-context-v3` + `casefile-chat-v7`。** v3 默认开启引用保守自动补全（可用 `CASEFILE_CHAT_REFERENCE_AUTOFILL=0` 显式关闭），生产行为与 live 验收 rollout 臂一致；prompt registry 的 `casefile_chat.current_version` 同步指向 v7。
+- 升级后完整门禁复跑：PG `491 passed, 7 skipped`，phase2/phase3/phase4 rollout gates 全过，Boundary gate（v3 默认）与四档 A/B 全过。
 - live 报告 row 已增加 `answer_text / referenced_*_ids / expected_*_ids`，失败分诊不需要重新打 API。
 
 ## 脚本行为

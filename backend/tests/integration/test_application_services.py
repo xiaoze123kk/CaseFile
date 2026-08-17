@@ -1621,7 +1621,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
             assert frozen_input["focus"]["object_ids"] == []
-            assert frozen_input["context_policy_version"] == "casefile-chat-context-v1"
+            assert frozen_input["context_policy_version"] == "casefile-chat-context-v3"
             assert frozen_input["routing_hint"] == {
                 "entrypoint": "free_text",
                 "preset_id": None,
@@ -2252,7 +2252,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []
         assert frozen_input["message"] == "请逐项建议调整研究员、实验室和重启事件。"
-        assert frozen_input["context_policy_version"] == "casefile-chat-context-v1"
+        assert frozen_input["context_policy_version"] == "casefile-chat-context-v3"
         assert frozen_input["routing_hint"] == {
             "entrypoint": "free_text",
             "preset_id": None,
