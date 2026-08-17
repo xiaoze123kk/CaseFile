@@ -61,6 +61,13 @@ try {
             throw "CaseFile chat Boundary continuation M0 gate failed."
         }
 
+        & $python -m casefile.benchmark.context_tier_benchmark `
+            --report-path var/benchmark/context-tiers-v1.json `
+            --gate
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat four-tier context A/B gate failed."
+        }
+
         if ($SkipPostgres) {
             & $python -m pytest -m "not postgres"
         } else {
