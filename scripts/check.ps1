@@ -15,6 +15,8 @@ $python = if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
 
 $hadDatabaseUrl = Test-Path Env:DATABASE_URL
 $previousDatabaseUrl = $env:DATABASE_URL
+$hadContextRollout = Test-Path Env:CASEFILE_CHAT_CONTEXT_ROLLOUT
+$previousContextRollout = $env:CASEFILE_CHAT_CONTEXT_ROLLOUT
 
 Push-Location $repoRoot
 try {
@@ -95,6 +97,16 @@ try {
 
             $env:DATABASE_URL = $env:CASEFILE_TEST_DATABASE_URL
             & $python -m pytest
+
+            if ($LASTEXITCODE -ne 0) {
+                throw "Backend tests failed."
+            }
+
+            $env:CASEFILE_CHAT_CONTEXT_ROLLOUT = "casefile-chat-context-v2"
+            & $python -m pytest tests/integration/test_chat_context_phase3_acceptance.py
+            if ($LASTEXITCODE -ne 0) {
+                throw "Phase 3 rolling compaction M1 gate failed."
+            }
         }
 
         if ($LASTEXITCODE -ne 0) {
@@ -110,6 +122,11 @@ try {
         $env:DATABASE_URL = $previousDatabaseUrl
     } else {
         Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    }
+    if ($hadContextRollout) {
+        $env:CASEFILE_CHAT_CONTEXT_ROLLOUT = $previousContextRollout
+    } else {
+        Remove-Item Env:CASEFILE_CHAT_CONTEXT_ROLLOUT -ErrorAction SilentlyContinue
     }
     Pop-Location
 }
