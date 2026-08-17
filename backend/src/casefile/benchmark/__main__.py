@@ -12,6 +12,12 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "chat-context-baseline":
+        from casefile.benchmark.chat_context_eval import main as context_baseline_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        context_baseline_main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "chat-feedback":
         from casefile.benchmark.chat_feedback_metrics import main as feedback_main
 

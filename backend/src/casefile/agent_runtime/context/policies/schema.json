@@ -58,6 +58,23 @@
         },
         "enforce_budget": {
           "type": "boolean"
+        },
+        "block_limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[a-z0-9][a-z0-9_.-]{0,79}$": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "trim_order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,79}$"
+          }
         }
       }
     },

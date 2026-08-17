@@ -27,6 +27,7 @@ class ContextBlock:
     tokens: int = 0
     status: ContextBlockStatus = "visible"
     recoverable: bool = False
+    trimmable: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -52,10 +53,17 @@ class ContextPolicyStage:
 
 @dataclass(frozen=True, slots=True)
 class ContextBudget:
-    """Policy-level token budget; Phase 0 measures but never silently trims."""
+    """Policy-level token budget.
+
+    ``block_limits`` and ``trim_order`` drive deterministic trimming only when
+    ``enforce_budget`` is true; blocks without the ``trimmable`` flag are never
+    silently shortened.
+    """
 
     total_input_tokens: int | None = None
     enforce_budget: bool = False
+    block_limits: dict[str, int] = field(default_factory=dict)
+    trim_order: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

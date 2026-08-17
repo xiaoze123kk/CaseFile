@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from casefile.agent_runtime.context.estimators import CONSERVATIVE_TOKEN_ESTIMATOR
+from casefile.agent_runtime.context.budget import apply_context_budget
+from casefile.agent_runtime.context.estimators import (
+    CONSERVATIVE_TOKEN_ESTIMATOR,
+    TokenEstimatorRegistry,
+    default_token_estimator_registry,
+)
 from casefile.agent_runtime.context.manifest import build_context_manifest
 from casefile.agent_runtime.context.models import (
     ContextAssembly,
@@ -109,16 +114,24 @@ class ContextEngine:
                     continue
             index += 1
         blocks = tuple(run.blocks[block_id] for block_id in run.blocks)
-        total_tokens = sum(block.tokens for block in blocks)
-        budget_limit = policy.budget.total_input_tokens
-        budget_exceeded = budget_limit is not None and total_tokens > budget_limit
+        budget = apply_context_budget(
+            policy=policy,
+            blocks=blocks,
+            estimator=resolved_estimator,
+        )
+        decisions.extend(budget.decisions)
+        metrics["context.budget"] = {
+            "total_tokens": sum(block.tokens for block in blocks),
+            "limit": policy.budget.total_input_tokens,
+            "enforce_budget": policy.budget.enforce_budget,
+        }
         return ContextAssembly(
             policy_version=policy.version,
             stage_versions=tuple(stage_versions),
-            blocks=blocks,
+            blocks=budget.blocks,
             decisions=tuple(decisions),
             metrics=metrics,
-            budget_exceeded=budget_exceeded,
+            budget_exceeded=budget.exceeded,
         )
 
 
@@ -131,7 +144,7 @@ def build_chat_context_manifest(
     prebuilt_input: str | None = None,
     provider: str = "openai",
     model_id: str = "",
-    estimator: TokenEstimator | None = None,
+    estimator_registry: TokenEstimatorRegistry | None = None,
     registry: ContextRegistry | None = None,
 ) -> ContextBuildResult:
     """Load one policy, assemble context, and project the audit manifest.
@@ -151,12 +164,10 @@ def build_chat_context_manifest(
             code="context_policy_unknown_fallback",
             detail=f"{policy_version}: {error}",
         )
-    resolved_estimator = estimator or CONSERVATIVE_TOKEN_ESTIMATOR
-    if not resolved_estimator.supports(provider, model_id):
-        raise ContextEngineError(
-            f"Token estimator {resolved_estimator.name!r} does not support "
-            f"provider {provider!r} model {model_id!r}"
-        )
+    resolved_estimator = (estimator_registry or default_token_estimator_registry()).select(
+        provider,
+        model_id,
+    )
     engine = ContextEngine(registry or default_context_registry())
     assembly = engine.build(
         policy=policy,

@@ -11,7 +11,9 @@
   ],
   "budget": {
     "total_input_tokens": null,
-    "enforce_budget": false
+    "enforce_budget": false,
+    "block_limits": {},
+    "trim_order": []
   },
   "guardrails": {
     "pinned_immutable": true,

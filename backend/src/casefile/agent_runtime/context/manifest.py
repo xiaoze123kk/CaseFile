@@ -35,6 +35,8 @@ def build_context_manifest(
         budget={
             "total_input_tokens": policy.budget.total_input_tokens,
             "enforce_budget": policy.budget.enforce_budget,
+            "block_limits": dict(policy.budget.block_limits),
+            "trim_order": list(policy.budget.trim_order),
             "exceeded": assembly.budget_exceeded,
         },
     )

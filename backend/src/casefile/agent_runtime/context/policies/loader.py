@@ -99,6 +99,8 @@ def _policy_from_document(raw: dict[str, Any]) -> ContextPolicy:
         for stage in raw["stages"]
     )
     budget_raw = raw.get("budget") or {}
+    block_limits_raw = budget_raw.get("block_limits") or {}
+    trim_order_raw = budget_raw.get("trim_order") or []
     return ContextPolicy(
         schema_version=int(raw["schema_version"]),
         version=str(raw["version"]),
@@ -111,6 +113,12 @@ def _policy_from_document(raw: dict[str, Any]) -> ContextPolicy:
                 else int(budget_raw["total_input_tokens"])
             ),
             enforce_budget=bool(budget_raw.get("enforce_budget", False)),
+            block_limits={
+                str(key): int(value)
+                for key, value in block_limits_raw.items()
+                if int(value) >= 1
+            },
+            trim_order=tuple(str(value) for value in trim_order_raw),
         ),
         guardrails={
             str(key): bool(value) for key, value in (raw.get("guardrails") or {}).items()
