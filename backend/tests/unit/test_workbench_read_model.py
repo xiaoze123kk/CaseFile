@@ -4,8 +4,6 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
 
-from sqlalchemy.orm import Session
-
 from casefile.application.workbench_read_model import (
     WorkbenchReadModel,
     _contract_source_refs,
@@ -13,6 +11,7 @@ from casefile.application.workbench_read_model import (
 )
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.repositories import OwnedDraft
+from sqlalchemy.orm import Session
 
 
 def test_validation_failure_returns_stable_localized_issues() -> None:

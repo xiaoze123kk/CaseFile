@@ -6,8 +6,6 @@ import asyncio
 import json
 from typing import Any
 
-from pydantic import BaseModel
-
 from casefile.agent_runtime import CandidateStrategy, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8.ir import EvidenceLogicIRV2
 from casefile.agent_runtime.brief_to_draft_v8.workflow import (
@@ -32,6 +30,7 @@ from casefile.agent_runtime.providers import (
 )
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.contracts import validate_casefile
+from pydantic import BaseModel
 
 
 def _v15_evidence() -> EvidenceLogicIRV2:

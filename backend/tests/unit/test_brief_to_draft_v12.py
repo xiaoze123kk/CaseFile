@@ -6,8 +6,6 @@ import asyncio
 from dataclasses import replace
 
 import pytest
-from pydantic import BaseModel
-
 from casefile.agent_runtime import CandidateStrategy, FakeProvider, GenerationRequest
 from casefile.agent_runtime.brief_to_draft_v8.ir import CaseBlueprintV1
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
@@ -21,6 +19,7 @@ from casefile.agent_runtime.prompt import V12_GENERATION_AGENT_VERSION
 from casefile.agent_runtime.providers import _add_fake_v10_matrix_plan, _fake_v8_output
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.contracts import ContractValidationError, validate_casefile
+from pydantic import BaseModel
 
 
 def _blueprint() -> CaseBlueprintV1:

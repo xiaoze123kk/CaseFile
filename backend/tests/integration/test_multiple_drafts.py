@@ -8,9 +8,6 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import PROFILE, _adopt_candidate, _prepare_task
-from sqlalchemy import Engine, select, update
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
@@ -26,6 +23,8 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select, update
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

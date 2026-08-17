@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pytest import MonkeyPatch
-
 import casefile.benchmark.runner as benchmark_runner
 from casefile.agent_runtime import GenerationRequest, GenerationResult
 from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_report
+from pytest import MonkeyPatch
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[3] / "fixtures" / "benchmark"
 REQUIRED_FIXTURES = [

@@ -7,7 +7,6 @@ import json
 from typing import Any
 
 from agents import RunContextWrapper
-
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_VERSION,
     LEGACY_CHAT_TOOLSET_VERSION,

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from casefile.agent_runtime.models import ChatTaskUnderstanding
 from casefile.agent_runtime.query_rewrite import (
     PRESET_REWRITE_TEMPLATES,
