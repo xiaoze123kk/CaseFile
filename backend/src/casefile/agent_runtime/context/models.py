@@ -141,9 +141,10 @@ class ContextManifest:
 
 @dataclass(frozen=True, slots=True)
 class ContextBuildResult:
-    """Manifest plus an optional fallback decision when a policy was unavailable."""
+    """Manifest, assembled blocks, plus a fallback decision when unavailable."""
 
     manifest: ContextManifest
+    assembly: ContextAssembly
     fallback: ContextDecision | None = None
 
 

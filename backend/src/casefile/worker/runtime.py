@@ -63,7 +63,11 @@ from casefile.agent_runtime.chat_routing import (
     route_llm_task,
     routing_policy,
 )
-from casefile.agent_runtime.context import build_chat_context_manifest
+from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_PROMPT_VERSION,
+    build_chat_context_manifest,
+    chat_input_payload_from_assembly,
+)
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
@@ -676,7 +680,9 @@ class Worker:
                                 "routing",
                                 route_public_payload(chat_request.route),
                             )
-                self._emit_chat_context_events(task_run_id, task_snapshot, chat_request)
+                chat_request = self._emit_chat_context_events(
+                    task_run_id, task_snapshot, chat_request
+                )
                 chat_result = provider.chat(chat_request)
                 candidate = chat_result.candidate.model_dump(mode="json")
                 usage = chat_result.usage
@@ -1048,22 +1054,28 @@ class Worker:
         task_run_id: int,
         task: TaskRun,
         request: CaseFileChatRequest,
-    ) -> None:
-        """Publish the deterministic context manifest before the executor call.
+    ) -> CaseFileChatRequest:
+        """Assemble context, publish its audit manifest, and bind the provider input.
 
-        Phase 0 renders the same input string the providers already use and
-        measures it through the policy pipeline; the model-facing prompt is
-        unchanged. Unknown policy versions fall back to the legacy policy and
-        emit a guardrail event first.
+        Legacy policies measure the exact string providers already render and
+        leave the request untouched. The v1 context policy assembles block
+        sources deterministically, then binds the resulting v2 contract payload
+        so the v4 prompt package is what providers send.
         """
 
-        _instructions, executor_input = render_chat_executor_prompt(request)
+        legacy_policy = request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
+        executor_input: str | None = None
+        if legacy_policy:
+            _instructions, executor_input = render_chat_executor_prompt(request)
         result = build_chat_context_manifest(
             policy_version=request.context_policy_version,
             frozen_input=task.input_jsonb,
             input_hash=task.input_hash,
             routing=chat_routing_payload_as_dict(request),
             prebuilt_input=executor_input,
+            extra_input={
+                "editable_fields_by_collection": request.editable_fields_by_collection,
+            },
             provider=task.provider,
             model_id=task.model_id,
         )
@@ -1079,6 +1091,18 @@ class Worker:
                 },
             )
         self._emit(task_run_id, "context.built", "context", result.manifest.to_jsonable())
+        if result.fallback is not None or legacy_policy:
+            return request
+        if request.prompt_version != CHAT_CONTEXT_PROMPT_VERSION:
+            raise RuntimeError(
+                "Context policy "
+                f"{request.context_policy_version!r} requires prompt version "
+                f"{CHAT_CONTEXT_PROMPT_VERSION!r}; frozen={request.prompt_version!r}"
+            )
+        return replace(
+            request,
+            assembled_input=chat_input_payload_from_assembly(result.assembly),
+        )
 
     def _complete_chat(
         self,

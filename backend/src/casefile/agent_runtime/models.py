@@ -290,6 +290,27 @@ class ChatExecutorInputV1(StrictAgentOutput):
     routing: dict[str, Any] | None = None
 
 
+class ChatExecutorInputV2(StrictAgentOutput):
+    """v2 input contract for the v4 executor: skeleton plus focus expansion.
+
+    ``casefile`` contains only id/collection/label/type skeletons; full record
+    content is fetched with the read-only tools. ``focus_objects`` carries the
+    bounded full-object and one-hop neighbor expansion selected by the context
+    policy.
+    """
+
+    input_hash: str = Field(min_length=1)
+    casefile: dict[str, Any]
+    focus_objects: dict[str, Any] = Field(default_factory=dict)
+    thread_history: list[dict[str, Any]] = Field(default_factory=list)
+    author_message: str = Field(min_length=1, max_length=100_000)
+    editable_fields_by_collection: dict[str, list[str]] = Field(default_factory=dict)
+    focus: dict[str, Any] = Field(default_factory=dict)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    validation_issues: list[dict[str, Any]] = Field(default_factory=list)
+    routing: dict[str, Any] | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class ChatTaskUnderstanding:
     """Semantic Task State; Routing Policy consumes this, not the raw user text."""
@@ -456,6 +477,7 @@ class CaseFileChatRequest:
     network_retries: int = 2
     toolset_version: str = "casefile-chat-tools-v1"
     context_policy_version: str = LEGACY_CONTEXT_POLICY_VERSION
+    assembled_input: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)

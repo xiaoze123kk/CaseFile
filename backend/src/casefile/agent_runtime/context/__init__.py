@@ -1,5 +1,9 @@
 """Extensible, policy-driven context engineering substrate for CaseFile chat."""
 
+from casefile.agent_runtime.context.assembly_render import (
+    CHAT_CONTEXT_PROMPT_VERSION,
+    chat_input_payload_from_assembly,
+)
 from casefile.agent_runtime.context.budget import (
     BudgetApplication,
     apply_context_budget,
@@ -18,6 +22,7 @@ from casefile.agent_runtime.context.estimators import (
     UsageTokenSample,
     default_token_estimator_registry,
     estimate_conservative_tokens,
+    estimate_jsonable_tokens,
     usage_calibration_ratio,
 )
 from casefile.agent_runtime.context.evidence import (
@@ -40,6 +45,7 @@ from casefile.agent_runtime.context.models import (
     StageResult,
 )
 from casefile.agent_runtime.context.policies.loader import (
+    CHAT_CONTEXT_POLICY_VERSION,
     CONTEXT_POLICY_SCHEMA_VERSION,
     ContextPolicyError,
     known_context_policy_versions,
@@ -59,14 +65,35 @@ from casefile.agent_runtime.context.strategies.legacy import (
     LegacyChatInputStage,
     legacy_chat_routing_payload,
 )
+from casefile.agent_runtime.context.strategies.selectors.history_window import (
+    HistoryWindowStage,
+    select_history_window,
+)
+from casefile.agent_runtime.context.strategies.sources.casefile_skeleton import (
+    CaseFileSkeletonStage,
+    build_casefile_skeleton,
+)
+from casefile.agent_runtime.context.strategies.sources.chat_contract import ChatContractStage
+from casefile.agent_runtime.context.strategies.sources.focus_objects import (
+    FocusObjectsStage,
+    build_focus_objects_payload,
+)
+from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
+    ValidationTrimStage,
+    trim_validation_issues,
+)
 from casefile.agent_runtime.models import LEGACY_CONTEXT_POLICY_VERSION
 
 __all__ = [
+    "CHAT_CONTEXT_POLICY_VERSION",
+    "CHAT_CONTEXT_PROMPT_VERSION",
     "CONSERVATIVE_TOKEN_ESTIMATOR",
     "CONTEXT_POLICY_SCHEMA_VERSION",
     "LEGACY_CONTEXT_POLICY_VERSION",
     "BudgetApplication",
+    "CaseFileSkeletonStage",
     "CharTokenEstimator",
+    "ChatContractStage",
     "ContextAssembly",
     "ContextBlock",
     "ContextBlockStatus",
@@ -87,21 +114,30 @@ __all__ = [
     "EvidenceRef",
     "EvidenceRegistry",
     "EvidenceResolver",
+    "FocusObjectsStage",
+    "HistoryWindowStage",
     "LegacyChatInputStage",
     "StageResult",
     "TokenEstimator",
     "TokenEstimatorRegistry",
     "TokenEstimatorRegistryError",
     "UsageTokenSample",
+    "ValidationTrimStage",
     "apply_context_budget",
+    "build_casefile_skeleton",
     "build_chat_context_manifest",
     "build_context_manifest",
+    "build_focus_objects_payload",
+    "chat_input_payload_from_assembly",
     "default_context_registry",
     "default_token_estimator_registry",
     "estimate_conservative_tokens",
+    "estimate_jsonable_tokens",
     "known_context_policy_versions",
     "legacy_chat_routing_payload",
     "load_context_policy",
+    "select_history_window",
+    "trim_validation_issues",
     "truncate_text_to_tokens",
     "usage_calibration_ratio",
 ]

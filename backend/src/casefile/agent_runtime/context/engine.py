@@ -51,6 +51,7 @@ class ContextEngine:
         input_hash: str,
         routing: dict[str, Any] | None = None,
         prebuilt_input: str | None = None,
+        extra_input: dict[str, Any] | None = None,
         estimator: TokenEstimator | None = None,
         state: dict[str, Any] | None = None,
     ) -> ContextAssembly:
@@ -68,6 +69,7 @@ class ContextEngine:
             estimator=resolved_estimator,
             routing=routing,
             prebuilt_input=prebuilt_input,
+            extra_input=dict(extra_input or {}),
             state=dict(state or {}),
         )
         stage_ids = [policy_stage.id for policy_stage in policy.stages]
@@ -142,6 +144,7 @@ def build_chat_context_manifest(
     input_hash: str,
     routing: dict[str, Any] | None = None,
     prebuilt_input: str | None = None,
+    extra_input: dict[str, Any] | None = None,
     provider: str = "openai",
     model_id: str = "",
     estimator_registry: TokenEstimatorRegistry | None = None,
@@ -175,11 +178,13 @@ def build_chat_context_manifest(
         input_hash=input_hash,
         routing=routing,
         prebuilt_input=prebuilt_input,
+        extra_input=extra_input,
         estimator=resolved_estimator,
     )
     return ContextBuildResult(
         manifest=build_context_manifest(assembly, policy),
         fallback=fallback,
+        assembly=assembly,
     )
 
 

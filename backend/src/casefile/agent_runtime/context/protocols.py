@@ -33,8 +33,17 @@ class ContextRun:
     estimator: TokenEstimator
     routing: dict[str, Any] | None = None
     prebuilt_input: str | None = None
+    extra_input: dict[str, Any] = field(default_factory=dict)
     blocks: dict[str, ContextBlock] = field(default_factory=dict)
     state: dict[str, Any] = field(default_factory=dict)
+
+    def policy_stage_config(self, stage_id: str) -> dict[str, Any]:
+        """Return the declared config for one policy stage (empty when absent)."""
+
+        for policy_stage in self.policy.stages:
+            if policy_stage.id == stage_id:
+                return dict(policy_stage.config)
+        return {}
 
 
 @runtime_checkable

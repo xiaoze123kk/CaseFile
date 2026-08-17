@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from typing import Any
 
 from casefile.agent_runtime.context.protocols import TokenEstimator
 
@@ -26,6 +28,18 @@ def estimate_conservative_tokens(text: str) -> int:
         else:
             non_ascii_chars += 1
     return max(1, non_ascii_chars + (ascii_chars + 3) // 4)
+
+
+def estimate_jsonable_tokens(value: Any, estimator: TokenEstimator) -> int:
+    """Estimate the canonical JSON text of one policy payload.
+
+    Stage payloads are rendered exactly this way by the v2 prompt contract, so
+    block accounting matches the final provider input.
+    """
+
+    return estimator.estimate(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    )
 
 
 @dataclass(slots=True)
@@ -118,5 +132,6 @@ __all__ = [
     "UsageTokenSample",
     "default_token_estimator_registry",
     "estimate_conservative_tokens",
+    "estimate_jsonable_tokens",
     "usage_calibration_ratio",
 ]

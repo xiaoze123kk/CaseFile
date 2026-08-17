@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -20,6 +21,10 @@ from casefile.agent_runtime.chat_intent import (
     route_suggestion_policy,
 )
 from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
+from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_VERSION,
+    CHAT_CONTEXT_PROMPT_VERSION,
+)
 from casefile.agent_runtime.credentials import encrypt_api_key
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
@@ -121,6 +126,18 @@ _provider_view = provider_view
 _source_view = source_view
 _task_view = task_view
 _time = time_view
+
+
+def _chat_context_rollout_version() -> str | None:
+    """Return the paired context/prompt rollout when explicitly opted in.
+
+    Acceptance for the v1 context policy is gated behind this environment flag;
+    the default keeps ``agent-focus-v1`` + the current prompt registry. After
+    M0/M1 acceptance passes, flipping the default is a one-line change.
+    """
+
+    rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
+    return CHAT_CONTEXT_POLICY_VERSION if rollout == CHAT_CONTEXT_POLICY_VERSION else None
 
 
 class WorkflowService:
@@ -440,6 +457,9 @@ class WorkflowService:
                 focus_values,
                 known_issue_ids,
             )
+            context_policy_version = (
+                _chat_context_rollout_version() or LEGACY_CONTEXT_POLICY_VERSION
+            )
             frozen_input = {
                 "casefile": casefile,
                 "history": [
@@ -453,7 +473,7 @@ class WorkflowService:
                 "message": content,
                 "focus": frozen_focus,
                 "validation": validation_snapshot,
-                "context_policy_version": LEGACY_CONTEXT_POLICY_VERSION,
+                "context_policy_version": context_policy_version,
                 "routing_hint": (
                     {"entrypoint": "free_text", "preset_id": None}
                     if routing_hint is None
@@ -2115,6 +2135,8 @@ class WorkflowService:
         output_message_id: int | None = None,
     ) -> TaskRun:
         prompt_version = prompt_version_for_task(task_type)
+        if task_type == "casefile_chat" and _chat_context_rollout_version() is not None:
+            prompt_version = CHAT_CONTEXT_PROMPT_VERSION
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,

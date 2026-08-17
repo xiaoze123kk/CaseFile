@@ -8,6 +8,7 @@ payload; no network, no semantic index, no ID invention.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,8 +37,21 @@ _COLLECTIONS = (
     "structure_locks",
 )
 
+# Public alias shared with the context skeleton source so both keep one order.
+CASEFILE_COLLECTIONS = _COLLECTIONS
+
 _SEARCH_LABEL_FIELDS = ("name", "title", "statement", "proposition", "description")
 _SNIPPET_FIELDS = ("description", "statement", "proposition", "title", "name")
+
+# Single tool-result cap plus per-field string clip used by every tool. Large
+# payloads keep their most relevant prefix and are marked ``truncated``; the
+# model can page further with the same tool instead of receiving silent cuts.
+_TOOL_RESULT_CHAR_LIMIT = 4000
+_TOOL_STRING_CLIP_CHARS = 600
+_TRIM_LIST_KEYS = frozenset(
+    {"results", "records", "collections", "objects", "relationships", "issues"}
+)
+_RECENT_TOOL_RESULTS = 3
 
 # Tools introduced by the v2 toolset are denied to legacy chat TaskRuns so
 # frozen v1-toolset replays keep their original read surface.
@@ -49,15 +63,19 @@ _RELATED_LIMIT_MAX = 40
 
 @dataclass(slots=True)
 class ChatToolMetrics(ToolMetrics):
-    """ToolMetrics plus retrieval evidence for ΔRecall Eval."""
+    """ToolMetrics plus retrieval evidence and bounded-result accounting."""
 
     retrieved_object_ids: list[str] = field(default_factory=list)
     budget_exhausted: int = 0
+    tool_result_chars: int = 0
+    tool_results_truncated: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         payload = ToolMetrics.as_dict(self)
         payload["retrieved_object_ids"] = list(self.retrieved_object_ids)
         payload["budget_exhausted"] = self.budget_exhausted
+        payload["tool_result_chars"] = self.tool_result_chars
+        payload["tool_results_truncated"] = self.tool_results_truncated
         return payload
 
 
@@ -66,11 +84,57 @@ class ChatToolContext:
     request: CaseFileChatRequest
     route: RouteDecision
     metrics: ChatToolMetrics = field(default_factory=ChatToolMetrics)
+    recent_tool_results: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def max_tool_calls(self) -> int:
         value = self.route.execution_profile.get("max_tool_calls")
         return value if isinstance(value, int) and value >= 0 else 0
+
+    def record_tool_result(
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> None:
+        """Append one bounded result for the recent/folded dual-zone ledger."""
+
+        self.recent_tool_results.append(
+            {
+                "tool": tool,
+                "args": arguments,
+                "status": payload.get("truncation", {}).get("reason")
+                if payload.get("truncated") is True
+                else "ok",
+                "payload": payload,
+            }
+        )
+
+    def folded_tool_summary(self, *, max_recent: int = _RECENT_TOOL_RESULTS) -> dict[str, Any]:
+        """Fold older results into one-line deterministic summaries."""
+
+        recent = self.recent_tool_results[-max(0, max_recent) :]
+        folded = [
+            {
+                "tool": entry["tool"],
+                "args": entry["args"],
+                "status": entry["status"],
+                "hit_ids": sorted(
+                    {
+                        str(item["id"])
+                        for item in entry["payload"].get("results", [])
+                        if isinstance(item, dict) and item.get("id")
+                    }
+                ),
+            }
+            for entry in self.recent_tool_results[
+                : max(0, len(self.recent_tool_results) - len(recent))
+            ]
+        ]
+        return {
+            "recent": recent,
+            "folded": folded,
+        }
 
 
 def _record_label(item: dict[str, Any]) -> str:
@@ -87,6 +151,120 @@ def _record_snippet(item: dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()[:320]
     return ""
+
+
+def _clip_string(value: str, *, limit: int) -> str:
+    return value[: max(1, limit)]
+
+
+def _clip_strings(value: Any) -> Any:
+    """Recursively clip long string leaves without changing structure."""
+
+    if isinstance(value, str):
+        return _clip_string(value, limit=_TOOL_STRING_CLIP_CHARS)
+    if isinstance(value, list):
+        return [_clip_strings(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _clip_strings(item) for key, item in value.items()}
+    return value
+
+
+def _payload_text(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def bounded_tool_result_json(
+    payload: dict[str, Any],
+    *,
+    max_chars: int = _TOOL_RESULT_CHAR_LIMIT,
+) -> tuple[str, bool]:
+    """Render one tool payload within the deterministic character budget.
+
+    Returns ``(json_text, truncated)``. When over budget the renderer first
+    clips long string leaves, then drops the tail of result lists, and finally
+    falls back to a valid error object. The caller also emits a ``truncated``
+    marker so the model never mistakes a bounded page for the whole dataset.
+    """
+
+    original = _payload_text(payload)
+    if len(original) <= max(1, max_chars):
+        return original, False
+    candidate = _clip_strings(deepcopy(payload))
+    candidate_text = _payload_text(candidate)
+    if len(candidate_text) <= max(1, max_chars):
+        return candidate_text, True
+    for key in _TRIM_LIST_KEYS:
+        value = candidate.get(key)
+        if not isinstance(value, list):
+            continue
+        while len(value) > 1 and len(_payload_text(candidate)) > max(1, max_chars):
+            value.pop()
+        candidate_text = _payload_text(candidate)
+        if len(candidate_text) <= max(1, max_chars):
+            break
+    candidate["truncated"] = True
+    candidate["truncation"] = {
+        "reason": "tool_result_char_limit",
+        "max_chars": max_chars,
+        "original_chars": len(original),
+    }
+    candidate_text = _payload_text(candidate)
+    if len(candidate_text) <= max(1, max_chars):
+        return candidate_text, True
+    fallback: dict[str, Any] = {
+        "error": "tool_result_too_large",
+        "truncated": True,
+        "truncation": {
+            "reason": "tool_result_char_limit",
+            "max_chars": max_chars,
+            "original_chars": len(original),
+        },
+    }
+    return _payload_text(fallback), True
+
+
+def _emit_tool_result(
+    context: ChatToolContext,
+    tool: str,
+    arguments: dict[str, Any],
+    payload: dict[str, Any],
+) -> str:
+    text, truncated = bounded_tool_result_json(payload)
+    context.metrics.tool_result_chars += len(text)
+    if truncated:
+        context.metrics.tool_results_truncated += 1
+        context.record_tool_result(tool, arguments, json.loads(text))
+    else:
+        context.record_tool_result(tool, arguments, payload)
+    return text
+
+
+def fold_tool_results(
+    results: list[dict[str, Any]],
+    *,
+    max_recent: int = _RECENT_TOOL_RESULTS,
+) -> dict[str, Any]:
+    """Deterministically fold older tool results into one-line summaries."""
+
+    recent = results[-max(0, max_recent) :]
+    folded = []
+    for entry in results[: max(0, len(results) - len(recent))]:
+        hit_ids = sorted(
+            {
+                str(item["id"])
+                for item in entry.get("payload", {}).get("results", [])
+                if isinstance(item, dict) and item.get("id")
+            }
+        )
+        folded.append(
+            {
+                "tool": entry.get("tool"),
+                "args": entry.get("args", {}),
+                "status": entry.get("status", "ok"),
+                "hit_ids": hit_ids,
+            }
+        )
+    return {"recent": recent, "folded": folded}
 
 
 def _bigrams(text: str) -> set[str]:
@@ -380,7 +558,12 @@ def search_casefile(
             "object_ids": object_ids,
         },
     )
-    return json.dumps({"query": query, "results": results}, ensure_ascii=False)
+    return _emit_tool_result(
+        context,
+        "search_casefile",
+        {"query": query, "limit": limit},
+        {"query": query, "results": results},
+    )
 
 
 @function_tool
@@ -419,9 +602,11 @@ def get_casefile_object(
         "get_casefile_object",
         {"valid": True, "object_id": object_id, "collection": collection},
     )
-    return json.dumps(
+    return _emit_tool_result(
+        context,
+        "get_casefile_object",
+        {"object_id": object_id},
         {"object_id": object_id, "collection": collection, "object": item},
-        ensure_ascii=False,
     )
 
 
@@ -471,9 +656,11 @@ def list_casefile_records(
                 "total": total,
             },
         )
-        return json.dumps(
+        return _emit_tool_result(
+            context,
+            "list_casefile_records",
+            {"collection": None, "offset": offset, "limit": limit},
             {"collections": manifest, "total": total},
-            ensure_ascii=False,
         )
     if collection not in _COLLECTIONS:
         _emit_completed(
@@ -503,7 +690,12 @@ def list_casefile_records(
             "result_count": len(page["records"]),
         },
     )
-    return json.dumps(page, ensure_ascii=False)
+    return _emit_tool_result(
+        context,
+        "list_casefile_records",
+        {"collection": collection, "offset": offset, "limit": limit},
+        page,
+    )
 
 
 @function_tool
@@ -598,12 +790,31 @@ def get_related_objects(
             "unresolved_ref_count": len(payload["unresolved_refs"]),
         },
     )
-    return json.dumps(payload, ensure_ascii=False)
+    return _emit_tool_result(
+        context,
+        "get_related_objects",
+        {
+            "object_ids": seeds,
+            "relation_types": relation_types,
+            "max_depth": max_depth,
+            "limit": limit,
+        },
+        payload,
+    )
 
 
 @function_tool
-def get_validation_issues(wrapper: RunContextWrapper[ChatToolContext]) -> str:
-    """Return the frozen validator snapshot bundled with this chat task."""
+def get_validation_issues(
+    wrapper: RunContextWrapper[ChatToolContext],
+    page: int = 0,
+    limit: int = 20,
+) -> str:
+    """Return one bounded page of the frozen validator snapshot.
+
+    ``page=0`` is the first page; pass higher pages to walk the full snapshot.
+    The context policy keeps the full snapshot for gate routes, so pagination
+    never forces the model to skip a gate check.
+    """
 
     context = wrapper.context
     if not _reserve_call(context):
@@ -614,16 +825,35 @@ def get_validation_issues(wrapper: RunContextWrapper[ChatToolContext]) -> str:
             {"valid": False, "reason_code": "tool_budget_exhausted"},
         )
         return json.dumps({"error": "tool_budget_exhausted", "issues": []}, ensure_ascii=False)
-    _emit_started(context, "get_validation_issues", {})
+    _emit_started(context, "get_validation_issues", {"page": page, "limit": limit})
     issues = list(context.request.validation_issues)
+    page_limit = _clamp_tool_count(
+        limit, default=20, minimum=1, maximum=_LIST_LIMIT_MAX
+    )
+    page_max = max(0, (len(issues) + page_limit - 1) // page_limit - 1)
+    page_no = _clamp_tool_count(page, default=0, minimum=0, maximum=page_max)
+    start = page_no * page_limit
+    selected = issues[start : start + page_limit]
     context.metrics.valid_calls += 1
     context.metrics.successful_calls += 1
     _emit_completed(
         context,
         "get_validation_issues",
-        {"valid": True, "issue_count": len(issues)},
+        {"valid": True, "issue_count": len(selected), "page": page_no},
     )
-    return json.dumps({"issues": issues}, ensure_ascii=False)
+    payload = {
+        "issues": selected,
+        "page": page_no,
+        "limit": page_limit,
+        "total": len(issues),
+        "has_more": start + page_limit < len(issues),
+    }
+    return _emit_tool_result(
+        context,
+        "get_validation_issues",
+        {"page": page, "limit": limit},
+        payload,
+    )
 
 
 @function_tool
@@ -767,12 +997,15 @@ def chat_tool_manifest(
 
 
 __all__ = [
+    "CASEFILE_COLLECTIONS",
     "CHAT_TOOLSET_VERSION",
     "LEGACY_CHAT_TOOLSET_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
     "chat_tool_manifest",
+    "bounded_tool_result_json",
     "find_casefile_object",
+    "fold_tool_results",
     "get_casefile_object",
     "get_related_objects",
     "get_validation_issues",

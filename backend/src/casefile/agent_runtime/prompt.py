@@ -56,7 +56,9 @@ COMPETITION_MATRIX_PROMPT_VERSIONS = frozenset(
         "brief-to-draft-v15",
     }
 )
-CHAT_PROMPT_PACKAGE_VERSIONS = frozenset({"casefile-chat-v2", "casefile-chat-v3"})
+CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
+    {"casefile-chat-v2", "casefile-chat-v3", "casefile-chat-v4"}
+)
 TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
     {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15"}
 )
@@ -258,21 +260,37 @@ def render_chat_router_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
     return rendered.instructions, rendered.input_text
 
 
+def _chat_executor_component_id(definition: Any, request: CaseFileChatRequest) -> str:
+    profile = request.route.execution_profile if request.route is not None else {}
+    component_id = str(profile.get("prompt_component") or "chat")
+    if component_id not in definition.package.components:
+        component_id = "chat"
+    return component_id
+
+
 def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
-    """Render the route-specific v2 executor component; v1 keeps the legacy prompt."""
+    """Render the route-specific executor component.
+
+    v1 keeps the legacy prompt. v2/v3 render the package with the full frozen
+    payload. v4 renders the assembled context payload produced by the context
+    policy pipeline (``request.assembled_input``).
+    """
 
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
         return definition.system_prompt, casefile_chat_input(request)
-    profile = (
-        request.route.execution_profile if request.route is not None else {}
-    )
-    component_id = str(profile.get("prompt_component") or "chat")
-    if component_id not in definition.package.components:
-        component_id = "chat"
+    if request.assembled_input is not None:
+        rendered = render_prompt_package(
+            definition.package,
+            _chat_executor_component_id(definition, request),
+            request.assembled_input,
+            agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
+            toolset_version=definition.package.runtime_toolset_version,
+        )
+        return rendered.instructions, rendered.input_text
     rendered = render_prompt_package(
         definition.package,
-        component_id,
+        _chat_executor_component_id(definition, request),
         _casefile_chat_payload(request),
         agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
         toolset_version=definition.package.runtime_toolset_version,

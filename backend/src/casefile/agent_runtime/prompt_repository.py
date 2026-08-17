@@ -90,6 +90,9 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "casefile-chat-v3": frozenset(
         {"router", "rewrite", "chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
     ),
+    "casefile-chat-v4": frozenset(
+        {"router", "rewrite", "chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
+    ),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

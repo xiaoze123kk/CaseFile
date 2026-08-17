@@ -53,6 +53,7 @@ from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     ChatExecutorInputV1,
+    ChatExecutorInputV2,
     ChatIntentRouterInputV1,
     ChatRewriteInputV1,
     ChatTaskUnderstandingOutput,
@@ -130,6 +131,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-intent-input-v1": ChatIntentRouterInputV1,
         "casefile-chat-rewrite-input-v1": ChatRewriteInputV1,
         "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
+        "casefile-chat-prompt-input-v2": ChatExecutorInputV2,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(

@@ -19,6 +19,7 @@ from casefile.agent_runtime.context.models import (
 
 CONTEXT_POLICY_SCHEMA_VERSION: Final = 1
 CONTEXT_POLICY_RESOURCE_PACKAGE: Final = "casefile.agent_runtime.context.policies"
+CHAT_CONTEXT_POLICY_VERSION: Final = "casefile-chat-context-v1"
 _POLICY_SCHEMA_FILE: Final = "schema.json"
 _POLICY_VERSION = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 
@@ -127,6 +128,7 @@ def _policy_from_document(raw: dict[str, Any]) -> ContextPolicy:
 
 
 __all__ = [
+    "CHAT_CONTEXT_POLICY_VERSION",
     "CONTEXT_POLICY_RESOURCE_PACKAGE",
     "CONTEXT_POLICY_SCHEMA_VERSION",
     "ContextPolicyError",

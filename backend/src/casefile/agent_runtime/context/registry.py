@@ -7,6 +7,17 @@ from dataclasses import dataclass, field
 from casefile.agent_runtime.context.models import ContextPolicy
 from casefile.agent_runtime.context.protocols import ContextStage
 from casefile.agent_runtime.context.strategies.legacy import LegacyChatInputStage
+from casefile.agent_runtime.context.strategies.selectors.history_window import (
+    HistoryWindowStage,
+)
+from casefile.agent_runtime.context.strategies.sources.casefile_skeleton import (
+    CaseFileSkeletonStage,
+)
+from casefile.agent_runtime.context.strategies.sources.chat_contract import ChatContractStage
+from casefile.agent_runtime.context.strategies.sources.focus_objects import FocusObjectsStage
+from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
+    ValidationTrimStage,
+)
 
 
 class ContextRegistryError(RuntimeError):
@@ -50,6 +61,11 @@ def default_context_registry() -> ContextRegistry:
 
     registry = ContextRegistry()
     registry.register(LegacyChatInputStage())
+    registry.register(CaseFileSkeletonStage())
+    registry.register(FocusObjectsStage())
+    registry.register(HistoryWindowStage())
+    registry.register(ValidationTrimStage())
+    registry.register(ChatContractStage())
     return registry
 
 
