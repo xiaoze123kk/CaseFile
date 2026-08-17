@@ -3,14 +3,15 @@
 Run the casefile-chat Phase 3 rolling compaction acceptance.
 
 .DESCRIPTION
-Acceptance = quick gates + real-DB M1 gate + optional two-turn live comparison:
-1. Quick gates: ruff on Phase 3 files, strict mypy, non-PostgreSQL unit suite.
-2. M1 gate: CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2 runs the
-   production-path rolling compaction and patch-suggestion-legality tests.
-3. Live comparison (-LiveProvider openai|deepseek|fake): the same two-turn
-   tasks run with legacy full history and with v2 Thread Memory compaction;
-   rollout pass rate must not be lower than baseline and every rollout thread
-   must contain a persisted context state.
+Acceptance = quick gates + real-DB M1 gate + optional paired live comparison:
+1. Quick gates: ruff on context/chat files, strict mypy, non-PostgreSQL unit suite.
+2. M1 gate: CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2 (or v3)
+   runs the production-path rolling compaction and patch-suggestion-legality tests.
+3. Live comparison (-LiveProvider openai|deepseek|fake): every task runs
+   -LiveTrials trials with legacy full history and with the selected rollout
+   policy, paired per task. pass@1 (any trial passes), pass^3 (all trials pass),
+   and rollout compaction coverage are reported; a pass-rate regression or any
+   task missing a compacted rollout thread still exits 1.
 The summary report defaults to tmp/chat-context-v2-acceptance-summary.json.
 #>
 param(
@@ -24,6 +25,7 @@ param(
         "casefile-chat-context-v3"
     )][string]$Rollout = "casefile-chat-context-v2",
     [string]$LiveTaskIds = "golden-entity-question,golden-event-question,golden-issue-explanation,golden-edit-description,boundary-large-casefile",
+    [ValidateRange(1, 5)][int]$LiveTrials = 1,
     [string]$ReportPath = "tmp/chat-context-v2-acceptance-summary.json"
 )
 
@@ -135,6 +137,8 @@ try {
         try {
             & $python -m ruff check --config backend/pyproject.toml `
                 backend/src/casefile/agent_runtime/context `
+                backend/src/casefile/agent_runtime/chat_reference_autofill.py `
+                backend/src/casefile/agent_runtime/chat_routing.py `
                 backend/src/casefile/agent_runtime/models.py `
                 backend/src/casefile/agent_runtime/prompt.py `
                 backend/src/casefile/agent_runtime/prompt_package.py `
@@ -145,10 +149,12 @@ try {
                 backend/src/casefile/data_postgres/session.py `
                 backend/src/casefile/worker/runtime.py `
                 backend/tests/unit/test_chat_context_eval.py `
+                backend/tests/unit/test_chat_reference_autofill.py `
                 backend/tests/unit/test_context_phase3.py `
                 backend/tests/unit/test_prompt_repository.py `
                 backend/tests/integration/test_chat_context_phase3_acceptance.py `
-                backend/tests/integration/test_chat_context_phase3_live_acceptance.py
+                backend/tests/integration/test_chat_context_phase3_live_acceptance.py `
+                backend/tests/integration/test_chat_context_phase4_acceptance.py
             if ($LASTEXITCODE -ne 0) { throw "ruff failed with exit code $LASTEXITCODE." }
             & $python -m mypy --config-file backend/pyproject.toml backend/src
             if ($LASTEXITCODE -ne 0) { throw "mypy failed with exit code $LASTEXITCODE." }
@@ -180,32 +186,23 @@ try {
 
     if (-not [string]::IsNullOrWhiteSpace($LiveProvider)) {
         Write-Host ""
-        Write-Host "== Live two-turn comparison (legacy full history vs $Rollout) ==" -ForegroundColor Cyan
+        Write-Host "== Live paired comparison (legacy baseline vs $Rollout, $LiveTrials trial(s) per task) ==" -ForegroundColor Cyan
 
         $liveTest = @("tests/integration/test_chat_context_phase3_live_acceptance.py")
-        $liveBaselineEnv = @(
-            "CASEFILE_CHAT_CONTEXT_ROLLOUT=agent-focus-v1",
+        $liveEnv = @(
             "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE=1",
             "CASEFILE_CHAT_CONTEXT_LIVE_PROVIDER=$LiveProvider",
             "CASEFILE_CHAT_CONTEXT_LIVE_TASK_IDS=$LiveTaskIds",
-            "CASEFILE_CHAT_CONTEXT_LIVE_REPORT=$liveBaselineReport"
+            "CASEFILE_CHAT_CONTEXT_LIVE_TRIALS=$LiveTrials",
+            "CASEFILE_CHAT_CONTEXT_LIVE_PAIRED=1",
+            "CASEFILE_CHAT_CONTEXT_LIVE_ROLLOUT=$Rollout",
+            "CASEFILE_CHAT_CONTEXT_LIVE_BASELINE_REPORT=$liveBaselineReport",
+            "CASEFILE_CHAT_CONTEXT_LIVE_ROLLOUT_REPORT=$liveRolloutReport"
         )
         if (-not [string]::IsNullOrWhiteSpace($LiveModel)) {
-            $liveBaselineEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
+            $liveEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
         }
-        Invoke-PytestStep -Name "Live baseline (legacy, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveBaselineEnv
-
-        $liveRolloutEnv = @(
-            "CASEFILE_CHAT_CONTEXT_ROLLOUT=$Rollout",
-            "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE=1",
-            "CASEFILE_CHAT_CONTEXT_LIVE_PROVIDER=$LiveProvider",
-            "CASEFILE_CHAT_CONTEXT_LIVE_TASK_IDS=$LiveTaskIds",
-            "CASEFILE_CHAT_CONTEXT_LIVE_REPORT=$liveRolloutReport"
-        )
-        if (-not [string]::IsNullOrWhiteSpace($LiveModel)) {
-            $liveRolloutEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
-        }
-        Invoke-PytestStep -Name "Live rollout ($Rollout, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveRolloutEnv
+        Invoke-PytestStep -Name "Live paired comparison ($LiveProvider)" -TestPaths $liveTest -EnvOverride $liveEnv
         $stepStatus.live = "passed"
 
         $liveBaseline = Read-JsonReport $liveBaselineReport
@@ -220,7 +217,7 @@ try {
         }
         if ([int]$liveRollout.compacted_threads -ne [int]$liveRollout.task_count) {
             $failed = $true
-            Write-Host ("LIVE COMPACTION MISSING: {0}/{1} threads compacted" -f `
+            Write-Host ("LIVE COMPACTION MISSING: {0}/{1} tasks have all trials compacted" -f `
                 $liveRollout.compacted_threads, $liveRollout.task_count) -ForegroundColor Red
         }
     }
@@ -229,7 +226,7 @@ try {
         generated_at = [DateTime]::UtcNow.ToString("o")
         policy_version = $Rollout
         prompt_version = if ($Rollout -eq "casefile-chat-context-v3") {
-            "casefile-chat-v6"
+            "casefile-chat-v7"
         } elseif ($Rollout -eq "casefile-chat-context-v1") {
             "casefile-chat-v4"
         } else {
@@ -241,6 +238,12 @@ try {
         } else {
             [ordered]@{
                 provider = $LiveProvider
+                trials = $LiveTrials
+                baseline_pass_at_1 = $liveBaseline.pass_at_1
+                baseline_pass_at_3 = $liveBaseline.pass_at_3
+                rollout_pass_at_1 = $liveRollout.pass_at_1
+                rollout_pass_at_3 = $liveRollout.pass_at_3
+                rollout_reference_autofill = $liveRollout.reference_autofill
                 baseline_pass_rate = $liveBaseline.pass_rate
                 rollout_pass_rate = $liveRollout.pass_rate
                 pass_rate_delta = [double]$liveRollout.pass_rate - [double]$liveBaseline.pass_rate
