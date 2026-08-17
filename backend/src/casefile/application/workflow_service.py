@@ -29,7 +29,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
-    CHAT_CONTEXT_PROMPT_V3_VERSION,
+    CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -2193,7 +2193,7 @@ class WorkflowService:
             elif policy_version == CHAT_CONTEXT_POLICY_V2_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_V2_VERSION
             elif policy_version == CHAT_CONTEXT_POLICY_V3_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V3_VERSION
+                prompt_version = CHAT_CONTEXT_PROMPT_V4_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
         return TaskRun(

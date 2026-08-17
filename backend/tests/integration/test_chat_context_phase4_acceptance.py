@@ -3,7 +3,7 @@
 Opt-in via ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v3``. Uses the
 deterministic FakeProvider and lowered compaction thresholds so one exchange
 produces the same rolling compaction behavior as Phase 3, now paired with the
-v6 prompt and the v3 toolset.
+v7 prompt and the v3 toolset.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_V3_VERSION
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V3_VERSION,
-    CHAT_CONTEXT_PROMPT_V3_VERSION,
+    CHAT_CONTEXT_PROMPT_V4_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.application.services import CaseFileService
@@ -48,7 +48,7 @@ class CapturingChatProvider(FakeProvider):
         return super().chat(request)
 
 
-def test_phase4_context_tools_rollout_binds_v6_and_v3_toolset(
+def test_phase4_context_tools_rollout_binds_v7_and_v3_toolset(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     if os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT") != ROLLOUT:
@@ -117,7 +117,7 @@ def test_phase4_context_tools_rollout_binds_v6_and_v3_toolset(
                 first_row.error_code,
                 first_row.error_details_jsonb,
             )
-            assert first_row.prompt_version == CHAT_CONTEXT_PROMPT_V3_VERSION
+            assert first_row.prompt_version == CHAT_CONTEXT_PROMPT_V4_VERSION
             assert first_row.toolset_version == CHAT_TOOLSET_V3_VERSION
             assert first_row.input_jsonb.get("context_policy_version") == ROLLOUT
             state_row = session.scalar(
@@ -144,7 +144,7 @@ def test_phase4_context_tools_rollout_binds_v6_and_v3_toolset(
             second_task_id = int(second["task"]["task_run_id"])
             second_row = session.get(TaskRun, second_task_id)
             assert second_row is not None
-            assert second_row.prompt_version == CHAT_CONTEXT_PROMPT_V3_VERSION
+            assert second_row.prompt_version == CHAT_CONTEXT_PROMPT_V4_VERSION
             assert second_row.toolset_version == CHAT_TOOLSET_V3_VERSION
             context_state = second_row.input_jsonb.get("context_state")
             assert isinstance(context_state, dict)
@@ -153,7 +153,7 @@ def test_phase4_context_tools_rollout_binds_v6_and_v3_toolset(
         assert chat_worker.run_once() is True
         assert len(provider.requests) == 2
         second_request = provider.requests[1]
-        assert second_request.prompt_version == CHAT_CONTEXT_PROMPT_V3_VERSION
+        assert second_request.prompt_version == CHAT_CONTEXT_PROMPT_V4_VERSION
         assert second_request.toolset_version == CHAT_TOOLSET_V3_VERSION
         assert second_request.context_policy_version == ROLLOUT
         assert second_request.assembled_input is not None

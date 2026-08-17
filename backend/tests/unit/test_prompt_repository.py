@@ -235,6 +235,18 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
+    ("casefile_chat", "casefile-chat-v7"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
     ("casefile_chat_context_compactor", "casefile-chat-context-compactor-v1"): {
         "fragment:compact": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5",  # noqa: E501
     },
