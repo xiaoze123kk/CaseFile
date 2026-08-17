@@ -39,7 +39,7 @@ EXECUTION_PROFILES: dict[str, dict[str, Any]] = {
             "get_related_objects",
         ],
         "context_tools": ["retrieve_thread_evidence"],
-        "max_turns": 4,
+        "max_turns": 6,
         "max_tool_calls": 6,
         "context_profile": "focus_first",
     },

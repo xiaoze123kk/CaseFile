@@ -124,6 +124,34 @@ from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
 
+CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
+_CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE"
+
+
+def _chat_live_temperature() -> float | None:
+    """Resolve live chat temperature: explicit env wins, live acceptance defaults to 0.
+
+    Production remains None (provider default) unless the operator explicitly
+    sets ``CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE``.
+    """
+
+    configured = os.getenv(CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV, "").strip()
+    if not configured:
+        if os.getenv(_CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE_ENV) == "1":
+            return 0.0
+        return None
+    try:
+        temperature = float(configured)
+    except ValueError as error:
+        raise ProviderProtocolError(
+            f"{CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV} must be a number"
+        ) from error
+    if temperature < 0.0 or temperature > 2.0:
+        raise ProviderProtocolError(
+            f"{CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV} must be between 0 and 2"
+        )
+    return temperature
+
 
 class GenerationProvider(Protocol):
     def generate(self, request: GenerationRequest) -> GenerationResult: ...
@@ -1382,6 +1410,7 @@ class OpenAIAgentsProvider:
                 tools=tools,
                 context=context,
                 max_turns=max_turns,
+                temperature=_chat_live_temperature(),
             )
         )
         return CaseFileChatResult(
@@ -1429,6 +1458,7 @@ class OpenAIAgentsProvider:
                 stage="understanding",
                 component_id="intent_router",
                 schema_id="chat-task-understanding-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return IntentUnderstandingResult(
@@ -1452,6 +1482,7 @@ class OpenAIAgentsProvider:
                 stage="rewriting",
                 component_id="query_rewriter",
                 schema_id="query-rewrite-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return RouteSpecificRewriteResult(
@@ -1557,6 +1588,7 @@ class OpenAIAgentsProvider:
         tools: list[Tool] | None = None,
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
+        temperature: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -1568,6 +1600,7 @@ class OpenAIAgentsProvider:
                 request,
                 model=model,
                 model_settings=ModelSettings(
+                    temperature=temperature,
                     reasoning=Reasoning(effort="low"),
                     verbosity="low",
                     include_usage=True,
@@ -1769,6 +1802,7 @@ class DeepSeekAgentsProvider:
                 context=context,
                 max_turns=max_turns,
                 deepseek_output_protocol=output_protocol,
+                temperature=_chat_live_temperature(),
             )
         )
         return CaseFileChatResult(
@@ -1819,6 +1853,7 @@ class DeepSeekAgentsProvider:
                 stage="understanding",
                 component_id="intent_router",
                 schema_id="chat-task-understanding-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return IntentUnderstandingResult(
@@ -1842,6 +1877,7 @@ class DeepSeekAgentsProvider:
                 stage="rewriting",
                 component_id="query_rewriter",
                 schema_id="query-rewrite-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return RouteSpecificRewriteResult(
@@ -1934,6 +1970,7 @@ class DeepSeekAgentsProvider:
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+        temperature: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
         client = _model_client(model)
@@ -1941,7 +1978,7 @@ class DeepSeekAgentsProvider:
             return await _run_auxiliary_agent(
                 request,
                 model=model,
-                model_settings=_deepseek_model_settings(),
+                model_settings=_deepseek_model_settings(temperature=temperature),
                 instructions=instructions,
                 input_text=input_text,
                 output_type=output_type,
@@ -2111,6 +2148,7 @@ async def _run_auxiliary_agent(
                     instructions=instructions,
                     input_text=current_input,
                     output_type=output_type,
+                    temperature=model_settings.temperature,
                 )
                 raw_output_text = strict_result.raw_output
                 usage_records.append(strict_result.usage)
@@ -3372,8 +3410,9 @@ def _model_client(model: OpenAIChatCompletionsModel) -> AsyncOpenAI | None:
     return cast(AsyncOpenAI | None, client)
 
 
-def _deepseek_model_settings() -> ModelSettings:
+def _deepseek_model_settings(temperature: float | None = None) -> ModelSettings:
     return ModelSettings(
+        temperature=temperature,
         include_usage=True,
         parallel_tool_calls=False,
         extra_args={"response_format": {"type": "json_object"}},
