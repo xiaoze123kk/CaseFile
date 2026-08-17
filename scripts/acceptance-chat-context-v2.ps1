@@ -18,6 +18,11 @@ param(
     [switch]$SkipM1Gate,
     [ValidateSet("", "openai", "deepseek", "fake")][string]$LiveProvider = "",
     [string]$LiveModel = "",
+    [ValidateSet(
+        "casefile-chat-context-v1",
+        "casefile-chat-context-v2",
+        "casefile-chat-context-v3"
+    )][string]$Rollout = "casefile-chat-context-v2",
     [string]$LiveTaskIds = "golden-entity-question,golden-event-question,golden-issue-explanation,golden-edit-description,boundary-large-casefile",
     [string]$ReportPath = "tmp/chat-context-v2-acceptance-summary.json"
 )
@@ -70,8 +75,13 @@ $summaryFile = if ([System.IO.Path]::IsPathRooted($resolvedReportPath)) {
 } else {
     Join-Path $repoRoot $resolvedReportPath
 }
-$liveBaselineReport = Join-Path $repoRoot "tmp/chat-context-v2-live-baseline.json"
-$liveRolloutReport = Join-Path $repoRoot "tmp/chat-context-v2-live-rollout.json"
+$liveReportTag = switch ($Rollout) {
+    "casefile-chat-context-v1" { "v1" }
+    "casefile-chat-context-v3" { "v3" }
+    default { "v2" }
+}
+$liveBaselineReport = Join-Path $repoRoot "tmp/chat-context-$liveReportTag-live-baseline.json"
+$liveRolloutReport = Join-Path $repoRoot "tmp/chat-context-$liveReportTag-live-rollout.json"
 
 $stepStatus = [ordered]@{
     quick_gates = "skipped"
@@ -156,15 +166,21 @@ try {
     }
 
     if (-not $SkipM1Gate) {
-        $m1Tests = @("tests/integration/test_chat_context_phase3_acceptance.py")
-        $m1Env = @("CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2")
-        Invoke-PytestStep -Name "M1 gate (rolling compaction + patch suggestion legality)" -TestPaths $m1Tests -EnvOverride $m1Env
+        $m1Tests = if ($Rollout -eq "casefile-chat-context-v3") {
+            @("tests/integration/test_chat_context_phase4_acceptance.py")
+        } elseif ($Rollout -eq "casefile-chat-context-v1") {
+            @("tests/integration/test_chat_context_phase2_acceptance.py")
+        } else {
+            @("tests/integration/test_chat_context_phase3_acceptance.py")
+        }
+        $m1Env = @("CASEFILE_CHAT_CONTEXT_ROLLOUT=$Rollout")
+        Invoke-PytestStep -Name "M1 gate ($Rollout)" -TestPaths $m1Tests -EnvOverride $m1Env
         $stepStatus.m1_gate = "passed"
     }
 
     if (-not [string]::IsNullOrWhiteSpace($LiveProvider)) {
         Write-Host ""
-        Write-Host "== Live two-turn comparison (legacy full history vs v2 Thread Memory) ==" -ForegroundColor Cyan
+        Write-Host "== Live two-turn comparison (legacy full history vs $Rollout) ==" -ForegroundColor Cyan
 
         $liveTest = @("tests/integration/test_chat_context_phase3_live_acceptance.py")
         $liveBaselineEnv = @(
@@ -180,7 +196,7 @@ try {
         Invoke-PytestStep -Name "Live baseline (legacy, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveBaselineEnv
 
         $liveRolloutEnv = @(
-            "CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2",
+            "CASEFILE_CHAT_CONTEXT_ROLLOUT=$Rollout",
             "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE=1",
             "CASEFILE_CHAT_CONTEXT_LIVE_PROVIDER=$LiveProvider",
             "CASEFILE_CHAT_CONTEXT_LIVE_TASK_IDS=$LiveTaskIds",
@@ -189,7 +205,7 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($LiveModel)) {
             $liveRolloutEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
         }
-        Invoke-PytestStep -Name "Live rollout (casefile-chat-context-v2, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveRolloutEnv
+        Invoke-PytestStep -Name "Live rollout ($Rollout, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveRolloutEnv
         $stepStatus.live = "passed"
 
         $liveBaseline = Read-JsonReport $liveBaselineReport
@@ -211,8 +227,14 @@ try {
 
     $summary = [ordered]@{
         generated_at = [DateTime]::UtcNow.ToString("o")
-        policy_version = "casefile-chat-context-v2"
-        prompt_version = "casefile-chat-v5"
+        policy_version = $Rollout
+        prompt_version = if ($Rollout -eq "casefile-chat-context-v3") {
+            "casefile-chat-v6"
+        } elseif ($Rollout -eq "casefile-chat-context-v1") {
+            "casefile-chat-v4"
+        } else {
+            "casefile-chat-v5"
+        }
         steps = $stepStatus
         live = if ([string]::IsNullOrWhiteSpace($LiveProvider)) {
             $null

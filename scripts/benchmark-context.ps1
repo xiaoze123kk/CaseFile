@@ -20,6 +20,11 @@ param(
     [switch]$SkipPostgresGates,
     [ValidateSet("", "openai", "deepseek")][string]$LiveProvider = "",
     [string]$LiveModel = "",
+    [ValidateSet(
+        "casefile-chat-context-v1",
+        "casefile-chat-context-v2",
+        "casefile-chat-context-v3"
+    )][string]$LiveRollout = "casefile-chat-context-v2",
     [string]$ReportPath = "tmp/context-benchmark-summary.json"
 )
 
@@ -224,10 +229,11 @@ try {
         } else {
             $acceptanceScript = Join-Path $PSScriptRoot "acceptance-chat-context-v2.ps1"
             if ([string]::IsNullOrWhiteSpace($LiveModel)) {
-                & $acceptanceScript -SkipQuickGates -SkipM1Gate -LiveProvider $LiveProvider
+                & $acceptanceScript -SkipQuickGates -SkipM1Gate `
+                    -LiveProvider $LiveProvider -Rollout $LiveRollout
             } else {
                 & $acceptanceScript -SkipQuickGates -SkipM1Gate `
-                    -LiveProvider $LiveProvider -LiveModel $LiveModel
+                    -LiveProvider $LiveProvider -LiveModel $LiveModel -Rollout $LiveRollout
             }
             if ($LASTEXITCODE -ne 0) {
                 throw "Live context acceptance failed."

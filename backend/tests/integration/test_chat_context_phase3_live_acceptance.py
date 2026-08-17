@@ -25,7 +25,9 @@ from application_services_test_support import (
 )
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V3_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatCandidate
 from casefile.application.services import CaseFileService
@@ -454,8 +456,12 @@ def test_chat_context_phase3_live_acceptance_produces_report(
         os.environ.get("CASEFILE_CHAT_CONTEXT_LIVE_API_KEY"),
     )
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
-    compacted = rollout == CHAT_CONTEXT_POLICY_V2_VERSION
-    if rollout not in {"agent-focus-v1", CHAT_CONTEXT_POLICY_V2_VERSION}:
+    compacted = rollout in {CHAT_CONTEXT_POLICY_V2_VERSION, CHAT_CONTEXT_POLICY_V3_VERSION}
+    if rollout not in {
+        "agent-focus-v1",
+        CHAT_CONTEXT_POLICY_V2_VERSION,
+        CHAT_CONTEXT_POLICY_V3_VERSION,
+    }:
         raise RuntimeError(f"Unsupported CASEFILE_CHAT_CONTEXT_ROLLOUT for phase 3 live: {rollout}")
 
     _seed_provider_setting(
@@ -520,10 +526,16 @@ def test_chat_context_phase3_live_acceptance_produces_report(
         "compacted_threads": compacted_count,
         "rows": rows,
         "expected_policy_version": (
-            CHAT_CONTEXT_POLICY_V2_VERSION if compacted else "agent-focus-v1"
+            rollout
+            if rollout in {CHAT_CONTEXT_POLICY_V2_VERSION, CHAT_CONTEXT_POLICY_V3_VERSION}
+            else "agent-focus-v1"
         ),
         "expected_prompt_version": (
-            CHAT_CONTEXT_PROMPT_V2_VERSION if compacted else "casefile-chat-v3"
+            CHAT_CONTEXT_PROMPT_V2_VERSION
+            if rollout == CHAT_CONTEXT_POLICY_V2_VERSION
+            else CHAT_CONTEXT_PROMPT_V3_VERSION
+            if rollout == CHAT_CONTEXT_POLICY_V3_VERSION
+            else "casefile-chat-v3"
         ),
     }
     report_path = os.environ.get("CASEFILE_CHAT_CONTEXT_LIVE_REPORT")

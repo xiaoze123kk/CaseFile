@@ -43,14 +43,19 @@
 - 失败样本：`boundary-large-casefile`，失败项 `reference_recall`；线程已正常压缩两次（`state_id` 存在），说明失败不是压缩管线故障。
 - 失败分诊：单独复跑该样本（同 key、同模型、同 rollout）得到 **1/1 通过**，答案列出目标事件 `evt_restart_seven` 与目标对象 `ent_researcher` 并成功命中引用。结合基线同任务稳定通过，归因是 **pro 模型在该大卷宗样本上的随机波动（单样本 recall 方差）**，未复现系统性上下文丢失。
 - 早前一次全量跑中同一样本曾因 API 余额返回 402 而失败，已不作为质量信号。
+- 追加一次 `casefile-chat-context-v3` live 批（同 key、同模型）：
+  - baseline（legacy）：**4/5 = 0.8**；`golden-entity-question` 答案正确但 `referenced_object_ids` 为空，属引用槽漏填。
+  - rollout（v3）：**3/5 = 0.6**；同一样本仍漏填引用 ID，`boundary-large-casefile` 报 `MaxTurnsExceeded`。
+  - 单样本复跑：baseline 报未知引用 `src_restart_brief` 生成失败，rollout 答文中出现 `ent_researcher` 文本但未写入引用 ID（`reference_recall`）。
+  - 归因：v3 批未出现系统性上下文丢失，但 pro 模型在 v6 契约下**引用槽填写方差显著**（答对文本但漏填 ID），且大卷宗样本稳定性不足。
 
 ## 灰度决策
 
-- 本次有效全量跑未达到《结果级 Eval 方案》Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次；v2 `pass_rate = 0.8`），**v2/v3 不升默认**；默认保持 v1/v4。
+- 本次有效全量跑未达到《结果级 Eval 方案》Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次；v2 `pass_rate = 0.8`，v3 `pass_rate = 0.6`），**v2/v3 不升默认**；默认保持 v1/v4。
 - 后续余额允许时补齐多批（每 Task ≥ 3 trials）的 `pass@1 / pass^3`；若连续两批达标再评估是否把 v2/v3 升默认。
 - live 报告 row 已增加 `answer_text / referenced_*_ids / expected_*_ids`，便于失败分诊。
 
 ## 脚本行为
 
-- `scripts/acceptance-chat-context-v2.ps1` 在 live 对比回归或压缩缺失时以退出码 1 结束。
-- `scripts/benchmark-context.ps1` 支持 `-LiveModel`；没有 API key 环境变量时跳过 live 并在报告里记录原因；live 子脚本失败会让整个基准失败，不再误报 passed。
+- `scripts/acceptance-chat-context-v2.ps1` 支持 `-Rollout casefile-chat-context-v1|v2|v3`；live 对比回归或压缩缺失时以退出码 1 结束。
+- `scripts/benchmark-context.ps1` 支持 `-LiveModel` 与 `-LiveRollout`；没有 API key 环境变量时跳过 live 并在报告里记录原因；live 子脚本失败会让整个基准失败，不再误报 passed。
