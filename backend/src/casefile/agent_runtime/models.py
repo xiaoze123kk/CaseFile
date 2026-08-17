@@ -296,8 +296,8 @@ class ChatExecutorInputV2(StrictAgentOutput):
     ``casefile`` contains only id/collection/label/type skeletons; full record
     content is fetched with the read-only tools. ``focus_objects`` carries the
     bounded full-object and one-hop neighbor expansion selected by the context
-    policy, and Phase 3 policies additionally bind the rolling
-    ``thread_memory`` state.
+    policy, Phase 3 policies additionally bind the rolling ``thread_memory``
+    state, and Phase 4 bindings attach the read-only ``context_dashboard``.
     """
 
     input_hash: str = Field(min_length=1)
@@ -305,6 +305,7 @@ class ChatExecutorInputV2(StrictAgentOutput):
     focus_objects: dict[str, Any] = Field(default_factory=dict)
     thread_history: list[dict[str, Any]] = Field(default_factory=list)
     thread_memory: dict[str, Any] | None = None
+    context_dashboard: dict[str, Any] | None = None
     author_message: str = Field(min_length=1, max_length=100_000)
     editable_fields_by_collection: dict[str, list[str]] = Field(default_factory=dict)
     focus: dict[str, Any] = Field(default_factory=dict)

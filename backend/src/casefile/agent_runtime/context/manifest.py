@@ -23,6 +23,8 @@ def build_context_manifest(
             tokens=block.tokens,
             status=block.status,
             recoverable=block.recoverable,
+            age_turns=block.age_turns,
+            last_access_turn=block.last_access_turn,
         )
         for block in assembly.blocks
     )

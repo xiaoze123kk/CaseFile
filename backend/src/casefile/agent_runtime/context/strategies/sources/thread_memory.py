@@ -33,6 +33,11 @@ class ThreadMemoryStage:
             return StageResult()
         state = ChatThreadMemoryState.model_validate(raw_state)
         payload: dict[str, Any] = thread_memory_state_to_jsonable(state)
+        history_turns = sum(
+            1
+            for item in (run.frozen_input.get("history") or [])
+            if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
+        )
         return StageResult(
             added=(
                 ContextBlock(
@@ -40,12 +45,20 @@ class ThreadMemoryStage:
                     kind="thread_memory",
                     payload=payload,
                     tokens=estimate_jsonable_tokens(payload, run.estimator),
-                    trimmable=True,
+                    trimmable=False,
+                    recoverable=True,
                     metadata={
                         "last_compacted_message_seq": state.last_compacted_message_seq,
                         "constraint_count": len(state.constraints),
                         "verified_fact_count": len(state.verified_facts),
+                        "evidence_refs": list(state.evidence_refs),
+                        "protected": True,
                     },
+                    age_turns=max(
+                        0,
+                        history_turns - state.last_compacted_message_seq,
+                    ),
+                    last_access_turn=history_turns,
                 ),
             ),
             metrics={

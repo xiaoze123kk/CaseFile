@@ -10,6 +10,11 @@ from casefile.agent_runtime.context.budget import (
     apply_context_budget,
     truncate_text_to_tokens,
 )
+from casefile.agent_runtime.context.dashboard import (
+    ContextDashboard,
+    build_context_dashboard,
+    dashboard_guardrail_decisions,
+)
 from casefile.agent_runtime.context.engine import (
     ContextEngine,
     ContextEngineError,
@@ -125,6 +130,7 @@ __all__ = [
     "ContextBlockSummary",
     "ContextBudget",
     "ContextBuildResult",
+    "ContextDashboard",
     "ContextDecision",
     "ContextEngine",
     "ContextEngineError",
@@ -162,9 +168,11 @@ __all__ = [
     "apply_context_budget",
     "build_casefile_skeleton",
     "build_chat_context_manifest",
+    "build_context_dashboard",
     "build_context_manifest",
     "build_focus_objects_payload",
     "chat_input_payload_from_assembly",
+    "dashboard_guardrail_decisions",
     "default_compactor_registry",
     "default_context_registry",
     "default_token_estimator_registry",

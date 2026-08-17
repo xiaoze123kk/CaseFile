@@ -45,6 +45,19 @@ class ContextRun:
                 return dict(policy_stage.config)
         return {}
 
+    @property
+    def turn_index(self) -> int:
+        """Number of completed user/assistant turns preceding this request."""
+
+        history = self.frozen_input.get("history")
+        if not isinstance(history, list):
+            return 0
+        return sum(
+            1
+            for item in history
+            if isinstance(item, dict) and item.get("role") in {"user", "assistant"}
+        )
+
 
 @runtime_checkable
 class ContextStage(Protocol):

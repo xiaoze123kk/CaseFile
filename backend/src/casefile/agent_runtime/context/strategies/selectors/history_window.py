@@ -80,6 +80,9 @@ def select_history_window(
         "thread_history": selected,
         "pinned_messages": pinned_messages,
         "dropped_count": dropped_count,
+        "first_index": selected_indices[0] if selected_indices else 0,
+        "last_index": selected_indices[-1] if selected_indices else 0,
+        "history_turns": len(clean),
     }
 
 
@@ -136,6 +139,7 @@ class HistoryWindowStage:
                 )
             )
         payload: list[dict[str, str]] = selected["thread_history"]
+        history_turns = int(selected["history_turns"])
         return StageResult(
             added=(
                 ContextBlock(
@@ -147,7 +151,12 @@ class HistoryWindowStage:
                         "profile": profile,
                         "max_messages": max_messages,
                         "dropped_count": selected["dropped_count"],
+                        "pinned_message_count": len(selected["pinned_messages"]),
+                        "first_index": selected["first_index"],
+                        "last_index": selected["last_index"],
                     },
+                    age_turns=max(0, history_turns - int(selected["last_index"])),
+                    last_access_turn=history_turns,
                 ),
             ),
             decisions=tuple(decisions),

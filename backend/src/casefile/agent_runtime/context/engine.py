@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from casefile.agent_runtime.context.budget import apply_context_budget
+from casefile.agent_runtime.context.dashboard import build_context_dashboard
 from casefile.agent_runtime.context.estimators import (
     CONSERVATIVE_TOKEN_ESTIMATOR,
     TokenEstimatorRegistry,
@@ -116,6 +117,22 @@ class ContextEngine:
                     continue
             index += 1
         blocks = tuple(run.blocks[block_id] for block_id in run.blocks)
+        blocks = tuple(
+            replace(
+                block,
+                age_turns=(
+                    block.age_turns
+                    if block.age_turns is not None
+                    else 0
+                ),
+                last_access_turn=(
+                    block.last_access_turn
+                    if block.last_access_turn is not None
+                    else run.turn_index
+                ),
+            )
+            for block in blocks
+        )
         budget = apply_context_budget(
             policy=policy,
             blocks=blocks,
@@ -149,12 +166,17 @@ def build_chat_context_manifest(
     model_id: str = "",
     estimator_registry: TokenEstimatorRegistry | None = None,
     registry: ContextRegistry | None = None,
+    hard_input_tokens: int | None = None,
 ) -> ContextBuildResult:
     """Load one policy, assemble context, and project the audit manifest.
 
     Unknown policy versions never fail the chat task: they fall back to the
     legacy policy and record a guardrail decision so the caller can emit
     ``context.guardrail`` before ``context.built``.
+
+    ``hard_input_tokens`` is the runtime guardrail that no policy or model may
+    relax; when the assembled context exceeds it this raises
+    ``ContextEngineError`` instead of returning a provider payload.
     """
 
     try:
@@ -181,10 +203,21 @@ def build_chat_context_manifest(
         extra_input=extra_input,
         estimator=resolved_estimator,
     )
+    dashboard = build_context_dashboard(
+        assembly,
+        policy,
+        hard_input_tokens=hard_input_tokens,
+    )
+    if dashboard.hard_cap_exceeded:
+        violation = dashboard.guardrail_violations[-1]
+        raise ContextEngineError(
+            f"Context hard input cap exceeded: {violation['detail']}"
+        )
     return ContextBuildResult(
         manifest=build_context_manifest(assembly, policy),
         fallback=fallback,
         assembly=assembly,
+        dashboard=dashboard.to_jsonable(),
     )
 
 

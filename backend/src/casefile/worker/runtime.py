@@ -69,6 +69,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
+    ContextEngineError,
     EvidenceRef,
     ThreadCompactionRequest,
     build_chat_context_manifest,
@@ -157,11 +158,26 @@ def provider_for_task(task: TaskRun) -> AgentProvider:
     raise RuntimeError(f"Unsupported provider frozen on TaskRun: {task.provider}")
 
 
+DEFAULT_CONTEXT_HARD_INPUT_TOKENS = 128_000
+
+
 def _compaction_env_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, str(default)))
     except ValueError:
         return default
+
+
+def _context_hard_input_tokens() -> int:
+    """Runtime total-input hard cap; no policy or model may relax it."""
+
+    return max(
+        1,
+        _compaction_env_int(
+            "CASEFILE_CHAT_CONTEXT_HARD_INPUT_TOKENS",
+            DEFAULT_CONTEXT_HARD_INPUT_TOKENS,
+        ),
+    )
 
 
 def _thread_history_tokens(messages: list[dict[str, str]]) -> int:
@@ -1199,16 +1215,46 @@ class Worker:
         if policy_v2:
             thread_memory_state, memory_warning = self._load_chat_thread_memory_state(task)
             extra_input["thread_memory_state"] = thread_memory_state
-        result = build_chat_context_manifest(
-            policy_version=request.context_policy_version,
-            frozen_input=task.input_jsonb,
-            input_hash=task.input_hash,
-            routing=chat_routing_payload_as_dict(request),
-            prebuilt_input=executor_input,
-            extra_input=extra_input,
-            provider=task.provider,
-            model_id=task.model_id,
-        )
+        hard_input_tokens = _context_hard_input_tokens()
+        try:
+            result = build_chat_context_manifest(
+                policy_version=request.context_policy_version,
+                frozen_input=task.input_jsonb,
+                input_hash=task.input_hash,
+                routing=chat_routing_payload_as_dict(request),
+                prebuilt_input=executor_input,
+                extra_input=extra_input,
+                provider=task.provider,
+                model_id=task.model_id,
+                hard_input_tokens=hard_input_tokens,
+            )
+        except ContextEngineError as error:
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": "hard_input_cap_exceeded",
+                    "hard_input_tokens": hard_input_tokens,
+                    "detail": str(error),
+                },
+            )
+            raise
+        for violation in result.dashboard.get("guardrail_violations", []):
+            if not isinstance(violation, dict):
+                continue
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": str(violation.get("reason_code")),
+                    "block_id": str(violation.get("block_id") or ""),
+                    "detail": str(violation.get("detail")),
+                },
+            )
         if memory_warning is not None:
             self._emit(
                 task_run_id,
@@ -1248,6 +1294,7 @@ class Worker:
             assembled_input=chat_input_payload_from_assembly(
                 result.assembly,
                 require_thread_memory=policy_v2,
+                dashboard=result.dashboard if policy_v2 else None,
             ),
         )
 

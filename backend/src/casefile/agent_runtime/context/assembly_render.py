@@ -24,13 +24,16 @@ def chat_input_payload_from_assembly(
     assembly: ContextAssembly,
     *,
     require_thread_memory: bool = False,
+    dashboard: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Map countable context blocks to the ``ChatExecutorInputV2`` contract.
 
     The rendered v4/v5 prompt packages validate this payload through the typed
     input contract, so a missing or malformed block fails before the provider
     call instead of silently changing what the model sees. Phase 3 policies
-    additionally require the ``thread_memory`` block.
+    additionally require the ``thread_memory`` block; ``dashboard`` embeds the
+    read-only runtime guardrail view consumed by the Phase 4 executor
+    instructions.
     """
 
     blocks = {block.id: block.payload for block in assembly.blocks}
@@ -43,7 +46,7 @@ def chat_input_payload_from_assembly(
             f"Context assembly {assembly.policy_version!r} is missing blocks: {missing!r}"
         )
     routing = blocks.get("routing")
-    return {
+    payload: dict[str, Any] = {
         "input_hash": blocks.get("input_hash", ""),
         "casefile": blocks.get("casefile_skeleton", {}),
         "focus_objects": blocks.get("focus_objects", {}),
@@ -56,6 +59,9 @@ def chat_input_payload_from_assembly(
         "validation_issues": blocks.get("validation_issues", []),
         "routing": routing if isinstance(routing, dict) and routing else None,
     }
+    if dashboard is not None:
+        payload["context_dashboard"] = dict(dashboard)
+    return payload
 
 
 __all__ = [

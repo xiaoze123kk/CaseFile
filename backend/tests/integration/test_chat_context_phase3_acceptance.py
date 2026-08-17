@@ -199,6 +199,11 @@ def test_phase3_rolling_compaction_freezes_state_and_binds_v5(
         assert second_request.context_policy_version == ROLLOUT
         assert second_request.assembled_input is not None
         assert second_request.assembled_input["thread_memory"]["last_compacted_message_seq"] == 2
+        dashboard = second_request.assembled_input.get("context_dashboard")
+        assert isinstance(dashboard, dict)
+        assert dashboard["used_tokens"] > 0
+        assert "thread_history" in dashboard["protected_blocks"]
+        assert dashboard["guardrail_violations"] == []
 
         with factory() as session:
             built_events = list(
@@ -218,6 +223,8 @@ def test_phase3_rolling_compaction_freezes_state_and_binds_v5(
             }
             assert blocks["thread_memory"]["kind"] == "thread_memory"
             assert blocks["thread_memory"]["tokens"] >= 0
+            assert blocks["thread_memory"]["age_turns"] is not None
+            assert blocks["thread_memory"]["last_access_turn"] is not None
 
 
 def _run_edit_trial(

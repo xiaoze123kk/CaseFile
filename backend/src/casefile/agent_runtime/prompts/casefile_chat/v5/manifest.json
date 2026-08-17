@@ -3,7 +3,7 @@
   "agent_id": "casefile_chat",
   "version": "casefile-chat-v5",
   "previous_version": "casefile-chat-v4",
-  "change_summary": "阶段 3 上下文布局升级：输入契约沿用 casefile-chat-prompt-input-v2 并新增可选 thread_memory 块，执行器把滚动压缩状态中的约束/决策/已核实事实作为任务状态尊重，近期原文仍由 history_window 提供。",
+  "change_summary": "阶段 3 上下文布局升级：输入契约沿用 casefile-chat-prompt-input-v2 并新增可选 thread_memory 块，执行器把滚动压缩状态中的约束/决策/已核实事实作为任务状态尊重，近期原文仍由 history_window 提供。阶段 4 起可选携带只读 context_dashboard：预算耗尽即停止工具，仪表不授权放宽任何系统限制。",
   "runtime": {
     "agent_version": "casefile-single-agent-v2",
     "toolset_version": "casefile-chat-tools-v2"
@@ -11,7 +11,7 @@
   "fragments": {
     "shared": {
       "file": "shared.md",
-      "sha256": "5e293f9a4b6cfc685bb17ea75c81c4ba3f73061934ba07869fcff49b8e19e6b4"
+      "sha256": "1ec39d8b124187fe8a3baae83497d90347be6d9ad63cd97985e6f71d9ef46aff"
     },
     "router": {
       "file": "router.md",

@@ -19,7 +19,13 @@ class ContextDecision:
 
 @dataclass(frozen=True, slots=True)
 class ContextBlock:
-    """A single countable, lifecycle-managed unit of working context."""
+    """A single countable, lifecycle-managed unit of working context.
+
+    ``age_turns`` counts how many conversation turns old the newest payload
+    fragment is; ``last_access_turn`` is the turn ordinal when the block was
+    last bound into an executor payload. Both stay ``None`` for legacy blocks
+    that predate lifecycle accounting.
+    """
 
     id: str
     kind: str
@@ -29,6 +35,8 @@ class ContextBlock:
     recoverable: bool = False
     trimmable: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
+    age_turns: int | None = None
+    last_access_turn: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +107,8 @@ class ContextBlockSummary:
     tokens: int
     status: str
     recoverable: bool
+    age_turns: int | None = None
+    last_access_turn: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +133,8 @@ class ContextManifest:
                     "tokens": block.tokens,
                     "status": block.status,
                     "recoverable": block.recoverable,
+                    "age_turns": block.age_turns,
+                    "last_access_turn": block.last_access_turn,
                 }
                 for block in self.blocks
             ],
@@ -141,11 +153,12 @@ class ContextManifest:
 
 @dataclass(frozen=True, slots=True)
 class ContextBuildResult:
-    """Manifest, assembled blocks, plus a fallback decision when unavailable."""
+    """Manifest, assembled blocks, runtime dashboard, and fallback decision."""
 
     manifest: ContextManifest
     assembly: ContextAssembly
     fallback: ContextDecision | None = None
+    dashboard: dict[str, Any] = field(default_factory=dict)
 
 
 __all__ = [

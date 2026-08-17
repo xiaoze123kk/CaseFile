@@ -212,7 +212,7 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
     ("casefile_chat", "casefile-chat-v5"): {
-        "fragment:shared": "5e293f9a4b6cfc685bb17ea75c81c4ba3f73061934ba07869fcff49b8e19e6b4",  # noqa: E501
+        "fragment:shared": "1ec39d8b124187fe8a3baae83497d90347be6d9ad63cd97985e6f71d9ef46aff",  # noqa: E501
         "fragment:router": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1",
         "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
         "fragment:executor-chat": "b40c5081234887f73f4060a3f096e21c00a35f353ad237bf051e688f63948228",  # noqa: E501
