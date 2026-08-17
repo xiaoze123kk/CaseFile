@@ -237,6 +237,12 @@ try {
     Set-Content -LiteralPath $summaryFile -Value $summaryJson -Encoding utf8
     Write-Host ""
     Write-Host $summaryJson
+    if ($failed) {
+        Write-Host ""
+        Write-Host "Context acceptance gates failed; see summary above." -ForegroundColor Red
+        exit 1
+    }
+    exit 0
 } catch {
     $failed = $true
     Write-Host $_.Exception.Message -ForegroundColor Red

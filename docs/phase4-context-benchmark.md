@@ -1,7 +1,7 @@
 # Phase 4 Context Benchmark（Step 4.3 基线）
 
 生成时间：2026-08-17
-基准代码：`feature/casefile-chat-eval-outcome`（Step 4.1 `0854a30` + Step 4.2 `ea87306` + 本 Step 4.3）
+基准代码：`feature/casefile-chat-eval-outcome`（Step 4.1 `0854a30` + Step 4.2 `ea87306` + Step 4.3 `7efa897`/`71a2de0`）
 
 ## 默认版本冻结
 
@@ -33,7 +33,20 @@
 - PostgreSQL 全量：478 passed, 7 skipped（Step 4.2 提交时）。
 - Phase 2 rollout gate（v1）、Phase 3 rollout gate（v2）、Phase 4 rollout gate（v3）：全过，已纳入 `scripts/check.ps1`。
 
-## Live 验收状态
+## Live 验收（DeepSeek deepseek-v4-pro，2026-08-17）
 
-- `scripts/benchmark-context.ps1 -LiveProvider deepseek` 已实现；当前环境未提供 live API key 环境变量时自动跳过（`CASEFILE_CHAT_CONTEXT_LIVE_API_KEY` / `CASEFILE_DEEPSEEK_API_KEY` / `DEEPSEEK_API_KEY`）。
-- 提供 key 后执行：`scripts/benchmark-context.ps1 -SkipQuickGates -SkipPostgresGates -LiveProvider deepseek`，再按 `docs/casefile_chat-结果级Eval方案-v1.md` 的 Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次）决定是否把 v3 升为默认。
+- baseline（legacy 全量）：**5/5 通过**。
+- rollout（`casefile-chat-context-v2`）：**4/5 通过**（`pass_rate = 0.8`）。
+- 失败样本：`boundary-large-casefile`，任务状态 `failed / generation_failed`，错误 `Max turns (4) exceeded`。
+- 失败分诊：单独复跑该任务时 rollout 得到 HTTP **402 Insufficient Balance**；结合首次全量跑只有该样本失败、其余 4 个 rollout 线程均正常压缩并落库，归因是 **provider 计费/重试（SDK 4 次重试后包装为 MaxTurnsExceeded）**，不是上下文丢失。
+- 由于 API key 余额耗尽，目前无法取得有效的 pass@1/pass^3 双批数据。
+
+## 灰度决策
+
+- 未达到《结果级 Eval 方案》Saturation Policy（`pass@1 ≥ 0.95 且 pass^3 ≥ 0.90` 连续两次），**v2/v3 不升默认**；默认保持 v1/v4。
+- 余额恢复后补齐：`scripts/benchmark-context.ps1 -SkipQuickGates -SkipPostgresGates -LiveProvider deepseek -LiveModel deepseek-v4-pro`，连续两次达标后再评估是否把 v2/v3 升默认。
+
+## 脚本行为
+
+- `scripts/acceptance-chat-context-v2.ps1` 在 live 对比回归或压缩缺失时以退出码 1 结束。
+- `scripts/benchmark-context.ps1` 支持 `-LiveModel`；没有 API key 环境变量时跳过 live 并在报告里记录原因；live 子脚本失败会让整个基准失败，不再误报 passed。

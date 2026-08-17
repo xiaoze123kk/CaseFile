@@ -19,6 +19,7 @@ param(
     [switch]$SkipQuickGates,
     [switch]$SkipPostgresGates,
     [ValidateSet("", "openai", "deepseek")][string]$LiveProvider = "",
+    [string]$LiveModel = "",
     [string]$ReportPath = "tmp/context-benchmark-summary.json"
 )
 
@@ -221,10 +222,13 @@ try {
             Complete-Step "live_acceptance" "skipped" "no live API key env for $LiveProvider"
             Write-Host "Live acceptance skipped: no API key env for $LiveProvider." -ForegroundColor Yellow
         } else {
-            & (Join-Path $PSScriptRoot "acceptance-chat-context-v2.ps1") `
-                -SkipQuickGates `
-                -SkipM1Gate `
-                -LiveProvider $LiveProvider
+            $acceptanceScript = Join-Path $PSScriptRoot "acceptance-chat-context-v2.ps1"
+            if ([string]::IsNullOrWhiteSpace($LiveModel)) {
+                & $acceptanceScript -SkipQuickGates -SkipM1Gate -LiveProvider $LiveProvider
+            } else {
+                & $acceptanceScript -SkipQuickGates -SkipM1Gate `
+                    -LiveProvider $LiveProvider -LiveModel $LiveModel
+            }
             if ($LASTEXITCODE -ne 0) {
                 throw "Live context acceptance failed."
             }
