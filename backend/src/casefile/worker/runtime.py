@@ -95,6 +95,7 @@ from casefile.agent_runtime.observability import (
     standardize_generation_cost_usage,
 )
 from casefile.agent_runtime.prompt import (
+    CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
     COMPONENT_GENERATION_PROMPT_VERSIONS,
     render_chat_executor_prompt,
@@ -1412,7 +1413,7 @@ class Worker:
                 )
                 compaction_request = ThreadCompactionRequest(
                     task_run_id=task.id,
-                    prompt_version=CHAT_CONTEXT_PROMPT_V2_VERSION,
+                    prompt_version=CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
                     input_hash=str(input_data["input_hash"]),
                     input_data=input_data,
                     model_id=task.model_id,
@@ -1494,7 +1495,7 @@ class Worker:
                     "to_message_seq": last_message_seq,
                     "input_hash": str(input_data["input_hash"]),
                     "compactor": DEFAULT_THREAD_MEMORY_COMPACTOR,
-                    "prompt_version": CHAT_CONTEXT_PROMPT_V2_VERSION,
+                    "prompt_version": CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
                     "usage": compacted.usage,
                     "constraint_count": len(merged_state.constraints),
                     "verified_fact_count": len(merged_state.verified_facts),

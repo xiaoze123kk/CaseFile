@@ -65,6 +65,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v5",
     }
 )
+CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
 TEMPORAL_PLAN_PROMPT_VERSIONS = frozenset(
     {"brief-to-draft-v12", "brief-to-draft-v13", "brief-to-draft-v14", "brief-to-draft-v15"}
 )
@@ -411,6 +412,7 @@ def rewrite_for_route_input(request: RouteSpecificRewriteRequest) -> str:
 __all__ = [
     "AGENT_VERSION",
     "BRIEF_TO_DRAFT_AGENT_VERSIONS",
+    "CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION",
     "COMPETITION_MATRIX_PROMPT_VERSIONS",
     "COMPONENT_GENERATION_PROMPT_VERSIONS",
     "PROMPT_PACKAGE_GENERATION_VERSIONS",
