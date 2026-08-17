@@ -38,7 +38,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "brief_intake_synthesize": "brief-intake-synthesize-v2",
     "brief_strategy_options": "brief-strategy-options-v1",
     "brief_to_draft": "brief-to-draft-v15",
-    "casefile_chat": "casefile-chat-v3",
+    "casefile_chat": "casefile-chat-v4",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
 }

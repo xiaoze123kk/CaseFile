@@ -298,15 +298,15 @@ def test_unknown_policy_still_falls_back_to_legacy() -> None:
     assert result.manifest.policy_version == "agent-focus-v1"
 
 
-def test_context_rollout_requires_explicit_environment_flag(monkeypatch) -> None:
-    from casefile.application.workflow_service import _chat_context_rollout_version
+def test_context_policy_defaults_to_v1_with_legacy_rollback(monkeypatch) -> None:
+    from casefile.application.workflow_service import _chat_context_policy_version
 
     monkeypatch.delenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", raising=False)
-    assert _chat_context_rollout_version() is None
-    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_VERSION)
-    assert _chat_context_rollout_version() == CHAT_CONTEXT_POLICY_VERSION
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
+    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "agent-focus-v1")
+    assert _chat_context_policy_version() == "agent-focus-v1"
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "unexpected")
-    assert _chat_context_rollout_version() is None
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
 
 
 def test_bounded_tool_result_marks_and_caps_oversized_payloads() -> None:

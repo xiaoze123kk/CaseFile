@@ -128,16 +128,19 @@ _task_view = task_view
 _time = time_view
 
 
-def _chat_context_rollout_version() -> str | None:
-    """Return the paired context/prompt rollout when explicitly opted in.
+def _chat_context_policy_version() -> str:
+    """Return the frozen chat context policy version.
 
-    Acceptance for the v1 context policy is gated behind this environment flag;
-    the default keeps ``agent-focus-v1`` + the current prompt registry. After
-    M0/M1 acceptance passes, flipping the default is a one-line change.
+    ``casefile-chat-context-v1`` is the accepted default after M0/M1 acceptance.
+    Set ``CASEFILE_CHAT_CONTEXT_ROLLOUT=agent-focus-v1`` to force the legacy
+    policy (paired with the legacy prompt render in ``_new_task``) for rollback.
+    Unknown rollout values are ignored.
     """
 
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
-    return CHAT_CONTEXT_POLICY_VERSION if rollout == CHAT_CONTEXT_POLICY_VERSION else None
+    if rollout == LEGACY_CONTEXT_POLICY_VERSION:
+        return LEGACY_CONTEXT_POLICY_VERSION
+    return CHAT_CONTEXT_POLICY_VERSION
 
 
 class WorkflowService:
@@ -457,9 +460,7 @@ class WorkflowService:
                 focus_values,
                 known_issue_ids,
             )
-            context_policy_version = (
-                _chat_context_rollout_version() or LEGACY_CONTEXT_POLICY_VERSION
-            )
+            context_policy_version = _chat_context_policy_version()
             frozen_input = {
                 "casefile": casefile,
                 "history": [
@@ -2135,8 +2136,12 @@ class WorkflowService:
         output_message_id: int | None = None,
     ) -> TaskRun:
         prompt_version = prompt_version_for_task(task_type)
-        if task_type == "casefile_chat" and _chat_context_rollout_version() is not None:
-            prompt_version = CHAT_CONTEXT_PROMPT_VERSION
+        if task_type == "casefile_chat":
+            prompt_version = (
+                CHAT_CONTEXT_PROMPT_VERSION
+                if _chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
+                else "casefile-chat-v3"
+            )
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,

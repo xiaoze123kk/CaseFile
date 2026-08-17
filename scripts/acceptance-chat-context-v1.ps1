@@ -159,9 +159,9 @@ try {
     }
 
     if (-not $SkipM1Canned) {
-        Remove-Item Env:CASEFILE_CHAT_CONTEXT_ROLLOUT -ErrorAction SilentlyContinue
         $m1BaselineTests = @("tests/integration/test_chat_outcome_canned.py")
-        Invoke-PytestStep -Name "M1 baseline (legacy, 30 tasks)" -TestPaths $m1BaselineTests -EnvOverride @()
+        $m1BaselineEnv = @("CASEFILE_CHAT_CONTEXT_ROLLOUT=agent-focus-v1")
+        Invoke-PytestStep -Name "M1 baseline (legacy, 30 tasks)" -TestPaths $m1BaselineTests -EnvOverride $m1BaselineEnv
         $stepStatus.m1_baseline = "passed"
 
         $m1RolloutTests = @(
@@ -182,6 +182,7 @@ try {
 
         $liveTest = @("tests/integration/test_chat_context_phase2_live_acceptance.py")
         $liveBaselineEnv = @(
+            "CASEFILE_CHAT_CONTEXT_ROLLOUT=agent-focus-v1",
             "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE=1",
             "CASEFILE_CHAT_CONTEXT_LIVE_PROVIDER=$LiveProvider",
             "CASEFILE_CHAT_CONTEXT_LIVE_TASK_IDS=$LiveTaskIds",
@@ -190,7 +191,6 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($LiveModel)) {
             $liveBaselineEnv += "CASEFILE_CHAT_CONTEXT_LIVE_MODEL=$LiveModel"
         }
-        Remove-Item Env:CASEFILE_CHAT_CONTEXT_ROLLOUT -ErrorAction SilentlyContinue
         Invoke-PytestStep -Name "Live baseline (legacy, $LiveProvider)" -TestPaths $liveTest -EnvOverride $liveBaselineEnv
 
         $liveRolloutEnv = @(

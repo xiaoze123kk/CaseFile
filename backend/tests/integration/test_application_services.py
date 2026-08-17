@@ -19,10 +19,6 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -56,6 +52,9 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -1620,7 +1619,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
             assert frozen_input["focus"]["object_ids"] == []
-            assert frozen_input["context_policy_version"] == "agent-focus-v1"
+            assert frozen_input["context_policy_version"] == "casefile-chat-context-v1"
             assert frozen_input["routing_hint"] == {
                 "entrypoint": "free_text",
                 "preset_id": None,
@@ -2249,7 +2248,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []
         assert frozen_input["message"] == "请逐项建议调整研究员、实验室和重启事件。"
-        assert frozen_input["context_policy_version"] == "agent-focus-v1"
+        assert frozen_input["context_policy_version"] == "casefile-chat-context-v1"
         assert frozen_input["routing_hint"] == {
             "entrypoint": "free_text",
             "preset_id": None,
