@@ -73,6 +73,9 @@
 | `backend/src/casefile/benchmark/` | `brief_to_draft` Provider 级 Fixture 运行器与指标汇总；记录 CaseFile 结构有效率、模型调用/工具协议、修复次数、延迟和结构化诊断覆盖率。它明确不验证 TaskRun、Worker、持久化、SSE 或候选采用边界，不能单独作为发布验收。 |
 | `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及全部 Agent 任务的结构化结果与 Validator 指标。`structured_output.py` 统一 Pydantic Schema 编译、OpenAI 原生 Structured Output、DeepSeek Beta strict tool、正式 JSON 模式降级、有限定向重试与用量汇总；当前 `brief_to_draft` 先生成对象计划，再由独立 Temporal Planner 建立作品内时间，随后生成故事世界和证据推理；竞争矩阵版本的 Evidence 在进入 Governance 前先执行至多两次携带上一份失败输出的语义定向修复（分阶段校验竞争组、信息接地路径与矩阵格子），v10–v14 由 Evidence Drafter 直接生成比较矩阵，v15 则把矩阵格子改为程序按路径确定性计算（`brief_to_draft_v15/matrix.py`），模型只对固定格子输出判定并由程序回填，失败时只针对剩余格子定向修复；再由 v15 Governance 基于实际 Evidence IR 建议答案或诚实未定论；所有 AI 结论固定为 `proposed`，只有作者能确认。v13 明确无时区壁钟精度格式，v14 强制创作者可见自然语言为简体中文，v8–v14 历史协议保持不变。 |
 | `backend/src/casefile/agent_runtime/chat_tools.py` | `casefile_chat` 的确定性只读/建议校验工具集 `casefile-chat-tools-v2`：全卷集合清单与分页浏览 `list_casefile_records`、一跳关系读取 `get_related_objects`、关键字检索 `search_casefile`、单对象全文 `get_casefile_object`、冻结验证快照 `get_validation_issues` 与补丁白名单校验 `validate_patch_proposal`；工具按路由 profile 选择、按 TaskRun 冻结 `toolset_version` 拒绝 v2 新工具给旧任务，所有结果只来自冻结 CaseFile，不触网不写库。 |
+| `backend/src/casefile/agent_runtime/context/` | 可插拔、版本化的 casefile-chat 上下文工程基座。`models.py` 定义 ContextBlock/ContextPolicy/ContextAssembly/ContextManifest 等数据契约；`protocols.py` 定义 ContextStage/TokenEstimator 插件协议；`registry.py` 按名称注册策略并校验 Policy 引用；`engine.py` 按 Policy 声明顺序确定性执行 Stage，未知策略版本回退 legacy 并产出 fallback 决策；`manifest.py` 把装配结果投影为不含 payload 的审计账本；`estimators.py` 提供多厂商通用保守 Token 估算；`evidence.py` 提供 `scheme://id` 证据指针契约与解析器注册表（不删原文，只换指针）。 |
+| `backend/src/casefile/agent_runtime/context/policies/` | Policy-as-data 资源：`schema.json` 校验版本化 Context Policy 文档；`loader.py` 按 `context_policy_version` 从不可变 JSON 加载并校验策略；当前内置 `agent-focus-v1` legacy 策略，通过 `legacy_full_injection_v1` Stage 对现有全量注入输入做计量与审计，不改变模型实际所见内容。 |
+| `backend/src/casefile/agent_runtime/context/strategies/legacy.py` | `LegacyChatInputStage`：把 Worker 预渲染的既有 executor 输入包装成可计 Token 的上下文块；`legacy_chat_routing_payload` 兼容别名复用 `models.chat_routing_payload_as_dict`，保证 Prompt 渲染与上下文审计的 routing 序列化一致。 |
 | `backend/src/casefile/agent_runtime/observability.py` | 对成功候选执行不参与门禁的确定性 Brief 语义覆盖代理，并把请求、缓存、推理 Token 标准化为可追溯但不虚构价格的成本输入。 |
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
@@ -90,6 +93,8 @@
 | `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 54 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
 | `backend/tests/unit/test_casefile_contract.py` | 验证 v1 CaseFile Schema、自身合法性、三类产品 Fixture、确定性语义错误和规范哈希。 |
 | `backend/tests/unit/test_agent_providers.py` | 验证 OpenAI/DeepSeek Provider 路由、DeepSeek 官方兼容端点和无 Key 网络调用门禁。 |
+| `backend/tests/unit/test_context_engine.py` | 验证 Context Policy 资源加载、未知版本 legacy 回退、引擎确定性顺序/跳过/替换/跳转/预算标记、legacy 输入计量 Manifest 和共享 routing 序列化。 |
+| `backend/tests/unit/test_context_evidence.py` | 验证证据指针解析、解析器注册表、缺失/悬空引用的可审计决策和 URI 兜底描述。 |
 | `backend/tests/unit/test_structured_output.py` | 验证 DeepSeek strict transport Schema、Beta 强制工具协议、正式 JSON 自动降级、OpenAI 原生结构输出与最多三次的有限修复状态机。 |
 | `backend/tests/unit/test_benchmark_runner.py` | 验证 fake `brief_to_draft` Benchmark 与工具调用指标。 |
 | `backend/tests/unit/test_workbench_read_model.py` | 验证工作台确定性错误的稳定中文输出和真实 `source_fragment` 标识/JSON Pointer 追溯。 |

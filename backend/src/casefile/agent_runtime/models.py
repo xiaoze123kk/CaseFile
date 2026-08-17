@@ -6,18 +6,23 @@ from dataclasses import dataclass, field, is_dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
 )
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EventSink(Protocol):
     def __call__(self, event_type: str, stage: str, payload: dict[str, Any]) -> None: ...
+
+
+#: The pre-context-pipeline policy frozen on existing chat TaskRuns. The
+#: extensible context package re-exports this constant; unknown future policy
+#: versions fall back to it instead of failing the task.
+LEGACY_CONTEXT_POLICY_VERSION = "agent-focus-v1"
 
 
 class StrictAgentOutput(BaseModel):
@@ -450,6 +455,7 @@ class CaseFileChatRequest:
     rewrite: QueryRewriteResult | None = None
     network_retries: int = 2
     toolset_version: str = "casefile-chat-tools-v1"
+    context_policy_version: str = LEGACY_CONTEXT_POLICY_VERSION
 
 
 @dataclass(slots=True)
@@ -670,6 +676,25 @@ def chat_state_as_dict(value: Any) -> dict[str, Any]:
     if not isinstance(converted, dict):
         raise TypeError(f"expected a routing state dataclass, got {type(value).__name__}")
     return converted
+
+
+def chat_routing_payload_as_dict(request: CaseFileChatRequest) -> dict[str, Any] | None:
+    """Serialize resolved chat routing state exactly like the legacy prompt payload.
+
+    The prompt renderer and the context engine share this helper so the payload
+    providers receive and the audited context manifest can never diverge.
+    """
+
+    if request.route is None:
+        return None
+    routing_payload: dict[str, Any] = {"route": chat_state_as_dict(request.route)}
+    if request.task_understanding is not None:
+        routing_payload["task_understanding"] = chat_state_as_dict(
+            request.task_understanding
+        )
+    if request.rewrite is not None:
+        routing_payload["rewrite"] = chat_state_as_dict(request.rewrite)
+    return routing_payload
 
 
 def _rate(numerator: int, denominator: int) -> float:

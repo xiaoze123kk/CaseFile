@@ -63,13 +63,16 @@ from casefile.agent_runtime.chat_routing import (
     route_llm_task,
     routing_policy,
 )
+from casefile.agent_runtime.context import build_chat_context_manifest
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.models import (
+    LEGACY_CONTEXT_POLICY_VERSION,
     ChatTaskUnderstanding,
     QueryRewriteResult,
     RouteDecision,
     RouteSpecificRewriteRequest,
     agent_state_to_jsonable,
+    chat_routing_payload_as_dict,
 )
 from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
@@ -78,6 +81,7 @@ from casefile.agent_runtime.observability import (
 from casefile.agent_runtime.prompt import (
     CHAT_PROMPT_PACKAGE_VERSIONS,
     COMPONENT_GENERATION_PROMPT_VERSIONS,
+    render_chat_executor_prompt,
 )
 from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.agent_runtime.query_rewrite import (
@@ -672,6 +676,7 @@ class Worker:
                                 "routing",
                                 route_public_payload(chat_request.route),
                             )
+                self._emit_chat_context_events(task_run_id, task_snapshot, chat_request)
                 chat_result = provider.chat(chat_request)
                 candidate = chat_result.candidate.model_dump(mode="json")
                 usage = chat_result.usage
@@ -933,6 +938,14 @@ class Worker:
             if frozen_input.get("router_version") != INTENT_ROUTER_VERSION:
                 raise RuntimeError("Frozen CaseFile chat router version is invalid")
             routing_hint = normalize_routing_hint(raw_routing_hint)
+        raw_context_policy = frozen_input.get("context_policy_version")
+        if raw_context_policy is not None and not isinstance(raw_context_policy, str):
+            raise RuntimeError("Frozen CaseFile chat context policy version is invalid")
+        context_policy_version = (
+            raw_context_policy
+            if isinstance(raw_context_policy, str) and raw_context_policy
+            else LEGACY_CONTEXT_POLICY_VERSION
+        )
         return CaseFileChatRequest(
             task_run_id=task.id,
             prompt_version=task.prompt_version,
@@ -951,6 +964,7 @@ class Worker:
             routing_hint=routing_hint,
             network_retries=_network_retries(task),
             toolset_version=task.toolset_version,
+            context_policy_version=context_policy_version,
         )
 
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
@@ -1028,6 +1042,43 @@ class Worker:
             "routing",
             _chat_rewrite_event_payload(request),
         )
+
+    def _emit_chat_context_events(
+        self,
+        task_run_id: int,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+    ) -> None:
+        """Publish the deterministic context manifest before the executor call.
+
+        Phase 0 renders the same input string the providers already use and
+        measures it through the policy pipeline; the model-facing prompt is
+        unchanged. Unknown policy versions fall back to the legacy policy and
+        emit a guardrail event first.
+        """
+
+        _instructions, executor_input = render_chat_executor_prompt(request)
+        result = build_chat_context_manifest(
+            policy_version=request.context_policy_version,
+            frozen_input=task.input_jsonb,
+            input_hash=task.input_hash,
+            routing=chat_routing_payload_as_dict(request),
+            prebuilt_input=executor_input,
+            provider=task.provider,
+            model_id=task.model_id,
+        )
+        if result.fallback is not None:
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": result.fallback.code,
+                    "detail": result.fallback.detail,
+                },
+            )
+        self._emit(task_run_id, "context.built", "context", result.manifest.to_jsonable())
 
     def _complete_chat(
         self,

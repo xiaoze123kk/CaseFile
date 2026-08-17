@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.casefile.local/context-policy-v1.json",
+  "title": "CaseFile Context Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "version",
+    "task_type",
+    "stages",
+    "budget",
+    "guardrails"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$"
+    },
+    "task_type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "strategy"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,79}$"
+          },
+          "strategy": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,79}$"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total_input_tokens", "enforce_budget"],
+      "properties": {
+        "total_input_tokens": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "enforce_budget": {
+          "type": "boolean"
+        }
+      }
+    },
+    "guardrails": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pinned_immutable": {"type": "boolean"},
+        "recent_turns_protected": {"type": "boolean"},
+        "archive_must_be_recoverable": {"type": "boolean"},
+        "delete_allowed": {"type": "boolean"}
+      }
+    }
+  }
+}

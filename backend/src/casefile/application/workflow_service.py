@@ -24,6 +24,7 @@ from casefile.agent_runtime.credentials import encrypt_api_key
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
+    LEGACY_CONTEXT_POLICY_VERSION,
     CandidateStrategy,
 )
 from casefile.agent_runtime.prompt import (
@@ -452,7 +453,7 @@ class WorkflowService:
                 "message": content,
                 "focus": frozen_focus,
                 "validation": validation_snapshot,
-                "context_policy_version": "agent-focus-v1",
+                "context_policy_version": LEGACY_CONTEXT_POLICY_VERSION,
                 "routing_hint": (
                     {"entrypoint": "free_text", "preset_id": None}
                     if routing_hint is None

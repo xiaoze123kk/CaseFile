@@ -9,6 +9,7 @@ from casefile.agent_runtime.chat_tools import (
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
+    LEGACY_CONTEXT_POLICY_VERSION,
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
@@ -100,6 +101,7 @@ __all__ = [
     "IntentEntitiesOutput",
     "IntentEntityMention",
     "IntentUnderstandingResult",
+    "LEGACY_CONTEXT_POLICY_VERSION",
     "OpenAIAgentsProvider",
     "PolishMode",
     "QueryRewriteOutput",

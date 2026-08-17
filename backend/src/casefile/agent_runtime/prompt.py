@@ -10,7 +10,7 @@ from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     GenerationRequest,
     RouteSpecificRewriteRequest,
-    chat_state_as_dict,
+    chat_routing_payload_as_dict,
 )
 from casefile.agent_runtime.prompt_package import render_prompt_package
 from casefile.agent_runtime.prompt_repository import load_prompt
@@ -233,17 +233,12 @@ def _casefile_chat_payload(request: CaseFileChatRequest) -> dict[str, Any]:
     }
     if request.route is not None:
         # R1 v1 prompt does not interpret this block; it is a data payload that
-        # the v2 prompt package will consume after the R2 prompt switch.
-        routing_payload: dict[str, Any] = {
-            "route": chat_state_as_dict(request.route),
-        }
-        if request.task_understanding is not None:
-            routing_payload["task_understanding"] = chat_state_as_dict(
-                request.task_understanding
-            )
-        if request.rewrite is not None:
-            routing_payload["rewrite"] = chat_state_as_dict(request.rewrite)
-        payload["routing"] = routing_payload
+        # the v2 prompt package will consume after the R2 prompt switch. The
+        # serialization is shared with the context engine so rendered provider
+        # input and the audited context manifest can never diverge.
+        routing_payload = chat_routing_payload_as_dict(request)
+        if routing_payload is not None:
+            payload["routing"] = routing_payload
     return payload
 
 
