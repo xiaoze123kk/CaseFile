@@ -111,6 +111,10 @@
 | `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 54 表清单，避免主迁移测试文件继续膨胀。 |
 | `backend/tests/integration/test_exposure_plan_migration.py` | 在真实 `_test` PostgreSQL 验证新 Draft 自动创建空 Exposure Plan，以及计划修订、条目和引用不可更新/删除。 |
 | `backend/tests/integration/application_services_test_support.py` | 为应用服务集成测试集中提供 `_test` PostgreSQL 生命周期、Provider 与建案 helper；由 integration `conftest.py` 暴露共享 fixture。 |
+| `backend/tests/integration/chat_outcome_canned_support.py` | 复用 M1 生产路径 trial runner（建案/采用→send_agent_message→Worker→持久化 Outcome 评分），供基线测试、阶段 2 验收与 live 验收共享，避免 30 任务 harness 复制。 |
+| `backend/tests/integration/test_chat_outcome_canned.py` | M1 DB Canned 基线：30 个 T1 任务走真实生产路径，由确定性 Canned Provider 完成并评分；是上下文灰度的通过率不降基线。 |
+| `backend/tests/integration/test_chat_context_phase2_acceptance.py` | 阶段 2 灰度验收：30 任务全部冻结 `casefile-chat-v4`+`casefile-chat-context-v1`，校验 `context.built` v1 分块、零 fallback，并比较真实 ledger Token 与同一请求 legacy 渲染，聚合下降必须 ≥50%；报告写入 `CASEFILE_CHAT_CONTEXT_ACCEPTANCE_REPORT`。 |
+| `backend/tests/integration/test_chat_context_phase2_live_acceptance.py` | opt-in live 验收（env 驱动）：同一批任务在 legacy/v1 两轮生产路径调用真实 Provider，只产报告不把评分当测试断言；`scripts/acceptance-chat-context-v1.ps1` 负责对比通过率并判回归。 |
 | `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、Worker 候选持久化、首次/再次采用、A/B 工作稿隔离、v1 有限编辑和 Agent 协作闭环。 |
 | `backend/tests/integration/test_multiple_draft_migration.py`、`test_multiple_drafts.py` | 验证旧数据升级回填 Current Draft、复合外键与 Draft 内对象 ID 唯一，以及并发激活、归档/锁定门禁和编辑/快照/验证/来源/审计隔离。 |
 | `backend/tests/integration/test_application_task_lifecycle.py` | 在真实 `_test` PostgreSQL 验证 TaskRun Prompt 版本、queued/running/orphan 取消、lease 恢复、Provider 配置冻结与不可变事件。 |
