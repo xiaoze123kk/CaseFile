@@ -30,6 +30,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "brief_strategy_options",
     "brief_to_draft",
     "casefile_chat",
+    "casefile_chat_context_compactor",
     "reverse_parse",
     "idea_generation",
 )
@@ -93,6 +94,10 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "casefile-chat-v4": frozenset(
         {"router", "rewrite", "chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
     ),
+    "casefile-chat-v5": frozenset(
+        {"router", "rewrite", "chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
+    ),
+    "casefile-chat-context-compactor-v1": frozenset({"compact"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

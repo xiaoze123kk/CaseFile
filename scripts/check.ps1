@@ -52,6 +52,13 @@ try {
             throw "CaseFile chat outcome M0 calibration failed."
         }
 
+        & $python -m casefile.benchmark.chat_context_eval `
+            --boundary-report-path var/benchmark/context-boundary-v1.json `
+            --gate-boundary
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat Boundary continuation M0 gate failed."
+        }
+
         if ($SkipPostgres) {
             & $python -m pytest -m "not postgres"
         } else {

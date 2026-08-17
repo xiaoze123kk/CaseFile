@@ -22,6 +22,9 @@
     "casefile_chat": {
       "current_version": "casefile-chat-v4"
     },
+    "casefile_chat_context_compactor": {
+      "current_version": "casefile-chat-context-compactor-v1"
+    },
     "reverse_parse": {
       "current_version": "reverse-parse-v1"
     },

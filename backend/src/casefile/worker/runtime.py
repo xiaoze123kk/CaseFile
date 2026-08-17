@@ -64,9 +64,21 @@ from casefile.agent_runtime.chat_routing import (
     routing_policy,
 )
 from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
+    DEFAULT_THREAD_MEMORY_COMPACTOR,
+    THREAD_MEMORY_STATE_KIND,
+    EvidenceRef,
+    ThreadCompactionRequest,
     build_chat_context_manifest,
     chat_input_payload_from_assembly,
+    default_compactor_registry,
+    empty_thread_memory_state,
+    estimate_conservative_tokens,
+    preservation_errors,
+    thread_memory_state_from_jsonable,
+    thread_memory_state_to_jsonable,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.models import (
@@ -119,7 +131,10 @@ from casefile.contracts import (
 from casefile.data_postgres.models import (
     AgentMessage,
     AgentModelCall,
+    AgentPatchOperation,
+    AgentPatchSet,
     AgentStepRun,
+    AgentThreadContextState,
     Brief,
     BriefVersion,
     SourceRecord,
@@ -139,6 +154,91 @@ def provider_for_task(task: TaskRun) -> AgentProvider:
     if task.provider == "deepseek":
         return DeepSeekAgentsProvider()
     raise RuntimeError(f"Unsupported provider frozen on TaskRun: {task.provider}")
+
+
+def _compaction_env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _thread_history_tokens(messages: list[dict[str, str]]) -> int:
+    text = json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
+    return estimate_conservative_tokens(text)
+
+
+def _thread_state_evidence_errors(
+    session: Session,
+    *,
+    state_id: int,
+    thread_id: int,
+    evidence_refs: list[str],
+    verified_source_message_ids: list[int],
+) -> list[str]:
+    """Validate every pointer in a persisted state against the database."""
+
+    errors: list[str] = []
+    for raw in evidence_refs:
+        ref = EvidenceRef.parse(raw)
+        if ref is None:
+            errors.append(f"state {state_id}: invalid evidence reference {raw!r}")
+            continue
+        try:
+            if ref.scheme == "thread":
+                parts = ref.identifier.split("/message/")
+                if len(parts) != 2 or int(parts[0]) != thread_id:
+                    raise ValueError
+                message_id = int(parts[1])
+                if session.get(AgentMessage, message_id) is None:
+                    raise ValueError
+            elif ref.scheme == "taskrun":
+                if session.get(TaskRun, int(ref.identifier)) is None:
+                    raise ValueError
+            elif ref.scheme == "patchset":
+                if session.get(AgentPatchSet, int(ref.identifier)) is None:
+                    raise ValueError
+            else:
+                raise ValueError
+        except (TypeError, ValueError):
+            errors.append(f"state {state_id}: unresolvable evidence reference {raw!r}")
+    for message_id in verified_source_message_ids:
+        if session.get(AgentMessage, message_id) is None:
+            errors.append(
+                f"state {state_id}: verified fact source_message_id {message_id} not found"
+            )
+    return errors
+
+
+def _thread_db_decisions(
+    session: Session,
+    *,
+    thread_id: int,
+    from_message_seq: int,
+    to_message_seq: int,
+) -> list[dict[str, Any]]:
+    rows = session.execute(
+        select(AgentPatchOperation, AgentMessage.sequence_no)
+        .join(AgentPatchSet, AgentPatchOperation.patch_set_id == AgentPatchSet.id)
+        .join(AgentMessage, AgentPatchSet.source_message_id == AgentMessage.id)
+        .where(
+            AgentPatchSet.thread_id == thread_id,
+            AgentMessage.sequence_no.between(from_message_seq, to_message_seq),
+            AgentPatchOperation.decision.in_(("accepted", "rejected")),
+        )
+        .order_by(AgentPatchOperation.id)
+    ).all()
+    return [
+        {
+            "decision": operation.decision,
+            "object_id": str(operation.target_object_id),
+            "field_path": operation.field_path,
+            "reason": operation.reason,
+            "patch_set_id": int(operation.patch_set_id),
+            "thread_ref": f"thread://{thread_id}/message/{message_sequence_no}",
+        }
+        for operation, message_sequence_no in rows
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -692,6 +792,7 @@ class Worker:
                     chat_result,
                     route=chat_request.route,
                 )
+                self._maybe_compact_chat_thread(task_snapshot, provider, api_key)
                 return
             if task_snapshot.task_type != "brief_to_draft":
                 raise RuntimeError(f"Unsupported TaskRun type: {task_snapshot.task_type}")
@@ -1049,6 +1150,28 @@ class Worker:
             _chat_rewrite_event_payload(request),
         )
 
+    def _load_chat_thread_memory_state(
+        self,
+        task: TaskRun,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Resolve the frozen context state ref to its validated JSON payload."""
+
+        empty = thread_memory_state_to_jsonable(empty_thread_memory_state())
+        raw_ref = task.input_jsonb.get("context_state")
+        if not isinstance(raw_ref, dict):
+            return empty, None
+        state_id = raw_ref.get("state_id")
+        if not isinstance(state_id, int) or state_id <= 0:
+            return empty, "thread_memory_state_ref_invalid"
+        with self.session_factory() as session:
+            state = session.get(AgentThreadContextState, state_id)
+        if state is None or state.thread_id != task.agent_thread_id:
+            return empty, "thread_memory_state_missing"
+        raw_state = state.state_jsonb
+        if not isinstance(raw_state, dict):
+            return empty, "thread_memory_state_malformed"
+        return dict(raw_state), None
+
     def _emit_chat_context_events(
         self,
         task_run_id: int,
@@ -1058,27 +1181,44 @@ class Worker:
         """Assemble context, publish its audit manifest, and bind the provider input.
 
         Legacy policies measure the exact string providers already render and
-        leave the request untouched. The v1 context policy assembles block
-        sources deterministically, then binds the resulting v2 contract payload
-        so the v4 prompt package is what providers send.
+        leave the request untouched. v1 binds the v4 prompt payload; the v2
+        Phase 3 policy additionally binds the frozen Thread Memory state and
+        requires the v5 prompt package.
         """
 
+        policy_v2 = request.context_policy_version == CHAT_CONTEXT_POLICY_V2_VERSION
         legacy_policy = request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
         executor_input: str | None = None
         if legacy_policy:
             _instructions, executor_input = render_chat_executor_prompt(request)
+        extra_input: dict[str, Any] = {
+            "editable_fields_by_collection": request.editable_fields_by_collection,
+        }
+        memory_warning: str | None = None
+        if policy_v2:
+            thread_memory_state, memory_warning = self._load_chat_thread_memory_state(task)
+            extra_input["thread_memory_state"] = thread_memory_state
         result = build_chat_context_manifest(
             policy_version=request.context_policy_version,
             frozen_input=task.input_jsonb,
             input_hash=task.input_hash,
             routing=chat_routing_payload_as_dict(request),
             prebuilt_input=executor_input,
-            extra_input={
-                "editable_fields_by_collection": request.editable_fields_by_collection,
-            },
+            extra_input=extra_input,
             provider=task.provider,
             model_id=task.model_id,
         )
+        if memory_warning is not None:
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": memory_warning,
+                    "detail": "Thread Memory state was unavailable; empty state used",
+                },
+            )
         if result.fallback is not None:
             self._emit(
                 task_run_id,
@@ -1093,16 +1233,283 @@ class Worker:
         self._emit(task_run_id, "context.built", "context", result.manifest.to_jsonable())
         if result.fallback is not None or legacy_policy:
             return request
-        if request.prompt_version != CHAT_CONTEXT_PROMPT_VERSION:
+        expected_prompt = (
+            CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION
+        )
+        if request.prompt_version != expected_prompt:
             raise RuntimeError(
                 "Context policy "
                 f"{request.context_policy_version!r} requires prompt version "
-                f"{CHAT_CONTEXT_PROMPT_VERSION!r}; frozen={request.prompt_version!r}"
+                f"{expected_prompt!r}; frozen={request.prompt_version!r}"
             )
         return replace(
             request,
-            assembled_input=chat_input_payload_from_assembly(result.assembly),
+            assembled_input=chat_input_payload_from_assembly(
+                result.assembly,
+                require_thread_memory=policy_v2,
+            ),
         )
+
+    def _maybe_compact_chat_thread(
+        self,
+        task: TaskRun,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> None:
+        """Run the Phase 3 rolling compaction monitor after a completed reply.
+
+        Triggered only for the v2 policy at a semantic boundary (the newest
+        completed message is an assistant reply and no other thread task is
+        active). The LLM compacts ``old_state + new raw turns``; merger and
+        StateValidator run deterministically afterwards, and failures fall back
+        to the previous state without failing the chat task.
+        """
+
+        def emit(
+            event_type: str,
+            stage: str,
+            payload: dict[str, Any],
+        ) -> None:
+            self._emit_after_completion(task.id, event_type, stage, payload)
+        policy_version = task.input_jsonb.get("context_policy_version")
+        thread_id = task.agent_thread_id
+        if policy_version != CHAT_CONTEXT_POLICY_V2_VERSION or thread_id is None:
+            emit(
+                "context.compaction_skipped",
+                "context",
+                {
+                    "reason_code": "not_applicable",
+                    "policy_version": policy_version,
+                    "thread_id": thread_id,
+                },
+            )
+            return
+        history_threshold = _compaction_env_int(
+            "CASEFILE_CHAT_COMPACTION_HISTORY_TOKENS",
+            8000,
+        )
+        min_new_messages = _compaction_env_int(
+            "CASEFILE_CHAT_COMPACTION_MIN_MESSAGES",
+            6,
+        )
+        try:
+            with self.session_factory() as session:
+                latest_state = session.scalar(
+                    select(AgentThreadContextState)
+                    .where(AgentThreadContextState.thread_id == thread_id)
+                    .order_by(AgentThreadContextState.id.desc())
+                    .limit(1)
+                )
+                completed_messages = list(
+                    session.scalars(
+                        select(AgentMessage)
+                        .where(
+                            AgentMessage.thread_id == thread_id,
+                            AgentMessage.status == "completed",
+                        )
+                        .order_by(AgentMessage.sequence_no)
+                    )
+                )
+                if not completed_messages or completed_messages[-1].role != "assistant":
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "not_semantic_boundary",
+                            "completed_messages": len(completed_messages),
+                        },
+                    )
+                    return
+                last_message_seq = int(completed_messages[-1].sequence_no)
+                if (
+                    latest_state is not None
+                    and latest_state.to_message_seq is not None
+                    and latest_state.to_message_seq >= last_message_seq
+                ):
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {"reason_code": "range_already_compacted"},
+                    )
+                    return
+                from_message_seq = (
+                    int(latest_state.to_message_seq) + 1
+                    if latest_state is not None and latest_state.to_message_seq is not None
+                    else 1
+                )
+                new_turns = [
+                    {
+                        "role": str(message.role),
+                        "content": str(message.content_text),
+                    }
+                    for message in completed_messages
+                    if message.sequence_no >= from_message_seq
+                    and message.role in {"user", "assistant"}
+                    and message.content_text
+                ]
+                if len(new_turns) < min_new_messages:
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "below_min_messages",
+                            "new_messages": len(new_turns),
+                            "min_new_messages": min_new_messages,
+                        },
+                    )
+                    return
+                history_tokens = _thread_history_tokens(new_turns)
+                if history_tokens < history_threshold:
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "below_history_threshold",
+                            "history_tokens": history_tokens,
+                            "history_threshold": history_threshold,
+                        },
+                    )
+                    return
+                other_active = session.scalar(
+                    select(TaskRun.id)
+                    .where(
+                        TaskRun.agent_thread_id == thread_id,
+                        TaskRun.status.in_(("queued", "running", "cancelling")),
+                        TaskRun.id != task.id,
+                    )
+                    .limit(1)
+                )
+                if other_active is not None:
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "other_thread_task_active",
+                            "task_run_id": other_active,
+                        },
+                    )
+                    return
+                old_state = (
+                    thread_memory_state_from_jsonable(latest_state.state_jsonb)
+                    if latest_state is not None
+                    else empty_thread_memory_state()
+                )
+                db_decisions = _thread_db_decisions(
+                    session,
+                    thread_id=thread_id,
+                    from_message_seq=from_message_seq,
+                    to_message_seq=last_message_seq,
+                )
+                compactor = default_compactor_registry()[
+                    DEFAULT_THREAD_MEMORY_COMPACTOR
+                ]
+                input_data = compactor.build_input(
+                    old_state=old_state,
+                    new_turns=new_turns,
+                    db_decisions=db_decisions,
+                    from_message_seq=from_message_seq,
+                    to_message_seq=last_message_seq,
+                )
+                compaction_request = ThreadCompactionRequest(
+                    task_run_id=task.id,
+                    prompt_version=CHAT_CONTEXT_PROMPT_V2_VERSION,
+                    input_hash=str(input_data["input_hash"]),
+                    input_data=input_data,
+                    model_id=task.model_id,
+                    api_key=api_key,
+                    network_retries=_network_retries(task),
+                    max_turns=1,
+                    emit=lambda event_type, stage, payload: emit(
+                        event_type,
+                        stage,
+                        payload,
+                    ),
+                )
+
+            compactor = default_compactor_registry()[DEFAULT_THREAD_MEMORY_COMPACTOR]
+            compacted = provider.compact_thread_memory(compaction_request)
+            merged_state = compactor.merge(
+                old_state,
+                compacted.candidate,
+                db_decisions=db_decisions,
+                last_compacted_message_seq=last_message_seq,
+            )
+            validation_errors = [
+                *compactor.validate(merged_state),
+                *preservation_errors(old_state, merged_state),
+            ]
+            with self.session_factory() as session:
+                validation_errors.extend(
+                    _thread_state_evidence_errors(
+                        session,
+                        state_id=0,
+                        thread_id=thread_id,
+                        evidence_refs=[
+                            *merged_state.evidence_refs,
+                            *(
+                                item.thread_ref
+                                for item in merged_state.decisions
+                            ),
+                        ],
+                        verified_source_message_ids=[
+                            item.source_message_id
+                            for item in merged_state.verified_facts
+                        ],
+                    )
+                )
+            if validation_errors:
+                emit(
+                    "context.compaction_failed",
+                    "context",
+                    {
+                        "reason_code": "thread_memory_validation_failed",
+                        "errors": validation_errors,
+                        "from_message_seq": from_message_seq,
+                        "to_message_seq": last_message_seq,
+                    },
+                )
+                return
+            with self.session_factory() as session:
+                state_row = AgentThreadContextState(
+                    project_id=task.project_id,
+                    thread_id=thread_id,
+                    policy_version=policy_version,
+                    state_kind=THREAD_MEMORY_STATE_KIND,
+                    from_message_seq=from_message_seq,
+                    to_message_seq=last_message_seq,
+                    state_jsonb=thread_memory_state_to_jsonable(merged_state),
+                    input_hash=str(input_data["input_hash"]),
+                )
+                session.add(state_row)
+                session.commit()
+                state_id = int(state_row.id)
+            emit(
+                "context.compacted",
+                "context",
+                {
+                    "state_id": state_id,
+                    "policy_version": policy_version,
+                    "state_kind": THREAD_MEMORY_STATE_KIND,
+                    "from_message_seq": from_message_seq,
+                    "to_message_seq": last_message_seq,
+                    "input_hash": str(input_data["input_hash"]),
+                    "compactor": DEFAULT_THREAD_MEMORY_COMPACTOR,
+                    "prompt_version": CHAT_CONTEXT_PROMPT_V2_VERSION,
+                    "usage": compacted.usage,
+                    "constraint_count": len(merged_state.constraints),
+                    "verified_fact_count": len(merged_state.verified_facts),
+                },
+            )
+        except Exception as error:  # compaction never fails the chat task
+            emit(
+                "context.compaction_failed",
+                "context",
+                {
+                    "reason_code": "thread_memory_compaction_error",
+                    "reason": type(error).__name__,
+                    "detail": str(error),
+                },
+            )
 
     def _complete_chat(
         self,
@@ -1619,6 +2026,29 @@ class Worker:
                     "failure": public_failure,
                 },
             )
+
+    def _emit_after_completion(
+        self,
+        task_run_id: int,
+        event_type: str,
+        stage: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Append a replayable event after the task reached a terminal state.
+
+        Post-completion maintenance (rolling compaction) must not re-assert the
+        running lease or move ``task.stage``, so it bypasses ``_emit`` and only
+        appends the immutable TaskEvent.
+        """
+
+        with self.session_factory() as session, session.begin():
+            task = session.get(TaskRun, task_run_id)
+            if task is None:
+                raise RuntimeError("TaskRun disappeared before post-completion event")
+            public_payload = {
+                key: value for key, value in payload.items() if not key.startswith("_")
+            }
+            append_task_event(session, task, event_type, stage, public_payload)
 
     def _emit(
         self,

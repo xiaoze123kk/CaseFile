@@ -15,6 +15,15 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -33,6 +42,11 @@ from casefile.agent_runtime.chat_tools import (
     ChatToolMetrics,
     chat_tool_manifest,
     search_casefile_records,
+)
+from casefile.agent_runtime.context.thread_memory import (
+    ThreadCompactionRequest,
+    ThreadCompactionResult,
+    ThreadMemoryDelta,
 )
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
@@ -88,8 +102,12 @@ from casefile.agent_runtime.prompt import (
     render_chat_rewrite_prompt,
     render_chat_router_prompt,
     reverse_parse_input,
+    thread_compaction_input,
 )
-from casefile.agent_runtime.prompt_repository import system_prompt_for_task
+from casefile.agent_runtime.prompt_repository import (
+    component_prompt_for_task,
+    system_prompt_for_task,
+)
 from casefile.agent_runtime.structured_output import (
     call_deepseek_strict_tool,
     compile_deepseek_strict_schema,
@@ -105,15 +123,6 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 
 
 class GenerationProvider(Protocol):
@@ -126,6 +135,11 @@ class AgentProvider(GenerationProvider, Protocol):
     def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult: ...
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
+
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult: ...
 
     def understand_intent(
         self, request: CaseFileChatRequest
@@ -901,6 +915,21 @@ class FakeProvider:
         request.emit("model.completed", "responding", {"usage": usage})
         return CaseFileChatResult(candidate=candidate, usage=usage, tools=metrics)
 
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult:
+        """Deterministic fake compactor: old state is carried by the merger."""
+
+        old_state = request.input_data.get("old_state")
+        topics = list(old_state.get("topics") or []) if isinstance(old_state, dict) else []
+        usage: dict[str, Any] = _zero_usage()
+        request.emit("model.completed", "compacting", {"usage": usage})
+        return ThreadCompactionResult(
+            candidate=ThreadMemoryDelta(topics=topics),
+            usage=usage,
+        )
+
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
         request.emit("model.started", "understanding", {"model_id": request.model_id})
         request.emit(
@@ -1361,6 +1390,32 @@ class OpenAIAgentsProvider:
             tools=context.metrics if context is not None else ToolMetrics(),
         )
 
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=component_prompt_for_task(
+                    "casefile_chat_context_compactor",
+                    request.prompt_version,
+                    "compact",
+                ),
+                input_text=thread_compaction_input(request),
+                output_type=ThreadMemoryDelta,
+                stage="compacting",
+                component_id="context_compactor",
+                schema_id="casefile-chat-thread-memory-delta-v1",
+            )
+        )
+        return ThreadCompactionResult(
+            candidate=ThreadMemoryDelta.model_validate(candidate),
+            usage=usage,
+        )
+
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
@@ -1490,6 +1545,7 @@ class OpenAIAgentsProvider:
             | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
+            | ThreadCompactionRequest
         ),
         *,
         instructions: str,
@@ -1721,6 +1777,35 @@ class DeepSeekAgentsProvider:
             tools=context.metrics if context is not None else ToolMetrics(),
         )
 
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=component_prompt_for_task(
+                    "casefile_chat_context_compactor",
+                    request.prompt_version,
+                    "compact",
+                ),
+                input_text=thread_compaction_input(request),
+                output_type=ThreadMemoryDelta,
+                stage="compacting",
+                component_id="context_compactor",
+                schema_id="casefile-chat-thread-memory-delta-v1",
+                deepseek_output_protocol=_deepseek_v8_output_protocol(
+                    request.model_id,
+                ),
+            )
+        )
+        return ThreadCompactionResult(
+            candidate=ThreadMemoryDelta.model_validate(candidate),
+            usage=usage,
+        )
+
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
@@ -1836,6 +1921,7 @@ class DeepSeekAgentsProvider:
             | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
+            | ThreadCompactionRequest
         ),
         *,
         instructions: str,
@@ -1889,6 +1975,7 @@ class DeepSeekAgentsProvider:
             | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
+            | ThreadCompactionRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(
@@ -1914,6 +2001,7 @@ async def _run_auxiliary_agent(
         | RouteSpecificRewriteRequest
         | ReverseParseRequest
         | IdeaGenerationRequest
+        | ThreadCompactionRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,

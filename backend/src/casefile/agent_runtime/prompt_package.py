@@ -50,6 +50,10 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     TemporalPlannerInputV3,
 )
 from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
+from casefile.agent_runtime.context.thread_memory import (
+    ThreadCompactionInputV1,
+    ThreadMemoryDelta,
+)
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     ChatExecutorInputV1,
@@ -132,6 +136,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-rewrite-input-v1": ChatRewriteInputV1,
         "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
         "casefile-chat-prompt-input-v2": ChatExecutorInputV2,
+        "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -149,6 +154,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-task-understanding-v1": ChatTaskUnderstandingOutput,
         "casefile-chat-rewrite-v1": QueryRewriteOutput,
         "casefile-chat-output-v1": CaseFileChatCandidate,
+        "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
     }
 )
 TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(

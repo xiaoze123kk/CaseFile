@@ -15,6 +15,7 @@ from casefile.agent_runtime.context.strategies.sources.casefile_skeleton import 
 )
 from casefile.agent_runtime.context.strategies.sources.chat_contract import ChatContractStage
 from casefile.agent_runtime.context.strategies.sources.focus_objects import FocusObjectsStage
+from casefile.agent_runtime.context.strategies.sources.thread_memory import ThreadMemoryStage
 from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
     ValidationTrimStage,
 )
@@ -64,6 +65,7 @@ def default_context_registry() -> ContextRegistry:
     registry.register(CaseFileSkeletonStage())
     registry.register(FocusObjectsStage())
     registry.register(HistoryWindowStage())
+    registry.register(ThreadMemoryStage())
     registry.register(ValidationTrimStage())
     registry.register(ChatContractStage())
     return registry

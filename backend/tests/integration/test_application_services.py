@@ -1615,6 +1615,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 "context_policy_version",
                 "routing_hint",
                 "router_version",
+                "context_state",
             }
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
@@ -1790,6 +1791,7 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
             "context_policy_version",
             "routing_hint",
             "router_version",
+            "context_state",
         }
         assert frozen_input["routing_hint"] == {
             "entrypoint": "preset",
@@ -2244,6 +2246,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             "context_policy_version",
             "routing_hint",
             "router_version",
+            "context_state",
         }
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []

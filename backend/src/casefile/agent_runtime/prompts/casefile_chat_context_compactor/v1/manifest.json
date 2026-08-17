@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "agent_id": "casefile_chat_context_compactor",
+  "version": "casefile-chat-context-compactor-v1",
+  "previous_version": null,
+  "change_summary": "阶段 3 首个滚动压缩组件：输入为旧 ThreadMemory + 新增原始轮次 + 数据库补丁决策事实，输出 casefile-chat-thread-memory-delta-v1；约束/决策逐字 carry-forward，证据只给稳定指针。",
+  "runtime": {
+    "agent_version": "casefile-single-agent-v2",
+    "toolset_version": "casefile-chat-tools-v2"
+  },
+  "fragments": {
+    "compact": {
+      "file": "compact.md",
+      "sha256": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5"
+    }
+  },
+  "components": {
+    "compact": {
+      "instruction_fragments": [
+        "compact"
+      ],
+      "input_contract_id": "casefile-chat-context-compactor-input-v1",
+      "output_schema_id": "casefile-chat-thread-memory-delta-v1",
+      "tool_policy_id": "no-tools-v1"
+    }
+  }
+}

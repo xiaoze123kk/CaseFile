@@ -22,7 +22,9 @@ from casefile.agent_runtime.chat_intent import (
 )
 from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
 from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
+    CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -97,6 +99,7 @@ from casefile.data_postgres.models import (
     AgentPatchOperation,
     AgentPatchSet,
     AgentThread,
+    AgentThreadContextState,
     Brief,
     BriefVersion,
     CaseFileObject,
@@ -131,16 +134,48 @@ _time = time_view
 def _chat_context_policy_version() -> str:
     """Return the frozen chat context policy version.
 
-    ``casefile-chat-context-v1`` is the accepted default after M0/M1 acceptance.
-    Set ``CASEFILE_CHAT_CONTEXT_ROLLOUT=agent-focus-v1`` to force the legacy
-    policy (paired with the legacy prompt render in ``_new_task``) for rollback.
-    Unknown rollout values are ignored.
+    ``casefile-chat-context-v1`` is the accepted default after M0/M1
+    acceptance. ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2``
+    opts in to the Phase 3 rolling Thread Memory policy, and
+    ``agent-focus-v1`` forces the legacy policy (paired with the legacy prompt
+    render in ``_new_task``) for rollback. Unknown rollout values are ignored.
     """
 
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
     if rollout == LEGACY_CONTEXT_POLICY_VERSION:
         return LEGACY_CONTEXT_POLICY_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_V2_VERSION:
+        return CHAT_CONTEXT_POLICY_V2_VERSION
     return CHAT_CONTEXT_POLICY_VERSION
+
+
+def _latest_context_state_ref(
+    session: Session,
+    *,
+    project_id: int,
+    thread_id: int,
+) -> dict[str, Any] | None:
+    """Freeze the latest Thread Memory state pointer for deterministic replay."""
+
+    state = session.scalar(
+        select(AgentThreadContextState)
+        .where(
+            AgentThreadContextState.project_id == project_id,
+            AgentThreadContextState.thread_id == thread_id,
+        )
+        .order_by(AgentThreadContextState.id.desc())
+        .limit(1)
+    )
+    if state is None:
+        return None
+    return {
+        "state_id": int(state.id),
+        "policy_version": state.policy_version,
+        "state_kind": state.state_kind,
+        "from_message_seq": state.from_message_seq,
+        "to_message_seq": state.to_message_seq,
+        "input_hash": state.input_hash,
+    }
 
 
 class WorkflowService:
@@ -481,6 +516,11 @@ class WorkflowService:
                     else normalize_routing_hint(routing_hint)
                 ),
                 "router_version": INTENT_ROUTER_VERSION,
+                "context_state": _latest_context_state_ref(
+                    self.session,
+                    project_id=owned.project.id,
+                    thread_id=thread.id,
+                ),
             }
             task = self._new_task(
                 owned,
@@ -2137,11 +2177,13 @@ class WorkflowService:
     ) -> TaskRun:
         prompt_version = prompt_version_for_task(task_type)
         if task_type == "casefile_chat":
-            prompt_version = (
-                CHAT_CONTEXT_PROMPT_VERSION
-                if _chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
-                else "casefile-chat-v3"
-            )
+            policy_version = _chat_context_policy_version()
+            if policy_version == CHAT_CONTEXT_POLICY_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_VERSION
+            elif policy_version == CHAT_CONTEXT_POLICY_V2_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_V2_VERSION
+            else:
+                prompt_version = "casefile-chat-v3"
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,

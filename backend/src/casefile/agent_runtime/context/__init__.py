@@ -1,6 +1,7 @@
 """Extensible, policy-driven context engineering substrate for CaseFile chat."""
 
 from casefile.agent_runtime.context.assembly_render import (
+    CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     chat_input_payload_from_assembly,
 )
@@ -45,6 +46,7 @@ from casefile.agent_runtime.context.models import (
     StageResult,
 )
 from casefile.agent_runtime.context.policies.loader import (
+    CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
     CONTEXT_POLICY_SCHEMA_VERSION,
     ContextPolicyError,
@@ -78,15 +80,37 @@ from casefile.agent_runtime.context.strategies.sources.focus_objects import (
     FocusObjectsStage,
     build_focus_objects_payload,
 )
+from casefile.agent_runtime.context.strategies.sources.thread_memory import ThreadMemoryStage
 from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
     ValidationTrimStage,
     trim_validation_issues,
+)
+from casefile.agent_runtime.context.thread_memory import (
+    DEFAULT_THREAD_MEMORY_COMPACTOR,
+    THREAD_MEMORY_STATE_KIND,
+    ChatThreadMemoryState,
+    ThreadCompactionInputV1,
+    ThreadCompactionRequest,
+    ThreadCompactionResult,
+    ThreadMemoryCompactor,
+    ThreadMemoryCompactorV1,
+    ThreadMemoryDecision,
+    ThreadMemoryDelta,
+    ThreadMemoryVerifiedFact,
+    default_compactor_registry,
+    empty_thread_memory_state,
+    preservation_errors,
+    thread_memory_input_hash,
+    thread_memory_state_from_jsonable,
+    thread_memory_state_to_jsonable,
 )
 from casefile.agent_runtime.models import LEGACY_CONTEXT_POLICY_VERSION
 
 __all__ = [
     "CHAT_CONTEXT_POLICY_VERSION",
+    "CHAT_CONTEXT_POLICY_V2_VERSION",
     "CHAT_CONTEXT_PROMPT_VERSION",
+    "CHAT_CONTEXT_PROMPT_V2_VERSION",
     "CONSERVATIVE_TOKEN_ESTIMATOR",
     "CONTEXT_POLICY_SCHEMA_VERSION",
     "LEGACY_CONTEXT_POLICY_VERSION",
@@ -94,6 +118,7 @@ __all__ = [
     "CaseFileSkeletonStage",
     "CharTokenEstimator",
     "ChatContractStage",
+    "ChatThreadMemoryState",
     "ContextAssembly",
     "ContextBlock",
     "ContextBlockStatus",
@@ -111,6 +136,7 @@ __all__ = [
     "ContextRegistryError",
     "ContextRun",
     "ContextStage",
+    "DEFAULT_THREAD_MEMORY_COMPACTOR",
     "EvidenceRef",
     "EvidenceRegistry",
     "EvidenceResolver",
@@ -118,6 +144,16 @@ __all__ = [
     "HistoryWindowStage",
     "LegacyChatInputStage",
     "StageResult",
+    "THREAD_MEMORY_STATE_KIND",
+    "ThreadCompactionInputV1",
+    "ThreadCompactionRequest",
+    "ThreadCompactionResult",
+    "ThreadMemoryCompactor",
+    "ThreadMemoryCompactorV1",
+    "ThreadMemoryDelta",
+    "ThreadMemoryDecision",
+    "ThreadMemoryStage",
+    "ThreadMemoryVerifiedFact",
     "TokenEstimator",
     "TokenEstimatorRegistry",
     "TokenEstimatorRegistryError",
@@ -129,14 +165,20 @@ __all__ = [
     "build_context_manifest",
     "build_focus_objects_payload",
     "chat_input_payload_from_assembly",
+    "default_compactor_registry",
     "default_context_registry",
     "default_token_estimator_registry",
+    "empty_thread_memory_state",
     "estimate_conservative_tokens",
     "estimate_jsonable_tokens",
     "known_context_policy_versions",
     "legacy_chat_routing_payload",
     "load_context_policy",
+    "preservation_errors",
     "select_history_window",
+    "thread_memory_input_hash",
+    "thread_memory_state_from_jsonable",
+    "thread_memory_state_to_jsonable",
     "trim_validation_issues",
     "truncate_text_to_tokens",
     "usage_calibration_ratio",

@@ -291,18 +291,20 @@ class ChatExecutorInputV1(StrictAgentOutput):
 
 
 class ChatExecutorInputV2(StrictAgentOutput):
-    """v2 input contract for the v4 executor: skeleton plus focus expansion.
+    """v2 input contract for the v4/v5 executors: skeleton plus expansions.
 
     ``casefile`` contains only id/collection/label/type skeletons; full record
     content is fetched with the read-only tools. ``focus_objects`` carries the
     bounded full-object and one-hop neighbor expansion selected by the context
-    policy.
+    policy, and Phase 3 policies additionally bind the rolling
+    ``thread_memory`` state.
     """
 
     input_hash: str = Field(min_length=1)
     casefile: dict[str, Any]
     focus_objects: dict[str, Any] = Field(default_factory=dict)
     thread_history: list[dict[str, Any]] = Field(default_factory=list)
+    thread_memory: dict[str, Any] | None = None
     author_message: str = Field(min_length=1, max_length=100_000)
     editable_fields_by_collection: dict[str, list[str]] = Field(default_factory=dict)
     focus: dict[str, Any] = Field(default_factory=dict)
