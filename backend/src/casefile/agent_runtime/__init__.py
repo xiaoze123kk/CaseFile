@@ -1,6 +1,7 @@
 """Single-Agent Brief runtime with swappable model providers."""
 
 from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_VERSION,
     ChatToolContext,
     ChatToolMetrics,
@@ -63,6 +64,7 @@ from casefile.agent_runtime.providers import (
 __all__ = [
     "AgentProvider",
     "CHAT_TOOLSET_VERSION",
+    "CHAT_TOOLSET_V3_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
     "chat_tool_manifest",

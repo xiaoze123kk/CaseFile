@@ -65,7 +65,9 @@ from casefile.agent_runtime.chat_routing import (
 )
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V3_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
@@ -809,7 +811,21 @@ class Worker:
                     chat_result,
                     route=chat_request.route,
                 )
-                self._maybe_compact_chat_thread(task_snapshot, provider, api_key)
+                self._maybe_compact_chat_thread(
+                    task_snapshot,
+                    provider,
+                    api_key,
+                    model_requested_compaction=(
+                        int(
+                            getattr(
+                                chat_result.tools,
+                                "requested_thread_compaction",
+                                0,
+                            )
+                        )
+                        > 0
+                    ),
+                )
                 return
             if task_snapshot.task_type != "brief_to_draft":
                 raise RuntimeError(f"Unsupported TaskRun type: {task_snapshot.task_type}")
@@ -1089,6 +1105,11 @@ class Worker:
             network_retries=_network_retries(task),
             toolset_version=task.toolset_version,
             context_policy_version=context_policy_version,
+            thread_id=task.agent_thread_id,
+            thread_evidence_resolver=lambda evidence_id: self._resolve_thread_evidence(
+                task.agent_thread_id,
+                evidence_id,
+            ),
         )
 
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
@@ -1167,6 +1188,52 @@ class Worker:
             _chat_rewrite_event_payload(request),
         )
 
+    def _resolve_thread_evidence(
+        self,
+        thread_id: int | None,
+        evidence_id: str,
+    ) -> dict[str, Any] | None:
+        """Resolve one ``thread://{thread_id}/message/{seq}`` pointer read-only."""
+
+        if thread_id is None:
+            return None
+        ref = EvidenceRef.parse(evidence_id)
+        if ref is None or ref.scheme != "thread":
+            return None
+        parts = ref.identifier.split("/")
+        try:
+            if len(parts) == 3 and parts[1] == "message":
+                ref_thread_id = int(parts[0])
+                sequence_no = int(parts[2])
+            elif len(parts) == 2 and parts[0] == "message":
+                ref_thread_id = thread_id
+                sequence_no = int(parts[1])
+            else:
+                return None
+        except ValueError:
+            return None
+        if ref_thread_id != thread_id:
+            return None
+        with self.session_factory() as session:
+            message = session.scalar(
+                select(AgentMessage)
+                .where(
+                    AgentMessage.thread_id == thread_id,
+                    AgentMessage.sequence_no == sequence_no,
+                )
+                .limit(1)
+            )
+        if message is None:
+            return None
+        return {
+            "evidence_id": evidence_id,
+            "message_id": int(message.id),
+            "sequence_no": int(message.sequence_no),
+            "role": str(message.role),
+            "status": str(message.status),
+            "content": str(message.content_text or ""),
+        }
+
     def _load_chat_thread_memory_state(
         self,
         task: TaskRun,
@@ -1198,12 +1265,14 @@ class Worker:
         """Assemble context, publish its audit manifest, and bind the provider input.
 
         Legacy policies measure the exact string providers already render and
-        leave the request untouched. v1 binds the v4 prompt payload; the v2
-        Phase 3 policy additionally binds the frozen Thread Memory state and
-        requires the v5 prompt package.
+        leave the request untouched. v1 binds the v4 prompt payload; v2 binds
+        Thread Memory with the v5 prompt; v3 additionally exposes the Phase 4
+        Context Tools via the v6 prompt and embeds the dashboard for both.
         """
 
         policy_v2 = request.context_policy_version == CHAT_CONTEXT_POLICY_V2_VERSION
+        policy_v3 = request.context_policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
+        thread_memory_policy = policy_v2 or policy_v3
         legacy_policy = request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
         executor_input: str | None = None
         if legacy_policy:
@@ -1212,7 +1281,7 @@ class Worker:
             "editable_fields_by_collection": request.editable_fields_by_collection,
         }
         memory_warning: str | None = None
-        if policy_v2:
+        if thread_memory_policy:
             thread_memory_state, memory_warning = self._load_chat_thread_memory_state(task)
             extra_input["thread_memory_state"] = thread_memory_state
         hard_input_tokens = _context_hard_input_tokens()
@@ -1281,7 +1350,9 @@ class Worker:
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
-            CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION
+            CHAT_CONTEXT_PROMPT_V3_VERSION
+            if policy_v3
+            else (CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION)
         )
         if request.prompt_version != expected_prompt:
             raise RuntimeError(
@@ -1293,8 +1364,8 @@ class Worker:
             request,
             assembled_input=chat_input_payload_from_assembly(
                 result.assembly,
-                require_thread_memory=policy_v2,
-                dashboard=result.dashboard if policy_v2 else None,
+                require_thread_memory=thread_memory_policy,
+                dashboard=result.dashboard if thread_memory_policy else None,
             ),
         )
 
@@ -1303,14 +1374,19 @@ class Worker:
         task: TaskRun,
         provider: AgentProvider,
         api_key: str,
+        *,
+        model_requested_compaction: bool = False,
     ) -> None:
-        """Run the Phase 3 rolling compaction monitor after a completed reply.
+        """Run the rolling compaction monitor after a completed reply.
 
-        Triggered only for the v2 policy at a semantic boundary (the newest
+        Triggered only for v2/v3 policies at a semantic boundary (the newest
         completed message is an assistant reply and no other thread task is
-        active). The LLM compacts ``old_state + new raw turns``; merger and
-        StateValidator run deterministically afterwards, and failures fall back
-        to the previous state without failing the chat task.
+        active). A model request from ``request_thread_compaction`` bypasses
+        the history-token/min-message thresholds but never bypasses the
+        semantic boundary, range check, or idle-thread guard. The LLM compacts
+        ``old_state + new raw turns``; merger and StateValidator run
+        deterministically afterwards, and failures fall back to the previous
+        state without failing the chat task.
         """
 
         def emit(
@@ -1321,7 +1397,14 @@ class Worker:
             self._emit_after_completion(task.id, event_type, stage, payload)
         policy_version = task.input_jsonb.get("context_policy_version")
         thread_id = task.agent_thread_id
-        if policy_version != CHAT_CONTEXT_POLICY_V2_VERSION or thread_id is None:
+        if (
+            policy_version
+            not in {
+                CHAT_CONTEXT_POLICY_V2_VERSION,
+                CHAT_CONTEXT_POLICY_V3_VERSION,
+            }
+            or thread_id is None
+        ):
             emit(
                 "context.compaction_skipped",
                 "context",
@@ -1395,29 +1478,52 @@ class Worker:
                     and message.role in {"user", "assistant"}
                     and message.content_text
                 ]
-                if len(new_turns) < min_new_messages:
+                if not new_turns:
                     emit(
                         "context.compaction_skipped",
                         "context",
                         {
-                            "reason_code": "below_min_messages",
+                            "reason_code": "no_new_turns",
+                            "from_message_seq": from_message_seq,
+                            "to_message_seq": last_message_seq,
+                        },
+                    )
+                    return
+                if not model_requested_compaction:
+                    if len(new_turns) < min_new_messages:
+                        emit(
+                            "context.compaction_skipped",
+                            "context",
+                            {
+                                "reason_code": "below_min_messages",
+                                "new_messages": len(new_turns),
+                                "min_new_messages": min_new_messages,
+                            },
+                        )
+                        return
+                    history_tokens = _thread_history_tokens(new_turns)
+                    if history_tokens < history_threshold:
+                        emit(
+                            "context.compaction_skipped",
+                            "context",
+                            {
+                                "reason_code": "below_history_threshold",
+                                "history_tokens": history_tokens,
+                                "history_threshold": history_threshold,
+                            },
+                        )
+                        return
+                else:
+                    emit(
+                        "context.compaction_requested",
+                        "context",
+                        {
+                            "requested_by": "model",
                             "new_messages": len(new_turns),
-                            "min_new_messages": min_new_messages,
+                            "from_message_seq": from_message_seq,
+                            "to_message_seq": last_message_seq,
                         },
                     )
-                    return
-                history_tokens = _thread_history_tokens(new_turns)
-                if history_tokens < history_threshold:
-                    emit(
-                        "context.compaction_skipped",
-                        "context",
-                        {
-                            "reason_code": "below_history_threshold",
-                            "history_tokens": history_tokens,
-                            "history_threshold": history_threshold,
-                        },
-                    )
-                    return
                 other_active = session.scalar(
                     select(TaskRun.id)
                     .where(

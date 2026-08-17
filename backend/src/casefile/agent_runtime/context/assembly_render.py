@@ -9,6 +9,8 @@ from casefile.agent_runtime.context.models import ContextAssembly
 CHAT_CONTEXT_PROMPT_VERSION = "casefile-chat-v4"
 #: Phase 3 prompt package paired with ``casefile-chat-context-v2``.
 CHAT_CONTEXT_PROMPT_V2_VERSION = "casefile-chat-v5"
+#: Phase 4 prompt package paired with ``casefile-chat-context-v3``.
+CHAT_CONTEXT_PROMPT_V3_VERSION = "casefile-chat-v6"
 _REQUIRED_BLOCK_IDS = frozenset(
     {
         "author_message",
@@ -67,5 +69,6 @@ def chat_input_payload_from_assembly(
 __all__ = [
     "CHAT_CONTEXT_PROMPT_VERSION",
     "CHAT_CONTEXT_PROMPT_V2_VERSION",
+    "CHAT_CONTEXT_PROMPT_V3_VERSION",
     "chat_input_payload_from_assembly",
 ]

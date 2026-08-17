@@ -18,6 +18,7 @@ import {
   type AgentRoutingCorrectIntent,
   type AgentSuggestedView,
   type AgentThreadView,
+  type TaskEventView,
   type TaskView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
@@ -123,6 +124,25 @@ function stageLabel(task: TaskView | null): string {
   return "正在整理回复";
 }
 
+interface ContextOccupancy {
+  usedTokens: number;
+  budgetTokens: number | null;
+}
+
+function contextOccupancyFromEvent(
+  event: TaskEventView,
+): ContextOccupancy | null {
+  if (event.event_type !== "context.built") return null;
+  const payload = event.payload;
+  if (typeof payload !== "object" || payload === null) return null;
+  const usedTokens = (payload as { used_tokens?: unknown }).used_tokens;
+  const budgetTokens = (payload as { budget_tokens?: unknown }).budget_tokens;
+  return {
+    usedTokens: typeof usedTokens === "number" ? usedTokens : 0,
+    budgetTokens: typeof budgetTokens === "number" ? budgetTokens : null,
+  };
+}
+
 function mergeMessages(
   previous: AgentMessageView[],
   incoming: AgentMessageView[],
@@ -189,6 +209,9 @@ export function AgentLivePanel({
   const [patchBusyId, setPatchBusyId] = useState<number | null>(null);
   const [feedbackByMessage, setFeedbackByMessage] = useState<
     Record<number, AgentRoutingCorrectIntent>
+  >({});
+  const [contextByTask, setContextByTask] = useState<
+    Record<number, ContextOccupancy | null>
   >({});
 
   const followsRef = useRef(new Map<number, AbortController>());
@@ -312,7 +335,15 @@ export function AgentLivePanel({
               ...previous,
               [task.task_run_id]: task,
             }));
-          }, controller.signal);
+          }, controller.signal, (event) => {
+            const occupancy = contextOccupancyFromEvent(event);
+            if (occupancy !== null) {
+              setContextByTask((previous) => ({
+                ...previous,
+                [taskRunId]: occupancy,
+              }));
+            }
+          });
         } catch (caught) {
           if (caught instanceof TaskCancelledError) {
             setLiveTasks((previous) => ({
@@ -703,7 +734,16 @@ export function AgentLivePanel({
               message.status === "pending" ? (
                 <p className={styles.agentThinking} role="status">
                   {busy
-                    ? `Agent 正在回复 · ${stageLabel(liveTask)}`
+                    ? `Agent 正在回复 · ${stageLabel(liveTask)}${
+                        contextByTask[message.task?.task_run_id ?? -1]
+                          ? ` · 上下文 ${contextByTask[message.task?.task_run_id ?? -1]?.usedTokens ?? 0}${
+                              contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens !== null &&
+                              contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens !== undefined
+                                ? `/${contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens}`
+                                : ""
+                            } tokens`
+                          : ""
+                      }`
                     : "Agent 正在整理回复…"}
                 </p>
               ) : null}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, is_dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
@@ -457,6 +458,9 @@ class GenerationRequest:
     toolset_version: str | None = None
 
 
+ThreadEvidenceResolver = Callable[[str], dict[str, Any] | None]
+
+
 @dataclass(frozen=True, slots=True)
 class CaseFileChatRequest:
     task_run_id: int
@@ -481,6 +485,8 @@ class CaseFileChatRequest:
     toolset_version: str = "casefile-chat-tools-v1"
     context_policy_version: str = LEGACY_CONTEXT_POLICY_VERSION
     assembled_input: dict[str, Any] | None = None
+    thread_id: int | None = None
+    thread_evidence_resolver: ThreadEvidenceResolver | None = None
 
 
 @dataclass(slots=True)

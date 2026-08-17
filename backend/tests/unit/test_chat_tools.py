@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from typing import Any
 
 from agents import RunContextWrapper
 from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_VERSION,
     LEGACY_CHAT_TOOLSET_VERSION,
     ChatToolContext,
@@ -20,6 +22,8 @@ from casefile.agent_runtime.chat_tools import (
     list_casefile_records,
     page_casefile_records,
     related_casefile_objects,
+    request_thread_compaction,
+    retrieve_thread_evidence,
     search_casefile,
     search_casefile_records,
     validate_patch_proposal,
@@ -66,6 +70,7 @@ def make_request(
     casefile: dict[str, Any] | None = None,
     emit: Any | None = None,
     toolset_version: str = LEGACY_CHAT_TOOLSET_VERSION,
+    thread_evidence_resolver: Any | None = None,
 ) -> CaseFileChatRequest:
     return CaseFileChatRequest(
         task_run_id=1,
@@ -86,6 +91,7 @@ def make_request(
             execution_profile={"toolset": toolset, "max_tool_calls": max_tool_calls}
         ),
         toolset_version=toolset_version,
+        thread_evidence_resolver=thread_evidence_resolver,
     )
 
 
@@ -436,3 +442,130 @@ def test_related_tool_obeys_the_same_budget_gate() -> None:
         "objects": [],
     }
     assert context.metrics.budget_exhausted == 1
+
+
+def test_v3_context_tools_are_gated_by_toolset_and_route_profile() -> None:
+    route = RouteDecision(
+        execution_profile={
+            "toolset": ["search_casefile"],
+            "context_tools": [
+                "retrieve_thread_evidence",
+                "request_thread_compaction",
+            ],
+            "max_tool_calls": 4,
+        }
+    )
+    assert [tool.name for tool in chat_tool_manifest(route)] == ["search_casefile"]
+    assert [tool.name for tool in chat_tool_manifest(
+        route,
+        toolset_version=CHAT_TOOLSET_VERSION,
+    )] == ["search_casefile"]
+    v3_names = [
+        tool.name
+        for tool in chat_tool_manifest(
+            route,
+            toolset_version=CHAT_TOOLSET_V3_VERSION,
+        )
+    ]
+    assert v3_names == [
+        "search_casefile",
+        "retrieve_thread_evidence",
+        "request_thread_compaction",
+    ]
+
+
+def test_retrieve_thread_evidence_resolves_and_records_metrics() -> None:
+    events: list[tuple[str, str, dict[str, Any]]] = []
+    request = make_request(
+        toolset=["search_casefile"],
+        max_tool_calls=2,
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+        thread_evidence_resolver=lambda evidence_id: (
+            {"evidence_id": evidence_id, "content": "原始消息。", "role": "user"}
+        ),
+    )
+    request = replace(
+        request,
+        assembled_input={
+            "context_dashboard": {
+                "recoverable_evidence_ids": ["thread://7/message/2"],
+            },
+        },
+    )
+    context = ChatToolContext(request=request, route=request.route)
+    result = json.loads(
+        invoke(
+            retrieve_thread_evidence,
+            context,
+            {"evidence_id": "thread://7/message/2"},
+        )
+    )
+    assert result["valid"] is True
+    assert result["evidence"]["content"] == "原始消息。"
+    assert context.metrics.retrieved_evidence_ids == ["thread://7/message/2"]
+    assert events[0][0] == "tool.started"
+    assert events[1][2]["valid"] is True
+
+
+def test_retrieve_thread_evidence_fails_closed_without_resolver() -> None:
+    request = make_request(toolset=["search_casefile"], max_tool_calls=1)
+    request = replace(
+        request,
+        assembled_input={
+            "context_dashboard": {
+                "recoverable_evidence_ids": ["thread://7/message/2"],
+            },
+        },
+    )
+    context = ChatToolContext(request=request, route=request.route)
+    result = json.loads(
+        invoke(
+            retrieve_thread_evidence,
+            context,
+            {"evidence_id": "thread://7/message/2"},
+        )
+    )
+    assert result == {
+        "valid": False,
+        "reason_code": "thread_evidence_unavailable",
+        "evidence_id": "thread://7/message/2",
+    }
+    assert context.metrics.successful_calls == 0
+
+
+def test_retrieve_thread_evidence_rejects_undeclared_pointers() -> None:
+    request = make_request(
+        toolset=["search_casefile"],
+        max_tool_calls=1,
+        thread_evidence_resolver=lambda evidence_id: (
+            {"evidence_id": evidence_id, "content": "不应返回。"}
+        ),
+    )
+    request = replace(
+        request,
+        assembled_input={
+            "context_dashboard": {
+                "recoverable_evidence_ids": ["thread://7/message/2"],
+            },
+        },
+    )
+    context = ChatToolContext(request=request, route=request.route)
+    result = json.loads(
+        invoke(
+            retrieve_thread_evidence,
+            context,
+            {"evidence_id": "thread://7/message/3"},
+        )
+    )
+    assert result["valid"] is False
+    assert result["reason_code"] == "evidence_ref_not_declared"
+    assert context.metrics.successful_calls == 0
+
+
+def test_request_thread_compaction_is_queued_not_executed() -> None:
+    request = make_request(toolset=["search_casefile"], max_tool_calls=1)
+    context = ChatToolContext(request=request, route=request.route)
+    result = json.loads(invoke(request_thread_compaction, context, {}))
+    assert result == {"valid": True, "requested": True, "queued": "after_reply"}
+    assert context.metrics.requested_thread_compaction == 1
+    assert context.metrics.calls == 1

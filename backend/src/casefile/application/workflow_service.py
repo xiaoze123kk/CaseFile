@@ -20,11 +20,16 @@ from casefile.agent_runtime.chat_intent import (
     route_result_summary,
     route_suggestion_policy,
 )
-from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
+from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_VERSION,
+)
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V3_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -136,9 +141,11 @@ def _chat_context_policy_version() -> str:
 
     ``casefile-chat-context-v1`` is the accepted default after M0/M1
     acceptance. ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2``
-    opts in to the Phase 3 rolling Thread Memory policy, and
-    ``agent-focus-v1`` forces the legacy policy (paired with the legacy prompt
-    render in ``_new_task``) for rollback. Unknown rollout values are ignored.
+    opts in to the Phase 3 rolling Thread Memory policy,
+    ``casefile-chat-context-v3`` opts in to the Phase 4 Context Tools policy,
+    and ``agent-focus-v1`` forces the legacy policy (paired with the legacy
+    prompt render in ``_new_task``) for rollback. Unknown rollout values are
+    ignored.
     """
 
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
@@ -146,6 +153,8 @@ def _chat_context_policy_version() -> str:
         return LEGACY_CONTEXT_POLICY_VERSION
     if rollout == CHAT_CONTEXT_POLICY_V2_VERSION:
         return CHAT_CONTEXT_POLICY_V2_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_V3_VERSION:
+        return CHAT_CONTEXT_POLICY_V3_VERSION
     return CHAT_CONTEXT_POLICY_VERSION
 
 
@@ -2176,12 +2185,15 @@ class WorkflowService:
         output_message_id: int | None = None,
     ) -> TaskRun:
         prompt_version = prompt_version_for_task(task_type)
+        policy_version: str | None = None
         if task_type == "casefile_chat":
             policy_version = _chat_context_policy_version()
             if policy_version == CHAT_CONTEXT_POLICY_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_VERSION
             elif policy_version == CHAT_CONTEXT_POLICY_V2_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_V2_VERSION
+            elif policy_version == CHAT_CONTEXT_POLICY_V3_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_V3_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
         return TaskRun(
@@ -2212,7 +2224,14 @@ class WorkflowService:
             agent_version=agent_version_for_task(task_type, prompt_version),
             prompt_version=prompt_version,
             toolset_version=(
-                CHAT_TOOLSET_VERSION if task_type == "casefile_chat" else TOOLSET_VERSION
+                CHAT_TOOLSET_V3_VERSION
+                if task_type == "casefile_chat"
+                and policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
+                else (
+                    CHAT_TOOLSET_VERSION
+                    if task_type == "casefile_chat"
+                    else TOOLSET_VERSION
+                )
             ),
             budget_jsonb=dict(setting.default_budget_jsonb),
             usage_jsonb={},

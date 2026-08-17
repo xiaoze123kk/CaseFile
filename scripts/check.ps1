@@ -107,6 +107,12 @@ try {
             if ($LASTEXITCODE -ne 0) {
                 throw "Phase 3 rolling compaction M1 gate failed."
             }
+
+            $env:CASEFILE_CHAT_CONTEXT_ROLLOUT = "casefile-chat-context-v3"
+            & $python -m pytest tests/integration/test_chat_context_phase4_acceptance.py
+            if ($LASTEXITCODE -ne 0) {
+                throw "Phase 4 Context Tools M1 gate failed."
+            }
         }
 
         if ($LASTEXITCODE -ne 0) {
