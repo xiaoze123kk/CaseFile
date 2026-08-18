@@ -74,6 +74,7 @@ const routingIntentLabels: Record<AgentRoutingCorrectIntent, string> = {
   explain_issue: "问题解释",
   edit_request: "修改请求",
   validate_request: "验证请求",
+  logic_audit: "逻辑漏洞复查",
   unsupported_action: "不可执行",
   clarify: "需要澄清",
   out_of_scope: "超出范围",
