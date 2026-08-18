@@ -10,6 +10,7 @@ import pytest
 
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
+    CHAT_PROMPT_PACKAGE_VERSIONS,
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
     V10_GENERATION_AGENT_VERSION,
@@ -669,6 +670,11 @@ def _one_agent_repository(
     for version, system_prompt in resolved_versions.items():
         _write_manifest(root, version=version, system_prompt=system_prompt)
     return PromptRepository(root, expected_agent_ids=("brief_polish",)), root
+
+
+def test_chat_audit_prompt_packages_are_execution_auditable() -> None:
+    assert "casefile-chat-v8" in CHAT_PROMPT_PACKAGE_VERSIONS
+    assert "casefile-chat-v9" in CHAT_PROMPT_PACKAGE_VERSIONS
 
 
 def _write_manifest(

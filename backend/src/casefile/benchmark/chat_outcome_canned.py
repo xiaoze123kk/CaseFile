@@ -284,6 +284,50 @@ def persisted_candidate_from_result(
     )
 
 
+def _canned_audit_expectations(
+    task: ChatOutcomeTask,
+    casefile: dict[str, Any],
+    candidate: CaseFileChatCandidate | CaseFileChatCandidateV2,
+) -> ChatOutcomeExpectations:
+    """Audit expectations rebuilt from the frozen canned-trial DB state.
+
+    Canned trials run every task against the same generated fixture CaseFile,
+    so static planted-hole evidence IDs (``ent_leader``, ...) do not exist in
+    the persisted draft. For the production persistence path we therefore pin
+    the human-adoption invariants — finding count, finding kind, one reviewable
+    suggestion, legal evidence — while deriving IDs from the persisted result.
+    """
+
+    entity_id = _first_object_id(casefile, "entities")
+    event_id = _first_object_id(casefile, "events")
+    zero_gate = (
+        task.expectations.audit_finding_count_range == (0, 0)
+        or task.expectations.suggestion_count_range == (0, 0)
+    )
+    if zero_gate:
+        return ChatOutcomeExpectations(
+            expected_object_ids=(entity_id,) if entity_id is not None else (),
+            expected_event_ids=(event_id,) if event_id is not None else (),
+            expected_primary_intent="logic_audit",
+            audit_finding_count_range=(0, 0),
+            suggestion_count_range=(0, 0),
+            no_unnecessary_suggestions=True,
+        )
+    required_suggestion_paths = (
+        ((entity_id, "description"),) if entity_id is not None else ()
+    )
+    return ChatOutcomeExpectations(
+        expected_object_ids=(entity_id,) if entity_id is not None else (),
+        expected_event_ids=(event_id,) if event_id is not None else (),
+        required_suggestion_paths=required_suggestion_paths,
+        expected_primary_intent="logic_audit",
+        requires_suggestion=bool(required_suggestion_paths),
+        audit_finding_count_range=(1, 1),
+        required_audit_finding_kinds=task.expectations.required_audit_finding_kinds,
+        suggestion_count_range=(1, 1),
+    )
+
+
 def grade_persisted_canned_trial(
     task: ChatOutcomeTask,
     *,
@@ -303,7 +347,7 @@ def grade_persisted_canned_trial(
     if not isinstance(suggestion_policy, str):
         suggestion_policy = "inherit"
     if routing_intent == "logic_audit":
-        expectations = task.expectations
+        expectations = _canned_audit_expectations(task, casefile, candidate)
     else:
         expectations = canned_outcome_expectations(
             casefile=casefile,

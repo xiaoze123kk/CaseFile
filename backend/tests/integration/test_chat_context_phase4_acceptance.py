@@ -266,7 +266,9 @@ def test_phase4_v4_rollout_binds_v8_v4_toolset_and_full_audit_snapshot(
         assert execution_profile["prompt_component"] == "audit"
         assert "simulate_patch_application" in execution_profile["toolset"]
         assert request.assembled_input is not None
-        assert request.assembled_input["validation_issues"]["mode"] == "full"
+        full_validation_issues = request.assembled_input["validation_issues"]
+        assert isinstance(full_validation_issues, list)
+        assert full_validation_issues == list(request.validation_issues)
 
 
 def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
@@ -353,4 +355,6 @@ def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
         assert execution_profile["prompt_component"] == "audit"
         assert "simulate_patch_application" in execution_profile["toolset"]
         assert request.assembled_input is not None
-        assert request.assembled_input["validation_issues"]["mode"] == "full"
+        full_validation_issues = request.assembled_input["validation_issues"]
+        assert isinstance(full_validation_issues, list)
+        assert full_validation_issues == list(request.validation_issues)

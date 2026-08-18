@@ -42,19 +42,23 @@ def test_rejected_audit_patch_replays_as_zero_gate_fixture(
     with factory() as session:
         patch = session.get(AgentPatchSet, patch_set_id)
         assert patch is not None
+        project_id = int(patch.project_id)
+        draft_id = int(patch.draft_id)
+        base_revision = int(patch.base_draft_revision)
+    with factory() as session:
         rejected = WorkflowService(session).apply_agent_patch_set(
             actor_id,
-            int(patch.project_id),
+            project_id,
             patch_set_id,
-            expected_draft_id=int(patch.draft_id),
-            expected_revision=int(patch.base_draft_revision),
-            operation_ids=None,
+            expected_draft_id=draft_id,
+            expected_revision=base_revision,
+            operation_ids=[],
         )
-    assert rejected["patch_set"]["status"] == "rejected"
+    assert rejected["status"] == "rejected"
 
     export = export_audit_feedback_fixtures(
         create_session_factory(engine),
-        project_id=int(patch.project_id),
+        project_id=project_id,
     )
     assert export["schema_version"] == AUDIT_FEEDBACK_EXPORT_SCHEMA
     assert export["fixture_count"] >= 1
