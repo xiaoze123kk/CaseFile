@@ -401,6 +401,83 @@ describe("workbench agent live panel", () => {
     expect(onDraftChangedMock).toHaveBeenCalled();
   });
 
+  it("renders structured audit findings with clickable evidence", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 3,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "复查完成，发现一处矛盾。",
+        task: makeTask({
+          status: "succeeded",
+          result: {
+            answer: "复查完成，发现一处矛盾。",
+            referenced_object_ids: ["object:person_1"],
+            referenced_event_ids: ["event:known"],
+            referenced_validation_issue_ids: ["validator:issue-1"],
+            suggested_view: null,
+            patch_set_id: null,
+            stale: false,
+            audit_findings: [
+              {
+                finding_id: "F1",
+                kind: "contradiction",
+                severity: "S1",
+                title: "研究员描述前后矛盾",
+                statement: "第一段说研究员支持重启，第二段又说反对。",
+                needs_manual_review: false,
+                evidence_object_ids: ["object:person_1"],
+                evidence_event_ids: ["event:known"],
+                evidence_validation_issue_ids: ["validator:issue-1"],
+              },
+              {
+                finding_id: "F2",
+                kind: "motivation_gap",
+                severity: "S3",
+                title: "动机不明",
+                statement: "重启原因在材料中缺少直接说明。",
+                needs_manual_review: true,
+                evidence_object_ids: [],
+                evidence_event_ids: [],
+                evidence_validation_issue_ids: [],
+              },
+            ],
+            routing: {
+              route_source: "rule_preset",
+              intent: "logic_audit",
+              route_hash: "h",
+            },
+          },
+        }),
+      }),
+    ]);
+
+    renderPanel();
+
+    expect(
+      await screen.findByRole("article", { name: "逻辑漏洞复查发现" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("研究员描述前后矛盾")).toBeInTheDocument();
+    expect(screen.getByText("矛盾")).toBeInTheDocument();
+    expect(screen.getByText("致命")).toBeInTheDocument();
+    expect(screen.getByText("待人工确认")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "对象 · 研究员" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "事件 · 重启事件" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "验证 · 关键主张缺少支撑" }),
+    );
+
+    expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
+    expect(locateMocks.event).toHaveBeenCalledWith("event:known");
+    expect(locateMocks.issue).toHaveBeenCalledWith("validator:issue-1");
+  });
+
   it("renders four kinds of clickable references and routes them into the workbench", async () => {
     mocks.listAgentThreads.mockResolvedValue([makeThread()]);
     mocks.listAgentMessages.mockResolvedValue([
