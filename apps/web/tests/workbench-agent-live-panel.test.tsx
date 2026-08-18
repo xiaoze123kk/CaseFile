@@ -319,6 +319,88 @@ describe("workbench agent live panel", () => {
     expect(await screen.findByText("已记录反馈：问答")).toBeInTheDocument();
   });
 
+  it("renders the logic audit chip and keeps its PatchSet reviewable", async () => {
+    const pending = makePatchSet();
+    const applied = makePatchSet({
+      status: "applied",
+      applied_from_revision: 3,
+      applied_to_revision: 4,
+      operations: pending.operations.map((operation) => ({
+        ...operation,
+        decision: "accepted",
+        reviewed_at: "2026-08-16T09:10:00Z",
+      })),
+    });
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValueOnce([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "审计报告：发现一处描述缺口。",
+        task: makeTask({
+          status: "succeeded",
+          result: {
+            answer: "审计报告：发现一处描述缺口。",
+            referenced_object_ids: [],
+            referenced_event_ids: [],
+            referenced_validation_issue_ids: [],
+            suggested_view: null,
+            patch_set_id: null,
+            stale: false,
+            routing: {
+              route_source: "rule_preset",
+              intent: "logic_audit",
+              route_hash: "h",
+            },
+          },
+        }),
+        patch_set: pending,
+      }),
+    ]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "审计报告：发现一处描述缺口。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: applied,
+      }),
+    ]);
+    mocks.applyAgentPatchSet.mockResolvedValue({
+      ...applied,
+      draft_revision: 4,
+    });
+
+    renderPanel();
+
+    expect(
+      await screen.findByText("预设路由 · 逻辑漏洞复查"),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("修改建议")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "选择修改 研究员 /name" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "采纳所选（1）" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.applyAgentPatchSet).toHaveBeenCalledWith(
+        1,
+        1,
+        200,
+        9,
+        3,
+        [201],
+      );
+    });
+    expect(onDraftChangedMock).toHaveBeenCalled();
+  });
+
   it("renders four kinds of clickable references and routes them into the workbench", async () => {
     mocks.listAgentThreads.mockResolvedValue([makeThread()]);
     mocks.listAgentMessages.mockResolvedValue([
@@ -382,6 +464,12 @@ describe("workbench agent live panel", () => {
         presetId: "gate",
         prompt:
           "按编译中心的发布门禁口径做导出前检查，结论必须与验证快照一致。",
+      },
+      {
+        label: "逻辑漏洞复查",
+        presetId: "audit",
+        prompt:
+          "对当前卷宗做一次全卷逻辑漏洞复查：找出矛盾、断链、时序错误和动机缺口；能给出可审阅补丁的就给出补丁，无法取证的列到待人工确认，未发现漏洞则如实说明。",
       },
     ];
     mocks.listAgentThreads.mockResolvedValue([makeThread()]);
