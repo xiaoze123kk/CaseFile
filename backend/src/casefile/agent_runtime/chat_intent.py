@@ -20,7 +20,7 @@ from casefile.agent_runtime.models import (
 )
 
 INTENT_ROUTER_VERSION = "casefile-chat-router-v2"
-ALLOWED_PRESET_IDS = frozenset({"inspect", "evidence", "compare", "gate"})
+ALLOWED_PRESET_IDS = frozenset({"inspect", "evidence", "compare", "gate", "audit"})
 VALID_ENTRYPOINTS = frozenset({"free_text", "preset", "issue_action"})
 
 # preset_id -> (primary_intent, route profile)
@@ -44,6 +44,11 @@ PRESET_ROUTE_TABLE: dict[str, dict[str, str]] = {
         "primary_intent": "validate_request",
         "profile": "validate_request.gate_check",
         "reason_code": "rule_preset:gate",
+    },
+    "audit": {
+        "primary_intent": "logic_audit",
+        "profile": "logic_audit.full_review",
+        "reason_code": "rule_preset:audit",
     },
 }
 
@@ -141,6 +146,17 @@ def task_understanding_for_rule(rule: RuleRoute) -> ChatTaskUnderstanding:
                 "needs_casefile_retrieval": True,
                 "needs_validation_snapshot": True,
                 "needs_suggestion_generation": True,
+            }
+        )
+        risk_level = "medium"
+    elif rule.primary_intent == "logic_audit":
+        capabilities.update(
+            {
+                "needs_casefile_retrieval": True,
+                "needs_relations": True,
+                "needs_validation_snapshot": True,
+                "needs_suggestion_generation": True,
+                "needs_reasoning": True,
             }
         )
         risk_level = "medium"

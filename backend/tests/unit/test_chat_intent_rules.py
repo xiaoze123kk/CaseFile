@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
@@ -12,7 +14,6 @@ from casefile.agent_runtime.chat_intent import (
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
-from pydantic import ValidationError
 
 
 def make_chat_request(
@@ -44,6 +45,7 @@ def make_chat_request(
         ("evidence", "analysis", "analysis.evidence_summary"),
         ("compare", "analysis", "analysis.comparison"),
         ("gate", "validate_request", "validate_request.gate_check"),
+        ("audit", "logic_audit", "logic_audit.full_review"),
     ],
 )
 def test_preset_hints_resolve_to_the_frozen_rule_table(
@@ -135,6 +137,26 @@ def test_rule_task_understanding_marks_gate_as_read_only() -> None:
     assert understanding.primary_intent == "validate_request"
     assert understanding.capabilities["needs_validation_snapshot"] is True
     assert understanding.capabilities["needs_suggestion_generation"] is False
+
+
+def test_audit_rule_understanding_declares_retrieval_and_suggestion_capabilities() -> None:
+    audit_rule = resolve_rule_route(
+        make_chat_request(hint={"entrypoint": "preset", "preset_id": "audit"})
+    )
+    assert audit_rule is not None
+    understanding = task_understanding_for_rule(audit_rule)
+
+    assert understanding.primary_intent == "logic_audit"
+    assert understanding.confidence == 1.0
+    assert understanding.risk_level == "medium"
+    for capability in (
+        "needs_casefile_retrieval",
+        "needs_relations",
+        "needs_validation_snapshot",
+        "needs_suggestion_generation",
+        "needs_reasoning",
+    ):
+        assert understanding.capabilities[capability] is True
 
 
 def test_preset_hint_schema_requires_preset_id() -> None:

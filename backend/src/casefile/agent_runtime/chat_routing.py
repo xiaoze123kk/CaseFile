@@ -21,7 +21,9 @@ from casefile.agent_runtime.models import (
 )
 
 CONFIDENCE_GATE_HIGH = 0.85
-SENSITIVE_INTENTS = frozenset({"edit_request", "unsupported_action"})
+SENSITIVE_INTENTS = frozenset(
+    {"edit_request", "unsupported_action", "logic_audit"}
+)
 
 # v1 capability table from the routing scheme §6.4. `profile` is the default
 # route-specific profile when a preset/UI rule does not supply a tighter one.
@@ -80,6 +82,25 @@ EXECUTION_PROFILES: dict[str, dict[str, Any]] = {
         "context_tools": ["retrieve_thread_evidence"],
         "max_turns": 6,
         "max_tool_calls": 10,
+        "context_profile": "focus_first",
+    },
+    "logic_audit": {
+        "primary_intent": "logic_audit",
+        "profile": "logic_audit.full_review",
+        "prompt_component": "audit",
+        "allow_suggestions": True,
+        "suggestion_policy": "allow",
+        "toolset": [
+            "list_casefile_records",
+            "search_casefile",
+            "get_casefile_object",
+            "get_related_objects",
+            "get_validation_issues",
+            "validate_patch_proposal",
+        ],
+        "context_tools": ["retrieve_thread_evidence"],
+        "max_turns": 8,
+        "max_tool_calls": 20,
         "context_profile": "focus_first",
     },
     "edit_request": {

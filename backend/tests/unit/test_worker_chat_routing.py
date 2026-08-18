@@ -82,6 +82,24 @@ def test_issue_action_hint_resolves_to_explain_issue_profile() -> None:
     assert resolved.rewrite.rewrite_decision == "KEEP"
 
 
+def test_audit_preset_resolves_to_logic_audit_profile_with_suggestions_allowed() -> None:
+    resolved = _resolve_chat_route(
+        make_request(hint={"entrypoint": "preset", "preset_id": "audit"})
+    )
+
+    assert resolved.task_understanding is not None
+    assert resolved.task_understanding.primary_intent == "logic_audit"
+    assert resolved.route is not None
+    assert resolved.route.route_source == "rule_preset"
+    assert resolved.route.routes[0]["profile"] == "logic_audit.full_review"
+    assert resolved.route.execution_profile["prompt_component"] == "audit"
+    assert resolved.route.execution_profile["suggestion_policy"] == "allow"
+    assert resolved.route.rewrite_strategy == "CONTEXTUALIZE"
+    assert resolved.rewrite is not None
+    assert resolved.rewrite.rewrite_decision == "CONTEXTUALIZE"
+    assert "全卷逻辑漏洞复查" in resolved.rewrite.canonical_query
+
+
 def test_free_text_without_router_falls_back_and_denies_suggestions() -> None:
     resolved = _resolve_chat_route(
         make_request(hint={"entrypoint": "free_text"}, message="帮我看看 Lucy。")
