@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -1837,6 +1838,152 @@ def build_outcome_tasks() -> tuple[ChatOutcomeTask, ...]:
     )
 
 
+def build_outcome_tasks_from_audit_feedback(
+    fixtures: Iterable[dict[str, Any]],
+) -> tuple[ChatOutcomeTask, ...]:
+    """Convert exported audit feedback fixtures into a replayable outcome suite.
+
+    Human decisions become success criteria:
+
+    * ``applied``  — the accepted finding, evidence slots, and patch must be
+      reproduced;
+    * ``rejected`` / ``undone`` — the frozen input becomes a zero-finding,
+      zero-suggestion gate (the human already refused the patch).
+
+    Malformed library entries raise ``ValueError`` instead of being skipped so
+    a corrupt fixture pack is loud during eval curation.
+    """
+
+    tasks: list[ChatOutcomeTask] = []
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            raise ValueError("audit feedback fixture must be an object")
+        fixture_id = str(fixture.get("fixture_id") or "audit-feedback")
+        decision = fixture.get("decision")
+        if decision not in {"applied", "rejected", "undone"}:
+            raise ValueError(f"{fixture_id}: unsupported decision {decision!r}")
+        casefile = fixture.get("casefile")
+        if not isinstance(casefile, dict):
+            raise ValueError(f"{fixture_id}: casefile must be an object")
+        message = fixture.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError(f"{fixture_id}: message must be a non-blank string")
+        hint = fixture.get("hint")
+        if not isinstance(hint, dict) or not hint.get("entrypoint"):
+            hint = dict(_FREE_TEXT)
+        focus = fixture.get("focus")
+        if not isinstance(focus, dict):
+            focus = _focus()
+        focus_values = {
+            "object_ids": focus.get("object_ids") or [],
+            "event_ids": focus.get("event_ids") or [],
+            "validation_issue_ids": focus.get("validation_issue_ids") or [],
+        }
+        validation_issues = tuple(
+            issue
+            for issue in fixture.get("validation_issues") or ()
+            if isinstance(issue, dict)
+        )
+        findings = tuple(
+            CaseFileChatAuditFindingCandidate.model_validate(finding)
+            for finding in fixture.get("audit_findings") or ()
+            if isinstance(finding, dict)
+        )
+        operations = [
+            operation
+            for operation in fixture.get("patch_operations") or ()
+            if isinstance(operation, dict)
+            and isinstance(operation.get("target_object_id"), str)
+            and isinstance(operation.get("field_path"), str)
+        ]
+        decision_label = {"applied": "已采纳", "rejected": "已拒绝", "undone": "已撤销"}[decision]
+        task_id = f"audit-feedback-{decision}-{fixture_id}"
+        referenced_object_ids = list(fixture.get("referenced_object_ids") or [])
+        referenced_event_ids = list(fixture.get("referenced_event_ids") or [])
+        referenced_validation_issue_ids = list(
+            fixture.get("referenced_validation_issue_ids") or []
+        )
+
+        if decision == "applied":
+            if not findings:
+                raise ValueError(f"{fixture_id}: applied audit feedback needs audit_findings")
+            if not operations:
+                raise ValueError(f"{fixture_id}: applied audit feedback needs patch_operations")
+            first_finding = findings[0]
+            suggestion_paths: list[tuple[str, str]] = []
+            suggestions: list[CaseFileChatSuggestionCandidateV2] = []
+            for operation in operations:
+                top_level = _top_level_field(operation["field_path"])
+                if top_level is None:
+                    message = (
+                        f"{fixture_id}: invalid field path {operation['field_path']!r}"
+                    )
+                    raise ValueError(message)
+                suggestion_paths.append((operation["target_object_id"], top_level))
+                suggestions.append(
+                    _audit_suggestion(
+                        operation["target_object_id"],
+                        operation["field_path"],
+                        operation.get("new_value"),
+                        str(operation.get("reason") or f"[{fixture_id}] 已采纳补丁。"),
+                        finding_ref=first_finding.finding_id,
+                    )
+                )
+            expectations = ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                required_audit_finding_kinds=tuple(
+                    dict.fromkeys(finding.kind for finding in findings)
+                ),
+                required_audit_evidence_object_ids=tuple(
+                    first_finding.evidence_object_ids
+                ),
+                required_audit_evidence_event_ids=tuple(first_finding.evidence_event_ids),
+                required_audit_evidence_validation_issue_ids=tuple(
+                    first_finding.evidence_validation_issue_ids
+                ),
+                required_suggestion_paths=tuple(suggestion_paths),
+                audit_finding_count_range=(len(findings), len(findings)),
+                suggestion_count_range=(len(suggestions), len(suggestions)),
+                requires_suggestion=True,
+                simulate_suggestions=True,
+            )
+            reference_candidate = _audit_candidate(
+                str(fixture.get("answer") or f"{decision_label}审计反馈基准回复。"),
+                object_ids=tuple(referenced_object_ids),
+                event_ids=tuple(referenced_event_ids),
+                validation_issue_ids=tuple(referenced_validation_issue_ids),
+                findings=findings,
+                suggestions=tuple(suggestions),
+            )
+        else:
+            expectations = ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                audit_finding_count_range=(0, 0),
+                suggestion_count_range=(0, 0),
+                no_unnecessary_suggestions=True,
+            )
+            reference_candidate = _audit_candidate(
+                f"{decision_label}反馈已回流：该冻结输入不再提出发现或补丁。",
+                object_ids=tuple(referenced_object_ids),
+                event_ids=tuple(referenced_event_ids),
+                validation_issue_ids=tuple(referenced_validation_issue_ids),
+            )
+        tasks.append(
+            ChatOutcomeTask(
+                task_id=task_id,
+                message=f"[审计反馈·{decision_label}] {message}",
+                hint=hint,
+                focus=focus_values,
+                casefile=casefile,
+                validation_issues=validation_issues,
+                kind="feedback",
+                expectations=expectations,
+                reference_candidate=reference_candidate,
+            )
+        )
+    return tuple(tasks)
+
+
 def _mutated_candidate(
     base: CaseFileChatCandidate,
     *,
@@ -2065,6 +2212,7 @@ __all__ = [
     "ChatOutcomeTrialVerdict",
     "build_grader_mutations",
     "build_outcome_tasks",
+    "build_outcome_tasks_from_audit_feedback",
     "grade_chat_outcome",
     "grade_mutation",
     "grade_reference_solution",
