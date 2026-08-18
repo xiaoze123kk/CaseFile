@@ -10,13 +10,12 @@ context acceptance suite can exercise the identical path.
 from __future__ import annotations
 
 import pytest
-from chat_outcome_canned_support import run_canned_trial
-from sqlalchemy import Engine
-
 from casefile.benchmark.chat_outcome_eval import (
     ChatOutcomeTrialVerdict,
     build_outcome_tasks,
 )
+from chat_outcome_canned_support import run_canned_trial
+from sqlalchemy import Engine
 
 pytestmark = pytest.mark.postgres
 

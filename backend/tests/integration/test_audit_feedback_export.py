@@ -7,10 +7,6 @@ human apply/reject/undo endpoints write, without creating tables or rows.
 from __future__ import annotations
 
 import pytest
-from chat_outcome_canned_support import run_canned_trial
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
-
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.audit_feedback_export import (
     AUDIT_FEEDBACK_EXPORT_SCHEMA,
@@ -23,6 +19,9 @@ from casefile.benchmark.chat_outcome_eval import (
 )
 from casefile.data_postgres.models import AgentPatchSet
 from casefile.data_postgres.session import create_session_factory
+from chat_outcome_canned_support import run_canned_trial
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

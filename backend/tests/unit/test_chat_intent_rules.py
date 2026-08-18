@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
-
 from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
@@ -14,6 +12,7 @@ from casefile.agent_runtime.chat_intent import (
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
+from pydantic import ValidationError
 
 
 def make_chat_request(

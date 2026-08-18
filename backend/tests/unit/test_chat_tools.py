@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 from agents import RunContextWrapper
-
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
     CHAT_TOOLSET_V4_VERSION,

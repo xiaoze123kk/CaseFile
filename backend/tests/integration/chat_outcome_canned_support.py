@@ -19,9 +19,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatCandidateV2,
@@ -40,6 +37,8 @@ from casefile.benchmark.chat_outcome_eval import (
 )
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
 
 
 @dataclass(frozen=True, slots=True)
