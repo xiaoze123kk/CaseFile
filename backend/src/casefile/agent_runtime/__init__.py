@@ -2,6 +2,7 @@
 
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_VERSION,
     ChatToolContext,
     ChatToolMetrics,
@@ -65,6 +66,7 @@ __all__ = [
     "AgentProvider",
     "CHAT_TOOLSET_VERSION",
     "CHAT_TOOLSET_V3_VERSION",
+    "CHAT_TOOLSET_V4_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
     "chat_tool_manifest",

@@ -97,6 +97,7 @@ EXECUTION_PROFILES: dict[str, dict[str, Any]] = {
             "get_related_objects",
             "get_validation_issues",
             "validate_patch_proposal",
+            "simulate_patch_application",
         ],
         "context_tools": ["retrieve_thread_evidence"],
         "max_turns": 8,
