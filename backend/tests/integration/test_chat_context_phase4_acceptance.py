@@ -1,0 +1,168 @@
+"""Phase 4 Step 4.2 Context Tools acceptance on the real production path.
+
+Opt-in via ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v3``. Uses the
+deterministic FakeProvider and lowered compaction thresholds so one exchange
+produces the same rolling compaction behavior as Phase 3, now paired with the
+v7 prompt and the v3 toolset.
+"""
+
+from __future__ import annotations
+
+import os
+from unittest.mock import patch
+
+import pytest
+from application_services_test_support import (
+    RichFixtureProvider,
+    _adopt_candidate,
+    _prepare_task,
+)
+from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_V3_VERSION
+from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_V3_VERSION,
+    CHAT_CONTEXT_PROMPT_V4_VERSION,
+)
+from casefile.agent_runtime.models import CaseFileChatRequest
+from casefile.application.services import CaseFileService
+from casefile.application.workflow_service import WorkflowService
+from casefile.data_postgres.models import AgentThreadContextState, TaskRun
+from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
+pytestmark = pytest.mark.postgres
+
+ROLLOUT = CHAT_CONTEXT_POLICY_V3_VERSION
+
+
+class CapturingChatProvider(FakeProvider):
+    """Deterministic fake chat provider that keeps the bound requests."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests: list[CaseFileChatRequest] = []
+
+    def chat(self, request: CaseFileChatRequest):
+        self.requests.append(request)
+        return super().chat(request)
+
+
+def test_phase4_context_tools_rollout_binds_v7_and_v3_toolset(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    if os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT") != ROLLOUT:
+        pytest.skip("CASEFILE_CHAT_CONTEXT_ROLLOUT is not casefile-chat-context-v3")
+
+    engine, actor_id, master_key = workflow_database
+    provider = CapturingChatProvider()
+    with (
+        patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
+        patch.dict(
+            os.environ,
+            {
+                "CASEFILE_CHAT_COMPACTION_HISTORY_TOKENS": "1",
+                "CASEFILE_CHAT_COMPACTION_MIN_MESSAGES": "2",
+            },
+        ),
+    ):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        generation_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="phase4-generation"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        )
+        assert generation_worker.run_once() is True
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            revision = int(
+                CaseFileService(session).get_draft(actor_id, project_id)["revision"]
+            )
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=revision,
+                title=None,
+            )
+            thread_id = int(thread["thread_id"])
+            first = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=revision,
+                content="请通读整个卷宗并核对关键人物。",
+                provider="openai",
+                routing_hint=None,
+            )
+        first_task_id = int(first["task"]["task_run_id"])
+
+        chat_worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="phase4-chat"),
+            provider_factory=lambda _task: provider,
+        )
+        assert chat_worker.run_once() is True
+
+        with factory() as session:
+            first_row = session.get(TaskRun, first_task_id)
+            assert first_row is not None
+            assert first_row.status == "succeeded", (
+                first_row.status,
+                first_row.error_code,
+                first_row.error_details_jsonb,
+            )
+            assert first_row.prompt_version == CHAT_CONTEXT_PROMPT_V4_VERSION
+            assert first_row.toolset_version == CHAT_TOOLSET_V3_VERSION
+            assert first_row.input_jsonb.get("context_policy_version") == ROLLOUT
+            state_row = session.scalar(
+                select(AgentThreadContextState)
+                .where(AgentThreadContextState.thread_id == thread_id)
+                .order_by(AgentThreadContextState.id.desc())
+                .limit(1)
+            )
+            assert state_row is not None
+            state_id = int(state_row.id)
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            second = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=revision,
+                content="请继续核对事件时间线。",
+                provider="openai",
+                routing_hint=None,
+            )
+            second_task_id = int(second["task"]["task_run_id"])
+            second_row = session.get(TaskRun, second_task_id)
+            assert second_row is not None
+            assert second_row.prompt_version == CHAT_CONTEXT_PROMPT_V4_VERSION
+            assert second_row.toolset_version == CHAT_TOOLSET_V3_VERSION
+            context_state = second_row.input_jsonb.get("context_state")
+            assert isinstance(context_state, dict)
+            assert context_state["state_id"] == state_id
+
+        assert chat_worker.run_once() is True
+        assert len(provider.requests) == 2
+        second_request = provider.requests[1]
+        assert second_request.prompt_version == CHAT_CONTEXT_PROMPT_V4_VERSION
+        assert second_request.toolset_version == CHAT_TOOLSET_V3_VERSION
+        assert second_request.context_policy_version == ROLLOUT
+        assert second_request.assembled_input is not None
+        dashboard = second_request.assembled_input.get("context_dashboard")
+        assert isinstance(dashboard, dict)
+        assert isinstance(dashboard["recoverable_evidence_ids"], list)
+        assert second_request.thread_evidence_resolver is not None
+        evidence = second_request.thread_evidence_resolver(
+            f"thread://{thread_id}/message/2"
+        )
+        assert isinstance(evidence, dict)
+        assert evidence["content"]

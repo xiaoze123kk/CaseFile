@@ -63,19 +63,46 @@ from casefile.agent_runtime.chat_routing import (
     route_llm_task,
     routing_policy,
 )
+from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_POLICY_V3_VERSION,
+    CHAT_CONTEXT_PROMPT_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V4_VERSION,
+    CHAT_CONTEXT_PROMPT_VERSION,
+    DEFAULT_THREAD_MEMORY_COMPACTOR,
+    THREAD_MEMORY_STATE_KIND,
+    ContextEngineError,
+    EvidenceRef,
+    ThreadCompactionRequest,
+    build_chat_context_manifest,
+    chat_input_payload_from_assembly,
+    default_compactor_registry,
+    empty_thread_memory_state,
+    estimate_conservative_tokens,
+    preservation_errors,
+    thread_memory_state_from_jsonable,
+    thread_memory_state_to_jsonable,
+)
 from casefile.agent_runtime.credentials import decrypt_api_key
 from casefile.agent_runtime.models import (
+    LEGACY_CONTEXT_POLICY_VERSION,
     ChatTaskUnderstanding,
     QueryRewriteResult,
     RouteDecision,
     RouteSpecificRewriteRequest,
     agent_state_to_jsonable,
+    chat_routing_payload_as_dict,
 )
 from casefile.agent_runtime.observability import (
     brief_semantic_coverage,
     standardize_generation_cost_usage,
 )
-from casefile.agent_runtime.prompt import COMPONENT_GENERATION_PROMPT_VERSIONS
+from casefile.agent_runtime.prompt import (
+    CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
+    CHAT_PROMPT_PACKAGE_VERSIONS,
+    COMPONENT_GENERATION_PROMPT_VERSIONS,
+    render_chat_executor_prompt,
+)
 from casefile.agent_runtime.providers import ProviderProtocolError
 from casefile.agent_runtime.query_rewrite import (
     build_llm_rewrite,
@@ -95,6 +122,7 @@ from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
 from casefile.application.workflow_service import (
+    ChatReferenceValidationError,
     WorkflowService,
     append_task_event,
     source_view,
@@ -108,7 +136,10 @@ from casefile.contracts import (
 from casefile.data_postgres.models import (
     AgentMessage,
     AgentModelCall,
+    AgentPatchOperation,
+    AgentPatchSet,
     AgentStepRun,
+    AgentThreadContextState,
     Brief,
     BriefVersion,
     SourceRecord,
@@ -128,6 +159,106 @@ def provider_for_task(task: TaskRun) -> AgentProvider:
     if task.provider == "deepseek":
         return DeepSeekAgentsProvider()
     raise RuntimeError(f"Unsupported provider frozen on TaskRun: {task.provider}")
+
+
+DEFAULT_CONTEXT_HARD_INPUT_TOKENS = 128_000
+
+
+def _compaction_env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+
+def _context_hard_input_tokens() -> int:
+    """Runtime total-input hard cap; no policy or model may relax it."""
+
+    return max(
+        1,
+        _compaction_env_int(
+            "CASEFILE_CHAT_CONTEXT_HARD_INPUT_TOKENS",
+            DEFAULT_CONTEXT_HARD_INPUT_TOKENS,
+        ),
+    )
+
+
+def _thread_history_tokens(messages: list[dict[str, str]]) -> int:
+    text = json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
+    return estimate_conservative_tokens(text)
+
+
+def _thread_state_evidence_errors(
+    session: Session,
+    *,
+    state_id: int,
+    thread_id: int,
+    evidence_refs: list[str],
+    verified_source_message_ids: list[int],
+) -> list[str]:
+    """Validate every pointer in a persisted state against the database."""
+
+    errors: list[str] = []
+    for raw in evidence_refs:
+        ref = EvidenceRef.parse(raw)
+        if ref is None:
+            errors.append(f"state {state_id}: invalid evidence reference {raw!r}")
+            continue
+        try:
+            if ref.scheme == "thread":
+                parts = ref.identifier.split("/message/")
+                if len(parts) != 2 or int(parts[0]) != thread_id:
+                    raise ValueError
+                message_id = int(parts[1])
+                if session.get(AgentMessage, message_id) is None:
+                    raise ValueError
+            elif ref.scheme == "taskrun":
+                if session.get(TaskRun, int(ref.identifier)) is None:
+                    raise ValueError
+            elif ref.scheme == "patchset":
+                if session.get(AgentPatchSet, int(ref.identifier)) is None:
+                    raise ValueError
+            else:
+                raise ValueError
+        except (TypeError, ValueError):
+            errors.append(f"state {state_id}: unresolvable evidence reference {raw!r}")
+    for message_id in verified_source_message_ids:
+        if session.get(AgentMessage, message_id) is None:
+            errors.append(
+                f"state {state_id}: verified fact source_message_id {message_id} not found"
+            )
+    return errors
+
+
+def _thread_db_decisions(
+    session: Session,
+    *,
+    thread_id: int,
+    from_message_seq: int,
+    to_message_seq: int,
+) -> list[dict[str, Any]]:
+    rows = session.execute(
+        select(AgentPatchOperation, AgentMessage.sequence_no)
+        .join(AgentPatchSet, AgentPatchOperation.patch_set_id == AgentPatchSet.id)
+        .join(AgentMessage, AgentPatchSet.source_message_id == AgentMessage.id)
+        .where(
+            AgentPatchSet.thread_id == thread_id,
+            AgentMessage.sequence_no.between(from_message_seq, to_message_seq),
+            AgentPatchOperation.decision.in_(("accepted", "rejected")),
+        )
+        .order_by(AgentPatchOperation.id)
+    ).all()
+    return [
+        {
+            "decision": operation.decision,
+            "object_id": str(operation.target_object_id),
+            "field_path": operation.field_path,
+            "reason": operation.reason,
+            "patch_set_id": int(operation.patch_set_id),
+            "thread_ref": f"thread://{thread_id}/message/{message_sequence_no}",
+        }
+        for operation, message_sequence_no in rows
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -669,14 +800,70 @@ class Worker:
                                 "routing",
                                 route_public_payload(chat_request.route),
                             )
+                chat_request = self._emit_chat_context_events(
+                    task_run_id, task_snapshot, chat_request
+                )
                 chat_result = provider.chat(chat_request)
                 candidate = chat_result.candidate.model_dump(mode="json")
                 usage = chat_result.usage
-                self._complete_chat(
-                    task_run_id,
-                    attempt_id,
-                    chat_result,
-                    route=chat_request.route,
+                repair_attempted = False
+                while True:
+                    try:
+                        self._complete_chat(
+                            task_run_id,
+                            attempt_id,
+                            chat_result,
+                            route=chat_request.route,
+                        )
+                        break
+                    except ChatReferenceValidationError as error:
+                        if repair_attempted:
+                            error.repair_attempted = True
+                            raise
+                        repair_attempted = True
+                        repair_message = (
+                            "上一轮结构化结果被系统拒绝：以下引用 ID 不存在于"
+                            "当前卷宗或验证快照，"
+                            f" objects={list(error.object_ids)!r}, "
+                            f"events={list(error.event_ids)!r}, "
+                            f"validation_issues={list(error.issue_ids)!r}。"
+                            "允许的 ID 只来自当前 casefile 的 records/focus_objects/"
+                            "工具结果以及 validation_issues；禁止 src_*、clm_* 等"
+                            " source/brief 内部 ID。只修正引用槽，保留正文结论。"
+                        )
+                        self._emit(
+                            task_run_id,
+                            "model.reference_repair_started",
+                            "repairing",
+                            {
+                                "repair_no": 1,
+                                "max_repairs": 1,
+                                "unknown_object_ids": list(error.object_ids),
+                                "unknown_event_ids": list(error.event_ids),
+                                "unknown_issue_ids": list(error.issue_ids),
+                            },
+                        )
+                        chat_request = replace(
+                            chat_request,
+                            repair_feedback=(repair_message,),
+                        )
+                        chat_result = provider.chat(chat_request)
+                        candidate = chat_result.candidate.model_dump(mode="json")
+                        usage = _merge_chat_usage((usage, chat_result.usage))
+                self._maybe_compact_chat_thread(
+                    task_snapshot,
+                    provider,
+                    api_key,
+                    model_requested_compaction=(
+                        int(
+                            getattr(
+                                chat_result.tools,
+                                "requested_thread_compaction",
+                                0,
+                            )
+                        )
+                        > 0
+                    ),
                 )
                 return
             if task_snapshot.task_type != "brief_to_draft":
@@ -930,6 +1117,14 @@ class Worker:
             if frozen_input.get("router_version") != INTENT_ROUTER_VERSION:
                 raise RuntimeError("Frozen CaseFile chat router version is invalid")
             routing_hint = normalize_routing_hint(raw_routing_hint)
+        raw_context_policy = frozen_input.get("context_policy_version")
+        if raw_context_policy is not None and not isinstance(raw_context_policy, str):
+            raise RuntimeError("Frozen CaseFile chat context policy version is invalid")
+        context_policy_version = (
+            raw_context_policy
+            if isinstance(raw_context_policy, str) and raw_context_policy
+            else LEGACY_CONTEXT_POLICY_VERSION
+        )
         return CaseFileChatRequest(
             task_run_id=task.id,
             prompt_version=task.prompt_version,
@@ -947,6 +1142,13 @@ class Worker:
             focus=focus,
             routing_hint=routing_hint,
             network_retries=_network_retries(task),
+            toolset_version=task.toolset_version,
+            context_policy_version=context_policy_version,
+            thread_id=task.agent_thread_id,
+            thread_evidence_resolver=lambda evidence_id: self._resolve_thread_evidence(
+                task.agent_thread_id,
+                evidence_id,
+            ),
         )
 
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
@@ -1024,6 +1226,483 @@ class Worker:
             "routing",
             _chat_rewrite_event_payload(request),
         )
+
+    def _resolve_thread_evidence(
+        self,
+        thread_id: int | None,
+        evidence_id: str,
+    ) -> dict[str, Any] | None:
+        """Resolve one ``thread://{thread_id}/message/{seq}`` pointer read-only."""
+
+        if thread_id is None:
+            return None
+        ref = EvidenceRef.parse(evidence_id)
+        if ref is None or ref.scheme != "thread":
+            return None
+        parts = ref.identifier.split("/")
+        try:
+            if len(parts) == 3 and parts[1] == "message":
+                ref_thread_id = int(parts[0])
+                sequence_no = int(parts[2])
+            elif len(parts) == 2 and parts[0] == "message":
+                ref_thread_id = thread_id
+                sequence_no = int(parts[1])
+            else:
+                return None
+        except ValueError:
+            return None
+        if ref_thread_id != thread_id:
+            return None
+        with self.session_factory() as session:
+            message = session.scalar(
+                select(AgentMessage)
+                .where(
+                    AgentMessage.thread_id == thread_id,
+                    AgentMessage.sequence_no == sequence_no,
+                )
+                .limit(1)
+            )
+        if message is None:
+            return None
+        return {
+            "evidence_id": evidence_id,
+            "message_id": int(message.id),
+            "sequence_no": int(message.sequence_no),
+            "role": str(message.role),
+            "status": str(message.status),
+            "content": str(message.content_text or ""),
+        }
+
+    def _load_chat_thread_memory_state(
+        self,
+        task: TaskRun,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Resolve the frozen context state ref to its validated JSON payload."""
+
+        empty = thread_memory_state_to_jsonable(empty_thread_memory_state())
+        raw_ref = task.input_jsonb.get("context_state")
+        if not isinstance(raw_ref, dict):
+            return empty, None
+        state_id = raw_ref.get("state_id")
+        if not isinstance(state_id, int) or state_id <= 0:
+            return empty, "thread_memory_state_ref_invalid"
+        with self.session_factory() as session:
+            state = session.get(AgentThreadContextState, state_id)
+        if state is None or state.thread_id != task.agent_thread_id:
+            return empty, "thread_memory_state_missing"
+        raw_state = state.state_jsonb
+        if not isinstance(raw_state, dict):
+            return empty, "thread_memory_state_malformed"
+        return dict(raw_state), None
+
+    def _emit_chat_context_events(
+        self,
+        task_run_id: int,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+    ) -> CaseFileChatRequest:
+        """Assemble context, publish its audit manifest, and bind the provider input.
+
+        Legacy policies measure the exact string providers already render and
+        leave the request untouched. v1 binds the v4 prompt payload; v2 binds
+        Thread Memory with the v5 prompt; v3 additionally exposes the Phase 4
+        Context Tools via the v6 prompt and embeds the dashboard for both.
+        """
+
+        policy_v2 = request.context_policy_version == CHAT_CONTEXT_POLICY_V2_VERSION
+        policy_v3 = request.context_policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
+        thread_memory_policy = policy_v2 or policy_v3
+        legacy_policy = request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
+        executor_input: str | None = None
+        if legacy_policy:
+            _instructions, executor_input = render_chat_executor_prompt(request)
+        extra_input: dict[str, Any] = {
+            "editable_fields_by_collection": request.editable_fields_by_collection,
+        }
+        memory_warning: str | None = None
+        if thread_memory_policy:
+            thread_memory_state, memory_warning = self._load_chat_thread_memory_state(task)
+            extra_input["thread_memory_state"] = thread_memory_state
+        hard_input_tokens = _context_hard_input_tokens()
+        try:
+            result = build_chat_context_manifest(
+                policy_version=request.context_policy_version,
+                frozen_input=task.input_jsonb,
+                input_hash=task.input_hash,
+                routing=chat_routing_payload_as_dict(request),
+                prebuilt_input=executor_input,
+                extra_input=extra_input,
+                provider=task.provider,
+                model_id=task.model_id,
+                hard_input_tokens=hard_input_tokens,
+            )
+        except ContextEngineError as error:
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": "hard_input_cap_exceeded",
+                    "hard_input_tokens": hard_input_tokens,
+                    "detail": str(error),
+                },
+            )
+            raise
+        for violation in result.dashboard.get("guardrail_violations", []):
+            if not isinstance(violation, dict):
+                continue
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": str(violation.get("reason_code")),
+                    "block_id": str(violation.get("block_id") or ""),
+                    "detail": str(violation.get("detail")),
+                },
+            )
+        if memory_warning is not None:
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": memory_warning,
+                    "detail": "Thread Memory state was unavailable; empty state used",
+                },
+            )
+        if result.fallback is not None:
+            self._emit(
+                task_run_id,
+                "context.guardrail",
+                "context",
+                {
+                    "policy_version": request.context_policy_version,
+                    "reason_code": result.fallback.code,
+                    "detail": result.fallback.detail,
+                },
+            )
+        self._emit(task_run_id, "context.built", "context", result.manifest.to_jsonable())
+        if result.fallback is not None or legacy_policy:
+            return request
+        expected_prompt = (
+            CHAT_CONTEXT_PROMPT_V4_VERSION
+            if policy_v3
+            else (CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION)
+        )
+        if request.prompt_version != expected_prompt:
+            raise RuntimeError(
+                "Context policy "
+                f"{request.context_policy_version!r} requires prompt version "
+                f"{expected_prompt!r}; frozen={request.prompt_version!r}"
+            )
+        return replace(
+            request,
+            assembled_input=chat_input_payload_from_assembly(
+                result.assembly,
+                require_thread_memory=thread_memory_policy,
+                dashboard=result.dashboard if thread_memory_policy else None,
+            ),
+        )
+
+    def _maybe_compact_chat_thread(
+        self,
+        task: TaskRun,
+        provider: AgentProvider,
+        api_key: str,
+        *,
+        model_requested_compaction: bool = False,
+    ) -> None:
+        """Run the rolling compaction monitor after a completed reply.
+
+        Triggered only for v2/v3 policies at a semantic boundary (the newest
+        completed message is an assistant reply and no other thread task is
+        active). A model request from ``request_thread_compaction`` bypasses
+        the history-token/min-message thresholds but never bypasses the
+        semantic boundary, range check, or idle-thread guard. The LLM compacts
+        ``old_state + new raw turns``; merger and StateValidator run
+        deterministically afterwards, and failures fall back to the previous
+        state without failing the chat task.
+        """
+
+        def emit(
+            event_type: str,
+            stage: str,
+            payload: dict[str, Any],
+        ) -> None:
+            self._emit_after_completion(task.id, event_type, stage, payload)
+        policy_version = task.input_jsonb.get("context_policy_version")
+        thread_id = task.agent_thread_id
+        if (
+            policy_version
+            not in {
+                CHAT_CONTEXT_POLICY_V2_VERSION,
+                CHAT_CONTEXT_POLICY_V3_VERSION,
+            }
+            or thread_id is None
+        ):
+            emit(
+                "context.compaction_skipped",
+                "context",
+                {
+                    "reason_code": "not_applicable",
+                    "policy_version": policy_version,
+                    "thread_id": thread_id,
+                },
+            )
+            return
+        history_threshold = _compaction_env_int(
+            "CASEFILE_CHAT_COMPACTION_HISTORY_TOKENS",
+            8000,
+        )
+        min_new_messages = _compaction_env_int(
+            "CASEFILE_CHAT_COMPACTION_MIN_MESSAGES",
+            6,
+        )
+        try:
+            with self.session_factory() as session:
+                latest_state = session.scalar(
+                    select(AgentThreadContextState)
+                    .where(AgentThreadContextState.thread_id == thread_id)
+                    .order_by(AgentThreadContextState.id.desc())
+                    .limit(1)
+                )
+                completed_messages = list(
+                    session.scalars(
+                        select(AgentMessage)
+                        .where(
+                            AgentMessage.thread_id == thread_id,
+                            AgentMessage.status == "completed",
+                        )
+                        .order_by(AgentMessage.sequence_no)
+                    )
+                )
+                if not completed_messages or completed_messages[-1].role != "assistant":
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "not_semantic_boundary",
+                            "completed_messages": len(completed_messages),
+                        },
+                    )
+                    return
+                last_message_seq = int(completed_messages[-1].sequence_no)
+                if (
+                    latest_state is not None
+                    and latest_state.to_message_seq is not None
+                    and latest_state.to_message_seq >= last_message_seq
+                ):
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {"reason_code": "range_already_compacted"},
+                    )
+                    return
+                from_message_seq = (
+                    int(latest_state.to_message_seq) + 1
+                    if latest_state is not None and latest_state.to_message_seq is not None
+                    else 1
+                )
+                new_turns = [
+                    {
+                        "role": str(message.role),
+                        "content": str(message.content_text),
+                    }
+                    for message in completed_messages
+                    if message.sequence_no >= from_message_seq
+                    and message.role in {"user", "assistant"}
+                    and message.content_text
+                ]
+                if not new_turns:
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "no_new_turns",
+                            "from_message_seq": from_message_seq,
+                            "to_message_seq": last_message_seq,
+                        },
+                    )
+                    return
+                if not model_requested_compaction:
+                    if len(new_turns) < min_new_messages:
+                        emit(
+                            "context.compaction_skipped",
+                            "context",
+                            {
+                                "reason_code": "below_min_messages",
+                                "new_messages": len(new_turns),
+                                "min_new_messages": min_new_messages,
+                            },
+                        )
+                        return
+                    history_tokens = _thread_history_tokens(new_turns)
+                    if history_tokens < history_threshold:
+                        emit(
+                            "context.compaction_skipped",
+                            "context",
+                            {
+                                "reason_code": "below_history_threshold",
+                                "history_tokens": history_tokens,
+                                "history_threshold": history_threshold,
+                            },
+                        )
+                        return
+                else:
+                    emit(
+                        "context.compaction_requested",
+                        "context",
+                        {
+                            "requested_by": "model",
+                            "new_messages": len(new_turns),
+                            "from_message_seq": from_message_seq,
+                            "to_message_seq": last_message_seq,
+                        },
+                    )
+                other_active = session.scalar(
+                    select(TaskRun.id)
+                    .where(
+                        TaskRun.agent_thread_id == thread_id,
+                        TaskRun.status.in_(("queued", "running", "cancelling")),
+                        TaskRun.id != task.id,
+                    )
+                    .limit(1)
+                )
+                if other_active is not None:
+                    emit(
+                        "context.compaction_skipped",
+                        "context",
+                        {
+                            "reason_code": "other_thread_task_active",
+                            "task_run_id": other_active,
+                        },
+                    )
+                    return
+                old_state = (
+                    thread_memory_state_from_jsonable(latest_state.state_jsonb)
+                    if latest_state is not None
+                    else empty_thread_memory_state()
+                )
+                db_decisions = _thread_db_decisions(
+                    session,
+                    thread_id=thread_id,
+                    from_message_seq=from_message_seq,
+                    to_message_seq=last_message_seq,
+                )
+                compactor = default_compactor_registry()[
+                    DEFAULT_THREAD_MEMORY_COMPACTOR
+                ]
+                input_data = compactor.build_input(
+                    old_state=old_state,
+                    new_turns=new_turns,
+                    db_decisions=db_decisions,
+                    from_message_seq=from_message_seq,
+                    to_message_seq=last_message_seq,
+                )
+                compaction_request = ThreadCompactionRequest(
+                    task_run_id=task.id,
+                    prompt_version=CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
+                    input_hash=str(input_data["input_hash"]),
+                    input_data=input_data,
+                    model_id=task.model_id,
+                    api_key=api_key,
+                    network_retries=_network_retries(task),
+                    max_turns=1,
+                    emit=lambda event_type, stage, payload: emit(
+                        event_type,
+                        stage,
+                        payload,
+                    ),
+                )
+
+            compactor = default_compactor_registry()[DEFAULT_THREAD_MEMORY_COMPACTOR]
+            compacted = provider.compact_thread_memory(compaction_request)
+            merged_state = compactor.merge(
+                old_state,
+                compacted.candidate,
+                db_decisions=db_decisions,
+                last_compacted_message_seq=last_message_seq,
+            )
+            validation_errors = [
+                *compactor.validate(merged_state),
+                *preservation_errors(old_state, merged_state),
+            ]
+            with self.session_factory() as session:
+                validation_errors.extend(
+                    _thread_state_evidence_errors(
+                        session,
+                        state_id=0,
+                        thread_id=thread_id,
+                        evidence_refs=[
+                            *merged_state.evidence_refs,
+                            *(
+                                item.thread_ref
+                                for item in merged_state.decisions
+                            ),
+                        ],
+                        verified_source_message_ids=[
+                            item.source_message_id
+                            for item in merged_state.verified_facts
+                        ],
+                    )
+                )
+            if validation_errors:
+                emit(
+                    "context.compaction_failed",
+                    "context",
+                    {
+                        "reason_code": "thread_memory_validation_failed",
+                        "errors": validation_errors,
+                        "from_message_seq": from_message_seq,
+                        "to_message_seq": last_message_seq,
+                    },
+                )
+                return
+            with self.session_factory() as session:
+                state_row = AgentThreadContextState(
+                    project_id=task.project_id,
+                    thread_id=thread_id,
+                    policy_version=policy_version,
+                    state_kind=THREAD_MEMORY_STATE_KIND,
+                    from_message_seq=from_message_seq,
+                    to_message_seq=last_message_seq,
+                    state_jsonb=thread_memory_state_to_jsonable(merged_state),
+                    input_hash=str(input_data["input_hash"]),
+                )
+                session.add(state_row)
+                session.commit()
+                state_id = int(state_row.id)
+            emit(
+                "context.compacted",
+                "context",
+                {
+                    "state_id": state_id,
+                    "policy_version": policy_version,
+                    "state_kind": THREAD_MEMORY_STATE_KIND,
+                    "from_message_seq": from_message_seq,
+                    "to_message_seq": last_message_seq,
+                    "input_hash": str(input_data["input_hash"]),
+                    "compactor": DEFAULT_THREAD_MEMORY_COMPACTOR,
+                    "prompt_version": CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
+                    "usage": compacted.usage,
+                    "constraint_count": len(merged_state.constraints),
+                    "verified_fact_count": len(merged_state.verified_facts),
+                },
+            )
+        except Exception as error:  # compaction never fails the chat task
+            emit(
+                "context.compaction_failed",
+                "context",
+                {
+                    "reason_code": "thread_memory_compaction_error",
+                    "reason": type(error).__name__,
+                    "detail": str(error),
+                },
+            )
 
     def _complete_chat(
         self,
@@ -1494,6 +2173,11 @@ class Worker:
                 "exception_type": type(error).__name__,
                 "message": safe_message,
                 "public_failure": public_failure,
+                **(
+                    {"repair_attempted": True}
+                    if getattr(error, "repair_attempted", False)
+                    else {}
+                ),
             }
             now = datetime.now(UTC)
             attempt.status = "failed"
@@ -1541,6 +2225,29 @@ class Worker:
                 },
             )
 
+    def _emit_after_completion(
+        self,
+        task_run_id: int,
+        event_type: str,
+        stage: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Append a replayable event after the task reached a terminal state.
+
+        Post-completion maintenance (rolling compaction) must not re-assert the
+        running lease or move ``task.stage``, so it bypasses ``_emit`` and only
+        appends the immutable TaskEvent.
+        """
+
+        with self.session_factory() as session, session.begin():
+            task = session.get(TaskRun, task_run_id)
+            if task is None:
+                raise RuntimeError("TaskRun disappeared before post-completion event")
+            public_payload = {
+                key: value for key, value in payload.items() if not key.startswith("_")
+            }
+            append_task_event(session, task, event_type, stage, public_payload)
+
     def _emit(
         self,
         task_run_id: int,
@@ -1575,7 +2282,7 @@ def _persist_agent_execution_event(
 
     if (
         task.prompt_version not in COMPONENT_GENERATION_PROMPT_VERSIONS
-        and task.prompt_version != "casefile-chat-v2"
+        and task.prompt_version not in CHAT_PROMPT_PACKAGE_VERSIONS
     ):
         return
     component_id = payload.get("component_id")
@@ -1926,6 +2633,19 @@ def _previous_attempt_repair_feedback(
                 if len(issues) == 50:
                     return ({"issues": issues},)
     return ({"issues": issues},) if issues else ()
+
+
+def _merge_chat_usage(records: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+    """Sum numeric token counters and keep the latest tool metrics snapshot."""
+
+    merged: dict[str, Any] = {}
+    for record in records:
+        for key, value in record.items():
+            if isinstance(value, int) and not isinstance(value, bool):
+                merged[key] = int(merged.get(key, 0)) + value
+            else:
+                merged[key] = value
+    return merged
 
 
 def _terminal_attempt_usage(

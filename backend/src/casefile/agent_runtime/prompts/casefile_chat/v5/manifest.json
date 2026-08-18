@@ -1,0 +1,134 @@
+{
+  "schema_version": 2,
+  "agent_id": "casefile_chat",
+  "version": "casefile-chat-v5",
+  "previous_version": "casefile-chat-v4",
+  "change_summary": "阶段 3 上下文布局升级：输入契约沿用 casefile-chat-prompt-input-v2 并新增可选 thread_memory 块，执行器把滚动压缩状态中的约束/决策/已核实事实作为任务状态尊重，近期原文仍由 history_window 提供。阶段 4 起可选携带只读 context_dashboard：预算耗尽即停止工具，仪表不授权放宽任何系统限制。",
+  "runtime": {
+    "agent_version": "casefile-single-agent-v2",
+    "toolset_version": "casefile-chat-tools-v2"
+  },
+  "fragments": {
+    "shared": {
+      "file": "shared.md",
+      "sha256": "1ec39d8b124187fe8a3baae83497d90347be6d9ad63cd97985e6f71d9ef46aff"
+    },
+    "router": {
+      "file": "router.md",
+      "sha256": "295f587b30a39d70942bdc4c135df7cb929d46137d410508d06f7e3fcd83fee1"
+    },
+    "rewrite": {
+      "file": "rewrite.md",
+      "sha256": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201"
+    },
+    "executor-chat": {
+      "file": "executor-chat.md",
+      "sha256": "b40c5081234887f73f4060a3f096e21c00a35f353ad237bf051e688f63948228"
+    },
+    "executor-analysis": {
+      "file": "executor-analysis.md",
+      "sha256": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25"
+    },
+    "executor-issue": {
+      "file": "executor-issue.md",
+      "sha256": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a"
+    },
+    "executor-edit": {
+      "file": "executor-edit.md",
+      "sha256": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040"
+    },
+    "executor-gate": {
+      "file": "executor-gate.md",
+      "sha256": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df"
+    },
+    "executor-clarify": {
+      "file": "executor-clarify.md",
+      "sha256": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a"
+    },
+    "executor-scope": {
+      "file": "executor-scope.md",
+      "sha256": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2"
+    }
+  },
+  "components": {
+    "router": {
+      "instruction_fragments": [
+        "router"
+      ],
+      "input_contract_id": "casefile-chat-intent-input-v1",
+      "output_schema_id": "casefile-chat-task-understanding-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "rewrite": {
+      "instruction_fragments": [
+        "rewrite"
+      ],
+      "input_contract_id": "casefile-chat-rewrite-input-v1",
+      "output_schema_id": "casefile-chat-rewrite-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "chat": {
+      "instruction_fragments": [
+        "shared",
+        "executor-chat"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-read-v2"
+    },
+    "analysis": {
+      "instruction_fragments": [
+        "shared",
+        "executor-analysis"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-read-v2"
+    },
+    "issue": {
+      "instruction_fragments": [
+        "shared",
+        "executor-issue"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-issue-v2"
+    },
+    "edit": {
+      "instruction_fragments": [
+        "shared",
+        "executor-edit"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-edit-v2"
+    },
+    "gate": {
+      "instruction_fragments": [
+        "shared",
+        "executor-gate"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "clarify": {
+      "instruction_fragments": [
+        "shared",
+        "executor-clarify"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "scope": {
+      "instruction_fragments": [
+        "shared",
+        "executor-scope"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    }
+  }
+}

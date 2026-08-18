@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,31 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "chat-context-baseline":
+        from casefile.benchmark.chat_context_eval import main as context_baseline_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        context_baseline_main()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "chat-feedback":
+        from casefile.benchmark.chat_feedback_metrics import main as feedback_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        feedback_main()
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "chat-outcome":
+        remaining = sys.argv[2:]
+        if len(remaining) >= 2 and remaining[:2] == ["--mode", "live"]:
+            from casefile.benchmark.chat_outcome_live_eval import main as live_main
+
+            sys.argv = [sys.argv[0], *remaining[2:]]
+            live_main()
+            return
+        from casefile.benchmark.chat_outcome_eval import main as calibrate_main
+
+        sys.argv = [sys.argv[0], *remaining]
+        calibrate_main()
+        return
     parser = argparse.ArgumentParser(description="Run the CaseFile Brief-to-Draft benchmark")
     parser.add_argument("--fixture", type=Path, help="Single fixture file to run")
     parser.add_argument(
@@ -80,9 +106,7 @@ def _run_suite(arguments: argparse.Namespace) -> dict[str, Any]:
         "runs": results,
         "aggregate": _aggregate(results),
         "status": (
-            "completed"
-            if all(result["status"] == "completed" for result in results)
-            else "failed"
+            "completed" if all(result["status"] == "completed" for result in results) else "failed"
         ),
     }
     return summary

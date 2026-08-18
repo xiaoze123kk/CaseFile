@@ -1,0 +1,199 @@
+"""Extensible, policy-driven context engineering substrate for CaseFile chat."""
+
+from casefile.agent_runtime.context.assembly_render import (
+    CHAT_CONTEXT_PROMPT_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V3_VERSION,
+    CHAT_CONTEXT_PROMPT_V4_VERSION,
+    CHAT_CONTEXT_PROMPT_VERSION,
+    chat_input_payload_from_assembly,
+)
+from casefile.agent_runtime.context.budget import (
+    BudgetApplication,
+    apply_context_budget,
+    truncate_text_to_tokens,
+)
+from casefile.agent_runtime.context.dashboard import (
+    ContextDashboard,
+    build_context_dashboard,
+    dashboard_guardrail_decisions,
+)
+from casefile.agent_runtime.context.engine import (
+    ContextEngine,
+    ContextEngineError,
+    build_chat_context_manifest,
+)
+from casefile.agent_runtime.context.estimators import (
+    CONSERVATIVE_TOKEN_ESTIMATOR,
+    CharTokenEstimator,
+    TokenEstimatorRegistry,
+    TokenEstimatorRegistryError,
+    UsageTokenSample,
+    default_token_estimator_registry,
+    estimate_conservative_tokens,
+    estimate_jsonable_tokens,
+    usage_calibration_ratio,
+)
+from casefile.agent_runtime.context.evidence import (
+    EvidenceRef,
+    EvidenceRegistry,
+    EvidenceResolver,
+)
+from casefile.agent_runtime.context.manifest import build_context_manifest
+from casefile.agent_runtime.context.models import (
+    ContextAssembly,
+    ContextBlock,
+    ContextBlockStatus,
+    ContextBlockSummary,
+    ContextBudget,
+    ContextBuildResult,
+    ContextDecision,
+    ContextManifest,
+    ContextPolicy,
+    ContextPolicyStage,
+    StageResult,
+)
+from casefile.agent_runtime.context.policies.loader import (
+    CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_POLICY_V3_VERSION,
+    CHAT_CONTEXT_POLICY_VERSION,
+    CONTEXT_POLICY_SCHEMA_VERSION,
+    ContextPolicyError,
+    known_context_policy_versions,
+    load_context_policy,
+)
+from casefile.agent_runtime.context.protocols import (
+    ContextRun,
+    ContextStage,
+    TokenEstimator,
+)
+from casefile.agent_runtime.context.registry import (
+    ContextRegistry,
+    ContextRegistryError,
+    default_context_registry,
+)
+from casefile.agent_runtime.context.strategies.legacy import (
+    LegacyChatInputStage,
+    legacy_chat_routing_payload,
+)
+from casefile.agent_runtime.context.strategies.selectors.history_window import (
+    HistoryWindowStage,
+    select_history_window,
+)
+from casefile.agent_runtime.context.strategies.sources.casefile_skeleton import (
+    CaseFileSkeletonStage,
+    build_casefile_skeleton,
+)
+from casefile.agent_runtime.context.strategies.sources.chat_contract import ChatContractStage
+from casefile.agent_runtime.context.strategies.sources.focus_objects import (
+    FocusObjectsStage,
+    build_focus_objects_payload,
+)
+from casefile.agent_runtime.context.strategies.sources.thread_memory import ThreadMemoryStage
+from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
+    ValidationTrimStage,
+    trim_validation_issues,
+)
+from casefile.agent_runtime.context.thread_memory import (
+    DEFAULT_THREAD_MEMORY_COMPACTOR,
+    THREAD_MEMORY_STATE_KIND,
+    ChatThreadMemoryState,
+    ThreadCompactionInputV1,
+    ThreadCompactionRequest,
+    ThreadCompactionResult,
+    ThreadMemoryCompactor,
+    ThreadMemoryCompactorV1,
+    ThreadMemoryDecision,
+    ThreadMemoryDelta,
+    ThreadMemoryVerifiedFact,
+    default_compactor_registry,
+    empty_thread_memory_state,
+    preservation_errors,
+    thread_memory_input_hash,
+    thread_memory_state_from_jsonable,
+    thread_memory_state_to_jsonable,
+)
+from casefile.agent_runtime.models import LEGACY_CONTEXT_POLICY_VERSION
+
+__all__ = [
+    "CHAT_CONTEXT_POLICY_VERSION",
+    "CHAT_CONTEXT_POLICY_V2_VERSION",
+    "CHAT_CONTEXT_POLICY_V3_VERSION",
+    "CHAT_CONTEXT_PROMPT_VERSION",
+    "CHAT_CONTEXT_PROMPT_V2_VERSION",
+    "CHAT_CONTEXT_PROMPT_V3_VERSION",
+    "CHAT_CONTEXT_PROMPT_V4_VERSION",
+    "CONSERVATIVE_TOKEN_ESTIMATOR",
+    "CONTEXT_POLICY_SCHEMA_VERSION",
+    "LEGACY_CONTEXT_POLICY_VERSION",
+    "BudgetApplication",
+    "CaseFileSkeletonStage",
+    "CharTokenEstimator",
+    "ChatContractStage",
+    "ChatThreadMemoryState",
+    "ContextAssembly",
+    "ContextBlock",
+    "ContextBlockStatus",
+    "ContextBlockSummary",
+    "ContextBudget",
+    "ContextBuildResult",
+    "ContextDashboard",
+    "ContextDecision",
+    "ContextEngine",
+    "ContextEngineError",
+    "ContextManifest",
+    "ContextPolicy",
+    "ContextPolicyError",
+    "ContextPolicyStage",
+    "ContextRegistry",
+    "ContextRegistryError",
+    "ContextRun",
+    "ContextStage",
+    "DEFAULT_THREAD_MEMORY_COMPACTOR",
+    "EvidenceRef",
+    "EvidenceRegistry",
+    "EvidenceResolver",
+    "FocusObjectsStage",
+    "HistoryWindowStage",
+    "LegacyChatInputStage",
+    "StageResult",
+    "THREAD_MEMORY_STATE_KIND",
+    "ThreadCompactionInputV1",
+    "ThreadCompactionRequest",
+    "ThreadCompactionResult",
+    "ThreadMemoryCompactor",
+    "ThreadMemoryCompactorV1",
+    "ThreadMemoryDelta",
+    "ThreadMemoryDecision",
+    "ThreadMemoryStage",
+    "ThreadMemoryVerifiedFact",
+    "TokenEstimator",
+    "TokenEstimatorRegistry",
+    "TokenEstimatorRegistryError",
+    "UsageTokenSample",
+    "ValidationTrimStage",
+    "apply_context_budget",
+    "build_casefile_skeleton",
+    "build_chat_context_manifest",
+    "build_context_dashboard",
+    "build_context_manifest",
+    "build_focus_objects_payload",
+    "chat_input_payload_from_assembly",
+    "dashboard_guardrail_decisions",
+    "default_compactor_registry",
+    "default_context_registry",
+    "default_token_estimator_registry",
+    "empty_thread_memory_state",
+    "estimate_conservative_tokens",
+    "estimate_jsonable_tokens",
+    "known_context_policy_versions",
+    "legacy_chat_routing_payload",
+    "load_context_policy",
+    "preservation_errors",
+    "select_history_window",
+    "thread_memory_input_hash",
+    "thread_memory_state_from_jsonable",
+    "thread_memory_state_to_jsonable",
+    "trim_validation_issues",
+    "truncate_text_to_tokens",
+    "usage_calibration_ratio",
+]

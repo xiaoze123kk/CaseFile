@@ -26,6 +26,7 @@ import {
   type ProviderSettingView,
   type TaskView,
   type TaskType,
+  type TaskEventView,
   type TimelineTemporalPosition,
   type TimelineTimePreviewView,
 } from "@/lib/api-client";
@@ -347,6 +348,7 @@ export async function waitForTask(
   taskRunId: number,
   onTick?: (task: TaskView) => void,
   signal?: AbortSignal,
+  onEvent?: (event: TaskEventView) => void,
 ): Promise<TaskView> {
   const deadline = Date.now() + TASK_WAIT_TIMEOUT_MS;
   let lastEventId = 0;
@@ -409,6 +411,7 @@ export async function waitForTask(
           LOCAL_ACTOR_ID,
           (event) => {
             lastEventId = Math.max(lastEventId, event.sequence_no);
+            onEvent?.(event);
             const eventStatus: Partial<Record<string, TaskView["status"]>> = {
               "task.started": "running",
               "task.cancel_requested": "cancelling",

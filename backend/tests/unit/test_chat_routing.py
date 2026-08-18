@@ -42,6 +42,13 @@ def test_analysis_profile_defaults_to_read_only_analysis_budget() -> None:
     assert route.execution_profile["allow_suggestions"] is False
     assert route.execution_profile["max_turns"] == 6
     assert route.execution_profile["max_tool_calls"] == 12
+    assert {
+        "list_casefile_records",
+        "search_casefile",
+        "get_casefile_object",
+        "get_related_objects",
+        "get_validation_issues",
+    } <= set(route.execution_profile["toolset"])
     assert route.rewrite_strategy == "CONTEXTUALIZE"
     assert route_suggestion_policy(route) == "deny"
     assert route_allows_suggestions(route) is False
@@ -130,3 +137,32 @@ def test_unknown_primary_intent_falls_back_to_question_profile() -> None:
 
     assert route.execution_profile["primary_intent"] == "unknown_family"
     assert route.execution_profile["prompt_component"] == "chat"
+
+
+def test_all_read_route_profiles_expose_the_v2_read_surface() -> None:
+    expected_read_tools = {
+        "list_casefile_records",
+        "search_casefile",
+        "get_casefile_object",
+        "get_related_objects",
+    }
+    for intent, write_tool in (
+        ("question", None),
+        ("analysis", "get_validation_issues"),
+        ("explain_issue", "get_validation_issues"),
+        ("edit_request", "validate_patch_proposal"),
+    ):
+        route = routing_policy(
+            ChatTaskUnderstanding(
+                primary_intent=intent,
+                confidence=1.0,
+                reason_codes=("test",),
+            ),
+            budget={},
+        )
+        toolset = set(route.execution_profile["toolset"])
+        assert expected_read_tools <= toolset
+        if write_tool is None:
+            assert toolset == expected_read_tools
+        else:
+            assert write_tool in toolset

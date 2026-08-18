@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "version": "agent-focus-v1",
+  "task_type": "casefile_chat",
+  "stages": [
+    {
+      "id": "legacy_chat_input",
+      "strategy": "legacy_full_injection_v1",
+      "config": {}
+    }
+  ],
+  "budget": {
+    "total_input_tokens": null,
+    "enforce_budget": false,
+    "block_limits": {},
+    "trim_order": []
+  },
+  "guardrails": {
+    "pinned_immutable": true,
+    "recent_turns_protected": true,
+    "archive_must_be_recoverable": true,
+    "delete_allowed": false
+  }
+}

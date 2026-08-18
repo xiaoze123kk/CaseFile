@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field, is_dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
@@ -17,6 +18,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 class EventSink(Protocol):
     def __call__(self, event_type: str, stage: str, payload: dict[str, Any]) -> None: ...
+
+
+#: The pre-context-pipeline policy frozen on existing chat TaskRuns. The
+#: extensible context package re-exports this constant; unknown future policy
+#: versions fall back to it instead of failing the task.
+LEGACY_CONTEXT_POLICY_VERSION = "agent-focus-v1"
 
 
 class StrictAgentOutput(BaseModel):
@@ -284,6 +291,30 @@ class ChatExecutorInputV1(StrictAgentOutput):
     routing: dict[str, Any] | None = None
 
 
+class ChatExecutorInputV2(StrictAgentOutput):
+    """v2 input contract for the v4/v5 executors: skeleton plus expansions.
+
+    ``casefile`` contains only id/collection/label/type skeletons; full record
+    content is fetched with the read-only tools. ``focus_objects`` carries the
+    bounded full-object and one-hop neighbor expansion selected by the context
+    policy, Phase 3 policies additionally bind the rolling ``thread_memory``
+    state, and Phase 4 bindings attach the read-only ``context_dashboard``.
+    """
+
+    input_hash: str = Field(min_length=1)
+    casefile: dict[str, Any]
+    focus_objects: dict[str, Any] = Field(default_factory=dict)
+    thread_history: list[dict[str, Any]] = Field(default_factory=list)
+    thread_memory: dict[str, Any] | None = None
+    context_dashboard: dict[str, Any] | None = None
+    author_message: str = Field(min_length=1, max_length=100_000)
+    editable_fields_by_collection: dict[str, list[str]] = Field(default_factory=dict)
+    focus: dict[str, Any] = Field(default_factory=dict)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    validation_issues: list[dict[str, Any]] = Field(default_factory=list)
+    routing: dict[str, Any] | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class ChatTaskUnderstanding:
     """Semantic Task State; Routing Policy consumes this, not the raw user text."""
@@ -427,6 +458,9 @@ class GenerationRequest:
     toolset_version: str | None = None
 
 
+ThreadEvidenceResolver = Callable[[str], dict[str, Any] | None]
+
+
 @dataclass(frozen=True, slots=True)
 class CaseFileChatRequest:
     task_run_id: int
@@ -448,6 +482,12 @@ class CaseFileChatRequest:
     route: RouteDecision | None = None
     rewrite: QueryRewriteResult | None = None
     network_retries: int = 2
+    toolset_version: str = "casefile-chat-tools-v1"
+    context_policy_version: str = LEGACY_CONTEXT_POLICY_VERSION
+    assembled_input: dict[str, Any] | None = None
+    thread_id: int | None = None
+    thread_evidence_resolver: ThreadEvidenceResolver | None = None
+    repair_feedback: tuple[str, ...] = ()
 
 
 @dataclass(slots=True)
@@ -668,6 +708,25 @@ def chat_state_as_dict(value: Any) -> dict[str, Any]:
     if not isinstance(converted, dict):
         raise TypeError(f"expected a routing state dataclass, got {type(value).__name__}")
     return converted
+
+
+def chat_routing_payload_as_dict(request: CaseFileChatRequest) -> dict[str, Any] | None:
+    """Serialize resolved chat routing state exactly like the legacy prompt payload.
+
+    The prompt renderer and the context engine share this helper so the payload
+    providers receive and the audited context manifest can never diverge.
+    """
+
+    if request.route is None:
+        return None
+    routing_payload: dict[str, Any] = {"route": chat_state_as_dict(request.route)}
+    if request.task_understanding is not None:
+        routing_payload["task_understanding"] = chat_state_as_dict(
+            request.task_understanding
+        )
+    if request.rewrite is not None:
+        routing_payload["rewrite"] = chat_state_as_dict(request.rewrite)
+    return routing_payload
 
 
 def _rate(numerator: int, denominator: int) -> float:

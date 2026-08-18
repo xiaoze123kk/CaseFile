@@ -34,6 +34,7 @@ from casefile.data_postgres.models.content import (
     Relationship,
     Testimony,
 )
+from casefile.data_postgres.models.context_states import AgentThreadContextState
 from casefile.data_postgres.models.exposure import (
     ExposurePlan,
     ExposurePlanEntry,
@@ -70,6 +71,7 @@ __all__ = [
     "AgentPatchOperation",
     "AgentPatchSet",
     "AgentThread",
+    "AgentThreadContextState",
     "AuditEvent",
     "Brief",
     "BriefIntake",

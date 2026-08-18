@@ -1,4 +1,4 @@
-"""Static contracts for the 54-table personal-product database metadata."""
+"""Static contracts for the 55-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ EXPECTED_TABLES = {
     "agent_patch_sets",
     "agent_threads",
     "agent_step_runs",
+    "agent_thread_context_states",
     "audit_events",
     "brief_intake_candidates",
     "brief_intake_questions",
@@ -101,6 +102,7 @@ JSONB_ALLOWLIST = {
     ("agent_step_runs", "output_jsonb"),
     ("agent_step_runs", "upstream_hashes_jsonb"),
     ("agent_step_runs", "usage_jsonb"),
+    ("agent_thread_context_states", "state_jsonb"),
     ("audit_events", "details_jsonb"),
     ("brief_intake_candidates", "content_jsonb"),
     ("brief_intake_questions", "suggestions_jsonb"),
@@ -270,10 +272,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_54_personal_tables() -> None:
+def test_metadata_contains_exactly_the_55_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 54
+    assert len(models.__all__) == 55
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

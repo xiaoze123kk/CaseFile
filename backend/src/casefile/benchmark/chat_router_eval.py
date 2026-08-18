@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.agent_runtime.providers import FakeProvider
 from casefile.worker.runtime import _resolve_chat_route
@@ -318,7 +319,7 @@ def _request_for_fixture(
     )
     return CaseFileChatRequest(
         task_run_id=task_run_id,
-        prompt_version="casefile-chat-v2",
+        prompt_version="casefile-chat-v3",
         casefile=fixture.casefile or _EVAL_CASEFILE,
         history=fixture.history,
         message=fixture.message,
@@ -336,6 +337,7 @@ def _request_for_fixture(
             else fixture.validation_issues
         ),
         routing_hint=fixture.hint,
+        toolset_version=CHAT_TOOLSET_VERSION,
     )
 
 

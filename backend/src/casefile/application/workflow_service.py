@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -19,10 +20,27 @@ from casefile.agent_runtime.chat_intent import (
     route_result_summary,
     route_suggestion_policy,
 )
+from casefile.agent_runtime.chat_reference_autofill import (
+    autofill_chat_references,
+    reference_autofill_enabled,
+)
+from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_VERSION,
+)
+from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_V2_VERSION,
+    CHAT_CONTEXT_POLICY_V3_VERSION,
+    CHAT_CONTEXT_POLICY_VERSION,
+    CHAT_CONTEXT_PROMPT_V2_VERSION,
+    CHAT_CONTEXT_PROMPT_V4_VERSION,
+    CHAT_CONTEXT_PROMPT_VERSION,
+)
 from casefile.agent_runtime.credentials import encrypt_api_key
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
+    LEGACY_CONTEXT_POLICY_VERSION,
     CandidateStrategy,
 )
 from casefile.agent_runtime.prompt import (
@@ -90,6 +108,7 @@ from casefile.data_postgres.models import (
     AgentPatchOperation,
     AgentPatchSet,
     AgentThread,
+    AgentThreadContextState,
     Brief,
     BriefVersion,
     CaseFileObject,
@@ -113,12 +132,92 @@ DEFAULT_BUDGET: dict[str, Any] = {
     "structural_repair_attempts": 5,
 }
 
+
+class ChatReferenceValidationError(RuntimeError):
+    """A structured chat candidate references IDs outside the frozen CaseFile.
+
+    The Worker uses the structured fields for one controlled provider repair
+    call before failing the TaskRun.
+    """
+
+    def __init__(
+        self,
+        *,
+        object_ids: tuple[str, ...] = (),
+        event_ids: tuple[str, ...] = (),
+        issue_ids: tuple[str, ...] = (),
+    ) -> None:
+        self.object_ids = tuple(object_ids)
+        self.event_ids = tuple(event_ids)
+        self.issue_ids = tuple(issue_ids)
+        self.repair_attempted = False
+        parts = [
+            f"objects={sorted(self.object_ids)!r}",
+            f"events={sorted(self.event_ids)!r}",
+            f"validation_issues={sorted(self.issue_ids)!r}",
+        ]
+        super().__init__("Chat result references unknown IDs: " + ", ".join(parts))
+
 _append_event = append_task_event
 _event_view = event_view
 _provider_view = provider_view
 _source_view = source_view
 _task_view = task_view
 _time = time_view
+
+
+def _chat_context_policy_version() -> str:
+    """Return the default or opted-in chat context policy version.
+
+    ``casefile-chat-context-v3`` is the accepted default after two
+    consecutive live batches met the Phase 4 saturation policy.
+    ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2`` opts in to
+    the Phase 3 rolling Thread Memory policy, ``casefile-chat-context-v1``
+    restores the frozen Phase 2 policy (paired with ``casefile-chat-v4``),
+    and ``agent-focus-v1`` forces the legacy policy (paired with the legacy
+    prompt render in ``_new_task``) for rollback. Unknown rollout values are
+    ignored.
+    """
+
+    rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
+    if rollout == LEGACY_CONTEXT_POLICY_VERSION:
+        return LEGACY_CONTEXT_POLICY_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_VERSION:
+        return CHAT_CONTEXT_POLICY_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_V2_VERSION:
+        return CHAT_CONTEXT_POLICY_V2_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_V3_VERSION:
+        return CHAT_CONTEXT_POLICY_V3_VERSION
+    return CHAT_CONTEXT_POLICY_V3_VERSION
+
+
+def _latest_context_state_ref(
+    session: Session,
+    *,
+    project_id: int,
+    thread_id: int,
+) -> dict[str, Any] | None:
+    """Freeze the latest Thread Memory state pointer for deterministic replay."""
+
+    state = session.scalar(
+        select(AgentThreadContextState)
+        .where(
+            AgentThreadContextState.project_id == project_id,
+            AgentThreadContextState.thread_id == thread_id,
+        )
+        .order_by(AgentThreadContextState.id.desc())
+        .limit(1)
+    )
+    if state is None:
+        return None
+    return {
+        "state_id": int(state.id),
+        "policy_version": state.policy_version,
+        "state_kind": state.state_kind,
+        "from_message_seq": state.from_message_seq,
+        "to_message_seq": state.to_message_seq,
+        "input_hash": state.input_hash,
+    }
 
 
 class WorkflowService:
@@ -438,6 +537,7 @@ class WorkflowService:
                 focus_values,
                 known_issue_ids,
             )
+            context_policy_version = _chat_context_policy_version()
             frozen_input = {
                 "casefile": casefile,
                 "history": [
@@ -451,13 +551,18 @@ class WorkflowService:
                 "message": content,
                 "focus": frozen_focus,
                 "validation": validation_snapshot,
-                "context_policy_version": "agent-focus-v1",
+                "context_policy_version": context_policy_version,
                 "routing_hint": (
                     {"entrypoint": "free_text", "preset_id": None}
                     if routing_hint is None
                     else normalize_routing_hint(routing_hint)
                 ),
                 "router_version": INTENT_ROUTER_VERSION,
+                "context_state": _latest_context_state_ref(
+                    self.session,
+                    project_id=owned.project.id,
+                    thread_id=thread.id,
+                ),
             }
             task = self._new_task(
                 owned,
@@ -692,11 +797,48 @@ class WorkflowService:
                 )
             )
             registries = {row.object_id: row for row in registry_rows}
+
+            # Conservative safety net for F1: only an empty slot is repaired,
+            # only frozen CaseFile record labels are consulted, and an ID is
+            # added only on a unique label match. Never delete or re-rank.
+            autofilled_object_ids: list[str] = []
+            autofilled_event_ids: list[str] = []
+            if reference_autofill_enabled():
+                object_refs = _unique_strings(referenced_object_ids)
+                event_refs = _unique_strings(referenced_event_ids)
+                if not object_refs:
+                    autofilled_object_ids = autofill_chat_references(
+                        answer,
+                        frozen_casefile,
+                    )[0]
+                    referenced_object_ids = [
+                        *referenced_object_ids,
+                        *autofilled_object_ids,
+                    ]
+                if not event_refs:
+                    autofilled_event_ids = autofill_chat_references(
+                        answer,
+                        frozen_casefile,
+                    )[1]
+                    referenced_event_ids = [
+                        *referenced_event_ids,
+                        *autofilled_event_ids,
+                    ]
+                if autofilled_object_ids or autofilled_event_ids:
+                    _append_event(
+                        self.session,
+                        task,
+                        "context.reference_autofilled",
+                        "context",
+                        {
+                            "object_ids": autofilled_object_ids,
+                            "event_ids": autofilled_event_ids,
+                        },
+                    )
+
             referenced = _unique_strings(referenced_object_ids)
             frozen_object_ids = _frozen_object_ids(frozen_casefile)
             missing_references = sorted(set(referenced) - frozen_object_ids)
-            if missing_references:
-                raise RuntimeError(f"Chat result references unknown objects: {missing_references}")
 
             referenced_events = _unique_strings(referenced_event_ids)
             frozen_event_ids = {
@@ -705,19 +847,17 @@ class WorkflowService:
                 if isinstance(value, dict) and isinstance(value.get("id"), str)
             }
             missing_events = sorted(set(referenced_events) - frozen_event_ids)
-            if missing_events:
-                raise RuntimeError(
-                    f"Chat result references unknown events: {missing_events}"
-                )
 
             referenced_issues = _unique_strings(referenced_validation_issue_ids)
             known_issue_ids = WorkbenchReadModel(
                 self.session
             ).validation_issue_ids(owned)
             missing_issues = sorted(set(referenced_issues) - known_issue_ids)
-            if missing_issues:
-                raise RuntimeError(
-                    f"Chat result references unknown validation issues: {missing_issues}"
+            if missing_references or missing_events or missing_issues:
+                raise ChatReferenceValidationError(
+                    object_ids=tuple(missing_references),
+                    event_ids=tuple(missing_events),
+                    issue_ids=tuple(missing_issues),
                 )
 
             focused_target_ids = _focused_patch_target_ids(
@@ -2113,6 +2253,17 @@ class WorkflowService:
         output_message_id: int | None = None,
     ) -> TaskRun:
         prompt_version = prompt_version_for_task(task_type)
+        policy_version: str | None = None
+        if task_type == "casefile_chat":
+            policy_version = _chat_context_policy_version()
+            if policy_version == CHAT_CONTEXT_POLICY_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_VERSION
+            elif policy_version == CHAT_CONTEXT_POLICY_V2_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_V2_VERSION
+            elif policy_version == CHAT_CONTEXT_POLICY_V3_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_V4_VERSION
+            else:
+                prompt_version = "casefile-chat-v3"
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,
@@ -2140,7 +2291,16 @@ class WorkflowService:
             schema_version=CASEFILE_SCHEMA_VERSION,
             agent_version=agent_version_for_task(task_type, prompt_version),
             prompt_version=prompt_version,
-            toolset_version=TOOLSET_VERSION,
+            toolset_version=(
+                CHAT_TOOLSET_V3_VERSION
+                if task_type == "casefile_chat"
+                and policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
+                else (
+                    CHAT_TOOLSET_VERSION
+                    if task_type == "casefile_chat"
+                    else TOOLSET_VERSION
+                )
+            ),
             budget_jsonb=dict(setting.default_budget_jsonb),
             usage_jsonb={},
             attempt_count=0,

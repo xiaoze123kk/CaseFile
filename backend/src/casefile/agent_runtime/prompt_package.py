@@ -49,9 +49,18 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
     ResolutionGovernanceIRV2,
     TemporalPlannerInputV3,
 )
+from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_VERSION,
+)
+from casefile.agent_runtime.context.thread_memory import (
+    ThreadCompactionInputV1,
+    ThreadMemoryDelta,
+)
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     ChatExecutorInputV1,
+    ChatExecutorInputV2,
     ChatIntentRouterInputV1,
     ChatRewriteInputV1,
     ChatTaskUnderstandingOutput,
@@ -129,6 +138,8 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-intent-input-v1": ChatIntentRouterInputV1,
         "casefile-chat-rewrite-input-v1": ChatRewriteInputV1,
         "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
+        "casefile-chat-prompt-input-v2": ChatExecutorInputV2,
+        "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -146,6 +157,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-task-understanding-v1": ChatTaskUnderstandingOutput,
         "casefile-chat-rewrite-v1": QueryRewriteOutput,
         "casefile-chat-output-v1": CaseFileChatCandidate,
+        "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
     }
 )
 TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
@@ -157,6 +169,63 @@ TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
         ),
         "chat-edit-v1": frozenset(
             {"search_casefile", "get_casefile_object", "validate_patch_proposal"}
+        ),
+        "chat-read-v2": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+            }
+        ),
+        "chat-issue-v2": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "get_validation_issues",
+            }
+        ),
+        "chat-edit-v2": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "validate_patch_proposal",
+            }
+        ),
+        "chat-read-v3": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "retrieve_thread_evidence",
+                "request_thread_compaction",
+            }
+        ),
+        "chat-issue-v3": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "get_validation_issues",
+                "retrieve_thread_evidence",
+            }
+        ),
+        "chat-edit-v3": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "validate_patch_proposal",
+                "retrieve_thread_evidence",
+                "request_thread_compaction",
+            }
         ),
     }
 )
@@ -170,6 +239,8 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("brief-to-draft-pipeline-v14", TOOLSET_VERSION),
         ("brief-to-draft-pipeline-v15", TOOLSET_VERSION),
         ("casefile-single-agent-v2", TOOLSET_VERSION),
+        ("casefile-single-agent-v2", CHAT_TOOLSET_VERSION),
+        ("casefile-single-agent-v2", CHAT_TOOLSET_V3_VERSION),
     }
 )
 

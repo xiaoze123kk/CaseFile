@@ -140,6 +140,7 @@ async def call_deepseek_strict_tool(
     instructions: str,
     input_text: str,
     output_type: type[BaseModel],
+    temperature: float | None = None,
 ) -> StructuredCallResult:
     """Call DeepSeek Beta with one forced strict tool and validate its arguments."""
 
@@ -149,37 +150,40 @@ async def call_deepseek_strict_tool(
         base_url=DEEPSEEK_BETA_BASE_URL,
         max_retries=network_retries,
     )
-    try:
-        response = await client.chat.completions.create(
-            model=model_id,
-            messages=[
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": input_text},
-            ],
-            tools=cast(
-                Any,
-                [
-                    {
-                        "type": "function",
-                        "function": {
-                            "name": STRICT_OUTPUT_TOOL_NAME,
-                            "description": "Submit the complete validated structured output.",
-                            "parameters": schema,
-                            "strict": True,
-                        },
-                    }
-                ],
-            ),
-            tool_choice=cast(
-                Any,
+    request_kwargs: dict[str, Any] = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": instructions},
+            {"role": "user", "content": input_text},
+        ],
+        "tools": cast(
+            Any,
+            [
                 {
                     "type": "function",
-                    "function": {"name": STRICT_OUTPUT_TOOL_NAME},
-                },
-            ),
-            parallel_tool_calls=False,
-            extra_body={"thinking": {"type": "disabled"}},
-        )
+                    "function": {
+                        "name": STRICT_OUTPUT_TOOL_NAME,
+                        "description": "Submit the complete validated structured output.",
+                        "parameters": schema,
+                        "strict": True,
+                    },
+                }
+            ],
+        ),
+        "tool_choice": cast(
+            Any,
+            {
+                "type": "function",
+                "function": {"name": STRICT_OUTPUT_TOOL_NAME},
+            },
+        ),
+        "parallel_tool_calls": False,
+        "extra_body": {"thinking": {"type": "disabled"}},
+    }
+    if temperature is not None:
+        request_kwargs["temperature"] = temperature
+    try:
+        response = await client.chat.completions.create(**request_kwargs)
     finally:
         await client.close()
     if len(response.choices) != 1:

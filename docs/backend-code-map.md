@@ -26,6 +26,7 @@
 | `backend/src/casefile/data_postgres/models/exposure.py` | `exposure_plans`、不可变 `exposure_plan_revisions`、线性 `exposure_plan_entries` 与规范化 `exposure_plan_entry_refs` ORM。 |
 | `backend/src/casefile/data_postgres/models/workflow.py` | `briefs`、不可变 `brief_versions`、不可变 `source_records`、三类 `task_runs`、`task_attempts` 与不可变 `task_events` ORM。 |
 | `backend/src/casefile/data_postgres/models/agent_execution.py` | 组件化 v8–v15 `agent_step_runs` 与 `agent_model_calls` 的产物、哈希复用、结构化诊断、失败原文保留策略和终态审计 ORM。 |
+| `backend/src/casefile/data_postgres/models/context_states.py` | 追加式不可变 `agent_thread_context_states` ORM：按 thread 冻结 policy/state_kind/消息区间/state_jsonb/输入哈希，供 Rolling Thread Memory 压缩回放与 `context_state` 冻结引用。 |
 | `backend/src/casefile/data_postgres/models/reverse_parse.py` | 路径 C 反向解析的 `imported_documents` 与 `parse_items` ORM：上传文档与提取文本、解析状态、逐项确认结果、grading/field_sources 与来源片段引用。 |
 | `backend/src/casefile/data_postgres/models/__init__.py` | 汇总导入全部 ORM，供 Alembic metadata 发现。 |
 | `backend/src/casefile/data_postgres/models/benchmark.py` | Benchmark 持久化模型的预留落位；当前不定义或导出 ORM。 |
@@ -43,7 +44,7 @@
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 v1 CaseFile JSON 与规范化当前态之间执行原子写入、完整投影、契约引用映射和规范哈希。 |
 | `backend/src/casefile/application/v1_editing.py` | Entity、Location、Event 的有限字段编辑、revision 冲突检查和 v1 契约往返门禁。 |
-| `backend/src/casefile/application/workflow_service.py` | Provider 设置、不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、三类 TaskRun 创建、最近任务恢复与 SSE 事件查询的事务边界。 |
+| `backend/src/casefile/application/workflow_service.py` | Provider 设置、不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、三类 TaskRun 创建、最近任务恢复与 SSE 事件查询的事务边界。发送 Agent 消息时把最新 `agent_thread_context_states` 引用（id/version/range/hash）冻结进 TaskRun `input_jsonb.context_state`，并按 `CASEFILE_CHAT_CONTEXT_ROLLOUT` 把策略版本配对到 Prompt 版本。 |
 | `backend/src/casefile/application/workflow_brief_validation.py` | Workflow 使用的 Brief 契约、语义与已确认原子项门禁。 |
 | `backend/src/casefile/application/workflow_views.py` | Workflow 实体、部件步骤与公开失败信息的稳定 HTTP 读模型序列化。 |
 | `backend/src/casefile/application/task_events.py` | 在调用方事务中追加单调序号的不可变 TaskEvent。 |
@@ -65,13 +66,21 @@
 | `backend/src/casefile/api/workbench.py` | 分析师工作台验证、来源与审计只读上下文的 HTTP 路由。 |
 | `backend/src/casefile/api/reverse_parse.py` | 路径 C 反向解析 HTTP 路由：文档上传/读取、解析块与逐项查询、逐项确认、失败重试与形成 Brief 候选。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的三类 TaskRun 领取、lease/Attempt 恢复、Agent 执行、结果/事件原子持久化。 |
+| `backend/src/casefile/worker/runtime.py` | Worker 任务执行中枢。chat 上下文装配时读取 `CASEFILE_CHAT_CONTEXT_HARD_INPUT_TOKENS`（默认 128000）作为不可放宽的总输入硬上限，超限发 `context.guardrail` 后拒绝 Provider 调用；v2/v3 线程发 `context.guardrail` 记录 Dashboard 违规并把只读 `context_dashboard` 绑定进执行器 payload；v3 线程还注入 `thread_evidence_resolver`（只读解析 `thread://{thread_id}/message/{seq}` 指针）供 Context Tools 使用。chat 任务完成后对 `casefile-chat-context-v2/v3` 线程运行 Rolling Compaction Monitor：语义边界/新增轮次/历史 Token/无并行任务四重门禁（模型经 `request_thread_compaction` 请求时可跳过历史与最小轮数阈值，但仍受语义边界/区间已压缩/并行任务硬门禁约束），调用 `ThreadMemoryCompactorV1` 合并旧状态与新增原文，执行 Schema/保留/证据指针校验后追加新状态，发 `context.compacted`/`context.compaction_failed`/`context.compaction_skipped`/`context.compaction_requested` 事件；压缩失败永不失败聊天任务。 |
 
 ## 领域模块
 
 | 路径 | 职责 |
 |---|---|
-| `backend/src/casefile/benchmark/` | `brief_to_draft` Provider 级 Fixture 运行器与指标汇总；记录 CaseFile 结构有效率、模型调用/工具协议、修复次数、延迟和结构化诊断覆盖率。它明确不验证 TaskRun、Worker、持久化、SSE 或候选采用边界，不能单独作为发布验收。 |
-| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及全部 Agent 任务的结构化结果与 Validator 指标。`structured_output.py` 统一 Pydantic Schema 编译、OpenAI 原生 Structured Output、DeepSeek Beta strict tool、正式 JSON 模式降级、有限定向重试与用量汇总；当前 `brief_to_draft` 先生成对象计划，再由独立 Temporal Planner 建立作品内时间，随后生成故事世界和证据推理；竞争矩阵版本的 Evidence 在进入 Governance 前先执行至多两次携带上一份失败输出的语义定向修复（分阶段校验竞争组、信息接地路径与矩阵格子），v10–v14 由 Evidence Drafter 直接生成比较矩阵，v15 则把矩阵格子改为程序按路径确定性计算（`brief_to_draft_v15/matrix.py`），模型只对固定格子输出判定并由程序回填，失败时只针对剩余格子定向修复；再由 v15 Governance 基于实际 Evidence IR 建议答案或诚实未定论；所有 AI 结论固定为 `proposed`，只有作者能确认。v13 明确无时区壁钟精度格式，v14 强制创作者可见自然语言为简体中文，v8–v14 历史协议保持不变。 |
+| `backend/src/casefile/benchmark/` | `brief_to_draft` Provider 级 Fixture 运行器与指标汇总；记录 CaseFile 结构有效率、模型调用/工具协议、修复次数、延迟和结构化诊断覆盖率。它明确不验证 TaskRun、Worker、持久化、SSE 或候选采用边界，不能单独作为发布验收。`chat_context_eval.py` 运行 casefile-chat 上下文策略基线：五类冻结样本经 `build_chat_context_manifest` 计量后生成 `var/benchmark/context-baseline-v1.json`，并实现阶段 3 Boundary Continuation Eval——同一 Transcript 断点分别用完整原文与压缩后 Thread Memory 继续，确定性比较 Task Success/State Recall/Action Continuity/Repeated Work/Peak & Total Tokens 六道门禁，报告写入 `var/benchmark/context-boundary-v1.json`；`--gate-boundary` 供 `scripts/check.ps1` 作 M0 门禁。`context_tier_benchmark.py` 运行阶段 4 四档策略 A/B（legacy full / context-v1 / +压缩 / +仪表+Context Tools），输出逐样本 block token 与 dashboard 对比报告到 `var/benchmark/context-tiers-v1.json`，并实现无回退、预算非负、无护栏违规、峰值与总量相对 legacy 不回退的门禁（`--gate`）。 |
+| `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及全部 Agent 任务的结构化结果与 Validator 指标。`structured_output.py` 统一 Pydantic Schema 编译、OpenAI 原生 Structured Output、DeepSeek Beta strict tool、正式 JSON 模式降级、有限定向重试与用量汇总；当前 `brief_to_draft` 先生成对象计划，再由独立 Temporal Planner 建立作品内时间，随后生成故事世界和证据推理；竞争矩阵版本的 Evidence 在进入 Governance 前先执行至多两次携带上一份失败输出的语义定向修复（分阶段校验竞争组、信息接地路径与矩阵格子），v10–v14 由 Evidence Drafter 直接生成比较矩阵，v15 则把矩阵格子改为程序按路径确定性计算（`brief_to_draft_v15/matrix.py`），模型只对固定格子输出判定并由程序回填，失败时只针对剩余格子定向修复；再由 v15 Governance 基于实际 Evidence IR 建议答案或诚实未定论；所有 AI 结论固定为 `proposed`，只有作者能确认。v13 明确无时区壁钟精度格式，v14 强制创作者可见自然语言为简体中文，v8–v14 历史协议保持不变。`casefile_chat/v4` 为骨架上下文执行器包（`casefile-chat-prompt-input-v2`），阶段 2 验收通过后 registry 当前版本已切换为 `casefile-chat-v4`；`casefile_chat/v5` 为阶段 3 压缩后上下文执行器包，新增 `thread_memory` 输入块；阶段 4 起 shared 指令声明 `context_dashboard` 为只读仪表（预算耗尽停止工具、不得要求放宽限制）；`casefile_chat/v6` 复用 v5 契约并绑定 `casefile-chat-tools-v3`，新增 `retrieve_thread_evidence`/`request_thread_compaction` 使用规则；`casefile_chat_context_compactor/v1` 为只含 `compact` 组件、禁用工具、输出 `ThreadMemoryDelta` 的辅助 Agent 包，供 Provider `compact_thread_memory()` 复用 `_run_auxiliary`。 |
+| `backend/src/casefile/agent_runtime/chat_tools.py` | `casefile_chat` 的确定性只读/建议校验工具集 `casefile-chat-tools-v2`：全卷集合清单与分页浏览 `list_casefile_records`、一跳关系读取 `get_related_objects`、关键字检索 `search_casefile`、单对象全文 `get_casefile_object`、分页冻结验证快照 `get_validation_issues` 与补丁白名单校验 `validate_patch_proposal`；工具按路由 profile 选择、按 TaskRun 冻结 `toolset_version` 拒绝 v2 新工具给旧任务，所有结果只来自冻结 CaseFile，不触网不写库。阶段 2 起所有工具结果经 `bounded_tool_result_json` 套字符上限并标记 `truncated`，`ChatToolContext` 维护最近原文与折叠区账本。`casefile-chat-tools-v3` 按路由 `context_tools` 声明只读开放 `retrieve_thread_evidence`（只接受 `context_dashboard.recoverable_evidence_ids` 中的指针，经 Worker 注入的 DB Resolver 恢复压缩区间原始消息）与 `request_thread_compaction`（只登记请求，本轮结束后由 Runtime 裁决；工具本身永不归档/删除）。 |
+| `backend/src/casefile/agent_runtime/context/` | 可插拔、版本化的 casefile-chat 上下文工程基座。`models.py` 定义 ContextBlock/ContextPolicy/ContextAssembly/ContextManifest 等数据契约（block 带 age_turns/last_access_turn 生命周期字段）；`protocols.py` 定义 ContextStage/TokenEstimator 插件协议；`registry.py` 按名称注册策略并校验 Policy 引用；`engine.py` 按 Policy 声明顺序确定性执行 Stage，未知策略版本回退 legacy 并产出 fallback 决策；`manifest.py` 把装配结果投影为不含 payload 的审计账本；`estimators.py` 提供多厂商通用保守 Token 估算、按 provider/model 选择的估算器注册表与 usage 校准比；`budget.py` 在 enforce_budget 开启时按 block_limits/trim_order 确定性裁剪可裁剪文本块，受保护块只记账不删改；`dashboard.py` 投影只读上下文仪表（已用/剩余预算、最大块、受保护块、可恢复证据 ID）并校验 Runtime 护栏（pinned 不可裁剪、Recent Turns 受保护、归档必须可恢复、总输入硬上限）；`evidence.py` 提供 `scheme://id` 证据指针契约与解析器注册表（不删原文，只换指针）；`thread_memory.py` 定义 `ChatThreadMemoryState`/`ThreadMemoryDelta` 严格契约、`ThreadMemoryCompactorV1`（旧状态+新增原文确定性合并，constraints/decisions 原文 carry-forward、verified_facts 按 source 去重，永不 memory+memory）、校验/保留检查、压缩输入哈希与默认压缩器注册表；`assembly_render.py` 把装配块投影为 `casefile-chat-prompt-input-v2` 契约载荷（含可选 `thread_memory` 与 `context_dashboard` 块），供 v4/v5 Prompt 包在 Provider 前校验渲染。 |
+| `backend/src/casefile/agent_runtime/context/policies/` | Policy-as-data 资源：`schema.json` 校验版本化 Context Policy 文档；`loader.py` 按 `context_policy_version` 从不可变 JSON 加载并校验策略；`agent-focus-v1` legacy 策略通过 `legacy_full_injection_v1` Stage 对现有全量注入输入只计量不删改；`casefile-chat-context-v1` 为阶段 2 正式策略：skeleton→focus_objects→history_window→validation_trim→chat_contract 五段装配。M0/M1 验收通过后已切为**默认策略**并配对 Prompt v4；`CASEFILE_CHAT_CONTEXT_ROLLOUT=agent-focus-v1` 可整组回退 legacy。`casefile-chat-context-v2` 为阶段 3 灰度策略：在 v1 基础上于 `history_window` 之后插入 `thread_memory` Stage（consume `thread_memory_state` extra input），由 `CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2` 启用并配对 Prompt v5。`casefile-chat-context-v3` 为阶段 4 灰度策略：与 v2 同布局，由 `CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v3` 启用，配对 Prompt v6 + `casefile-chat-tools-v3`，Dashboard 中声明可恢复证据 ID 供只读 Context Tools 使用。 |
+| `backend/src/casefile/agent_runtime/context/strategies/sources/` | 确定性源策略：`casefile_skeleton.py` 每记录只留 id/collection/label/type 与集合计数；`focus_objects.py` 焦点对象完整展开（≤8）加一跳邻居摘要（≤16），悬空引用只读剪除；`chat_contract.py` 产出 input_hash/author_message/editable/focus/validation/routing 契约块；`thread_memory.py` 从 `run.extra_input["thread_memory_state"]` 校验并产出带生命周期元数据的 `thread_memory` 块。 |
+| `backend/src/casefile/agent_runtime/context/strategies/selectors/history_window.py` | 按路由 profile 保留最近 K 条原文；首条用户消息（线程锚点）与含否定/硬约束词的消息确定性 Pin，裁剪决策入 `context.built` 审计账本。 |
+| `backend/src/casefile/agent_runtime/context/strategies/transformers/validation_trim.py` | 焦点/本轮 mention 命中的 issue 全量保留，其余压缩为 id/rule_id/severity/title/message(≤200)/object_refs；`validate_request` 门禁路由保留全量快照。 |
+| `backend/src/casefile/agent_runtime/context/strategies/legacy.py` | `LegacyChatInputStage`：把 Worker 预渲染的既有 executor 输入包装成可计 Token 的上下文块；`legacy_chat_routing_payload` 兼容别名复用 `models.chat_routing_payload_as_dict`，保证 Prompt 渲染与上下文审计的 routing 序列化一致。 |
 | `backend/src/casefile/agent_runtime/observability.py` | 对成功候选执行不参与门禁的确定性 Brief 语义覆盖代理，并把请求、缓存、推理 Token 标准化为可追溯但不虚构价格的成本输入。 |
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
@@ -86,30 +95,47 @@
 | 路径 | 职责 |
 |---|---|
 | `backend/tests/contract/` | 根目录跨语言契约和编辑闭环 Fixture 的契约测试。 |
-| `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 54 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
+| `backend/tests/unit/test_foundation_metadata.py` | 静态验证精确 55 表、Identity 主键、JSONB 白名单、个人归属、文档同步和关键约束，不连接数据库。 |
 | `backend/tests/unit/test_casefile_contract.py` | 验证 v1 CaseFile Schema、自身合法性、三类产品 Fixture、确定性语义错误和规范哈希。 |
 | `backend/tests/unit/test_agent_providers.py` | 验证 OpenAI/DeepSeek Provider 路由、DeepSeek 官方兼容端点和无 Key 网络调用门禁。 |
+| `backend/tests/unit/test_context_engine.py` | 验证 Context Policy 资源加载、未知版本 legacy 回退、引擎确定性顺序/跳过/替换/跳转/预算标记、legacy 输入计量 Manifest 和共享 routing 序列化。 |
+| `backend/tests/unit/test_context_evidence.py` | 验证证据指针解析、解析器注册表、缺失/悬空引用的可审计决策和 URI 兜底描述。 |
+| `backend/tests/unit/test_context_budget.py` | 验证保守估算器注册表选择、usage 校准中位数、确定性文本裁剪、受保护块/非法限额/非文本块的预算决策，以及 Engine 与 Manifest 的裁剪集成。 |
+| `backend/tests/unit/test_chat_context_eval.py` | 验证 casefile-chat 上下文基线样本可复现、未知策略计入 fallback、报告 JSON 无损落盘、Boundary 场景解析器边界，以及阶段 3 完整上下文 vs 压缩后上下文六道门禁全部通过且确定性可复现。 |
+| `backend/tests/unit/test_context_phase2.py` | 验证阶段 2 五类确定性策略（skeleton/focus/history Pin/validation Trim/契约块）、v4 输入契约渲染、token 削减 ≥50%、未知策略回退、默认 v1/legacy 回退开关与工具结果字符上限/折叠。 |
+| `backend/tests/unit/test_chat_tools.py` | 验证确定性 chat 工具集：路由 toolset 白名单、检索/关系/校验工具的冻结输入契约、预算耗尽行为与折叠账本；阶段 4 增加 v3 Context Tools 门控、证据指针只读恢复、未声明指针拒绝、压缩请求只登记不执行。 |
+| `backend/tests/unit/test_context_phase3.py` | 验证阶段 3 Thread Memory 严格契约、确定性压缩输入、carry-forward 合并、保留/证据指针校验、压缩器注册表冲突、v2 策略排序、`thread_memory` Stage 装配渲染与 Provider Fake 压缩路径。 |
+| `backend/tests/unit/test_context_phase4.py` | 验证阶段 4 生命周期元数据（age/last_access 进 Manifest）、只读 Context Dashboard（已用/剩余预算、最大块、受保护块、可恢复证据 ID）、总输入硬上限不可放宽、归档不可恢复与 pinned 可裁剪两种护栏违规检测。 |
+| `backend/tests/unit/test_context_tier_benchmark.py` | 验证阶段 4 四档策略注册表顺序冻结、A/B 门禁全通过（零回退/零护栏违规/峰值不劣于 legacy），固定样本套件可复现。 |
 | `backend/tests/unit/test_structured_output.py` | 验证 DeepSeek strict transport Schema、Beta 强制工具协议、正式 JSON 自动降级、OpenAI 原生结构输出与最多三次的有限修复状态机。 |
 | `backend/tests/unit/test_benchmark_runner.py` | 验证 fake `brief_to_draft` Benchmark 与工具调用指标。 |
 | `backend/tests/unit/test_workbench_read_model.py` | 验证工作台确定性错误的稳定中文输出和真实 `source_fragment` 标识/JSON Pointer 追溯。 |
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
-| `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证完整升降级、54 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon/Exposure Plan 门禁和不可变触发器。 |
-| `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 54 表清单，避免主迁移测试文件继续膨胀。 |
+| `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证完整升降级、55 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon/Exposure Plan 门禁和不可变触发器。 |
+| `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 55 表清单，避免主迁移测试文件继续膨胀。 |
 | `backend/tests/integration/test_exposure_plan_migration.py` | 在真实 `_test` PostgreSQL 验证新 Draft 自动创建空 Exposure Plan，以及计划修订、条目和引用不可更新/删除。 |
 | `backend/tests/integration/application_services_test_support.py` | 为应用服务集成测试集中提供 `_test` PostgreSQL 生命周期、Provider 与建案 helper；由 integration `conftest.py` 暴露共享 fixture。 |
+| `backend/tests/integration/chat_outcome_canned_support.py` | 复用 M1 生产路径 trial runner（建案/采用→send_agent_message→Worker→持久化 Outcome 评分），支持指定任务 provider 与按实际冻结卷宗生成消息；供基线测试、阶段 2 验收与 live 验收共享，避免 30 任务 harness 复制。 |
+| `backend/tests/integration/test_chat_outcome_canned.py` | M1 DB Canned 基线：30 个 T1 任务走真实生产路径，由确定性 Canned Provider 完成并评分；是上下文灰度的通过率不降基线。 |
+| `backend/tests/integration/test_chat_context_phase2_acceptance.py` | 阶段 2 灰度验收：30 任务全部冻结 `casefile-chat-v4`+`casefile-chat-context-v1`，校验 `context.built` v1 分块、零 fallback，并比较真实 ledger Token 与同一请求 legacy 渲染，聚合下降必须 ≥50%；报告写入 `CASEFILE_CHAT_CONTEXT_ACCEPTANCE_REPORT`。 |
+| `backend/tests/integration/test_chat_context_phase3_acceptance.py` | opt-in（`CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v2`）阶段 3 验收：真实生产路径验证首轮完成后 Rolling Compaction 落库并冻结 `context_state`，次轮 v5 请求携带 `thread_memory` 块；M1 对比同一编辑任务在 legacy 与压缩后上下文两条 Trial，要求补丁建议合法数不降且压缩后请求确实绑定 Thread Memory。 |
+| `backend/tests/integration/test_chat_context_phase4_acceptance.py` | opt-in（`CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v3`）阶段 4 验收：真实生产路径验证 v3 策略冻结 v6 Prompt + `casefile-chat-tools-v3`，次轮请求携带 `context_dashboard`、注入 `thread_evidence_resolver` 且能只读解析 `thread://{thread_id}/message/{seq}` 原始消息，Rolling Compaction 行为不回退。 |
+| `backend/tests/integration/test_chat_context_phase3_live_acceptance.py` | opt-in 阶段 3 live 验收（`scripts/acceptance-chat-context-v2.ps1 -LiveProvider`）：五类任务在 legacy 全量历史与 v2 Thread Memory 两种 rollout 下各跑「预热轮 + 任务轮」真实 Provider 生产路径，产出 pass rate、压缩事件与持久化 state 报告；脚本比较通过率并要求 v2 每个线程都有 `context.compacted` 状态。 |
+| `backend/tests/integration/test_chat_context_phase2_live_acceptance.py` | opt-in live 验收（env 驱动）：先在 `_test` 库写入真实 Provider 凭据，再把任务文案按实际生成卷宗动态适配（实体/事件/验证/编辑/大卷宗五类），同一批任务在 legacy/v1 两轮生产路径调用真实 Provider，产出逐任务候选与失败明细报告；任务级生成失败不中断整体比较，`scripts/acceptance-chat-context-v1.ps1` 负责对比通过率并判回归。 |
 | `backend/tests/integration/test_application_services.py` | 在真实 `_test` PostgreSQL 验证 SourceRecord、Worker 候选持久化、首次/再次采用、A/B 工作稿隔离、v1 有限编辑和 Agent 协作闭环。 |
 | `backend/tests/integration/test_multiple_draft_migration.py`、`test_multiple_drafts.py` | 验证旧数据升级回填 Current Draft、复合外键与 Draft 内对象 ID 唯一，以及并发激活、归档/锁定门禁和编辑/快照/验证/来源/审计隔离。 |
 | `backend/tests/integration/test_application_task_lifecycle.py` | 在真实 `_test` PostgreSQL 验证 TaskRun Prompt 版本、queued/running/orphan 取消、lease 恢复、Provider 配置冻结与不可变事件。 |
 | `backend/tests/integration/test_api_vertical_slice.py` | 在真实 `_test` PostgreSQL 验证 Provider 设置、原稿/润色候选、Brief 原子确认、三类 TaskRun、候选采用、工作台验证/来源/审计读模型、SSE 恢复与完成门禁闭环。 |
 | `backend/tests/integration/test_brief_to_draft_v8_live_acceptance.py` | 显式 opt-in 的真实 Provider 组件化 v8–v15 验收（默认版本读取 Prompt Registry）：从本地开发库复制已加密凭据到一次性 `_test` 库，通过 API 与 Worker 轮换三种候选策略；v11–v14 轮换五类时间/空间/竞争矩阵场景，v15 额外加入 2×8+ 与 3×8+ 两档密集竞争矩阵场景（共七类）并对 30 次发布验收强制 Evidence 语义 SLO（首次通过率 ≥ 90%、最多一次定向修复后 ≥ 98%）；报告按持久化步骤产物重放 Evidence 图/矩阵语义校验，统计首次通过率、修复恢复率、issue 计数与矩阵规模，并检查步骤/模型调用持久化、SSE、诊断、候选语义和 Draft/Canon 未自动写入边界。 |
 
-## 54 表清单
+## 55 表清单
 
-当前正式业务表恰好为 54 张：
+当前正式业务表恰好为 55 张：
 
 - 身份、输入与任务：`users`、`projects`、`user_provider_settings`、`source_records`、`briefs`、`brief_versions`、`task_runs`、`task_attempts`、`task_events`、`agent_step_runs`、`agent_model_calls`、`imported_documents`、`parse_items`、`idea_candidates`。
+- 协作与上下文：`agent_threads`、`agent_thread_context_states`、`agent_messages`、`agent_patch_sets`、`agent_patch_operations`、`brief_intakes`、`brief_intake_questions`、`brief_intake_candidates`。
 - 编辑与契约映射：`casefiles`、`drafts`、`casefile_objects`、`casefile_refs`、`casefile_contract_refs`、`draft_operations`。
 - 叙事与内容：`narrative_phases`、`entities`、`relationships`、`people`、`locations`、`events`、`information_units`、`evidence_items`、`testimonies`、`claims`、`knowledge_states`、`knowledge_state_entries`。
 - 推理与结论：`hypotheses`、`reasoning_paths`、`reasoning_nodes`、`reasoning_edges`、`resolution_specs`、`resolution_slots`、`casefile_constraints`、`structure_locks`。

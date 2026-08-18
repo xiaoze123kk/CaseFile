@@ -7,6 +7,7 @@ BUSINESS_TABLES = {
     "agent_patch_sets",
     "agent_threads",
     "agent_step_runs",
+    "agent_thread_context_states",
     "audit_events",
     "brief_intake_candidates",
     "brief_intake_questions",

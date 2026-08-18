@@ -44,7 +44,7 @@ PROFILE: dict[str, object] = {}
 
 class ApiChatProvider(FakeProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        assert request.prompt_version == "casefile-chat-v2"
+        assert request.prompt_version == "casefile-chat-v7"
         resolution = request.casefile["resolution_specs"][0]
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(
@@ -902,11 +902,15 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert queued_chat.status_code == 202
         chat_task_id = queued_chat.json()["task"]["task_run_id"]
         with engine.connect() as connection:
-            stored_prompt_version = connection.scalar(
-                text("SELECT prompt_version FROM task_runs WHERE id = :task_run_id"),
+            stored_prompt_version, stored_toolset_version = connection.execute(
+                text(
+                    "SELECT prompt_version, toolset_version FROM task_runs "
+                    "WHERE id = :task_run_id"
+                ),
                 {"task_run_id": chat_task_id},
-            )
-        assert stored_prompt_version == "casefile-chat-v2"
+            ).one()
+        assert stored_prompt_version == "casefile-chat-v7"
+        assert stored_toolset_version == "casefile-chat-tools-v3"
         chat_worker = Worker(
             factory,
             config=WorkerConfig(worker_id="api-chat-worker"),

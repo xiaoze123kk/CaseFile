@@ -15,6 +15,8 @@ $python = if (Test-Path -LiteralPath $venvPython -PathType Leaf) {
 
 $hadDatabaseUrl = Test-Path Env:DATABASE_URL
 $previousDatabaseUrl = $env:DATABASE_URL
+$hadContextRollout = Test-Path Env:CASEFILE_CHAT_CONTEXT_ROLLOUT
+$previousContextRollout = $env:CASEFILE_CHAT_CONTEXT_ROLLOUT
 
 Push-Location $repoRoot
 try {
@@ -47,6 +49,25 @@ try {
 
     Push-Location $backendRoot
     try {
+        & $python -m casefile.benchmark chat-outcome --mode calibrate
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat outcome M0 calibration failed."
+        }
+
+        & $python -m casefile.benchmark.chat_context_eval `
+            --boundary-report-path var/benchmark/context-boundary-v1.json `
+            --gate-boundary
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat Boundary continuation M0 gate failed."
+        }
+
+        & $python -m casefile.benchmark.context_tier_benchmark `
+            --report-path var/benchmark/context-tiers-v1.json `
+            --gate
+        if ($LASTEXITCODE -ne 0) {
+            throw "CaseFile chat four-tier context A/B gate failed."
+        }
+
         if ($SkipPostgres) {
             & $python -m pytest -m "not postgres"
         } else {
@@ -83,6 +104,22 @@ try {
 
             $env:DATABASE_URL = $env:CASEFILE_TEST_DATABASE_URL
             & $python -m pytest
+
+            if ($LASTEXITCODE -ne 0) {
+                throw "Backend tests failed."
+            }
+
+            $env:CASEFILE_CHAT_CONTEXT_ROLLOUT = "casefile-chat-context-v2"
+            & $python -m pytest tests/integration/test_chat_context_phase3_acceptance.py
+            if ($LASTEXITCODE -ne 0) {
+                throw "Phase 3 rolling compaction M1 gate failed."
+            }
+
+            $env:CASEFILE_CHAT_CONTEXT_ROLLOUT = "casefile-chat-context-v3"
+            & $python -m pytest tests/integration/test_chat_context_phase4_acceptance.py
+            if ($LASTEXITCODE -ne 0) {
+                throw "Phase 4 Context Tools M1 gate failed."
+            }
         }
 
         if ($LASTEXITCODE -ne 0) {
@@ -98,6 +135,11 @@ try {
         $env:DATABASE_URL = $previousDatabaseUrl
     } else {
         Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+    }
+    if ($hadContextRollout) {
+        $env:CASEFILE_CHAT_CONTEXT_ROLLOUT = $previousContextRollout
+    } else {
+        Remove-Item Env:CASEFILE_CHAT_CONTEXT_ROLLOUT -ErrorAction SilentlyContinue
     }
     Pop-Location
 }

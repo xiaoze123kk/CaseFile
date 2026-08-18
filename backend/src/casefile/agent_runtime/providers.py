@@ -43,6 +43,11 @@ from casefile.agent_runtime.chat_tools import (
     chat_tool_manifest,
     search_casefile_records,
 )
+from casefile.agent_runtime.context.thread_memory import (
+    ThreadCompactionRequest,
+    ThreadCompactionResult,
+    ThreadMemoryDelta,
+)
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -97,8 +102,12 @@ from casefile.agent_runtime.prompt import (
     render_chat_rewrite_prompt,
     render_chat_router_prompt,
     reverse_parse_input,
+    thread_compaction_input,
 )
-from casefile.agent_runtime.prompt_repository import system_prompt_for_task
+from casefile.agent_runtime.prompt_repository import (
+    component_prompt_for_task,
+    system_prompt_for_task,
+)
 from casefile.agent_runtime.structured_output import (
     call_deepseek_strict_tool,
     compile_deepseek_strict_schema,
@@ -115,6 +124,34 @@ from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
 
+CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
+_CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE"
+
+
+def _chat_live_temperature() -> float | None:
+    """Resolve live chat temperature: explicit env wins, live acceptance defaults to 0.
+
+    Production remains None (provider default) unless the operator explicitly
+    sets ``CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE``.
+    """
+
+    configured = os.getenv(CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV, "").strip()
+    if not configured:
+        if os.getenv(_CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE_ENV) == "1":
+            return 0.0
+        return None
+    try:
+        temperature = float(configured)
+    except ValueError as error:
+        raise ProviderProtocolError(
+            f"{CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV} must be a number"
+        ) from error
+    if temperature < 0.0 or temperature > 2.0:
+        raise ProviderProtocolError(
+            f"{CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV} must be between 0 and 2"
+        )
+    return temperature
+
 
 class GenerationProvider(Protocol):
     def generate(self, request: GenerationRequest) -> GenerationResult: ...
@@ -126,6 +163,11 @@ class AgentProvider(GenerationProvider, Protocol):
     def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult: ...
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult: ...
+
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult: ...
 
     def understand_intent(
         self, request: CaseFileChatRequest
@@ -434,8 +476,14 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
     route = request.route
     if route is None:
         return metrics
-    toolset = route.execution_profile.get("toolset") or []
-    if "search_casefile" not in toolset:
+    available_tools = {
+        tool.name
+        for tool in chat_tool_manifest(
+            route,
+            toolset_version=request.toolset_version,
+        )
+    }
+    if "search_casefile" not in available_tools:
         return metrics
     max_calls = route.execution_profile.get("max_tool_calls")
     max_calls = max_calls if isinstance(max_calls, int) else 0
@@ -453,6 +501,7 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
                 "responding",
                 {
                     "tool": "search_casefile",
+                    "toolset_version": request.toolset_version,
                     "valid": False,
                     "reason_code": "tool_budget_exhausted",
                 },
@@ -471,6 +520,7 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
             "responding",
             {
                 "tool": "search_casefile",
+                "toolset_version": request.toolset_version,
                 "valid": True,
                 "query": query,
                 "result_count": len(results),
@@ -486,7 +536,10 @@ def _chat_tool_runtime(
     route = request.route
     if route is None:
         return None, None, None
-    manifest = chat_tool_manifest(route)
+    manifest = chat_tool_manifest(
+        route,
+        toolset_version=request.toolset_version,
+    )
     if not manifest:
         return None, None, None
     max_turns = route.execution_profile.get("max_turns")
@@ -889,6 +942,21 @@ class FakeProvider:
         usage["tool_metrics"] = metrics.as_dict()
         request.emit("model.completed", "responding", {"usage": usage})
         return CaseFileChatResult(candidate=candidate, usage=usage, tools=metrics)
+
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult:
+        """Deterministic fake compactor: old state is carried by the merger."""
+
+        old_state = request.input_data.get("old_state")
+        topics = list(old_state.get("topics") or []) if isinstance(old_state, dict) else []
+        usage: dict[str, Any] = _zero_usage()
+        request.emit("model.completed", "compacting", {"usage": usage})
+        return ThreadCompactionResult(
+            candidate=ThreadMemoryDelta(topics=topics),
+            usage=usage,
+        )
 
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
         request.emit("model.started", "understanding", {"model_id": request.model_id})
@@ -1342,12 +1410,39 @@ class OpenAIAgentsProvider:
                 tools=tools,
                 context=context,
                 max_turns=max_turns,
+                temperature=_chat_live_temperature(),
             )
         )
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(candidate),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
+        )
+
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=component_prompt_for_task(
+                    "casefile_chat_context_compactor",
+                    request.prompt_version,
+                    "compact",
+                ),
+                input_text=thread_compaction_input(request),
+                output_type=ThreadMemoryDelta,
+                stage="compacting",
+                component_id="context_compactor",
+                schema_id="casefile-chat-thread-memory-delta-v1",
+            )
+        )
+        return ThreadCompactionResult(
+            candidate=ThreadMemoryDelta.model_validate(candidate),
+            usage=usage,
         )
 
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
@@ -1363,6 +1458,7 @@ class OpenAIAgentsProvider:
                 stage="understanding",
                 component_id="intent_router",
                 schema_id="chat-task-understanding-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return IntentUnderstandingResult(
@@ -1386,6 +1482,7 @@ class OpenAIAgentsProvider:
                 stage="rewriting",
                 component_id="query_rewriter",
                 schema_id="query-rewrite-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return RouteSpecificRewriteResult(
@@ -1479,6 +1576,7 @@ class OpenAIAgentsProvider:
             | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
+            | ThreadCompactionRequest
         ),
         *,
         instructions: str,
@@ -1490,6 +1588,7 @@ class OpenAIAgentsProvider:
         tools: list[Tool] | None = None,
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
+        temperature: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -1501,6 +1600,7 @@ class OpenAIAgentsProvider:
                 request,
                 model=model,
                 model_settings=ModelSettings(
+                    temperature=temperature,
                     reasoning=Reasoning(effort="low"),
                     verbosity="low",
                     include_usage=True,
@@ -1702,12 +1802,42 @@ class DeepSeekAgentsProvider:
                 context=context,
                 max_turns=max_turns,
                 deepseek_output_protocol=output_protocol,
+                temperature=_chat_live_temperature(),
             )
         )
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(candidate),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
+        )
+
+    def compact_thread_memory(
+        self,
+        request: ThreadCompactionRequest,
+    ) -> ThreadCompactionResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=component_prompt_for_task(
+                    "casefile_chat_context_compactor",
+                    request.prompt_version,
+                    "compact",
+                ),
+                input_text=thread_compaction_input(request),
+                output_type=ThreadMemoryDelta,
+                stage="compacting",
+                component_id="context_compactor",
+                schema_id="casefile-chat-thread-memory-delta-v1",
+                deepseek_output_protocol=_deepseek_v8_output_protocol(
+                    request.model_id,
+                ),
+            )
+        )
+        return ThreadCompactionResult(
+            candidate=ThreadMemoryDelta.model_validate(candidate),
+            usage=usage,
         )
 
     def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult:
@@ -1723,6 +1853,7 @@ class DeepSeekAgentsProvider:
                 stage="understanding",
                 component_id="intent_router",
                 schema_id="chat-task-understanding-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return IntentUnderstandingResult(
@@ -1746,6 +1877,7 @@ class DeepSeekAgentsProvider:
                 stage="rewriting",
                 component_id="query_rewriter",
                 schema_id="query-rewrite-v1",
+                temperature=_chat_live_temperature(),
             )
         )
         return RouteSpecificRewriteResult(
@@ -1825,6 +1957,7 @@ class DeepSeekAgentsProvider:
             | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
+            | ThreadCompactionRequest
         ),
         *,
         instructions: str,
@@ -1837,6 +1970,7 @@ class DeepSeekAgentsProvider:
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+        temperature: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
         client = _model_client(model)
@@ -1844,7 +1978,7 @@ class DeepSeekAgentsProvider:
             return await _run_auxiliary_agent(
                 request,
                 model=model,
-                model_settings=_deepseek_model_settings(),
+                model_settings=_deepseek_model_settings(temperature=temperature),
                 instructions=instructions,
                 input_text=input_text,
                 output_type=output_type,
@@ -1878,6 +2012,7 @@ class DeepSeekAgentsProvider:
             | RouteSpecificRewriteRequest
             | ReverseParseRequest
             | IdeaGenerationRequest
+            | ThreadCompactionRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(
@@ -1903,6 +2038,7 @@ async def _run_auxiliary_agent(
         | RouteSpecificRewriteRequest
         | ReverseParseRequest
         | IdeaGenerationRequest
+        | ThreadCompactionRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
@@ -2012,6 +2148,7 @@ async def _run_auxiliary_agent(
                     instructions=instructions,
                     input_text=current_input,
                     output_type=output_type,
+                    temperature=model_settings.temperature,
                 )
                 raw_output_text = strict_result.raw_output
                 usage_records.append(strict_result.usage)
@@ -3273,8 +3410,9 @@ def _model_client(model: OpenAIChatCompletionsModel) -> AsyncOpenAI | None:
     return cast(AsyncOpenAI | None, client)
 
 
-def _deepseek_model_settings() -> ModelSettings:
+def _deepseek_model_settings(temperature: float | None = None) -> ModelSettings:
     return ModelSettings(
+        temperature=temperature,
         include_usage=True,
         parallel_tool_calls=False,
         extra_args={"response_format": {"type": "json_object"}},

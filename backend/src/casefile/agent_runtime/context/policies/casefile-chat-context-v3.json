@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "version": "casefile-chat-context-v3",
+  "task_type": "casefile_chat",
+  "stages": [
+    {
+      "id": "casefile_skeleton",
+      "strategy": "casefile_skeleton_v1",
+      "config": {}
+    },
+    {
+      "id": "focus_objects",
+      "strategy": "focus_objects_v1",
+      "config": {
+        "max_full_objects": 8,
+        "max_neighbors": 16
+      }
+    },
+    {
+      "id": "history_window",
+      "strategy": "history_window_v1",
+      "config": {
+        "windows": {
+          "question": 4,
+          "analysis": 6,
+          "edit": 6,
+          "issue": 6,
+          "gate": 6,
+          "clarify": 4,
+          "scope": 4,
+          "default": 6
+        }
+      }
+    },
+    {
+      "id": "thread_memory",
+      "strategy": "thread_memory_v1",
+      "config": {}
+    },
+    {
+      "id": "validation_issues",
+      "strategy": "validation_trim_v1",
+      "config": {
+        "max_message_chars": 200,
+        "gate_profile": "validate_request"
+      }
+    },
+    {
+      "id": "chat_contract",
+      "strategy": "chat_contract_v2",
+      "config": {}
+    }
+  ],
+  "budget": {
+    "total_input_tokens": 100000,
+    "enforce_budget": true,
+    "block_limits": {},
+    "trim_order": []
+  },
+  "guardrails": {
+    "pinned_immutable": true,
+    "recent_turns_protected": true,
+    "archive_must_be_recoverable": true,
+    "delete_allowed": false
+  }
+}
