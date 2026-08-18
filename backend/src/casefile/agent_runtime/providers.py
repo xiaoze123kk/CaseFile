@@ -56,6 +56,7 @@ from casefile.agent_runtime.models import (
     BriefStrategyOptionsResult,
     CandidateStrategy,
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatResult,
     ChatTaskUnderstandingOutput,
@@ -1441,7 +1442,10 @@ class OpenAIAgentsProvider:
             )
         )
         return CaseFileChatResult(
-            candidate=output_type.model_validate(candidate),
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                output_type.model_validate(candidate),
+            ),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )
@@ -1834,7 +1838,10 @@ class DeepSeekAgentsProvider:
             )
         )
         return CaseFileChatResult(
-            candidate=output_type.model_validate(candidate),
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                output_type.model_validate(candidate),
+            ),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )

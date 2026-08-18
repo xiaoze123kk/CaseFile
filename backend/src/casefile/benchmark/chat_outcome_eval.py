@@ -16,7 +16,7 @@ import argparse
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from casefile.agent_runtime.chat_intent import route_allows_suggestions
 from casefile.agent_runtime.chat_tools import simulate_patch_delta
@@ -371,7 +371,7 @@ class ChatOutcomeTask:
     expectations: ChatOutcomeExpectations
     reference_candidate: CaseFileChatCandidate | CaseFileChatCandidateV2
     tier: Literal["T1", "T2"] = "T1"
-    kind: Literal["golden", "boundary", "adversarial"] = "golden"
+    kind: Literal["golden", "boundary", "adversarial", "feedback"] = "golden"
     focus: dict[str, Any] | None = None
     history: tuple[dict[str, str], ...] = ()
     casefile: dict[str, Any] | None = None
@@ -714,7 +714,7 @@ def _request_for_task(
     issues = task.frozen_validation_issues
     return CaseFileChatRequest(
         task_run_id=task_run_id,
-        prompt_version="casefile-chat-v2",
+        prompt_version="casefile-chat-v9",
         casefile=task.frozen_casefile,
         history=task.history,
         message=task.message,
@@ -927,16 +927,30 @@ def grade_chat_outcome(
         sum(simulate_scores) / len(simulate_scores) if simulate_scores else 1.0
     )
 
-    missing_required_suggestion_count = sum(
-        1
-        for object_id, path in expectations.required_suggestion_paths
-        if (object_id, path) not in seen_paths
-        or not any(
+    missing_required_suggestion_count = 0
+    for expected_object_id, expected_path in expectations.required_suggestion_paths:
+        matched = (expected_object_id, expected_path) in seen_paths and any(
             score == 1
-            for suggestion, score in zip(candidate.suggestions, suggestion_scores, strict=True)
-            if (suggestion.object_id, _top_level_field(suggestion.path)) == (object_id, path)
+            for suggestion, score in zip(
+                candidate.suggestions, suggestion_scores, strict=True
+            )
+            if (
+                cast(
+                    CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2,
+                    suggestion,
+                ).object_id,
+                _top_level_field(
+                    cast(
+                        CaseFileChatSuggestionCandidate
+                        | CaseFileChatSuggestionCandidateV2,
+                        suggestion,
+                    ).path
+                ),
+            )
+            == (expected_object_id, expected_path)
         )
-    )
+        if not matched:
+            missing_required_suggestion_count += 1
 
     unnecessary_suggestions = not allow_suggestions and len(candidate.suggestions) > 0
     missing_edit_suggestion = (
@@ -1985,14 +1999,30 @@ def build_outcome_tasks_from_audit_feedback(
 
 
 def _mutated_candidate(
-    base: CaseFileChatCandidate,
+    base: CaseFileChatCandidate | CaseFileChatCandidateV2,
     *,
     answer: str | None = None,
     object_ids: tuple[str, ...] | None = None,
     event_ids: tuple[str, ...] | None = None,
     validation_issue_ids: tuple[str, ...] | None = None,
-    suggestions: tuple[CaseFileChatSuggestionCandidate, ...] | None = None,
+    suggestions: tuple[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2, ...
+    ]
+    | None = None,
 ) -> CaseFileChatCandidate:
+    normalized_suggestions: list[CaseFileChatSuggestionCandidate] = []
+    for suggestion in base.suggestions if suggestions is None else suggestions:
+        if isinstance(suggestion, CaseFileChatSuggestionCandidate):
+            normalized_suggestions.append(suggestion)
+        else:
+            normalized_suggestions.append(
+                CaseFileChatSuggestionCandidate(
+                    object_id=suggestion.object_id,
+                    path=suggestion.path,
+                    value_json=suggestion.value_json,
+                    reason=suggestion.reason,
+                )
+            )
     return CaseFileChatCandidate(
         answer=base.answer if answer is None else answer,
         referenced_object_ids=(
@@ -2007,7 +2037,7 @@ def _mutated_candidate(
             else list(validation_issue_ids)
         ),
         suggested_view=base.suggested_view,
-        suggestions=list(base.suggestions) if suggestions is None else list(suggestions),
+        suggestions=normalized_suggestions,
     )
 
 

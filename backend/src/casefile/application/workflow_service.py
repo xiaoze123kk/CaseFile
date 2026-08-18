@@ -811,6 +811,7 @@ class WorkflowService:
             audit_findings = list(audit_findings or [])
             suppressed_findings_count = 0
             if audit_findings_suppressed_for(route):
+                assert route is not None
                 if audit_findings:
                     suppressed_findings_count = len(audit_findings)
                     _append_event(

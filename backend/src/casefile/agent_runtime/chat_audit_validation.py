@@ -6,6 +6,7 @@ the WorkflowService calls them inside the ``complete_chat_task`` transaction.
 
 from __future__ import annotations
 
+from collections.abc import Set
 from typing import Any
 
 AUDIT_FINDING_KINDS = frozenset(
@@ -42,9 +43,9 @@ def audit_findings_suppressed_for(route: dict[str, Any] | None) -> bool:
 def normalize_audit_findings(
     audit_findings: list[dict[str, Any]],
     *,
-    frozen_object_ids: set[str],
-    frozen_event_ids: set[str],
-    known_issue_ids: set[str],
+    frozen_object_ids: Set[str],
+    frozen_event_ids: Set[str],
+    known_issue_ids: Set[str],
     suggestion_finding_refs: list[str | None],
 ) -> tuple[list[dict[str, Any]], list[str], list[str], list[str]]:
     """Normalize and evidence-check findings; return missing evidence IDs.

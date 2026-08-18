@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from casefile.agent_runtime.models import CaseFileChatCandidateV2
+from casefile.agent_runtime.prompt import chat_executor_output_type
 from casefile.benchmark.chat_outcome_eval import (
+    _request_for_task,
     build_grader_mutations,
     build_outcome_tasks,
     grade_chat_outcome,
     grade_reference_solution,
+    resolve_task_route,
     run_calibration,
 )
 
@@ -80,3 +84,14 @@ def test_question_route_denies_suggestions() -> None:
     assert verdict.actual_intent == "question"
     assert verdict.allow_suggestions is False
     assert verdict.unnecessary_suggestions is False
+
+
+def test_live_request_binds_v9_and_audit_output_v2() -> None:
+    task = next(
+        task for task in build_outcome_tasks() if task.task_id == "golden-audit-restart-loop"
+    )
+    request = _request_for_task(task)
+    assert request.prompt_version == "casefile-chat-v9"
+    resolved = resolve_task_route(task)
+    assert resolved.route is not None
+    assert chat_executor_output_type(resolved) is CaseFileChatCandidateV2

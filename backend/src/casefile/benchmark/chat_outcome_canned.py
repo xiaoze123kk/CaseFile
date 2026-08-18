@@ -54,6 +54,48 @@ def _first_issue_id(validation_issues: tuple[dict[str, Any], ...]) -> str | None
     return None
 
 
+def _to_v2_suggestions(
+    items: list[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2
+    ],
+) -> list[CaseFileChatSuggestionCandidateV2]:
+    suggestions: list[CaseFileChatSuggestionCandidateV2] = []
+    for item in items:
+        if isinstance(item, CaseFileChatSuggestionCandidateV2):
+            suggestions.append(item)
+        else:
+            suggestions.append(
+                CaseFileChatSuggestionCandidateV2(
+                    object_id=item.object_id,
+                    path=item.path,
+                    value_json=item.value_json,
+                    reason=item.reason,
+                )
+            )
+    return suggestions
+
+
+def _to_v1_suggestions(
+    items: list[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2
+    ],
+) -> list[CaseFileChatSuggestionCandidate]:
+    suggestions: list[CaseFileChatSuggestionCandidate] = []
+    for item in items:
+        if isinstance(item, CaseFileChatSuggestionCandidate):
+            suggestions.append(item)
+        else:
+            suggestions.append(
+                CaseFileChatSuggestionCandidate(
+                    object_id=item.object_id,
+                    path=item.path,
+                    value_json=item.value_json,
+                    reason=item.reason,
+                )
+            )
+    return suggestions
+
+
 class CannedChatOutcomeProvider(FakeProvider):
     """Return a reference-quality chat outcome derived from the frozen request."""
 
@@ -130,23 +172,7 @@ class CannedChatOutcomeProvider(FakeProvider):
                 referenced_object_ids=reference_ids,
                 referenced_event_ids=reference_events,
                 referenced_validation_issue_ids=reference_issues,
-                suggestions=[
-                    CaseFileChatSuggestionCandidateV2(
-                        object_id=item.object_id,
-                        path=item.path,
-                        value_json=item.value_json,
-                        reason=item.reason,
-                        finding_ref=item.finding_ref,
-                    )
-                    if isinstance(item, CaseFileChatSuggestionCandidateV2)
-                    else CaseFileChatSuggestionCandidate(
-                        object_id=item.object_id,
-                        path=item.path,
-                        value_json=item.value_json,
-                        reason=item.reason,
-                    )
-                    for item in suggestions
-                ],
+                suggestions=_to_v2_suggestions(suggestions),
                 audit_findings=findings,
             )
         else:
@@ -155,15 +181,7 @@ class CannedChatOutcomeProvider(FakeProvider):
                 referenced_object_ids=reference_ids,
                 referenced_event_ids=reference_events,
                 referenced_validation_issue_ids=reference_issues,
-                suggestions=[
-                    CaseFileChatSuggestionCandidate(
-                        object_id=item.object_id,
-                        path=item.path,
-                        value_json=item.value_json,
-                        reason=item.reason,
-                    )
-                    for item in suggestions
-                ],
+                suggestions=_to_v1_suggestions(suggestions),
             )
         usage: dict[str, Any] = {
             "requests": 1,
@@ -251,16 +269,7 @@ def persisted_candidate_from_result(
                 result_jsonb.get("referenced_validation_issue_ids") or []
             ),
             suggested_view=result_jsonb.get("suggested_view"),
-            suggestions=[
-                item if isinstance(item, CaseFileChatSuggestionCandidateV2)
-                else CaseFileChatSuggestionCandidate(
-                    object_id=item.object_id,
-                    path=item.path,
-                    value_json=item.value_json,
-                    reason=item.reason,
-                )
-                for item in suggestions
-            ],
+            suggestions=_to_v2_suggestions(suggestions),
             audit_findings=findings,
         )
     return CaseFileChatCandidate(
@@ -271,16 +280,7 @@ def persisted_candidate_from_result(
             result_jsonb.get("referenced_validation_issue_ids") or []
         ),
         suggested_view=result_jsonb.get("suggested_view"),
-        suggestions=[
-            item if isinstance(item, CaseFileChatSuggestionCandidate)
-            else CaseFileChatSuggestionCandidate(
-                object_id=item.object_id,
-                path=item.path,
-                value_json=item.value_json,
-                reason=item.reason,
-            )
-            for item in suggestions
-        ],
+        suggestions=_to_v1_suggestions(suggestions),
     )
 
 
