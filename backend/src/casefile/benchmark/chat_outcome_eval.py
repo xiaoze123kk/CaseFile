@@ -34,6 +34,7 @@ GOLDEN_MARKER_TARGET = 0.0
 
 _FREE_TEXT: dict[str, Any] = {"entrypoint": "free_text", "preset_id": None}
 _INSPECT_PRESET: dict[str, Any] = {"entrypoint": "preset", "preset_id": "inspect"}
+_AUDIT_PRESET: dict[str, Any] = {"entrypoint": "preset", "preset_id": "audit"}
 
 _OUTCOME_CASEFILE: dict[str, Any] = {
     "entities": [
@@ -660,7 +661,7 @@ def _edit_lucy_description(reason: str = "原文语气过于戏剧化。") -> Ca
 
 
 def build_outcome_tasks() -> tuple[ChatOutcomeTask, ...]:
-    """The 30-task T1 Suite with a Reference Solution per Task."""
+    """The 31-task T1 Suite with a Reference Solution per Task."""
 
     lucy_focus = _focus(object_ids=("ent_lucy",))
     restart_focus = _focus(event_ids=("evt_restart",))
@@ -752,6 +753,31 @@ def build_outcome_tasks() -> tuple[ChatOutcomeTask, ...]:
                 event_ids=("evt_restart",),
                 validation_issue_ids=("validator:issue-1",),
                 suggested_view="compile",
+            ),
+        ),
+        ChatOutcomeTask(
+            task_id="golden-logic-audit",
+            message="对全案逻辑漏洞做一次复查，能修的给出补丁。",
+            hint=_AUDIT_PRESET,
+            focus=_focus(),
+            kind="golden",
+            expectations=ChatOutcomeExpectations(
+                required_suggestion_paths=(("ent_lucy", "description"),),
+                expected_primary_intent="logic_audit",
+                requires_suggestion=True,
+            ),
+            reference_candidate=_candidate(
+                "审计报告：全卷逻辑整体完整；发现 Lucy 的职责描述缺少具体追查对象，"
+                "建议补充说明。",
+                object_ids=("ent_lucy",),
+                suggestions=(
+                    _suggestion(
+                        "ent_lucy",
+                        "/description",
+                        "负责追查午夜重启原因的研究员。",
+                        "审计基准建议：补充职责描述。",
+                    ),
+                ),
             ),
         ),
         ChatOutcomeTask(

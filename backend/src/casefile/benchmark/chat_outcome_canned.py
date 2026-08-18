@@ -69,7 +69,7 @@ class CannedChatOutcomeProvider(FakeProvider):
         if (
             route is not None
             and route_allows_suggestions(route)
-            and intent == "edit_request"
+            and intent in {"edit_request", "logic_audit"}
             and entity_id is not None
         ):
             suggestions.append(
@@ -80,7 +80,11 @@ class CannedChatOutcomeProvider(FakeProvider):
                         "负责追查午夜重启原因的研究员。",
                         ensure_ascii=False,
                     ),
-                    reason="M1 基准可审阅建议。",
+                    reason=(
+                        "M1 审计基准可审阅建议。"
+                        if intent == "logic_audit"
+                        else "M1 基准可审阅建议。"
+                    ),
                 )
             )
         candidate = CaseFileChatCandidate(
@@ -110,7 +114,7 @@ def canned_outcome_expectations(
     entity_id = _first_object_id(casefile, "entities")
     event_id = _first_object_id(casefile, "events")
     required_suggestion_paths: tuple[tuple[str, str], ...] = ()
-    if routing_intent == "edit_request" and entity_id is not None:
+    if routing_intent in {"edit_request", "logic_audit"} and entity_id is not None:
         required_suggestion_paths = ((entity_id, "description"),)
     return ChatOutcomeExpectations(
         expected_object_ids=(entity_id,) if entity_id is not None else (),

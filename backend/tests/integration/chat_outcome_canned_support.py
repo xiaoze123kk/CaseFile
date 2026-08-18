@@ -19,6 +19,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.models import CaseFileChatCandidate, CaseFileChatRequest
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
@@ -33,8 +36,6 @@ from casefile.benchmark.chat_outcome_eval import (
 )
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine
-from sqlalchemy.orm import sessionmaker
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +49,7 @@ class CannedTrialOutcome:
     provider_request: CaseFileChatRequest | None
     candidate: CaseFileChatCandidate
     draft_unchanged: bool
+    patch_set: dict[str, Any] | None
 
 
 def run_chat_trial(
@@ -188,6 +190,7 @@ def run_chat_trial(
             provider_request=provider_request,
             candidate=candidate,
             draft_unchanged=draft_unchanged,
+            patch_set=assistant["patch_set"],
         )
 
 
