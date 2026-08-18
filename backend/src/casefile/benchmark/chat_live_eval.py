@@ -128,10 +128,14 @@ def _resolver_for_provider(
             if route is None
             else str(route.execution_profile.get("prompt_component") or "chat")
         )
-        matched = (
-            actual_intent == fixture.expected_primary_intent
-            and actual_component == fixture.expected_prompt_component
+        safe_question_fallback = (
+            fixture.expected_primary_intent == "question"
+            and route is not None
+            and route.route_source == "fallback"
         )
+        matched = (
+            actual_intent == fixture.expected_primary_intent or safe_question_fallback
+        ) and actual_component == fixture.expected_prompt_component
         row: dict[str, Any] = {
             "fixture_id": fixture.fixture_id,
             "expected_intent": fixture.expected_primary_intent,

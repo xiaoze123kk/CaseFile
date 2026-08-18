@@ -18,9 +18,19 @@ ALLOWED_INTENTS = {
     "unsupported_action",
     "clarify",
     "out_of_scope",
+    "logic_audit",
     "fallback",
 }
-ALLOWED_COMPONENTS = {"chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
+ALLOWED_COMPONENTS = {
+    "chat",
+    "analysis",
+    "issue",
+    "edit",
+    "gate",
+    "clarify",
+    "scope",
+    "audit",
+}
 ALLOWED_HINTS = {
     "entrypoint:preset",
     "entrypoint:issue_action",
@@ -31,7 +41,7 @@ ALLOWED_HINTS = {
 def test_fixtures_are_legal_and_cover_dangerous_confusions() -> None:
     fixtures = build_eval_fixtures()
 
-    assert len(fixtures) == 30
+    assert len(fixtures) == 34
     assert len({fixture.fixture_id for fixture in fixtures}) == len(fixtures)
     for fixture in fixtures:
         assert fixture.fixture_id
@@ -62,19 +72,21 @@ def test_fixtures_are_legal_and_cover_dangerous_confusions() -> None:
     dangerous_pairs = {fixture.dangerous_pair for fixture in fixtures}
     assert ("unsupported_action", "edit_request") in dangerous_pairs
     assert ("validate_request", "analysis") in dangerous_pairs
+    assert ("validate_request", "logic_audit") in dangerous_pairs
+    assert ("question", "logic_audit") in dangerous_pairs
 
 
 def test_evaluate_chat_router_metrics_are_pure_and_thresholded() -> None:
     fixtures = build_eval_fixtures()
 
     report = evaluate_chat_router(fake_router_resolver, fixtures)
-    assert report.total == 30
+    assert report.total == 34
     assert 0.0 <= report.intent_accuracy <= 1.0
     assert 0.0 <= report.route_accuracy <= 1.0
     assert 0.0 <= report.dangerous_confusion_recall <= 1.0
     assert 0.0 <= report.fallback_rate <= 1.0
     assert 0.0 <= report.preservation_pass_rate <= 1.0
-    assert len(report.fallback_fixture_ids) == round(report.fallback_rate * 30)
+    assert len(report.fallback_fixture_ids) == round(report.fallback_rate * 34)
     assert evaluate_chat_router(fake_router_resolver, fixtures) == report
 
 
@@ -88,6 +100,7 @@ def test_fake_provider_baseline_meets_r2_gate_thresholds() -> None:
     # The only expected fallbacks are the gate and clarify fixtures.
     assert set(report.fallback_fixture_ids) == {
         "free-low-confidence-edit",
+        "free-low-confidence-audit",
         "free-clarify-fallback",
     }
 
@@ -115,3 +128,19 @@ def test_fake_router_resolves_anaphora_without_inventing_refs() -> None:
     assert unresolved.task_understanding.entities["object_mentions"] == [
         {"resolved_ref": None, "text": "它"}
     ]
+
+
+def test_fake_router_keeps_gate_ahead_of_logic_audit_confusion() -> None:
+    fixtures = {fixture.fixture_id: fixture for fixture in build_eval_fixtures()}
+
+    audit = fake_router_resolver(fixtures["free-logic-audit"])
+    assert audit.task_understanding is not None
+    assert audit.task_understanding.primary_intent == "logic_audit"
+    assert audit.route is not None
+    assert audit.route.execution_profile["prompt_component"] == "audit"
+
+    gate = fake_router_resolver(fixtures["free-gate-audit-confusion"])
+    assert gate.task_understanding is not None
+    assert gate.task_understanding.primary_intent == "validate_request"
+    assert gate.route is not None
+    assert gate.route.execution_profile["prompt_component"] == "gate"

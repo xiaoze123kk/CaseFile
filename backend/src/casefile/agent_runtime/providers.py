@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -123,6 +114,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
 _CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE"
@@ -327,6 +327,31 @@ def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
             capabilities={"needs_validation_snapshot": True},
             confidence=0.96,
             reason_codes=["explicit_gate_request"],
+            canonical_query=text,
+        )
+    audit_terms = ("逻辑漏洞", "矛盾", "断链", "时序", "动机缺口")
+    audit_scope_terms = ("全案", "全卷", "整个卷宗", "复查", "检查")
+    if any(token in text for token in audit_terms) and any(
+        token in text for token in audit_scope_terms
+    ):
+        uncertain = any(token in text for token in ("随便", "低置信度"))
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="logic_audit",
+            sub_intents=["full_case_audit"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(output_format="mixed"),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_relations": True,
+                "needs_validation_snapshot": True,
+                "needs_suggestion_generation": True,
+                "needs_reasoning": True,
+            },
+            risk_level="medium",
+            confidence=0.61 if uncertain else 0.91,
+            reason_codes=["uncertain_audit"] if uncertain else ["audit_request"],
             canonical_query=text,
         )
     if any(token in text for token in ("与卷宗无关", "别的项目", "量子")):

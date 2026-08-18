@@ -29,8 +29,8 @@ def test_live_eval_runner_uses_the_same_cascade_and_metrics_as_baseline() -> Non
     baseline = run_fake_baseline()
     assert isinstance(report, LiveChatRouterEvalReport)
     assert report.status == "passed"
-    assert report.fixture_count == 30
-    assert len(report.rows) == 30
+    assert report.fixture_count == 34
+    assert len(report.rows) == 34
     assert report.metrics is not None
     assert report.metrics.intent_accuracy == baseline.intent_accuracy
     assert report.metrics.route_accuracy == baseline.route_accuracy
@@ -38,7 +38,7 @@ def test_live_eval_runner_uses_the_same_cascade_and_metrics_as_baseline() -> Non
     assert report.event_count > 0
     assert report.model_call_stages.get("understanding", 0) > 0
     matched_rows = sum(1 for row in report.rows if row["matched"] is True)
-    assert matched_rows == round(report.metrics.route_accuracy * 30)
+    assert matched_rows == round(report.metrics.route_accuracy * 34)
 
 
 def test_live_eval_report_serializes_to_stable_json_shape() -> None:
