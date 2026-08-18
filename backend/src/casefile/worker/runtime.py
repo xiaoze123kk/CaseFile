@@ -67,9 +67,11 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_POLICY_V4_VERSION,
+    CHAT_CONTEXT_POLICY_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
+    CHAT_CONTEXT_PROMPT_V6_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
@@ -829,6 +831,8 @@ class Worker:
                             f" objects={list(error.object_ids)!r}, "
                             f"events={list(error.event_ids)!r}, "
                             f"validation_issues={list(error.issue_ids)!r}。"
+                            "这些 ID 可能出现在顶层 referenced_* 槽或"
+                            " audit_findings 的证据槽中，需一并修正；"
                             "允许的 ID 只来自当前 casefile 的 records/focus_objects/"
                             "工具结果以及 validation_issues；禁止 src_*、clm_* 等"
                             " source/brief 内部 ID。只修正引用槽，保留正文结论。"
@@ -1309,13 +1313,15 @@ class Worker:
         leave the request untouched. v1 binds the v4 prompt payload; v2 binds
         Thread Memory with the v5 prompt; v3 additionally exposes the Phase 4
         Context Tools via the v7 prompt and embeds the dashboard for both; v4
-        pairs the logic_audit full-snapshot routing with the v8 prompt.
+        pairs the logic_audit full-snapshot routing with the v8 prompt; v5 keeps
+        the v4 context shape and binds the v9 structured-audit prompt.
         """
 
         policy_v2 = request.context_policy_version == CHAT_CONTEXT_POLICY_V2_VERSION
         policy_v3 = request.context_policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
         policy_v4 = request.context_policy_version == CHAT_CONTEXT_POLICY_V4_VERSION
-        thread_memory_policy = policy_v2 or policy_v3 or policy_v4
+        policy_v5 = request.context_policy_version == CHAT_CONTEXT_POLICY_V5_VERSION
+        thread_memory_policy = policy_v2 or policy_v3 or policy_v4 or policy_v5
         legacy_policy = request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
         executor_input: str | None = None
         if legacy_policy:
@@ -1393,12 +1399,20 @@ class Worker:
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
-            CHAT_CONTEXT_PROMPT_V5_VERSION
-            if policy_v4
+            CHAT_CONTEXT_PROMPT_V6_VERSION
+            if policy_v5
             else (
-                CHAT_CONTEXT_PROMPT_V4_VERSION
-                if policy_v3
-                else (CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION)
+                CHAT_CONTEXT_PROMPT_V5_VERSION
+                if policy_v4
+                else (
+                    CHAT_CONTEXT_PROMPT_V4_VERSION
+                    if policy_v3
+                    else (
+                        CHAT_CONTEXT_PROMPT_V2_VERSION
+                        if policy_v2
+                        else CHAT_CONTEXT_PROMPT_VERSION
+                    )
+                )
             )
         )
         if request.prompt_version != expected_prompt:
@@ -1728,12 +1742,31 @@ class Worker:
                 raise ProviderProtocolError(
                     "CaseFile chat suggestion value_json is invalid"
                 ) from error
-            suggestions.append(
+            suggestion_payload: dict[str, Any] = {
+                "object_id": suggestion.object_id,
+                "path": suggestion.path,
+                "value": value,
+                "reason": suggestion.reason,
+            }
+            finding_ref = getattr(suggestion, "finding_ref", None)
+            if finding_ref is not None:
+                suggestion_payload["finding_ref"] = finding_ref
+            suggestions.append(suggestion_payload)
+        audit_findings: list[dict[str, Any]] = []
+        for finding in getattr(result.candidate, "audit_findings", []):
+            audit_findings.append(
                 {
-                    "object_id": suggestion.object_id,
-                    "path": suggestion.path,
-                    "value": value,
-                    "reason": suggestion.reason,
+                    "finding_id": finding.finding_id,
+                    "kind": finding.kind,
+                    "severity": finding.severity,
+                    "title": finding.title,
+                    "statement": finding.statement,
+                    "needs_manual_review": finding.needs_manual_review,
+                    "evidence_object_ids": list(finding.evidence_object_ids),
+                    "evidence_event_ids": list(finding.evidence_event_ids),
+                    "evidence_validation_issue_ids": list(
+                        finding.evidence_validation_issue_ids
+                    ),
                 }
             )
         with self.session_factory() as session:
@@ -1753,6 +1786,7 @@ class Worker:
                 ),
                 suggested_view=result.candidate.suggested_view,
                 suggestions=suggestions,
+                audit_findings=audit_findings,
                 usage=result.usage,
                 route=route_payload,
                 tools=result.tools.as_dict(),

@@ -30,9 +30,11 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_POLICY_V4_VERSION,
+    CHAT_CONTEXT_POLICY_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
+    CHAT_CONTEXT_PROMPT_V6_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatCandidate
 from casefile.application.services import CaseFileService
@@ -151,7 +153,10 @@ def _arm_report(
                 CHAT_CONTEXT_POLICY_V2_VERSION,
                 CHAT_CONTEXT_POLICY_V3_VERSION,
                 CHAT_CONTEXT_POLICY_V4_VERSION,
+                CHAT_CONTEXT_POLICY_V5_VERSION,
             }
+            else CHAT_CONTEXT_POLICY_V5_VERSION
+            if rollout in (None, "")
             else "agent-focus-v1"
         ),
         "expected_prompt_version": (
@@ -161,6 +166,8 @@ def _arm_report(
             if rollout == CHAT_CONTEXT_POLICY_V3_VERSION
             else CHAT_CONTEXT_PROMPT_V5_VERSION
             if rollout == CHAT_CONTEXT_POLICY_V4_VERSION
+            else CHAT_CONTEXT_PROMPT_V6_VERSION
+            if rollout in (None, "", CHAT_CONTEXT_POLICY_V5_VERSION)
             else "casefile-chat-v3"
         ),
     }

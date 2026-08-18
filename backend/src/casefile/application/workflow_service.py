@@ -12,6 +12,11 @@ import rfc8785
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.chat_audit_validation import (
+    audit_findings_suppressed_for,
+    normalize_audit_findings,
+    route_primary_intent,
+)
 from casefile.agent_runtime.chat_intent import (
     INTENT_ROUTER_VERSION,
     normalize_routing_hint,
@@ -33,10 +38,12 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_POLICY_V4_VERSION,
+    CHAT_CONTEXT_POLICY_V5_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
+    CHAT_CONTEXT_PROMPT_V6_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -172,14 +179,15 @@ _time = time_view
 def _chat_context_policy_version() -> str:
     """Return the default or opted-in chat context policy version.
 
-    ``casefile-chat-context-v4`` is the accepted default (pairs with
-    ``casefile-chat-v8`` and ``casefile-chat-tools-v4``).
-    ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v3`` restores the
-    Phase 4 policy (paired with ``casefile-chat-v7``), ``...v2`` opts in to the
-    Phase 3 rolling Thread Memory policy, ``...v1`` restores the frozen Phase 2
-    policy (paired with ``casefile-chat-v4``), and ``agent-focus-v1`` forces the
-    legacy policy (paired with the legacy prompt render in ``_new_task``) for
-    rollback. Unknown rollout values are ignored.
+    ``casefile-chat-context-v5`` is the accepted default (pairs with
+    ``casefile-chat-v9`` and ``casefile-chat-tools-v4``).
+    ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v4`` restores the
+    audit prompt policy (paired with ``casefile-chat-v8``), ``...v3`` restores
+    the Phase 4 policy (paired with ``casefile-chat-v7``), ``...v2`` opts in to
+    the Phase 3 rolling Thread Memory policy, ``...v1`` restores the frozen
+    Phase 2 policy (paired with ``casefile-chat-v4``), and ``agent-focus-v1``
+    forces the legacy policy (paired with the legacy prompt render in
+    ``_new_task``) for rollback. Unknown rollout values are ignored.
     """
 
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
@@ -193,7 +201,9 @@ def _chat_context_policy_version() -> str:
         return CHAT_CONTEXT_POLICY_V3_VERSION
     if rollout == CHAT_CONTEXT_POLICY_V4_VERSION:
         return CHAT_CONTEXT_POLICY_V4_VERSION
-    return CHAT_CONTEXT_POLICY_V4_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_V5_VERSION:
+        return CHAT_CONTEXT_POLICY_V5_VERSION
+    return CHAT_CONTEXT_POLICY_V5_VERSION
 
 
 def _latest_context_state_ref(
@@ -719,6 +729,7 @@ class WorkflowService:
         referenced_validation_issue_ids: list[str],
         suggested_view: str | None = None,
         suggestions: list[dict[str, Any]],
+        audit_findings: list[dict[str, Any]] | None = None,
         usage: dict[str, Any],
         route: dict[str, Any] | None = None,
         tools: dict[str, Any] | None = None,
@@ -794,6 +805,27 @@ class WorkflowService:
                         },
                     )
 
+            # Structured logic-audit findings belong to the audit executor only:
+            # other routes (question, gate, issue, ...) drop the optional slot
+            # without failing the otherwise valid answer.
+            audit_findings = list(audit_findings or [])
+            suppressed_findings_count = 0
+            if audit_findings_suppressed_for(route):
+                if audit_findings:
+                    suppressed_findings_count = len(audit_findings)
+                    _append_event(
+                        self.session,
+                        task,
+                        "route.audit_findings_suppressed",
+                        "routing",
+                        {
+                            **route_public_payload(route),
+                            "route_intent": route_primary_intent(route),
+                            "suppressed_count": suppressed_findings_count,
+                        },
+                    )
+                    audit_findings = []
+
             registry_rows = list(
                 self.session.scalars(
                     select(CaseFileObject).where(
@@ -858,6 +890,77 @@ class WorkflowService:
                 self.session
             ).validation_issue_ids(owned)
             missing_issues = sorted(set(referenced_issues) - known_issue_ids)
+
+            suggestion_finding_refs = [
+                str(item.get("finding_ref")).strip() or None
+                if isinstance(item, dict)
+                and isinstance(item.get("finding_ref"), str)
+                and str(item["finding_ref"]).strip()
+                else None
+                for item in suggestions
+            ]
+            try:
+                (
+                    audit_findings,
+                    missing_finding_objects,
+                    missing_finding_events,
+                    missing_finding_issues,
+                ) = normalize_audit_findings(
+                    audit_findings,
+                    frozen_object_ids=frozen_object_ids,
+                    frozen_event_ids=frozen_event_ids,
+                    known_issue_ids=known_issue_ids,
+                    suggestion_finding_refs=suggestion_finding_refs,
+                )
+            except ValueError as error:
+                raise RuntimeError(f"Invalid audit_findings: {error}") from error
+
+            # Evidence IDs are contractually part of the answer's public
+            # references: fold them in so every finding stays clickable in the
+            # workbench even when a model omitted them from the top-level slot.
+            for finding in audit_findings:
+                referenced_object_ids = [
+                    *referenced_object_ids,
+                    *finding["evidence_object_ids"],
+                ]
+                referenced_event_ids = [
+                    *referenced_event_ids,
+                    *finding["evidence_event_ids"],
+                ]
+                referenced_validation_issue_ids = [
+                    *referenced_validation_issue_ids,
+                    *finding["evidence_validation_issue_ids"],
+                ]
+            if (
+                referenced_object_ids != _unique_strings(referenced_object_ids)
+                or referenced_event_ids != _unique_strings(referenced_event_ids)
+                or referenced_validation_issue_ids
+                != _unique_strings(referenced_validation_issue_ids)
+            ):
+                _append_event(
+                    self.session,
+                    task,
+                    "context.audit_evidence_references_added",
+                    "context",
+                    {
+                        "finding_count": len(audit_findings),
+                    },
+                )
+            referenced = _unique_strings(referenced_object_ids)
+            missing_references = sorted(
+                (set(referenced) - frozen_object_ids)
+                | set(missing_finding_objects)
+            )
+            referenced_events = _unique_strings(referenced_event_ids)
+            missing_events = sorted(
+                (set(referenced_events) - frozen_event_ids)
+                | set(missing_finding_events)
+            )
+            referenced_issues = _unique_strings(referenced_validation_issue_ids)
+            missing_issues = sorted(
+                (set(referenced_issues) - known_issue_ids)
+                | set(missing_finding_issues)
+            )
             if missing_references or missing_events or missing_issues:
                 raise ChatReferenceValidationError(
                     object_ids=tuple(missing_references),
@@ -982,6 +1085,7 @@ class WorkflowService:
                 "suggested_view": resolved_view,
                 "patch_set_id": None if patch_set is None else patch_set.id,
                 "stale": stale,
+                "audit_findings": audit_findings,
                 "tool_metrics": tool_metrics,
             }
             if routing_summary is not None:
@@ -2269,6 +2373,8 @@ class WorkflowService:
                 prompt_version = CHAT_CONTEXT_PROMPT_V4_VERSION
             elif policy_version == CHAT_CONTEXT_POLICY_V4_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_V5_VERSION
+            elif policy_version == CHAT_CONTEXT_POLICY_V5_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_V6_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
         return TaskRun(
@@ -2301,7 +2407,8 @@ class WorkflowService:
             toolset_version=(
                 CHAT_TOOLSET_V4_VERSION
                 if task_type == "casefile_chat"
-                and policy_version == CHAT_CONTEXT_POLICY_V4_VERSION
+                and policy_version
+                in {CHAT_CONTEXT_POLICY_V4_VERSION, CHAT_CONTEXT_POLICY_V5_VERSION}
                 else (
                     CHAT_TOOLSET_V3_VERSION
                     if task_type == "casefile_chat"

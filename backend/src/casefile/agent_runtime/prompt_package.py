@@ -60,6 +60,7 @@ from casefile.agent_runtime.context.thread_memory import (
 )
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     ChatExecutorInputV1,
     ChatExecutorInputV2,
     ChatIntentRouterInputV1,
@@ -158,6 +159,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-task-understanding-v1": ChatTaskUnderstandingOutput,
         "casefile-chat-rewrite-v1": QueryRewriteOutput,
         "casefile-chat-output-v1": CaseFileChatCandidate,
+        "casefile-chat-output-v2": CaseFileChatCandidateV2,
         "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
     }
 )

@@ -86,6 +86,7 @@ from casefile.agent_runtime.prompt import (
     brief_intake_questions_input,
     brief_intake_synthesize_input,
     brief_strategy_options_input,
+    chat_executor_output_type,
     generation_input,
     idea_generation_input,
     polish_input,
@@ -1425,12 +1426,13 @@ class OpenAIAgentsProvider:
             raise ProviderProtocolError("OpenAI API key is required")
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
+        output_type = chat_executor_output_type(request)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
                 instructions=instructions,
                 input_text=input_text,
-                output_type=CaseFileChatCandidate,
+                output_type=output_type,
                 stage="responding",
                 tools=tools,
                 context=context,
@@ -1439,7 +1441,7 @@ class OpenAIAgentsProvider:
             )
         )
         return CaseFileChatResult(
-            candidate=CaseFileChatCandidate.model_validate(candidate),
+            candidate=output_type.model_validate(candidate),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )
@@ -1811,6 +1813,7 @@ class DeepSeekAgentsProvider:
             raise ProviderProtocolError("DeepSeek API key is required")
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
+        output_type = chat_executor_output_type(request)
         output_protocol = (
             "json_object"
             if tools
@@ -1821,7 +1824,7 @@ class DeepSeekAgentsProvider:
                 request,
                 instructions=instructions,
                 input_text=input_text,
-                output_type=CaseFileChatCandidate,
+                output_type=output_type,
                 stage="responding",
                 tools=tools,
                 context=context,
@@ -1831,7 +1834,7 @@ class DeepSeekAgentsProvider:
             )
         )
         return CaseFileChatResult(
-            candidate=CaseFileChatCandidate.model_validate(candidate),
+            candidate=output_type.model_validate(candidate),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from pydantic import BaseModel
+
 from casefile.agent_runtime.context.thread_memory import ThreadCompactionRequest
 from casefile.agent_runtime.models import (
     BriefStrategyOptionsRequest,
@@ -13,7 +15,7 @@ from casefile.agent_runtime.models import (
     RouteSpecificRewriteRequest,
     chat_routing_payload_as_dict,
 )
-from casefile.agent_runtime.prompt_package import render_prompt_package
+from casefile.agent_runtime.prompt_package import OUTPUT_SCHEMAS, render_prompt_package
 from casefile.agent_runtime.prompt_repository import load_prompt
 
 AGENT_VERSION = "casefile-single-agent-v2"
@@ -302,6 +304,21 @@ def _with_chat_repair_feedback(
         "不得改写已通过的正文结论）：\n"
         + lines
     )
+
+
+def chat_executor_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
+    """Resolve the structured output model for the request's prompt package.
+
+    v9+ audit components emit ``casefile-chat-output-v2``; every other
+    component and older packages keep the frozen v1 contract.
+    """
+
+    definition = load_prompt("casefile_chat", request.prompt_version)
+    if definition.package is None:
+        return OUTPUT_SCHEMAS["casefile-chat-output-v1"]
+    component_id = _chat_executor_component_id(definition, request)
+    schema_id = definition.package.components[component_id].output_schema_id
+    return OUTPUT_SCHEMAS[schema_id]
 
 
 def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
