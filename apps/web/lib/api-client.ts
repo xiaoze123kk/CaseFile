@@ -493,6 +493,7 @@ export type AgentRoutingCorrectIntent =
   | "explain_issue"
   | "edit_request"
   | "validate_request"
+  | "logic_audit"
   | "unsupported_action"
   | "clarify"
   | "out_of_scope";
