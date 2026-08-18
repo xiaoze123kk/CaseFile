@@ -23,11 +23,16 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
+    CHAT_CONTEXT_POLICY_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V4_VERSION,
+    CHAT_CONTEXT_PROMPT_V5_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatCandidate
 from casefile.application.services import CaseFileService
@@ -44,8 +49,6 @@ from casefile.benchmark.chat_outcome_eval import (
 from casefile.benchmark.chat_outcome_live_eval import LIVE_THRESHOLDS
 from casefile.data_postgres.models import AgentThreadContextState, TaskEvent, TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -143,7 +146,12 @@ def _arm_report(
         "rows": rows,
         "expected_policy_version": (
             rollout
-            if rollout in {CHAT_CONTEXT_POLICY_V2_VERSION, CHAT_CONTEXT_POLICY_V3_VERSION}
+            if rollout
+            in {
+                CHAT_CONTEXT_POLICY_V2_VERSION,
+                CHAT_CONTEXT_POLICY_V3_VERSION,
+                CHAT_CONTEXT_POLICY_V4_VERSION,
+            }
             else "agent-focus-v1"
         ),
         "expected_prompt_version": (
@@ -151,6 +159,8 @@ def _arm_report(
             if rollout == CHAT_CONTEXT_POLICY_V2_VERSION
             else CHAT_CONTEXT_PROMPT_V4_VERSION
             if rollout == CHAT_CONTEXT_POLICY_V3_VERSION
+            else CHAT_CONTEXT_PROMPT_V5_VERSION
+            if rollout == CHAT_CONTEXT_POLICY_V4_VERSION
             else "casefile-chat-v3"
         ),
     }
@@ -649,6 +659,7 @@ def test_chat_context_phase3_live_acceptance_produces_report(
         "agent-focus-v1",
         CHAT_CONTEXT_POLICY_V2_VERSION,
         CHAT_CONTEXT_POLICY_V3_VERSION,
+        CHAT_CONTEXT_POLICY_V4_VERSION,
     }:
         raise RuntimeError(
             "Unsupported CASEFILE_CHAT_CONTEXT_LIVE_ROLLOUT for phase 3 live: "
@@ -700,8 +711,13 @@ def test_chat_context_phase3_live_acceptance_produces_report(
                 tasks=tasks,
                 rollout=rollout,
                 compacted=rollout
-                in {CHAT_CONTEXT_POLICY_V2_VERSION, CHAT_CONTEXT_POLICY_V3_VERSION},
-                reference_autofill=rollout == CHAT_CONTEXT_POLICY_V3_VERSION,
+                in {
+                    CHAT_CONTEXT_POLICY_V2_VERSION,
+                    CHAT_CONTEXT_POLICY_V3_VERSION,
+                    CHAT_CONTEXT_POLICY_V4_VERSION,
+                },
+                reference_autofill=rollout
+                in {CHAT_CONTEXT_POLICY_V3_VERSION, CHAT_CONTEXT_POLICY_V4_VERSION},
                 trials=trials,
                 arm="rollout",
                 errors=rollout_errors,
@@ -723,8 +739,13 @@ def test_chat_context_phase3_live_acceptance_produces_report(
                 model_id=model_id,
                 rollout=rollout,
                 compacted=rollout
-                in {CHAT_CONTEXT_POLICY_V2_VERSION, CHAT_CONTEXT_POLICY_V3_VERSION},
-                reference_autofill=rollout == CHAT_CONTEXT_POLICY_V3_VERSION,
+                in {
+                    CHAT_CONTEXT_POLICY_V2_VERSION,
+                    CHAT_CONTEXT_POLICY_V3_VERSION,
+                    CHAT_CONTEXT_POLICY_V4_VERSION,
+                },
+                reference_autofill=rollout
+                in {CHAT_CONTEXT_POLICY_V3_VERSION, CHAT_CONTEXT_POLICY_V4_VERSION},
                 rows=rollout_rows,
                 trials=trials,
                 errors=rollout_errors,
@@ -743,6 +764,7 @@ def test_chat_context_phase3_live_acceptance_produces_report(
         compacted = rollout in {
             CHAT_CONTEXT_POLICY_V2_VERSION,
             CHAT_CONTEXT_POLICY_V3_VERSION,
+            CHAT_CONTEXT_POLICY_V4_VERSION,
         }
         errors: list[str] = []
         rows = _run_trials_for_arm(
@@ -754,7 +776,8 @@ def test_chat_context_phase3_live_acceptance_produces_report(
             tasks=tasks,
             rollout=rollout,
             compacted=compacted,
-            reference_autofill=rollout == CHAT_CONTEXT_POLICY_V3_VERSION,
+            reference_autofill=rollout
+            in {CHAT_CONTEXT_POLICY_V3_VERSION, CHAT_CONTEXT_POLICY_V4_VERSION},
             trials=trials,
             arm="baseline" if not compacted else "rollout",
             errors=errors,
@@ -765,7 +788,8 @@ def test_chat_context_phase3_live_acceptance_produces_report(
             model_id=model_id,
             rollout=rollout,
             compacted=compacted,
-            reference_autofill=rollout == CHAT_CONTEXT_POLICY_V3_VERSION,
+            reference_autofill=rollout
+            in {CHAT_CONTEXT_POLICY_V3_VERSION, CHAT_CONTEXT_POLICY_V4_VERSION},
             rows=rows,
             trials=trials,
             errors=errors,

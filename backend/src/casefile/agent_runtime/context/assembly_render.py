@@ -13,6 +13,8 @@ CHAT_CONTEXT_PROMPT_V2_VERSION = "casefile-chat-v5"
 CHAT_CONTEXT_PROMPT_V3_VERSION = "casefile-chat-v6"
 #: Phase 4 v3-fix prompt package now paired with ``casefile-chat-context-v3``.
 CHAT_CONTEXT_PROMPT_V4_VERSION = "casefile-chat-v7"
+#: Audit prompt package paired with ``casefile-chat-context-v4``.
+CHAT_CONTEXT_PROMPT_V5_VERSION = "casefile-chat-v8"
 _REQUIRED_BLOCK_IDS = frozenset(
     {
         "author_message",
@@ -73,5 +75,6 @@ __all__ = [
     "CHAT_CONTEXT_PROMPT_V2_VERSION",
     "CHAT_CONTEXT_PROMPT_V3_VERSION",
     "CHAT_CONTEXT_PROMPT_V4_VERSION",
+    "CHAT_CONTEXT_PROMPT_V5_VERSION",
     "chat_input_payload_from_assembly",
 ]

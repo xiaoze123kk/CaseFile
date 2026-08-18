@@ -66,8 +66,10 @@ from casefile.agent_runtime.chat_routing import (
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
+    CHAT_CONTEXT_POLICY_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V4_VERSION,
+    CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
@@ -1306,12 +1308,14 @@ class Worker:
         Legacy policies measure the exact string providers already render and
         leave the request untouched. v1 binds the v4 prompt payload; v2 binds
         Thread Memory with the v5 prompt; v3 additionally exposes the Phase 4
-        Context Tools via the v6 prompt and embeds the dashboard for both.
+        Context Tools via the v7 prompt and embeds the dashboard for both; v4
+        pairs the logic_audit full-snapshot routing with the v8 prompt.
         """
 
         policy_v2 = request.context_policy_version == CHAT_CONTEXT_POLICY_V2_VERSION
         policy_v3 = request.context_policy_version == CHAT_CONTEXT_POLICY_V3_VERSION
-        thread_memory_policy = policy_v2 or policy_v3
+        policy_v4 = request.context_policy_version == CHAT_CONTEXT_POLICY_V4_VERSION
+        thread_memory_policy = policy_v2 or policy_v3 or policy_v4
         legacy_policy = request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
         executor_input: str | None = None
         if legacy_policy:
@@ -1389,9 +1393,13 @@ class Worker:
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
-            CHAT_CONTEXT_PROMPT_V4_VERSION
-            if policy_v3
-            else (CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION)
+            CHAT_CONTEXT_PROMPT_V5_VERSION
+            if policy_v4
+            else (
+                CHAT_CONTEXT_PROMPT_V4_VERSION
+                if policy_v3
+                else (CHAT_CONTEXT_PROMPT_V2_VERSION if policy_v2 else CHAT_CONTEXT_PROMPT_VERSION)
+            )
         )
         if request.prompt_version != expected_prompt:
             raise RuntimeError(

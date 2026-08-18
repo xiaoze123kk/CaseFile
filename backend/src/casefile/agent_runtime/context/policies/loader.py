@@ -24,6 +24,8 @@ CHAT_CONTEXT_POLICY_VERSION: Final = "casefile-chat-context-v1"
 CHAT_CONTEXT_POLICY_V2_VERSION: Final = "casefile-chat-context-v2"
 #: Phase 4 dashboard + Context Tools policy, gated behind the rollout flag.
 CHAT_CONTEXT_POLICY_V3_VERSION: Final = "casefile-chat-context-v3"
+#: Phase 4 policy plus logic_audit full-snapshot routing, paired with v8 prompts.
+CHAT_CONTEXT_POLICY_V4_VERSION: Final = "casefile-chat-context-v4"
 _POLICY_SCHEMA_FILE: Final = "schema.json"
 _POLICY_VERSION = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 
@@ -135,6 +137,7 @@ __all__ = [
     "CHAT_CONTEXT_POLICY_VERSION",
     "CHAT_CONTEXT_POLICY_V2_VERSION",
     "CHAT_CONTEXT_POLICY_V3_VERSION",
+    "CHAT_CONTEXT_POLICY_V4_VERSION",
     "CONTEXT_POLICY_RESOURCE_PACKAGE",
     "CONTEXT_POLICY_SCHEMA_VERSION",
     "ContextPolicyError",

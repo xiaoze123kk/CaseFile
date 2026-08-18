@@ -14,8 +14,35 @@ from casefile.agent_runtime.context.models import (
 from casefile.agent_runtime.context.protocols import ContextRun
 
 _MAX_MESSAGE_CHARS = 200
-_GATE_PROFILE = "validate_request"
+_DEFAULT_FULL_PROFILES = ("validate_request.gate_check",)
 _COMPACT_FIELDS = ("issue_id", "rule_id", "severity", "title", "message", "object_refs")
+
+
+def _full_snapshot_profiles(config: dict[str, Any]) -> tuple[str, ...]:
+    """Resolve route profiles that keep the full frozen validation snapshot.
+
+    ``full_snapshot_profiles`` is the v4 policy shape; older policies carry the
+    single ``gate_profile`` value and keep working through prefix matching.
+    """
+
+    raw = config.get("full_snapshot_profiles")
+    if isinstance(raw, list):
+        profiles = [str(value) for value in raw if isinstance(value, str) and value]
+        if profiles:
+            return tuple(profiles)
+    raw = config.get("gate_profile")
+    if isinstance(raw, str) and raw:
+        return (raw,)
+    return _DEFAULT_FULL_PROFILES
+
+
+def _matches_full_snapshot_profile(route_profile: str, profiles: tuple[str, ...]) -> bool:
+    """Exact profile match, or bare primary-intent prefix for legacy policies."""
+
+    return any(
+        route_profile == profile or route_profile.startswith(f"{profile}.")
+        for profile in profiles
+    )
 
 
 def _compact_issue(issue: dict[str, Any], *, max_message_chars: int) -> dict[str, Any]:
@@ -111,8 +138,10 @@ class ValidationTrimStage:
         author_message = str(message) if isinstance(message, str) else ""
         config = run.policy_stage_config("validation_issues")
         max_chars = int(config.get("max_message_chars", _MAX_MESSAGE_CHARS))
-        gate_profile = str(config.get("gate_profile", _GATE_PROFILE))
-        gate = _route_profile(run) == gate_profile
+        gate = _matches_full_snapshot_profile(
+            _route_profile(run),
+            _full_snapshot_profiles(config),
+        )
         trimmed = trim_validation_issues(
             issues,
             focus_issue_ids=focus_issue_ids,
@@ -136,8 +165,11 @@ class ValidationTrimStage:
             decisions.append(
                 ContextDecision(
                     stage="validation_trim",
-                    code="validation_full_for_gate",
-                    detail="validate_request keeps the full frozen validation snapshot",
+                    code="validation_full_for_route",
+                    detail=(
+                        "the route profile keeps the full frozen validation snapshot "
+                        f"({_route_profile(run)})"
+                    ),
                 )
             )
         payload: list[dict[str, Any]] = trimmed["issues"]
