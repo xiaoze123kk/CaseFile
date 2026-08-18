@@ -10,10 +10,10 @@
   },
   "fragments": {
     "common": {"file": "fragments/common.md", "sha256": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00"},
-    "planner": {"file": "fragments/planner.md", "sha256": "914e3d3cc23786f983296636fbf96e1b17988b3d650be0865d8d716cf6974019"},
+    "planner": {"file": "fragments/planner.md", "sha256": "f54c9a161171d44fa67b988e732e082c08071c7ed5e80b5baf6b2638bf1dd6ed"},
     "temporal": {"file": "fragments/temporal.md", "sha256": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640"},
     "domain_common": {"file": "fragments/domain_common.md", "sha256": "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"},
-    "story": {"file": "fragments/story.md", "sha256": "6be6e4cbedd87586af144248b01367ea8fa1d9c011a45fdb0298950ff6802599"},
+    "story": {"file": "fragments/story.md", "sha256": "66f626183ca34b7f972042fd1de8fcfac681e0f2a1f4d5a76c207052b31fac8a"},
     "evidence": {"file": "fragments/evidence.md", "sha256": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4"},
     "matrix": {"file": "fragments/matrix.md", "sha256": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80"},
     "governance": {"file": "fragments/governance.md", "sha256": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79"}

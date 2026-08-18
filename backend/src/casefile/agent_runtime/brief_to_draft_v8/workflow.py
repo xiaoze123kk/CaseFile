@@ -117,6 +117,42 @@ _CREATOR_TEXT_FIELDS = frozenset(
 _HAN_TEXT = re.compile(r"[\u3400-\u9fff]")
 _LATIN_TEXT = re.compile(r"[A-Za-z]")
 
+_PERSON_ROLE_NAME_TERMS = frozenset(
+    {
+        "男主人公",
+        "女主人公",
+        "主人公",
+        "男主角",
+        "女主角",
+        "男主",
+        "女主",
+        "主角",
+        "嫌疑人",
+        "嫌疑犯",
+        "凶手",
+        "受害者",
+        "被害人",
+        "受害人",
+        "目击者",
+        "证人",
+        "侦探",
+        "警察",
+        "刑警",
+        "法医",
+        "医生",
+        "管家",
+        "邻居",
+        "神秘人",
+        "黑衣人",
+        "幕后黑手",
+        "表层黑手",
+        "黑手",
+        "主谋",
+        "帮凶",
+        "共犯",
+    }
+)
+
 _DOMAIN_REFERENCE_CONTRACTS = {
     "story_world": {
         "entities.knowledge_states[].as_of_event_key": ["events"],
@@ -659,6 +695,14 @@ class _CompileQualityGateStage:
                     )
                     if temporal_issues:
                         raise LinkerValidationError(temporal_issues)
+                if ctx.uses_v15:
+                    if not isinstance(ctx.story_output, StoryWorldIRV3):
+                        raise RuntimeError(
+                            "v15 naming gate requires StoryWorldIRV3"
+                        )
+                    naming_issues = _v15_story_person_name_issues(ctx.story_output)
+                    if naming_issues:
+                        raise LinkerValidationError(naming_issues)
                 if ctx.spec.story_feature is not None:
                     feature_issues = ctx.spec.story_feature.validate_story(
                         ctx.story,
@@ -1423,6 +1467,57 @@ def _matrix_cell_issues(
                             "ir_path": f"/hypotheses/{hypothesis.local_key}",
                         }
                     )
+    return issues
+
+
+def _v15_story_person_name_issues(
+    story: StoryWorldIRV3,
+) -> list[dict[str, Any]]:
+    """Reject person entities whose name is still an identity role label.
+
+    The v15 Story prompt requires a concrete personal name and explicitly
+    bans role words such as 主角/嫌疑人/凶手 from the ``name`` field.  This
+    deterministic gate turns the soft prompt contract into a recoverable
+    quality-gate failure: the compile stage reports one issue per offending
+    entity and the shared repair loop re-drafts only ``story_world`` with
+    those targeted issues.
+    """
+
+    issues: list[dict[str, Any]] = []
+    for entity in story.entities:
+        if entity.entity_type != "person":
+            continue
+        normalized = "".join(entity.name.split())
+        matched = next(
+            (
+                term
+                for term in sorted(
+                    _PERSON_ROLE_NAME_TERMS,
+                    key=len,
+                    reverse=True,
+                )
+                if term in normalized
+            ),
+            None,
+        )
+        if matched is None:
+            continue
+        issues.append(
+            {
+                "code": "person_name_role_label",
+                "path": f"/entities/{entity.local_key}/name",
+                "message": (
+                    f"人物实体的 name 不能使用身份角色词“{matched}”。"
+                    "请改为具体姓名（Brief 或 Blueprint 已给出姓名或化名时逐字沿用，"
+                    "否则起一个与作品设定相符的简体中文姓名），"
+                    "并把该身份写入 traits 或 description。"
+                ),
+                "component_id": "story_world",
+                "failure_layer": "naming_contract",
+                "schema_id": "story-world-ir-v3",
+                "ir_path": f"/entities/{entity.local_key}",
+            }
+        )
     return issues
 
 
