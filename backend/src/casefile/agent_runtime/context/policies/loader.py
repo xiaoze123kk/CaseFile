@@ -28,6 +28,8 @@ CHAT_CONTEXT_POLICY_V3_VERSION: Final = "casefile-chat-context-v3"
 CHAT_CONTEXT_POLICY_V4_VERSION: Final = "casefile-chat-context-v4"
 #: v4 policy paired with v9 prompts (structured audit_findings output).
 CHAT_CONTEXT_POLICY_V5_VERSION: Final = "casefile-chat-context-v5"
+#: v5 policy paired with v10 prompts (router direct-write guard + audit evidence chain).
+CHAT_CONTEXT_POLICY_V6_VERSION: Final = "casefile-chat-context-v6"
 _POLICY_SCHEMA_FILE: Final = "schema.json"
 _POLICY_VERSION = re.compile(r"^[a-z0-9][a-z0-9_-]{0,79}$")
 
@@ -141,6 +143,7 @@ __all__ = [
     "CHAT_CONTEXT_POLICY_V3_VERSION",
     "CHAT_CONTEXT_POLICY_V4_VERSION",
     "CHAT_CONTEXT_POLICY_V5_VERSION",
+    "CHAT_CONTEXT_POLICY_V6_VERSION",
     "CONTEXT_POLICY_RESOURCE_PACKAGE",
     "CONTEXT_POLICY_SCHEMA_VERSION",
     "ContextPolicyError",

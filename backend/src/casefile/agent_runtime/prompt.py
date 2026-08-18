@@ -69,6 +69,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v7",
         "casefile-chat-v8",
         "casefile-chat-v9",
+        "casefile-chat-v10",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"

@@ -1667,7 +1667,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
             assert frozen_input["focus"]["object_ids"] == []
-            assert frozen_input["context_policy_version"] == "casefile-chat-context-v5"
+            assert frozen_input["context_policy_version"] == "casefile-chat-context-v6"
             assert frozen_input["routing_hint"] == {
                 "entrypoint": "free_text",
                 "preset_id": None,
@@ -1686,9 +1686,9 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert routed_request.route is not None
         assert routed_request.route.route_source == "llm"
         assert routed_request.route.execution_profile["prompt_component"] == "edit"
-        assert routed_request.prompt_version == "casefile-chat-v9"
+        assert routed_request.prompt_version == "casefile-chat-v10"
         assert routed_request.toolset_version == "casefile-chat-tools-v4"
-        assert routed_request.context_policy_version == "casefile-chat-context-v5"
+        assert routed_request.context_policy_version == "casefile-chat-context-v6"
         assert routed_request.task_understanding is not None
         assert routed_request.task_understanding.primary_intent == "edit_request"
 
@@ -2301,7 +2301,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []
         assert frozen_input["message"] == "请逐项建议调整研究员、实验室和重启事件。"
-        assert frozen_input["context_policy_version"] == "casefile-chat-context-v5"
+        assert frozen_input["context_policy_version"] == "casefile-chat-context-v6"
         assert frozen_input["routing_hint"] == {
             "entrypoint": "free_text",
             "preset_id": None,
@@ -2316,7 +2316,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                     TaskRun.id == first_chat_task_id
                 )
             ).one()
-        assert prompt_version == "casefile-chat-v9"
+        assert prompt_version == "casefile-chat-v10"
         assert toolset_version == "casefile-chat-tools-v4"
 
         chat_claimer = Worker(

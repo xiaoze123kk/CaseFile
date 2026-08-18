@@ -39,11 +39,13 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V3_VERSION,
     CHAT_CONTEXT_POLICY_V4_VERSION,
     CHAT_CONTEXT_POLICY_V5_VERSION,
+    CHAT_CONTEXT_POLICY_V6_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
     CHAT_CONTEXT_PROMPT_V2_VERSION,
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
+    CHAT_CONTEXT_PROMPT_V7_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -179,15 +181,17 @@ _time = time_view
 def _chat_context_policy_version() -> str:
     """Return the default or opted-in chat context policy version.
 
-    ``casefile-chat-context-v5`` is the accepted default (pairs with
-    ``casefile-chat-v9`` and ``casefile-chat-tools-v4``).
-    ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v4`` restores the
-    audit prompt policy (paired with ``casefile-chat-v8``), ``...v3`` restores
-    the Phase 4 policy (paired with ``casefile-chat-v7``), ``...v2`` opts in to
-    the Phase 3 rolling Thread Memory policy, ``...v1`` restores the frozen
-    Phase 2 policy (paired with ``casefile-chat-v4``), and ``agent-focus-v1``
-    forces the legacy policy (paired with the legacy prompt render in
-    ``_new_task``) for rollback. Unknown rollout values are ignored.
+    ``casefile-chat-context-v6`` is the accepted default (pairs with the
+    hardened ``casefile-chat-v10`` and ``casefile-chat-tools-v4``).
+    ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v5`` restores the
+    structured-audit policy (paired with ``casefile-chat-v9``), ``...v4``
+    restores the audit prompt policy (paired with ``casefile-chat-v8``),
+    ``...v3`` restores the Phase 4 policy (paired with ``casefile-chat-v7``),
+    ``...v2`` opts in to the Phase 3 rolling Thread Memory policy, ``...v1``
+    restores the frozen Phase 2 policy (paired with ``casefile-chat-v4``),
+    and ``agent-focus-v1`` forces the legacy policy (paired with the legacy
+    prompt render in ``_new_task``) for rollback. Unknown rollout values are
+    ignored.
     """
 
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
@@ -203,7 +207,9 @@ def _chat_context_policy_version() -> str:
         return CHAT_CONTEXT_POLICY_V4_VERSION
     if rollout == CHAT_CONTEXT_POLICY_V5_VERSION:
         return CHAT_CONTEXT_POLICY_V5_VERSION
-    return CHAT_CONTEXT_POLICY_V5_VERSION
+    if rollout == CHAT_CONTEXT_POLICY_V6_VERSION:
+        return CHAT_CONTEXT_POLICY_V6_VERSION
+    return CHAT_CONTEXT_POLICY_V6_VERSION
 
 
 def _latest_context_state_ref(
@@ -2376,6 +2382,8 @@ class WorkflowService:
                 prompt_version = CHAT_CONTEXT_PROMPT_V5_VERSION
             elif policy_version == CHAT_CONTEXT_POLICY_V5_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_V6_VERSION
+            elif policy_version == CHAT_CONTEXT_POLICY_V6_VERSION:
+                prompt_version = CHAT_CONTEXT_PROMPT_V7_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
         return TaskRun(
@@ -2409,7 +2417,11 @@ class WorkflowService:
                 CHAT_TOOLSET_V4_VERSION
                 if task_type == "casefile_chat"
                 and policy_version
-                in {CHAT_CONTEXT_POLICY_V4_VERSION, CHAT_CONTEXT_POLICY_V5_VERSION}
+                in {
+                    CHAT_CONTEXT_POLICY_V4_VERSION,
+                    CHAT_CONTEXT_POLICY_V5_VERSION,
+                    CHAT_CONTEXT_POLICY_V6_VERSION,
+                }
                 else (
                     CHAT_TOOLSET_V3_VERSION
                     if task_type == "casefile_chat"

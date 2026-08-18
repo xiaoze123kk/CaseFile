@@ -274,6 +274,19 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
+    ("casefile_chat", "casefile-chat-v10"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "3ae617c6d79efa4ec9a118b96970926c5dce1ec4d3c89ddba83d9180edc5c01c",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-audit": "61e610314ccb3a73290e31a8abaf17b9b36ab7f399afbf7437a5df48e8be2da6",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
     ("casefile_chat_context_compactor", "casefile-chat-context-compactor-v1"): {
         "fragment:compact": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5",  # noqa: E501
     },
@@ -528,6 +541,18 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "`finding_ref`" in v9_chat.component_prompts["audit"]
     assert "needs_manual_review" in v9_chat.component_prompts["audit"]
     assert "casefile-chat-output-v2" in v9_chat.component_prompts["audit"]
+    v10_chat = load_prompt("casefile_chat", "casefile-chat-v10")
+    assert v10_chat.package is not None
+    assert v10_chat.package.previous_version == "casefile-chat-v9"
+    assert v10_chat.package.runtime_toolset_version == "casefile-chat-tools-v4"
+    audit_v10 = v10_chat.package.components["audit"]
+    assert audit_v10.output_schema_id == "casefile-chat-output-v2"
+    assert audit_v10.tool_policy_id == "chat-audit-v4"
+    router_v10 = v10_chat.component_prompts["router"]
+    assert "直接修改 Draft 数据" in router_v10
+    assert "system_layer_direct_write" in router_v10
+    assert "输出前证据链自检" in v10_chat.component_prompts["audit"]
+    assert "可修漏洞而 `suggestions` 为空" in v10_chat.component_prompts["audit"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:
@@ -674,6 +699,7 @@ def _one_agent_repository(
 def test_chat_audit_prompt_packages_are_execution_auditable() -> None:
     assert "casefile-chat-v8" in CHAT_PROMPT_PACKAGE_VERSIONS
     assert "casefile-chat-v9" in CHAT_PROMPT_PACKAGE_VERSIONS
+    assert "casefile-chat-v10" in CHAT_PROMPT_PACKAGE_VERSIONS
 
 
 def _write_manifest(
