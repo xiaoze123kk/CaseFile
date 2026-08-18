@@ -80,7 +80,7 @@ function makeTask(overrides: Partial<TaskView> = {}): TaskView {
     task_type: "casefile_chat",
     status: "queued",
     stage: "queued",
-    provider: "openai",
+    provider: "deepseek",
     model_id: "chat-model",
     input_draft_revision: 3,
     input_brief_revision: null,
@@ -420,7 +420,7 @@ describe("workbench agent live panel", () => {
           9,
           3,
           preset.prompt,
-          "openai",
+          "deepseek",
           makeFocus(),
           { entrypoint: "preset", preset_id: preset.presetId },
         );
@@ -468,7 +468,7 @@ describe("workbench agent live panel", () => {
         9,
         3,
         "请处理当前焦点中的验证问题。",
-        "openai",
+        "deepseek",
         makeFocus(),
         { entrypoint: "issue_action" },
       );
@@ -574,7 +574,7 @@ describe("workbench agent live panel", () => {
       9,
       3,
       "帮我检查对象。",
-      "openai",
+      "deepseek",
       makeFocus(),
       { entrypoint: "free_text" },
     );
@@ -662,7 +662,7 @@ describe("workbench agent live panel", () => {
         9,
         3,
         "重写对象描述。",
-        "openai",
+        "deepseek",
         makeFocus(),
         { entrypoint: "free_text" },
       );

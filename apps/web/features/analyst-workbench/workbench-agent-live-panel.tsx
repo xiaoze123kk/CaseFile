@@ -431,7 +431,7 @@ export function AgentLivePanel({
           draftId,
           draftRevision,
           content,
-          "openai",
+          "deepseek",
           focus,
           routingHint ?? { entrypoint: "free_text" },
         );
