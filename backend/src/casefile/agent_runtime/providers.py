@@ -2248,7 +2248,7 @@ async def _run_auxiliary_agent(
                         )
                     output = _validate_auxiliary_output(
                         output_type,
-                        _first_json_object_text(result.final_output),
+                        _deepseek_json_object_text(result.final_output),
                         discarded_paths=discarded_paths,
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
@@ -2428,7 +2428,7 @@ async def _run_auxiliary_agent(
     raise ProviderProtocolError("Structured output attempts were exhausted")
 
 
-def _first_json_object_text(raw_output: str) -> str:
+def _deepseek_json_object_text(raw_output: str) -> str:
     """Extract the model's JSON object from a text response.
 
     ``deepseek-v4-flash`` occasionally emits agent-style DSML blocks and
@@ -2452,8 +2452,8 @@ def _first_json_object_text(raw_output: str) -> str:
         except json.JSONDecodeError:
             search_from = start + 1
             continue
-        candidates.append(raw_output[start : start + end])
-        search_from = start + end
+        candidates.append(raw_output[start:end])
+        search_from = end
     if not candidates:
         return raw_output
     for candidate in reversed(candidates):
