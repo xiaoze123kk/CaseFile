@@ -4656,7 +4656,6 @@
           },
           "candidate_strategy_attempt": {
             "type": "integer",
-            "maximum": 2.0,
             "minimum": 1.0,
             "title": "Candidate Strategy Attempt",
             "default": 1

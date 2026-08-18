@@ -411,6 +411,7 @@ function buildFakeBackend() {
       can_adopt: true,
       provider: "openai",
       model_id: "gpt-5.6-sol",
+      candidate_strategy_attempt: 1,
       attempt_count: 1,
       created_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
@@ -1211,7 +1212,7 @@ describe("intake center", () => {
 
     expect(fake.backend.getGenerationDraftRevisions().slice(-1)).toEqual([17]);
     expect(fake.backend.getGenerationDraftIds().slice(-1)).toEqual([71]);
-    expect(screen.getByRole("button", { name: /完整深稿已生成/u })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /重新生成结构优先完整深稿/u })).toBeEnabled();
     expect(screen.getByRole("button", { name: /缺页校准稿/u })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /封存室夜班稿/u })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /第七码互证稿/u })).not.toBeInTheDocument();

@@ -84,19 +84,28 @@ function candidate(
     DraftCandidateView,
     "is_current_brief" | "is_current" | "is_adopted" | "can_adopt"
   >,
+  strategy: DraftCandidateView["candidate_strategy"] = "structure_first",
+  strategyAttempt = 1,
 ): DraftCandidateView {
+  const strategyLabels = {
+    structure_first: "结构优先",
+    atmosphere_first: "氛围优先",
+    reasoning_first: "推理优先",
+    balanced: "平衡",
+  } as const;
   return {
     task_run_id: taskRunId,
     brief_version_no: briefVersion,
     ...state,
     provider: "openai",
     model_id: "gpt-5.6-sol",
+    candidate_strategy_attempt: strategyAttempt,
     attempt_count: 1,
     created_at: "2026-08-09T00:00:00Z",
     completed_at: "2026-08-09T00:01:00Z",
-    candidate_strategy: "structure_first",
+    candidate_strategy: strategy,
     candidate_strategy_version: "candidate-strategy-v1",
-    candidate_strategy_label: "结构优先",
+    candidate_strategy_label: strategyLabels[strategy],
     title,
     content_hash: `hash-${taskRunId}`,
     object_counts: {
@@ -261,6 +270,39 @@ function GenerationProbe() {
   );
 }
 
+function RegenerationProbe() {
+  const { generateCandidates, state } = useCaseSession();
+  const [outcome, setOutcome] = useState("none");
+  const [error, setError] = useState("none");
+  return (
+    <section>
+      <button
+        onClick={() => {
+          void generateCandidates("reasoning_first", 2)
+            .then(setOutcome)
+            .catch((caught) =>
+              setError(caught instanceof Error ? caught.message : "unknown"),
+            );
+        }}
+        type="button"
+      >
+        重新生成推理优先
+      </button>
+      <output data-testid="regeneration-outcome">{outcome}</output>
+      <output data-testid="regeneration-error">{error}</output>
+      <output data-testid="regeneration-hydration">
+        {state.hydration.status}
+      </output>
+      <output data-testid="regeneration-slot-attempt">
+        {state.generation.slots.reasoning_first.attempt}
+      </output>
+      <output data-testid="regeneration-candidate-count">
+        {state.draftCandidates.length}
+      </output>
+    </section>
+  );
+}
+
 afterEach(() => {
   cleanup();
   window.history.replaceState({}, "", "/");
@@ -360,6 +402,93 @@ describe("draft candidate project recovery", () => {
       9,
     );
     expect(mocks.fetchBrief).toHaveBeenCalledTimes(2);
+  });
+
+  it("regenerates an existing reasoning_first candidate with the requested attempt", async () => {
+    const existing = candidate(
+      301,
+      "推理优先初稿",
+      2,
+      {
+        is_current_brief: true,
+        is_current: false,
+        is_adopted: false,
+        can_adopt: true,
+      },
+      "reasoning_first",
+      1,
+    );
+    const refreshed = candidate(
+      302,
+      "推理优先重生成稿",
+      2,
+      {
+        is_current_brief: true,
+        is_current: false,
+        is_adopted: false,
+        can_adopt: true,
+      },
+      "reasoning_first",
+      2,
+    );
+    mocks.fetchCaseIntake.mockResolvedValue(intake);
+    mocks.fetchBrief.mockResolvedValue(brief);
+    mocks.fetchLatestTask.mockResolvedValue(null);
+    mocks.fetchCaseDraft.mockResolvedValue({ draft_id: 9, revision: 4 });
+    mocks.fetchDraftCandidates
+      .mockResolvedValueOnce([existing])
+      .mockResolvedValueOnce([existing])
+      .mockResolvedValueOnce([refreshed, existing]);
+    mocks.startDraftGenerationTask.mockResolvedValue(generationTask("running"));
+    mocks.runTaskWithProviderFallback.mockImplementation(async (operation) => ({
+      provider: "openai",
+      result: await operation("openai"),
+    }));
+    mocks.waitForTask.mockImplementation(
+      async (_projectId: number, _taskRunId: number, onTick: (task: TaskView) => void) => {
+        const succeeded = generationTask("succeeded");
+        onTick(succeeded);
+        return succeeded;
+      },
+    );
+    window.history.replaceState({}, "", "/?project=7");
+
+    render(
+      <CaseSessionProvider>
+        <RegenerationProbe />
+      </CaseSessionProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("regeneration-hydration")).toHaveTextContent("ready");
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "重新生成推理优先" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.startDraftGenerationTask).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(mocks.fetchDraftCandidates).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("regeneration-outcome")).toHaveTextContent(
+        "succeeded",
+      );
+      expect(screen.getByTestId("regeneration-slot-attempt")).toHaveTextContent("2");
+      expect(screen.getByTestId("regeneration-candidate-count")).toHaveTextContent("2");
+    });
+    expect(screen.getByTestId("regeneration-error")).toHaveTextContent("none");
+    expect(mocks.startDraftGenerationTask).toHaveBeenCalledWith(
+      7,
+      202,
+      9,
+      4,
+      "openai",
+      "reasoning_first",
+      2,
+    );
   });
 
   it("recovers a running generation to succeeded and refreshes candidates", async () => {

@@ -449,6 +449,7 @@ export interface DraftCandidateRuntimeState {
   isCurrent: boolean;
   isAdopted: boolean;
   canAdopt: boolean;
+  candidateStrategyAttempt: number;
   completedAt: string | null;
 }
 
@@ -475,6 +476,7 @@ export function mapWorkbenchCandidateView(
       isCurrent: view.is_current,
       isAdopted: view.is_adopted,
       canAdopt: view.can_adopt,
+      candidateStrategyAttempt: view.candidate_strategy_attempt,
       completedAt: view.completed_at,
     },
     briefVersion: view.brief_version_no,

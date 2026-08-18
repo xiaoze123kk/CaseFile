@@ -1634,10 +1634,10 @@ class WorkflowService:
                 status_code=422,
                 details={"candidate_strategy": candidate_strategy},
             ) from error
-        if candidate_strategy_attempt not in {1, 2}:
+        if candidate_strategy_attempt < 1:
             raise ApplicationError(
                 "candidate_strategy_attempt_invalid",
-                "候选策略最多只能额外重试一次。",
+                "候选策略尝试序号必须大于等于 1。",
                 status_code=422,
             )
         with self.session.begin():

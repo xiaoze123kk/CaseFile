@@ -441,6 +441,7 @@ export interface DraftCandidateView extends GenerationCandidateSummary {
   can_adopt: boolean;
   provider: ProviderName;
   model_id: string;
+  candidate_strategy_attempt: number;
   attempt_count: number;
   created_at: string | null;
   completed_at: string | null;

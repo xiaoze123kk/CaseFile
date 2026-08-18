@@ -153,7 +153,7 @@ class GenerateTaskRequest(StrictRequest):
         "atmosphere_first",
         "reasoning_first",
     ] = "balanced"
-    candidate_strategy_attempt: int = Field(default=1, ge=1, le=2)
+    candidate_strategy_attempt: int = Field(default=1, ge=1)
 
 
 class DraftCandidateAdoptRequest(StrictRequest):

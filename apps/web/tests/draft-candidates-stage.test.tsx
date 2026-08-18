@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DraftCandidateView, TaskView } from "@/lib/api-client";
 import { buildWorkbenchCandidates } from "@/features/analyst-workbench/analyst-fixture";
 import {
   createInitialCaseSessionState,
+  type CandidateSlotStrategy,
   type CaseSessionState,
 } from "@/features/case-session/case-session-provider";
 import { mapWorkbenchCandidateView } from "@/features/case-session/case-session-mapping";
@@ -300,6 +301,37 @@ describe("draft candidate cancellation feedback", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("候选结构校验失败");
   });
+
+  it.each([
+    ["structure_first", "结构优先"],
+    ["atmosphere_first", "氛围优先"],
+    ["reasoning_first", "推理优先"],
+  ] as const)(
+    "regenerates an existing %s candidate with the next strategy attempt",
+    async (strategy, label) => {
+      const candidate = mappedCandidate(null, strategy);
+      const generateCandidates = vi.fn().mockResolvedValue("succeeded");
+      installSession(candidateState(candidate, strategy), {
+        generateCandidates,
+      });
+
+      render(<DraftCandidatesStage />);
+      const regenerate = screen.getByRole("button", {
+        name: new RegExp(`重新生成${label}完整深稿`, "u"),
+      });
+      expect(regenerate).toBeEnabled();
+      fireEvent.click(regenerate);
+
+      await waitFor(() =>
+        expect(generateCandidates).toHaveBeenCalledWith(strategy, 2),
+      );
+      expect(
+        await screen.findByText(
+          `${label}完整深稿已重新生成并通过结构与引用校验。`,
+        ),
+      ).toBeInTheDocument();
+    },
+  );
 });
 
 describe("draft candidate completion time", () => {
@@ -364,13 +396,26 @@ function generatingState(generating = true) {
   return state;
 }
 
-function candidateState(candidate: CaseSessionState["draftCandidates"][number]) {
+function candidateState(
+  candidate: CaseSessionState["draftCandidates"][number],
+  strategy: CandidateSlotStrategy = "structure_first",
+) {
   const state = generatingState(false);
+  state.selectedStrategy = strategy;
   state.draftCandidates = [candidate];
   return state;
 }
 
-function mappedCandidate(completedAt: string | null) {
+function mappedCandidate(
+  completedAt: string | null,
+  strategy: DraftCandidateView["candidate_strategy"] = "structure_first",
+) {
+  const strategyLabels = {
+    structure_first: "结构优先",
+    atmosphere_first: "氛围优先",
+    reasoning_first: "推理优先",
+    balanced: "平衡",
+  } as const;
   const view: DraftCandidateView = {
     task_run_id: 401,
     brief_version_no: 2,
@@ -380,12 +425,13 @@ function mappedCandidate(completedAt: string | null) {
     can_adopt: true,
     provider: "openai",
     model_id: "gpt-5.6-sol",
+    candidate_strategy_attempt: 1,
     attempt_count: 1,
     created_at: "2026-08-09T00:00:00Z",
     completed_at: completedAt,
-    candidate_strategy: "structure_first",
+    candidate_strategy: strategy,
     candidate_strategy_version: "candidate-strategy-v1",
-    candidate_strategy_label: "结构优先",
+    candidate_strategy_label: strategyLabels[strategy],
     title: "完成时间候选",
     content_hash: "candidate-completed-at",
     object_counts: {
@@ -397,15 +443,31 @@ function mappedCandidate(completedAt: string | null) {
     reasoning_questions: ["候选何时完成？"],
     constraint_statements: [],
   };
-  const base = buildWorkbenchCandidates(
-    {
-      creativeIntent: "展示真实完成时间。",
-      reasoningProposition: "候选何时完成？",
-      authorAnswer: "",
-      constraints: [],
-    },
-    2,
-  )[0];
+  const baseFocus = {
+    structure_first: "structure",
+    atmosphere_first: "atmosphere",
+    reasoning_first: "reasoning",
+    balanced: "structure",
+  }[strategy];
+  const base =
+    buildWorkbenchCandidates(
+      {
+        creativeIntent: "展示真实完成时间。",
+        reasoningProposition: "候选何时完成？",
+        authorAnswer: "",
+        constraints: [],
+      },
+      2,
+    ).find((candidate) => candidate.focus === baseFocus) ??
+    buildWorkbenchCandidates(
+      {
+        creativeIntent: "展示真实完成时间。",
+        reasoningProposition: "候选何时完成？",
+        authorAnswer: "",
+        constraints: [],
+      },
+      2,
+    )[0];
   return mapWorkbenchCandidateView(view, base);
 }
 

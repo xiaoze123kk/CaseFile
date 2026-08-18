@@ -430,6 +430,7 @@ function makePreview(): DraftCandidatePreviewView {
     can_adopt: true,
     provider: "deepseek",
     model_id: "fake-brief-to-draft",
+    candidate_strategy_attempt: 1,
     title: "真实测试卷宗",
     content_hash: "b".repeat(64),
     object_counts: { entities: 1 },

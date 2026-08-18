@@ -20,6 +20,10 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -53,9 +57,6 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -449,6 +450,52 @@ def test_adoption_preserves_reference_free_knowledge_state_slots(
             "believes_refs": [],
             "false_belief_refs": [],
         }
+
+
+def test_same_brief_candidate_strategy_can_regenerate_beyond_two_attempts(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, _first_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="regeneration-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        generated: list[int] = []
+        for attempt in (1, 2, 3):
+            with factory() as session:
+                workflow = WorkflowService(session)
+                brief = workflow.get_brief(actor_id, project_id)
+                draft = CaseFileService(session).get_draft(actor_id, project_id)
+                task = workflow.create_generation_task(
+                    actor_id,
+                    project_id,
+                    brief_version_id=brief["current_version_id"],
+                    expected_draft_id=draft["draft_id"],
+                    expected_draft_revision=1,
+                    candidate_strategy="reasoning_first",
+                    candidate_strategy_attempt=attempt,
+                )
+            generated.append(int(task["task_run_id"]))
+            assert worker.run_once() is True
+
+        with factory() as session:
+            candidates = WorkflowService(session).list_generation_candidates(
+                actor_id,
+                project_id,
+            )
+        reasoning = [
+            candidate
+            for candidate in candidates
+            if candidate["candidate_strategy"] == "reasoning_first"
+        ]
+        assert [int(item["task_run_id"]) for item in reasoning] == generated[::-1]
+        assert [item["candidate_strategy_attempt"] for item in reasoning] == [3, 2, 1]
 
 
 def test_same_brief_candidates_create_independent_switchable_drafts(
