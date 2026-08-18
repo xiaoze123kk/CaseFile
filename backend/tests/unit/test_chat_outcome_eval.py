@@ -11,17 +11,17 @@ from casefile.benchmark.chat_outcome_eval import (
 )
 
 
-def test_outcome_suite_has_thirty_one_unique_tasks() -> None:
+def test_outcome_suite_has_thirty_five_unique_tasks() -> None:
     tasks = build_outcome_tasks()
-    assert len(tasks) == 31
-    assert len({task.task_id for task in tasks}) == 31
+    assert len(tasks) == 35
+    assert len({task.task_id for task in tasks}) == 35
 
 
 def test_outcome_suite_is_balanced() -> None:
     tasks = build_outcome_tasks()
     kinds = {task.kind for task in tasks}
     assert kinds == {"golden", "boundary", "adversarial"}
-    assert sum(task.kind == "golden" for task in tasks) == 15
+    assert sum(task.kind == "golden" for task in tasks) == 19
     assert sum(task.kind == "boundary" for task in tasks) == 8
     assert sum(task.kind == "adversarial" for task in tasks) == 8
 

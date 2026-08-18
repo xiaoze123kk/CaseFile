@@ -543,6 +543,118 @@ def _validated_issue_views(
     return structural, semantic
 
 
+def simulate_patch_delta(
+    casefile: dict[str, Any],
+    validation_issues: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    object_id: str,
+    path: str,
+    value_json: str,
+) -> dict[str, Any]:
+    """Pure dry-run validator-issue delta for one patch proposal.
+
+    This is the deterministic core shared by the ``simulate_patch_application``
+    tool and the outcome Grader. It never persists and never mutates the input;
+    callers must have already checked the editable-field whitelist through
+    ``validate_patch_proposal`` (or equivalent). It does re-check object/path/
+    value existence so a malformed proposal can never crash the grader.
+    """
+
+    stripped_object_id = object_id.strip()
+    found = find_casefile_object(casefile, stripped_object_id)
+    if found is None:
+        return {
+            "valid": False,
+            "reason_code": "object_not_found",
+            "object_id": object_id,
+            "path": path,
+        }
+    _collection, item = found
+    if _pointer_value(item, path) is _MISSING:
+        return {
+            "valid": False,
+            "reason_code": "path_not_found",
+            "object_id": object_id,
+            "path": path,
+        }
+    trimmed = value_json.strip()
+    if trimmed.startswith("```") or trimmed.endswith("```"):
+        return {
+            "valid": False,
+            "reason_code": "value_json_wrapped_in_markdown",
+            "object_id": object_id,
+            "path": path,
+        }
+    try:
+        value = json.loads(trimmed)
+    except json.JSONDecodeError:
+        return {
+            "valid": False,
+            "reason_code": "value_json_invalid",
+            "object_id": object_id,
+            "path": path,
+        }
+
+    base_document = deepcopy(casefile)
+    try:
+        validate_casefile(base_document)
+    except ContractValidationError:
+        return {
+            "valid": False,
+            "reason_code": "base_document_invalid",
+            "object_id": object_id,
+            "path": path,
+        }
+
+    baseline_keys = _validation_issue_keys(
+        validation_issues
+    ) | _validation_issue_keys(validate_casefile_semantics(base_document))
+    baseline_ids = _issue_keys_to_ids(validation_issues)
+
+    patched_document = deepcopy(base_document)
+    patched_found = find_casefile_object(patched_document, stripped_object_id)
+    if patched_found is None:
+        raise RuntimeError("Frozen CaseFile changed while simulating patch")
+    _pointer_set(patched_found[1], path, value)
+    structural_after, semantic_after = _validated_issue_views(patched_document)
+    after_issues = [*structural_after, *semantic_after]
+    after_keys = _validation_issue_keys(after_issues)
+
+    fixed_keys = sorted(baseline_keys - after_keys)
+    new_keys = sorted(after_keys - baseline_keys)
+    unchanged_keys = sorted(baseline_keys & after_keys)
+    fixed_issue_ids = [baseline_ids[key] for key in fixed_keys if key in baseline_ids]
+    unchanged_issue_ids = [
+        baseline_ids[key] for key in unchanged_keys if key in baseline_ids
+    ]
+    new_issues = [
+        {"code": issue["code"], "path": issue["path"], "message": issue["message"]}
+        for issue in after_issues
+        if (issue.get("code"), issue.get("path")) in set(new_keys)
+    ]
+    if new_keys:
+        advice = "introduces_new_issues"
+    elif fixed_keys:
+        advice = "fixes_n_issues"
+    else:
+        advice = "safe_to_propose"
+    return {
+        "valid": True,
+        "object_id": object_id,
+        "path": path,
+        "fixed_issue_ids": fixed_issue_ids,
+        "new_issue_ids": [],
+        "unchanged_issue_ids": unchanged_issue_ids,
+        "new_issues": new_issues,
+        "advice": advice,
+        "counts": {
+            "baseline": len(baseline_keys),
+            "fixed": len(fixed_keys),
+            "new": len(new_keys),
+            "unchanged": len(unchanged_keys),
+        },
+    }
+
+
 def _clamp_tool_count(value: Any, *, default: int, minimum: int, maximum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         return default
@@ -1155,80 +1267,29 @@ def simulate_patch_application(
         return json.dumps(payload, ensure_ascii=False)
     assert check.item is not None and check.collection
 
-    base_document = deepcopy(context.request.casefile)
-    try:
-        validate_casefile(base_document)
-    except ContractValidationError:
-        payload = {
-            "valid": False,
-            "reason_code": "base_document_invalid",
-            "object_id": object_id,
-            "path": path,
-        }
-        _emit_completed(context, "simulate_patch_application", payload)
-        return json.dumps(payload, ensure_ascii=False)
-
-    baseline_keys = _validation_issue_keys(
-        context.request.validation_issues
-    ) | _validation_issue_keys(validate_casefile_semantics(base_document))
-    baseline_ids = _issue_keys_to_ids(context.request.validation_issues)
-
-    patched_document = deepcopy(base_document)
-    patched_found = find_casefile_object(patched_document, object_id.strip())
-    if patched_found is None:
-        raise RuntimeError("Frozen CaseFile changed while simulating patch")
-    _pointer_set(patched_found[1], path, check.value)
-    structural_after, semantic_after = _validated_issue_views(patched_document)
-    after_issues = [*structural_after, *semantic_after]
-    after_keys = _validation_issue_keys(after_issues)
-
-    fixed_keys = sorted(baseline_keys - after_keys)
-    new_keys = sorted(after_keys - baseline_keys)
-    unchanged_keys = sorted(baseline_keys & after_keys)
-    fixed_issue_ids = [baseline_ids[key] for key in fixed_keys if key in baseline_ids]
-    unchanged_issue_ids = [
-        baseline_ids[key] for key in unchanged_keys if key in baseline_ids
-    ]
-    new_issues = [
-        {"code": issue["code"], "path": issue["path"], "message": issue["message"]}
-        for issue in after_issues
-        if (issue.get("code"), issue.get("path")) in set(new_keys)
-    ]
-    if new_keys:
-        advice = "introduces_new_issues"
-    elif fixed_keys:
-        advice = "fixes_n_issues"
-    else:
-        advice = "safe_to_propose"
-    context.metrics.successful_calls += 1
-    payload = {
-        "valid": True,
-        "object_id": object_id,
-        "path": path,
-        "fixed_issue_ids": fixed_issue_ids,
-        "new_issue_ids": [],
-        "unchanged_issue_ids": unchanged_issue_ids,
-        "new_issues": new_issues,
-        "advice": advice,
-        "counts": {
-            "baseline": len(baseline_keys),
-            "fixed": len(fixed_keys),
-            "new": len(new_keys),
-            "unchanged": len(unchanged_keys),
-        },
-    }
-    _emit_completed(
-        context,
-        "simulate_patch_application",
-        {
-            "valid": True,
-            "object_id": object_id,
-            "path": path,
-            "advice": advice,
-            "fixed_count": len(fixed_keys),
-            "new_count": len(new_keys),
-        },
+    payload = simulate_patch_delta(
+        context.request.casefile,
+        context.request.validation_issues,
+        object_id,
+        path,
+        value_json,
     )
+    if payload.get("valid") is True:
+        context.metrics.successful_calls += 1
+        _emit_completed(
+            context,
+            "simulate_patch_application",
+            {
+                "valid": True,
+                "object_id": object_id,
+                "path": path,
+                "advice": payload.get("advice"),
+                "fixed_count": payload.get("counts", {}).get("fixed", 0),
+                "new_count": payload.get("counts", {}).get("new", 0),
+            },
+        )
+    else:
+        _emit_completed(context, "simulate_patch_application", payload)
     return _emit_tool_result(
         context,
         "simulate_patch_application",
@@ -1428,5 +1489,6 @@ __all__ = [
     "search_casefile",
     "search_casefile_records",
     "simulate_patch_application",
+    "simulate_patch_delta",
     "validate_patch_proposal",
 ]

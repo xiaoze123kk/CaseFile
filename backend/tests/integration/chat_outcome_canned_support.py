@@ -22,7 +22,11 @@ from application_services_test_support import (
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from casefile.agent_runtime.models import CaseFileChatCandidate, CaseFileChatRequest
+from casefile.agent_runtime.models import (
+    CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
+    CaseFileChatRequest,
+)
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.chat_outcome_canned import (
@@ -47,7 +51,7 @@ class CannedTrialOutcome:
     frozen_input: dict[str, Any]
     result_jsonb: dict[str, Any]
     provider_request: CaseFileChatRequest | None
-    candidate: CaseFileChatCandidate
+    candidate: CaseFileChatCandidate | CaseFileChatCandidateV2
     draft_unchanged: bool
     patch_set: dict[str, Any] | None
 

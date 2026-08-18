@@ -31,7 +31,7 @@ def test_m1_canned_outcome_suite_passes_through_production_path(
         outcome = run_canned_trial(engine, actor_id, master_key, task)
         verdicts.append(outcome.verdict)
         assert outcome.verdict.passed, (task.task_id, outcome.verdict.failures)
-    assert len(verdicts) == 31
+    assert len(verdicts) == 35
     assert all(verdict.draft_unchanged for verdict in verdicts)
 
 
@@ -50,6 +50,9 @@ def test_m1_canned_logic_audit_preset_yields_pending_patch_set(
     routing = outcome.result_jsonb["routing"]
     assert routing["intent"] == "logic_audit"
     assert routing["route_source"] == "rule_preset"
+    assert len(outcome.result_jsonb["audit_findings"]) == 1
+    assert outcome.result_jsonb["audit_findings"][0]["finding_id"] == "F1"
+    assert outcome.result_jsonb["audit_findings"][0]["kind"] == "contradiction"
     assert outcome.provider_request is not None
     execution_profile = outcome.provider_request.route.execution_profile
     assert execution_profile["profile"] == "logic_audit.full_review"
