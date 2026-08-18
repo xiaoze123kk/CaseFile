@@ -92,6 +92,7 @@ def test_live_request_binds_v9_and_audit_output_v2() -> None:
     )
     request = _request_for_task(task)
     assert request.prompt_version == "casefile-chat-v9"
+    assert request.toolset_version == "casefile-chat-tools-v4"
     resolved = resolve_task_route(task)
     assert resolved.route is not None
     assert chat_executor_output_type(resolved) is CaseFileChatCandidateV2

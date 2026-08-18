@@ -2248,7 +2248,7 @@ async def _run_auxiliary_agent(
                         )
                     output = _validate_auxiliary_output(
                         output_type,
-                        result.final_output,
+                        _first_json_object_text(result.final_output),
                         discarded_paths=discarded_paths,
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
@@ -2426,6 +2426,44 @@ async def _run_auxiliary_agent(
             )
             protocol = "json_object"
     raise ProviderProtocolError("Structured output attempts were exhausted")
+
+
+def _first_json_object_text(raw_output: str) -> str:
+    """Extract the model's JSON object from a text response.
+
+    ``deepseek-v4-flash`` occasionally emits agent-style DSML blocks and
+    trailing markers (for example ``</DSML tool_calls>``) around an otherwise
+    valid JSON object. Scan every complete JSON object, prefer one that looks
+    like a chat candidate (has an ``answer`` key), and otherwise keep the last
+    object. JSON-decoder scanning is deterministic and never rewrites the
+    payload, so valid output stays byte-identical and malformed output still
+    fails the contract validator.
+    """
+
+    candidates: list[str] = []
+    decoder = json.JSONDecoder()
+    search_from = 0
+    while True:
+        start = raw_output.find("{", search_from)
+        if start < 0:
+            break
+        try:
+            _payload, end = decoder.raw_decode(raw_output, start)
+        except json.JSONDecodeError:
+            search_from = start + 1
+            continue
+        candidates.append(raw_output[start : start + end])
+        search_from = start + end
+    if not candidates:
+        return raw_output
+    for candidate in reversed(candidates):
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and "answer" in payload:
+            return candidate
+    return candidates[-1]
 
 
 def _retained_raw_output(raw_output: str | None) -> dict[str, Any]:

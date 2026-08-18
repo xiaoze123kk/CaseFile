@@ -19,7 +19,10 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from casefile.agent_runtime.chat_intent import route_allows_suggestions
-from casefile.agent_runtime.chat_tools import simulate_patch_delta
+from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V4_VERSION,
+    simulate_patch_delta,
+)
 from casefile.agent_runtime.models import (
     AuditFindingKind,
     AuditFindingSeverity,
@@ -715,6 +718,7 @@ def _request_for_task(
     return CaseFileChatRequest(
         task_run_id=task_run_id,
         prompt_version="casefile-chat-v9",
+        toolset_version=CHAT_TOOLSET_V4_VERSION,
         casefile=task.frozen_casefile,
         history=task.history,
         message=task.message,
