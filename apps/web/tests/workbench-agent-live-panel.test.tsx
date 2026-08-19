@@ -957,4 +957,150 @@ describe("workbench agent live panel", () => {
     expect(await screen.findByText("已撤销")).toBeInTheDocument();
     expect(onDraftChangedMock).toHaveBeenCalled();
   });
+
+  it("locates a PatchSet target object in the workbench before reviewing", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet(),
+      }),
+    ]);
+
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "定位对象 研究员" }),
+    );
+    expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
+  });
+
+  it("requires an explicit confirmation before rejecting every operation", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet(),
+      }),
+    ]);
+    mocks.applyAgentPatchSet.mockResolvedValue({
+      ...makePatchSet({ status: "rejected" }),
+      draft_revision: 3,
+    });
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole("button", { name: "全部拒绝" }));
+    expect(mocks.applyAgentPatchSet).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认拒绝" }));
+
+    await waitFor(() => {
+      expect(mocks.applyAgentPatchSet).toHaveBeenCalledWith(1, 1, 200, 9, 3, []);
+    });
+  });
+
+  it("expands nonblocking validator warnings inside the PatchSet review", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet({
+          validation_warning: true,
+          validator_issues: [
+            {
+              rule_id: "CF-W-CLAIM-001",
+              severity: "S1",
+              title: "关键主张缺少支撑信息",
+              message: "该关键主张被标记为已支持，但尚未关联任何支撑信息。",
+              object_refs: [],
+              field_path: "/support_refs",
+            },
+          ],
+        }),
+      }),
+    ]);
+
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看验证警告（1）" }),
+    );
+    expect(await screen.findByText("关键主张缺少支撑信息")).toBeInTheDocument();
+    expect(screen.getByText("CF-W-CLAIM-001")).toBeInTheDocument();
+    expect(
+      screen.getByText("该关键主张被标记为已支持，但尚未关联任何支撑信息。"),
+    ).toBeInTheDocument();
+  });
+
+  it("re-requests a stale PatchSet with its original instruction", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 5,
+        sequence_no: 1,
+        content: "请重新审计卷宗。",
+      }),
+      makeMessage({
+        message_id: 6,
+        sequence_no: 2,
+        role: "assistant",
+        status: "completed",
+        content: "旧草稿上的建议。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet({ status: "stale", is_stale: true }),
+      }),
+    ]);
+    mocks.sendAgentMessage.mockResolvedValue({
+      thread: makeThread(),
+      user_message: makeMessage({
+        message_id: 7,
+        sequence_no: 3,
+        content: "请重新审计卷宗。",
+      }),
+      assistant_message: makeMessage({
+        message_id: 8,
+        sequence_no: 4,
+        role: "assistant",
+        status: "pending",
+        content: null,
+        task: makeTask({ status: "queued" }),
+      }),
+      task: makeTask({ status: "queued" }),
+    });
+
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "重新生成建议" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.sendAgentMessage).toHaveBeenCalledWith(
+        1,
+        1,
+        11,
+        9,
+        3,
+        "请重新审计卷宗。",
+        "deepseek",
+        makeFocus(),
+        { entrypoint: "free_text" },
+      );
+    });
+  });
 });

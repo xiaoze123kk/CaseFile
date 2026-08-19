@@ -811,10 +811,13 @@ export function AgentLivePanel({
               patchSet ? (
                 <AgentPatchReview
                   busy={patchBusyId === patchSet.patch_set_id}
+                  key={`${patchSet.patch_set_id}:${patchSet.status}`}
                   objectLabels={referenceLabels.objects}
                   onApply={(operationIds) =>
                     void applyPatchSet(patchSet, operationIds)
                   }
+                  onLocateObject={onLocateObject}
+                  onRetry={() => retryMessage(message)}
                   onUndo={() => void undoPatchSet(patchSet)}
                   patchSet={patchSet}
                 />
@@ -1079,14 +1082,20 @@ function AgentPatchReview({
   busy,
   onApply,
   onUndo,
+  onRetry,
+  onLocateObject,
 }: {
   patchSet: AgentPatchSetView;
   objectLabels: Record<string, string>;
   busy: boolean;
   onApply: (operationIds: number[]) => void;
   onUndo: () => void;
+  onRetry?: () => void;
+  onLocateObject?: (objectId: string) => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [issuesExpanded, setIssuesExpanded] = useState(false);
   const actionable = patchSet.status === "pending" && !patchSet.is_stale;
   const allOperationIds = patchSet.operations.map(
     (operation) => operation.operation_id,
@@ -1098,6 +1107,15 @@ function AgentPatchReview({
         ? previous.filter((id) => id !== operationId)
         : [...previous, operationId],
     );
+  }
+
+  function rejectAll() {
+    if (confirmingReject) {
+      setConfirmingReject(false);
+      onApply([]);
+      return;
+    }
+    setConfirmingReject(true);
   }
 
   return (
@@ -1117,17 +1135,22 @@ function AgentPatchReview({
             : ""}
         </span>
       </header>
-      <p className={styles.agentPatchReason}>{patchSet.reason_summary}</p>
+      <p className={styles.agentPatchReason}>
+        基于草稿 R{patchSet.base_draft_revision} 生成
+        {patchSet.reason_summary ? `：${patchSet.reason_summary}` : ""}
+      </p>
       <div className={styles.agentPatchOps}>
         {patchSet.operations.map((operation) => {
           const decision = operation.decision ?? "pending";
           const checked =
             decision === "accepted" ||
             (actionable && selectedIds.includes(operation.operation_id));
+          const label =
+            objectLabels[operation.object_id ?? ""] ?? operation.object_id ?? "对象";
           return (
             <label className={styles.agentPatchOp} key={operation.operation_id}>
               <input
-                aria-label={`选择修改 ${objectLabels[operation.object_id ?? ""] ?? operation.object_id} ${operation.field_path}`}
+                aria-label={`选择修改 ${label} ${operation.field_path}`}
                 checked={checked}
                 disabled={!actionable || busy}
                 onChange={() => toggleOperation(operation.operation_id)}
@@ -1135,9 +1158,27 @@ function AgentPatchReview({
               />
               <span>
                 <strong>
-                  {objectLabels[operation.object_id ?? ""] ?? operation.object_id}
+                  {label}
                   <code>{operation.field_path}</code>
                 </strong>
+                <span className={styles.agentPatchOpMeta}>
+                  {operation.object_type ? (
+                    <span>{operation.object_type}</span>
+                  ) : null}
+                  {operation.expected_object_revision !== null ? (
+                    <span>对象 R{operation.expected_object_revision}</span>
+                  ) : null}
+                  <span>{operation.operation_type}</span>
+                  {operation.object_id !== null && onLocateObject ? (
+                    <button
+                      aria-label={`定位对象 ${label}`}
+                      onClick={() => onLocateObject(operation.object_id ?? "")}
+                      type="button"
+                    >
+                      在工作台定位
+                    </button>
+                  ) : null}
+                </span>
                 <small>
                   {displayValue(operation.old_value)} →{" "}
                   {displayValue(operation.new_value)}
@@ -1151,6 +1192,39 @@ function AgentPatchReview({
           );
         })}
       </div>
+      {patchSet.validator_issues.length > 0 ? (
+        <div className={styles.agentPatchIssues}>
+          <button
+            aria-expanded={issuesExpanded}
+            onClick={() => setIssuesExpanded((expanded) => !expanded)}
+            type="button"
+          >
+            {issuesExpanded ? "收起" : "查看"}验证警告（
+            {patchSet.validator_issues.length}）
+          </button>
+          {issuesExpanded ? (
+            <ul>
+              {patchSet.validator_issues.map((issue, index) => {
+                const title =
+                  typeof issue.title === "string"
+                    ? issue.title
+                    : `验证警告 ${index + 1}`;
+                const message =
+                  typeof issue.message === "string" ? issue.message : null;
+                const ruleId =
+                  typeof issue.rule_id === "string" ? issue.rule_id : null;
+                return (
+                  <li key={`${ruleId ?? "issue"}:${index}`}>
+                    <strong>{title}</strong>
+                    {ruleId !== null ? <code>{ruleId}</code> : null}
+                    {message !== null ? <span>{message}</span> : null}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       {patchSet.validation_warning ? (
         <p className={styles.agentPatchWarning}>
           应用后仍有 {patchSet.validator_issues.length} 条验证警告，工作台会同步刷新。
@@ -1173,18 +1247,39 @@ function AgentPatchReview({
             >
               采纳所选（{selectedIds.length}）
             </button>
-            <button
-              disabled={busy}
-              onClick={() => onApply([])}
-              type="button"
-            >
-              全部拒绝
-            </button>
+            {confirmingReject ? (
+              <>
+                <button
+                  className={styles.agentPatchDanger}
+                  disabled={busy}
+                  onClick={rejectAll}
+                  type="button"
+                >
+                  确认拒绝
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => setConfirmingReject(false)}
+                  type="button"
+                >
+                  取消
+                </button>
+              </>
+            ) : (
+              <button disabled={busy} onClick={rejectAll} type="button">
+                全部拒绝
+              </button>
+            )}
           </>
         ) : null}
         {patchSet.status === "applied" ? (
           <button disabled={busy} onClick={onUndo} type="button">
             撤销应用
+          </button>
+        ) : null}
+        {patchSet.is_stale && onRetry ? (
+          <button disabled={busy} onClick={onRetry} type="button">
+            重新生成建议
           </button>
         ) : null}
         {patchSet.is_stale ? (
