@@ -3,6 +3,8 @@
 
 # Local runtime state and secrets.
 /var/
+/tmp/
+/backend/var/
 .env
 .env.*
 !.env.example
