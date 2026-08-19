@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
+from casefile.agent_runtime.context.assembly_render import CHAT_CONTEXT_PROMPT_V9_VERSION
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.agent_runtime.providers import FakeProvider
 from casefile.worker.runtime import _resolve_chat_route
@@ -19,6 +20,7 @@ from casefile.worker.runtime import _resolve_chat_route
 IntentResolver = Callable[["ChatRouterFixture"], CaseFileChatRequest]
 
 GATE_TAU_HIGH = 0.85
+CHAT_ROUTER_EVAL_PROMPT_VERSION = CHAT_CONTEXT_PROMPT_V9_VERSION
 
 _EVAL_CASEFILE: dict[str, Any] = {
     "entities": [
@@ -347,7 +349,7 @@ def _request_for_fixture(
     )
     return CaseFileChatRequest(
         task_run_id=task_run_id,
-        prompt_version="casefile-chat-v3",
+        prompt_version=CHAT_ROUTER_EVAL_PROMPT_VERSION,
         casefile=fixture.casefile or _EVAL_CASEFILE,
         history=fixture.history,
         message=fixture.message,
@@ -461,6 +463,7 @@ def run_fake_baseline() -> ChatRouterEvalReport:
 
 
 __all__ = [
+    "CHAT_ROUTER_EVAL_PROMPT_VERSION",
     "GATE_TAU_HIGH",
     "ChatRouterEvalReport",
     "ChatRouterFixture",

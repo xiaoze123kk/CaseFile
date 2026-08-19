@@ -73,7 +73,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V7_VERSION,
+    CHAT_CONTEXT_PROMPT_V9_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
@@ -1405,7 +1405,7 @@ class Worker:
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
-            CHAT_CONTEXT_PROMPT_V7_VERSION
+            CHAT_CONTEXT_PROMPT_V9_VERSION
             if policy_v6
             else (
                 CHAT_CONTEXT_PROMPT_V6_VERSION

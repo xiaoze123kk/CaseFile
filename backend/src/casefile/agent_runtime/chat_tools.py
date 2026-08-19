@@ -812,6 +812,24 @@ def _reserve_call(context: ChatToolContext) -> bool:
     return available
 
 
+def _budget_exhausted_payload(context: ChatToolContext) -> dict[str, Any]:
+    """Deterministic budget diagnostic shared by every exhausted tool response.
+
+    The counters make it unambiguous how many calls already succeeded before
+    the budget gate rejected the current call, so the model can distinguish
+    "no further calls allowed" from "this run never obtained any results".
+    """
+
+    return {
+        "valid": False,
+        "reason_code": "tool_budget_exhausted",
+        "calls": context.metrics.calls,
+        "valid_calls": context.metrics.valid_calls,
+        "successful_calls": context.metrics.successful_calls,
+        "max_tool_calls": context.max_tool_calls,
+    }
+
+
 def _emit_started(context: ChatToolContext, tool: str, payload: dict[str, Any]) -> None:
     context.request.emit("tool.started", "responding", {"tool": tool, **payload})
 
@@ -843,13 +861,10 @@ def search_casefile(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "search_casefile",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "search_casefile", detail)
         return json.dumps(
-            {"error": "tool_budget_exhausted", "results": []},
+            {"error": "tool_budget_exhausted", **detail, "results": []},
             ensure_ascii=False,
         )
     _emit_started(context, "search_casefile", {"query": query, "limit": limit})
@@ -888,12 +903,12 @@ def get_casefile_object(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "get_casefile_object",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "get_casefile_object", detail)
+        return json.dumps(
+            {"error": "tool_budget_exhausted", **detail},
+            ensure_ascii=False,
         )
-        return json.dumps({"error": "tool_budget_exhausted"}, ensure_ascii=False)
     _emit_started(context, "get_casefile_object", {"object_id": object_id})
     found = find_casefile_object(context.request.casefile, object_id.strip())
     if found is None:
@@ -939,13 +954,15 @@ def list_casefile_records(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "list_casefile_records",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "list_casefile_records", detail)
         return json.dumps(
-            {"error": "tool_budget_exhausted", "collections": [], "records": []},
+            {
+                "error": "tool_budget_exhausted",
+                **detail,
+                "collections": [],
+                "records": [],
+            },
             ensure_ascii=False,
         )
     _emit_started(
@@ -1028,13 +1045,15 @@ def get_related_objects(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "get_related_objects",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "get_related_objects", detail)
         return json.dumps(
-            {"error": "tool_budget_exhausted", "relationships": [], "objects": []},
+            {
+                "error": "tool_budget_exhausted",
+                **detail,
+                "relationships": [],
+                "objects": [],
+            },
             ensure_ascii=False,
         )
     _emit_started(
@@ -1131,12 +1150,12 @@ def get_validation_issues(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "get_validation_issues",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "get_validation_issues", detail)
+        return json.dumps(
+            {"error": "tool_budget_exhausted", **detail, "issues": []},
+            ensure_ascii=False,
         )
-        return json.dumps({"error": "tool_budget_exhausted", "issues": []}, ensure_ascii=False)
     _emit_started(context, "get_validation_issues", {"page": page, "limit": limit})
     issues = list(context.request.validation_issues)
     page_limit = _clamp_tool_count(
@@ -1180,15 +1199,9 @@ def validate_patch_proposal(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "validate_patch_proposal",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
-        return json.dumps(
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-            ensure_ascii=False,
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "validate_patch_proposal", detail)
+        return json.dumps(detail, ensure_ascii=False)
     _emit_started(
         context,
         "validate_patch_proposal",
@@ -1232,15 +1245,9 @@ def simulate_patch_application(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "simulate_patch_application",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
-        return json.dumps(
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-            ensure_ascii=False,
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "simulate_patch_application", detail)
+        return json.dumps(detail, ensure_ascii=False)
     _emit_started(
         context,
         "simulate_patch_application",
@@ -1315,13 +1322,10 @@ def retrieve_thread_evidence(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "retrieve_thread_evidence",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "retrieve_thread_evidence", detail)
         return json.dumps(
-            {"error": "tool_budget_exhausted"},
+            {"error": "tool_budget_exhausted", **detail},
             ensure_ascii=False,
         )
     _emit_started(context, "retrieve_thread_evidence", {"evidence_id": evidence_id})
@@ -1390,13 +1394,10 @@ def request_thread_compaction(
     context = wrapper.context
     if not _reserve_call(context):
         context.metrics.budget_exhausted += 1
-        _emit_completed(
-            context,
-            "request_thread_compaction",
-            {"valid": False, "reason_code": "tool_budget_exhausted"},
-        )
+        detail = _budget_exhausted_payload(context)
+        _emit_completed(context, "request_thread_compaction", detail)
         return json.dumps(
-            {"error": "tool_budget_exhausted"},
+            {"error": "tool_budget_exhausted", **detail},
             ensure_ascii=False,
         )
     _emit_started(context, "request_thread_compaction", {})

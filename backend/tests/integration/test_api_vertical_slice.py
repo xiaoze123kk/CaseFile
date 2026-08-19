@@ -14,6 +14,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
@@ -30,11 +36,6 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -44,7 +45,7 @@ PROFILE: dict[str, object] = {}
 
 class ApiChatProvider(FakeProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        assert request.prompt_version == "casefile-chat-v10"
+        assert request.prompt_version == "casefile-chat-v12"
         resolution = request.casefile["resolution_specs"][0]
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(
@@ -909,7 +910,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 ),
                 {"task_run_id": chat_task_id},
             ).one()
-        assert stored_prompt_version == "casefile-chat-v10"
+        assert stored_prompt_version == "casefile-chat-v12"
         assert stored_toolset_version == "casefile-chat-tools-v4"
         chat_worker = Worker(
             factory,

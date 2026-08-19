@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -287,6 +288,32 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
+    ("casefile_chat", "casefile-chat-v11"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "3ae617c6d79efa4ec9a118b96970926c5dce1ec4d3c89ddba83d9180edc5c01c",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-audit": "1f3baa7c6ab91f0ea2b3e4104a234a7d7c2b01c1ca0d280652af6d61eecf07e4",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
+    ("casefile_chat", "casefile-chat-v12"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "8878d8a8bad70bc0ba8209ff95c04c5fb18729ff39056e64f4007f0e8e0b0dd5",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-audit": "1f3baa7c6ab91f0ea2b3e4104a234a7d7c2b01c1ca0d280652af6d61eecf07e4",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
     ("casefile_chat_context_compactor", "casefile-chat-context-compactor-v1"): {
         "fragment:compact": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5",  # noqa: E501
     },
@@ -553,6 +580,29 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "system_layer_direct_write" in router_v10
     assert "输出前证据链自检" in v10_chat.component_prompts["audit"]
     assert "可修漏洞而 `suggestions` 为空" in v10_chat.component_prompts["audit"]
+    v11_chat = load_prompt("casefile_chat", "casefile-chat-v11")
+    assert v11_chat.package is not None
+    assert v11_chat.package.previous_version == "casefile-chat-v10"
+    assert v11_chat.package.runtime_toolset_version == "casefile-chat-tools-v4"
+    audit_v11 = v11_chat.package.components["audit"]
+    assert audit_v11.output_schema_id == "casefile-chat-output-v2"
+    assert audit_v11.tool_policy_id == "chat-audit-v4"
+    audit_v11_prompt = v11_chat.component_prompts["audit"]
+    assert "不代表本轮没有取得证据" in audit_v11_prompt
+    assert "`successful_calls`" in audit_v11_prompt
+    assert "不得写入盲区" in audit_v11_prompt
+    assert "禁止把末尾出现的 `tool_budget_exhausted`" in audit_v11_prompt
+    v12_chat = load_prompt("casefile_chat", "casefile-chat-v12")
+    assert v12_chat.package is not None
+    assert v12_chat.package.previous_version == "casefile-chat-v11"
+    assert v12_chat.package.runtime_toolset_version == "casefile-chat-tools-v4"
+    router_v12 = v12_chat.component_prompts["router"]
+    assert "`sub_intents` 取值表" in router_v12
+    assert "`healthcheck`" in router_v12
+    assert "`evidence_chain`" in router_v12
+    assert "`compare_candidates`" in router_v12
+    assert "必须填对应的 `sub_intents`" in router_v12
+    assert "随便查查全案逻辑漏洞，能修的就改一下" in router_v12
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:
@@ -700,6 +750,8 @@ def test_chat_audit_prompt_packages_are_execution_auditable() -> None:
     assert "casefile-chat-v8" in CHAT_PROMPT_PACKAGE_VERSIONS
     assert "casefile-chat-v9" in CHAT_PROMPT_PACKAGE_VERSIONS
     assert "casefile-chat-v10" in CHAT_PROMPT_PACKAGE_VERSIONS
+    assert "casefile-chat-v11" in CHAT_PROMPT_PACKAGE_VERSIONS
+    assert "casefile-chat-v12" in CHAT_PROMPT_PACKAGE_VERSIONS
 
 
 def _write_manifest(
