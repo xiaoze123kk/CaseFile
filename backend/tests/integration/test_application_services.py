@@ -20,6 +20,10 @@ from application_services_test_support import (
     _brief,
     _prepare_task,
 )
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -53,9 +57,6 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -1686,7 +1687,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert routed_request.route is not None
         assert routed_request.route.route_source == "llm"
         assert routed_request.route.execution_profile["prompt_component"] == "edit"
-        assert routed_request.prompt_version == "casefile-chat-v10"
+        assert routed_request.prompt_version == "casefile-chat-v12"
         assert routed_request.toolset_version == "casefile-chat-tools-v4"
         assert routed_request.context_policy_version == "casefile-chat-context-v6"
         assert routed_request.task_understanding is not None
@@ -2316,7 +2317,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                     TaskRun.id == first_chat_task_id
                 )
             ).one()
-        assert prompt_version == "casefile-chat-v10"
+        assert prompt_version == "casefile-chat-v12"
         assert toolset_version == "casefile-chat-tools-v4"
 
         chat_claimer = Worker(

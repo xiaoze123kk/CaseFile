@@ -45,7 +45,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V7_VERSION,
+    CHAT_CONTEXT_PROMPT_V9_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -182,7 +182,8 @@ def _chat_context_policy_version() -> str:
     """Return the default or opted-in chat context policy version.
 
     ``casefile-chat-context-v6`` is the accepted default (pairs with the
-    hardened ``casefile-chat-v10`` and ``casefile-chat-tools-v4``).
+    router/query-rewrite hardened ``casefile-chat-v12`` and
+    ``casefile-chat-tools-v4``).
     ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v5`` restores the
     structured-audit policy (paired with ``casefile-chat-v9``), ``...v4``
     restores the audit prompt policy (paired with ``casefile-chat-v8``),
@@ -2383,7 +2384,7 @@ class WorkflowService:
             elif policy_version == CHAT_CONTEXT_POLICY_V5_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_V6_VERSION
             elif policy_version == CHAT_CONTEXT_POLICY_V6_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V7_VERSION
+                prompt_version = CHAT_CONTEXT_PROMPT_V9_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
         return TaskRun(

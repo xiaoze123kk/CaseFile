@@ -23,6 +23,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
@@ -33,7 +36,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V7_VERSION,
+    CHAT_CONTEXT_PROMPT_V9_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatCandidate
 from casefile.application.services import CaseFileService
@@ -50,8 +53,6 @@ from casefile.benchmark.chat_outcome_eval import (
 from casefile.benchmark.chat_outcome_live_eval import LIVE_THRESHOLDS
 from casefile.data_postgres.models import AgentThreadContextState, TaskEvent, TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -170,7 +171,7 @@ def _arm_report(
             if rollout == CHAT_CONTEXT_POLICY_V4_VERSION
             else CHAT_CONTEXT_PROMPT_V6_VERSION
             if rollout == CHAT_CONTEXT_POLICY_V5_VERSION
-            else CHAT_CONTEXT_PROMPT_V7_VERSION
+            else CHAT_CONTEXT_PROMPT_V9_VERSION
             if rollout in (None, "", CHAT_CONTEXT_POLICY_V6_VERSION)
             else "casefile-chat-v3"
         ),
