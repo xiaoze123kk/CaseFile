@@ -484,12 +484,17 @@ def test_manifest_gates_v2_tools_by_frozen_toolset_version() -> None:
         request.route,
         toolset_version=CHAT_TOOLSET_VERSION,
     )]
+    v4_names = [tool.name for tool in chat_tool_manifest(
+        request.route,
+        toolset_version=CHAT_TOOLSET_V4_VERSION,
+    )]
     legacy_names = [tool.name for tool in chat_tool_manifest(
         request.route,
         toolset_version=LEGACY_CHAT_TOOLSET_VERSION,
     )]
 
     assert v2_names == FULL_V2_TOOLSET
+    assert v4_names == FULL_V2_TOOLSET
     assert "list_casefile_records" not in legacy_names
     assert "get_related_objects" not in legacy_names
     assert "search_casefile" in legacy_names
