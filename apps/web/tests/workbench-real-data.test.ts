@@ -761,6 +761,97 @@ describe("real workbench data mapper", () => {
     });
   });
 
+  it("propagates an uncertain anchor range into a projected relative time range", () => {
+    const caseFile = makeCaseFile();
+    caseFile.events = [
+      {
+        ...caseFile.events[0],
+        id: "evt_anchor",
+        title: "区间锚点事件",
+        time: {
+          kind: "range",
+          start: "2042-06-01T20:00",
+          end: "2042-06-01T20:10",
+          precision: "minute",
+        },
+      },
+      {
+        ...caseFile.events[1],
+        id: "evt_after",
+        title: "锚点之后事件",
+        time: {
+          kind: "relative",
+          anchor_event_ref: ref("event", "evt_anchor"),
+          relation: "after",
+          offset_minutes: 15,
+        },
+      },
+      {
+        ...caseFile.events[2],
+        id: "evt_before",
+        title: "锚点之前事件",
+        time: {
+          kind: "relative",
+          anchor_event_ref: ref("event", "evt_anchor"),
+          relation: "before",
+          offset_minutes: 10,
+        },
+      },
+    ];
+
+    const timeline = mapCaseFileToWorkbenchModel(caseFile, 7).timelineEvents;
+
+    expect(timeline.find((event) => event.id === "evt_after")).toMatchObject({
+      timeProjection: "relative-resolved",
+      start: "2042-06-01T20:15:00",
+      end: "2042-06-01T20:25:00",
+      sortKey: "2042-06-01T20:15:00",
+    });
+    expect(timeline.find((event) => event.id === "evt_before")).toMatchObject({
+      timeProjection: "relative-resolved",
+      start: "2042-06-01T19:50:00",
+      end: "2042-06-01T20:00:00",
+      sortKey: "2042-06-01T19:50:00",
+    });
+  });
+
+  it("projects a same_time relative event with a null offset onto the anchor bounds", () => {
+    const caseFile = makeCaseFile();
+    caseFile.events = [
+      {
+        ...caseFile.events[0],
+        id: "evt_anchor",
+        title: "区间锚点事件",
+        time: {
+          kind: "range",
+          start: "2042-06-01T20:00",
+          end: "2042-06-01T20:10",
+          precision: "minute",
+        },
+      },
+      {
+        ...caseFile.events[1],
+        id: "evt_same_time",
+        title: "同时发生事件",
+        time: {
+          kind: "relative",
+          anchor_event_ref: ref("event", "evt_anchor"),
+          relation: "same_time",
+          offset_minutes: null,
+        },
+      },
+    ];
+
+    const timeline = mapCaseFileToWorkbenchModel(caseFile, 7).timelineEvents;
+
+    expect(timeline.find((event) => event.id === "evt_same_time")).toMatchObject({
+      timeProjection: "relative-resolved",
+      start: "2042-06-01T20:00:00",
+      end: "2042-06-01T20:10:00",
+      sortKey: "2042-06-01T20:00:00",
+    });
+  });
+
   it("keeps the existing fixture model available through an explicit adapter", () => {
     const model = expectWorkbenchSeedCompatibility(
       mapFixtureToWorkbenchModel(defaultWorkbenchSeed),
