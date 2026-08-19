@@ -10,6 +10,7 @@ from casefile.agent_runtime.chat_routing import (
     EXECUTION_PROFILES,
     fallback_route,
     route_hash,
+    route_llm_task,
     routing_policy,
 )
 from casefile.agent_runtime.models import ChatTaskUnderstanding
@@ -116,6 +117,54 @@ def test_issue_route_allows_suggestions_subject_to_focus_constraints() -> None:
     assert route_allows_suggestions(route) is True
 
 
+def test_logic_audit_profile_allows_suggestions_and_tightens_budget() -> None:
+    route = routing_policy(
+        ChatTaskUnderstanding(
+            primary_intent="logic_audit",
+            confidence=1.0,
+            reason_codes=("rule_preset:audit",),
+        ),
+        budget={},
+        profile="logic_audit.full_review",
+        route_source="rule_preset",
+    )
+
+    assert route.execution_profile["prompt_component"] == "audit"
+    assert route.execution_profile["allow_suggestions"] is True
+    assert route_suggestion_policy(route) == "allow"
+    assert route_allows_suggestions(route) is True
+    assert route.execution_profile["max_turns"] == 8
+    assert route.execution_profile["max_tool_calls"] == 20
+    assert "validate_patch_proposal" in route.execution_profile["toolset"]
+
+    tightened = routing_policy(
+        ChatTaskUnderstanding(
+            primary_intent="logic_audit",
+            confidence=1.0,
+            reason_codes=("rule_preset:audit",),
+        ),
+        budget={"max_tool_calls": 4},
+    )
+    assert tightened.execution_profile["max_tool_calls"] == 4
+
+
+def test_low_confidence_logic_audit_falls_back_to_question() -> None:
+    route = route_llm_task(
+        ChatTaskUnderstanding(
+            primary_intent="logic_audit",
+            confidence=0.5,
+            reason_codes=("llm",),
+        ),
+        budget={},
+        rewrite_strategy="CONTEXTUALIZE",
+    )
+
+    assert route.route_source == "fallback"
+    assert route.execution_profile["primary_intent"] == "question"
+    assert route_suggestion_policy(route) == "deny"
+    assert route_allows_suggestions(route) is False
+
+
 def test_r2_fallback_route_denies_suggestions_and_keeps_legacy_prompt_profile() -> None:
     route = fallback_route(reason_codes=("rule_miss",))
 
@@ -151,6 +200,7 @@ def test_all_read_route_profiles_expose_the_v2_read_surface() -> None:
         ("analysis", "get_validation_issues"),
         ("explain_issue", "get_validation_issues"),
         ("edit_request", "validate_patch_proposal"),
+        ("logic_audit", "validate_patch_proposal"),
     ):
         route = routing_policy(
             ChatTaskUnderstanding(

@@ -44,7 +44,7 @@ PROFILE: dict[str, object] = {}
 
 class ApiChatProvider(FakeProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        assert request.prompt_version == "casefile-chat-v7"
+        assert request.prompt_version == "casefile-chat-v10"
         resolution = request.casefile["resolution_specs"][0]
         return CaseFileChatResult(
             candidate=CaseFileChatCandidate.model_validate(
@@ -909,8 +909,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 ),
                 {"task_run_id": chat_task_id},
             ).one()
-        assert stored_prompt_version == "casefile-chat-v7"
-        assert stored_toolset_version == "casefile-chat-tools-v3"
+        assert stored_prompt_version == "casefile-chat-v10"
+        assert stored_toolset_version == "casefile-chat-tools-v4"
         chat_worker = Worker(
             factory,
             config=WorkerConfig(worker_id="api-chat-worker"),

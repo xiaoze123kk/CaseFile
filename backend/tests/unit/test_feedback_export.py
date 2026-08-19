@@ -103,3 +103,4 @@ def test_prompt_component_mapping_tracks_the_routing_table() -> None:
     assert prompt_component_for_intent("edit_request") == "edit"
     assert prompt_component_for_intent("validate_request") == "gate"
     assert prompt_component_for_intent("unsupported_action") == "scope"
+    assert prompt_component_for_intent("logic_audit") == "audit"

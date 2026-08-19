@@ -35,6 +35,8 @@ _DANGEROUS_PAIRS = {
     ("unsupported_action", "edit_request"),
     ("validate_request", "analysis"),
     ("explain_issue", "edit_request"),
+    ("logic_audit", "validate_request"),
+    ("logic_audit", "analysis"),
 }
 
 

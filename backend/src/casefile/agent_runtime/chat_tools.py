@@ -19,9 +19,16 @@ from casefile.agent_runtime.models import (
     RouteDecision,
     ToolMetrics,
 )
+from casefile.contracts import (
+    ContractValidationError,
+    public_validation_issues,
+    validate_casefile,
+    validate_casefile_semantics,
+)
 
 CHAT_TOOLSET_VERSION = "casefile-chat-tools-v2"
 CHAT_TOOLSET_V3_VERSION = "casefile-chat-tools-v3"
+CHAT_TOOLSET_V4_VERSION = "casefile-chat-tools-v4"
 LEGACY_CHAT_TOOLSET_VERSION = "casefile-chat-tools-v1"
 
 _COLLECTIONS = (
@@ -57,10 +64,12 @@ _RECENT_TOOL_RESULTS = 3
 # Tools introduced by the v2 toolset are denied to legacy chat TaskRuns so
 # frozen v1-toolset replays keep their original read surface.
 _V2_ONLY_TOOLS = frozenset({"list_casefile_records", "get_related_objects"})
-# Phase 4 Context Tools are v3-only; v1/v2 replays never see them.
+# Phase 4 Context Tools are v3 and v4; v1/v2 replays never see them.
 _V3_ONLY_TOOLS = frozenset(
     {"retrieve_thread_evidence", "request_thread_compaction"}
 )
+# The dry-run patch preview is v4-only; earlier replays keep their exact read surface.
+_V4_ONLY_TOOLS = frozenset({"simulate_patch_application"})
 _LIST_LIMIT_MAX = 50
 _RELATED_SEED_MAX = 8
 _RELATED_LIMIT_MAX = 40
@@ -350,6 +359,300 @@ def find_casefile_object(
             if isinstance(item, dict) and item.get("id") == object_id:
                 return collection, item
     return None
+
+
+@dataclass(frozen=True, slots=True)
+class _ProposalCheck:
+    """Normalized outcome of one patch-proposal validation pass."""
+
+    reason_code: str | None
+    object_id: str = ""
+    collection: str = ""
+    item: dict[str, Any] | None = None
+    value: Any = None
+    allowed_fields: tuple[str, ...] = ()
+
+
+_MISSING = object()
+
+
+def _pointer_parts(path: str) -> list[str]:
+    """Decode one JSON Pointer path into parts (~0/~1 unescaped)."""
+
+    if not path.startswith("/") or path == "/":
+        return []
+    return [
+        part.replace("~1", "/").replace("~0", "~") for part in path[1:].split("/")
+    ]
+
+
+def _pointer_value(value: Any, path: str) -> Any:
+    """Resolve a JSON Pointer inside one frozen object, returning _MISSING on failure."""
+
+    current = value
+    for part in _pointer_parts(path):
+        if isinstance(current, list):
+            try:
+                current = current[int(part)]
+            except (IndexError, ValueError):
+                return _MISSING
+        elif isinstance(current, dict):
+            try:
+                current = current[part]
+            except KeyError:
+                return _MISSING
+        else:
+            return _MISSING
+    return current
+
+
+def _pointer_set(target: Any, path: str, new_value: Any) -> None:
+    """Set one JSON Pointer node in place; the path must already resolve."""
+
+    parts = _pointer_parts(path)
+    if not parts:
+        raise RuntimeError(f"Invalid pointer path: {path}")
+    current = target
+    for part in parts[:-1]:
+        if isinstance(current, list):
+            current = current[int(part)]
+        elif isinstance(current, dict):
+            current = current[part]
+        else:
+            raise RuntimeError(f"Pointer path is missing: {path}")
+    last = parts[-1]
+    if isinstance(current, list):
+        current[int(last)] = new_value
+    elif isinstance(current, dict):
+        current[last] = new_value
+    else:
+        raise RuntimeError(f"Pointer path is missing: {path}")
+
+
+def _check_patch_proposal(
+    context: ChatToolContext,
+    object_id: str,
+    path: str,
+    value_json: str,
+    *,
+    require_path_exists: bool = False,
+) -> _ProposalCheck:
+    """Shared validation for proposal-producing and proposal-previewing tools."""
+
+    stripped_object_id = object_id.strip()
+    found = find_casefile_object(context.request.casefile, stripped_object_id)
+    if found is None:
+        return _ProposalCheck("object_not_found", object_id=object_id)
+    collection, item = found
+    top_level_field = path.lstrip("/").split("/")[0] if path.startswith("/") else ""
+    allowed_fields = tuple(
+        context.request.editable_fields_by_collection.get(collection, ())
+    )
+    if not top_level_field or top_level_field not in allowed_fields:
+        return _ProposalCheck(
+            "field_not_editable",
+            object_id=object_id,
+            collection=collection,
+            item=item,
+            allowed_fields=allowed_fields,
+        )
+    trimmed = value_json.strip()
+    if trimmed.startswith("```") or trimmed.endswith("```"):
+        reason = "value_json_wrapped_in_markdown"
+    else:
+        try:
+            value = json.loads(value_json)
+        except json.JSONDecodeError:
+            reason = "value_json_invalid"
+        else:
+            reason = None
+    if reason is not None:
+        return _ProposalCheck(
+            reason,
+            object_id=object_id,
+            collection=collection,
+            item=item,
+        )
+    if require_path_exists and _pointer_value(item, path) is _MISSING:
+        return _ProposalCheck(
+            "path_not_found",
+            object_id=object_id,
+            collection=collection,
+            item=item,
+        )
+    return _ProposalCheck(
+        None,
+        object_id=object_id,
+        collection=collection,
+        item=item,
+        value=value,
+        allowed_fields=allowed_fields,
+    )
+
+
+def _validation_issue_keys(issues: Any) -> set[tuple[str, str]]:
+    """Stable (code, path) keys shared by the frozen snapshot and validators."""
+
+    keys: set[tuple[str, str]] = set()
+    if not isinstance(issues, (list, tuple)):
+        return keys
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        code = issue.get("code")
+        path = issue.get("path")
+        if isinstance(code, str) and isinstance(path, str):
+            keys.add((code, path))
+    return keys
+
+
+def _issue_keys_to_ids(
+    issues: Any,
+) -> dict[tuple[str, str], str]:
+    """Map frozen snapshot (code, path) keys to their issue ids; never invent ids."""
+
+    result: dict[tuple[str, str], str] = {}
+    if not isinstance(issues, (list, tuple)):
+        return result
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        code = issue.get("code")
+        path = issue.get("path")
+        issue_id = issue.get("issue_id")
+        if (
+            isinstance(code, str)
+            and isinstance(path, str)
+            and isinstance(issue_id, str)
+        ):
+            result[(code, path)] = issue_id
+    return result
+
+
+def _validated_issue_views(
+    document: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Run structural + semantic validators and return public issue views."""
+
+    structural: list[dict[str, Any]] = []
+    try:
+        validate_casefile(document)
+    except ContractValidationError as error:
+        structural = list(public_validation_issues(error.errors))
+    semantic = list(public_validation_issues(validate_casefile_semantics(document)))
+    return structural, semantic
+
+
+def simulate_patch_delta(
+    casefile: dict[str, Any],
+    validation_issues: tuple[dict[str, Any], ...] | list[dict[str, Any]],
+    object_id: str,
+    path: str,
+    value_json: str,
+) -> dict[str, Any]:
+    """Pure dry-run validator-issue delta for one patch proposal.
+
+    This is the deterministic core shared by the ``simulate_patch_application``
+    tool and the outcome Grader. It never persists and never mutates the input;
+    callers must have already checked the editable-field whitelist through
+    ``validate_patch_proposal`` (or equivalent). It does re-check object/path/
+    value existence so a malformed proposal can never crash the grader.
+    """
+
+    stripped_object_id = object_id.strip()
+    found = find_casefile_object(casefile, stripped_object_id)
+    if found is None:
+        return {
+            "valid": False,
+            "reason_code": "object_not_found",
+            "object_id": object_id,
+            "path": path,
+        }
+    _collection, item = found
+    if _pointer_value(item, path) is _MISSING:
+        return {
+            "valid": False,
+            "reason_code": "path_not_found",
+            "object_id": object_id,
+            "path": path,
+        }
+    trimmed = value_json.strip()
+    if trimmed.startswith("```") or trimmed.endswith("```"):
+        return {
+            "valid": False,
+            "reason_code": "value_json_wrapped_in_markdown",
+            "object_id": object_id,
+            "path": path,
+        }
+    try:
+        value = json.loads(trimmed)
+    except json.JSONDecodeError:
+        return {
+            "valid": False,
+            "reason_code": "value_json_invalid",
+            "object_id": object_id,
+            "path": path,
+        }
+
+    base_document = deepcopy(casefile)
+    try:
+        validate_casefile(base_document)
+    except ContractValidationError:
+        return {
+            "valid": False,
+            "reason_code": "base_document_invalid",
+            "object_id": object_id,
+            "path": path,
+        }
+
+    baseline_keys = _validation_issue_keys(
+        validation_issues
+    ) | _validation_issue_keys(validate_casefile_semantics(base_document))
+    baseline_ids = _issue_keys_to_ids(validation_issues)
+
+    patched_document = deepcopy(base_document)
+    patched_found = find_casefile_object(patched_document, stripped_object_id)
+    if patched_found is None:
+        raise RuntimeError("Frozen CaseFile changed while simulating patch")
+    _pointer_set(patched_found[1], path, value)
+    structural_after, semantic_after = _validated_issue_views(patched_document)
+    after_issues = [*structural_after, *semantic_after]
+    after_keys = _validation_issue_keys(after_issues)
+
+    fixed_keys = sorted(baseline_keys - after_keys)
+    new_keys = sorted(after_keys - baseline_keys)
+    unchanged_keys = sorted(baseline_keys & after_keys)
+    fixed_issue_ids = [baseline_ids[key] for key in fixed_keys if key in baseline_ids]
+    unchanged_issue_ids = [
+        baseline_ids[key] for key in unchanged_keys if key in baseline_ids
+    ]
+    new_issues = [
+        {"code": issue["code"], "path": issue["path"], "message": issue["message"]}
+        for issue in after_issues
+        if (issue.get("code"), issue.get("path")) in set(new_keys)
+    ]
+    if new_keys:
+        advice = "introduces_new_issues"
+    elif fixed_keys:
+        advice = "fixes_n_issues"
+    else:
+        advice = "safe_to_propose"
+    return {
+        "valid": True,
+        "object_id": object_id,
+        "path": path,
+        "fixed_issue_ids": fixed_issue_ids,
+        "new_issue_ids": [],
+        "unchanged_issue_ids": unchanged_issue_ids,
+        "new_issues": new_issues,
+        "advice": advice,
+        "counts": {
+            "baseline": len(baseline_keys),
+            "fixed": len(fixed_keys),
+            "new": len(new_keys),
+            "unchanged": len(unchanged_keys),
+        },
+    }
 
 
 def _clamp_tool_count(value: Any, *, default: int, minimum: int, maximum: int) -> int:
@@ -892,81 +1195,106 @@ def validate_patch_proposal(
         {"object_id": object_id, "path": path},
     )
     context.metrics.valid_calls += 1
-    found = find_casefile_object(context.request.casefile, object_id.strip())
-    if found is None:
-        _emit_completed(
-            context,
-            "validate_patch_proposal",
-            {"valid": False, "reason_code": "object_not_found", "object_id": object_id},
-        )
-        return json.dumps(
-            {"valid": False, "reason_code": "object_not_found", "object_id": object_id},
-            ensure_ascii=False,
-        )
-    collection, _item = found
-    top_level_field = path.lstrip("/").split("/")[0] if path.startswith("/") else ""
-    allowed_fields = context.request.editable_fields_by_collection.get(collection, ())
-    if not top_level_field or top_level_field not in allowed_fields:
-        _emit_completed(
-            context,
-            "validate_patch_proposal",
-            {
-                "valid": False,
-                "reason_code": "field_not_editable",
-                "object_id": object_id,
-                "path": path,
-                "allowed_fields": list(allowed_fields),
-            },
-        )
-        return json.dumps(
-            {
-                "valid": False,
-                "reason_code": "field_not_editable",
-                "object_id": object_id,
-                "path": path,
-                "allowed_fields": list(allowed_fields),
-            },
-            ensure_ascii=False,
-        )
-    trimmed = value_json.strip()
-    if trimmed.startswith("```") or trimmed.endswith("```"):
-        reason = "value_json_wrapped_in_markdown"
-    else:
-        try:
-            json.loads(value_json)
-        except json.JSONDecodeError:
-            reason = "value_json_invalid"
-        else:
-            reason = None
-    if reason is not None:
-        _emit_completed(
-            context,
-            "validate_patch_proposal",
-            {
-                "valid": False,
-                "reason_code": reason,
-                "object_id": object_id,
-                "path": path,
-            },
-        )
-        return json.dumps(
-            {
-                "valid": False,
-                "reason_code": reason,
-                "object_id": object_id,
-                "path": path,
-            },
-            ensure_ascii=False,
-        )
+    check = _check_patch_proposal(context, object_id, path, value_json)
+    if check.reason_code is not None:
+        payload: dict[str, Any] = {
+            "valid": False,
+            "reason_code": check.reason_code,
+            "object_id": object_id,
+            "path": path,
+        }
+        if check.reason_code == "field_not_editable":
+            payload["allowed_fields"] = list(check.allowed_fields)
+        _emit_completed(context, "validate_patch_proposal", payload)
+        return json.dumps(payload, ensure_ascii=False)
     context.metrics.successful_calls += 1
-    _emit_completed(
+    payload = {"valid": True, "object_id": object_id, "path": path}
+    _emit_completed(context, "validate_patch_proposal", payload)
+    return json.dumps(payload, ensure_ascii=False)
+
+
+@function_tool
+def simulate_patch_application(
+    wrapper: RunContextWrapper[ChatToolContext],
+    object_id: str,
+    path: str,
+    value_json: str,
+) -> str:
+    """Dry-run one patch against a copy of the frozen CaseFile.
+
+    The result is the validator issue delta (fixed/new/unchanged) after the
+    patch. Nothing is persisted and the frozen CaseFile is never mutated.
+    ``new_issue_ids`` stays empty because new issues do not exist in the frozen
+    snapshot and this tool never invents IDs; ``new_issues`` carries their
+    deterministic code/path/message views instead.
+    """
+
+    context = wrapper.context
+    if not _reserve_call(context):
+        context.metrics.budget_exhausted += 1
+        _emit_completed(
+            context,
+            "simulate_patch_application",
+            {"valid": False, "reason_code": "tool_budget_exhausted"},
+        )
+        return json.dumps(
+            {"valid": False, "reason_code": "tool_budget_exhausted"},
+            ensure_ascii=False,
+        )
+    _emit_started(
         context,
-        "validate_patch_proposal",
-        {"valid": True, "object_id": object_id, "path": path},
+        "simulate_patch_application",
+        {"object_id": object_id, "path": path},
     )
-    return json.dumps(
-        {"valid": True, "object_id": object_id, "path": path},
-        ensure_ascii=False,
+    context.metrics.valid_calls += 1
+    check = _check_patch_proposal(
+        context,
+        object_id,
+        path,
+        value_json,
+        require_path_exists=True,
+    )
+    if check.reason_code is not None:
+        payload: dict[str, Any] = {
+            "valid": False,
+            "reason_code": check.reason_code,
+            "object_id": object_id,
+            "path": path,
+        }
+        if check.reason_code == "field_not_editable":
+            payload["allowed_fields"] = list(check.allowed_fields)
+        _emit_completed(context, "simulate_patch_application", payload)
+        return json.dumps(payload, ensure_ascii=False)
+    assert check.item is not None and check.collection
+
+    payload = simulate_patch_delta(
+        context.request.casefile,
+        context.request.validation_issues,
+        object_id,
+        path,
+        value_json,
+    )
+    if payload.get("valid") is True:
+        context.metrics.successful_calls += 1
+        _emit_completed(
+            context,
+            "simulate_patch_application",
+            {
+                "valid": True,
+                "object_id": object_id,
+                "path": path,
+                "advice": payload.get("advice"),
+                "fixed_count": payload.get("counts", {}).get("fixed", 0),
+                "new_count": payload.get("counts", {}).get("new", 0),
+            },
+        )
+    else:
+        _emit_completed(context, "simulate_patch_application", payload)
+    return _emit_tool_result(
+        context,
+        "simulate_patch_application",
+        {"object_id": object_id, "path": path, "value_json": value_json},
+        payload,
     )
 
 
@@ -1095,6 +1423,7 @@ _CHAT_TOOL_REGISTRY: dict[str, Tool] = {
     "get_related_objects": get_related_objects,
     "get_validation_issues": get_validation_issues,
     "validate_patch_proposal": validate_patch_proposal,
+    "simulate_patch_application": simulate_patch_application,
     "retrieve_thread_evidence": retrieve_thread_evidence,
     "request_thread_compaction": request_thread_compaction,
 }
@@ -1109,8 +1438,9 @@ def chat_tool_manifest(
 
     ``toolset`` is the regular route read surface and ``context_tools`` is the
     Phase 4 context surface declared per route. v1 replays only see the v1 read
-    surface; v2 replays see v2 read tools; only ``casefile-chat-tools-v3``
-    exposes the read-only thread evidence and compaction-request tools.
+    surface; v2 and later replays keep the v2 read tools; v3 and v4 expose the
+    read-only thread evidence and compaction-request tools; only
+    ``casefile-chat-tools-v4`` exposes the dry-run patch preview.
     """
 
     allowed = list(route.execution_profile.get("toolset") or [])
@@ -1122,10 +1452,20 @@ def chat_tool_manifest(
         if (
             tool_name in _V2_ONLY_TOOLS
             and toolset_version
-            not in {CHAT_TOOLSET_VERSION, CHAT_TOOLSET_V3_VERSION}
+            not in {
+                CHAT_TOOLSET_VERSION,
+                CHAT_TOOLSET_V3_VERSION,
+                CHAT_TOOLSET_V4_VERSION,
+            }
         ):
             continue
-        if tool_name in _V3_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_V3_VERSION:
+        if (
+            tool_name in _V3_ONLY_TOOLS
+            and toolset_version
+            not in {CHAT_TOOLSET_V3_VERSION, CHAT_TOOLSET_V4_VERSION}
+        ):
+            continue
+        if tool_name in _V4_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_V4_VERSION:
             continue
         tool = _CHAT_TOOL_REGISTRY.get(tool_name)
         if tool is not None and tool not in manifest:
@@ -1137,6 +1477,7 @@ __all__ = [
     "CASEFILE_COLLECTIONS",
     "CHAT_TOOLSET_VERSION",
     "CHAT_TOOLSET_V3_VERSION",
+    "CHAT_TOOLSET_V4_VERSION",
     "LEGACY_CHAT_TOOLSET_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
@@ -1155,5 +1496,7 @@ __all__ = [
     "retrieve_thread_evidence",
     "search_casefile",
     "search_casefile_records",
+    "simulate_patch_application",
+    "simulate_patch_delta",
     "validate_patch_proposal",
 ]

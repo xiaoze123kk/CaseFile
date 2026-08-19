@@ -80,7 +80,7 @@ function makeTask(overrides: Partial<TaskView> = {}): TaskView {
     task_type: "casefile_chat",
     status: "queued",
     stage: "queued",
-    provider: "openai",
+    provider: "deepseek",
     model_id: "chat-model",
     input_draft_revision: 3,
     input_brief_revision: null,
@@ -319,6 +319,165 @@ describe("workbench agent live panel", () => {
     expect(await screen.findByText("已记录反馈：问答")).toBeInTheDocument();
   });
 
+  it("renders the logic audit chip and keeps its PatchSet reviewable", async () => {
+    const pending = makePatchSet();
+    const applied = makePatchSet({
+      status: "applied",
+      applied_from_revision: 3,
+      applied_to_revision: 4,
+      operations: pending.operations.map((operation) => ({
+        ...operation,
+        decision: "accepted",
+        reviewed_at: "2026-08-16T09:10:00Z",
+      })),
+    });
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValueOnce([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "审计报告：发现一处描述缺口。",
+        task: makeTask({
+          status: "succeeded",
+          result: {
+            answer: "审计报告：发现一处描述缺口。",
+            referenced_object_ids: [],
+            referenced_event_ids: [],
+            referenced_validation_issue_ids: [],
+            suggested_view: null,
+            patch_set_id: null,
+            stale: false,
+            routing: {
+              route_source: "rule_preset",
+              intent: "logic_audit",
+              route_hash: "h",
+            },
+          },
+        }),
+        patch_set: pending,
+      }),
+    ]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "审计报告：发现一处描述缺口。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: applied,
+      }),
+    ]);
+    mocks.applyAgentPatchSet.mockResolvedValue({
+      ...applied,
+      draft_revision: 4,
+    });
+
+    renderPanel();
+
+    expect(
+      await screen.findByText("预设路由 · 逻辑漏洞复查"),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("修改建议")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "选择修改 研究员 /name" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "采纳所选（1）" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.applyAgentPatchSet).toHaveBeenCalledWith(
+        1,
+        1,
+        200,
+        9,
+        3,
+        [201],
+      );
+    });
+    expect(onDraftChangedMock).toHaveBeenCalled();
+  });
+
+  it("renders structured audit findings with clickable evidence", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 3,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "复查完成，发现一处矛盾。",
+        task: makeTask({
+          status: "succeeded",
+          result: {
+            answer: "复查完成，发现一处矛盾。",
+            referenced_object_ids: ["object:person_1"],
+            referenced_event_ids: ["event:known"],
+            referenced_validation_issue_ids: ["validator:issue-1"],
+            suggested_view: null,
+            patch_set_id: null,
+            stale: false,
+            audit_findings: [
+              {
+                finding_id: "F1",
+                kind: "contradiction",
+                severity: "S1",
+                title: "研究员描述前后矛盾",
+                statement: "第一段说研究员支持重启，第二段又说反对。",
+                needs_manual_review: false,
+                evidence_object_ids: ["object:person_1"],
+                evidence_event_ids: ["event:known"],
+                evidence_validation_issue_ids: ["validator:issue-1"],
+              },
+              {
+                finding_id: "F2",
+                kind: "motivation_gap",
+                severity: "S3",
+                title: "动机不明",
+                statement: "重启原因在材料中缺少直接说明。",
+                needs_manual_review: true,
+                evidence_object_ids: [],
+                evidence_event_ids: [],
+                evidence_validation_issue_ids: [],
+              },
+            ],
+            routing: {
+              route_source: "rule_preset",
+              intent: "logic_audit",
+              route_hash: "h",
+            },
+          },
+        }),
+      }),
+    ]);
+
+    renderPanel();
+
+    expect(
+      await screen.findByRole("article", { name: "逻辑漏洞复查发现" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("研究员描述前后矛盾")).toBeInTheDocument();
+    expect(screen.getByText("矛盾")).toBeInTheDocument();
+    expect(screen.getByText("致命")).toBeInTheDocument();
+    expect(screen.getByText("待人工确认")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "对象 · 研究员" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "事件 · 重启事件" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "验证 · 关键主张缺少支撑" }),
+    );
+
+    expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
+    expect(locateMocks.event).toHaveBeenCalledWith("event:known");
+    expect(locateMocks.issue).toHaveBeenCalledWith("validator:issue-1");
+  });
+
   it("renders four kinds of clickable references and routes them into the workbench", async () => {
     mocks.listAgentThreads.mockResolvedValue([makeThread()]);
     mocks.listAgentMessages.mockResolvedValue([
@@ -383,6 +542,12 @@ describe("workbench agent live panel", () => {
         prompt:
           "按编译中心的发布门禁口径做导出前检查，结论必须与验证快照一致。",
       },
+      {
+        label: "逻辑漏洞复查",
+        presetId: "audit",
+        prompt:
+          "对当前卷宗做一次全卷逻辑漏洞复查：找出矛盾、断链、时序错误和动机缺口；能给出可审阅补丁的就给出补丁，无法取证的列到待人工确认，未发现漏洞则如实说明。",
+      },
     ];
     mocks.listAgentThreads.mockResolvedValue([makeThread()]);
     mocks.listAgentMessages.mockResolvedValue([]);
@@ -420,7 +585,7 @@ describe("workbench agent live panel", () => {
           9,
           3,
           preset.prompt,
-          "openai",
+          "deepseek",
           makeFocus(),
           { entrypoint: "preset", preset_id: preset.presetId },
         );
@@ -468,7 +633,7 @@ describe("workbench agent live panel", () => {
         9,
         3,
         "请处理当前焦点中的验证问题。",
-        "openai",
+        "deepseek",
         makeFocus(),
         { entrypoint: "issue_action" },
       );
@@ -574,7 +739,7 @@ describe("workbench agent live panel", () => {
       9,
       3,
       "帮我检查对象。",
-      "openai",
+      "deepseek",
       makeFocus(),
       { entrypoint: "free_text" },
     );
@@ -662,7 +827,7 @@ describe("workbench agent live panel", () => {
         9,
         3,
         "重写对象描述。",
-        "openai",
+        "deepseek",
         makeFocus(),
         { entrypoint: "free_text" },
       );
@@ -791,5 +956,151 @@ describe("workbench agent live panel", () => {
     });
     expect(await screen.findByText("已撤销")).toBeInTheDocument();
     expect(onDraftChangedMock).toHaveBeenCalled();
+  });
+
+  it("locates a PatchSet target object in the workbench before reviewing", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet(),
+      }),
+    ]);
+
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "定位对象 研究员" }),
+    );
+    expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
+  });
+
+  it("requires an explicit confirmation before rejecting every operation", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet(),
+      }),
+    ]);
+    mocks.applyAgentPatchSet.mockResolvedValue({
+      ...makePatchSet({ status: "rejected" }),
+      draft_revision: 3,
+    });
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole("button", { name: "全部拒绝" }));
+    expect(mocks.applyAgentPatchSet).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "确认拒绝" }));
+
+    await waitFor(() => {
+      expect(mocks.applyAgentPatchSet).toHaveBeenCalledWith(1, 1, 200, 9, 3, []);
+    });
+  });
+
+  it("expands nonblocking validator warnings inside the PatchSet review", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet({
+          validation_warning: true,
+          validator_issues: [
+            {
+              rule_id: "CF-W-CLAIM-001",
+              severity: "S1",
+              title: "关键主张缺少支撑信息",
+              message: "该关键主张被标记为已支持，但尚未关联任何支撑信息。",
+              object_refs: [],
+              field_path: "/support_refs",
+            },
+          ],
+        }),
+      }),
+    ]);
+
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看验证警告（1）" }),
+    );
+    expect(await screen.findByText("关键主张缺少支撑信息")).toBeInTheDocument();
+    expect(screen.getByText("CF-W-CLAIM-001")).toBeInTheDocument();
+    expect(
+      screen.getByText("该关键主张被标记为已支持，但尚未关联任何支撑信息。"),
+    ).toBeInTheDocument();
+  });
+
+  it("re-requests a stale PatchSet with its original instruction", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 5,
+        sequence_no: 1,
+        content: "请重新审计卷宗。",
+      }),
+      makeMessage({
+        message_id: 6,
+        sequence_no: 2,
+        role: "assistant",
+        status: "completed",
+        content: "旧草稿上的建议。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: makePatchSet({ status: "stale", is_stale: true }),
+      }),
+    ]);
+    mocks.sendAgentMessage.mockResolvedValue({
+      thread: makeThread(),
+      user_message: makeMessage({
+        message_id: 7,
+        sequence_no: 3,
+        content: "请重新审计卷宗。",
+      }),
+      assistant_message: makeMessage({
+        message_id: 8,
+        sequence_no: 4,
+        role: "assistant",
+        status: "pending",
+        content: null,
+        task: makeTask({ status: "queued" }),
+      }),
+      task: makeTask({ status: "queued" }),
+    });
+
+    renderPanel();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "重新生成建议" }),
+    );
+
+    await waitFor(() => {
+      expect(mocks.sendAgentMessage).toHaveBeenCalledWith(
+        1,
+        1,
+        11,
+        9,
+        3,
+        "请重新审计卷宗。",
+        "deepseek",
+        makeFocus(),
+        { entrypoint: "free_text" },
+      );
+    });
   });
 });

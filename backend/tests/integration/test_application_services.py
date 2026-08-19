@@ -451,6 +451,52 @@ def test_adoption_preserves_reference_free_knowledge_state_slots(
         }
 
 
+def test_same_brief_candidate_strategy_can_regenerate_beyond_two_attempts(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, _first_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="regeneration-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        )
+        assert worker.run_once() is True
+
+        generated: list[int] = []
+        for attempt in (1, 2, 3):
+            with factory() as session:
+                workflow = WorkflowService(session)
+                brief = workflow.get_brief(actor_id, project_id)
+                draft = CaseFileService(session).get_draft(actor_id, project_id)
+                task = workflow.create_generation_task(
+                    actor_id,
+                    project_id,
+                    brief_version_id=brief["current_version_id"],
+                    expected_draft_id=draft["draft_id"],
+                    expected_draft_revision=1,
+                    candidate_strategy="reasoning_first",
+                    candidate_strategy_attempt=attempt,
+                )
+            generated.append(int(task["task_run_id"]))
+            assert worker.run_once() is True
+
+        with factory() as session:
+            candidates = WorkflowService(session).list_generation_candidates(
+                actor_id,
+                project_id,
+            )
+        reasoning = [
+            candidate
+            for candidate in candidates
+            if candidate["candidate_strategy"] == "reasoning_first"
+        ]
+        assert [int(item["task_run_id"]) for item in reasoning] == generated[::-1]
+        assert [item["candidate_strategy_attempt"] for item in reasoning] == [3, 2, 1]
+
+
 def test_same_brief_candidates_create_independent_switchable_drafts(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
@@ -1621,7 +1667,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert frozen_input["history"] == []
             assert frozen_input["casefile"]["events"]
             assert frozen_input["focus"]["object_ids"] == []
-            assert frozen_input["context_policy_version"] == "casefile-chat-context-v3"
+            assert frozen_input["context_policy_version"] == "casefile-chat-context-v6"
             assert frozen_input["routing_hint"] == {
                 "entrypoint": "free_text",
                 "preset_id": None,
@@ -1640,6 +1686,9 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert routed_request.route is not None
         assert routed_request.route.route_source == "llm"
         assert routed_request.route.execution_profile["prompt_component"] == "edit"
+        assert routed_request.prompt_version == "casefile-chat-v10"
+        assert routed_request.toolset_version == "casefile-chat-tools-v4"
+        assert routed_request.context_policy_version == "casefile-chat-context-v6"
         assert routed_request.task_understanding is not None
         assert routed_request.task_understanding.primary_intent == "edit_request"
 
@@ -2252,7 +2301,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         assert frozen_input["casefile"] == initial_draft["content"]
         assert frozen_input["history"] == []
         assert frozen_input["message"] == "请逐项建议调整研究员、实验室和重启事件。"
-        assert frozen_input["context_policy_version"] == "casefile-chat-context-v3"
+        assert frozen_input["context_policy_version"] == "casefile-chat-context-v6"
         assert frozen_input["routing_hint"] == {
             "entrypoint": "free_text",
             "preset_id": None,
@@ -2260,6 +2309,15 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
         assert frozen_input["router_version"] == "casefile-chat-router-v2"
         assert input_draft_revision == 2
         assert input_hash == hashlib.sha256(rfc8785.dumps(frozen_input)).hexdigest()
+
+        with factory() as session:
+            prompt_version, toolset_version = session.execute(
+                select(TaskRun.prompt_version, TaskRun.toolset_version).where(
+                    TaskRun.id == first_chat_task_id
+                )
+            ).one()
+        assert prompt_version == "casefile-chat-v10"
+        assert toolset_version == "casefile-chat-tools-v4"
 
         chat_claimer = Worker(
             factory,

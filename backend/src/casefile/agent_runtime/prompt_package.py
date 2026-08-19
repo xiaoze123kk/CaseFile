@@ -51,6 +51,7 @@ from casefile.agent_runtime.brief_to_draft_v15.contracts import (
 )
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_VERSION,
 )
 from casefile.agent_runtime.context.thread_memory import (
@@ -59,6 +60,7 @@ from casefile.agent_runtime.context.thread_memory import (
 )
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     ChatExecutorInputV1,
     ChatExecutorInputV2,
     ChatIntentRouterInputV1,
@@ -157,6 +159,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-task-understanding-v1": ChatTaskUnderstandingOutput,
         "casefile-chat-rewrite-v1": QueryRewriteOutput,
         "casefile-chat-output-v1": CaseFileChatCandidate,
+        "casefile-chat-output-v2": CaseFileChatCandidateV2,
         "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
     }
 )
@@ -227,6 +230,18 @@ TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
                 "request_thread_compaction",
             }
         ),
+        "chat-audit-v4": frozenset(
+            {
+                "list_casefile_records",
+                "search_casefile",
+                "get_casefile_object",
+                "get_related_objects",
+                "get_validation_issues",
+                "validate_patch_proposal",
+                "simulate_patch_application",
+                "retrieve_thread_evidence",
+            }
+        ),
     }
 )
 RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
@@ -241,6 +256,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("casefile-single-agent-v2", TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V3_VERSION),
+        ("casefile-single-agent-v2", CHAT_TOOLSET_V4_VERSION),
     }
 )
 

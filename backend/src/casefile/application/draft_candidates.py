@@ -322,6 +322,9 @@ class DraftCandidateService:
             ),
             "provider": task.provider,
             "model_id": task.model_id,
+            "candidate_strategy_attempt": int(
+                task.input_jsonb.get("candidate_strategy_attempt", 1)
+            ),
             "title": summary["title"],
             "content_hash": summary["content_hash"],
             "object_counts": summary["object_counts"],

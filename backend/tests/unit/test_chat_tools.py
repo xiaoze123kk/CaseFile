@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from agents import RunContextWrapper
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_VERSION,
     LEGACY_CHAT_TOOLSET_VERSION,
     ChatToolContext,
@@ -26,9 +29,16 @@ from casefile.agent_runtime.chat_tools import (
     retrieve_thread_evidence,
     search_casefile,
     search_casefile_records,
+    simulate_patch_application,
     validate_patch_proposal,
 )
 from casefile.agent_runtime.models import CaseFileChatRequest, RouteDecision
+
+FIXTURE_ROOT = Path(__file__).resolve().parents[3] / "fixtures" / "casefiles"
+
+
+def load_casefile_fixture(name: str = "restart_loop.casefile.json") -> dict[str, Any]:
+    return json.loads((FIXTURE_ROOT / name).read_text(encoding="utf-8"))
 
 
 def make_casefile() -> dict[str, Any]:
@@ -241,6 +251,218 @@ def test_validate_patch_proposal_enforces_collection_field_whitelist() -> None:
     assert markdown["reason_code"] == "value_json_wrapped_in_markdown"
 
 
+def make_restart_loop_request(
+    *,
+    editable_fields_by_collection: dict[str, tuple[str, ...]] | None = None,
+    validation_issues: tuple[dict[str, Any], ...] = (),
+    max_tool_calls: int = 8,
+    toolset_version: str = CHAT_TOOLSET_V4_VERSION,
+    emit: Any | None = None,
+) -> CaseFileChatRequest:
+    return make_request(
+        toolset=["simulate_patch_application"],
+        max_tool_calls=max_tool_calls,
+        editable_fields_by_collection=editable_fields_by_collection
+        or {"entities": ("name",), "events": ("location_ref",)},
+        validation_issues=validation_issues,
+        casefile=load_casefile_fixture(),
+        emit=emit,
+        toolset_version=toolset_version,
+    )
+
+
+def test_simulate_patch_rejects_invalid_proposals_without_touching_casefile() -> None:
+    request = make_restart_loop_request(
+        editable_fields_by_collection={"entities": ("name", "description")},
+    )
+    before = deepcopy(request.casefile)
+    context = ChatToolContext(request=request, route=request.route)
+
+    missing_object = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_missing",
+                "path": "/name",
+                "value_json": json.dumps("新名字", ensure_ascii=False),
+            },
+        )
+    )
+    forbidden_field = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/id",
+                "value_json": json.dumps("ent_other", ensure_ascii=False),
+            },
+        )
+    )
+    missing_path = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/description",
+                "value_json": json.dumps("新描述", ensure_ascii=False),
+            },
+        )
+    )
+    invalid_json = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/name",
+                "value_json": "{not-json",
+            },
+        )
+    )
+
+    assert missing_object["reason_code"] == "object_not_found"
+    assert forbidden_field["reason_code"] == "field_not_editable"
+    assert forbidden_field["allowed_fields"] == ["name", "description"]
+    assert missing_path["reason_code"] == "path_not_found"
+    assert invalid_json["reason_code"] == "value_json_invalid"
+    assert request.casefile == before
+    assert context.metrics.successful_calls == 0
+    assert context.metrics.calls == 4
+
+
+def test_simulate_patch_previews_safe_patch_without_new_issues() -> None:
+    request = make_restart_loop_request()
+    before = deepcopy(request.casefile)
+    context = ChatToolContext(request=request, route=request.route)
+
+    result = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/name",
+                "value_json": json.dumps("林研究员（改名）", ensure_ascii=False),
+            },
+        )
+    )
+
+    assert result["valid"] is True
+    assert result["advice"] == "safe_to_propose"
+    assert result["fixed_issue_ids"] == []
+    assert result["new_issues"] == []
+    assert result["counts"] == {"baseline": 0, "fixed": 0, "new": 0, "unchanged": 0}
+    assert request.casefile == before
+    assert context.metrics.successful_calls == 1
+
+
+def test_simulate_patch_reports_issues_the_patch_would_introduce() -> None:
+    request = make_restart_loop_request()
+    context = ChatToolContext(request=request, route=request.route)
+
+    result = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/name",
+                "value_json": json.dumps(""),
+            },
+        )
+    )
+
+    assert result["valid"] is True
+    assert result["advice"] == "introduces_new_issues"
+    assert result["new_issue_ids"] == []
+    assert any(issue["code"] == "schema_invalid" for issue in result["new_issues"])
+    assert any(
+        issue["path"] == "/entities/0/name" for issue in result["new_issues"]
+    )
+    assert result["counts"]["new"] >= 1
+
+
+def test_simulate_patch_reports_fixed_snapshot_issue_ids() -> None:
+    document = load_casefile_fixture()
+    overlapping_event = deepcopy(document["events"][0])
+    overlapping_event["id"] = "evt_overlap"
+    overlapping_event["title"] = "重叠事件"
+    overlapping_event["location_ref"] = {
+        "object_type": "location",
+        "object_id": "loc_corridor",
+    }
+    document["events"].append(overlapping_event)
+    request = make_restart_loop_request(
+        editable_fields_by_collection={"events": ("location_ref",)},
+        validation_issues=(
+            {
+                "issue_id": "validator:temporal-1",
+                "code": "temporal_exclusivity_violation",
+                "path": "/events/1/participant_refs",
+                "message": "同一角色在时间重叠的事件中出现在不同地点",
+            },
+        ),
+    )
+    request = replace(request, casefile=document)
+    context = ChatToolContext(request=request, route=request.route)
+
+    result = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "evt_overlap",
+                "path": "/location_ref",
+                "value_json": json.dumps(
+                    {"object_type": "location", "object_id": "loc_lab"},
+                    ensure_ascii=False,
+                ),
+            },
+        )
+    )
+
+    assert result["valid"] is True
+    assert result["advice"] == "fixes_n_issues"
+    assert result["fixed_issue_ids"] == ["validator:temporal-1"]
+    assert result["new_issues"] == []
+    assert result["counts"]["fixed"] >= 1
+
+
+def test_simulate_patch_obeys_the_tool_budget_gate() -> None:
+    request = make_restart_loop_request(max_tool_calls=1)
+    context = ChatToolContext(request=request, route=request.route)
+
+    first = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/name",
+                "value_json": json.dumps("新名字", ensure_ascii=False),
+            },
+        )
+    )
+    second = json.loads(
+        invoke(
+            simulate_patch_application,
+            context,
+            {
+                "object_id": "ent_researcher",
+                "path": "/name",
+                "value_json": json.dumps("再改一次", ensure_ascii=False),
+            },
+        )
+    )
+
+    assert first["valid"] is True
+    assert second == {"valid": False, "reason_code": "tool_budget_exhausted"}
+    assert context.metrics.budget_exhausted == 1
+
+
 FULL_V2_TOOLSET = [
     "list_casefile_records",
     "search_casefile",
@@ -262,15 +484,51 @@ def test_manifest_gates_v2_tools_by_frozen_toolset_version() -> None:
         request.route,
         toolset_version=CHAT_TOOLSET_VERSION,
     )]
+    v4_names = [tool.name for tool in chat_tool_manifest(
+        request.route,
+        toolset_version=CHAT_TOOLSET_V4_VERSION,
+    )]
     legacy_names = [tool.name for tool in chat_tool_manifest(
         request.route,
         toolset_version=LEGACY_CHAT_TOOLSET_VERSION,
     )]
 
     assert v2_names == FULL_V2_TOOLSET
+    assert v4_names == FULL_V2_TOOLSET
     assert "list_casefile_records" not in legacy_names
     assert "get_related_objects" not in legacy_names
     assert "search_casefile" in legacy_names
+
+
+def test_manifest_gates_simulate_patch_to_v4_toolset() -> None:
+    route = RouteDecision(
+        execution_profile={
+            "toolset": ["validate_patch_proposal", "simulate_patch_application"],
+            "context_tools": ["retrieve_thread_evidence", "request_thread_compaction"],
+            "max_tool_calls": 4,
+        }
+    )
+
+    v3_names = [
+        tool.name
+        for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V3_VERSION)
+    ]
+    v4_names = [
+        tool.name
+        for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V4_VERSION)
+    ]
+
+    assert v3_names == [
+        "validate_patch_proposal",
+        "retrieve_thread_evidence",
+        "request_thread_compaction",
+    ]
+    assert v4_names == [
+        "validate_patch_proposal",
+        "simulate_patch_application",
+        "retrieve_thread_evidence",
+        "request_thread_compaction",
+    ]
 
 
 def test_list_collections_reports_every_frozen_collection_count() -> None:

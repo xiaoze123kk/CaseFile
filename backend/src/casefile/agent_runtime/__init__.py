@@ -1,7 +1,12 @@
 """Single-Agent Brief runtime with swappable model providers."""
 
+from casefile.agent_runtime.chat_audit_validation import (
+    normalize_audit_findings,
+    route_primary_intent,
+)
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
+    CHAT_TOOLSET_V4_VERSION,
     CHAT_TOOLSET_VERSION,
     ChatToolContext,
     ChatToolMetrics,
@@ -26,10 +31,13 @@ from casefile.agent_runtime.models import (
     BriefStrategyOptionsRequest,
     BriefStrategyOptionsResult,
     CandidateStrategy,
+    CaseFileChatAuditFindingCandidate,
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatResult,
     CaseFileChatSuggestionCandidate,
+    CaseFileChatSuggestionCandidateV2,
     ChatTaskUnderstanding,
     ChatTaskUnderstandingOutput,
     GenerationRequest,
@@ -65,6 +73,7 @@ __all__ = [
     "AgentProvider",
     "CHAT_TOOLSET_VERSION",
     "CHAT_TOOLSET_V3_VERSION",
+    "CHAT_TOOLSET_V4_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
     "chat_tool_manifest",
@@ -84,10 +93,13 @@ __all__ = [
     "BriefStrategyOptionsResult",
     "CANDIDATE_STRATEGY_LABELS",
     "CANDIDATE_STRATEGY_VERSION",
+    "CaseFileChatAuditFindingCandidate",
     "CaseFileChatCandidate",
+    "CaseFileChatCandidateV2",
     "CaseFileChatRequest",
     "CaseFileChatResult",
     "CaseFileChatSuggestionCandidate",
+    "CaseFileChatSuggestionCandidateV2",
     "CandidateStrategy",
     "ChatTaskUnderstanding",
     "ChatTaskUnderstandingOutput",
@@ -116,4 +128,6 @@ __all__ = [
     "RouteSpecificRewriteRequest",
     "RouteSpecificRewriteResult",
     "ToolMetrics",
+    "normalize_audit_findings",
+    "route_primary_intent",
 ]

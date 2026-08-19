@@ -75,6 +75,7 @@ function Test-DockerEngine {
 Push-Location $repoRoot
 try {
     Add-PathEntry $nodeBin
+    Add-PathEntry (Split-Path -Parent $pnpmFallback)
 
     $pnpm = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
     if ($null -eq $pnpm -and (Test-Path -LiteralPath $pnpmFallback -PathType Leaf)) {
@@ -152,7 +153,10 @@ try {
         -ArgumentList @("-m", "uvicorn", "casefile.api.app:app", "--host", "127.0.0.1", "--port", "$ApiPort") `
         -WorkingDirectory $backendRoot -WindowStyle Hidden `
         -RedirectStandardOutput $apiOut -RedirectStandardError $apiErr -PassThru
-    $web = Start-Process -FilePath $pnpm.Source -ArgumentList "dev:web" `
+    # Start pnpm through cmd.exe so .cmd shims work reliably.
+    # Pass --port explicitly so an external PORT value cannot override -WebPort.
+    $web = Start-Process -FilePath $env:ComSpec `
+        -ArgumentList @("/c", "`"$($pnpm.Source)`" --filter @casefile/web dev --port $WebPort") `
         -WorkingDirectory $repoRoot -WindowStyle Hidden `
         -RedirectStandardOutput $webOut -RedirectStandardError $webErr -PassThru
     if ([string]::IsNullOrWhiteSpace($env:CASEFILE_PROVIDER_MODE)) {

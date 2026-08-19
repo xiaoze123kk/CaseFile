@@ -19,10 +19,13 @@ from typing import Any
 
 from casefile.agent_runtime.chat_intent import route_allows_suggestions
 from casefile.agent_runtime.models import (
+    CaseFileChatAuditFindingCandidate,
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatResult,
     CaseFileChatSuggestionCandidate,
+    CaseFileChatSuggestionCandidateV2,
     ToolMetrics,
 )
 from casefile.agent_runtime.providers import FakeProvider
@@ -51,6 +54,48 @@ def _first_issue_id(validation_issues: tuple[dict[str, Any], ...]) -> str | None
     return None
 
 
+def _to_v2_suggestions(
+    items: list[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2
+    ],
+) -> list[CaseFileChatSuggestionCandidateV2]:
+    suggestions: list[CaseFileChatSuggestionCandidateV2] = []
+    for item in items:
+        if isinstance(item, CaseFileChatSuggestionCandidateV2):
+            suggestions.append(item)
+        else:
+            suggestions.append(
+                CaseFileChatSuggestionCandidateV2(
+                    object_id=item.object_id,
+                    path=item.path,
+                    value_json=item.value_json,
+                    reason=item.reason,
+                )
+            )
+    return suggestions
+
+
+def _to_v1_suggestions(
+    items: list[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2
+    ],
+) -> list[CaseFileChatSuggestionCandidate]:
+    suggestions: list[CaseFileChatSuggestionCandidate] = []
+    for item in items:
+        if isinstance(item, CaseFileChatSuggestionCandidate):
+            suggestions.append(item)
+        else:
+            suggestions.append(
+                CaseFileChatSuggestionCandidate(
+                    object_id=item.object_id,
+                    path=item.path,
+                    value_json=item.value_json,
+                    reason=item.reason,
+                )
+            )
+    return suggestions
+
+
 class CannedChatOutcomeProvider(FakeProvider):
     """Return a reference-quality chat outcome derived from the frozen request."""
 
@@ -62,34 +107,82 @@ class CannedChatOutcomeProvider(FakeProvider):
         entity_id = _first_object_id(request.casefile, "entities")
         event_id = _first_object_id(request.casefile, "events")
         issue_id = _first_issue_id(request.validation_issues)
-        suggestions: list[CaseFileChatSuggestionCandidate] = []
+        suggestions: list[
+            CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2
+        ] = []
+        findings: list[CaseFileChatAuditFindingCandidate] = []
         route = request.route
         understanding = request.task_understanding
         intent = understanding.primary_intent if understanding is not None else None
+        clean_audit = (
+            intent == "logic_audit"
+            and ("没有漏洞就不要提出任何修改" in request.message or "干净卷宗" in request.message)
+        )
         if (
             route is not None
             and route_allows_suggestions(route)
-            and intent == "edit_request"
+            and intent in {"edit_request", "logic_audit"}
             and entity_id is not None
+            and not clean_audit
         ):
-            suggestions.append(
-                CaseFileChatSuggestionCandidate(
-                    object_id=entity_id,
-                    path="/description",
-                    value_json=json.dumps(
-                        "负责追查午夜重启原因的研究员。",
-                        ensure_ascii=False,
-                    ),
-                    reason="M1 基准可审阅建议。",
+            if intent == "logic_audit":
+                findings.append(
+                    CaseFileChatAuditFindingCandidate(
+                        finding_id="F1",
+                        kind="contradiction",
+                        severity="S2",
+                        title="审计基准发现的描述矛盾",
+                        statement="冻结卷宗中的对象描述与证据主张存在矛盾。",
+                        needs_manual_review=False,
+                        evidence_object_ids=[entity_id],
+                        evidence_event_ids=[event_id] if event_id is not None else [],
+                        evidence_validation_issue_ids=[issue_id] if issue_id is not None else [],
+                    )
                 )
+                suggestions.append(
+                    CaseFileChatSuggestionCandidateV2(
+                        object_id=entity_id,
+                        path="/description",
+                        value_json=json.dumps(
+                            "负责追查午夜重启原因的研究员。",
+                            ensure_ascii=False,
+                        ),
+                        reason="M3 审计基准可审阅建议。",
+                        finding_ref="F1",
+                    )
+                )
+            else:
+                suggestions.append(
+                    CaseFileChatSuggestionCandidate(
+                        object_id=entity_id,
+                        path="/description",
+                        value_json=json.dumps(
+                            "负责追查午夜重启原因的研究员。",
+                            ensure_ascii=False,
+                        ),
+                        reason="M1 基准可审阅建议。",
+                    )
+                )
+        reference_ids = [entity_id] if entity_id is not None else []
+        reference_events = [event_id] if event_id is not None else []
+        reference_issues = [issue_id] if issue_id is not None else []
+        if intent == "logic_audit":
+            candidate: CaseFileChatCandidate | CaseFileChatCandidateV2 = CaseFileChatCandidateV2(
+                answer="这是审计基准回复：已按冻结卷宗生成结构化发现与可审阅结果。",
+                referenced_object_ids=reference_ids,
+                referenced_event_ids=reference_events,
+                referenced_validation_issue_ids=reference_issues,
+                suggestions=_to_v2_suggestions(suggestions),
+                audit_findings=findings,
             )
-        candidate = CaseFileChatCandidate(
-            answer="这是 M1 基准回复：已按冻结卷宗生成可审阅的结果。",
-            referenced_object_ids=[entity_id] if entity_id is not None else [],
-            referenced_event_ids=[event_id] if event_id is not None else [],
-            referenced_validation_issue_ids=[issue_id] if issue_id is not None else [],
-            suggestions=suggestions,
-        )
+        else:
+            candidate = CaseFileChatCandidate(
+                answer="这是 M1 基准回复：已按冻结卷宗生成可审阅的结果。",
+                referenced_object_ids=reference_ids,
+                referenced_event_ids=reference_events,
+                referenced_validation_issue_ids=reference_issues,
+                suggestions=_to_v1_suggestions(suggestions),
+            )
         usage: dict[str, Any] = {
             "requests": 1,
             "input_tokens": 0,
@@ -110,7 +203,7 @@ def canned_outcome_expectations(
     entity_id = _first_object_id(casefile, "entities")
     event_id = _first_object_id(casefile, "events")
     required_suggestion_paths: tuple[tuple[str, str], ...] = ()
-    if routing_intent == "edit_request" and entity_id is not None:
+    if routing_intent in {"edit_request", "logic_audit"} and entity_id is not None:
         required_suggestion_paths = ((entity_id, "description"),)
     return ChatOutcomeExpectations(
         expected_object_ids=(entity_id,) if entity_id is not None else (),
@@ -124,10 +217,12 @@ def canned_outcome_expectations(
 def persisted_candidate_from_result(
     result_jsonb: dict[str, Any],
     patch_operations: list[dict[str, Any]],
-) -> CaseFileChatCandidate:
+) -> CaseFileChatCandidate | CaseFileChatCandidateV2:
     """Rebuild the persisted candidate from TaskRun result and patch set view."""
 
-    suggestions: list[CaseFileChatSuggestionCandidate] = []
+    suggestions: list[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2
+    ] = []
     for operation in patch_operations:
         object_id = operation.get("object_id")
         field_path = operation.get("field_path")
@@ -138,17 +233,45 @@ def persisted_candidate_from_result(
             and isinstance(reason, str)
             and reason.strip()
         ):
-            suggestions.append(
-                CaseFileChatSuggestionCandidate(
-                    object_id=object_id,
-                    path=field_path,
-                    value_json=json.dumps(
-                        operation.get("new_value"),
-                        ensure_ascii=False,
-                    ),
-                    reason=reason,
+            finding_ref = operation.get("finding_ref")
+            value_json = json.dumps(operation.get("new_value"), ensure_ascii=False)
+            if isinstance(finding_ref, str) and finding_ref.strip():
+                suggestions.append(
+                    CaseFileChatSuggestionCandidateV2(
+                        object_id=object_id,
+                        path=field_path,
+                        value_json=value_json,
+                        reason=reason,
+                        finding_ref=finding_ref,
+                    )
                 )
-            )
+            else:
+                suggestions.append(
+                    CaseFileChatSuggestionCandidate(
+                        object_id=object_id,
+                        path=field_path,
+                        value_json=value_json,
+                        reason=reason,
+                    )
+                )
+    raw_findings = result_jsonb.get("audit_findings") or []
+    findings = [
+        CaseFileChatAuditFindingCandidate.model_validate(dict(finding))
+        for finding in raw_findings
+        if isinstance(finding, dict)
+    ]
+    if findings:
+        return CaseFileChatCandidateV2(
+            answer=str(result_jsonb.get("answer") or ""),
+            referenced_object_ids=list(result_jsonb.get("referenced_object_ids") or []),
+            referenced_event_ids=list(result_jsonb.get("referenced_event_ids") or []),
+            referenced_validation_issue_ids=list(
+                result_jsonb.get("referenced_validation_issue_ids") or []
+            ),
+            suggested_view=result_jsonb.get("suggested_view"),
+            suggestions=_to_v2_suggestions(suggestions),
+            audit_findings=findings,
+        )
     return CaseFileChatCandidate(
         answer=str(result_jsonb.get("answer") or ""),
         referenced_object_ids=list(result_jsonb.get("referenced_object_ids") or []),
@@ -157,7 +280,51 @@ def persisted_candidate_from_result(
             result_jsonb.get("referenced_validation_issue_ids") or []
         ),
         suggested_view=result_jsonb.get("suggested_view"),
-        suggestions=suggestions,
+        suggestions=_to_v1_suggestions(suggestions),
+    )
+
+
+def _canned_audit_expectations(
+    task: ChatOutcomeTask,
+    casefile: dict[str, Any],
+    candidate: CaseFileChatCandidate | CaseFileChatCandidateV2,
+) -> ChatOutcomeExpectations:
+    """Audit expectations rebuilt from the frozen canned-trial DB state.
+
+    Canned trials run every task against the same generated fixture CaseFile,
+    so static planted-hole evidence IDs (``ent_leader``, ...) do not exist in
+    the persisted draft. For the production persistence path we therefore pin
+    the human-adoption invariants — finding count, finding kind, one reviewable
+    suggestion, legal evidence — while deriving IDs from the persisted result.
+    """
+
+    entity_id = _first_object_id(casefile, "entities")
+    event_id = _first_object_id(casefile, "events")
+    zero_gate = (
+        task.expectations.audit_finding_count_range == (0, 0)
+        or task.expectations.suggestion_count_range == (0, 0)
+    )
+    if zero_gate:
+        return ChatOutcomeExpectations(
+            expected_object_ids=(entity_id,) if entity_id is not None else (),
+            expected_event_ids=(event_id,) if event_id is not None else (),
+            expected_primary_intent="logic_audit",
+            audit_finding_count_range=(0, 0),
+            suggestion_count_range=(0, 0),
+            no_unnecessary_suggestions=True,
+        )
+    required_suggestion_paths = (
+        ((entity_id, "description"),) if entity_id is not None else ()
+    )
+    return ChatOutcomeExpectations(
+        expected_object_ids=(entity_id,) if entity_id is not None else (),
+        expected_event_ids=(event_id,) if event_id is not None else (),
+        required_suggestion_paths=required_suggestion_paths,
+        expected_primary_intent="logic_audit",
+        requires_suggestion=bool(required_suggestion_paths),
+        audit_finding_count_range=(1, 1),
+        required_audit_finding_kinds=task.expectations.required_audit_finding_kinds,
+        suggestion_count_range=(1, 1),
     )
 
 
@@ -166,11 +333,11 @@ def grade_persisted_canned_trial(
     *,
     casefile: dict[str, Any],
     validation_issues: tuple[dict[str, Any], ...],
-    candidate: CaseFileChatCandidate,
+    candidate: CaseFileChatCandidate | CaseFileChatCandidateV2,
     routing: dict[str, Any],
     draft_unchanged: bool,
 ) -> ChatOutcomeTrialVerdict:
-    """Grade one persisted M1 Trial with expectations rebuilt from DB state."""
+    """Grade one persisted canned Trial against frozen task expectations."""
 
     routing_intent = routing.get("intent")
     route_source = routing.get("route_source")
@@ -179,10 +346,13 @@ def grade_persisted_canned_trial(
     suggestion_policy = routing.get("suggestion_policy")
     if not isinstance(suggestion_policy, str):
         suggestion_policy = "inherit"
-    expectations = canned_outcome_expectations(
-        casefile=casefile,
-        routing_intent=routing_intent if isinstance(routing_intent, str) else None,
-    )
+    if routing_intent == "logic_audit":
+        expectations = _canned_audit_expectations(task, casefile, candidate)
+    else:
+        expectations = canned_outcome_expectations(
+            casefile=casefile,
+            routing_intent=routing_intent if isinstance(routing_intent, str) else None,
+        )
     dynamic_task = replace(
         task,
         casefile=casefile,

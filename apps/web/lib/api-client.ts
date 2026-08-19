@@ -441,6 +441,7 @@ export interface DraftCandidateView extends GenerationCandidateSummary {
   can_adopt: boolean;
   provider: ProviderName;
   model_id: string;
+  candidate_strategy_attempt: number;
   attempt_count: number;
   created_at: string | null;
   completed_at: string | null;
@@ -492,6 +493,7 @@ export type AgentRoutingCorrectIntent =
   | "explain_issue"
   | "edit_request"
   | "validate_request"
+  | "logic_audit"
   | "unsupported_action"
   | "clarify"
   | "out_of_scope";
@@ -513,6 +515,27 @@ export interface AgentChatRoutingSummary {
   tool_metrics?: Record<string, unknown>;
 }
 
+export interface AgentAuditFindingView {
+  finding_id: string;
+  kind: AgentAuditFindingKind;
+  severity: AgentAuditFindingSeverity;
+  title: string;
+  statement: string;
+  needs_manual_review: boolean;
+  evidence_object_ids: string[];
+  evidence_event_ids: string[];
+  evidence_validation_issue_ids: string[];
+}
+
+export type AgentAuditFindingKind =
+  | "dangling_ref"
+  | "contradiction"
+  | "temporal"
+  | "motivation_gap"
+  | "scope_gap";
+
+export type AgentAuditFindingSeverity = "S1" | "S2" | "S3";
+
 export interface AgentChatTaskResult {
   answer: string;
   referenced_object_ids: string[];
@@ -521,6 +544,7 @@ export interface AgentChatTaskResult {
   suggested_view: AgentSuggestedView | null;
   patch_set_id: number | null;
   stale: boolean;
+  audit_findings?: AgentAuditFindingView[];
   routing?: AgentChatRoutingSummary;
   tool_metrics?: Record<string, unknown>;
 }

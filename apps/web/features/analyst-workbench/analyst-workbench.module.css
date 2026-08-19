@@ -1841,6 +1841,111 @@
 .agentPatchActions button:disabled { opacity: 0.5; cursor: default; }
 .agentPatchWarning { margin: 0; color: #d8b36e; font-size: 9px; }
 .agentPatchStale { color: #c9957b; font-size: 9px; }
+.agentPatchOpMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: #777168;
+  font-size: 9px;
+}
+.agentPatchOpMeta span {
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+}
+.agentPatchOpMeta button {
+  padding: 1px 5px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  background: transparent;
+  font-size: 9px;
+  cursor: pointer;
+}
+.agentPatchOpMeta button:hover { color: var(--primary-hover); }
+.agentPatchIssues { display: grid; gap: 4px; }
+.agentPatchIssues > button {
+  justify-self: start;
+  padding: 2px 7px;
+  color: #d8b36e;
+  border: 1px solid rgba(216, 179, 110, 0.4);
+  background: transparent;
+  font-size: 9px;
+  cursor: pointer;
+}
+.agentPatchIssues > button:hover { color: var(--primary-hover); }
+.agentPatchIssues ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 12px;
+  color: #b9b3a8;
+  font-size: 9px;
+}
+.agentPatchIssues li {
+  display: grid;
+  gap: 2px;
+  padding: 4px 6px;
+  border-left: 2px solid rgba(216, 179, 110, 0.5);
+}
+.agentPatchIssues strong { color: #d8b36e; font-weight: 600; }
+.agentPatchIssues code { color: #aaa69c; font-family: "Cascadia Mono", Consolas, monospace; }
+.agentPatchDanger { color: #d98a68 !important; border-color: rgba(217, 138, 104, 0.6) !important; }
+.agentAuditCard {
+  display: grid;
+  max-width: 88%;
+  align-self: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid rgba(199, 139, 60, 0.35);
+  background: rgba(0, 0, 0, 0.12);
+}
+.agentAuditHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.agentAuditHeader strong { color: var(--ink); font-family: "STSong", "SimSun", serif; font-size: 12px; }
+.agentAuditHeader span { color: #aaa69c; font-size: 9px; }
+.agentAuditList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.agentAuditFinding {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.agentAuditFindingMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.agentAuditFindingMeta b {
+  color: #d8b36e;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+}
+.agentAuditFindingMeta span {
+  padding: 1px 6px;
+  color: #c8c1b5;
+  border: 1px solid var(--rule-dark);
+  font-size: 9px;
+}
+.agentAuditFindingMeta span[data-manual="true"] {
+  color: #e3b9a4;
+  border-color: rgba(193, 103, 65, 0.55);
+}
+.agentAuditFinding[data-severity="S1"] .agentAuditFindingMeta b { color: #d98a68; }
+.agentAuditFinding > strong { color: var(--ink); font-size: 10.5px; font-weight: 600; }
+.agentAuditFinding > p { margin: 0; color: #b9b3a8; font-size: 10px; line-height: 1.6; }
+.agentAuditFinding .agentRefs { max-width: 100%; margin: 0; }
 .agentCancel {
   padding: 0 12px;
   color: #d8c5b6;

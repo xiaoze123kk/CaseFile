@@ -65,6 +65,7 @@ from casefile.agent_runtime.models import (
     BriefStrategyOptionsResult,
     CandidateStrategy,
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatResult,
     ChatTaskUnderstandingOutput,
@@ -95,6 +96,7 @@ from casefile.agent_runtime.prompt import (
     brief_intake_questions_input,
     brief_intake_synthesize_input,
     brief_strategy_options_input,
+    chat_executor_output_type,
     generation_input,
     idea_generation_input,
     polish_input,
@@ -327,6 +329,31 @@ def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
             capabilities={"needs_validation_snapshot": True},
             confidence=0.96,
             reason_codes=["explicit_gate_request"],
+            canonical_query=text,
+        )
+    audit_terms = ("逻辑漏洞", "矛盾", "断链", "时序", "动机缺口")
+    audit_scope_terms = ("全案", "全卷", "整个卷宗", "复查", "检查")
+    if any(token in text for token in audit_terms) and any(
+        token in text for token in audit_scope_terms
+    ):
+        uncertain = any(token in text for token in ("随便", "低置信度"))
+        return ChatTaskUnderstandingOutput(
+            original_query=text,
+            normalized_query=text,
+            primary_intent="logic_audit",
+            sub_intents=["full_case_audit"],
+            entities=_fake_intent_entities(),
+            constraints=_fake_intent_constraints(output_format="mixed"),
+            capabilities={
+                "needs_casefile_retrieval": True,
+                "needs_relations": True,
+                "needs_validation_snapshot": True,
+                "needs_suggestion_generation": True,
+                "needs_reasoning": True,
+            },
+            risk_level="medium",
+            confidence=0.61 if uncertain else 0.91,
+            reason_codes=["uncertain_audit"] if uncertain else ["audit_request"],
             canonical_query=text,
         )
     if any(token in text for token in ("与卷宗无关", "别的项目", "量子")):
@@ -1400,12 +1427,13 @@ class OpenAIAgentsProvider:
             raise ProviderProtocolError("OpenAI API key is required")
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
+        output_type = chat_executor_output_type(request)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
                 instructions=instructions,
                 input_text=input_text,
-                output_type=CaseFileChatCandidate,
+                output_type=output_type,
                 stage="responding",
                 tools=tools,
                 context=context,
@@ -1414,7 +1442,10 @@ class OpenAIAgentsProvider:
             )
         )
         return CaseFileChatResult(
-            candidate=CaseFileChatCandidate.model_validate(candidate),
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                output_type.model_validate(candidate),
+            ),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )
@@ -1786,6 +1817,7 @@ class DeepSeekAgentsProvider:
             raise ProviderProtocolError("DeepSeek API key is required")
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
+        output_type = chat_executor_output_type(request)
         output_protocol = (
             "json_object"
             if tools
@@ -1796,7 +1828,7 @@ class DeepSeekAgentsProvider:
                 request,
                 instructions=instructions,
                 input_text=input_text,
-                output_type=CaseFileChatCandidate,
+                output_type=output_type,
                 stage="responding",
                 tools=tools,
                 context=context,
@@ -1806,7 +1838,10 @@ class DeepSeekAgentsProvider:
             )
         )
         return CaseFileChatResult(
-            candidate=CaseFileChatCandidate.model_validate(candidate),
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                output_type.model_validate(candidate),
+            ),
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )
@@ -2213,7 +2248,7 @@ async def _run_auxiliary_agent(
                         )
                     output = _validate_auxiliary_output(
                         output_type,
-                        result.final_output,
+                        _deepseek_json_object_text(result.final_output),
                         discarded_paths=discarded_paths,
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
@@ -2391,6 +2426,44 @@ async def _run_auxiliary_agent(
             )
             protocol = "json_object"
     raise ProviderProtocolError("Structured output attempts were exhausted")
+
+
+def _deepseek_json_object_text(raw_output: str) -> str:
+    """Extract the model's JSON object from a text response.
+
+    ``deepseek-v4-flash`` occasionally emits agent-style DSML blocks and
+    trailing markers (for example ``</DSML tool_calls>``) around an otherwise
+    valid JSON object. Scan every complete JSON object, prefer one that looks
+    like a chat candidate (has an ``answer`` key), and otherwise keep the last
+    object. JSON-decoder scanning is deterministic and never rewrites the
+    payload, so valid output stays byte-identical and malformed output still
+    fails the contract validator.
+    """
+
+    candidates: list[str] = []
+    decoder = json.JSONDecoder()
+    search_from = 0
+    while True:
+        start = raw_output.find("{", search_from)
+        if start < 0:
+            break
+        try:
+            _payload, end = decoder.raw_decode(raw_output, start)
+        except json.JSONDecodeError:
+            search_from = start + 1
+            continue
+        candidates.append(raw_output[start:end])
+        search_from = end
+    if not candidates:
+        return raw_output
+    for candidate in reversed(candidates):
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and "answer" in payload:
+            return candidate
+    return candidates[-1]
 
 
 def _retained_raw_output(raw_output: str | None) -> dict[str, Any]:

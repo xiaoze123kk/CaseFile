@@ -5,7 +5,7 @@ Task (frozen input + success criteria + Reference Solution), each execution is
 a Trial, the persisted candidate plus Draft state is the Outcome, and every
 dimension is scored by deterministic Grader assertions.
 
-This module intentionally contains no I/O: it builds the 30-task T1 Suite,
+This module intentionally contains no I/O: it builds the 35-task T1 Suite,
 grades one candidate at a time, and exposes a calibration runner that proves
 the Grader accepts every Reference Solution and catches every mutation sample.
 """
@@ -14,14 +14,24 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from casefile.agent_runtime.chat_intent import route_allows_suggestions
+from casefile.agent_runtime.chat_tools import (
+    CHAT_TOOLSET_V4_VERSION,
+    simulate_patch_delta,
+)
 from casefile.agent_runtime.models import (
+    AuditFindingKind,
+    AuditFindingSeverity,
+    CaseFileChatAuditFindingCandidate,
     CaseFileChatCandidate,
+    CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatSuggestionCandidate,
+    CaseFileChatSuggestionCandidateV2,
 )
 from casefile.agent_runtime.providers import FakeProvider
 from casefile.application.v1_editing import editable_fields_by_collection
@@ -34,6 +44,7 @@ GOLDEN_MARKER_TARGET = 0.0
 
 _FREE_TEXT: dict[str, Any] = {"entrypoint": "free_text", "preset_id": None}
 _INSPECT_PRESET: dict[str, Any] = {"entrypoint": "preset", "preset_id": "inspect"}
+_AUDIT_PRESET: dict[str, Any] = {"entrypoint": "preset", "preset_id": "audit"}
 
 _OUTCOME_CASEFILE: dict[str, Any] = {
     "entities": [
@@ -101,6 +112,228 @@ _OUTCOME_VALIDATION_ISSUES: tuple[dict[str, Any], ...] = (
 )
 
 
+_COMMON_META = {
+    "tags": [],
+    "source_refs": [],
+    "confidence": 1.0,
+    "confirmation_status": "user_confirmed",
+    "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+    "updated_at": "2042-06-01T12:00:00Z",
+    "revision": 1,
+}
+
+
+def _planted_entity(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "aliases": [],
+        "traits": [],
+        "goals": [],
+        "secrets": [],
+        "capabilities": [],
+        "knowledge_states": [],
+        **_COMMON_META,
+        **item,
+    }
+
+
+def _planted_event(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "truth_status": "canon_true",
+        "time": {
+            "kind": "range",
+            "start": "2042-06-01T20:00",
+            "end": "2042-06-01T20:03",
+            "precision": "minute",
+        },
+        "participant_refs": [],
+        "location_ref": None,
+        "cause_refs": [],
+        "effect_refs": [],
+        "observed_by_refs": [],
+        **_COMMON_META,
+        **item,
+    }
+
+
+def _planted_claim(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "claim_type": "causal",
+        "support_refs": [],
+        "refute_refs": [],
+        "dependency_claim_refs": [],
+        "status": "supported",
+        "materiality": "critical",
+        **_COMMON_META,
+        **item,
+    }
+
+
+def _planted_casefile(
+    casefile_id: str,
+    title: str,
+    *,
+    entities: tuple[dict[str, Any], ...] = (),
+    events: tuple[dict[str, Any], ...] = (),
+    claims: tuple[dict[str, Any], ...] = (),
+    information_units: tuple[dict[str, Any], ...] = (),
+    resolution_specs: tuple[dict[str, Any], ...] = (),
+) -> dict[str, Any]:
+    return {
+        "schema_version": "2.0",
+        "casefile_id": casefile_id,
+        "title": title,
+        "status": "draft",
+        "version": {
+            "version_id": f"draft_{casefile_id}_1",
+            "version_no": 1,
+            "parent_version_id": None,
+        },
+        "brief_ref": {"brief_id": f"brief_{casefile_id}", "version": 1},
+        "resolution_specs": list(resolution_specs),
+        "entities": [_planted_entity(item) for item in entities],
+        "relationships": [],
+        "locations": [],
+        "events": [_planted_event(item) for item in events],
+        "information_units": list(information_units),
+        "claims": [_planted_claim(item) for item in claims],
+        "hypotheses": [],
+        "reasoning_paths": [],
+        "constraints": [],
+        "structure_locks": [],
+        "content_notices": [],
+        "extensions": {"casefile.fixture": {"purpose": "logic_audit_eval"}},
+    }
+
+
+_AUDIT_FRACTURED_CASEFILE = _planted_casefile(
+    "case_audit_fractured_alliance",
+    "破裂的同盟（审计金例）",
+    entities=(
+        {
+            "id": "ent_leader",
+            "entity_type": "person",
+            "name": "联盟首领",
+            "description": "同盟仍然稳固，双方互信没有变化。",
+        },
+        {
+            "id": "ent_defector",
+            "entity_type": "person",
+            "name": "叛逃者",
+            "description": "已经脱离同盟并带走核心情报。",
+        },
+    ),
+    claims=(
+        {
+            "id": "claim_alliance_broken",
+            "title": "同盟已经破裂",
+            "statement": "同盟已经在叛逃事件后破裂。",
+            "claim_type": "relationship",
+        },
+    ),
+    events=(
+        {
+            "id": "evt_defection",
+            "title": "叛逃事件",
+            "participant_refs": [{"object_type": "entity", "object_id": "ent_defector"}],
+        },
+    ),
+)
+
+_AUDIT_RESTART_LOOP_CASEFILE = _planted_casefile(
+    "case_audit_restart_loop",
+    "第七次重启（审计金例）",
+    entities=(
+        {
+            "id": "ent_researcher",
+            "entity_type": "person",
+            "name": "林研究员",
+            "description": "认为第七次重启是由人工误操作导致的。",
+        },
+        {
+            "id": "ent_backup_system",
+            "entity_type": "system",
+            "name": "备用控制系统",
+            "description": "依据安全规则在失联与过热持续三分钟后强制重启主系统。",
+        },
+    ),
+    events=(
+        {
+            "id": "evt_restart_seven",
+            "title": "系统第七次重启",
+            "participant_refs": [
+                {"object_type": "entity", "object_id": "ent_backup_system"}
+            ],
+        },
+    ),
+    claims=(
+        {
+            "id": "claim_backup_trigger",
+            "title": "备用系统自动触发重启",
+            "statement": "第七次重启由备用系统依据安全规则自动触发。",
+        },
+    ),
+)
+
+_AUDIT_VANISHING_ROUTE_CASEFILE = _planted_casefile(
+    "case_audit_vanishing_route",
+    "消失的航线（审计金例）",
+    entities=(
+        {
+            "id": "ent_captain",
+            "entity_type": "person",
+            "name": "船长",
+            "description": "负责选择北侧灯塔航线撤离。",
+        },
+    ),
+    events=(
+        {
+            "id": "evt_departure",
+            "title": "南侧航线撤离",
+            "description": "船队按北侧灯塔航线离开，在风暴前抵达安全港。",
+        },
+    ),
+    resolution_specs=(
+        {
+            "id": "res_best_route",
+            "title": "最优撤离路线",
+            "question_type": "path_discovery",
+            "reasoning_question": "哪条路线能在风暴前抵达安全港？",
+            "conclusion_mode": "optimal",
+            "required_slots": [],
+            "accepted_answers": ["北侧灯塔航线"],
+            "required_claim_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+        },
+    ),
+)
+
+_AUDIT_CLEAN_CASEFILE = _planted_casefile(
+    "case_audit_clean",
+    "干净卷宗（审计金例）",
+    entities=(
+        {
+            "id": "ent_lucy",
+            "entity_type": "person",
+            "name": "Lucy",
+            "description": "负责追查午夜重启原因的研究员。",
+        },
+    ),
+    claims=(
+        {
+            "id": "claim_restart",
+            "title": "欠压保护触发回航",
+            "statement": "欠压保护在日志记录后触发了回航。",
+        },
+    ),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ChatOutcomeExpectations:
     """Deterministic success criteria for one Task."""
@@ -114,6 +347,14 @@ class ChatOutcomeExpectations:
     required_suggestion_paths: tuple[tuple[str, str], ...] = ()
     forbidden_suggestion_paths: tuple[tuple[str, str], ...] = ()
     suggestion_count_range: tuple[int, int] | None = None
+    audit_finding_count_range: tuple[int, int] | None = None
+    required_audit_finding_kinds: tuple[str, ...] = ()
+    forbidden_audit_finding_kinds: tuple[str, ...] = ()
+    required_audit_evidence_object_ids: tuple[str, ...] = ()
+    required_audit_evidence_event_ids: tuple[str, ...] = ()
+    required_audit_evidence_validation_issue_ids: tuple[str, ...] = ()
+    audit_findings_must_be_legal: bool = True
+    simulate_suggestions: bool = False
     expected_answer_markers: tuple[str, ...] = ()
     expected_primary_intent: str | None = None
     requires_suggestion: bool = False
@@ -131,9 +372,9 @@ class ChatOutcomeTask:
     message: str
     hint: dict[str, Any]
     expectations: ChatOutcomeExpectations
-    reference_candidate: CaseFileChatCandidate
+    reference_candidate: CaseFileChatCandidate | CaseFileChatCandidateV2
     tier: Literal["T1", "T2"] = "T1"
-    kind: Literal["golden", "boundary", "adversarial"] = "golden"
+    kind: Literal["golden", "boundary", "adversarial", "feedback"] = "golden"
     focus: dict[str, Any] | None = None
     history: tuple[dict[str, str], ...] = ()
     casefile: dict[str, Any] | None = None
@@ -181,6 +422,19 @@ class ChatOutcomeTrialVerdict:
     missing_required_suggestion_count: int = 0
     unnecessary_suggestions: bool = False
     missing_edit_suggestion: bool = False
+    audit_finding_count: int = 0
+    audit_finding_evidence_precision: float = 1.0
+    audit_finding_evidence_valid_count: int = 0
+    audit_finding_evidence_total_count: int = 0
+    required_audit_finding_hits: int = 0
+    required_audit_finding_total: int = 0
+    forbidden_audit_finding_kind_count: int = 0
+    audit_finding_evidence_dangling_count: int = 0
+    audit_finding_ref_unknown_count: int = 0
+    simulate_legality: float = 1.0
+    simulate_valid_count: int = 0
+    simulate_total_count: int = 0
+    simulate_introduces_new_issues_count: int = 0
     blank_answer: bool = False
     marker_hit_rate: float = 1.0
     draft_unchanged: bool = True
@@ -211,6 +465,19 @@ class ChatOutcomeTrialVerdict:
             "missing_required_suggestion_count": self.missing_required_suggestion_count,
             "unnecessary_suggestions": self.unnecessary_suggestions,
             "missing_edit_suggestion": self.missing_edit_suggestion,
+            "audit_finding_count": self.audit_finding_count,
+            "audit_finding_evidence_precision": self.audit_finding_evidence_precision,
+            "audit_finding_evidence_valid_count": self.audit_finding_evidence_valid_count,
+            "audit_finding_evidence_total_count": self.audit_finding_evidence_total_count,
+            "required_audit_finding_hits": self.required_audit_finding_hits,
+            "required_audit_finding_total": self.required_audit_finding_total,
+            "forbidden_audit_finding_kind_count": self.forbidden_audit_finding_kind_count,
+            "audit_finding_evidence_dangling_count": self.audit_finding_evidence_dangling_count,
+            "audit_finding_ref_unknown_count": self.audit_finding_ref_unknown_count,
+            "simulate_legality": self.simulate_legality,
+            "simulate_valid_count": self.simulate_valid_count,
+            "simulate_total_count": self.simulate_total_count,
+            "simulate_introduces_new_issues_count": self.simulate_introduces_new_issues_count,
             "blank_answer": self.blank_answer,
             "marker_hit_rate": self.marker_hit_rate,
             "draft_unchanged": self.draft_unchanged,
@@ -286,6 +553,68 @@ def _candidate(
         referenced_validation_issue_ids=list(validation_issue_ids),
         suggested_view=suggested_view,
         suggestions=list(suggestions),
+    )
+
+
+def _finding(
+    finding_id: str,
+    kind: AuditFindingKind,
+    *,
+    severity: AuditFindingSeverity = "S2",
+    title: str = "",
+    statement: str = "",
+    needs_manual_review: bool = False,
+    object_ids: tuple[str, ...] = (),
+    event_ids: tuple[str, ...] = (),
+    validation_issue_ids: tuple[str, ...] = (),
+) -> CaseFileChatAuditFindingCandidate:
+    return CaseFileChatAuditFindingCandidate(
+        finding_id=finding_id,
+        kind=kind,
+        severity=severity,
+        title=title or f"{finding_id} 逻辑漏洞",
+        statement=statement or "基准审计发现。",
+        needs_manual_review=needs_manual_review,
+        evidence_object_ids=list(object_ids),
+        evidence_event_ids=list(event_ids),
+        evidence_validation_issue_ids=list(validation_issue_ids),
+    )
+
+
+def _audit_suggestion(
+    object_id: str,
+    path: str,
+    value: object,
+    reason: str,
+    *,
+    finding_ref: str,
+) -> CaseFileChatSuggestionCandidateV2:
+    return CaseFileChatSuggestionCandidateV2(
+        object_id=object_id,
+        path=path,
+        value_json=json.dumps(value, ensure_ascii=False),
+        reason=reason,
+        finding_ref=finding_ref,
+    )
+
+
+def _audit_candidate(
+    answer: str,
+    *,
+    object_ids: tuple[str, ...] = (),
+    event_ids: tuple[str, ...] = (),
+    validation_issue_ids: tuple[str, ...] = (),
+    findings: tuple[CaseFileChatAuditFindingCandidate, ...] = (),
+    suggestions: tuple[CaseFileChatSuggestionCandidateV2, ...] = (),
+) -> CaseFileChatCandidateV2:
+    return CaseFileChatCandidateV2(
+        answer=answer,
+        referenced_object_ids=list(object_ids),
+        referenced_event_ids=list(event_ids),
+        referenced_validation_issue_ids=list(validation_issue_ids),
+        suggested_view=None,
+        suggestions=list(suggestions),
+        audit_findings=list(findings),
     )
 
 
@@ -388,7 +717,8 @@ def _request_for_task(
     issues = task.frozen_validation_issues
     return CaseFileChatRequest(
         task_run_id=task_run_id,
-        prompt_version="casefile-chat-v2",
+        prompt_version="casefile-chat-v10",
+        toolset_version=CHAT_TOOLSET_V4_VERSION,
         casefile=task.frozen_casefile,
         history=task.history,
         message=task.message,
@@ -415,7 +745,7 @@ def resolve_task_route(task: ChatOutcomeTask) -> CaseFileChatRequest:
 
 def grade_chat_outcome(
     task: ChatOutcomeTask,
-    candidate: CaseFileChatCandidate,
+    candidate: CaseFileChatCandidate | CaseFileChatCandidateV2,
     *,
     allow_suggestions: bool,
     trial_no: int = 1,
@@ -503,16 +833,128 @@ def grade_chat_outcome(
         sum(suggestion_scores) / len(suggestion_scores) if suggestion_scores else 1.0
     )
 
-    missing_required_suggestion_count = sum(
-        1
-        for object_id, path in expectations.required_suggestion_paths
-        if (object_id, path) not in seen_paths
-        or not any(
-            score == 1
-            for suggestion, score in zip(candidate.suggestions, suggestion_scores, strict=True)
-            if (suggestion.object_id, _top_level_field(suggestion.path)) == (object_id, path)
+    audit_findings = tuple(getattr(candidate, "audit_findings", ()) or ())
+    finding_ids = {finding.finding_id for finding in audit_findings}
+    finding_evidence_valid = 0
+    finding_evidence_total = 0
+    finding_evidence_dangling = 0
+    for finding in audit_findings:
+        for evidence_id in finding.evidence_object_ids:
+            finding_evidence_total += 1
+            if evidence_id in object_ids:
+                finding_evidence_valid += 1
+            else:
+                finding_evidence_dangling += 1
+        for evidence_id in finding.evidence_event_ids:
+            finding_evidence_total += 1
+            if evidence_id in event_ids:
+                finding_evidence_valid += 1
+            else:
+                finding_evidence_dangling += 1
+        for evidence_id in finding.evidence_validation_issue_ids:
+            finding_evidence_total += 1
+            if evidence_id in issue_ids:
+                finding_evidence_valid += 1
+            else:
+                finding_evidence_dangling += 1
+    finding_evidence_precision = (
+        finding_evidence_valid / finding_evidence_total
+        if finding_evidence_total
+        else 1.0
+    )
+    required_audit_finding_hits = sum(
+        1 for kind in expectations.required_audit_finding_kinds
+        if any(finding.kind == kind for finding in audit_findings)
+    )
+    required_audit_finding_total = len(expectations.required_audit_finding_kinds)
+    forbidden_audit_finding_kind_count = sum(
+        1 for finding in audit_findings
+        if finding.kind in expectations.forbidden_audit_finding_kinds
+    )
+    expected_audit_evidence_hits = (
+        sum(
+            1
+            for evidence_id in expectations.required_audit_evidence_object_ids
+            if any(evidence_id in finding.evidence_object_ids for finding in audit_findings)
+        )
+        + sum(
+            1
+            for evidence_id in expectations.required_audit_evidence_event_ids
+            if any(evidence_id in finding.evidence_event_ids for finding in audit_findings)
+        )
+        + sum(
+            1
+            for evidence_id in expectations.required_audit_evidence_validation_issue_ids
+            if any(
+                evidence_id in finding.evidence_validation_issue_ids
+                for finding in audit_findings
+            )
         )
     )
+    expected_audit_evidence_total = (
+        len(expectations.required_audit_evidence_object_ids)
+        + len(expectations.required_audit_evidence_event_ids)
+        + len(expectations.required_audit_evidence_validation_issue_ids)
+    )
+    audit_finding_ref_unknown = sum(
+        1
+        for suggestion in candidate.suggestions
+        if getattr(suggestion, "finding_ref", None) not in (None, *finding_ids)
+    )
+    audit_finding_ref_unknown_count = audit_finding_ref_unknown
+
+    simulate_scores: list[int] = []
+    simulate_introduces_count = 0
+    if expectations.simulate_suggestions:
+        for suggestion in candidate.suggestions:
+            try:
+                value_json = suggestion.value_json
+                preview = simulate_patch_delta(
+                    task.frozen_casefile,
+                    task.frozen_validation_issues,
+                    suggestion.object_id,
+                    suggestion.path,
+                    value_json,
+                )
+            except Exception:
+                preview = {"valid": False, "advice": "simulate_error"}
+            if preview.get("valid") is True and preview.get("advice") in {
+                "safe_to_propose",
+                "fixes_n_issues",
+            }:
+                simulate_scores.append(1)
+            else:
+                simulate_scores.append(0)
+                if preview.get("advice") == "introduces_new_issues":
+                    simulate_introduces_count += 1
+    simulate_legality = (
+        sum(simulate_scores) / len(simulate_scores) if simulate_scores else 1.0
+    )
+
+    missing_required_suggestion_count = 0
+    for expected_object_id, expected_path in expectations.required_suggestion_paths:
+        matched = (expected_object_id, expected_path) in seen_paths and any(
+            score == 1
+            for suggestion, score in zip(
+                candidate.suggestions, suggestion_scores, strict=True
+            )
+            if (
+                cast(
+                    CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2,
+                    suggestion,
+                ).object_id,
+                _top_level_field(
+                    cast(
+                        CaseFileChatSuggestionCandidate
+                        | CaseFileChatSuggestionCandidateV2,
+                        suggestion,
+                    ).path
+                ),
+            )
+            == (expected_object_id, expected_path)
+        )
+        if not matched:
+            missing_required_suggestion_count += 1
 
     unnecessary_suggestions = not allow_suggestions and len(candidate.suggestions) > 0
     missing_edit_suggestion = (
@@ -520,6 +962,20 @@ def grade_chat_outcome(
         and expectations.expected_primary_intent == "edit_request"
         and allow_suggestions
         and sum(suggestion_scores) == 0
+    )
+    finding_count_mismatch = False
+    if expectations.audit_finding_count_range is not None:
+        low, high = expectations.audit_finding_count_range
+        finding_count_mismatch = not (low <= len(audit_findings) <= high)
+    suggestion_count_mismatch = False
+    if expectations.suggestion_count_range is not None:
+        low, high = expectations.suggestion_count_range
+        suggestion_count_mismatch = not (low <= len(candidate.suggestions) <= high)
+    missing_required_audit_finding_count = max(
+        0, required_audit_finding_total - required_audit_finding_hits
+    )
+    missing_required_audit_evidence_count = max(
+        0, expected_audit_evidence_total - expected_audit_evidence_hits
     )
 
     answer = candidate.answer
@@ -548,6 +1004,18 @@ def grade_chat_outcome(
     if expectations.answer_must_not_be_blank and blank_answer:
         safety_failed = True
         failures.append("blank_answer")
+    if expectations.audit_findings_must_be_legal and finding_evidence_dangling:
+        safety_failed = True
+        failures.append("audit_finding_evidence")
+    if audit_finding_ref_unknown_count:
+        safety_failed = True
+        failures.append("audit_finding_ref_unknown")
+    if forbidden_audit_finding_kind_count:
+        safety_failed = True
+        failures.append("forbidden_audit_finding_kind")
+    if simulate_introduces_count:
+        safety_failed = True
+        failures.append("simulate_introduces_new_issues")
     if not draft_unchanged:
         safety_failed = True
         failures.append("draft_changed_without_apply")
@@ -570,6 +1038,23 @@ def grade_chat_outcome(
     if missing_edit_suggestion:
         capability_failed = True
         failures.append("missing_edit_suggestion")
+    if suggestion_count_mismatch:
+        capability_failed = True
+        failures.append("suggestion_count_range")
+    if finding_count_mismatch:
+        capability_failed = True
+        failures.append("audit_finding_count_range")
+    if missing_required_audit_finding_count:
+        capability_failed = True
+        failures.append("missing_required_audit_finding_kind")
+    if missing_required_audit_evidence_count:
+        capability_failed = True
+        failures.append("missing_required_audit_finding_evidence")
+    if expectations.simulate_suggestions and (
+        simulate_legality < thresholds.suggestion_legality
+    ):
+        capability_failed = True
+        failures.append("simulate_legality")
 
     return ChatOutcomeTrialVerdict(
         task_id=task.task_id,
@@ -589,6 +1074,19 @@ def grade_chat_outcome(
         missing_required_suggestion_count=missing_required_suggestion_count,
         unnecessary_suggestions=unnecessary_suggestions,
         missing_edit_suggestion=missing_edit_suggestion,
+        audit_finding_count=len(audit_findings),
+        audit_finding_evidence_precision=round(finding_evidence_precision, 6),
+        audit_finding_evidence_valid_count=finding_evidence_valid,
+        audit_finding_evidence_total_count=finding_evidence_total,
+        required_audit_finding_hits=required_audit_finding_hits,
+        required_audit_finding_total=required_audit_finding_total,
+        forbidden_audit_finding_kind_count=forbidden_audit_finding_kind_count,
+        audit_finding_evidence_dangling_count=finding_evidence_dangling,
+        audit_finding_ref_unknown_count=audit_finding_ref_unknown_count,
+        simulate_legality=round(simulate_legality, 6),
+        simulate_valid_count=sum(simulate_scores),
+        simulate_total_count=len(simulate_scores),
+        simulate_introduces_new_issues_count=simulate_introduces_count,
         blank_answer=blank_answer,
         marker_hit_rate=round(marker_hit_rate, 6),
         draft_unchanged=draft_unchanged,
@@ -660,7 +1158,7 @@ def _edit_lucy_description(reason: str = "原文语气过于戏剧化。") -> Ca
 
 
 def build_outcome_tasks() -> tuple[ChatOutcomeTask, ...]:
-    """The 30-task T1 Suite with a Reference Solution per Task."""
+    """The 35-task T1 Suite with a Reference Solution per Task."""
 
     lucy_focus = _focus(object_ids=("ent_lucy",))
     restart_focus = _focus(event_ids=("evt_restart",))
@@ -752,6 +1250,171 @@ def build_outcome_tasks() -> tuple[ChatOutcomeTask, ...]:
                 event_ids=("evt_restart",),
                 validation_issue_ids=("validator:issue-1",),
                 suggested_view="compile",
+            ),
+        ),
+        ChatOutcomeTask(
+            task_id="golden-logic-audit",
+            message="对全案逻辑漏洞做一次复查，能修的给出补丁。",
+            hint=_AUDIT_PRESET,
+            focus=_focus(),
+            kind="golden",
+            expectations=ChatOutcomeExpectations(
+                required_suggestion_paths=(("ent_lucy", "description"),),
+                expected_primary_intent="logic_audit",
+                requires_suggestion=True,
+            ),
+            reference_candidate=_candidate(
+                "审计报告：全卷逻辑整体完整；发现 Lucy 的职责描述缺少具体追查对象，"
+                "建议补充说明。",
+                object_ids=("ent_lucy",),
+                suggestions=(
+                    _suggestion(
+                        "ent_lucy",
+                        "/description",
+                        "负责追查午夜重启原因的研究员。",
+                        "审计基准建议：补充职责描述。",
+                    ),
+                ),
+            ),
+        ),
+        ChatOutcomeTask(
+            task_id="golden-audit-fractured-alliance",
+            message="对破裂的同盟卷宗做逻辑漏洞复查，能修的给出补丁。",
+            hint=_AUDIT_PRESET,
+            focus=_focus(),
+            casefile=_AUDIT_FRACTURED_CASEFILE,
+            kind="golden",
+            expectations=ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                required_audit_finding_kinds=("contradiction",),
+                required_audit_evidence_object_ids=("ent_leader", "ent_defector"),
+                required_suggestion_paths=(("ent_leader", "description"),),
+                audit_finding_count_range=(1, 3),
+                suggestion_count_range=(1, 1),
+                requires_suggestion=True,
+                simulate_suggestions=True,
+            ),
+            reference_candidate=_audit_candidate(
+                "审计报告：首领自述与叛逃事实互相矛盾，建议修正首领描述。",
+                object_ids=("ent_leader", "ent_defector", "claim_alliance_broken"),
+                findings=(
+                    _finding(
+                        "F1",
+                        "contradiction",
+                        title="首领描述与叛逃事实矛盾",
+                        statement="首领描述称同盟稳固，但叛逃者描述与主张表明同盟已经破裂。",
+                        object_ids=("ent_leader", "ent_defector", "claim_alliance_broken"),
+                    ),
+                ),
+                suggestions=(
+                    _audit_suggestion(
+                        "ent_leader",
+                        "/description",
+                        "同盟已经破裂，双方不再互信。",
+                        "[漏洞#F1] 修正与叛逃事实矛盾的描述。",
+                        finding_ref="F1",
+                    ),
+                ),
+            ),
+        ),
+        ChatOutcomeTask(
+            task_id="golden-audit-restart-loop",
+            message="对第七次重启卷宗做逻辑漏洞复查，能修的给出补丁。",
+            hint=_AUDIT_PRESET,
+            focus=_focus(),
+            casefile=_AUDIT_RESTART_LOOP_CASEFILE,
+            kind="golden",
+            expectations=ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                required_audit_finding_kinds=("contradiction",),
+                required_audit_evidence_object_ids=("ent_researcher", "ent_backup_system"),
+                required_suggestion_paths=(("ent_researcher", "description"),),
+                audit_finding_count_range=(1, 3),
+                suggestion_count_range=(1, 1),
+                requires_suggestion=True,
+                simulate_suggestions=True,
+            ),
+            reference_candidate=_audit_candidate(
+                "审计报告：研究员认为人工误操作，但备用系统与主张均为自动触发，存在矛盾。",
+                object_ids=("ent_researcher", "ent_backup_system", "claim_backup_trigger"),
+                findings=(
+                    _finding(
+                        "F1",
+                        "contradiction",
+                        title="重启原因描述与自动触发主张矛盾",
+                        statement="研究员描述称人工误操作，与备用系统自动触发的主张冲突。",
+                        object_ids=("ent_researcher", "ent_backup_system", "claim_backup_trigger"),
+                    ),
+                ),
+                suggestions=(
+                    _audit_suggestion(
+                        "ent_researcher",
+                        "/description",
+                        "查明第七次重启由备用系统依据安全规则自动触发。",
+                        "[漏洞#F1] 修正与自动触发事实矛盾的描述。",
+                        finding_ref="F1",
+                    ),
+                ),
+            ),
+        ),
+        ChatOutcomeTask(
+            task_id="golden-audit-vanishing-route",
+            message="对消失的航线卷宗做逻辑漏洞复查，能修的给出补丁。",
+            hint=_AUDIT_PRESET,
+            focus=_focus(),
+            casefile=_AUDIT_VANISHING_ROUTE_CASEFILE,
+            kind="golden",
+            expectations=ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                required_audit_finding_kinds=("contradiction",),
+                required_audit_evidence_event_ids=("evt_departure",),
+                required_suggestion_paths=(("evt_departure", "title"),),
+                audit_finding_count_range=(1, 3),
+                suggestion_count_range=(1, 1),
+                requires_suggestion=True,
+                simulate_suggestions=True,
+            ),
+            reference_candidate=_audit_candidate(
+                "审计报告：事件标题写南侧航线，但描述与结论都是北侧灯塔航线，存在矛盾。",
+                object_ids=("ent_captain",),
+                event_ids=("evt_departure",),
+                findings=(
+                    _finding(
+                        "F1",
+                        "contradiction",
+                        title="事件标题与正文航线矛盾",
+                        statement="事件标题写南侧航线，正文描述北侧灯塔航线。",
+                        event_ids=("evt_departure",),
+                    ),
+                ),
+                suggestions=(
+                    _audit_suggestion(
+                        "evt_departure",
+                        "/title",
+                        "北侧灯塔航线撤离",
+                        "[漏洞#F1] 修正与正文矛盾的航线标题。",
+                        finding_ref="F1",
+                    ),
+                ),
+            ),
+        ),
+        ChatOutcomeTask(
+            task_id="golden-audit-clean-no-op",
+            message="对这份干净卷宗做逻辑漏洞复查，没有漏洞就不要提出任何修改。",
+            hint=_AUDIT_PRESET,
+            focus=_focus(),
+            casefile=_AUDIT_CLEAN_CASEFILE,
+            kind="golden",
+            expectations=ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                audit_finding_count_range=(0, 0),
+                suggestion_count_range=(0, 0),
+                no_unnecessary_suggestions=True,
+            ),
+            reference_candidate=_audit_candidate(
+                "审计报告：已逐项核对断链、矛盾、时序与动机缺口，未发现可取证漏洞，"
+                "未提出任何修改。",
+                object_ids=("ent_lucy", "claim_restart"),
             ),
         ),
         ChatOutcomeTask(
@@ -1193,15 +1856,177 @@ def build_outcome_tasks() -> tuple[ChatOutcomeTask, ...]:
     )
 
 
+def build_outcome_tasks_from_audit_feedback(
+    fixtures: Iterable[dict[str, Any]],
+) -> tuple[ChatOutcomeTask, ...]:
+    """Convert exported audit feedback fixtures into a replayable outcome suite.
+
+    Human decisions become success criteria:
+
+    * ``applied``  — the accepted finding, evidence slots, and patch must be
+      reproduced;
+    * ``rejected`` / ``undone`` — the frozen input becomes a zero-finding,
+      zero-suggestion gate (the human already refused the patch).
+
+    Malformed library entries raise ``ValueError`` instead of being skipped so
+    a corrupt fixture pack is loud during eval curation.
+    """
+
+    tasks: list[ChatOutcomeTask] = []
+    for fixture in fixtures:
+        if not isinstance(fixture, dict):
+            raise ValueError("audit feedback fixture must be an object")
+        fixture_id = str(fixture.get("fixture_id") or "audit-feedback")
+        decision = fixture.get("decision")
+        if decision not in {"applied", "rejected", "undone"}:
+            raise ValueError(f"{fixture_id}: unsupported decision {decision!r}")
+        casefile = fixture.get("casefile")
+        if not isinstance(casefile, dict):
+            raise ValueError(f"{fixture_id}: casefile must be an object")
+        message = fixture.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise ValueError(f"{fixture_id}: message must be a non-blank string")
+        hint = fixture.get("hint")
+        if not isinstance(hint, dict) or not hint.get("entrypoint"):
+            hint = dict(_FREE_TEXT)
+        focus = fixture.get("focus")
+        if not isinstance(focus, dict):
+            focus = _focus()
+        focus_values = {
+            "object_ids": focus.get("object_ids") or [],
+            "event_ids": focus.get("event_ids") or [],
+            "validation_issue_ids": focus.get("validation_issue_ids") or [],
+        }
+        validation_issues = tuple(
+            issue
+            for issue in fixture.get("validation_issues") or ()
+            if isinstance(issue, dict)
+        )
+        findings = tuple(
+            CaseFileChatAuditFindingCandidate.model_validate(finding)
+            for finding in fixture.get("audit_findings") or ()
+            if isinstance(finding, dict)
+        )
+        operations = [
+            operation
+            for operation in fixture.get("patch_operations") or ()
+            if isinstance(operation, dict)
+            and isinstance(operation.get("target_object_id"), str)
+            and isinstance(operation.get("field_path"), str)
+        ]
+        decision_label = {"applied": "已采纳", "rejected": "已拒绝", "undone": "已撤销"}[decision]
+        task_id = f"audit-feedback-{decision}-{fixture_id}"
+        referenced_object_ids = list(fixture.get("referenced_object_ids") or [])
+        referenced_event_ids = list(fixture.get("referenced_event_ids") or [])
+        referenced_validation_issue_ids = list(
+            fixture.get("referenced_validation_issue_ids") or []
+        )
+
+        if decision == "applied":
+            if not findings:
+                raise ValueError(f"{fixture_id}: applied audit feedback needs audit_findings")
+            if not operations:
+                raise ValueError(f"{fixture_id}: applied audit feedback needs patch_operations")
+            first_finding = findings[0]
+            suggestion_paths: list[tuple[str, str]] = []
+            suggestions: list[CaseFileChatSuggestionCandidateV2] = []
+            for operation in operations:
+                top_level = _top_level_field(operation["field_path"])
+                if top_level is None:
+                    message = (
+                        f"{fixture_id}: invalid field path {operation['field_path']!r}"
+                    )
+                    raise ValueError(message)
+                suggestion_paths.append((operation["target_object_id"], top_level))
+                suggestions.append(
+                    _audit_suggestion(
+                        operation["target_object_id"],
+                        operation["field_path"],
+                        operation.get("new_value"),
+                        str(operation.get("reason") or f"[{fixture_id}] 已采纳补丁。"),
+                        finding_ref=first_finding.finding_id,
+                    )
+                )
+            expectations = ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                required_audit_finding_kinds=tuple(
+                    dict.fromkeys(finding.kind for finding in findings)
+                ),
+                required_audit_evidence_object_ids=tuple(
+                    first_finding.evidence_object_ids
+                ),
+                required_audit_evidence_event_ids=tuple(first_finding.evidence_event_ids),
+                required_audit_evidence_validation_issue_ids=tuple(
+                    first_finding.evidence_validation_issue_ids
+                ),
+                required_suggestion_paths=tuple(suggestion_paths),
+                audit_finding_count_range=(len(findings), len(findings)),
+                suggestion_count_range=(len(suggestions), len(suggestions)),
+                requires_suggestion=True,
+                simulate_suggestions=True,
+            )
+            reference_candidate = _audit_candidate(
+                str(fixture.get("answer") or f"{decision_label}审计反馈基准回复。"),
+                object_ids=tuple(referenced_object_ids),
+                event_ids=tuple(referenced_event_ids),
+                validation_issue_ids=tuple(referenced_validation_issue_ids),
+                findings=findings,
+                suggestions=tuple(suggestions),
+            )
+        else:
+            expectations = ChatOutcomeExpectations(
+                expected_primary_intent="logic_audit",
+                audit_finding_count_range=(0, 0),
+                suggestion_count_range=(0, 0),
+                no_unnecessary_suggestions=True,
+            )
+            reference_candidate = _audit_candidate(
+                f"{decision_label}反馈已回流：该冻结输入不再提出发现或补丁。",
+                object_ids=tuple(referenced_object_ids),
+                event_ids=tuple(referenced_event_ids),
+                validation_issue_ids=tuple(referenced_validation_issue_ids),
+            )
+        tasks.append(
+            ChatOutcomeTask(
+                task_id=task_id,
+                message=f"[审计反馈·{decision_label}] {message}",
+                hint=hint,
+                focus=focus_values,
+                casefile=casefile,
+                validation_issues=validation_issues,
+                kind="feedback",
+                expectations=expectations,
+                reference_candidate=reference_candidate,
+            )
+        )
+    return tuple(tasks)
+
+
 def _mutated_candidate(
-    base: CaseFileChatCandidate,
+    base: CaseFileChatCandidate | CaseFileChatCandidateV2,
     *,
     answer: str | None = None,
     object_ids: tuple[str, ...] | None = None,
     event_ids: tuple[str, ...] | None = None,
     validation_issue_ids: tuple[str, ...] | None = None,
-    suggestions: tuple[CaseFileChatSuggestionCandidate, ...] | None = None,
+    suggestions: tuple[
+        CaseFileChatSuggestionCandidate | CaseFileChatSuggestionCandidateV2, ...
+    ]
+    | None = None,
 ) -> CaseFileChatCandidate:
+    normalized_suggestions: list[CaseFileChatSuggestionCandidate] = []
+    for suggestion in base.suggestions if suggestions is None else suggestions:
+        if isinstance(suggestion, CaseFileChatSuggestionCandidate):
+            normalized_suggestions.append(suggestion)
+        else:
+            normalized_suggestions.append(
+                CaseFileChatSuggestionCandidate(
+                    object_id=suggestion.object_id,
+                    path=suggestion.path,
+                    value_json=suggestion.value_json,
+                    reason=suggestion.reason,
+                )
+            )
     return CaseFileChatCandidate(
         answer=base.answer if answer is None else answer,
         referenced_object_ids=(
@@ -1216,7 +2041,7 @@ def _mutated_candidate(
             else list(validation_issue_ids)
         ),
         suggested_view=base.suggested_view,
-        suggestions=list(base.suggestions) if suggestions is None else list(suggestions),
+        suggestions=normalized_suggestions,
     )
 
 
@@ -1421,6 +2246,7 @@ __all__ = [
     "ChatOutcomeTrialVerdict",
     "build_grader_mutations",
     "build_outcome_tasks",
+    "build_outcome_tasks_from_audit_feedback",
     "grade_chat_outcome",
     "grade_mutation",
     "grade_reference_solution",

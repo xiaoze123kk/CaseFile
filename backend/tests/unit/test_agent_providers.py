@@ -35,6 +35,7 @@ from casefile.agent_runtime.providers import (
     ProviderProtocolError,
     _allocate_plan_ids,
     _chat_tool_runtime,
+    _deepseek_json_object_text,
     _deepseek_v8_output_protocol,
     _json_schema_instruction,
     _partition_issues,
@@ -109,6 +110,29 @@ def test_deepseek_v8_protocol_uses_json_mode_for_known_flash_capability(
     monkeypatch.setenv("CASEFILE_DEEPSEEK_V8_OUTPUT_PROTOCOL", "not-a-protocol")
     with pytest.raises(ProviderProtocolError, match="CASEFILE_DEEPSEEK_V8_OUTPUT_PROTOCOL"):
         _deepseek_v8_output_protocol("deepseek-v4-flash")
+
+
+def test_deepseek_json_object_text_extracts_candidate_from_dsml_output() -> None:
+    candidate = '{"answer":"第七次重启由备用系统触发","suggestions":[]}'
+    raw_output = (
+        '<DSML parameter name="value_json" string="true">'
+        '{"end":"2042-06-01T20:03","kind":"range"}'
+        '</DSML parameter>'
+        f"</DSML invoke>{candidate}</DSML tool_calls>"
+    )
+
+    extracted = _deepseek_json_object_text(raw_output)
+
+    assert extracted == candidate
+    assert json.loads(extracted)["answer"] == "第七次重启由备用系统触发"
+
+
+def test_deepseek_json_object_text_keeps_pure_json_and_prose_unchanged() -> None:
+    pure_json = '{"answer":"核心结论","suggestions":[]}'
+    prose = "模型在思考，尚未输出候选 JSON。"
+
+    assert _deepseek_json_object_text(pure_json) == pure_json
+    assert _deepseek_json_object_text(prose) == prose
 
 
 def test_deepseek_provider_requires_a_key_before_network_access() -> None:

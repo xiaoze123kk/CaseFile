@@ -184,10 +184,74 @@ class CaseFileChatCandidate(StrictAgentOutput):
     suggestions: list[CaseFileChatSuggestionCandidate] = Field(default_factory=list)
 
 
+AuditFindingKind = Literal[
+    "dangling_ref",
+    "contradiction",
+    "temporal",
+    "motivation_gap",
+    "scope_gap",
+]
+AuditFindingSeverity = Literal["S1", "S2", "S3"]
+
+
+class CaseFileChatAuditFindingCandidate(StrictAgentOutput):
+    """One evidence-backed logical hole found by the logic_audit executor."""
+
+    finding_id: str = Field(min_length=1, max_length=32, pattern=r"^F[1-9][0-9]*$")
+    kind: AuditFindingKind
+    severity: AuditFindingSeverity
+    title: str = Field(min_length=1, max_length=200)
+    statement: str = Field(min_length=1, max_length=4000)
+    needs_manual_review: bool = False
+    evidence_object_ids: list[str] = Field(default_factory=list, max_length=20)
+    evidence_event_ids: list[str] = Field(default_factory=list, max_length=20)
+    evidence_validation_issue_ids: list[str] = Field(
+        default_factory=list, max_length=20
+    )
+
+
+class CaseFileChatSuggestionCandidateV2(StrictAgentOutput):
+    """v2 suggestion that may bind itself to one audit finding."""
+
+    object_id: str = Field(min_length=1)
+    path: str = Field(
+        min_length=2,
+        pattern=r"^/(?:[^/~]|~[01])+(?:/(?:[^/~]|~[01])+)*$",
+    )
+    value_json: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    finding_ref: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=32,
+        pattern=r"^F[1-9][0-9]*$",
+    )
+
+
+class CaseFileChatCandidateV2(StrictAgentOutput):
+    """v2 chat output: v1 fields plus the structured logic-audit findings."""
+
+    answer: str = Field(min_length=1)
+    referenced_object_ids: list[str] = Field(default_factory=list, max_length=50)
+    referenced_event_ids: list[str] = Field(default_factory=list, max_length=50)
+    referenced_validation_issue_ids: list[str] = Field(
+        default_factory=list, max_length=50
+    )
+    suggested_view: str | None = Field(
+        default=None,
+        pattern=r"^(?:timeline|relations|reasoning|map|export|compile|evidence)$",
+    )
+    suggestions: list[CaseFileChatSuggestionCandidateV2] = Field(default_factory=list)
+    audit_findings: list[CaseFileChatAuditFindingCandidate] = Field(
+        default_factory=list, max_length=50
+    )
+
+
 IntentPrimaryLabel = Literal[
     "question",
     "analysis",
     "explain_issue",
+    "logic_audit",
     "edit_request",
     "validate_request",
     "unsupported_action",
@@ -538,7 +602,7 @@ class BriefStrategyOptionsResult:
 
 @dataclass(frozen=True, slots=True)
 class CaseFileChatResult:
-    candidate: CaseFileChatCandidate
+    candidate: CaseFileChatCandidate | CaseFileChatCandidateV2
     usage: dict[str, Any]
     tools: ToolMetrics = field(default_factory=ToolMetrics)
 

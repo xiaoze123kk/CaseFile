@@ -173,10 +173,20 @@ export function DraftCandidatesStage() {
   async function generateSelectedDraft() {
     if (!state.selectedStrategy) return;
     setGenerationError(null);
+    const existingAttempt =
+      selectedCandidate?.candidateState?.candidateStrategyAttempt ?? 0;
+    const requestedAttempt = selectedCandidate ? existingAttempt + 1 : 1;
     try {
-      const outcome = await generateCandidates(state.selectedStrategy);
+      const outcome = await generateCandidates(
+        state.selectedStrategy,
+        requestedAttempt,
+      );
       if (outcome === "succeeded") {
-        setNotice(`${strategyLabels[state.selectedStrategy]}完整深稿已通过结构与引用校验。`);
+        setNotice(
+          selectedCandidate
+            ? `${strategyLabels[state.selectedStrategy]}完整深稿已重新生成并通过结构与引用校验。`
+            : `${strategyLabels[state.selectedStrategy]}完整深稿已通过结构与引用校验。`,
+        );
       } else if (outcome === "cancelled") {
         setNotice("本次生成已安全停止，Current Draft 未被修改。");
       } else {
@@ -451,7 +461,7 @@ export function DraftCandidatesStage() {
         <div className={styles.strategyActions}>
           <button
             className={styles.generateButton}
-            disabled={!state.selectedStrategy || generating || Boolean(selectedCandidate)}
+            disabled={!state.selectedStrategy || generating}
             onClick={() => void generateSelectedDraft()}
             type="button"
           >
@@ -461,12 +471,12 @@ export function DraftCandidatesStage() {
                   ? "正在安全停止生成…"
                   : `正在生成${strategyLabels[state.selectedStrategy!]}完整深稿…`
                 : selectedCandidate
-                  ? "完整深稿已生成"
+                  ? `重新生成${strategyLabels[state.selectedStrategy!]}完整深稿`
                   : state.selectedStrategy
                     ? `生成${strategyLabels[state.selectedStrategy]}完整深稿`
                     : "请先选择一个策略"}
             </span>
-            <b>{selectedCandidate ? "✓" : "→"}</b>
+            <b>{selectedCandidate ? "↻" : "→"}</b>
           </button>
           <button
             className={styles.strategyRefresh}

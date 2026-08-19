@@ -7,6 +7,7 @@ from dataclasses import replace
 
 from casefile.agent_runtime.chat_tools import bounded_tool_result_json, fold_tool_results
 from casefile.agent_runtime.context import (
+    CHAT_CONTEXT_POLICY_V4_VERSION,
     CHAT_CONTEXT_POLICY_VERSION,
     build_casefile_skeleton,
     build_chat_context_manifest,
@@ -14,6 +15,10 @@ from casefile.agent_runtime.context import (
     chat_input_payload_from_assembly,
     select_history_window,
     trim_validation_issues,
+)
+from casefile.agent_runtime.context.strategies.transformers.validation_trim import (
+    _full_snapshot_profiles,
+    _matches_full_snapshot_profile,
 )
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
@@ -211,6 +216,64 @@ def test_validation_trim_gate_keeps_full_snapshot() -> None:
     assert trimmed["issues"] == issues
 
 
+def test_validation_trim_full_snapshot_profiles_match_exact_and_prefix() -> None:
+    profiles = ("validate_request.gate_check", "logic_audit.full_review")
+
+    assert _matches_full_snapshot_profile("logic_audit.full_review", profiles) is True
+    assert _matches_full_snapshot_profile("validate_request.gate_check", profiles) is True
+    assert _matches_full_snapshot_profile("analysis.healthcheck", profiles) is False
+    # Legacy single-profile policies keep working through bare-intent prefix.
+    assert (
+        _matches_full_snapshot_profile(
+            "validate_request.gate_check",
+            ("validate_request",),
+        )
+        is True
+    )
+    assert (
+        _matches_full_snapshot_profile(
+            "validate_requests.gate_check",
+            ("validate_request",),
+        )
+        is False
+    )
+    assert _full_snapshot_profiles({"full_snapshot_profiles": list(profiles)}) == profiles
+    assert _full_snapshot_profiles({"gate_profile": "validate_request"}) == ("validate_request",)
+    assert _full_snapshot_profiles({}) == ("validate_request.gate_check",)
+
+
+def test_v4_policy_keeps_full_validation_snapshot_for_audit_route() -> None:
+    request = replace(
+        _request(),
+        route=RouteDecision(
+            execution_profile={
+                "profile": "logic_audit.full_review",
+                "prompt_component": "audit",
+            }
+        ),
+        context_policy_version=CHAT_CONTEXT_POLICY_V4_VERSION,
+        toolset_version="casefile-chat-tools-v4",
+    )
+    result = build_chat_context_manifest(
+        policy_version=CHAT_CONTEXT_POLICY_V4_VERSION,
+        frozen_input=_frozen_input(),
+        input_hash=request.input_hash,
+        routing=chat_routing_payload_as_dict(request),
+        extra_input={"editable_fields_by_collection": request.editable_fields_by_collection},
+    )
+    validation_block = next(
+        block for block in result.assembly.blocks if block.id == "validation_issues"
+    )
+    assert validation_block.metadata["mode"] == "full"
+    assert [issue["issue_id"] for issue in validation_block.payload] == [
+        f"issue:{index}" for index in range(8)
+    ]
+    assert any(
+        decision.code == "validation_full_for_route"
+        for decision in result.manifest.decisions
+    )
+
+
 def test_v1_policy_builds_contract_blocks_and_renders_v4_input() -> None:
     request = _request()
     result = build_chat_context_manifest(
@@ -298,23 +361,34 @@ def test_unknown_policy_still_falls_back_to_legacy() -> None:
     assert result.manifest.policy_version == "agent-focus-v1"
 
 
-def test_context_policy_defaults_to_v3_with_v1_v2_and_legacy_switches(monkeypatch) -> None:
+def test_context_policy_defaults_to_v6_with_older_switches(monkeypatch) -> None:
     from casefile.agent_runtime.context import (
         CHAT_CONTEXT_POLICY_V2_VERSION,
         CHAT_CONTEXT_POLICY_V3_VERSION,
+        CHAT_CONTEXT_POLICY_V4_VERSION,
+        CHAT_CONTEXT_POLICY_V5_VERSION,
+        CHAT_CONTEXT_POLICY_V6_VERSION,
     )
     from casefile.application.workflow_service import _chat_context_policy_version
 
     monkeypatch.delenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", raising=False)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V3_VERSION
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "agent-focus-v1")
     assert _chat_context_policy_version() == "agent-focus-v1"
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_VERSION)
     assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V2_VERSION)
     assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V2_VERSION
-    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "unexpected")
+    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V3_VERSION)
     assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V3_VERSION
+    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V4_VERSION)
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V4_VERSION
+    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V5_VERSION)
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V5_VERSION
+    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V6_VERSION)
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
+    monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "unexpected")
+    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
 
 
 def test_bounded_tool_result_marks_and_caps_oversized_payloads() -> None:

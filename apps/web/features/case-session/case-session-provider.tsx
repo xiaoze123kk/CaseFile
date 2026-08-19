@@ -1198,9 +1198,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
           ),
       );
       const requestedStrategies = [selectedStrategy];
+      const regenerateStrategies = requestedStrategies.filter(
+        (strategy) =>
+          existingStrategies.has(strategy) && requestedAttempt > 1,
+      );
       const missingStrategies = requestedStrategies.filter(
         (strategy) => !existingStrategies.has(strategy),
       );
+      const strategiesToRun = [...missingStrategies, ...regenerateStrategies];
       for (const strategy of existingStrategies) {
         dispatch({
           type: "update_generation_slot",
@@ -1210,14 +1215,14 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         });
       }
       const draft = await fetchCaseDraft(projectId);
-      dispatch({ type: "start_generation", strategies: missingStrategies });
+      dispatch({ type: "start_generation", strategies: strategiesToRun });
       let workingProvider: ProviderName | null = null;
 
-      if (missingStrategies.length > 0) {
-        // 首个缺失槽位负责 Provider 认证回退；成功后复用于其余槽位。
-        const firstStrategy = missingStrategies.includes("structure_first")
+      if (strategiesToRun.length > 0) {
+        // 首个待运行槽位负责 Provider 认证回退；成功后复用于其余槽位。
+        const firstStrategy = strategiesToRun.includes("structure_first")
           ? "structure_first"
-          : missingStrategies[0];
+          : strategiesToRun[0];
         const fallbackResult = await runTaskWithProviderFallback(
           async (provider) => {
             let taskRunId: number | null = null;
@@ -1272,7 +1277,7 @@ export function CaseSessionProvider({ children }: { children: ReactNode }) {
         );
         workingProvider = fallbackResult.provider;
 
-        const parallelStrategies = missingStrategies.filter(
+        const parallelStrategies = strategiesToRun.filter(
           (strategy) => strategy !== firstStrategy,
         );
         await Promise.allSettled(

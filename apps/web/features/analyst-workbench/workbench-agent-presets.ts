@@ -27,6 +27,13 @@ export const agentPromptPresets = [
       "按编译中心的发布门禁口径做导出前检查，结论必须与验证快照一致。",
     routingHint: { entrypoint: "preset", preset_id: "gate" },
   },
+  {
+    id: "audit",
+    label: "逻辑漏洞复查",
+    prompt:
+      "对当前卷宗做一次全卷逻辑漏洞复查：找出矛盾、断链、时序错误和动机缺口；能给出可审阅补丁的就给出补丁，无法取证的列到待人工确认，未发现漏洞则如实说明。",
+    routingHint: { entrypoint: "preset", preset_id: "audit" },
+  },
 ] as const;
 
 export type AgentPromptPresetId = (typeof agentPromptPresets)[number]["id"];

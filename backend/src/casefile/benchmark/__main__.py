@@ -24,6 +24,12 @@ def main() -> None:
         sys.argv = [sys.argv[0], *sys.argv[2:]]
         feedback_main()
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "audit-feedback":
+        from casefile.benchmark.audit_feedback_export import main as audit_feedback_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        audit_feedback_main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "chat-outcome":
         remaining = sys.argv[2:]
         if len(remaining) >= 2 and remaining[:2] == ["--mode", "live"]:

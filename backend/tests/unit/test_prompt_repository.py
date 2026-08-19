@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
+    CHAT_PROMPT_PACKAGE_VERSIONS,
     V8_GENERATION_AGENT_VERSION,
     V9_GENERATION_AGENT_VERSION,
     V10_GENERATION_AGENT_VERSION,
@@ -162,12 +163,12 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("brief_to_draft", "brief-to-draft-v15"): {
         "fragment:common": "e3b67dc37b30d6af6663ac167cb4bb08f9a913477e4b7a851a2bbadc76e47a00",
-        "fragment:planner": "914e3d3cc23786f983296636fbf96e1b17988b3d650be0865d8d716cf6974019",
+        "fragment:planner": "f54c9a161171d44fa67b988e732e082c08071c7ed5e80b5baf6b2638bf1dd6ed",
         "fragment:temporal": "d97423266dad8fb6477657c255187738049094a435170906112a51fa982ea640",
         "fragment:domain_common": (
             "e5ef2e69454d7ca3c8443a3bd5c48808dbf8752010b1948d2693f8bacf0eddab"
         ),
-        "fragment:story": "6be6e4cbedd87586af144248b01367ea8fa1d9c011a45fdb0298950ff6802599",
+        "fragment:story": "66f626183ca34b7f972042fd1de8fcfac681e0f2a1f4d5a76c207052b31fac8a",
         "fragment:evidence": "0afbbfa402273e39c3c160dd7336781a4b700db71625ddbe04206e7dbe6da4c4",
         "fragment:matrix": "85ed9417d16464984c888a21d400b0bc0f45d5947a345af2411b56d6ee582e80",
         "fragment:governance": "b5934b27eb8e92261acd7f52c50a33b3fc802d86e54939de2e06d1b1d4c82c79",
@@ -241,6 +242,45 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
         "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
         "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
+    ("casefile_chat", "casefile-chat-v8"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "1da46a3a950615ca24593ec91cf595eda2bfe045fa4a03e9d5960e30a91fdfcd",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-audit": "9662a0d627addd10659c7ed452e9fddb819f1b3b7bef7e0fb3d68947dc01d7fa",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
+    ("casefile_chat", "casefile-chat-v9"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "1da46a3a950615ca24593ec91cf595eda2bfe045fa4a03e9d5960e30a91fdfcd",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-audit": "9871227a99400cf9729a52e85ac6b27c3fdc76d3936012aacd4db9075e31e148",  # noqa: E501
+        "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
+        "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
+        "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
+        "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
+        "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
+    },
+    ("casefile_chat", "casefile-chat-v10"): {
+        "fragment:shared": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671",  # noqa: E501
+        "fragment:router": "3ae617c6d79efa4ec9a118b96970926c5dce1ec4d3c89ddba83d9180edc5c01c",
+        "fragment:rewrite": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201",
+        "fragment:executor-chat": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23",  # noqa: E501
+        "fragment:executor-analysis": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25",  # noqa: E501
+        "fragment:executor-audit": "61e610314ccb3a73290e31a8abaf17b9b36ab7f399afbf7437a5df48e8be2da6",  # noqa: E501
         "fragment:executor-issue": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a",  # noqa: E501
         "fragment:executor-edit": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040",  # noqa: E501
         "fragment:executor-gate": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df",  # noqa: E501
@@ -472,6 +512,47 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "`get_related_objects`" in v3_chat.component_prompts["analysis"]
     assert "`list_casefile_records`" in v3_chat.component_prompts["issue"]
     assert "`get_related_objects`" in v3_chat.component_prompts["edit"]
+    v8_chat = load_prompt("casefile_chat", "casefile-chat-v8")
+    assert v8_chat.package is not None
+    assert v8_chat.package.runtime_agent_version == AGENT_VERSION
+    assert v8_chat.package.runtime_toolset_version == "casefile-chat-tools-v4"
+    assert "audit" in v8_chat.package.components
+    audit = v8_chat.package.components["audit"]
+    assert audit.input_contract_id == "casefile-chat-prompt-input-v2"
+    assert audit.output_schema_id == "casefile-chat-output-v1"
+    assert audit.tool_policy_id == "chat-audit-v4"
+    assert "logic_audit" in v8_chat.component_prompts["router"]
+    assert "全卷逻辑漏洞复查" in v8_chat.component_prompts["audit"]
+    assert "simulate_patch_application" in v8_chat.component_prompts["audit"]
+    assert "未发现可取证漏洞" in v8_chat.component_prompts["audit"]
+    v9_chat = load_prompt("casefile_chat", "casefile-chat-v9")
+    assert v9_chat.package is not None
+    assert v9_chat.package.previous_version == "casefile-chat-v8"
+    assert v9_chat.package.runtime_toolset_version == "casefile-chat-tools-v4"
+    audit_v9 = v9_chat.package.components["audit"]
+    assert audit_v9.output_schema_id == "casefile-chat-output-v2"
+    assert audit_v9.tool_policy_id == "chat-audit-v4"
+    assert all(
+        component.output_schema_id == "casefile-chat-output-v1"
+        for component_id, component in v9_chat.package.components.items()
+        if component_id not in {"router", "rewrite", "audit"}
+    )
+    assert "`audit_findings`" in v9_chat.component_prompts["audit"]
+    assert "`finding_ref`" in v9_chat.component_prompts["audit"]
+    assert "needs_manual_review" in v9_chat.component_prompts["audit"]
+    assert "casefile-chat-output-v2" in v9_chat.component_prompts["audit"]
+    v10_chat = load_prompt("casefile_chat", "casefile-chat-v10")
+    assert v10_chat.package is not None
+    assert v10_chat.package.previous_version == "casefile-chat-v9"
+    assert v10_chat.package.runtime_toolset_version == "casefile-chat-tools-v4"
+    audit_v10 = v10_chat.package.components["audit"]
+    assert audit_v10.output_schema_id == "casefile-chat-output-v2"
+    assert audit_v10.tool_policy_id == "chat-audit-v4"
+    router_v10 = v10_chat.component_prompts["router"]
+    assert "直接修改 Draft 数据" in router_v10
+    assert "system_layer_direct_write" in router_v10
+    assert "输出前证据链自检" in v10_chat.component_prompts["audit"]
+    assert "可修漏洞而 `suggestions` 为空" in v10_chat.component_prompts["audit"]
 
 
 def test_repository_loads_an_explicit_inactive_historical_version(tmp_path: Path) -> None:
@@ -613,6 +694,12 @@ def _one_agent_repository(
     for version, system_prompt in resolved_versions.items():
         _write_manifest(root, version=version, system_prompt=system_prompt)
     return PromptRepository(root, expected_agent_ids=("brief_polish",)), root
+
+
+def test_chat_audit_prompt_packages_are_execution_auditable() -> None:
+    assert "casefile-chat-v8" in CHAT_PROMPT_PACKAGE_VERSIONS
+    assert "casefile-chat-v9" in CHAT_PROMPT_PACKAGE_VERSIONS
+    assert "casefile-chat-v10" in CHAT_PROMPT_PACKAGE_VERSIONS
 
 
 def _write_manifest(
