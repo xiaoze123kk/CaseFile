@@ -64,7 +64,7 @@ _RECENT_TOOL_RESULTS = 3
 # Tools introduced by the v2 toolset are denied to legacy chat TaskRuns so
 # frozen v1-toolset replays keep their original read surface.
 _V2_ONLY_TOOLS = frozenset({"list_casefile_records", "get_related_objects"})
-# Phase 4 Context Tools are v3-only; v1/v2 replays never see them.
+# Phase 4 Context Tools are v3 and v4; v1/v2 replays never see them.
 _V3_ONLY_TOOLS = frozenset(
     {"retrieve_thread_evidence", "request_thread_compaction"}
 )
@@ -1438,10 +1438,9 @@ def chat_tool_manifest(
 
     ``toolset`` is the regular route read surface and ``context_tools`` is the
     Phase 4 context surface declared per route. v1 replays only see the v1 read
-    surface; v2 and later replays keep the v2 read tools; only
-    ``casefile-chat-tools-v3`` exposes the read-only thread evidence and
-    compaction-request tools; only ``casefile-chat-tools-v4`` exposes the
-    dry-run patch preview.
+    surface; v2 and later replays keep the v2 read tools; v3 and v4 expose the
+    read-only thread evidence and compaction-request tools; only
+    ``casefile-chat-tools-v4`` exposes the dry-run patch preview.
     """
 
     allowed = list(route.execution_profile.get("toolset") or [])
@@ -1460,7 +1459,11 @@ def chat_tool_manifest(
             }
         ):
             continue
-        if tool_name in _V3_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_V3_VERSION:
+        if (
+            tool_name in _V3_ONLY_TOOLS
+            and toolset_version
+            not in {CHAT_TOOLSET_V3_VERSION, CHAT_TOOLSET_V4_VERSION}
+        ):
             continue
         if tool_name in _V4_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_V4_VERSION:
             continue

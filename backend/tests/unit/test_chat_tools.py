@@ -504,6 +504,7 @@ def test_manifest_gates_simulate_patch_to_v4_toolset() -> None:
     route = RouteDecision(
         execution_profile={
             "toolset": ["validate_patch_proposal", "simulate_patch_application"],
+            "context_tools": ["retrieve_thread_evidence", "request_thread_compaction"],
             "max_tool_calls": 4,
         }
     )
@@ -517,8 +518,17 @@ def test_manifest_gates_simulate_patch_to_v4_toolset() -> None:
         for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V4_VERSION)
     ]
 
-    assert v3_names == ["validate_patch_proposal"]
-    assert v4_names == ["validate_patch_proposal", "simulate_patch_application"]
+    assert v3_names == [
+        "validate_patch_proposal",
+        "retrieve_thread_evidence",
+        "request_thread_compaction",
+    ]
+    assert v4_names == [
+        "validate_patch_proposal",
+        "simulate_patch_application",
+        "retrieve_thread_evidence",
+        "request_thread_compaction",
+    ]
 
 
 def test_list_collections_reports_every_frozen_collection_count() -> None:
