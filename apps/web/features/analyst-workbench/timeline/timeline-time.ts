@@ -137,6 +137,11 @@ export function timelineEventTime(value: string) {
   return formatEventTimeValue(normalized) ?? normalized;
 }
 
+export function timelineEventTimeRange(start: string, end: string | null) {
+  if (!end || end === start) return timelineEventTime(start);
+  return timelineEventTime(`${start} – ${end}`);
+}
+
 export function isV2TemporalPosition(
   time: CaseFileDocument["events"][number]["time"] | null | undefined,
 ): time is TimelineTemporalPosition {
