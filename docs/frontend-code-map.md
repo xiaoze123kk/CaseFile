@@ -41,7 +41,12 @@
 | `apps/web/features/analyst-workbench/workbench-evidence-comparison.tsx` | 证据对比视图的「证据 × 假设」矩阵：按核心问题展示每条信息/证据对每个假设的支持/冲突/中立判定、强度与理由，并在选中单元格时给出可靠度、叙事分类、信息类型与支持/反驳的主张；数据来自 `reasoningGroups`（`Hypothesis.evidence_assessments`），真实工作稿立即可用。 |
 | `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：真实数据的确定性验证问题展示规则代码、JSON 路径、字段路径与可定位的目标对象；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
 | `apps/web/features/analyst-workbench/workbench-agent-surface.tsx`、`workbench-agent-composer.tsx`、`workbench-agent.module.css` | 卷宗统筹 Agent 的 `closed / quick / desk` 表面边界、基于真实 Workbench Focus 的上下文输入、中文 IME 安全的多行 Composer，以及独立于主工作台的 Agent 视觉布局。 |
-| `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx`、`workbench-agent-panel.tsx` | 生产 Thread/Message/Task 控制器与本地预览编排；两者只承载 Agent 对话事实，具体 Quick Ask 或统筹台位置由 Agent Surface 决定。 |
+| `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread/Message/Task 控制器、SSE 跟随、消息发送与 Patch API 生命周期；把事实状态交给 Agent Presentation 组件，并暂留 Phase 3 前的 Routing/Patch 审阅动作。 |
+| `apps/web/features/analyst-workbench/workbench-agent-desk.tsx` | Desk/Quick 的统一阅读列布局：Header、Conversation、Task Strip、预设指令和 Composer 组合，不拥有领域状态。 |
+| `apps/web/features/analyst-workbench/workbench-agent-thread-menu.tsx` | Agent Thread 搜索、Combobox/Listbox 键盘选择、新建、置顶、重命名、归档和归档筛选呈现；持久化由 live panel 回调完成。 |
+| `apps/web/features/analyst-workbench/workbench-agent-task-strip.tsx` | 真实 Task/SSE 阶段、上下文用量、取消按钮和终态摘要的 Sticky 展示；不估算进度。 |
+| `apps/web/features/analyst-workbench/workbench-agent-conversation.tsx` | 调查记录式消息 Turn、引用/Finding/Patch 结构化摘要入口和 Workbench 定位回调；不执行 Patch 写入。 |
+| `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 本地预览 Agent 编排；与生产面板共享 Agent Surface，但不接真实 Thread/Task 持久化。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-kernel.tsx`、`workbench-canvas-layout.ts`、`workbench-canvas.module.css` | 关系图与推理图共享的 React Flow 只读画布内核、确定性 Dagre 布局、按 `project:{projectId}:draft:{draftId}` 隔离的浏览器布局偏好、选择/平移/多选/全屏交互和专属视觉样式；不得表达或触发领域写入。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-controls.tsx`、`workbench-icon.tsx`、`workbench-geometry.ts`、`workbench-presenters.ts` | 工作台内部复用的画布控件、悬浮提示、图标、几何边界和展示标签；不承载跨功能业务状态。 |
 | `apps/web/features/analyst-workbench/timeline/` | 时间线专属的无时区时间解析、React+D3 比例轴、点/整段区间拖动、人物/地点泳道、时间确定性与问题叠层、窄屏编辑清单和写入前影响预览，以及 Current Draft 的独立版本化线性 Exposure Plan 编辑；事实时间写入仍走 Draft revision，披露顺序只推进 Plan revision，二者均不绕过身份与并发门禁。 |

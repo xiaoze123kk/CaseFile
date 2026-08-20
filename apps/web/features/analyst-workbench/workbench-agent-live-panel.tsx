@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   applyAgentPatchSet,
@@ -11,7 +11,7 @@ import {
   sendAgentMessage,
   sendAgentRoutingFeedback,
   undoAgentPatchSet,
-  type AgentAuditFindingView,
+  updateAgentThread,
   type AgentChatFocus,
   type AgentChatRoutingHint,
   type AgentMessageView,
@@ -31,9 +31,15 @@ import {
 
 import styles from "./workbench-agent.module.css";
 import { WorkbenchAgentComposer } from "./workbench-agent-composer";
+import {
+  WorkbenchAgentConversation,
+  agentViewLabels,
+} from "./workbench-agent-conversation";
+import { WorkbenchAgentDesk } from "./workbench-agent-desk";
 import { agentPromptPresets } from "./workbench-agent-presets";
 import type { AgentSurface } from "./workbench-agent-surface";
-import { WorkbenchIcon } from "./workbench-icon";
+import { WorkbenchAgentTaskStrip } from "./workbench-agent-task-strip";
+import { WorkbenchAgentThreadMenu } from "./workbench-agent-thread-menu";
 
 const ACTIVE_TASK_STATUSES = new Set<TaskView["status"]>([
   "queued",
@@ -46,16 +52,6 @@ const TERMINAL_TASK_STATUSES = new Set<TaskView["status"]>([
   "failed",
   "cancelled",
 ]);
-
-const agentViewLabels: Record<AgentSuggestedView, string> = {
-  timeline: "时间线",
-  relations: "关系图",
-  reasoning: "推理分析",
-  map: "地图",
-  export: "导出预览",
-  compile: "编译中心",
-  evidence: "证据对比",
-};
 
 const patchStatusLabels: Record<AgentPatchSetView["status"], string> = {
   pending: "待审阅",
@@ -90,37 +86,6 @@ const routingSourceLabels: Record<string, string> = {
   fallback: "降级路由",
 };
 
-const auditFindingKindLabels = {
-  dangling_ref: "断链",
-  contradiction: "矛盾",
-  temporal: "时序错误",
-  motivation_gap: "动机缺口",
-  scope_gap: "范围缺口",
-} as const;
-
-const auditFindingSeverityLabels = {
-  S1: "致命",
-  S2: "主要",
-  S3: "次要",
-} as const;
-
-function auditFindingsFor(message: AgentMessageView): AgentAuditFindingView[] {
-  const result = message.task?.result;
-  if (result === null || result === undefined) return [];
-  if (typeof result !== "object" || !("audit_findings" in result)) return [];
-  const findings = (result as { audit_findings?: unknown }).audit_findings;
-  if (!Array.isArray(findings)) return [];
-  return findings.filter(
-    (finding): finding is AgentAuditFindingView =>
-      typeof finding === "object" &&
-      finding !== null &&
-      typeof (finding as AgentAuditFindingView).finding_id === "string" &&
-      typeof (finding as AgentAuditFindingView).kind === "string" &&
-      typeof (finding as AgentAuditFindingView).severity === "string" &&
-      typeof (finding as AgentAuditFindingView).title === "string",
-  );
-}
-
 function routingSummaryFor(message: AgentMessageView): {
   route_source: string | null;
   intent: string | null;
@@ -149,14 +114,6 @@ function displayValue(value: unknown): string {
   const text =
     typeof value === "string" ? value : JSON.stringify(value);
   return text.length > 96 ? `${text.slice(0, 95)}…` : text;
-}
-
-function stageLabel(task: TaskView | null): string {
-  if (task === null) return "已排队";
-  if (task.status === "queued") return "任务已排队";
-  if (task.status === "running") return task.stage || "正在分析卷宗";
-  if (task.status === "cancelling") return "正在取消";
-  return "正在整理回复";
 }
 
 interface ContextOccupancy {
@@ -238,6 +195,7 @@ export function AgentLivePanel({
   focusRequest?: number;
 }) {
   const [threads, setThreads] = useState<AgentThreadView[]>([]);
+  const [threadMenuRows, setThreadMenuRows] = useState<AgentThreadView[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
   const [threadsError, setThreadsError] = useState<string | null>(null);
   const [selectedThreadId, setSelectedThreadId] = useState<number | null>(null);
@@ -282,14 +240,22 @@ export function AgentLivePanel({
     return () => window.removeEventListener("keydown", handleEscape);
   }, [onClose, surface]);
 
-  const refreshThreads = useCallback(async () => {
-    try {
-      const rows = await listAgentThreads(LOCAL_ACTOR_ID, projectId);
-      setThreads(rows);
-    } catch {
-      // A background refresh must not overwrite the panel with an error toast.
-    }
-  }, [projectId]);
+  const refreshThreads = useCallback(
+    async (options: { query?: string; includeArchived?: boolean } = {}) => {
+      try {
+        const rows = await listAgentThreads(LOCAL_ACTOR_ID, projectId, options);
+        if (options.query !== undefined || options.includeArchived !== undefined) {
+          setThreadMenuRows(rows);
+        } else {
+          setThreads(rows);
+          setThreadMenuRows(rows);
+        }
+      } catch {
+        // A background refresh must not overwrite the panel with an error toast.
+      }
+    },
+    [projectId],
+  );
 
   const reloadMessages = useCallback(async () => {
     const threadId = selectedThreadIdRef.current;
@@ -330,6 +296,7 @@ export function AgentLivePanel({
         rows = [created];
       }
       setThreads(rows);
+      setThreadMenuRows(rows);
       setSelectedThreadId((current) =>
         current !== null && rows.some((row) => row.thread_id === current)
           ? current
@@ -439,17 +406,23 @@ export function AgentLivePanel({
     threadsLoading ||
     busy ||
     finishing ||
-    creatingThread;
+    creatingThread ||
+    threads.find((thread) => thread.thread_id === selectedThreadId)?.status ===
+      "archived";
 
   function upsertThread(thread: AgentThreadView) {
     setThreads((previous) => [
       thread,
       ...previous.filter((row) => row.thread_id !== thread.thread_id),
     ]);
+    setThreadMenuRows((previous) => [
+      thread,
+      ...previous.filter((row) => row.thread_id !== thread.thread_id),
+    ]);
   }
 
-  async function createThread() {
-    if (creatingThread) return;
+  async function createThread(): Promise<AgentThreadView | null> {
+    if (creatingThread) return null;
     setCreatingThread(true);
     setMessagesError(null);
     try {
@@ -461,10 +434,52 @@ export function AgentLivePanel({
       );
       upsertThread(created);
       setSelectedThreadId(created.thread_id);
+      return created;
     } catch (caught) {
       setMessagesError(errorMessage(caught));
+      return null;
     } finally {
       setCreatingThread(false);
+    }
+  }
+
+  async function renameThread(thread: AgentThreadView, title: string) {
+    const updated = await updateAgentThread(
+      LOCAL_ACTOR_ID,
+      projectId,
+      thread.thread_id,
+      draftId,
+      draftRevision,
+      { title },
+    );
+    upsertThread(updated);
+  }
+
+  async function setThreadPinned(thread: AgentThreadView, isPinned: boolean) {
+    const updated = await updateAgentThread(
+      LOCAL_ACTOR_ID,
+      projectId,
+      thread.thread_id,
+      draftId,
+      draftRevision,
+      { is_pinned: isPinned },
+    );
+    upsertThread(updated);
+  }
+
+  async function setThreadArchived(thread: AgentThreadView, archived: boolean) {
+    const updated = await updateAgentThread(
+      LOCAL_ACTOR_ID,
+      projectId,
+      thread.thread_id,
+      draftId,
+      draftRevision,
+      { archived },
+    );
+    upsertThread(updated);
+    if (archived && selectedThreadId === thread.thread_id) {
+      setSelectedThreadId(null);
+      setMessages([]);
     }
   }
 
@@ -658,255 +673,152 @@ export function AgentLivePanel({
     if (eventId) chips.push(referenceLabels.events[eventId] ?? eventId);
     if (issueId) chips.push(referenceLabels.issues[issueId] ?? issueId);
     if (focus.view && focus.view in agentViewLabels) {
-      chips.push(agentViewLabels[focus.view as AgentSuggestedView]);
+      chips.push(agentViewLabels[focus.view as keyof typeof agentViewLabels]);
     }
     return chips;
   }, [focus, referenceLabels]);
 
-  return (
-    <section
-      aria-label="卷宗统筹 Agent 对话"
-      className={`${styles.agentPanel} ${styles.agentPanelLive}`}
-    >
-      <header className={styles.agentHeader}>
-        <div>
-          <span>卷宗统筹</span>
-          <strong>{surface === "desk" ? "统筹台" : "快速询问"}</strong>
-        </div>
-        <button
-          aria-label="关闭 Agent 对话"
-          onClick={onClose}
-          type="button"
-        >
-          <WorkbenchIcon name="close" />
-        </button>
-      </header>
-      <div className={styles.agentThreadBar}>
-        <select
-          aria-label="选择 Agent 对话"
-          className={styles.agentThreadSelect}
-          disabled={threadsLoading || threads.length === 0}
-          onChange={(event) => setSelectedThreadId(Number(event.target.value))}
-          value={selectedThreadId ?? ""}
-        >
-          {threads.map((thread) => (
-            <option key={thread.thread_id} value={thread.thread_id}>
-              {thread.title}
-              {thread.status === "archived" ? "（已归档）" : ""}
-            </option>
-          ))}
-        </select>
-        <button
-          className={styles.agentThreadNew}
-          disabled={creatingThread || threadsLoading}
-          onClick={() => void createThread()}
-          type="button"
-        >
-          {creatingThread ? "创建中…" : "新对话"}
-        </button>
-      </div>
-      <div aria-live="polite" className={styles.agentMessages}>
-        {threadsLoading ? (
-          <p className={styles.agentThinking}>正在读取 Agent 对话…</p>
-        ) : null}
-        {!threadsLoading && threadsError ? (
-          <div className={styles.agentFailure} role="status">
-            <strong>无法连接 Agent</strong>
-            <span>{threadsError}</span>
-            <button onClick={() => void bootstrap()} type="button">
-              重新连接
-            </button>
-          </div>
-        ) : null}
-        {messages.map((message) => {
-          if (message.role === "system") return null;
-          const liveTask =
-            message.task === null
-              ? null
-              : (liveTasks[message.task.task_run_id] ?? message.task);
-          const patchSet = message.patch_set;
-          const auditFindings = auditFindingsFor(message);
-          return (
-            <Fragment key={message.message_id}>
-              {message.content !== null ? (
-                <p className={styles.agentMessage} data-role={message.role}>
-                  {message.content}
-                </p>
-              ) : null}
-              {message.role === "assistant" &&
-              message.status === "completed" &&
-              auditFindings.length > 0 ? (
-                <AgentAuditFindings
-                  findings={auditFindings}
-                  issueLabels={referenceLabels.issues}
-                  objectLabels={referenceLabels.objects}
-                  eventLabels={referenceLabels.events}
-                  onLocateEvent={onLocateEvent}
-                  onLocateIssue={onLocateIssue}
-                  onLocateObject={onLocateObject}
-                />
-              ) : null}
-              {message.role === "assistant" &&
-              message.status === "completed" &&
-              routingSummaryFor(message) !== null ? (
-                <RoutingFeedback
-                  intent={routingSummaryFor(message)?.intent ?? null}
-                  onSubmitted={(correctIntent) =>
-                    submitRoutingFeedback(message, correctIntent)
-                  }
-                  routeSource={routingSummaryFor(message)?.route_source ?? null}
-                  submittedIntent={feedbackByMessage[message.message_id]}
-                />
-              ) : null}
-              {message.role === "assistant" &&
-              message.status === "completed" &&
-              (message.referenced_object_ids.length > 0 ||
-                message.referenced_event_ids.length > 0 ||
-                message.referenced_validation_issue_ids.length > 0 ||
-                message.suggested_view !== null) ? (
-                <div className={styles.agentRefs} aria-label="回答引用">
-                  {message.referenced_object_ids.map((objectId) => (
-                    <button
-                      data-ref-kind="object"
-                      key={`object:${objectId}`}
-                      onClick={() => onLocateObject(objectId)}
-                      type="button"
-                    >
-                      对象 · {referenceLabels.objects[objectId] ?? objectId}
-                    </button>
-                  ))}
-                  {message.referenced_event_ids.map((eventId) => (
-                    <button
-                      data-ref-kind="event"
-                      key={`event:${eventId}`}
-                      onClick={() => onLocateEvent(eventId)}
-                      type="button"
-                    >
-                      事件 · {referenceLabels.events[eventId] ?? eventId}
-                    </button>
-                  ))}
-                  {message.referenced_validation_issue_ids.map((issueId) => (
-                    <button
-                      data-ref-kind="issue"
-                      key={`issue:${issueId}`}
-                      onClick={() => onLocateIssue(issueId)}
-                      type="button"
-                    >
-                      验证 · {referenceLabels.issues[issueId] ?? issueId}
-                    </button>
-                  ))}
-                  {message.suggested_view !== null ? (
-                    <button
-                      data-ref-kind="view"
-                      onClick={() =>
-                        onLocateView(message.suggested_view ?? "timeline")
-                      }
-                      type="button"
-                    >
-                      视图 ·{" "}
-                      {agentViewLabels[message.suggested_view ?? "timeline"]}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {message.role === "assistant" &&
-              message.status === "pending" ? (
-                <p className={styles.agentThinking} role="status">
-                  {busy
-                    ? `Agent 正在回复 · ${stageLabel(liveTask)}${
-                        contextByTask[message.task?.task_run_id ?? -1]
-                          ? ` · 上下文 ${contextByTask[message.task?.task_run_id ?? -1]?.usedTokens ?? 0}${
-                              contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens !== null &&
-                              contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens !== undefined
-                                ? `/${contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens}`
-                                : ""
-                            } tokens`
-                          : ""
-                      }`
-                    : "Agent 正在整理回复…"}
-                </p>
-              ) : null}
-              {message.role === "assistant" &&
-              message.status === "failed" ? (
-                <div className={styles.agentFailure} role="status">
-                  <strong>回复失败</strong>
-                  <span>
-                    {message.task?.failure?.message ?? "Agent 未能完成这次回复。"}
-                  </span>
-                  <button onClick={() => retryMessage(message)} type="button">
-                    重试
-                  </button>
-                </div>
-              ) : null}
-              {message.role === "assistant" &&
-              message.status === "completed" &&
-              patchSet ? (
-                <AgentPatchReview
-                  busy={patchBusyId === patchSet.patch_set_id}
-                  key={`${patchSet.patch_set_id}:${patchSet.status}`}
-                  objectLabels={referenceLabels.objects}
-                  onApply={(operationIds) =>
-                    void applyPatchSet(patchSet, operationIds)
-                  }
-                  onLocateObject={onLocateObject}
-                  onRetry={() => retryMessage(message)}
-                  onUndo={() => void undoPatchSet(patchSet)}
-                  patchSet={patchSet}
-                />
-              ) : null}
-            </Fragment>
-          );
-        })}
-        {!threadsLoading &&
-        !threadsError &&
-        !messagesLoading &&
-        messagesError ? (
-          <div className={styles.agentFailure} role="status">
-            <strong>读取失败</strong>
-            <span>{messagesError}</span>
-            <button onClick={() => void reloadMessages()} type="button">
-              重试
-            </button>
-          </div>
-        ) : null}
-        {!threadsLoading &&
-        !threadsError &&
-        !messagesLoading &&
-        !messagesError &&
-        messages.length === 0 ? (
-          <p className={styles.agentEmpty}>
-            {selectedThread === null
-              ? "先创建一个 Agent 对话。"
-              : "从上方预设指令或输入框开始布置卷宗任务。"}
-          </p>
-        ) : null}
-      </div>
-      <div className={styles.agentPrompts} aria-label="统筹指令">
-        {agentPromptPresets.map((preset) => (
-          <button
-            disabled={promptsDisabled}
-            key={preset.id}
-            onClick={() => void send(preset.prompt, preset.routingHint)}
-            type="button"
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
-      <WorkbenchAgentComposer
-        busy={busy}
-        contextChips={contextChips}
-        disabled={inputDisabled}
-        draft={draft}
-        onCancel={busy && pendingEntry !== null ? () => void cancelCurrentTask() : undefined}
-        onContinueInDesk={surface === "quick" ? onContinueInDesk : undefined}
-        onDraftChange={setDraft}
-        onSend={() => void send(draft)}
-        focusRequest={focusRequest}
-        surface={surface}
-      />
-    </section>
+  const latestTask = useMemo(
+    () =>
+      [...messages]
+        .sort((left, right) => right.sequence_no - left.sequence_no)
+        .find((message) => message.task !== null)?.task ?? null,
+    [messages],
   );
+  const taskForStrip =
+    pendingLiveTask ??
+    (latestTask === null
+      ? null
+      : (liveTasks[latestTask.task_run_id] ?? latestTask));
+  const searchThreads = useCallback(
+    async (query: string, includeArchived: boolean) => {
+      await refreshThreads({ query, includeArchived });
+    },
+    [refreshThreads],
+  );
+
+  if (surface === "desk" || surface === "quick") {
+    return (
+    <WorkbenchAgentDesk
+      composer={
+        <WorkbenchAgentComposer
+          busy={busy}
+          contextChips={contextChips}
+          disabled={inputDisabled}
+          draft={draft}
+          onCancel={
+            surface === "quick" && busy && pendingEntry !== null
+              ? () => void cancelCurrentTask()
+              : undefined
+          }
+          onContinueInDesk={
+            surface === "quick" ? onContinueInDesk : undefined
+          }
+          onDraftChange={setDraft}
+          onSend={() => void send(draft)}
+          focusRequest={focusRequest}
+          surface={surface}
+        />
+      }
+      conversation={
+        <WorkbenchAgentConversation
+          busy={busy}
+          liveTasks={liveTasks}
+          messages={messages}
+          messagesError={messagesError}
+          messagesLoading={messagesLoading}
+          onLocateEvent={onLocateEvent}
+          onLocateIssue={onLocateIssue}
+          onLocateObject={onLocateObject}
+          onLocateView={onLocateView}
+          onReconnect={() => void bootstrap()}
+          onReloadMessages={() => void reloadMessages()}
+          onRetryMessage={retryMessage}
+          referenceLabels={referenceLabels}
+          renderPatchReview={(message, patchSet) => (
+            <AgentPatchReview
+              busy={patchBusyId === patchSet.patch_set_id}
+              key={`${patchSet.patch_set_id}:${patchSet.status}`}
+              objectLabels={referenceLabels.objects}
+              onApply={(operationIds) =>
+                void applyPatchSet(patchSet, operationIds)
+              }
+              onLocateObject={onLocateObject}
+              onRetry={() => retryMessage(message)}
+              onUndo={() => void undoPatchSet(patchSet)}
+              patchSet={patchSet}
+            />
+          )}
+          renderRoutingFeedback={(message) => {
+            const summary = routingSummaryFor(message);
+            return summary === null ? null : (
+              <RoutingFeedback
+                intent={summary.intent}
+                onSubmitted={(correctIntent) =>
+                  submitRoutingFeedback(message, correctIntent)
+                }
+                routeSource={summary.route_source}
+                submittedIntent={feedbackByMessage[message.message_id]}
+              />
+            );
+          }}
+          selectedThreadTitle={selectedThread?.title ?? null}
+          surface={surface}
+          threadsError={threadsError}
+          threadsLoading={threadsLoading}
+        />
+      }
+      onClose={onClose}
+      prompts={
+        <div className={styles.agentPrompts} aria-label="统筹指令">
+          {agentPromptPresets.map((preset) => (
+            <button
+              disabled={promptsDisabled}
+              key={preset.id}
+              onClick={() => void send(preset.prompt, preset.routingHint)}
+              type="button"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+      }
+      surface={surface}
+      taskStrip={
+        <WorkbenchAgentTaskStrip
+          contextOccupancy={
+            taskForStrip === null
+              ? null
+              : (contextByTask[taskForStrip.task_run_id] ?? null)
+          }
+          onCancel={
+            busy && pendingEntry !== null
+              ? () => void cancelCurrentTask()
+              : undefined
+          }
+          task={taskForStrip}
+        />
+      }
+      threadManager={
+        <WorkbenchAgentThreadMenu
+          disabled={threadsLoading || creatingThread}
+          onCreate={createThread}
+          onRename={renameThread}
+          onSearch={searchThreads}
+          onSelect={(thread) => {
+            upsertThread(thread);
+            setSelectedThreadId(thread.thread_id);
+          }}
+          onSetArchived={setThreadArchived}
+          onSetPinned={setThreadPinned}
+          selectedThread={selectedThread}
+          selectedThreadId={selectedThreadId}
+          threads={threadMenuRows}
+        />
+      }
+    />
+    );
+  }
 }
 
 function RoutingFeedback({
@@ -996,93 +908,6 @@ function RoutingFeedback({
         </button>
       )}
     </div>
-  );
-}
-
-function AgentAuditFindings({
-  findings,
-  objectLabels,
-  eventLabels,
-  issueLabels,
-  onLocateObject,
-  onLocateEvent,
-  onLocateIssue,
-}: {
-  findings: AgentAuditFindingView[];
-  objectLabels: Record<string, string>;
-  eventLabels: Record<string, string>;
-  issueLabels: Record<string, string>;
-  onLocateObject: (objectId: string) => void;
-  onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
-}) {
-  return (
-    <article className={styles.agentAuditCard} aria-label="逻辑漏洞复查发现">
-      <header className={styles.agentAuditHeader}>
-        <strong>逻辑漏洞复查发现</strong>
-        <span>{findings.length} 项</span>
-      </header>
-      <ol className={styles.agentAuditList}>
-        {findings.map((finding) => (
-          <li
-            className={styles.agentAuditFinding}
-            data-kind={finding.kind}
-            data-severity={finding.severity}
-            key={finding.finding_id}
-          >
-            <div className={styles.agentAuditFindingMeta}>
-              <b>{finding.finding_id}</b>
-              <span>{auditFindingKindLabels[finding.kind] ?? finding.kind}</span>
-              <span>
-                {auditFindingSeverityLabels[finding.severity] ??
-                  finding.severity}
-              </span>
-              {finding.needs_manual_review ? (
-                <span data-manual="true">待人工确认</span>
-              ) : null}
-            </div>
-            <strong>{finding.title}</strong>
-            <p>{finding.statement}</p>
-            {finding.evidence_object_ids.length > 0 ||
-            finding.evidence_event_ids.length > 0 ||
-            finding.evidence_validation_issue_ids.length > 0 ? (
-              <div className={styles.agentRefs}>
-                {finding.evidence_object_ids.map((objectId) => (
-                  <button
-                    data-ref-kind="object"
-                    key={`object:${objectId}`}
-                    onClick={() => onLocateObject(objectId)}
-                    type="button"
-                  >
-                    对象 · {objectLabels[objectId] ?? objectId}
-                  </button>
-                ))}
-                {finding.evidence_event_ids.map((eventId) => (
-                  <button
-                    data-ref-kind="event"
-                    key={`event:${eventId}`}
-                    onClick={() => onLocateEvent(eventId)}
-                    type="button"
-                  >
-                    事件 · {eventLabels[eventId] ?? eventId}
-                  </button>
-                ))}
-                {finding.evidence_validation_issue_ids.map((issueId) => (
-                  <button
-                    data-ref-kind="issue"
-                    key={`issue:${issueId}`}
-                    onClick={() => onLocateIssue(issueId)}
-                    type="button"
-                  >
-                    验证 · {issueLabels[issueId] ?? issueId}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </li>
-        ))}
-      </ol>
-    </article>
   );
 }
 

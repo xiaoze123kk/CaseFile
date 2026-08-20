@@ -46,7 +46,8 @@
 }
 
 .agentPanelLive { grid-template-rows: 58px 40px minmax(0, 1fr) auto auto; }
-.agentSurface[data-surface="desk"] .agentPanelLive { grid-template-rows: 54px 40px minmax(0, 1fr) auto auto; }
+.agentSurface[data-surface="desk"] .agentPanelLive { grid-template-rows: 54px auto minmax(0, 1fr) auto auto; }
+.agentSurface[data-surface="quick"] .agentPanelLive { grid-template-rows: 58px minmax(0, 1fr) auto auto; }
 
 .agentHeader {
   display: flex;
@@ -64,10 +65,51 @@
 .agentHeader button { display: grid; width: 38px; height: 38px; place-items: center; color: #a8a49b; border: 0; background: transparent; }
 .agentHeader button:hover { color: var(--agent-accent-hover); background: var(--agent-chrome-active); }
 
+.agentThreadManager { position: relative; min-width: 0; }
+.agentThreadTrigger { display: grid; min-width: 220px; max-width: min(420px, 58vw); gap: 2px; padding: 4px 8px; color: #f3f1eb; border: 1px solid transparent; background: transparent; text-align: left; }
+.agentThreadTrigger:hover, .agentThreadTrigger:focus-visible { border-color: rgba(224, 173, 101, .45); background: var(--agent-chrome-active); outline: none; }
+.agentThreadTrigger strong { overflow: hidden; color: #f3f1eb; font: 650 14px/1.2 Bahnschrift, "Microsoft YaHei UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.agentThreadTrigger span { color: #8f938e; font: 8px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; }
+.agentThreadPopover { position: absolute; z-index: 12; top: calc(100% + 8px); left: 0; display: grid; width: min(336px, calc(100vw - 32px)); gap: 10px; padding: 12px; color: #e8e4db; border: 1px solid rgba(232, 228, 218, .24); background: #202427; box-shadow: 0 20px 44px rgba(0, 0, 0, .36); }
+.agentThreadSearch { display: grid; gap: 6px; }
+.agentThreadSearch label, .agentThreadGroupLabel { color: var(--agent-accent-hover); font: 8px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; }
+.agentThreadSearch input, .agentRenameForm input { min-height: 34px; padding: 6px 8px; color: #f3f1eb; border: 1px solid var(--agent-rule-dark); background: #181b1d; font-size: 11px; }
+.agentThreadSearch input:focus, .agentRenameForm input:focus { border-color: rgba(224, 173, 101, .7); box-shadow: 0 0 0 2px rgba(224, 173, 101, .14); outline: none; }
+.agentThreadList { display: grid; max-height: 260px; gap: 10px; overflow-y: auto; }
+.agentThreadList > div { display: grid; gap: 3px; }
+.agentThreadGroupLabel { padding-bottom: 3px; color: #8f938e; }
+.agentThreadOption { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; color: #d8d3ca; border: 1px solid transparent; background: transparent; text-align: left; }
+.agentThreadOption:hover, .agentThreadOption:focus-visible, .agentThreadOption[data-active="true"], .agentThreadOption[aria-selected="true"] { color: #f3f1eb; border-color: rgba(224, 173, 101, .4); background: rgba(199, 139, 60, .12); outline: none; }
+.agentThreadOption strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agentThreadOption span { color: #777c76; font: 8px/1 "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+.agentThreadEmpty { margin: 8px 0; color: #8f938e; font-size: 10px; }
+.agentArchivedToggle { display: flex; align-items: center; gap: 6px; color: #aaa69c; font-size: 9px; }
+.agentArchivedToggle input { accent-color: var(--agent-accent); }
+.agentRenameForm { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: end; }
+.agentRenameForm label { grid-column: 1 / -1; color: #aaa69c; font-size: 9px; }
+.agentRenameForm button, .agentThreadActions button { min-height: 30px; padding: 0 8px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
+.agentRenameForm button:hover, .agentThreadActions button:hover { color: var(--agent-accent-hover); border-color: rgba(224, 173, 101, .5); }
+.agentThreadActions { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 2px; border-top: 1px solid rgba(255, 255, 255, .06); }
+
 .agentThreadBar { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 0 18px; border-bottom: 1px solid var(--agent-rule-dark); }
 .agentThreadSelect { min-width: 0; flex: 1; padding: 6px 8px; color: #e8e4db; border: 1px solid var(--agent-rule-dark); background: #202427; font-size: 9.5px; }
 .agentThreadNew { min-height: 30px; padding: 0 10px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
 .agentThreadNew:hover { color: var(--agent-accent-hover); border-color: rgba(224, 173, 101, .5); }
+
+.agentTaskStrip { display: flex; min-width: 0; min-height: 40px; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 18px; color: #d8d3ca; border-bottom: 1px solid var(--agent-rule-dark); background: rgba(0, 0, 0, .12); }
+.agentTaskStrip[data-status="failed"] { color: #e3b9a4; }
+.agentTaskStrip[data-status="cancelled"] { color: #c8c1b5; }
+.agentTaskPrimary { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.agentTaskPrimary > i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--agent-accent); box-shadow: 0 0 0 3px rgba(199, 139, 60, .14); }
+.agentTaskStrip[data-status="failed"] .agentTaskPrimary > i { background: #c66f54; box-shadow: 0 0 0 3px rgba(198, 111, 84, .14); }
+.agentTaskPrimary span { display: grid; min-width: 0; gap: 2px; }
+.agentTaskPrimary strong { overflow: hidden; font: 10px/1.25 "Microsoft YaHei UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.agentTaskPrimary small { color: #8f938e; font: 8px/1.2 "Cascadia Mono", Consolas, monospace; }
+.agentTaskStrip > button { min-height: 28px; padding: 0 9px; color: #d8c5b6; border: 1px solid rgba(193, 103, 65, .5); background: transparent; font-size: 9px; }
+.agentTaskStrip > button:hover { color: #f0c9b5; background: rgba(193, 103, 65, .16); }
+.agentTaskSummary { margin-left: auto; color: #aaa69c; font-size: 9px; }
+.agentTaskSummary summary { cursor: pointer; color: var(--agent-accent-hover); }
+.agentTaskSummary p { max-width: 300px; margin: 5px 0 0; line-height: 1.5; }
 
 .agentMessages { display: flex; min-width: 0; flex-direction: column; gap: 28px; padding: 24px clamp(24px, 6vw, 54px); overflow-y: auto; }
 .agentSurface[data-surface="quick"] .agentMessages { gap: 10px; max-height: 180px; padding: 14px 18px; }
@@ -76,6 +118,19 @@
 .agentMessage[data-role="assistant"]::before, .agentMessage[data-role="agent"]::before { display: block; margin-bottom: 5px; color: var(--agent-accent-hover); content: "卷宗统筹 · 调查记录"; font: 9px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; }
 .agentMessage[data-role="user"] { align-self: flex-end; color: #d8d3ca; }
 .agentMessage[data-role="user"]::before { display: block; margin-bottom: 5px; color: #8f938e; content: "你 · 当前请求"; font: 9px/1 "Cascadia Mono", Consolas, monospace; }
+
+.agentTurn { display: grid; max-width: var(--agent-reading-width); gap: 8px; align-self: flex-start; }
+.agentTurn[data-role="user"] { align-self: flex-end; }
+.agentTurnMeta { display: flex; align-items: baseline; gap: 8px; color: var(--agent-accent-hover); font: 9px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .04em; }
+.agentTurn[data-role="user"] .agentTurnMeta { color: #8f938e; }
+.agentTurnMeta time { color: #777c76; }
+.agentTurnContent { display: grid; gap: 4px; color: #e8e4db; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+.agentTurnContent strong { color: #f0ede6; font: 600 13px/1.3 "STSong", "SimSun", serif; }
+.agentTurnContent p { margin: 0; }
+.agentResultSummary { display: flex; max-width: var(--agent-reading-width); flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.agentResultSummary > button { min-height: 25px; padding: 3px 8px; color: #d8c5a0; border: 1px solid rgba(199, 139, 60, .45); background: rgba(199, 139, 60, .08); font-size: 9px; }
+.agentResultSummary > button:hover { color: #f3d38f; border-color: rgba(224, 173, 101, .7); background: rgba(199, 139, 60, .16); }
+.agentResultSummary > .agentRefs, .agentResultSummary > .agentAuditCard, .agentResultSummary > .agentPatchCard { flex-basis: 100%; margin-top: 2px; }
 
 .agentThinking { margin: 0; color: var(--agent-accent-hover); font: 9px/1.5 "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; }
 .agentEmpty { align-self: center; max-width: 320px; margin: auto 0; color: #8a918a; font-size: 11px; line-height: 1.7; text-align: center; }
