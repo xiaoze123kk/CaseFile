@@ -806,6 +806,27 @@ class Worker:
                                 "routing",
                                 route_public_payload(chat_request.route),
                             )
+                    if (
+                        chat_request.task_understanding is not None
+                        and chat_request.task_understanding.primary_intent
+                        == "logic_audit"
+                    ):
+                        verification_trigger = str(
+                            task_snapshot.input_jsonb.get(
+                                "verification_trigger", "chat"
+                            )
+                        )
+                        self._emit(
+                            task_run_id,
+                            "verification.started",
+                            "verification",
+                            {
+                                "trigger": verification_trigger,
+                                "profile": "balanced",
+                                "draft_revision": task_snapshot.input_draft_revision,
+                                "input_hash": task_snapshot.input_hash,
+                            },
+                        )
                 chat_request = self._emit_chat_context_events(
                     task_run_id, task_snapshot, chat_request
                 )
@@ -2256,6 +2277,34 @@ class Worker:
                         if public_failure is not None
                         else "Agent 本次没有完成回复，请稍后重试。"
                     )
+            verification_started = session.scalar(
+                select(TaskEvent.id)
+                .where(
+                    TaskEvent.task_run_id == task.id,
+                    TaskEvent.event_type == "verification.started",
+                )
+                .limit(1)
+            )
+            if verification_started is not None:
+                verification_trigger = str(
+                    task.input_jsonb.get("verification_trigger", "chat")
+                )
+                append_task_event(
+                    session,
+                    task,
+                    "verification.failed",
+                    "verification",
+                    {
+                        "trigger": verification_trigger,
+                        "profile": "balanced",
+                        "error_code": error_code,
+                        "message": (
+                            public_failure["message"]
+                            if public_failure is not None
+                            else "验证复查没有完成，未更改当前工作稿。"
+                        ),
+                    },
+                )
             append_task_event(
                 session,
                 task,

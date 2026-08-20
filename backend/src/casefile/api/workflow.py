@@ -14,6 +14,7 @@ from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.api.schemas import (
     AgentMessageCreateRequest,
     AgentPatchApplyRequest,
+    AgentPatchSimulateRequest,
     AgentPatchUndoRequest,
     AgentRoutingFeedbackRequest,
     AgentThreadCreateRequest,
@@ -261,6 +262,25 @@ def workflow_router() -> APIRouter:
             expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
             operation_ids=payload.operation_ids,
+            target_finding_ids=payload.target_finding_ids,
+        )
+
+    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate")
+    def simulate_agent_patch_set(
+        project_id: int,
+        patch_set_id: int,
+        payload: AgentPatchSimulateRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).simulate_agent_patch_set(
+            actor,
+            project_id,
+            patch_set_id,
+            expected_draft_id=payload.expected_draft_id,
+            base_revision=payload.base_revision,
+            operation_ids=payload.operation_ids,
+            target_finding_ids=payload.target_finding_ids,
         )
 
     @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo")

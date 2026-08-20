@@ -34,6 +34,7 @@ from casefile.api.schemas import (
     ResolutionConclusionActionRequest,
     TimelineTimePreviewRequest,
 )
+from casefile.api.verification import verification_router
 from casefile.api.workbench import workbench_router
 from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
@@ -96,6 +97,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     application.include_router(reverse_parse_router())
     application.include_router(workflow_router())
     application.include_router(workbench_router())
+    application.include_router(verification_router())
     return application
 
 

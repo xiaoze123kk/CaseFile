@@ -1842,6 +1842,23 @@
 .agentPatchActions button:disabled { opacity: 0.5; cursor: default; }
 .agentPatchWarning { margin: 0; color: #d8b36e; font-size: 9px; }
 .agentPatchStale { color: #c9957b; font-size: 9px; }
+.agentPatchSimulation {
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgba(216, 179, 110, 0.32);
+  background: rgba(216, 179, 110, 0.06);
+}
+.agentPatchSimulation[data-can-apply="false"] { border-color: rgba(217, 138, 104, 0.55); background: rgba(217, 138, 104, 0.08); }
+.agentPatchSimulation header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.agentPatchSimulation header strong { color: #d8b36e; font-size: 10px; font-weight: 650; }
+.agentPatchSimulation header span { color: #9cbd9f; font-size: 9px; }
+.agentPatchSimulation[data-can-apply="false"] header span { color: #d98a68; }
+.agentPatchSimulation dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 0; background: var(--rule-dark); }
+.agentPatchSimulation dl div { display: grid; gap: 2px; padding: 4px 5px; background: rgba(0, 0, 0, 0.12); }
+.agentPatchSimulation dt { color: #9a9489; font-size: 8px; }
+.agentPatchSimulation dd { margin: 0; color: #e3ded4; font: 600 10px/1 "Cascadia Mono", Consolas, monospace; }
+.agentPatchSimulation p { margin: 0; color: #b9b3a8; font-size: 9px; line-height: 1.5; }
 .agentPatchOpMeta {
   display: flex;
   flex-wrap: wrap;

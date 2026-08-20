@@ -17,6 +17,8 @@ import {
   ApiError,
   errorMessage,
   fetchWorkbenchContext,
+  rerunVerification,
+  reviewVerificationFinding,
   type AgentChatRoutingHint,
   type DraftCandidatePreviewView,
   type DraftView,
@@ -134,7 +136,14 @@ interface AuditEntry {
 
 function createIssueStatuses(seed: WorkbenchSeed) {
   return Object.fromEntries(
-    seed.validationIssues.map((issue) => [issue.id, "open"]),
+    seed.validationIssues.map((issue) => [
+      issue.id,
+      issue.verificationFinding?.status === "resolved"
+        ? "resolved"
+        : issue.verificationFinding?.status === "dismissed"
+          ? "exception"
+          : "open",
+    ]),
   ) as Record<string, IssueStatus>;
 }
 
@@ -580,6 +589,7 @@ export function AnalystWorkbench({
     loadedDocument,
     loadedDraft.revision,
     realContextState.data?.validation ?? null,
+    realContextState.data?.verification ?? null,
   );
 
   async function previewEventTime(
@@ -823,6 +833,8 @@ function AnalystWorkbenchSurface({
     startWidth: number;
   } | null>(null);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentRefreshKey, setAgentRefreshKey] = useState(0);
+  const [agentPreferredThreadId, setAgentPreferredThreadId] = useState<number | null>(null);
   const [agentKickoff, setAgentKickoff] = useState<{
     id: number;
     prompt: string;
@@ -1192,6 +1204,25 @@ function AnalystWorkbenchSurface({
     announce(`已把验证问题“${issue.title}”交给 Agent 处理。`);
   }
 
+  async function rerunCurrentVerification() {
+    if (!realData || projectId === null || currentDraft === null) return;
+    try {
+      const queued = await rerunVerification(
+        LOCAL_ACTOR_ID,
+        projectId,
+        currentDraft.draft_id,
+        currentDraft.revision,
+      );
+      setAgentPreferredThreadId(queued.thread.thread_id);
+      setAgentRefreshKey((value) => value + 1);
+      setAgentOpen(true);
+      setAgentKickoff(null);
+      announce("验证复查已进入队列；Agent 面板将显示真实进度和结果。");
+    } catch (caught) {
+      announce(errorMessage(caught));
+    }
+  }
+
   function requestPatch() {
     if (!selectedIssue) return;
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: "patch-ready" }));
@@ -1215,6 +1246,19 @@ function AnalystWorkbenchSurface({
     const actionLabel = action === "approve" ? "批准 Agent 补丁" : action === "manual" ? "保存人工修正" : "标记已知例外";
     appendAudit(seed.caseMeta.protagonist, actionLabel, `${selectedIssue.id} · 局部重算`);
     announce(`${actionLabel}已记录，正在执行局部重算。`);
+    if (realData && selectedIssue.id.startsWith("verification:")) {
+      const findingId = Number(selectedIssue.id.slice("verification:".length));
+      if (Number.isInteger(findingId) && findingId > 0 && projectId !== null) {
+        void reviewVerificationFinding(
+          LOCAL_ACTOR_ID,
+          projectId,
+          findingId,
+          action === "exception" ? "dismiss" : "resolve",
+        )
+          .then(() => onReloadContext?.())
+          .catch(() => announce("验证问题审阅未能保存，请重新读取后重试。"));
+      }
+    }
     schedule(() => {
       setLiveMessage(`${actionLabel}已完成。当前仍有 ${Math.max(0, unresolvedCount - 1)} 个待处理问题。`);
     }, 760);
@@ -1717,6 +1761,7 @@ function AnalystWorkbenchSurface({
                     onSelectIssue={openIssue}
                     onSelectObject={(objectId) => selectObject(objectId)}
                     onSendToAgent={sendIssueToAgent}
+                    onRerunVerification={() => void rerunCurrentVerification()}
                     onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
                     realData={realData}
                     seed={seed}
@@ -1889,7 +1934,9 @@ function AnalystWorkbenchSurface({
             setView(nextView);
           }}
           onDraftChanged={onCurrentDraftChanged ?? (async () => {})}
+          preferredThreadId={agentPreferredThreadId}
           projectId={projectId}
+          refreshKey={agentRefreshKey}
           referenceLabels={{
             objects: Object.fromEntries(
               seed.caseObjects.map((object) => [object.id, object.label]),

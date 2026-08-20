@@ -545,6 +545,7 @@ export interface AgentChatTaskResult {
   patch_set_id: number | null;
   stale: boolean;
   audit_findings?: AgentAuditFindingView[];
+  verification_run_id?: number | null;
   routing?: AgentChatRoutingSummary;
   tool_metrics?: Record<string, unknown>;
 }
@@ -583,6 +584,7 @@ export interface AgentPatchOperationView {
   reason: string;
   decision: string | null;
   reviewed_at: string | null;
+  finding_ids?: number[];
 }
 
 export interface AgentPatchSetView {
@@ -602,6 +604,32 @@ export interface AgentPatchSetView {
   validator_issues: Record<string, unknown>[];
   created_at: string | null;
   updated_at: string | null;
+}
+
+export interface AgentPatchSimulationView {
+  valid: boolean;
+  can_apply: boolean;
+  reason_code: string | null;
+  fixed_finding_keys: string[];
+  residual_finding_keys: string[];
+  new_finding_keys: string[];
+  pending_recheck_finding_keys: string[];
+  severity_delta: Record<string, number>;
+  structure_lock_conflicts: string[];
+  impact: {
+    collections: string[];
+    counts: Record<string, number>;
+    full_rebuild: boolean;
+    reasons: string[];
+  };
+}
+
+export interface AgentPatchSimulationResult {
+  patch_set_id: number;
+  draft_id: number;
+  base_revision: number;
+  can_apply: boolean;
+  simulation: AgentPatchSimulationView;
 }
 
 export interface AgentMessageView {
@@ -630,6 +658,9 @@ export interface AgentSendMessageView {
 
 export interface AgentPatchApplyResult extends AgentPatchSetView {
   draft_revision: number;
+  pre_apply_verification_run_id?: number | null;
+  post_apply_verification_run_id?: number | null;
+  simulation?: AgentPatchSimulationView;
 }
 
 export interface DraftView {
@@ -742,6 +773,59 @@ export interface WorkbenchValidationView {
   reason: "draft_has_no_confirmed_brief" | null;
 }
 
+export interface VerificationFindingRefView {
+  ref_kind: "object" | "event" | "validation_issue" | "patch_operation" | "related";
+  ref_key: string;
+  role: "evidence" | "target" | "related";
+}
+
+export interface VerificationFindingView {
+  finding_id: number;
+  verification_run_id: number;
+  finding_key: string;
+  kind: "deterministic" | "llm";
+  severity: "info" | "warning" | "error" | "blocker";
+  status: "open" | "resolved" | "reopened" | "dismissed";
+  title: string;
+  message: string;
+  suggested_fix: string | null;
+  rule_code: string;
+  confidence: number | null;
+  draft_revision: number;
+  refs: VerificationFindingRefView[];
+  payload: Record<string, unknown>;
+  first_seen_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+}
+
+export interface VerificationRunView {
+  verification_run_id: number;
+  project_id: number;
+  casefile_id: number;
+  draft_id: number;
+  source_task_run_id: number | null;
+  patch_set_id: number | null;
+  trigger: "chat" | "manual" | "pre_apply" | "post_apply";
+  profile: "fast" | "balanced" | "strict";
+  engine_version: string;
+  draft_revision: number;
+  input_hash: string;
+  status: "running" | "succeeded" | "failed";
+  started_at: string;
+  completed_at: string | null;
+  finding_count: number;
+  deterministic_finding_count: number;
+  llm_finding_count: number;
+  findings: VerificationFindingView[];
+}
+
+export interface VerificationReadModelView {
+  enabled: boolean;
+  latest_run: VerificationRunView | null;
+  findings: VerificationFindingView[];
+}
+
 export interface WorkbenchSourceView {
   trace_id: string;
   source_table: "source_records";
@@ -787,6 +871,7 @@ export interface WorkbenchContextView {
   sources: WorkbenchSourceView[];
   contract_source_refs: WorkbenchContractSourceRefView[];
   audit_entries: WorkbenchAuditEntryView[];
+  verification?: VerificationReadModelView;
 }
 
 export interface BriefStrategyOption {
@@ -903,6 +988,70 @@ export async function fetchWorkbenchContext(actorId: number, projectId: number) 
   return apiRequest<WorkbenchContextView>(
     `/projects/${projectId}/workbench-context`,
     { actorId },
+  );
+}
+
+export async function listVerificationFindings(
+  actorId: number,
+  projectId: number,
+  options: { draftId?: number; status?: VerificationFindingView["status"] } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.draftId !== undefined) params.set("draft_id", String(options.draftId));
+  if (options.status !== undefined) params.set("status", options.status);
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return apiRequest<VerificationFindingView[]>(
+    `/projects/${projectId}/verification-findings${query}`,
+    { actorId },
+  );
+}
+
+export async function rerunVerification(
+  actorId: number,
+  projectId: number,
+  draftId: number,
+  draftRevision: number,
+  provider: ProviderName = "deepseek",
+) {
+  return apiRequest<AgentSendMessageView>(
+    `/projects/${projectId}/verification-runs/rerun`,
+    {
+      actorId,
+      method: "POST",
+      body: {
+        expected_draft_id: draftId,
+        expected_draft_revision: draftRevision,
+        provider,
+      },
+    },
+  );
+}
+
+export async function getVerificationRun(
+  actorId: number,
+  projectId: number,
+  verificationRunId: number,
+) {
+  return apiRequest<VerificationRunView>(
+    `/projects/${projectId}/verification-runs/${verificationRunId}`,
+    { actorId },
+  );
+}
+
+export async function reviewVerificationFinding(
+  actorId: number,
+  projectId: number,
+  findingId: number,
+  decision: "confirm" | "resolve" | "reopen" | "dismiss",
+  note?: string,
+) {
+  return apiRequest<VerificationFindingView>(
+    `/projects/${projectId}/verification-findings/${findingId}/review`,
+    {
+      actorId,
+      method: "POST",
+      body: { decision, ...(note?.trim() ? { note: note.trim() } : {}) },
+    },
   );
 }
 
@@ -1029,6 +1178,7 @@ export async function applyAgentPatchSet(
   draftId: number,
   expectedRevision: number,
   operationIds: number[] | null,
+  targetFindingIds?: number[],
 ) {
   return apiRequest<AgentPatchApplyResult>(
     `/projects/${projectId}/agent/patch-sets/${patchSetId}/apply`,
@@ -1039,9 +1189,31 @@ export async function applyAgentPatchSet(
         expected_draft_id: draftId,
         expected_revision: expectedRevision,
         ...(operationIds === null ? {} : { operation_ids: operationIds }),
+        ...(targetFindingIds === undefined ? {} : { target_finding_ids: targetFindingIds }),
       },
     },
   );
+}
+
+export async function simulateAgentPatchSet(
+  actorId: number,
+  projectId: number,
+  patchSetId: number,
+  draftId: number,
+  baseRevision: number,
+  operationIds: number[] | null,
+  targetFindingIds?: number[],
+) {
+  return apiRequest<AgentPatchSimulationResult>(`/projects/${projectId}/agent/patch-sets/${patchSetId}/simulate`, {
+    actorId,
+    method: "POST",
+    body: {
+      expected_draft_id: draftId,
+      base_revision: baseRevision,
+      ...(operationIds === null ? {} : { operation_ids: operationIds }),
+      ...(targetFindingIds === undefined ? {} : { target_finding_ids: targetFindingIds }),
+    },
+  });
 }
 
 export async function undoAgentPatchSet(

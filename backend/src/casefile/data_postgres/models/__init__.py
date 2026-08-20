@@ -54,6 +54,13 @@ from casefile.data_postgres.models.reasoning import (
     StructureLock,
 )
 from casefile.data_postgres.models.reverse_parse import ImportedDocument, ParseItem
+from casefile.data_postgres.models.verification import (
+    VerificationFinding,
+    VerificationFindingPatchOperation,
+    VerificationFindingRef,
+    VerificationFindingReview,
+    VerificationRun,
+)
 from casefile.data_postgres.models.versioning import AuditEvent, CanonVersion, DraftSnapshot
 from casefile.data_postgres.models.workflow import (
     Brief,
@@ -120,4 +127,9 @@ __all__ = [
     "TaskRun",
     "User",
     "UserProviderSetting",
+    "VerificationFinding",
+    "VerificationFindingPatchOperation",
+    "VerificationFindingRef",
+    "VerificationFindingReview",
+    "VerificationRun",
 ]

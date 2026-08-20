@@ -56,6 +56,11 @@ BUSINESS_TABLES = {
     "testimonies",
     "user_provider_settings",
     "users",
+    "verification_finding_patch_operations",
+    "verification_finding_refs",
+    "verification_finding_reviews",
+    "verification_findings",
+    "verification_runs",
 }
 
 

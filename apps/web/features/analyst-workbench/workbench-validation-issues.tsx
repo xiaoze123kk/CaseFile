@@ -17,6 +17,15 @@ function statusLabel(status: IssueStatus) {
   return "待处理";
 }
 
+function findingStatusLabel(status: NonNullable<ValidationIssuePanelProps["seed"]["validationIssues"][number]["verificationFinding"]>["status"]) {
+  return {
+    open: "待处理",
+    resolved: "已解决",
+    reopened: "已重开",
+    dismissed: "已忽略",
+  }[status];
+}
+
 interface ValidationIssuePanelProps {
   seed: WorkbenchSeed;
   issueId: string | null;
@@ -33,6 +42,7 @@ interface ValidationIssuePanelProps {
   onResolveIssue: (action: "approve" | "exception") => void;
   onSelectObject: (objectId: string) => void;
   onSendToAgent: (issueId: string) => void;
+  onRerunVerification: () => void;
   realData: boolean;
 }
 
@@ -52,6 +62,7 @@ export function ValidationIssuePanel({
   onResolveIssue,
   onSelectObject,
   onSendToAgent,
+  onRerunVerification,
   realData,
 }: ValidationIssuePanelProps) {
   const issue =
@@ -66,6 +77,11 @@ export function ValidationIssuePanel({
         <p>
           确定性验证（结构、引用与语义门禁）未发现需要处理的问题。知识状态冲突、时间冲突等更丰富的检查将在后续版本提供。
         </p>
+        {realData ? (
+          <button onClick={onRerunVerification} type="button">
+            重跑验证
+          </button>
+        ) : null}
       </section>
     );
   }
@@ -93,7 +109,7 @@ export function ValidationIssuePanel({
     </div>
   );
 
-  if (issue.source === "validator") {
+  if (issue.source === "validator" || issue.source === "agent") {
     const semantic = issue.severity === "S1" || issue.severity === "S2";
     const targetObject = issue.targetObjectId
       ? getObject(seed, issue.targetObjectId)
@@ -106,14 +122,43 @@ export function ValidationIssuePanel({
       <section className={styles.evidenceCompare} aria-labelledby="evidence-heading">
         <header className={styles.sectionHeader}>
           <div>
-            <span>{semantic ? "叙事语义" : "确定性验证"}</span>
+            <span>
+              {issue.verificationFinding?.kind === "llm"
+                ? "Agent 复查"
+                : semantic
+                  ? "叙事语义"
+                  : "确定性验证"}
+            </span>
             <h2 id="evidence-heading">{issue.title}</h2>
           </div>
           <small>{issue.severity}</small>
         </header>
+        {realData ? (
+          <div className={styles.evidenceActions}>
+            <button onClick={onRerunVerification} type="button">
+              重跑验证
+            </button>
+          </div>
+        ) : null}
         {issueBar}
         <div className={styles.validatorIssueBody}>
           <dl className={styles.validatorIssueFacts}>
+            {issue.verificationFinding ? (
+              <>
+                <div>
+                  <dt>来源</dt>
+                  <dd>{issue.verificationFinding.kind === "deterministic" ? "确定性验证" : "Agent 复查"}</dd>
+                </div>
+                <div>
+                  <dt>审阅状态</dt>
+                  <dd>{findingStatusLabel(issue.verificationFinding.status)}</dd>
+                </div>
+                <div>
+                  <dt>置信度</dt>
+                  <dd>{issue.verificationFinding.confidence === null ? "—" : `${Math.round(issue.verificationFinding.confidence * 100)}%`}</dd>
+                </div>
+              </>
+            ) : null}
             <div>
               <dt>规则代码</dt>
               <dd>{issue.rule}</dd>
@@ -165,8 +210,22 @@ export function ValidationIssuePanel({
           </div>
           <p className={styles.validatorIssueHint}>
             {issue.fixHint ??
-              "这是确定性门禁发现的结构或引用问题，需要回到对象编辑修正；不会由 Agent 生成建议补丁。"}
+              (issue.verificationFinding?.kind === "llm"
+                ? "这是一条带证据的 Agent 复查发现。应用补丁前仍会重新执行确定性验证。"
+                : "这是确定性门禁发现的结构或引用问题，需要回到对象编辑修正；不会由 Agent 生成建议补丁。")}
           </p>
+          {issue.verificationFinding && realData ? (
+            <div className={styles.evidenceActions}>
+              {issue.verificationFinding.status === "open" || issue.verificationFinding.status === "reopened" ? (
+                <>
+                  <button onClick={() => onResolveIssue("approve")} type="button">标记已解决</button>
+                  <button onClick={() => onResolveIssue("exception")} type="button">忽略此项</button>
+                </>
+              ) : (
+                <button onClick={() => onSendToAgent(issue.id)} type="button">让 Agent 复查</button>
+              )}
+            </div>
+          ) : null}
         </div>
       </section>
     );
@@ -178,6 +237,13 @@ export function ValidationIssuePanel({
         <div><span>证据 × 知识状态</span><h2 id="evidence-heading">{issue.title}</h2></div>
         <small>{issue.severity} · {statusLabel(status)}</small>
       </header>
+      {realData ? (
+        <div className={styles.evidenceActions}>
+          <button onClick={onRerunVerification} type="button">
+            重跑验证
+          </button>
+        </div>
+      ) : null}
       {issueBar}
       <div className={styles.knowledgeSequence}>
         <article>

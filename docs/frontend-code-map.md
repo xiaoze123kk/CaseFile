@@ -32,15 +32,15 @@
 |---|---|
 | `apps/web/features/analyst-workbench/analyst-workbench.tsx`、`analyst-fixture.ts`、`workbench-views.ts` | 分析师工作台页面编排、跨面板共享状态、Current Draft 全量重载与本地 Fixture 数据模型；`workbench-views.ts` 是八种生产主画布视图的唯一注册表；证据对比视图内含「证据矩阵」与「验证问题」两个子视图。 |
 | `apps/web/features/analyst-workbench/workbench-scope-switcher.tsx`、`workbench-scope-switcher.module.css` | 顶部全局项目切换与标题栏工作稿切换；负责真实列表、加载/失败/空态、指针并发激活、键盘关闭/焦点恢复和返回建案中心生成新稿。 |
-| `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts`、`workbench-spatial-model.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图和空间卷宗工作台模型；空间纯数据层负责 WGS84、场景坐标、确定性拓扑、未定位地点、地点级事件聚合、空间关系规范化和图层可见性过滤，Fixture 只通过显式适配器进入。 |
+| `apps/web/features/analyst-workbench/workbench-real-data.ts`、`workbench-real-data-types.ts`、`workbench-spatial-model.ts` | 将真实 CaseFile Current Draft 纯映射为对象目录、时间线、关系/推理图、空间卷宗和统一验证问题工作台模型；规范化 deterministic/Agent findings 与旧 Validator 问题去重后进入同一证据子视图，空间纯数据层负责 WGS84、场景坐标、确定性拓扑、未定位地点、地点级事件聚合、空间关系规范化和图层可见性过滤，Fixture 只通过显式适配器进入。 |
 | `apps/web/features/analyst-workbench/workbench-object-directory.tsx`、`workbench-object-directory.module.css`、`workbench-object-detail-model.ts`、`workbench-object-editor.tsx`、`workbench-object-editor.module.css`、`workbench-object-persistence.ts` | 对象目录的名称/编号搜索、互斥类型筛选与动态计数；详情模型集中转换真实对象、中文词汇、关联引用和结构锁，详情面板提供浏览态、按需快速编辑、关联事件和未保存切换保护；持久化 Hook 统一对象/空间位置 PATCH、Current Draft 重载和 revision 冲突结果，不依赖 client-only 地图组件。 |
 | `apps/web/features/analyst-workbench/workbench-context-panels.tsx`、`workbench-context-panels.module.css` | 展示当前 Draft 的真实确定性验证、冻结 Brief 来源正文/追溯标识和只追加审计事实，并统一加载、空态、错误、重试与专属面板样式。 |
 | `apps/web/features/analyst-workbench/workbench-secondary-views.tsx` | 时间线、卷宗编辑、导出预览与编译中心等次级主画布视图。 |
 | `apps/web/features/analyst-workbench/spatial-map/` | client-only 空间卷宗边界；React 视图管理模式、分模式图层/视口、状态核验、未定位抽屉、快览与显式位置编辑，独立 controls/preview-card 避免主视图膨胀；Leaflet renderer 分别使用地理 CRS 与 `CRS.Simple`，只产生关系覆盖层及拖动坐标预览，不负责 PATCH 或 revision。 |
 | `apps/web/features/analyst-workbench/workbench-relationship-graph.tsx`、`workbench-reasoning-graph.tsx` | 将关系与推理读模型适配为只读画布场景，声明节点类型颜色、图例、详情选择和无障碍替代表。 |
 | `apps/web/features/analyst-workbench/workbench-evidence-comparison.tsx` | 证据对比视图的「证据 × 假设」矩阵：按核心问题展示每条信息/证据对每个假设的支持/冲突/中立判定、强度与理由，并在选中单元格时给出可靠度、叙事分类、信息类型与支持/反驳的主张；数据来自 `reasoningGroups`（`Hypothesis.evidence_assessments`），真实工作稿立即可用。 |
-| `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：真实数据的确定性验证问题展示规则代码、JSON 路径、字段路径与可定位的目标对象；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
-| `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 工作台内卷宗统筹 Agent 对话、预设指令和本地响应编排。 |
+| `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：真实数据的确定性/Agent finding 展示来源、severity、规则代码、JSON 路径、字段路径、状态与可定位证据，并可发起普通 CaseFile Chat TaskRun 的验证重跑；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
+| `apps/web/features/analyst-workbench/workbench-agent-panel.tsx`、`workbench-agent-live-panel.tsx` | 工作台内卷宗统筹 Agent 对话与真实 TaskRun 恢复：显示持久化 finding（旧 `audit_findings` 兼容回退）、`verification.*` SSE、证据定位、批量补丁预演/阻断原因及人工 apply/undo。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-kernel.tsx`、`workbench-canvas-layout.ts`、`workbench-canvas.module.css` | 关系图与推理图共享的 React Flow 只读画布内核、确定性 Dagre 布局、按 `project:{projectId}:draft:{draftId}` 隔离的浏览器布局偏好、选择/平移/多选/全屏交互和专属视觉样式；不得表达或触发领域写入。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-controls.tsx`、`workbench-icon.tsx`、`workbench-geometry.ts`、`workbench-presenters.ts` | 工作台内部复用的画布控件、悬浮提示、图标、几何边界和展示标签；不承载跨功能业务状态。 |
 | `apps/web/features/analyst-workbench/timeline/` | 时间线专属的无时区时间解析、React+D3 比例轴、点/整段区间拖动、人物/地点泳道、时间确定性与问题叠层、窄屏编辑清单和写入前影响预览，以及 Current Draft 的独立版本化线性 Exposure Plan 编辑；事实时间写入仍走 Draft revision，披露顺序只推进 Plan revision，二者均不绕过身份与并发门禁。 |
@@ -58,7 +58,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、工作流与工作台读模型 DTO，以及统一错误消息。 |
+| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、工作流/工作台与 VerificationRun/finding/批量预演 DTO，以及统一错误消息。 |
 | `apps/web/lib/prototype-model.ts` | 仅供本地原型使用的状态模型、样例数据和编译门禁纯函数；正式服务端契约继续来自 `@casefile/contracts`。 |
 | `apps/web/lib/reasoning-prototype.ts` | 推理实验室本地 Fixture、推理路径/节点/边/候选模型与纯查询函数；不承担 React UI。 |
 | `apps/web/lib/` | 其他无 UI 基础设施；不得放 React 业务状态。 |

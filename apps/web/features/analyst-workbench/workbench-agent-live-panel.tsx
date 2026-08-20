@@ -6,21 +6,25 @@ import {
   applyAgentPatchSet,
   createAgentThread,
   errorMessage,
+  getVerificationRun,
   listAgentMessages,
   listAgentThreads,
   sendAgentMessage,
   sendAgentRoutingFeedback,
+  simulateAgentPatchSet,
   undoAgentPatchSet,
   type AgentAuditFindingView,
   type AgentChatFocus,
   type AgentChatRoutingHint,
   type AgentMessageView,
   type AgentPatchSetView,
+  type AgentPatchSimulationView,
   type AgentRoutingCorrectIntent,
   type AgentSuggestedView,
   type AgentThreadView,
   type TaskEventView,
   type TaskView,
+  type VerificationFindingView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 import {
@@ -157,6 +161,24 @@ function stageLabel(task: TaskView | null): string {
   return "正在整理回复";
 }
 
+function verificationStatusLabel(status: VerificationFindingView["status"]): string {
+  return {
+    open: "待处理",
+    resolved: "已解决",
+    reopened: "已重开",
+    dismissed: "已忽略",
+  }[status];
+}
+
+function verificationSeverityLabel(severity: VerificationFindingView["severity"]): string {
+  return {
+    info: "提示",
+    warning: "警告",
+    error: "错误",
+    blocker: "阻断",
+  }[severity];
+}
+
 interface ContextOccupancy {
   usedTokens: number;
   budgetTokens: number | null;
@@ -211,6 +233,8 @@ export function AgentLivePanel({
   onLocateView,
   onDraftChanged,
   onClose,
+  refreshKey = 0,
+  preferredThreadId = null,
 }: {
   projectId: number;
   draftId: number;
@@ -228,6 +252,8 @@ export function AgentLivePanel({
   onLocateView: (view: AgentSuggestedView) => void;
   onDraftChanged: () => Promise<void>;
   onClose: () => void;
+  refreshKey?: number;
+  preferredThreadId?: number | null;
 }) {
   const [threads, setThreads] = useState<AgentThreadView[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -245,6 +271,12 @@ export function AgentLivePanel({
   >({});
   const [contextByTask, setContextByTask] = useState<
     Record<number, ContextOccupancy | null>
+  >({});
+  const [verificationByTask, setVerificationByTask] = useState<
+    Record<number, { status: string; findingCount: number }>
+  >({});
+  const [verificationByMessage, setVerificationByMessage] = useState<
+    Record<number, VerificationFindingView[]>
   >({});
 
   const followsRef = useRef(new Map<number, AbortController>());
@@ -312,7 +344,10 @@ export function AgentLivePanel({
       }
       setThreads(rows);
       setSelectedThreadId((current) =>
-        current !== null && rows.some((row) => row.thread_id === current)
+        preferredThreadId !== null &&
+        rows.some((row) => row.thread_id === preferredThreadId)
+          ? preferredThreadId
+          : current !== null && rows.some((row) => row.thread_id === current)
           ? current
           : (rows[0]?.thread_id ?? null),
       );
@@ -321,11 +356,15 @@ export function AgentLivePanel({
     } finally {
       setThreadsLoading(false);
     }
-  }, [draftId, draftRevision, projectId]);
+  }, [draftId, draftRevision, preferredThreadId, projectId]);
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  useEffect(() => {
+    if (refreshKey > 0) void bootstrap();
+  }, [bootstrap, refreshKey]);
 
   useEffect(() => {
     if (selectedThreadId === null) return;
@@ -355,6 +394,35 @@ export function AgentLivePanel({
     };
   }, [projectId, selectedThreadId]);
 
+  useEffect(() => {
+    const candidates = messages.filter(
+      (message) => {
+        const result = message.task?.result;
+        return (
+          message.role === "assistant" &&
+          result !== null &&
+          result !== undefined &&
+          typeof result === "object" &&
+          typeof (result as { verification_run_id?: unknown }).verification_run_id ===
+            "number" &&
+          verificationByMessage[message.message_id] === undefined
+        );
+      },
+    );
+    for (const message of candidates) {
+      const runId = (message.task?.result as { verification_run_id: number })
+        .verification_run_id;
+      void getVerificationRun(LOCAL_ACTOR_ID, projectId, runId)
+        .then((run) => {
+          setVerificationByMessage((previous) => ({
+            ...previous,
+            [message.message_id]: run.findings,
+          }));
+        })
+        .catch(() => undefined);
+    }
+  }, [messages, projectId, verificationByMessage]);
+
   const startFollow = useCallback(
     (taskRunId: number, threadId: number) => {
       if (followedTaskIdsRef.current.has(taskRunId)) return;
@@ -374,6 +442,22 @@ export function AgentLivePanel({
               setContextByTask((previous) => ({
                 ...previous,
                 [taskRunId]: occupancy,
+              }));
+            }
+            if (event.event_type.startsWith("verification.")) {
+              const status = event.event_type.slice("verification.".length);
+              const findingCount = event.payload.finding_count;
+              setVerificationByTask((previous) => ({
+                ...previous,
+                [taskRunId]: {
+                  status,
+                  findingCount:
+                    typeof findingCount === "number"
+                      ? findingCount
+                      : event.event_type === "verification.finding"
+                        ? (previous[taskRunId]?.findingCount ?? 0) + 1
+                        : (previous[taskRunId]?.findingCount ?? 0),
+                },
               }));
             }
           });
@@ -578,19 +662,61 @@ export function AgentLivePanel({
     setPatchBusyId(patchSet.patch_set_id);
     setMessagesError(null);
     try {
-      const result = await applyAgentPatchSet(
+      const targetFindingIds = patchSet.operations
+        .filter((operation) => operationIds.includes(operation.operation_id))
+        .flatMap((operation) => operation.finding_ids ?? []);
+      const result = targetFindingIds.length > 0
+        ? await applyAgentPatchSet(
+            LOCAL_ACTOR_ID,
+            projectId,
+            patchSet.patch_set_id,
+            draftId,
+            patchSet.base_draft_revision,
+            operationIds,
+            targetFindingIds,
+          )
+        : await applyAgentPatchSet(
+            LOCAL_ACTOR_ID,
+            projectId,
+            patchSet.patch_set_id,
+            draftId,
+            patchSet.base_draft_revision,
+            operationIds,
+          );
+      updatePatchSet(result);
+      await onDraftChanged();
+      await reloadMessages();
+    } catch (caught) {
+      setMessagesError(errorMessage(caught));
+    } finally {
+      setPatchBusyId(null);
+    }
+  }
+
+  async function simulatePatchSet(
+    patchSet: AgentPatchSetView,
+    operationIds: number[],
+  ): Promise<AgentPatchSimulationView | null> {
+    if (patchBusyId !== null) return null;
+    setPatchBusyId(patchSet.patch_set_id);
+    setMessagesError(null);
+    try {
+      const targetFindingIds = patchSet.operations
+        .filter((operation) => operationIds.includes(operation.operation_id))
+        .flatMap((operation) => operation.finding_ids ?? []);
+      const result = await simulateAgentPatchSet(
         LOCAL_ACTOR_ID,
         projectId,
         patchSet.patch_set_id,
         draftId,
         patchSet.base_draft_revision,
         operationIds,
+        targetFindingIds.length > 0 ? targetFindingIds : undefined,
       );
-      updatePatchSet(result);
-      await onDraftChanged();
-      await reloadMessages();
+      return result.simulation;
     } catch (caught) {
       setMessagesError(errorMessage(caught));
+      return null;
     } finally {
       setPatchBusyId(null);
     }
@@ -694,6 +820,11 @@ export function AgentLivePanel({
               : (liveTasks[message.task.task_run_id] ?? message.task);
           const patchSet = message.patch_set;
           const auditFindings = auditFindingsFor(message);
+          const verificationFindings = verificationByMessage[message.message_id];
+          const verificationProgress =
+            message.task === null
+              ? null
+              : verificationByTask[message.task.task_run_id] ?? null;
           return (
             <Fragment key={message.message_id}>
               {message.content !== null ? (
@@ -703,16 +834,28 @@ export function AgentLivePanel({
               ) : null}
               {message.role === "assistant" &&
               message.status === "completed" &&
-              auditFindings.length > 0 ? (
-                <AgentAuditFindings
-                  findings={auditFindings}
-                  issueLabels={referenceLabels.issues}
-                  objectLabels={referenceLabels.objects}
-                  eventLabels={referenceLabels.events}
-                  onLocateEvent={onLocateEvent}
-                  onLocateIssue={onLocateIssue}
-                  onLocateObject={onLocateObject}
-                />
+              (verificationFindings !== undefined || auditFindings.length > 0) ? (
+                verificationFindings !== undefined ? (
+                  <AgentVerificationFindings
+                    findings={verificationFindings}
+                    issueLabels={referenceLabels.issues}
+                    objectLabels={referenceLabels.objects}
+                    eventLabels={referenceLabels.events}
+                    onLocateEvent={onLocateEvent}
+                    onLocateIssue={onLocateIssue}
+                    onLocateObject={onLocateObject}
+                  />
+                ) : (
+                  <AgentAuditFindings
+                    findings={auditFindings}
+                    issueLabels={referenceLabels.issues}
+                    objectLabels={referenceLabels.objects}
+                    eventLabels={referenceLabels.events}
+                    onLocateEvent={onLocateEvent}
+                    onLocateIssue={onLocateIssue}
+                    onLocateObject={onLocateObject}
+                  />
+                )
               ) : null}
               {message.role === "assistant" &&
               message.status === "completed" &&
@@ -781,7 +924,12 @@ export function AgentLivePanel({
               message.status === "pending" ? (
                 <p className={styles.agentThinking} role="status">
                   {busy
-                    ? `Agent 正在回复 · ${stageLabel(liveTask)}${
+                    ? `Agent 正在回复 · ${
+                        verificationProgress?.status === "started" ||
+                        verificationProgress?.status === "finding"
+                          ? `验证复查 · 已发现 ${verificationProgress.findingCount} 项`
+                          : stageLabel(liveTask)
+                      }${
                         contextByTask[message.task?.task_run_id ?? -1]
                           ? ` · 上下文 ${contextByTask[message.task?.task_run_id ?? -1]?.usedTokens ?? 0}${
                               contextByTask[message.task?.task_run_id ?? -1]?.budgetTokens !== null &&
@@ -818,6 +966,9 @@ export function AgentLivePanel({
                   }
                   onLocateObject={onLocateObject}
                   onRetry={() => retryMessage(message)}
+                  onSimulate={(operationIds) =>
+                    simulatePatchSet(patchSet, operationIds)
+                  }
                   onUndo={() => void undoPatchSet(patchSet)}
                   patchSet={patchSet}
                 />
@@ -1076,11 +1227,102 @@ function AgentAuditFindings({
   );
 }
 
+function AgentVerificationFindings({
+  findings,
+  objectLabels,
+  eventLabels,
+  issueLabels,
+  onLocateObject,
+  onLocateEvent,
+  onLocateIssue,
+}: {
+  findings: VerificationFindingView[];
+  objectLabels: Record<string, string>;
+  eventLabels: Record<string, string>;
+  issueLabels: Record<string, string>;
+  onLocateObject: (objectId: string) => void;
+  onLocateEvent: (eventId: string) => void;
+  onLocateIssue: (issueId: string) => void;
+}) {
+  return (
+    <article className={styles.agentAuditCard} aria-label="验证复查发现">
+      <header className={styles.agentAuditHeader}>
+        <strong>验证复查发现</strong>
+        <span>{findings.length} 项 · 服务端记录</span>
+      </header>
+      <ol className={styles.agentAuditList}>
+        {findings.map((finding) => {
+          const objectRefs = finding.refs.filter((ref) => ref.ref_kind === "object");
+          const eventRefs = finding.refs.filter((ref) => ref.ref_kind === "event");
+          const issueRefs = finding.refs.filter(
+            (ref) => ref.ref_kind === "validation_issue",
+          );
+          return (
+            <li
+              className={styles.agentAuditFinding}
+              data-severity={finding.severity === "blocker" ? "S1" : undefined}
+              key={finding.finding_id}
+            >
+              <div className={styles.agentAuditFindingMeta}>
+                <b>#{finding.finding_id}</b>
+                <span>{finding.kind === "deterministic" ? "确定性" : "Agent"}</span>
+                <span>{verificationSeverityLabel(finding.severity)}</span>
+                <span>{verificationStatusLabel(finding.status)}</span>
+                {finding.confidence !== null ? (
+                  <span>置信度 {Math.round(finding.confidence * 100)}%</span>
+                ) : null}
+              </div>
+              <strong>{finding.title}</strong>
+              <p>{finding.message}</p>
+              {finding.suggested_fix ? <p>建议：{finding.suggested_fix}</p> : null}
+              {objectRefs.length || eventRefs.length || issueRefs.length ? (
+                <div className={styles.agentRefs}>
+                  {objectRefs.map((ref) => (
+                    <button
+                      data-ref-kind="object"
+                      key={`object:${ref.ref_key}:${ref.role}`}
+                      onClick={() => onLocateObject(ref.ref_key)}
+                      type="button"
+                    >
+                      {ref.role === "target" ? "目标" : "证据"} · {objectLabels[ref.ref_key] ?? ref.ref_key}
+                    </button>
+                  ))}
+                  {eventRefs.map((ref) => (
+                    <button
+                      data-ref-kind="event"
+                      key={`event:${ref.ref_key}:${ref.role}`}
+                      onClick={() => onLocateEvent(ref.ref_key)}
+                      type="button"
+                    >
+                      {ref.role === "target" ? "目标事件" : "事件"} · {eventLabels[ref.ref_key] ?? ref.ref_key}
+                    </button>
+                  ))}
+                  {issueRefs.map((ref) => (
+                    <button
+                      data-ref-kind="issue"
+                      key={`issue:${ref.ref_key}:${ref.role}`}
+                      onClick={() => onLocateIssue(ref.ref_key)}
+                      type="button"
+                    >
+                      验证 · {issueLabels[ref.ref_key] ?? ref.ref_key}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+    </article>
+  );
+}
+
 function AgentPatchReview({
   patchSet,
   objectLabels,
   busy,
   onApply,
+  onSimulate,
   onUndo,
   onRetry,
   onLocateObject,
@@ -1089,6 +1331,7 @@ function AgentPatchReview({
   objectLabels: Record<string, string>;
   busy: boolean;
   onApply: (operationIds: number[]) => void;
+  onSimulate: (operationIds: number[]) => Promise<AgentPatchSimulationView | null>;
   onUndo: () => void;
   onRetry?: () => void;
   onLocateObject?: (objectId: string) => void;
@@ -1096,12 +1339,14 @@ function AgentPatchReview({
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [issuesExpanded, setIssuesExpanded] = useState(false);
+  const [simulation, setSimulation] = useState<AgentPatchSimulationView | null>(null);
   const actionable = patchSet.status === "pending" && !patchSet.is_stale;
   const allOperationIds = patchSet.operations.map(
     (operation) => operation.operation_id,
   );
 
   function toggleOperation(operationId: number) {
+    setSimulation(null);
     setSelectedIds((previous) =>
       previous.includes(operationId)
         ? previous.filter((id) => id !== operationId)
@@ -1116,6 +1361,12 @@ function AgentPatchReview({
       return;
     }
     setConfirmingReject(true);
+  }
+
+  async function simulateSelected() {
+    const operationIds = selectedIds.length > 0 ? selectedIds : allOperationIds;
+    const result = await onSimulate(operationIds);
+    if (result !== null) setSimulation(result);
   }
 
   return (
@@ -1230,18 +1481,45 @@ function AgentPatchReview({
           应用后仍有 {patchSet.validator_issues.length} 条验证警告，工作台会同步刷新。
         </p>
       ) : null}
+      {simulation !== null ? (
+        <div className={styles.agentPatchSimulation} data-can-apply={simulation.can_apply}>
+          <header>
+            <strong>批量预演</strong>
+            <span>{simulation.can_apply ? "可应用" : "已阻断"}</span>
+          </header>
+          <dl>
+            <div><dt>已修复</dt><dd>{simulation.fixed_finding_keys.length}</dd></div>
+            <div><dt>残留</dt><dd>{simulation.residual_finding_keys.length}</dd></div>
+            <div><dt>新增</dt><dd>{simulation.new_finding_keys.length}</dd></div>
+            <div><dt>待复查</dt><dd>{simulation.pending_recheck_finding_keys.length}</dd></div>
+          </dl>
+          <p>
+            影响：{simulation.impact.collections.length ? simulation.impact.collections.join("、") : "无可见画布"}
+            {simulation.impact.full_rebuild ? " · 需要完整刷新" : " · 局部刷新"}
+          </p>
+          {!simulation.can_apply ? (
+            <p>阻断原因：{simulation.reason_code ?? "应用前验证未通过"}</p>
+          ) : null}
+          {simulation.structure_lock_conflicts.length ? (
+            <p>结构锁：{simulation.structure_lock_conflicts.join("、")}</p>
+          ) : null}
+        </div>
+      ) : null}
       <div className={styles.agentPatchActions}>
         {actionable ? (
           <>
+            <button disabled={busy} onClick={() => void simulateSelected()} type="button">
+              {busy ? "预演中…" : "预演批量修改"}
+            </button>
             <button
-              disabled={busy}
+              disabled={busy || simulation?.can_apply === false}
               onClick={() => onApply(allOperationIds)}
               type="button"
             >
               全部采纳
             </button>
             <button
-              disabled={busy || selectedIds.length === 0}
+              disabled={busy || selectedIds.length === 0 || simulation?.can_apply === false}
               onClick={() => onApply(selectedIds)}
               type="button"
             >

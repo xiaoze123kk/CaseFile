@@ -248,6 +248,7 @@ class AgentPatchApplyRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
     operation_ids: list[int] | None = None
+    target_finding_ids: list[int] | None = None
 
     @model_validator(mode="after")
     def unique_operation_ids(self) -> Self:
@@ -261,6 +262,32 @@ class AgentPatchApplyRequest(StrictRequest):
 class AgentPatchUndoRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
+
+
+class AgentPatchSimulateRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    base_revision: int = Field(ge=1)
+    operation_ids: list[int] | None = None
+    target_finding_ids: list[int] | None = None
+
+    @model_validator(mode="after")
+    def unique_operation_ids(self) -> Self:
+        if self.operation_ids is not None and len(set(self.operation_ids)) != len(
+            self.operation_ids
+        ):
+            raise ValueError("operation_ids must be unique")
+        return self
+
+
+class VerificationFindingReviewRequest(StrictRequest):
+    decision: Literal["confirm", "resolve", "reopen", "dismiss"]
+    note: str | None = Field(default=None, max_length=2_000)
+
+
+class VerificationRerunRequest(StrictRequest):
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+    provider: Literal["openai", "deepseek"] = "deepseek"
 
 
 class ObjectPatchRequest(StrictRequest):

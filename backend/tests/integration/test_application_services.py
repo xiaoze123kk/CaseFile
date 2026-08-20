@@ -1662,6 +1662,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 "validation",
                 "context_policy_version",
                 "routing_hint",
+                "verification_trigger",
                 "router_version",
                 "context_state",
             }
@@ -1673,6 +1674,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 "entrypoint": "free_text",
                 "preset_id": None,
             }
+            assert frozen_input["verification_trigger"] == "chat"
             assert frozen_input["router_version"] == "casefile-chat-router-v2"
 
         chat_worker = Worker(
@@ -1841,6 +1843,7 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
             "validation",
             "context_policy_version",
             "routing_hint",
+            "verification_trigger",
             "router_version",
             "context_state",
         }
@@ -1848,6 +1851,7 @@ def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
             "entrypoint": "preset",
             "preset_id": "inspect",
         }
+        assert frozen_input["verification_trigger"] == "chat"
         assert frozen_input["router_version"] == INTENT_ROUTER_VERSION
         assert input_hash == hashlib.sha256(rfc8785.dumps(frozen_input)).hexdigest()
 
@@ -2296,6 +2300,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             "validation",
             "context_policy_version",
             "routing_hint",
+            "verification_trigger",
             "router_version",
             "context_state",
         }
@@ -2307,6 +2312,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             "entrypoint": "free_text",
             "preset_id": None,
         }
+        assert frozen_input["verification_trigger"] == "chat"
         assert frozen_input["router_version"] == "casefile-chat-router-v2"
         assert input_draft_revision == 2
         assert input_hash == hashlib.sha256(rfc8785.dumps(frozen_input)).hexdigest()
