@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { WorkbenchSeed } from "./analyst-fixture";
-import styles from "./analyst-workbench.module.css";
+import styles from "./workbench-agent.module.css";
+import { WorkbenchAgentComposer } from "./workbench-agent-composer";
 import { agentPromptPresets } from "./workbench-agent-presets";
 import { WorkbenchIcon } from "./workbench-icon";
 import { reasoningOutcomeLabels } from "./workbench-presenters";
+import type { AgentSurface } from "./workbench-agent-surface";
 
 interface AgentMessage {
   id: string;
@@ -74,10 +76,18 @@ export function AgentPanel({
   seed,
   unresolvedCount,
   onClose,
+  surface,
+  onContinueInDesk,
+  contextChips,
+  focusRequest = 0,
 }: {
   seed: WorkbenchSeed;
   unresolvedCount: number;
   onClose: () => void;
+  surface: Exclude<AgentSurface, "closed">;
+  onContinueInDesk: () => void;
+  contextChips: string[];
+  focusRequest?: number;
 }) {
   const [messages, setMessages] = useState<AgentMessage[]>([
     {
@@ -131,7 +141,7 @@ export function AgentPanel({
       <header className={styles.agentHeader}>
         <div>
           <span>卷宗统筹</span>
-          <strong>Agent 对话</strong>
+          <strong>{surface === "desk" ? "统筹台" : "快速询问"}</strong>
         </div>
         <button aria-label="关闭 Agent 对话" onClick={onClose} type="button">
           <WorkbenchIcon name="close" />
@@ -163,23 +173,17 @@ export function AgentPanel({
           </button>
         ))}
       </div>
-      <form
-        className={styles.agentInput}
-        onSubmit={(event) => {
-          event.preventDefault();
-          send(draft);
-        }}
-      >
-        <input
-          aria-label="给卷宗统筹 Agent 的指令"
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="布置卷宗任务…"
-          value={draft}
-        />
-        <button disabled={thinking || !draft.trim()} type="submit">
-          发送
-        </button>
-      </form>
+      <WorkbenchAgentComposer
+        busy={thinking}
+        contextChips={contextChips}
+        disabled={thinking}
+        draft={draft}
+        onContinueInDesk={surface === "quick" ? onContinueInDesk : undefined}
+        onDraftChange={setDraft}
+        onSend={() => send(draft)}
+        focusRequest={focusRequest}
+        surface={surface}
+      />
     </section>
   );
 }
