@@ -838,16 +838,26 @@ describe("analyst workbench", () => {
     expect(screen.getByText(/先处理主画布证据对比中的 S0\/S1 问题/)).toBeInTheDocument();
   });
 
-  it("opens the agent dialog and answers a preset instruction from the seed", async () => {
+  it("opens Quick Ask inside the Canvas and can continue in Agent Desk", async () => {
     renderWorkbench();
 
     fireEvent.click(
       screen.getByRole("button", { name: "打开卷宗统筹 Agent 对话" }),
     );
-    expect(
-      screen.getByRole("region", { name: "卷宗统筹 Agent 对话" }),
-    ).toBeInTheDocument();
+    const quickAsk = screen.getByRole("region", { name: "卷宗统筹 Agent 对话" });
+    expect(quickAsk.closest('[data-surface="quick"]')).toBeInTheDocument();
+    expect(quickAsk.closest("main")).toHaveAttribute("id", "analyst-canvas");
+    expect(screen.getByRole("complementary", { name: "卷宗对象导航" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "对象上下文" })).toBeInTheDocument();
     expect(screen.getByText(/我是卷宗统筹 Agent/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "在统筹台继续" }));
+    expect(
+      screen
+        .getByRole("region", { name: "卷宗统筹 Agent 对话" })
+        .closest('[data-surface="desk"]'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /时间线/ })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "全卷宗体检" }));
     expect(
@@ -866,6 +876,22 @@ describe("analyst workbench", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "关闭 Agent 对话" }));
+    expect(
+      screen.queryByRole("region", { name: "卷宗统筹 Agent 对话" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "打开卷宗统筹 Agent 对话" })).toHaveFocus();
+  });
+
+  it("opens Quick Ask with Ctrl+Shift+K without replacing the Canvas view", () => {
+    renderWorkbench();
+
+    fireEvent.keyDown(window, { ctrlKey: true, key: "K", shiftKey: true });
+
+    const quickAsk = screen.getByRole("region", { name: "卷宗统筹 Agent 对话" });
+    expect(quickAsk.closest('[data-surface="quick"]')).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /时间线/ })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
     expect(
       screen.queryByRole("region", { name: "卷宗统筹 Agent 对话" }),
     ).not.toBeInTheDocument();

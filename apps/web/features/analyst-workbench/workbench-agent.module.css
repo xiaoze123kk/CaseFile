@@ -1,0 +1,241 @@
+.agentSurface {
+  --agent-chrome: var(--chrome-raised, #202427);
+  --agent-chrome-active: var(--chrome-soft, #2b3032);
+  --agent-paper: var(--paper, #f3f1eb);
+  --agent-paper-raised: var(--paper-high, #fbfaf6);
+  --agent-rule: var(--rule, #d6d1c5);
+  --agent-rule-dark: var(--rule-dark, rgba(232, 228, 218, 0.14));
+  --agent-accent: var(--primary, #c78b3c);
+  --agent-accent-hover: var(--primary-hover, #e0ad65);
+  --agent-quick-width: 720px;
+  --agent-reading-width: 680px;
+  --agent-composer-radius: 4px;
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  color: #e1ddd4;
+  background: var(--agent-chrome);
+}
+
+.agentSurface[data-surface="quick"] {
+  position: absolute;
+  z-index: 6;
+  right: 24px;
+  bottom: 18px;
+  left: 24px;
+  width: min(var(--agent-quick-width), calc(100% - 48px));
+  margin: 0 auto;
+  pointer-events: auto;
+  border: 1px solid rgba(232, 228, 218, 0.22);
+  box-shadow: 0 14px 30px rgba(23, 26, 29, 0.28);
+}
+
+.agentSurface[data-surface="desk"] {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.agentPanel {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 58px minmax(0, 1fr) auto auto;
+  overflow: hidden;
+  background: var(--agent-chrome);
+}
+
+.agentPanelLive { grid-template-rows: 58px 40px minmax(0, 1fr) auto auto; }
+.agentSurface[data-surface="desk"] .agentPanelLive { grid-template-rows: 54px auto minmax(0, 1fr) auto auto; }
+.agentSurface[data-surface="quick"] .agentPanelLive { grid-template-rows: 58px minmax(0, 1fr) auto auto; }
+
+.agentHeader {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 10px 0 18px;
+  border-bottom: 1px solid var(--agent-rule-dark);
+}
+
+.agentHeader > div { display: flex; min-width: 0; flex-direction: column; }
+.agentHeader span { color: #aaa69c; font: 9px/1.2 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; }
+.agentHeader strong { margin-top: 4px; color: #f3f1eb; font: 650 14px/1.2 Bahnschrift, "Microsoft YaHei UI", sans-serif; }
+.agentHeader button { display: grid; width: 38px; height: 38px; place-items: center; color: #a8a49b; border: 0; background: transparent; }
+.agentHeader button:hover { color: var(--agent-accent-hover); background: var(--agent-chrome-active); }
+
+.agentThreadManager { position: relative; min-width: 0; }
+.agentThreadTrigger { display: grid; min-width: 220px; max-width: min(420px, 58vw); gap: 2px; padding: 4px 8px; color: #f3f1eb; border: 1px solid transparent; background: transparent; text-align: left; }
+.agentThreadTrigger:hover, .agentThreadTrigger:focus-visible { border-color: rgba(224, 173, 101, .45); background: var(--agent-chrome-active); outline: none; }
+.agentThreadTrigger strong { overflow: hidden; color: #f3f1eb; font: 650 14px/1.2 Bahnschrift, "Microsoft YaHei UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.agentThreadTrigger span { color: #8f938e; font: 8px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; text-transform: uppercase; }
+.agentThreadPopover { position: absolute; z-index: 12; top: calc(100% + 8px); left: 0; display: grid; width: min(336px, calc(100vw - 32px)); gap: 10px; padding: 12px; color: #e8e4db; border: 1px solid rgba(232, 228, 218, .24); background: #202427; box-shadow: 0 20px 44px rgba(0, 0, 0, .36); }
+.agentThreadSearch { display: grid; gap: 6px; }
+.agentThreadSearch label, .agentThreadGroupLabel { color: var(--agent-accent-hover); font: 8px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .1em; text-transform: uppercase; }
+.agentThreadSearch input, .agentRenameForm input { min-height: 34px; padding: 6px 8px; color: #f3f1eb; border: 1px solid var(--agent-rule-dark); background: #181b1d; font-size: 11px; }
+.agentThreadSearch input:focus, .agentRenameForm input:focus { border-color: rgba(224, 173, 101, .7); box-shadow: 0 0 0 2px rgba(224, 173, 101, .14); outline: none; }
+.agentThreadList { display: grid; max-height: 260px; gap: 10px; overflow-y: auto; }
+.agentThreadList > div { display: grid; gap: 3px; }
+.agentThreadGroupLabel { padding-bottom: 3px; color: #8f938e; }
+.agentThreadOption { display: flex; min-height: 34px; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; color: #d8d3ca; border: 1px solid transparent; background: transparent; text-align: left; }
+.agentThreadOption:hover, .agentThreadOption:focus-visible, .agentThreadOption[data-active="true"], .agentThreadOption[aria-selected="true"] { color: #f3f1eb; border-color: rgba(224, 173, 101, .4); background: rgba(199, 139, 60, .12); outline: none; }
+.agentThreadOption strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agentThreadOption span { color: #777c76; font: 8px/1 "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+.agentThreadEmpty { margin: 8px 0; color: #8f938e; font-size: 10px; }
+.agentArchivedToggle { display: flex; align-items: center; gap: 6px; color: #aaa69c; font-size: 9px; }
+.agentArchivedToggle input { accent-color: var(--agent-accent); }
+.agentRenameForm { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: end; }
+.agentRenameForm label { grid-column: 1 / -1; color: #aaa69c; font-size: 9px; }
+.agentRenameForm button, .agentThreadActions button { min-height: 30px; padding: 0 8px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
+.agentRenameForm button:hover, .agentThreadActions button:hover { color: var(--agent-accent-hover); border-color: rgba(224, 173, 101, .5); }
+.agentThreadActions { display: flex; flex-wrap: wrap; gap: 5px; padding-top: 2px; border-top: 1px solid rgba(255, 255, 255, .06); }
+
+.agentThreadBar { display: flex; min-width: 0; align-items: center; gap: 8px; padding: 0 18px; border-bottom: 1px solid var(--agent-rule-dark); }
+.agentThreadSelect { min-width: 0; flex: 1; padding: 6px 8px; color: #e8e4db; border: 1px solid var(--agent-rule-dark); background: #202427; font-size: 9.5px; }
+.agentThreadNew { min-height: 30px; padding: 0 10px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
+.agentThreadNew:hover { color: var(--agent-accent-hover); border-color: rgba(224, 173, 101, .5); }
+
+.agentTaskStrip { display: flex; min-width: 0; min-height: 40px; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 18px; color: #d8d3ca; border-bottom: 1px solid var(--agent-rule-dark); background: rgba(0, 0, 0, .12); }
+.agentTaskStrip[data-status="failed"] { color: #e3b9a4; }
+.agentTaskStrip[data-status="cancelled"] { color: #c8c1b5; }
+.agentTaskPrimary { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.agentTaskPrimary > i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--agent-accent); box-shadow: 0 0 0 3px rgba(199, 139, 60, .14); }
+.agentTaskStrip[data-status="failed"] .agentTaskPrimary > i { background: #c66f54; box-shadow: 0 0 0 3px rgba(198, 111, 84, .14); }
+.agentTaskPrimary span { display: grid; min-width: 0; gap: 2px; }
+.agentTaskPrimary strong { overflow: hidden; font: 10px/1.25 "Microsoft YaHei UI", sans-serif; text-overflow: ellipsis; white-space: nowrap; }
+.agentTaskPrimary small { color: #8f938e; font: 8px/1.2 "Cascadia Mono", Consolas, monospace; }
+.agentTaskStrip > button { min-height: 28px; padding: 0 9px; color: #d8c5b6; border: 1px solid rgba(193, 103, 65, .5); background: transparent; font-size: 9px; }
+.agentTaskStrip > button:hover { color: #f0c9b5; background: rgba(193, 103, 65, .16); }
+.agentTaskSummary { margin-left: auto; color: #aaa69c; font-size: 9px; }
+.agentTaskSummary summary { cursor: pointer; color: var(--agent-accent-hover); }
+.agentTaskSummary p { max-width: 300px; margin: 5px 0 0; line-height: 1.5; }
+
+.agentMessages { display: flex; min-width: 0; flex-direction: column; gap: 28px; padding: 24px clamp(24px, 6vw, 54px); overflow-y: auto; }
+.agentSurface[data-surface="quick"] .agentMessages { gap: 10px; max-height: 180px; padding: 14px 18px; }
+.agentMessage { max-width: var(--agent-reading-width); margin: 0; color: #e8e4db; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+.agentMessage[data-role="assistant"], .agentMessage[data-role="agent"] { align-self: flex-start; }
+.agentMessage[data-role="assistant"]::before, .agentMessage[data-role="agent"]::before { display: block; margin-bottom: 5px; color: var(--agent-accent-hover); content: "卷宗统筹 · 调查记录"; font: 9px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; }
+.agentMessage[data-role="user"] { align-self: flex-end; color: #d8d3ca; }
+.agentMessage[data-role="user"]::before { display: block; margin-bottom: 5px; color: #8f938e; content: "你 · 当前请求"; font: 9px/1 "Cascadia Mono", Consolas, monospace; }
+
+.agentTurn { display: grid; max-width: var(--agent-reading-width); gap: 8px; align-self: flex-start; }
+.agentTurn[data-role="user"] { align-self: flex-end; }
+.agentTurnMeta { display: flex; align-items: baseline; gap: 8px; color: var(--agent-accent-hover); font: 9px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .04em; }
+.agentTurn[data-role="user"] .agentTurnMeta { color: #8f938e; }
+.agentTurnMeta time { color: #777c76; }
+.agentTurnContent { display: grid; gap: 4px; color: #e8e4db; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap; }
+.agentTurnContent strong { color: #f0ede6; font: 600 13px/1.3 "STSong", "SimSun", serif; }
+.agentTurnContent p { margin: 0; }
+.agentResultSummary { display: flex; max-width: var(--agent-reading-width); flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.agentResultSummary > button { min-height: 25px; padding: 3px 8px; color: #d8c5a0; border: 1px solid rgba(199, 139, 60, .45); background: rgba(199, 139, 60, .08); font-size: 9px; }
+.agentResultSummary > button:hover { color: #f3d38f; border-color: rgba(224, 173, 101, .7); background: rgba(199, 139, 60, .16); }
+.agentResultSummary > .agentRefs, .agentResultSummary > .agentAuditCard, .agentResultSummary > .agentPatchCard { flex-basis: 100%; margin-top: 2px; }
+
+.agentThinking { margin: 0; color: var(--agent-accent-hover); font: 9px/1.5 "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; }
+.agentEmpty { align-self: center; max-width: 320px; margin: auto 0; color: #8a918a; font-size: 11px; line-height: 1.7; text-align: center; }
+.agentFailure { align-self: flex-start; display: flex; max-width: var(--agent-reading-width); flex-direction: column; gap: 6px; padding: 10px 12px; color: #e3b9a4; border: 1px solid rgba(193, 103, 65, .5); background: #322626; font-size: 10.5px; line-height: 1.55; }
+.agentFailure strong { color: #f0c9b5; font-size: 10.5px; }
+.agentFailure button { align-self: flex-start; padding: 3px 8px; color: #f0c9b5; border: 1px solid rgba(193, 103, 65, .6); background: transparent; font-size: 9px; }
+.agentFailure button:hover { color: #ffd8c2; background: rgba(193, 103, 65, .18); }
+
+.agentPrompts { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 18px 10px; }
+.agentPrompts button { min-height: 28px; padding: 4px 9px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
+.agentPrompts button:hover { color: var(--agent-accent-hover); border-color: rgba(224, 173, 101, .5); }
+
+.agentComposer { display: grid; gap: 8px; padding: 10px 18px 14px; border-top: 1px solid var(--agent-rule-dark); }
+.agentContextRow { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: 5px; color: #c8c1b5; font-size: 9px; }
+.agentContextLabel { color: var(--agent-accent-hover); font: 9px/1 "Cascadia Mono", Consolas, monospace; letter-spacing: .04em; }
+.agentContextChip { padding: 3px 6px; color: #e8e4db; border: 1px solid rgba(224, 173, 101, .4); background: rgba(199, 139, 60, .1); font: 9px/1.2 "Cascadia Mono", Consolas, monospace; }
+.agentContextEmpty { color: #777c76; font-size: 9px; }
+.agentComposerRow { display: flex; align-items: flex-end; gap: 8px; }
+.agentComposer textarea { min-width: 0; min-height: 64px; max-height: 120px; flex: 1; resize: none; padding: 10px 11px; color: #f3f1eb; border: 1px solid var(--agent-rule-dark); border-radius: var(--agent-composer-radius); background: #202427; font-size: 12px; line-height: 1.55; }
+.agentComposer textarea::placeholder { color: #777c76; }
+.agentComposer textarea:focus { border-color: rgba(224, 173, 101, .7); box-shadow: 0 0 0 2px rgba(224, 173, 101, .14); outline: none; }
+.agentComposerRow > button { min-height: 38px; padding: 0 13px; color: #f5f0e6; border: 0; background: var(--agent-accent); font-size: 10px; white-space: nowrap; }
+.agentComposerRow > button:hover:not(:disabled) { background: var(--agent-accent-hover); }
+.agentComposerRow > button:disabled { cursor: not-allowed; opacity: .5; }
+.agentDeskButton { color: var(--agent-accent-hover) !important; border: 1px solid rgba(224, 173, 101, .5) !important; background: transparent !important; }
+.agentComposerHint { color: #777c76; font: 8px/1.3 "Cascadia Mono", Consolas, monospace; }
+.agentCancel { color: #d8c5b6 !important; border: 1px solid var(--agent-rule-dark) !important; background: transparent !important; }
+.agentCancel:hover:not(:disabled) { color: #f0c9b5 !important; border-color: rgba(193, 103, 65, .6) !important; }
+
+.agentRefs, .agentRouteMeta { display: flex; max-width: var(--agent-reading-width); flex-wrap: wrap; gap: 6px; align-self: flex-start; margin: -15px 0 0; }
+.agentRefs button { min-height: 24px; padding: 3px 8px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
+.agentRefs button:hover { color: var(--agent-accent-hover); border-color: rgba(224, 173, 101, .5); }
+.agentRefs button[data-ref-kind="issue"] { color: #e3b9a4; border-color: rgba(193, 103, 65, .5); }
+.agentRouteMeta { align-items: center; color: #aaa69c; font-size: 9px; }
+.agentRouteChip { padding: 2px 7px; border: 1px solid var(--agent-rule-dark); background: rgba(255, 255, 255, .03); }
+.agentRouteFeedbackButton { padding: 2px 7px; color: #c8b28a; border: 1px solid rgba(224, 173, 101, .4); background: transparent; font-size: 9px; }
+.agentRouteFeedback, .agentRouteFeedback select, .agentRouteFeedback button { font-size: 9px; }
+.agentRouteFeedback { display: flex; gap: 6px; align-items: center; }
+.agentRouteFeedback select { padding: 3px 6px; color: #e8e4db; border: 1px solid var(--agent-rule-dark); background: #202427; }
+.agentRouteFeedback button { padding: 3px 8px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; }
+.agentRouteSubmitted { color: #a9c4b0; font-size: 9px; }
+
+/* Structured results stay legible in the investigation record; full Patch review remains a later Inspector phase. */
+.agentPatchCard, .agentAuditCard { display: grid; max-width: var(--agent-reading-width); align-self: flex-start; gap: 8px; padding: 10px; border: 1px solid rgba(199, 139, 60, .35); background: rgba(0, 0, 0, .12); }
+.agentPatchCard[data-stale] { opacity: .62; }
+.agentPatchHeader, .agentAuditHeader { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.agentPatchHeader strong, .agentAuditHeader strong { color: #f0ede6; font: 600 12px/1.4 "STSong", "SimSun", serif; }
+.agentPatchHeader span, .agentAuditHeader span { color: #aaa69c; font-size: 9px; }
+.agentPatchReason { margin: 0; color: #aaa69c; font-size: 9px; line-height: 1.5; }
+.agentPatchOps, .agentAuditList, .agentPatchIssues { display: grid; gap: 6px; margin: 0; padding: 0; }
+.agentPatchOp { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: start; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, .05); }
+.agentPatchOp > span { display: grid; gap: 2px; }
+.agentPatchOp strong { display: flex; flex-wrap: wrap; gap: 4px 6px; color: #f0ede6; font-size: 10px; }
+.agentPatchOp code, .agentPatchOp small, .agentPatchOp em { color: #aaa69c; font: 9px/1.5 "Cascadia Mono", Consolas, monospace; }
+.agentPatchOp em { font-family: inherit; font-style: normal; }
+.agentPatchOp b { color: #c8c1b5; font-size: 9px; }
+.agentPatchOpMeta { display: flex; flex-wrap: wrap; gap: 4px 8px; color: #777168; font-size: 9px; }
+.agentPatchOpMeta button, .agentPatchActions button { padding: 3px 8px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); background: transparent; font-size: 9px; }
+.agentPatchIssues > button { justify-self: start; padding: 2px 7px; color: #d8b36e; border: 1px solid rgba(216, 179, 110, .4); background: transparent; font-size: 9px; }
+.agentPatchIssues ul { margin: 0; padding-left: 14px; color: #b9b3a8; font-size: 9px; }
+.agentPatchActions { display: flex; flex-wrap: wrap; gap: 6px; }
+.agentPatchWarning { margin: 0; color: #d8b36e; font-size: 9px; }
+.agentPatchStale { color: #c9957b; font-size: 9px; }
+.agentInspector { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(199, 139, 60, .35); }
+.agentInspectorHeader { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+.agentInspectorHeader > div { display: grid; gap: 2px; }
+.agentInspectorHeader span { color: var(--primary-strong); font-size: 9px; letter-spacing: .12em; }
+.agentInspectorHeader strong { color: var(--ink); font: 600 14px/1.35 "STSong", "SimSun", serif; }
+.agentInspectorHeader small { color: var(--muted); font-size: 10px; text-align: right; }
+.agentInspectorNav { display: flex; flex-wrap: wrap; gap: 4px; }
+.agentInspectorNav button { padding: 4px 7px; color: var(--muted); border: 1px solid var(--rule); background: transparent; font-size: 10px; }
+.agentInspectorNav button[aria-current="true"] { color: var(--primary-strong); border-color: var(--primary-strong); background: var(--primary-soft); }
+.agentInspectorEmpty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.agentPatchSimulationNote, .agentPatchBlocker { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.agentPatchBlocker { color: #a34f3d; }
+.agentPatchConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.agentPatchConfirm strong { flex-basis: 100%; color: var(--ink); font-size: 10px; }
+.agentFindingReview { display: grid; gap: 7px; padding: 10px; border: 1px solid var(--rule); background: rgba(255,255,255,.36); }
+.agentFindingReview > strong { color: var(--ink); font-size: 12px; }
+.agentFindingReview > p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.agentFindingMeta { display: flex; flex-wrap: wrap; gap: 5px; color: var(--muted); font-size: 10px; }
+.agentFindingMeta b { color: #a34f3d; font-weight: 600; }
+.agentFindingEvidence { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.agentFindingEvidence > span { flex-basis: 100%; color: var(--muted); font-size: 10px; }
+.agentFindingEvidence button { padding: 3px 6px; color: var(--primary-strong); border: 1px solid rgba(199, 139, 60, .45); background: transparent; font-size: 10px; }
+.agentFindingEvidence small { color: var(--muted); font-size: 10px; }
+.agentFindingNotice { color: #8a5c2d !important; font-size: 10px !important; }
+.agentAuditFinding { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .05); }
+.agentAuditFindingMeta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.agentAuditFindingMeta b { color: #d8b36e; font: 600 9px/1 "Cascadia Mono", Consolas, monospace; }
+.agentAuditFindingMeta span { padding: 1px 6px; color: #c8c1b5; border: 1px solid var(--agent-rule-dark); font-size: 9px; }
+.agentAuditFinding > strong { color: #f0ede6; font-size: 10.5px; }
+.agentAuditFinding > p { margin: 0; color: #b9b3a8; font-size: 10px; line-height: 1.6; }
+.agentPatchDanger { color: #d98a68 !important; border-color: rgba(217, 138, 104, .6) !important; }
+
+@media (max-width: 780px) {
+  .agentSurface[data-surface="quick"] { width: calc(100% - 18px); margin: 0 9px; }
+  .agentSurface[data-surface="quick"] .agentMessages { max-height: 42svh; }
+  .agentComposer { padding: 8px 10px 10px; }
+  .agentComposerRow { flex-wrap: wrap; }
+  .agentComposer textarea { flex-basis: 100%; }
+  .agentComposerRow > button { flex: 1 1 auto; }
+  .agentMessages { padding: 18px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agentSurface *, .agentSurface *::before, .agentSurface *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

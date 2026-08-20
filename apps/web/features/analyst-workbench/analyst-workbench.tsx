@@ -49,6 +49,10 @@ import settingsStyles from "@/components/settings-entry.module.css";
 import styles from "./analyst-workbench.module.css";
 import { AgentLivePanel } from "./workbench-agent-live-panel";
 import { AgentPanel } from "./workbench-agent-panel";
+import {
+  WorkbenchAgentSurface,
+  type AgentSurface,
+} from "./workbench-agent-surface";
 import { clamp } from "./workbench-geometry";
 import { WorkbenchIcon } from "./workbench-icon";
 import {
@@ -822,15 +826,20 @@ function AnalystWorkbenchSurface({
     startX: number;
     startWidth: number;
   } | null>(null);
-  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentSurface, setAgentSurface] = useState<AgentSurface>("closed");
+  const [agentFocusRequest, setAgentFocusRequest] = useState(0);
   const [agentKickoff, setAgentKickoff] = useState<{
     id: number;
     prompt: string;
     routingHint?: AgentChatRoutingHint;
   } | null>(null);
+  const [agentInspectorHost, setAgentInspectorHost] = useState<HTMLElement | null>(null);
+  const [agentFocusPatchSetId, setAgentFocusPatchSetId] = useState<number | null>(null);
+  const [agentFocusFindingId, setAgentFocusFindingId] = useState<string | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
+  const agentTriggerRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const timersRef = useRef<number[]>([]);
 
@@ -946,6 +955,15 @@ function AnalystWorkbenchSurface({
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "k"
+      ) {
+        event.preventDefault();
+        if (!writeLocked) openQuickAsk();
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen(true);
@@ -953,7 +971,7 @@ function AnalystWorkbenchSurface({
     }
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, []);
+  }, [writeLocked]);
 
   useEffect(() => {
     if (!paletteOpen) return;
@@ -1188,7 +1206,7 @@ function AnalystWorkbenchSurface({
         "再针对该问题绑定的对象给出可逐项审阅的字段修改建议。",
       routingHint: { entrypoint: "issue_action" },
     });
-    setAgentOpen(true);
+    setAgentSurface("desk");
     announce(`已把验证问题“${issue.title}”交给 Agent 处理。`);
   }
 
@@ -1242,7 +1260,7 @@ function AnalystWorkbenchSurface({
     setManualEditing(false);
     setManualValue(seed.validationIssues[0]?.patchAfter ?? "");
     setAuditEntries([...seed.initialAuditEntries]);
-    setAgentOpen(false);
+    setAgentSurface("closed");
     commitObjectFocus({ objectId: seed.defaultObjectId, view: "timeline" });
     announce(`工作台数据已重置，已返回“${seed.caseMeta.title}”默认问题。`);
   }
@@ -1294,6 +1312,87 @@ function AnalystWorkbenchSurface({
     const nextEvent = seed.timelineEvents[nextIndex];
     if (nextEvent) selectEvent(nextEvent.id);
   }
+
+  function closeAgent() {
+    agentTriggerRef.current?.focus();
+    setAgentSurface("closed");
+    setAgentKickoff(null);
+  }
+
+  function openQuickAsk() {
+    setAgentSurface("quick");
+    setAgentFocusRequest((version) => version + 1);
+  }
+
+  const agentLiveProps =
+    realData && projectId !== null && currentDraft
+      ? {
+          draftId: currentDraft.draft_id,
+          draftRevision: draftRevision ?? currentDraft.revision,
+          focus: {
+            object_ids: selectedObjectId ? [selectedObjectId] : [],
+            event_ids: selectedEventId ? [selectedEventId] : [],
+            validation_issue_ids: selectedIssueId ? [selectedIssueId] : [],
+            view,
+          },
+          focusRequest: agentFocusRequest,
+          kickoff: agentKickoff,
+          onClose: closeAgent,
+          onContinueInDesk: () => setAgentSurface("desk"),
+          onLocateEvent: (eventId: string) => selectEvent(eventId, { preserveView: true }),
+          onLocateIssue: openIssue,
+          onLocateObject: (objectId: string) => selectObject(objectId, true),
+          onLocateView: setView,
+          onFocusPatch: (patchSetId: number) => {
+            setAgentFocusPatchSetId(patchSetId);
+            setAgentFocusFindingId(null);
+            setMobileRegion("inspector");
+            setInspectorOpen(true);
+            announce(`已将修改建议 #${patchSetId} 聚焦到对象上下文。`);
+          },
+          onFocusFinding: (findingId: string) => {
+            setAgentFocusFindingId(findingId);
+            setAgentFocusPatchSetId(null);
+            setMobileRegion("inspector");
+            setInspectorOpen(true);
+            announce(`已将验证发现 ${findingId} 聚焦到对象上下文。`);
+          },
+          focusPatchSetId: agentFocusPatchSetId,
+          focusFindingId: agentFocusFindingId,
+          inspectorHost: agentInspectorHost,
+          onDraftChanged: onCurrentDraftChanged ?? (async () => {}),
+          projectId,
+          referenceLabels: {
+            objects: Object.fromEntries(seed.caseObjects.map((object) => [object.id, object.label])),
+            events: Object.fromEntries(seed.timelineEvents.map((event) => [event.id, event.label])),
+            issues: Object.fromEntries(seed.validationIssues.map((issue) => [issue.id, issue.title])),
+          },
+        }
+      : null;
+
+  const agentSurfaceContent =
+    agentSurface === "closed" ? null : (
+      <WorkbenchAgentSurface surface={agentSurface}>
+        {agentLiveProps ? (
+          <AgentLivePanel {...agentLiveProps} surface={agentSurface} />
+        ) : (
+          <AgentPanel
+            contextChips={[
+              selectedObject?.label,
+              selectedEvent?.label,
+              selectedIssue?.title,
+              workbenchViewOptions.find((option) => option.id === view)?.label,
+            ].filter((value): value is string => Boolean(value))}
+            focusRequest={agentFocusRequest}
+            onClose={closeAgent}
+            onContinueInDesk={() => setAgentSurface("desk")}
+            seed={seed}
+            surface={agentSurface}
+            unresolvedCount={unresolvedCount}
+          />
+        )}
+      </WorkbenchAgentSurface>
+    );
 
   return (
     <div
@@ -1387,10 +1486,11 @@ function AnalystWorkbenchSurface({
         <div className={styles.topActions}>
           <button aria-label="打开命令面板" onClick={() => setPaletteOpen(true)} type="button"><WorkbenchIcon name="command" /></button>
           <button
-            aria-expanded={agentOpen}
+            aria-expanded={agentSurface !== "closed"}
             aria-label={writeLocked ? "候选预览不可使用 Agent" : "打开卷宗统筹 Agent 对话"}
             disabled={writeLocked}
-            onClick={() => setAgentOpen(true)}
+            onClick={openQuickAsk}
+            ref={agentTriggerRef}
             type="button"
           >
             <WorkbenchIcon name="chat" />
@@ -1512,6 +1612,7 @@ function AnalystWorkbenchSurface({
 
         <main
           className={styles.canvas}
+          data-agent-surface={agentSurface}
           data-draft-revision={seed.caseMeta.revision}
           data-selected-object-id={selectedObjectId ?? ""}
           data-workbench-view={view}
@@ -1519,6 +1620,9 @@ function AnalystWorkbenchSurface({
           onKeyDown={handleTimelineKeys}
           tabIndex={-1}
         >
+          {agentSurface === "desk" ? agentSurfaceContent : null}
+          {agentSurface !== "desk" ? (
+            <>
           <header className={styles.canvasToolbar}>
             {projectId !== null && currentDraft && onDraftActivated && !writeLocked ? (
               <DraftSwitcher
@@ -1725,7 +1829,10 @@ function AnalystWorkbenchSurface({
                 )}
               </div>
             ) : null}
+            {agentSurface === "quick" ? agentSurfaceContent : null}
           </div>
+            </>
+          ) : null}
         </main>
 
         <aside aria-label="对象上下文" className={styles.inspector}>
@@ -1803,6 +1910,7 @@ function AnalystWorkbenchSurface({
               selectedObjectId={selectedObjectId}
               writeLocked={writeLocked}
             />
+            <div ref={setAgentInspectorHost} />
           </div>
         </aside>
         {!inspectorOpen ? (
@@ -1861,55 +1969,6 @@ function AnalystWorkbenchSurface({
         <section><header><span>卷宗对象</span><small>{matchingPaletteObjects.length}</small></header>{matchingPaletteObjects.map((object) => <button key={object.id} onClick={() => runPaletteAction(() => selectObject(object.id, true))} type="button"><span className={styles.paletteObjectMark}>{objectKindLabels[object.kind].slice(0, 1)}</span><span><strong>{object.label}</strong><small>{object.code}</small></span><i>{object.id}</i></button>)}{matchingPaletteObjects.length === 0 ? <p>没有匹配对象。</p> : null}</section>
       </FocusTrapDialog>
 
-      {agentOpen && realData && projectId !== null && currentDraft ? (
-        <AgentLivePanel
-          draftId={currentDraft.draft_id}
-          draftRevision={draftRevision ?? currentDraft.revision}
-          focus={{
-            object_ids: selectedObjectId ? [selectedObjectId] : [],
-            event_ids: selectedEventId ? [selectedEventId] : [],
-            validation_issue_ids: selectedIssueId ? [selectedIssueId] : [],
-            view,
-          }}
-          kickoff={agentKickoff}
-          onClose={() => {
-            setAgentOpen(false);
-            setAgentKickoff(null);
-          }}
-          onLocateEvent={(eventId) => {
-            selectEvent(eventId, { preserveView: true });
-          }}
-          onLocateIssue={(issueId) => {
-            openIssue(issueId);
-          }}
-          onLocateObject={(objectId) => {
-            selectObject(objectId, true);
-          }}
-          onLocateView={(nextView) => {
-            setView(nextView);
-          }}
-          onDraftChanged={onCurrentDraftChanged ?? (async () => {})}
-          projectId={projectId}
-          referenceLabels={{
-            objects: Object.fromEntries(
-              seed.caseObjects.map((object) => [object.id, object.label]),
-            ),
-            events: Object.fromEntries(
-              seed.timelineEvents.map((event) => [event.id, event.label]),
-            ),
-            issues: Object.fromEntries(
-              seed.validationIssues.map((issue) => [issue.id, issue.title]),
-            ),
-          }}
-        />
-      ) : null}
-      {agentOpen && !realData ? (
-        <AgentPanel
-          onClose={() => setAgentOpen(false)}
-          seed={seed}
-          unresolvedCount={unresolvedCount}
-        />
-      ) : null}
     </div>
   );
 }

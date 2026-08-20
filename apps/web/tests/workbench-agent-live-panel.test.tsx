@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   sendAgentMessage: vi.fn(),
   sendAgentRoutingFeedback: vi.fn(),
   undoAgentPatchSet: vi.fn(),
+  updateAgentThread: vi.fn(),
   waitForTask: vi.fn(),
 }));
 
@@ -50,6 +51,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     sendAgentMessage: mocks.sendAgentMessage,
     sendAgentRoutingFeedback: mocks.sendAgentRoutingFeedback,
     undoAgentPatchSet: mocks.undoAgentPatchSet,
+    updateAgentThread: mocks.updateAgentThread,
   };
 });
 
@@ -257,11 +259,69 @@ describe("workbench agent live panel", () => {
       await screen.findByText("检查完成，没有发现问题。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("combobox", { name: "选择 Agent 对话" }),
-    ).toHaveValue("11");
+      screen.getByRole("button", { name: /主对话/ }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" }),
     ).not.toBeDisabled();
+  });
+
+  it("persists Desk thread actions and disables the composer after archiving", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([]);
+    mocks.updateAgentThread.mockImplementation(
+      async (
+        _actorId: number,
+        _projectId: number,
+        _threadId: number,
+        _draftId: number,
+        _draftRevision: number,
+        changes: { title?: string; is_pinned?: boolean; archived?: boolean },
+      ) =>
+        makeThread({
+          ...(changes.title === undefined ? {} : { title: changes.title }),
+          ...(changes.is_pinned === undefined
+            ? {}
+            : { is_pinned: changes.is_pinned }),
+          ...(changes.archived === undefined
+            ? {}
+            : { status: changes.archived ? "archived" : "active" }),
+        }),
+    );
+
+    renderPanel();
+
+    fireEvent.click(await screen.findByRole("button", { name: /主对话/ }));
+    fireEvent.click(screen.getByRole("button", { name: "重命名" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "对话标题" }), {
+      target: { value: "时间线复核" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(mocks.updateAgentThread).toHaveBeenCalledWith(
+        1,
+        1,
+        11,
+        9,
+        3,
+        { title: "时间线复核" },
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "归档" }));
+    await waitFor(() =>
+      expect(mocks.updateAgentThread).toHaveBeenLastCalledWith(
+        1,
+        1,
+        11,
+        9,
+        3,
+        { archived: true },
+      ),
+    );
+    expect(
+      screen.getByRole("textbox", { name: "给卷宗统筹 Agent 的指令" }),
+    ).toBeDisabled();
   });
 
   it("renders the routing chip and submits one route-error correction", async () => {
@@ -380,6 +440,8 @@ describe("workbench agent live panel", () => {
     expect(
       await screen.findByText("预设路由 · 逻辑漏洞复查"),
     ).toBeInTheDocument();
+    expect(screen.queryByText("修改建议")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
     expect(await screen.findByText("修改建议")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("checkbox", { name: "选择修改 研究员 /name" }),
@@ -456,6 +518,7 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
+    fireEvent.click(await screen.findByRole("button", { name: "验证发现 2" }));
     expect(
       await screen.findByRole("article", { name: "逻辑漏洞复查发现" }),
     ).toBeInTheDocument();
@@ -497,9 +560,8 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "对象 · 研究员" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "引用 4" }));
+    fireEvent.click(screen.getByRole("button", { name: "对象 · 研究员" }));
     fireEvent.click(
       screen.getByRole("button", { name: "事件 · 重启事件" }),
     );
@@ -876,6 +938,7 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
     expect(await screen.findByText("修改建议")).toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("checkbox", { name: "选择修改 研究员 /name" }),
@@ -947,9 +1010,8 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "撤销应用" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "撤销应用" }));
 
     await waitFor(() => {
       expect(mocks.undoAgentPatchSet).toHaveBeenCalledWith(1, 1, 200, 9, 4);
@@ -974,9 +1036,8 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "定位对象 研究员" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "定位对象 研究员" }));
     expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
   });
 
@@ -1000,7 +1061,8 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
-    fireEvent.click(await screen.findByRole("button", { name: "全部拒绝" }));
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "全部拒绝" }));
     expect(mocks.applyAgentPatchSet).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认拒绝" }));
 
@@ -1037,9 +1099,8 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "查看验证警告（1）" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看验证警告（1）" }));
     expect(await screen.findByText("关键主张缺少支撑信息")).toBeInTheDocument();
     expect(screen.getByText("CF-W-CLAIM-001")).toBeInTheDocument();
     expect(
@@ -1085,9 +1146,8 @@ describe("workbench agent live panel", () => {
 
     renderPanel();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "重新生成建议" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "待审修改 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "重新生成建议" }));
 
     await waitFor(() => {
       expect(mocks.sendAgentMessage).toHaveBeenCalledWith(
