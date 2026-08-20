@@ -29,8 +29,10 @@ import {
   waitForTask,
 } from "@/features/case-session/case-session-api";
 
-import styles from "./analyst-workbench.module.css";
+import styles from "./workbench-agent.module.css";
+import { WorkbenchAgentComposer } from "./workbench-agent-composer";
 import { agentPromptPresets } from "./workbench-agent-presets";
+import type { AgentSurface } from "./workbench-agent-surface";
 import { WorkbenchIcon } from "./workbench-icon";
 
 const ACTIVE_TASK_STATUSES = new Set<TaskView["status"]>([
@@ -211,6 +213,9 @@ export function AgentLivePanel({
   onLocateView,
   onDraftChanged,
   onClose,
+  surface = "desk",
+  onContinueInDesk = () => undefined,
+  focusRequest = 0,
 }: {
   projectId: number;
   draftId: number;
@@ -228,6 +233,9 @@ export function AgentLivePanel({
   onLocateView: (view: AgentSuggestedView) => void;
   onDraftChanged: () => Promise<void>;
   onClose: () => void;
+  surface?: Exclude<AgentSurface, "closed">;
+  onContinueInDesk?: () => void;
+  focusRequest?: number;
 }) {
   const [threads, setThreads] = useState<AgentThreadView[]>([]);
   const [threadsLoading, setThreadsLoading] = useState(true);
@@ -262,6 +270,17 @@ export function AgentLivePanel({
     },
     [],
   );
+
+  useEffect(() => {
+    if (surface !== "quick") return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose, surface]);
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -630,6 +649,19 @@ export function AgentLivePanel({
       threads.find((thread) => thread.thread_id === selectedThreadId) ?? null,
     [selectedThreadId, threads],
   );
+  const contextChips = useMemo(() => {
+    const chips: string[] = [];
+    const objectId = focus.object_ids[0];
+    const eventId = focus.event_ids[0];
+    const issueId = focus.validation_issue_ids[0];
+    if (objectId) chips.push(referenceLabels.objects[objectId] ?? objectId);
+    if (eventId) chips.push(referenceLabels.events[eventId] ?? eventId);
+    if (issueId) chips.push(referenceLabels.issues[issueId] ?? issueId);
+    if (focus.view && focus.view in agentViewLabels) {
+      chips.push(agentViewLabels[focus.view as AgentSuggestedView]);
+    }
+    return chips;
+  }, [focus, referenceLabels]);
 
   return (
     <section
@@ -639,7 +671,7 @@ export function AgentLivePanel({
       <header className={styles.agentHeader}>
         <div>
           <span>卷宗统筹</span>
-          <strong>Agent 对话</strong>
+          <strong>{surface === "desk" ? "统筹台" : "快速询问"}</strong>
         </div>
         <button
           aria-label="关闭 Agent 对话"
@@ -861,40 +893,18 @@ export function AgentLivePanel({
           </button>
         ))}
       </div>
-      <form
-        className={styles.agentInput}
-        onSubmit={(event) => {
-          event.preventDefault();
-          void send(draft);
-        }}
-      >
-        <input
-          aria-label="给卷宗统筹 Agent 的指令"
-          disabled={inputDisabled}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={
-            busy
-              ? "Agent 正在回复，请稍候…"
-              : "布置卷宗任务…"
-          }
-          value={draft}
-        />
-        <button
-          disabled={inputDisabled || !draft.trim()}
-          type="submit"
-        >
-          {busy ? "回复中" : "发送"}
-        </button>
-        {busy && pendingEntry !== null ? (
-          <button
-            className={styles.agentCancel}
-            onClick={() => void cancelCurrentTask()}
-            type="button"
-          >
-            取消
-          </button>
-        ) : null}
-      </form>
+      <WorkbenchAgentComposer
+        busy={busy}
+        contextChips={contextChips}
+        disabled={inputDisabled}
+        draft={draft}
+        onCancel={busy && pendingEntry !== null ? () => void cancelCurrentTask() : undefined}
+        onContinueInDesk={surface === "quick" ? onContinueInDesk : undefined}
+        onDraftChange={setDraft}
+        onSend={() => void send(draft)}
+        focusRequest={focusRequest}
+        surface={surface}
+      />
     </section>
   );
 }
