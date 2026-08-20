@@ -21,6 +21,7 @@
   --issue: #d95c59;
   --issue-strong: #a33f3d;
   --issue-soft: rgba(217, 92, 89, 0.09);
+  --agent-panel-width: 600px;
   position: relative;
   isolation: isolate;
   display: grid;
