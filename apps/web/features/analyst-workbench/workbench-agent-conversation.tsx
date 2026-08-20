@@ -5,7 +5,6 @@ import { useState, type ReactNode } from "react";
 import type {
   AgentAuditFindingView,
   AgentMessageView,
-  AgentPatchSetView,
   AgentSuggestedView,
   TaskView,
 } from "@/lib/api-client";
@@ -21,20 +20,6 @@ export const agentViewLabels: Record<AgentSuggestedView, string> = {
   compile: "编译中心",
   evidence: "证据对比",
 };
-
-const auditFindingKindLabels = {
-  dangling_ref: "断链",
-  contradiction: "矛盾",
-  temporal: "时序错误",
-  motivation_gap: "动机缺口",
-  scope_gap: "范围缺口",
-} as const;
-
-const auditFindingSeverityLabels = {
-  S1: "致命",
-  S2: "主要",
-  S3: "次要",
-} as const;
 
 export function agentAuditFindingsFor(
   message: AgentMessageView,
@@ -92,8 +77,9 @@ export function WorkbenchAgentConversation({
   onLocateEvent,
   onLocateIssue,
   onLocateView,
+  onFocusPatch,
+  onFocusFinding,
   renderRoutingFeedback,
-  renderPatchReview,
 }: {
   surface: "quick" | "desk";
   threadsLoading: boolean;
@@ -116,8 +102,9 @@ export function WorkbenchAgentConversation({
   onLocateEvent: (eventId: string) => void;
   onLocateIssue: (issueId: string) => void;
   onLocateView: (view: AgentSuggestedView) => void;
+  onFocusPatch: (patchSetId: number) => void;
+  onFocusFinding: (findingId: string) => void;
   renderRoutingFeedback: (message: AgentMessageView) => ReactNode;
-  renderPatchReview: (message: AgentMessageView, patchSet: AgentPatchSetView) => ReactNode;
 }) {
   return (
     <div aria-live="polite" className={styles.agentMessages}>
@@ -165,8 +152,9 @@ export function WorkbenchAgentConversation({
                 onLocateIssue={onLocateIssue}
                 onLocateObject={onLocateObject}
                 onLocateView={onLocateView}
+                onFocusPatch={onFocusPatch}
+                onFocusFinding={onFocusFinding}
                 referenceLabels={referenceLabels}
-                renderPatchReview={renderPatchReview}
               />
             ) : null}
             {message.role === "assistant" && message.status === "completed"
@@ -227,7 +215,8 @@ function AssistantResultSummary({
   onLocateEvent,
   onLocateIssue,
   onLocateView,
-  renderPatchReview,
+  onFocusPatch,
+  onFocusFinding,
 }: {
   message: AgentMessageView;
   findings: AgentAuditFindingView[];
@@ -240,14 +229,12 @@ function AssistantResultSummary({
   onLocateEvent: (eventId: string) => void;
   onLocateIssue: (issueId: string) => void;
   onLocateView: (view: AgentSuggestedView) => void;
-  renderPatchReview: (message: AgentMessageView, patchSet: AgentPatchSetView) => ReactNode;
+  onFocusPatch: (patchSetId: number) => void;
+  onFocusFinding: (findingId: string) => void;
 }) {
-  // A finished turn stays compact until the creator asks to inspect one
-  // structured result. This keeps the conversation readable while preserving
-  // the existing Patch review actions inside their explicit summary entry.
+  // A finished turn stays compact. Patch/Finding details are owned by the
+  // Workbench Inspector; these buttons only provide a focus entry point.
   const [referencesOpen, setReferencesOpen] = useState(false);
-  const [findingsOpen, setFindingsOpen] = useState(false);
-  const [patchOpen, setPatchOpen] = useState(false);
   const referenceCount =
     message.referenced_object_ids.length +
     message.referenced_event_ids.length +
@@ -272,8 +259,8 @@ function AssistantResultSummary({
       ) : null}
       {findings.length > 0 ? (
         <button
-          aria-expanded={findingsOpen}
-          onClick={() => setFindingsOpen((open) => !open)}
+          aria-expanded={false}
+          onClick={() => onFocusFinding(findings[0]?.finding_id ?? "")}
           type="button"
         >
           验证发现 {findings.length}
@@ -281,8 +268,8 @@ function AssistantResultSummary({
       ) : null}
       {patchCount > 0 && message.patch_set ? (
         <button
-          aria-expanded={patchOpen}
-          onClick={() => setPatchOpen((open) => !open)}
+          aria-expanded={false}
+          onClick={() => onFocusPatch(message.patch_set?.patch_set_id ?? 0)}
           type="button"
         >
           待审修改 {patchCount}
@@ -298,20 +285,11 @@ function AssistantResultSummary({
           referenceLabels={referenceLabels}
         />
       ) : null}
-      {findingsOpen ? (
-        <AgentAuditFindings
-          findings={findings}
-          issueLabels={referenceLabels.issues}
-          objectLabels={referenceLabels.objects}
-          eventLabels={referenceLabels.events}
-          onLocateEvent={onLocateEvent}
-          onLocateIssue={onLocateIssue}
-          onLocateObject={onLocateObject}
-        />
+      {patchCount > 0 && message.patch_set ? (
+        <p className={styles.agentInspectorHint}>
+          已将这组修改移至右侧对象上下文 Inspector 审阅。
+        </p>
       ) : null}
-      {patchOpen && message.patch_set
-        ? renderPatchReview(message, message.patch_set)
-        : null}
     </div>
   );
 }
@@ -377,89 +355,5 @@ function ReferenceList({
         </button>
       ) : null}
     </div>
-  );
-}
-
-function AgentAuditFindings({
-  findings,
-  objectLabels,
-  eventLabels,
-  issueLabels,
-  onLocateObject,
-  onLocateEvent,
-  onLocateIssue,
-}: {
-  findings: AgentAuditFindingView[];
-  objectLabels: Record<string, string>;
-  eventLabels: Record<string, string>;
-  issueLabels: Record<string, string>;
-  onLocateObject: (objectId: string) => void;
-  onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
-}) {
-  return (
-    <article className={styles.agentAuditCard} aria-label="逻辑漏洞复查发现">
-      <header className={styles.agentAuditHeader}>
-        <strong>逻辑漏洞复查发现</strong>
-        <span>{findings.length} 项</span>
-      </header>
-      <ol className={styles.agentAuditList}>
-        {findings.map((finding) => (
-          <li
-            className={styles.agentAuditFinding}
-            data-kind={finding.kind}
-            data-severity={finding.severity}
-            key={finding.finding_id}
-          >
-            <div className={styles.agentAuditFindingMeta}>
-              <b>{finding.finding_id}</b>
-              <span>{auditFindingKindLabels[finding.kind] ?? finding.kind}</span>
-              <span>
-                {auditFindingSeverityLabels[finding.severity] ?? finding.severity}
-              </span>
-              {finding.needs_manual_review ? <span>待人工确认</span> : null}
-            </div>
-            <strong>{finding.title}</strong>
-            <p>{finding.statement}</p>
-            {finding.evidence_object_ids.length > 0 ||
-            finding.evidence_event_ids.length > 0 ||
-            finding.evidence_validation_issue_ids.length > 0 ? (
-              <div className={styles.agentRefs}>
-                {finding.evidence_object_ids.map((objectId) => (
-                  <button
-                    data-ref-kind="object"
-                    key={`object:${objectId}`}
-                    onClick={() => onLocateObject(objectId)}
-                    type="button"
-                  >
-                    对象 · {objectLabels[objectId] ?? objectId}
-                  </button>
-                ))}
-                {finding.evidence_event_ids.map((eventId) => (
-                  <button
-                    data-ref-kind="event"
-                    key={`event:${eventId}`}
-                    onClick={() => onLocateEvent(eventId)}
-                    type="button"
-                  >
-                    事件 · {eventLabels[eventId] ?? eventId}
-                  </button>
-                ))}
-                {finding.evidence_validation_issue_ids.map((issueId) => (
-                  <button
-                    data-ref-kind="issue"
-                    key={`issue:${issueId}`}
-                    onClick={() => onLocateIssue(issueId)}
-                    type="button"
-                  >
-                    验证 · {issueLabels[issueId] ?? issueId}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </li>
-        ))}
-      </ol>
-    </article>
   );
 }

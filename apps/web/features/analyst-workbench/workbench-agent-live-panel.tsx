@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   applyAgentPatchSet,
@@ -33,6 +34,7 @@ import styles from "./workbench-agent.module.css";
 import { WorkbenchAgentComposer } from "./workbench-agent-composer";
 import {
   WorkbenchAgentConversation,
+  agentAuditFindingsFor,
   agentViewLabels,
 } from "./workbench-agent-conversation";
 import { WorkbenchAgentDesk } from "./workbench-agent-desk";
@@ -40,6 +42,7 @@ import { agentPromptPresets } from "./workbench-agent-presets";
 import type { AgentSurface } from "./workbench-agent-surface";
 import { WorkbenchAgentTaskStrip } from "./workbench-agent-task-strip";
 import { WorkbenchAgentThreadMenu } from "./workbench-agent-thread-menu";
+import { WorkbenchAgentInspector } from "./workbench-agent-inspector";
 
 const ACTIVE_TASK_STATUSES = new Set<TaskView["status"]>([
   "queued",
@@ -52,20 +55,6 @@ const TERMINAL_TASK_STATUSES = new Set<TaskView["status"]>([
   "failed",
   "cancelled",
 ]);
-
-const patchStatusLabels: Record<AgentPatchSetView["status"], string> = {
-  pending: "待审阅",
-  stale: "已失效",
-  applied: "已应用",
-  undone: "已撤销",
-  rejected: "已拒绝",
-};
-
-const operationDecisionLabels: Record<string, string> = {
-  pending: "待决定",
-  accepted: "已采纳",
-  rejected: "已拒绝",
-};
 
 const routingIntentLabels: Record<AgentRoutingCorrectIntent, string> = {
   question: "问答",
@@ -109,13 +98,6 @@ function routingSummaryFor(message: AgentMessageView): {
     intent: typeof summary.intent === "string" ? summary.intent : null,
   };
 }
-
-function displayValue(value: unknown): string {
-  const text =
-    typeof value === "string" ? value : JSON.stringify(value);
-  return text.length > 96 ? `${text.slice(0, 95)}…` : text;
-}
-
 interface ContextOccupancy {
   usedTokens: number;
   budgetTokens: number | null;
@@ -168,6 +150,11 @@ export function AgentLivePanel({
   onLocateEvent,
   onLocateIssue,
   onLocateView,
+  onFocusPatch = () => undefined,
+  onFocusFinding = () => undefined,
+  focusPatchSetId,
+  focusFindingId,
+  inspectorHost,
   onDraftChanged,
   onClose,
   surface = "desk",
@@ -188,9 +175,14 @@ export function AgentLivePanel({
   onLocateEvent: (eventId: string) => void;
   onLocateIssue: (issueId: string) => void;
   onLocateView: (view: AgentSuggestedView) => void;
+  onFocusPatch?: (patchSetId: number) => void;
+  onFocusFinding?: (findingId: string) => void;
+  focusPatchSetId?: number | null;
+  focusFindingId?: string | null;
+  inspectorHost?: HTMLElement | null;
   onDraftChanged: () => Promise<void>;
   onClose: () => void;
-  surface?: Exclude<AgentSurface, "closed">;
+  surface?: AgentSurface;
   onContinueInDesk?: () => void;
   focusRequest?: number;
 }) {
@@ -206,6 +198,9 @@ export function AgentLivePanel({
   const [liveTasks, setLiveTasks] = useState<Record<number, TaskView>>({});
   const [creatingThread, setCreatingThread] = useState(false);
   const [patchBusyId, setPatchBusyId] = useState<number | null>(null);
+  const [patchError, setPatchError] = useState<string | null>(null);
+  const [localFocusPatchSetId, setLocalFocusPatchSetId] = useState<number | null>(null);
+  const [localFocusFindingId, setLocalFocusFindingId] = useState<string | null>(null);
   const [feedbackByMessage, setFeedbackByMessage] = useState<
     Record<number, AgentRoutingCorrectIntent>
   >({});
@@ -606,10 +601,11 @@ export function AgentLivePanel({
 
   async function applyPatchSet(
     patchSet: AgentPatchSetView,
-    operationIds: number[],
+    operationIds: number[] | null,
   ) {
     if (patchBusyId !== null) return;
     setPatchBusyId(patchSet.patch_set_id);
+    setPatchError(null);
     setMessagesError(null);
     try {
       const result = await applyAgentPatchSet(
@@ -624,7 +620,9 @@ export function AgentLivePanel({
       await onDraftChanged();
       await reloadMessages();
     } catch (caught) {
-      setMessagesError(errorMessage(caught));
+      const message = errorMessage(caught);
+      setPatchError(message);
+      setMessagesError(message);
     } finally {
       setPatchBusyId(null);
     }
@@ -638,6 +636,7 @@ export function AgentLivePanel({
       return;
     }
     setPatchBusyId(patchSet.patch_set_id);
+    setPatchError(null);
     setMessagesError(null);
     try {
       const result = await undoAgentPatchSet(
@@ -651,7 +650,9 @@ export function AgentLivePanel({
       await onDraftChanged();
       await reloadMessages();
     } catch (caught) {
-      setMessagesError(errorMessage(caught));
+      const message = errorMessage(caught);
+      setPatchError(message);
+      setMessagesError(message);
     } finally {
       setPatchBusyId(null);
     }
@@ -697,8 +698,55 @@ export function AgentLivePanel({
     [refreshThreads],
   );
 
+  const inspectorPatches = useMemo(
+    () => messages.flatMap((message) =>
+      message.patch_set ? [{ message, patchSet: message.patch_set }] : [],
+    ),
+    [messages],
+  );
+  const inspectorFindings = useMemo(
+    () => messages.flatMap((message) =>
+      agentAuditFindingsFor(message).map((finding) => ({ message, finding })),
+    ),
+    [messages],
+  );
+  const inspectorPortal = inspectorHost
+    ? createPortal(
+        <WorkbenchAgentInspector
+          busyPatchSetId={patchBusyId}
+          patchError={patchError}
+          eventLabels={referenceLabels.events}
+          findings={inspectorFindings}
+          focusFindingId={focusFindingId ?? localFocusFindingId}
+          focusPatchSetId={focusPatchSetId ?? localFocusPatchSetId}
+          issueLabels={referenceLabels.issues}
+          objectLabels={referenceLabels.objects}
+          onApply={(patchSet, operationIds) => void applyPatchSet(patchSet, operationIds)}
+            onFocusPatch={(id) => { setLocalFocusPatchSetId(id); setLocalFocusFindingId(null); onFocusPatch(id); }}
+          onLocateEvent={onLocateEvent}
+          onLocateIssue={onLocateIssue}
+          onLocateObject={onLocateObject}
+          onRetry={retryMessage}
+          onUndo={(patchSet) => void undoPatchSet(patchSet)}
+          patches={inspectorPatches}
+        />,
+        inspectorHost,
+      )
+    : null;
+  const focusPatch = (id: number) => {
+    setLocalFocusPatchSetId(id);
+    setLocalFocusFindingId(null);
+    onFocusPatch(id);
+  };
+  const focusFinding = (id: string) => {
+    setLocalFocusFindingId(id);
+    setLocalFocusPatchSetId(null);
+    onFocusFinding(id);
+  };
+
   if (surface === "desk" || surface === "quick") {
     return (
+    <>
     <WorkbenchAgentDesk
       composer={
         <WorkbenchAgentComposer
@@ -731,24 +779,12 @@ export function AgentLivePanel({
           onLocateIssue={onLocateIssue}
           onLocateObject={onLocateObject}
           onLocateView={onLocateView}
+          onFocusPatch={focusPatch}
+          onFocusFinding={focusFinding}
           onReconnect={() => void bootstrap()}
           onReloadMessages={() => void reloadMessages()}
           onRetryMessage={retryMessage}
           referenceLabels={referenceLabels}
-          renderPatchReview={(message, patchSet) => (
-            <AgentPatchReview
-              busy={patchBusyId === patchSet.patch_set_id}
-              key={`${patchSet.patch_set_id}:${patchSet.status}`}
-              objectLabels={referenceLabels.objects}
-              onApply={(operationIds) =>
-                void applyPatchSet(patchSet, operationIds)
-              }
-              onLocateObject={onLocateObject}
-              onRetry={() => retryMessage(message)}
-              onUndo={() => void undoPatchSet(patchSet)}
-              patchSet={patchSet}
-            />
-          )}
           renderRoutingFeedback={(message) => {
             const summary = routingSummaryFor(message);
             return summary === null ? null : (
@@ -817,10 +853,32 @@ export function AgentLivePanel({
         />
       }
     />
+    {inspectorPortal ?? (localFocusPatchSetId !== null || localFocusFindingId !== null ? (
+      <WorkbenchAgentInspector
+        busyPatchSetId={patchBusyId}
+        patchError={patchError}
+        eventLabels={referenceLabels.events}
+        findings={inspectorFindings}
+        focusFindingId={localFocusFindingId}
+        focusPatchSetId={localFocusPatchSetId}
+        issueLabels={referenceLabels.issues}
+        objectLabels={referenceLabels.objects}
+        onApply={(patchSet, operationIds) => void applyPatchSet(patchSet, operationIds)}
+        requireApplyConfirmation={false}
+        onFocusPatch={focusPatch}
+        onLocateEvent={onLocateEvent}
+        onLocateIssue={onLocateIssue}
+        onLocateObject={onLocateObject}
+        onRetry={retryMessage}
+        onUndo={(patchSet) => void undoPatchSet(patchSet)}
+        patches={inspectorPatches}
+      />
+    ) : null)}
+    </>
     );
   }
+  return inspectorPortal;
 }
-
 function RoutingFeedback({
   routeSource,
   intent,
@@ -908,221 +966,5 @@ function RoutingFeedback({
         </button>
       )}
     </div>
-  );
-}
-
-function AgentPatchReview({
-  patchSet,
-  objectLabels,
-  busy,
-  onApply,
-  onUndo,
-  onRetry,
-  onLocateObject,
-}: {
-  patchSet: AgentPatchSetView;
-  objectLabels: Record<string, string>;
-  busy: boolean;
-  onApply: (operationIds: number[]) => void;
-  onUndo: () => void;
-  onRetry?: () => void;
-  onLocateObject?: (objectId: string) => void;
-}) {
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [confirmingReject, setConfirmingReject] = useState(false);
-  const [issuesExpanded, setIssuesExpanded] = useState(false);
-  const actionable = patchSet.status === "pending" && !patchSet.is_stale;
-  const allOperationIds = patchSet.operations.map(
-    (operation) => operation.operation_id,
-  );
-
-  function toggleOperation(operationId: number) {
-    setSelectedIds((previous) =>
-      previous.includes(operationId)
-        ? previous.filter((id) => id !== operationId)
-        : [...previous, operationId],
-    );
-  }
-
-  function rejectAll() {
-    if (confirmingReject) {
-      setConfirmingReject(false);
-      onApply([]);
-      return;
-    }
-    setConfirmingReject(true);
-  }
-
-  return (
-    <article
-      className={styles.agentPatchCard}
-      data-status={patchSet.status}
-      data-stale={patchSet.is_stale || undefined}
-    >
-      <header className={styles.agentPatchHeader}>
-        <strong>修改建议</strong>
-        <span>
-          {patchStatusLabels[patchSet.status]}
-          {patchSet.is_stale ? " · 草稿已变化" : ""}
-          {patchSet.status === "applied" &&
-          patchSet.applied_to_revision !== null
-            ? ` · R${patchSet.applied_from_revision}→R${patchSet.applied_to_revision}`
-            : ""}
-        </span>
-      </header>
-      <p className={styles.agentPatchReason}>
-        基于草稿 R{patchSet.base_draft_revision} 生成
-        {patchSet.reason_summary ? `：${patchSet.reason_summary}` : ""}
-      </p>
-      <div className={styles.agentPatchOps}>
-        {patchSet.operations.map((operation) => {
-          const decision = operation.decision ?? "pending";
-          const checked =
-            decision === "accepted" ||
-            (actionable && selectedIds.includes(operation.operation_id));
-          const label =
-            objectLabels[operation.object_id ?? ""] ?? operation.object_id ?? "对象";
-          return (
-            <label className={styles.agentPatchOp} key={operation.operation_id}>
-              <input
-                aria-label={`选择修改 ${label} ${operation.field_path}`}
-                checked={checked}
-                disabled={!actionable || busy}
-                onChange={() => toggleOperation(operation.operation_id)}
-                type="checkbox"
-              />
-              <span>
-                <strong>
-                  {label}
-                  <code>{operation.field_path}</code>
-                </strong>
-                <span className={styles.agentPatchOpMeta}>
-                  {operation.object_type ? (
-                    <span>{operation.object_type}</span>
-                  ) : null}
-                  {operation.expected_object_revision !== null ? (
-                    <span>对象 R{operation.expected_object_revision}</span>
-                  ) : null}
-                  <span>{operation.operation_type}</span>
-                  {operation.object_id !== null && onLocateObject ? (
-                    <button
-                      aria-label={`定位对象 ${label}`}
-                      onClick={() => onLocateObject(operation.object_id ?? "")}
-                      type="button"
-                    >
-                      在工作台定位
-                    </button>
-                  ) : null}
-                </span>
-                <small>
-                  {displayValue(operation.old_value)} →{" "}
-                  {displayValue(operation.new_value)}
-                </small>
-                <em>{operation.reason}</em>
-              </span>
-              <b data-decision={decision}>
-                {operationDecisionLabels[decision]}
-              </b>
-            </label>
-          );
-        })}
-      </div>
-      {patchSet.validator_issues.length > 0 ? (
-        <div className={styles.agentPatchIssues}>
-          <button
-            aria-expanded={issuesExpanded}
-            onClick={() => setIssuesExpanded((expanded) => !expanded)}
-            type="button"
-          >
-            {issuesExpanded ? "收起" : "查看"}验证警告（
-            {patchSet.validator_issues.length}）
-          </button>
-          {issuesExpanded ? (
-            <ul>
-              {patchSet.validator_issues.map((issue, index) => {
-                const title =
-                  typeof issue.title === "string"
-                    ? issue.title
-                    : `验证警告 ${index + 1}`;
-                const message =
-                  typeof issue.message === "string" ? issue.message : null;
-                const ruleId =
-                  typeof issue.rule_id === "string" ? issue.rule_id : null;
-                return (
-                  <li key={`${ruleId ?? "issue"}:${index}`}>
-                    <strong>{title}</strong>
-                    {ruleId !== null ? <code>{ruleId}</code> : null}
-                    {message !== null ? <span>{message}</span> : null}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
-        </div>
-      ) : null}
-      {patchSet.validation_warning ? (
-        <p className={styles.agentPatchWarning}>
-          应用后仍有 {patchSet.validator_issues.length} 条验证警告，工作台会同步刷新。
-        </p>
-      ) : null}
-      <div className={styles.agentPatchActions}>
-        {actionable ? (
-          <>
-            <button
-              disabled={busy}
-              onClick={() => onApply(allOperationIds)}
-              type="button"
-            >
-              全部采纳
-            </button>
-            <button
-              disabled={busy || selectedIds.length === 0}
-              onClick={() => onApply(selectedIds)}
-              type="button"
-            >
-              采纳所选（{selectedIds.length}）
-            </button>
-            {confirmingReject ? (
-              <>
-                <button
-                  className={styles.agentPatchDanger}
-                  disabled={busy}
-                  onClick={rejectAll}
-                  type="button"
-                >
-                  确认拒绝
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => setConfirmingReject(false)}
-                  type="button"
-                >
-                  取消
-                </button>
-              </>
-            ) : (
-              <button disabled={busy} onClick={rejectAll} type="button">
-                全部拒绝
-              </button>
-            )}
-          </>
-        ) : null}
-        {patchSet.status === "applied" ? (
-          <button disabled={busy} onClick={onUndo} type="button">
-            撤销应用
-          </button>
-        ) : null}
-        {patchSet.is_stale && onRetry ? (
-          <button disabled={busy} onClick={onRetry} type="button">
-            重新生成建议
-          </button>
-        ) : null}
-        {patchSet.is_stale ? (
-          <span className={styles.agentPatchStale}>
-            建议基于旧草稿生成，请重新请求。
-          </span>
-        ) : null}
-      </div>
-    </article>
   );
 }

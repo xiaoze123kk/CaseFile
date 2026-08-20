@@ -833,6 +833,9 @@ function AnalystWorkbenchSurface({
     prompt: string;
     routingHint?: AgentChatRoutingHint;
   } | null>(null);
+  const [agentInspectorHost, setAgentInspectorHost] = useState<HTMLElement | null>(null);
+  const [agentFocusPatchSetId, setAgentFocusPatchSetId] = useState<number | null>(null);
+  const [agentFocusFindingId, setAgentFocusFindingId] = useState<string | null>(null);
   const modalRef = useRef<HTMLElement>(null);
   const paletteInputRef = useRef<HTMLInputElement>(null);
   const commandTriggerRef = useRef<HTMLButtonElement>(null);
@@ -1321,42 +1324,57 @@ function AnalystWorkbenchSurface({
     setAgentFocusRequest((version) => version + 1);
   }
 
+  const agentLiveProps =
+    realData && projectId !== null && currentDraft
+      ? {
+          draftId: currentDraft.draft_id,
+          draftRevision: draftRevision ?? currentDraft.revision,
+          focus: {
+            object_ids: selectedObjectId ? [selectedObjectId] : [],
+            event_ids: selectedEventId ? [selectedEventId] : [],
+            validation_issue_ids: selectedIssueId ? [selectedIssueId] : [],
+            view,
+          },
+          focusRequest: agentFocusRequest,
+          kickoff: agentKickoff,
+          onClose: closeAgent,
+          onContinueInDesk: () => setAgentSurface("desk"),
+          onLocateEvent: (eventId: string) => selectEvent(eventId, { preserveView: true }),
+          onLocateIssue: openIssue,
+          onLocateObject: (objectId: string) => selectObject(objectId, true),
+          onLocateView: setView,
+          onFocusPatch: (patchSetId: number) => {
+            setAgentFocusPatchSetId(patchSetId);
+            setAgentFocusFindingId(null);
+            setMobileRegion("inspector");
+            setInspectorOpen(true);
+            announce(`已将修改建议 #${patchSetId} 聚焦到对象上下文。`);
+          },
+          onFocusFinding: (findingId: string) => {
+            setAgentFocusFindingId(findingId);
+            setAgentFocusPatchSetId(null);
+            setMobileRegion("inspector");
+            setInspectorOpen(true);
+            announce(`已将验证发现 ${findingId} 聚焦到对象上下文。`);
+          },
+          focusPatchSetId: agentFocusPatchSetId,
+          focusFindingId: agentFocusFindingId,
+          inspectorHost: agentInspectorHost,
+          onDraftChanged: onCurrentDraftChanged ?? (async () => {}),
+          projectId,
+          referenceLabels: {
+            objects: Object.fromEntries(seed.caseObjects.map((object) => [object.id, object.label])),
+            events: Object.fromEntries(seed.timelineEvents.map((event) => [event.id, event.label])),
+            issues: Object.fromEntries(seed.validationIssues.map((issue) => [issue.id, issue.title])),
+          },
+        }
+      : null;
+
   const agentSurfaceContent =
     agentSurface === "closed" ? null : (
       <WorkbenchAgentSurface surface={agentSurface}>
-        {realData && projectId !== null && currentDraft ? (
-          <AgentLivePanel
-            draftId={currentDraft.draft_id}
-            draftRevision={draftRevision ?? currentDraft.revision}
-            focus={{
-              object_ids: selectedObjectId ? [selectedObjectId] : [],
-              event_ids: selectedEventId ? [selectedEventId] : [],
-              validation_issue_ids: selectedIssueId ? [selectedIssueId] : [],
-              view,
-            }}
-            focusRequest={agentFocusRequest}
-            kickoff={agentKickoff}
-            onClose={closeAgent}
-            onContinueInDesk={() => setAgentSurface("desk")}
-            onLocateEvent={(eventId) => selectEvent(eventId, { preserveView: true })}
-            onLocateIssue={openIssue}
-            onLocateObject={(objectId) => selectObject(objectId, true)}
-            onLocateView={setView}
-            onDraftChanged={onCurrentDraftChanged ?? (async () => {})}
-            projectId={projectId}
-            referenceLabels={{
-              objects: Object.fromEntries(
-                seed.caseObjects.map((object) => [object.id, object.label]),
-              ),
-              events: Object.fromEntries(
-                seed.timelineEvents.map((event) => [event.id, event.label]),
-              ),
-              issues: Object.fromEntries(
-                seed.validationIssues.map((issue) => [issue.id, issue.title]),
-              ),
-            }}
-            surface={agentSurface}
-          />
+        {agentLiveProps ? (
+          <AgentLivePanel {...agentLiveProps} surface={agentSurface} />
         ) : (
           <AgentPanel
             contextChips={[
@@ -1892,6 +1910,7 @@ function AnalystWorkbenchSurface({
               selectedObjectId={selectedObjectId}
               writeLocked={writeLocked}
             />
+            <div ref={setAgentInspectorHost} />
           </div>
         </aside>
         {!inspectorOpen ? (

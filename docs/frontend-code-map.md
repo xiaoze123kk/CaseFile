@@ -41,7 +41,8 @@
 | `apps/web/features/analyst-workbench/workbench-evidence-comparison.tsx` | 证据对比视图的「证据 × 假设」矩阵：按核心问题展示每条信息/证据对每个假设的支持/冲突/中立判定、强度与理由，并在选中单元格时给出可靠度、叙事分类、信息类型与支持/反驳的主张；数据来自 `reasoningGroups`（`Hypothesis.evidence_assessments`），真实工作稿立即可用。 |
 | `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：真实数据的确定性验证问题展示规则代码、JSON 路径、字段路径与可定位的目标对象；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
 | `apps/web/features/analyst-workbench/workbench-agent-surface.tsx`、`workbench-agent-composer.tsx`、`workbench-agent.module.css` | 卷宗统筹 Agent 的 `closed / quick / desk` 表面边界、基于真实 Workbench Focus 的上下文输入、中文 IME 安全的多行 Composer，以及独立于主工作台的 Agent 视觉布局。 |
-| `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread/Message/Task 控制器、SSE 跟随、消息发送与 Patch API 生命周期；把事实状态交给 Agent Presentation 组件，并暂留 Phase 3 前的 Routing/Patch 审阅动作。 |
+| `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread/Message/Task 控制器、SSE 跟随、消息发送与 Patch API 生命周期；把 Thread/Task/消息事实交给 Agent Presentation，并向 Workbench Inspector 暴露 Patch/Finding 审阅事实与服务端操作。 |
+| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的 Agent Patch/Finding 唯一审阅所有者：按 ordinal 只读预演、作者选择与确认、Apply/Undo/失效提示和证据定位；不拥有 Thread/Task 生命周期。 |
 | `apps/web/features/analyst-workbench/workbench-agent-desk.tsx` | Desk/Quick 的统一阅读列布局：Header、Conversation、Task Strip、预设指令和 Composer 组合，不拥有领域状态。 |
 | `apps/web/features/analyst-workbench/workbench-agent-thread-menu.tsx` | Agent Thread 搜索、Combobox/Listbox 键盘选择、新建、置顶、重命名、归档和归档筛选呈现；持久化由 live panel 回调完成。 |
 | `apps/web/features/analyst-workbench/workbench-agent-task-strip.tsx` | 真实 Task/SSE 阶段、上下文用量、取消按钮和终态摘要的 Sticky 展示；不估算进度。 |

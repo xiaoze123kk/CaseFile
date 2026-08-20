@@ -525,6 +525,10 @@ export interface AgentAuditFindingView {
   evidence_object_ids: string[];
   evidence_event_ids: string[];
   evidence_validation_issue_ids: string[];
+  impact_refs?: Array<{
+    object_type?: string;
+    object_id?: string;
+  }>;
 }
 
 export type AgentAuditFindingKind =
