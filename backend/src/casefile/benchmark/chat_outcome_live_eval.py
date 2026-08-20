@@ -11,13 +11,25 @@ supports ``--provider fake`` for a zero-cost pipeline smoke check.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
+import tempfile
+import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from casefile.agent_runtime.chat_execution import (
+    ChatCompletionValidationError,
+    ChatExecutionRunner,
+    bind_chat_context_input,
+    prepare_chat_request_artifacts,
+)
 from casefile.agent_runtime.chat_intent import route_allows_suggestions
+from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V6_VERSION
 from casefile.benchmark.chat_live_eval import (
     _provider,
     _resolved_api_key,
@@ -75,6 +87,11 @@ class ChatOutcomeLiveReport:
     gates: dict[str, bool]
     rows: tuple[dict[str, Any], ...]
     status: str
+    suite_task_count: int = 0
+    task_ids: tuple[str, ...] = ()
+    prompt_versions: tuple[str, ...] = ()
+    toolset_versions: tuple[str, ...] = ()
+    suite_fingerprint: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -104,7 +121,41 @@ class ChatOutcomeLiveReport:
             "output_tokens": self.output_tokens,
             "gates": self.gates,
             "rows": list(self.rows),
+            "suite_task_count": self.suite_task_count,
+            "task_ids": list(self.task_ids),
+            "prompt_versions": list(self.prompt_versions),
+            "toolset_versions": list(self.toolset_versions),
+            "suite_fingerprint": self.suite_fingerprint,
         }
+
+
+def suite_fingerprint(
+    tasks: tuple[ChatOutcomeTask, ...] | list[ChatOutcomeTask],
+    *,
+    trials: int,
+    provider_name: str,
+    model_id: str,
+    prompt_version: str = "casefile-chat-v12",
+) -> str:
+    """Identify the exact Suite selection and frozen execution binding."""
+
+    payload = {
+        "provider": provider_name,
+        "model_id": model_id,
+        "trials": trials,
+        "tasks": [
+            {
+                "task_id": task.task_id,
+                "input_hash": request.input_hash,
+                "prompt_version": request.prompt_version,
+                "toolset_version": request.toolset_version,
+            }
+            for task in tasks
+            for request in (_request_for_task(task, prompt_version=prompt_version),)
+        ],
+    }
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _provider_error_verdict(
@@ -123,6 +174,26 @@ def _provider_error_verdict(
     )
 
 
+def _completion_error_verdict(
+    task: ChatOutcomeTask,
+    trial_no: int,
+    *,
+    actual_intent: str,
+    route_source: str,
+    code: str,
+) -> ChatOutcomeTrialVerdict:
+    return ChatOutcomeTrialVerdict(
+        task_id=task.task_id,
+        trial_no=trial_no,
+        failures=("completion_validation",),
+        safety_passed=False,
+        capability_passed=False,
+        passed=False,
+        actual_intent=actual_intent,
+        route_source=route_source,
+    )
+
+
 def _usage_tokens(usage: dict[str, Any] | None) -> tuple[int, int]:
     if not isinstance(usage, dict):
         return 0, 0
@@ -134,6 +205,31 @@ def _usage_tokens(usage: dict[str, Any] | None) -> tuple[int, int]:
         return 0, 0
 
 
+def classify_trial_error(error: Exception, *, stage: str) -> tuple[str, str]:
+    """Return finite, secret-free diagnostics for one failed Trial."""
+
+    text = str(error).lower()
+    if isinstance(error, TimeoutError) or "timeout" in text or "timed out" in text:
+        return "timeout", "timeout"
+    if stage == "completion" or isinstance(error, ChatCompletionValidationError):
+        code = getattr(error, "code", "completion_validation_failed")
+        return "completion_validation", str(code)
+    if "max_turn" in text or "maxturn" in text or "maximum turn" in text:
+        return "max_turns", "max_turns_exceeded"
+    if "tool" in text:
+        return "tool", "tool_execution_failed"
+    if "schema" in text or "json" in text or "validation" in text:
+        return "output_validation", "output_validation_failed"
+    if isinstance(error, (ConnectionError, OSError)):
+        return "transport", "transport_error"
+    return "protocol", "protocol_error"
+
+
+def _event_summary(events: list[dict[str, Any]]) -> dict[str, int]:
+    counts = Counter(str(event.get("event_type", "unknown")) for event in events)
+    return dict(sorted(counts.items()))
+
+
 def run_live_chat_outcome_eval(
     provider_factory: Callable[[], Any],
     *,
@@ -142,6 +238,9 @@ def run_live_chat_outcome_eval(
     api_key: str,
     tasks: tuple[ChatOutcomeTask, ...] | list[ChatOutcomeTask],
     trials: int = 3,
+    existing_rows: tuple[dict[str, Any], ...] | list[dict[str, Any]] = (),
+    on_trial: Callable[[dict[str, Any]], None] | None = None,
+    prompt_version: str = "casefile-chat-v12",
 ) -> ChatOutcomeLiveReport:
     if not tasks:
         raise ValueError("tasks must not be empty")
@@ -151,14 +250,34 @@ def run_live_chat_outcome_eval(
     verdicts_by_task: dict[str, list[ChatOutcomeTrialVerdict]] = {
         task.task_id: [] for task in tasks
     }
-    rows: list[dict[str, Any]] = []
-    dangerous_expected = 0
-    dangerous_misses = 0
-    input_tokens_total = 0
-    output_tokens_total = 0
+    rows: list[dict[str, Any]] = [dict(row) for row in existing_rows]
+    completed = {
+        (str(row.get("task_id")), int(row.get("trial_no", 0))) for row in rows
+    }
+    verdict_fields = ChatOutcomeTrialVerdict.__dataclass_fields__
+    for row in rows:
+        task_id = str(row.get("task_id"))
+        if task_id not in verdicts_by_task:
+            raise ValueError(f"existing row contains unknown task: {task_id}")
+        values = {name: row[name] for name in verdict_fields if name in row}
+        if isinstance(values.get("failures"), list):
+            values["failures"] = tuple(values["failures"])
+        verdicts_by_task[task_id].append(ChatOutcomeTrialVerdict(**values))
+    dangerous_expected = sum(
+        trials for task in tasks if task.dangerous_pair is not None
+    )
+    dangerous_misses = sum(
+        bool(row.get("danger_miss"))
+        for row in rows
+        if isinstance(row, dict)
+    )
+    input_tokens_total = sum(int(row.get("input_tokens", 0)) for row in rows)
+    output_tokens_total = sum(int(row.get("output_tokens", 0)) for row in rows)
 
     for task in tasks:
         for trial_no in range(1, trials + 1):
+            if (task.task_id, trial_no) in completed:
+                continue
             events: list[dict[str, Any]] = []
 
             def emit(
@@ -170,7 +289,7 @@ def run_live_chat_outcome_eval(
                 events.append({"event_type": event_type, "stage": stage, "payload": payload})
 
             request = replace(
-                _request_for_task(task),
+                _request_for_task(task, prompt_version=prompt_version),
                 model_id=model_id,
                 api_key=api_key,
                 emit=emit,
@@ -180,10 +299,33 @@ def run_live_chat_outcome_eval(
             actual_intent = "unresolved"
             route_source = "unresolved"
             tool_calls = 0
+            tool_metrics: dict[str, Any] = {}
             input_tokens = 0
             output_tokens = 0
+            error_kind: str | None = None
+            error_code: str | None = None
+            error_class: str | None = None
+            error_stage: str | None = None
+            attempts = 1
+            stage = "routing"
+            started = time.perf_counter()
             try:
                 resolved = _resolve_chat_route(request, provider=provider)
+                if prompt_version == "casefile-chat-v13":
+                    resolved = replace(
+                        prepare_chat_request_artifacts(resolved),
+                        context_policy_version=CHAT_CONTEXT_POLICY_V6_VERSION,
+                    )
+                    resolved = bind_chat_context_input(
+                        resolved,
+                        frozen_input={
+                            "casefile": task.frozen_casefile,
+                            "message": task.message,
+                            "history": list(task.history),
+                            "focus": dict(task.focus or {}),
+                            "validation": resolved.validation,
+                        },
+                    )
                 route = resolved.route
                 understanding = resolved.task_understanding
                 if understanding is not None:
@@ -191,9 +333,12 @@ def run_live_chat_outcome_eval(
                 if route is not None:
                     route_source = route.route_source
                 allow_suggestions = True if route is None else route_allows_suggestions(route)
-                result = provider.chat(resolved)
-                input_tokens, output_tokens = _usage_tokens(result.usage)
-                tool_calls = result.tools.calls
+                stage = "provider"
+                execution = ChatExecutionRunner(provider).run(resolved)
+                result = execution.result
+                input_tokens, output_tokens = _usage_tokens(execution.usage)
+                tool_calls = execution.tools.calls
+                tool_metrics = execution.tools.as_dict()
                 verdict = grade_chat_outcome(
                     task,
                     result.candidate,
@@ -203,33 +348,78 @@ def run_live_chat_outcome_eval(
                     actual_intent=actual_intent,
                     route_source=route_source,
                 )
-            except Exception:
-                verdict = _provider_error_verdict(task, trial_no)
-                actual_intent = "provider_error"
+            except Exception as error:
+                retained_usage = getattr(error, "usage", None)
+                if isinstance(retained_usage, dict):
+                    input_tokens, output_tokens = _usage_tokens(retained_usage)
+                retained_tools = getattr(error, "tools", None)
+                if retained_tools is not None and hasattr(retained_tools, "as_dict"):
+                    tool_calls = int(getattr(retained_tools, "calls", 0))
+                    tool_metrics = retained_tools.as_dict()
+                attempts = int(
+                    getattr(
+                        error,
+                        "attempts",
+                        2 if isinstance(error, ChatCompletionValidationError) else 1,
+                    )
+                )
+                if isinstance(error, ChatCompletionValidationError):
+                    error_stage = "completion"
+                error_kind, error_code = classify_trial_error(error, stage=error_stage or stage)
+                error_class = type(error).__name__
+                if error_kind == "completion_validation":
+                    verdict = _completion_error_verdict(
+                        task,
+                        trial_no,
+                        actual_intent=actual_intent,
+                        route_source=route_source,
+                        code=error_code,
+                    )
+                else:
+                    error_stage = stage
+                    verdict = _provider_error_verdict(task, trial_no)
+                    actual_intent = "provider_error"
 
             verdicts_by_task[task.task_id].append(verdict)
             input_tokens_total += input_tokens
             output_tokens_total += output_tokens
             danger_miss = False
             if task.dangerous_pair is not None:
-                dangerous_expected += 1
                 expected_intent = task.dangerous_pair[0]
                 danger_miss = actual_intent != expected_intent and (
                     route is None or route_source != "fallback"
                 )
                 if danger_miss:
                     dangerous_misses += 1
-            rows.append(
-                {
+            row = {
                     "task_id": task.task_id,
                     "trial_no": trial_no,
                     "danger_miss": danger_miss,
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000),
                     "event_count": len(events),
+                    "event_summary": _event_summary(events),
+                    "last_event_type": events[-1]["event_type"] if events else None,
+                    "last_event_stage": events[-1]["stage"] if events else None,
+                    "protocol": request.toolset_version,
+                    "attempt_no": attempts,
+                    "tool_metrics": tool_metrics,
                     "tool_calls": tool_calls,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
+                    "error_kind": error_kind,
+                    "error_code": error_code,
+                    "error_class": error_class,
+                    "error_stage": error_stage,
                     **verdict.as_dict(),
                 }
+            rows.append(row)
+            if on_trial is not None:
+                on_trial(row)
+            print(
+                f"[{len(rows)}/{len(tasks) * trials}] {task.task_id} "
+                f"trial={trial_no} {'passed' if verdict.passed else 'failed'} "
+                f"{row['elapsed_ms']}ms",
+                flush=True,
             )
 
     task_count = len(tasks)
@@ -392,6 +582,31 @@ def run_live_chat_outcome_eval(
         gates=gates,
         rows=tuple(rows),
         status="passed" if all(gates.values()) else "failed",
+        suite_task_count=len(tasks),
+        task_ids=tuple(task.task_id for task in tasks),
+        prompt_versions=tuple(
+            sorted(
+                {
+                    _request_for_task(task, prompt_version=prompt_version).prompt_version
+                    for task in tasks
+                }
+            )
+        ),
+        toolset_versions=tuple(
+            sorted(
+                {
+                    _request_for_task(task, prompt_version=prompt_version).toolset_version
+                    for task in tasks
+                }
+            )
+        ),
+        suite_fingerprint=suite_fingerprint(
+            tasks,
+            trials=trials,
+            provider_name=provider_name,
+            model_id=model_id,
+            prompt_version=prompt_version,
+        ),
     )
 
 
@@ -404,6 +619,23 @@ def _selected_tasks(arguments: argparse.Namespace) -> tuple[ChatOutcomeTask, ...
     if missing:
         raise SystemExit(f"Unknown task ids: {missing}")
     return tuple(task for task in tasks if task.task_id in selected)
+
+
+def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
+    """Replace a JSON checkpoint only after its complete bytes reach disk."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+        temporary = Path(handle.name)
+    os.replace(temporary, path)
 
 
 def main() -> None:
@@ -423,9 +655,20 @@ def main() -> None:
     parser.add_argument(
         "--task-ids",
         default=None,
-        help="Comma-separated task ids to run instead of the full 30-task Suite",
+        help="Comma-separated task ids to run instead of the full T1 Suite",
     )
     parser.add_argument("--report-path", type=Path)
+    parser.add_argument(
+        "--prompt-version",
+        choices=("casefile-chat-v12", "casefile-chat-v13"),
+        default="casefile-chat-v13",
+        help="Explicit immutable Chat Prompt version for this M2 run",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an exactly matching <report>.partial.json checkpoint",
+    )
     arguments = parser.parse_args()
 
     provider_name = arguments.provider
@@ -441,24 +684,90 @@ def main() -> None:
     else:
         api_key, model_id = saved
     tasks = _selected_tasks(arguments)
+    fingerprint = suite_fingerprint(
+        tasks,
+        trials=arguments.trials,
+        provider_name=provider_name,
+        model_id=model_id,
+        prompt_version=arguments.prompt_version,
+    )
+    partial_path = (
+        None
+        if arguments.report_path is None
+        else Path(f"{arguments.report_path}.partial.json")
+    )
+    if arguments.resume and partial_path is None:
+        raise SystemExit("--resume requires --report-path")
+    checkpoint_rows: list[dict[str, Any]] = []
+    if arguments.resume and partial_path is not None and partial_path.exists():
+        partial = json.loads(partial_path.read_text(encoding="utf-8"))
+        if partial.get("suite_fingerprint") != fingerprint:
+            raise SystemExit("partial report fingerprint mismatch; refusing to resume")
+        checkpoint_rows = [
+            dict(row) for row in partial.get("rows", []) if isinstance(row, dict)
+        ]
 
     def provider_factory() -> Any:
         provider, _ = _provider(provider_name, api_key)
         return provider
 
-    report = run_live_chat_outcome_eval(
-        provider_factory,
-        provider_name=provider_name,
-        model_id=model_id,
-        api_key=api_key,
-        tasks=tasks,
-        trials=arguments.trials,
-    )
-    rendered = json.dumps(report.as_dict(), ensure_ascii=False, indent=2)
+    def checkpoint(row: dict[str, Any]) -> None:
+        checkpoint_rows.append(row)
+        if partial_path is not None:
+            _atomic_json_write(
+                partial_path,
+                {
+                    "status": "running",
+                    "suite_fingerprint": fingerprint,
+                    "suite_task_count": len(tasks),
+                    "task_ids": [task.task_id for task in tasks],
+                    "completed_count": len(checkpoint_rows),
+                    "trial_count": len(tasks) * arguments.trials,
+                    "current_task_id": row["task_id"],
+                    "current_trial_no": row["trial_no"],
+                    "prompt_version": arguments.prompt_version,
+                    "rows": checkpoint_rows,
+                },
+            )
+
+    try:
+        report = run_live_chat_outcome_eval(
+            provider_factory,
+            provider_name=provider_name,
+            model_id=model_id,
+            api_key=api_key,
+            tasks=tasks,
+            trials=arguments.trials,
+            existing_rows=checkpoint_rows,
+            on_trial=checkpoint,
+            prompt_version=arguments.prompt_version,
+        )
+    except KeyboardInterrupt:
+        if partial_path is not None:
+            _atomic_json_write(
+                partial_path,
+                {
+                    "status": "interrupted",
+                    "suite_fingerprint": fingerprint,
+                    "suite_task_count": len(tasks),
+                    "task_ids": [task.task_id for task in tasks],
+                    "completed_count": len(checkpoint_rows),
+                    "trial_count": len(tasks) * arguments.trials,
+                    "prompt_version": arguments.prompt_version,
+                    "rows": checkpoint_rows,
+                },
+            )
+        raise SystemExit(130) from None
+    report_payload = {
+        **report.as_dict(),
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    rendered = json.dumps(report_payload, ensure_ascii=False, indent=2)
     print(rendered)
     if arguments.report_path is not None:
-        arguments.report_path.parent.mkdir(parents=True, exist_ok=True)
-        arguments.report_path.write_text(rendered + "\n", encoding="utf-8")
+        _atomic_json_write(arguments.report_path, report_payload)
+    if partial_path is not None and partial_path.exists():
+        partial_path.unlink()
     if report.status != "passed":
         raise SystemExit(2)
 
@@ -471,7 +780,9 @@ __all__ = [
     "SAFETY_PASS_AT_K_TARGET",
     "SUGGESTION_LEGALITY_TARGET",
     "ChatOutcomeLiveReport",
+    "classify_trial_error",
     "run_live_chat_outcome_eval",
+    "suite_fingerprint",
 ]
 
 if __name__ == "__main__":
