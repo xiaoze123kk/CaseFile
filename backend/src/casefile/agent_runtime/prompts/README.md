@@ -34,6 +34,10 @@ Prompt 版本有三种互斥形态：
 
 `registry.json` 是生产新任务唯一的激活入口，不能通过环境变量选择历史 Prompt。`TaskRun` 会冻结 Registry 解析出的 `prompt_version`；v8 冻结四组件 Bundle，v9–v13 分别冻结对应的 Pipeline 与 `casefile-generation-tools-v2`，并在任何模型调用或步骤复用前完整校验 Prompt Package、输入契约、输出 Schema 和工具策略绑定。历史 v8–v12 TaskRun 始终按自身冻结版本执行。
 
+`casefile-chat-v11` 在 v10 基础上加固审计执行器的预算耗尽报告：预算耗尽只停止发起新调用、不代表未取得证据，已检查范围必须与 `valid: true` 的工具结果一致，禁止把末尾的 `tool_budget_exhausted` 描述为全程未开展或否认已成功读取的对象与快照；v10 保留供历史 TaskRun 重放。
+
+`casefile-chat-v12` 在 v11 基础上加固意图路由器：`sub_intents` 增加明确取值表与必填硬规则，确保 `MULTI_QUERY/DECOMPOSE` 后置重写可被稳定触发；“低置信度/随便”修饰的全卷逻辑漏洞复查明确降级为安全问答；其余组件与契约继承 v11。
+
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
 ## Prompt Package 边界

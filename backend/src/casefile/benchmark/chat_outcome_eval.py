@@ -717,7 +717,7 @@ def _request_for_task(
     issues = task.frozen_validation_issues
     return CaseFileChatRequest(
         task_run_id=task_run_id,
-        prompt_version="casefile-chat-v10",
+        prompt_version="casefile-chat-v12",
         toolset_version=CHAT_TOOLSET_V4_VERSION,
         casefile=task.frozen_casefile,
         history=task.history,

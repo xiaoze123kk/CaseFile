@@ -531,6 +531,10 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
                     "toolset_version": request.toolset_version,
                     "valid": False,
                     "reason_code": "tool_budget_exhausted",
+                    "calls": metrics.calls,
+                    "valid_calls": metrics.valid_calls,
+                    "successful_calls": metrics.successful_calls,
+                    "max_tool_calls": max_calls,
                 },
             )
             break

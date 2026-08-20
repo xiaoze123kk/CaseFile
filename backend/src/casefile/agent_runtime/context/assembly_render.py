@@ -17,8 +17,12 @@ CHAT_CONTEXT_PROMPT_V4_VERSION = "casefile-chat-v7"
 CHAT_CONTEXT_PROMPT_V5_VERSION = "casefile-chat-v8"
 #: Structured audit findings prompt package paired with ``casefile-chat-context-v5``.
 CHAT_CONTEXT_PROMPT_V6_VERSION = "casefile-chat-v9"
-#: Hardened routing + audit evidence prompt package paired with ``casefile-chat-context-v6``.
+#: Hardened routing + audit evidence prompt package previously paired with the v6 policy.
 CHAT_CONTEXT_PROMPT_V7_VERSION = "casefile-chat-v10"
+#: Budget-exhaustion reporting hardening package previously paired with the v6 policy.
+CHAT_CONTEXT_PROMPT_V8_VERSION = "casefile-chat-v11"
+#: Router/query-rewrite hardening package currently paired with the v6 policy.
+CHAT_CONTEXT_PROMPT_V9_VERSION = "casefile-chat-v12"
 _REQUIRED_BLOCK_IDS = frozenset(
     {
         "author_message",
@@ -82,5 +86,7 @@ __all__ = [
     "CHAT_CONTEXT_PROMPT_V5_VERSION",
     "CHAT_CONTEXT_PROMPT_V6_VERSION",
     "CHAT_CONTEXT_PROMPT_V7_VERSION",
+    "CHAT_CONTEXT_PROMPT_V8_VERSION",
+    "CHAT_CONTEXT_PROMPT_V9_VERSION",
     "chat_input_payload_from_assembly",
 ]

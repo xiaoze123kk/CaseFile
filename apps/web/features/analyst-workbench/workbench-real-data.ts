@@ -240,19 +240,25 @@ function resolvedTemporalBounds(
     const anchorRef = readReference(event.time.anchor_event_ref);
     const anchor = anchorRef?.kind === "event" ? resolve(anchorRef.id) : null;
     resolving.delete(eventId);
-    if (!anchor || event.time.offset_minutes === null) return null;
+    if (!anchor) return null;
+    const offsetMinutes = event.time.offset_minutes;
+    if (offsetMinutes === null && event.time.relation !== "same_time") return null;
     const anchorStart = parseWallClock(anchor.start);
     const anchorEnd = parseWallClock(anchor.end ?? anchor.start);
     if (anchorStart === null || anchorEnd === null) return null;
-    const offsetMilliseconds = event.time.offset_minutes * 60 * 1000;
-    const value =
+    const offsetMilliseconds = (offsetMinutes ?? 0) * 60 * 1000;
+    // A range anchor keeps its uncertainty: the projected time is an
+    // interval, so the timeline can show a range instead of a made-up point.
+    const [startValue, endValue] =
       event.time.relation === "before"
-        ? anchorStart - offsetMilliseconds
+        ? [anchorStart - offsetMilliseconds, anchorEnd - offsetMilliseconds]
         : event.time.relation === "after"
-          ? anchorEnd + offsetMilliseconds
-          : anchorStart;
-    const projected = formatWallClock(value, "second");
-    const result = { start: projected, end: null, sortKey: projected };
+          ? [anchorStart + offsetMilliseconds, anchorEnd + offsetMilliseconds]
+          : [anchorStart, anchorEnd];
+    const start = formatWallClock(startValue, "second");
+    const end =
+      endValue === startValue ? null : formatWallClock(endValue, "second");
+    const result = { start, end, sortKey: start };
     resolved.set(eventId, result);
     return result;
   };

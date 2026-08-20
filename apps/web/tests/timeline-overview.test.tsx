@@ -152,7 +152,7 @@ describe("editable proportional timeline", () => {
     ).toHaveAttribute("preserveAspectRatio", "xMinYMin meet");
   });
 
-  it("reserves a full left gutter for relative time labels", () => {
+  it("reserves a full left gutter for unresolved relative time labels", () => {
     const seed = timelineSeed();
     const relativeTime = "相对 120 分钟之后";
     seed.timelineEvents[1] = {
@@ -174,6 +174,82 @@ describe("editable proportional timeline", () => {
         relativeTime,
       ),
     ).toHaveAttribute("x", "168");
+  });
+
+  it("shows a resolved wall-clock time instead of a long relative offset", () => {
+    const seed = timelineSeed();
+    seed.timelineEvents[1] = {
+      ...seed.timelineEvents[1],
+      time: "相对 120 分钟之后",
+      start: "2034-11-18T21:10:00",
+      end: null,
+      precision: "minute",
+      sortKey: "2034-11-18T21:10:00.000000",
+      timeProjection: "relative-resolved",
+      source: {
+        time: {
+          kind: "relative",
+          anchor_event_ref: {
+            object_type: "event",
+            object_id: seed.timelineEvents[0].id,
+          },
+          relation: "after",
+          offset_minutes: 120,
+        },
+      },
+    } as never;
+
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[1].id}
+        validationStatus="passed"
+      />,
+    );
+
+    const axis = within(screen.getByTestId("timeline-proportional-axis"));
+    expect(axis.getAllByText("11-18 21:10").length).toBeGreaterThan(0);
+    expect(axis.queryByText("相对 120 分钟之后")).not.toBeInTheDocument();
+  });
+
+  it("shows a projected range when the relative anchor is uncertain", () => {
+    const seed = timelineSeed();
+    seed.timelineEvents[1] = {
+      ...seed.timelineEvents[1],
+      time: "相对 120 分钟之后",
+      start: "2034-11-18T21:10:00",
+      end: "2034-11-18T21:25:00",
+      precision: "minute",
+      sortKey: "2034-11-18T21:10:00.000000",
+      timeProjection: "relative-resolved",
+      source: {
+        time: {
+          kind: "relative",
+          anchor_event_ref: {
+            object_type: "event",
+            object_id: seed.timelineEvents[0].id,
+          },
+          relation: "after",
+          offset_minutes: 120,
+        },
+      },
+    } as never;
+
+    render(
+      <TimelineOverview
+        issueStatuses={{}}
+        onSelectEvent={vi.fn()}
+        seed={seed}
+        selectedEventId={seed.timelineEvents[1].id}
+        validationStatus="passed"
+      />,
+    );
+
+    const axis = within(screen.getByTestId("timeline-proportional-axis"));
+    expect(axis.getAllByText("11-18 21:10–21:25").length).toBeGreaterThan(0);
+    expect(axis.queryByText("相对 120 分钟之后")).not.toBeInTheDocument();
   });
 
   it("uses date-only ticks when a multi-day axis lands on midnight", () => {

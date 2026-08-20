@@ -172,7 +172,13 @@ def test_budget_gate_rejects_tool_calls_once_exhausted() -> None:
     second = json.loads(invoke(get_validation_issues, context, {}))
 
     assert "issues" in first
-    assert second == {"error": "tool_budget_exhausted", "issues": []}
+    assert second["error"] == "tool_budget_exhausted"
+    assert second["issues"] == []
+    assert second["reason_code"] == "tool_budget_exhausted"
+    assert second["calls"] == 2
+    assert second["valid_calls"] == 1
+    assert second["successful_calls"] == 1
+    assert second["max_tool_calls"] == 1
     assert context.metrics.calls == 2
     assert context.metrics.successful_calls == 1
     assert context.metrics.budget_exhausted == 1
@@ -459,7 +465,12 @@ def test_simulate_patch_obeys_the_tool_budget_gate() -> None:
     )
 
     assert first["valid"] is True
-    assert second == {"valid": False, "reason_code": "tool_budget_exhausted"}
+    assert second["valid"] is False
+    assert second["reason_code"] == "tool_budget_exhausted"
+    assert second["calls"] == 2
+    assert second["valid_calls"] == 1
+    assert second["successful_calls"] == 1
+    assert second["max_tool_calls"] == 1
     assert context.metrics.budget_exhausted == 1
 
 
@@ -694,11 +705,14 @@ def test_related_tool_obeys_the_same_budget_gate() -> None:
     )
 
     assert first["objects"][0]["id"] == "object:company_1"
-    assert second == {
-        "error": "tool_budget_exhausted",
-        "relationships": [],
-        "objects": [],
-    }
+    assert second["error"] == "tool_budget_exhausted"
+    assert second["relationships"] == []
+    assert second["objects"] == []
+    assert second["reason_code"] == "tool_budget_exhausted"
+    assert second["calls"] == 2
+    assert second["valid_calls"] == 1
+    assert second["successful_calls"] == 1
+    assert second["max_tool_calls"] == 1
     assert context.metrics.budget_exhausted == 1
 
 

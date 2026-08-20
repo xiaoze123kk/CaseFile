@@ -1,0 +1,147 @@
+{
+  "schema_version": 2,
+  "agent_id": "casefile_chat",
+  "version": "casefile-chat-v11",
+  "previous_version": "casefile-chat-v10",
+  "change_summary": "审计执行器预算耗尽报告加固：明确预算耗尽只停止发起新调用、不代表未取得证据，已检查范围必须与 valid:true 的工具结果一致，禁止把末尾的 tool_budget_exhausted 描述为全程未开展或否认已成功读取的对象与快照；其余组件与契约继承 v10。",
+  "runtime": {
+    "agent_version": "casefile-single-agent-v2",
+    "toolset_version": "casefile-chat-tools-v4"
+  },
+  "fragments": {
+    "shared": {
+      "file": "shared.md",
+      "sha256": "245d08fb0b8f807ae9bdbd0c88cc6ffd6d28ce120ccd6bb63e73f40148d38671"
+    },
+    "router": {
+      "file": "router.md",
+      "sha256": "3ae617c6d79efa4ec9a118b96970926c5dce1ec4d3c89ddba83d9180edc5c01c"
+    },
+    "rewrite": {
+      "file": "rewrite.md",
+      "sha256": "d96a3b4cf1905d5aa5f0b139d591bac54d487208e63c8d178e71013ac0f69201"
+    },
+    "executor-chat": {
+      "file": "executor-chat.md",
+      "sha256": "b4befce74e6bb93526a82e71b5a8b42861f02b1d967d894865653334b421fd23"
+    },
+    "executor-analysis": {
+      "file": "executor-analysis.md",
+      "sha256": "8d7a4b86edb02e81464739b9b72dabf1171e6e469e57659d0ba874c2d2cf5c25"
+    },
+    "executor-audit": {
+      "file": "executor-audit.md",
+      "sha256": "1f3baa7c6ab91f0ea2b3e4104a234a7d7c2b01c1ca0d280652af6d61eecf07e4"
+    },
+    "executor-issue": {
+      "file": "executor-issue.md",
+      "sha256": "c22f8322926e686756a5c0b755a402061bbc89a372e3b60d083c4cab3ee58d8a"
+    },
+    "executor-edit": {
+      "file": "executor-edit.md",
+      "sha256": "ff2e3c728ba120967597bca81683e6ba880ad80fdd0d6c0303d510e547d36040"
+    },
+    "executor-gate": {
+      "file": "executor-gate.md",
+      "sha256": "76b3ffd5aa741c6cb03c13f56f34451d688861908db9fe6de736728dcd8fe1df"
+    },
+    "executor-clarify": {
+      "file": "executor-clarify.md",
+      "sha256": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a"
+    },
+    "executor-scope": {
+      "file": "executor-scope.md",
+      "sha256": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2"
+    }
+  },
+  "components": {
+    "router": {
+      "instruction_fragments": [
+        "router"
+      ],
+      "input_contract_id": "casefile-chat-intent-input-v1",
+      "output_schema_id": "casefile-chat-task-understanding-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "rewrite": {
+      "instruction_fragments": [
+        "rewrite"
+      ],
+      "input_contract_id": "casefile-chat-rewrite-input-v1",
+      "output_schema_id": "casefile-chat-rewrite-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "chat": {
+      "instruction_fragments": [
+        "shared",
+        "executor-chat"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-read-v3"
+    },
+    "analysis": {
+      "instruction_fragments": [
+        "shared",
+        "executor-analysis"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-read-v3"
+    },
+    "audit": {
+      "instruction_fragments": [
+        "shared",
+        "executor-audit"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v2",
+      "tool_policy_id": "chat-audit-v4"
+    },
+    "issue": {
+      "instruction_fragments": [
+        "shared",
+        "executor-issue"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-issue-v3"
+    },
+    "edit": {
+      "instruction_fragments": [
+        "shared",
+        "executor-edit"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "chat-edit-v3"
+    },
+    "gate": {
+      "instruction_fragments": [
+        "shared",
+        "executor-gate"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "clarify": {
+      "instruction_fragments": [
+        "shared",
+        "executor-clarify"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    },
+    "scope": {
+      "instruction_fragments": [
+        "shared",
+        "executor-scope"
+      ],
+      "input_contract_id": "casefile-chat-prompt-input-v2",
+      "output_schema_id": "casefile-chat-output-v1",
+      "tool_policy_id": "no-tools-v1"
+    }
+  }
+}

@@ -7,6 +7,7 @@ import {
   shiftTemporalPosition,
   timelineClock,
   timelineEventTime,
+  timelineEventTimeRange,
 } from "@/features/analyst-workbench/timeline/timeline-time";
 
 describe("timeline wall-clock helpers", () => {
@@ -52,6 +53,21 @@ describe("timeline wall-clock helpers", () => {
       ),
     ).toBe("06-01 23:00–06-02 01:30");
     expect(timelineEventTime("时间未定")).toBe("时间未定");
+  });
+
+  it("formats projected relative bounds as a point or an uncertainty range", () => {
+    expect(
+      timelineEventTimeRange("2042-06-01T20:15:00", null),
+    ).toBe("06-01 20:15");
+    expect(
+      timelineEventTimeRange("2042-06-01T20:15:00", "2042-06-01T20:15:00"),
+    ).toBe("06-01 20:15");
+    expect(
+      timelineEventTimeRange("2042-06-01T20:15:00", "2042-06-01T20:25:00"),
+    ).toBe("06-01 20:15–20:25");
+    expect(
+      timelineEventTimeRange("2042-06-01T23:15:00", "2042-06-02T00:05:00"),
+    ).toBe("06-01 23:15–06-02 00:05");
   });
 
   it("moves points and whole ranges while preserving precision and duration", () => {

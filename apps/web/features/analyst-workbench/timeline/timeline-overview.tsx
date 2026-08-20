@@ -39,6 +39,7 @@ import {
   shiftTemporalPosition,
   timelineClock,
   timelineEventTime,
+  timelineEventTimeRange,
   type TimelineAxisLabelMode,
   type TimelinePrecision,
 } from "./timeline-time";
@@ -98,6 +99,15 @@ function displayBounds(
 
 function isRelativeProjection(event: TimelineDisplayEvent) {
   return event.timeProjection === "relative-resolved";
+}
+
+function eventTimeLabel(event: TimelineDisplayEvent) {
+  // Resolved relative events show the projected wall-clock time (or range)
+  // instead of making readers calculate the offset themselves.
+  if (isRelativeProjection(event) && event.start) {
+    return timelineEventTimeRange(event.start, event.end ?? null);
+  }
+  return timelineEventTime(event.time);
 }
 
 function editableTime(event: TimelineDisplayEvent) {
@@ -622,7 +632,7 @@ export function TimelineOverview({
               return (
                 <g
                   key={timelineEvent.id}
-                  aria-label={`${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}${conclusionRelated ? "，与当前结论相关" : ""}${canDrag ? "，可拖动调整" : ""}`}
+                  aria-label={`${timelineEvent.label}，${eventTimeLabel(timelineEvent)}${conclusionRelated ? "，与当前结论相关" : ""}${canDrag ? "，可拖动调整" : ""}`}
                   aria-pressed={selected}
                   className={styles.eventRow}
                   data-draggable={canDrag}
@@ -638,10 +648,10 @@ export function TimelineOverview({
                   role="button"
                   tabIndex={0}
                 >
-                  <title>{`${timelineEvent.label} · ${timelineEventTime(timelineEvent.time)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
+                  <title>{`${timelineEvent.label} · ${eventTimeLabel(timelineEvent)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
                   <rect className={styles.rowHitbox} height={ROW_HEIGHT - 6} width={VIEW_WIDTH - 24} x={12} y={y - 25} />
                   <text className={styles.rowTime} textAnchor="end" x={168} y={y - 4}>
-                    {timelineEventTime(timelineEvent.time)}
+                    {eventTimeLabel(timelineEvent)}
                   </text>
                   <text className={styles.rowLabel} x={182} y={y - 5}>
                     {timelineEvent.label}
@@ -756,7 +766,7 @@ export function TimelineOverview({
                     const endX = bounds ? axis.scale(new Date(bounds.end)) : x;
                     return (
                       <g
-                        aria-label={`${lane.label}，${timelineEvent.label}，${timelineEventTime(timelineEvent.time)}${conclusionRelated ? "，与当前结论相关" : ""}`}
+                        aria-label={`${lane.label}，${timelineEvent.label}，${eventTimeLabel(timelineEvent)}${conclusionRelated ? "，与当前结论相关" : ""}`}
                         aria-pressed={selected}
                         className={styles.laneMarker}
                         data-certainty={certainty}
@@ -774,7 +784,7 @@ export function TimelineOverview({
                         role="button"
                         tabIndex={0}
                       >
-                        <title>{`${timelineEvent.label} · ${timelineEventTime(timelineEvent.time)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
+                        <title>{`${timelineEvent.label} · ${eventTimeLabel(timelineEvent)} · ${timelineEvent.location} · ${timelineCertaintyLabel(timelineEvent)}`}</title>
                         {bounds && bounds.end > bounds.start ? (
                           <rect
                             className={styles.laneRange}
@@ -840,7 +850,7 @@ export function TimelineOverview({
               {events.map((event) => (
                 <li key={event.id}>
                   <button onClick={() => onSelectEvent(event.id)} type="button">
-                    <time>{timelineEventTime(event.time)}</time>
+                    <time>{eventTimeLabel(event)}</time>
                     <span>{event.label}</span>
                     <small>{event.location}</small>
                   </button>
@@ -869,7 +879,7 @@ export function TimelineOverview({
                   type="button"
                 >
                   <time dateTime={timelineEvent.start ?? undefined}>
-                    {timelineEventTime(timelineEvent.time)}
+                    {eventTimeLabel(timelineEvent)}
                   </time>
                   <span>
                     <strong>{timelineEvent.label}</strong>
@@ -919,7 +929,7 @@ export function TimelineOverview({
                       type="button"
                     >
                       <time dateTime={timelineEvent.start ?? undefined}>
-                        {timelineEventTime(timelineEvent.time)}
+                        {eventTimeLabel(timelineEvent)}
                       </time>
                       <span>
                         <strong>{timelineEvent.label}</strong>

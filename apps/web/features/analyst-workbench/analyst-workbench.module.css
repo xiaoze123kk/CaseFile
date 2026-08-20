@@ -21,6 +21,7 @@
   --issue: #d95c59;
   --issue-strong: #a33f3d;
   --issue-soft: rgba(217, 92, 89, 0.09);
+  --agent-panel-width: 600px;
   position: relative;
   isolation: isolate;
   display: grid;
@@ -1528,7 +1529,7 @@
   right: 0;
   bottom: 0;
   display: grid;
-  width: 506px;
+  width: var(--agent-panel-width);
   max-width: 100vw;
   grid-template-rows: 58px minmax(0, 1fr) auto auto;
   color: #e1ddd4;

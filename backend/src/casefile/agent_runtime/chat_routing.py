@@ -101,7 +101,7 @@ EXECUTION_PROFILES: dict[str, dict[str, Any]] = {
         ],
         "context_tools": ["retrieve_thread_evidence"],
         "max_turns": 8,
-        "max_tool_calls": 20,
+        "max_tool_calls": 48,
         "context_profile": "focus_first",
     },
     "edit_request": {

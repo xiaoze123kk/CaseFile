@@ -117,7 +117,7 @@ def test_issue_route_allows_suggestions_subject_to_focus_constraints() -> None:
     assert route_allows_suggestions(route) is True
 
 
-def test_logic_audit_profile_allows_suggestions_and_tightens_budget() -> None:
+def test_logic_audit_profile_allows_suggestions_and_grants_full_review_budget() -> None:
     route = routing_policy(
         ChatTaskUnderstanding(
             primary_intent="logic_audit",
@@ -134,7 +134,7 @@ def test_logic_audit_profile_allows_suggestions_and_tightens_budget() -> None:
     assert route_suggestion_policy(route) == "allow"
     assert route_allows_suggestions(route) is True
     assert route.execution_profile["max_turns"] == 8
-    assert route.execution_profile["max_tool_calls"] == 20
+    assert route.execution_profile["max_tool_calls"] == 48
     assert "validate_patch_proposal" in route.execution_profile["toolset"]
 
     tightened = routing_policy(

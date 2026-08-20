@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from casefile.agent_runtime.context import CHAT_CONTEXT_PROMPT_V9_VERSION
 from casefile.benchmark.chat_router_eval import (
+    CHAT_ROUTER_EVAL_PROMPT_VERSION,
+    _request_for_fixture,
     build_eval_fixtures,
     evaluate_chat_router,
     fake_router_resolver,
@@ -74,6 +77,14 @@ def test_fixtures_are_legal_and_cover_dangerous_confusions() -> None:
     assert ("validate_request", "analysis") in dangerous_pairs
     assert ("validate_request", "logic_audit") in dangerous_pairs
     assert ("question", "logic_audit") in dangerous_pairs
+
+
+def test_eval_requests_follow_the_current_context_prompt_package() -> None:
+    fixture = build_eval_fixtures()[0]
+    request = _request_for_fixture(fixture, task_run_id=1)
+
+    assert CHAT_ROUTER_EVAL_PROMPT_VERSION == CHAT_CONTEXT_PROMPT_V9_VERSION
+    assert request.prompt_version == CHAT_CONTEXT_PROMPT_V9_VERSION
 
 
 def test_evaluate_chat_router_metrics_are_pure_and_thresholded() -> None:
