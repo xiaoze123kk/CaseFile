@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from casefile.application.casefile_v1 import COLLECTION_TYPES
 from casefile.application.errors import not_found
 from casefile.application.snapshot import build_casefile_document
+from casefile.application.verification_service import VerificationService
 from casefile.contracts import (
     ContractValidationError,
     public_validation_issues,
@@ -54,6 +55,7 @@ class WorkbenchReadModel:
                 "sources": self._sources(owned),
                 "contract_source_refs": _contract_source_refs(document),
                 "audit_entries": self._audit_entries(owned),
+                "verification": VerificationService(self.session).current_read_model(owned),
             }
 
     def validation_issue_ids(self, owned: OwnedDraft) -> frozenset[str]:

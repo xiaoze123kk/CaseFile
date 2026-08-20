@@ -1,6 +1,8 @@
 import type { ObjectRef } from "@casefile/contracts";
 import type {
   CaseFileDocument,
+  VerificationFindingView,
+  VerificationReadModelView,
   WorkbenchValidationView,
 } from "@/lib/api-client";
 
@@ -600,11 +602,9 @@ function buildTimeline(
 
 function buildValidationIssues(
   validation: WorkbenchValidationView | null,
+  verification: VerificationReadModelView | null = null,
 ): ValidationIssue[] {
-  if (validation?.status !== "failed") {
-    return [];
-  }
-  return validation.issues.map((issue) => {
+  const validatorIssues = validation?.status === "failed" ? validation.issues.map((issue) => {
     const objectRef = issue.target.object_ref;
     const eventId = objectRef?.object_type === "event" ? objectRef.object_id : null;
     return {
@@ -621,14 +621,59 @@ function buildValidationIssues(
       afterKnowledge: "",
       patchBefore: "",
       patchAfter: "",
-      source: "validator",
+      source: "validator" as const,
       targetObjectId: objectRef?.object_id ?? null,
       targetObjectType: objectRef?.object_type ?? null,
       fieldPath: issue.target.field_path,
       fixHint: issue.fix_hint ?? undefined,
       explanation: issue.explanation ?? undefined,
     };
-  });
+  }) : [];
+  const validatorKeys = new Set(
+    validatorIssues.map((issue) => `${issue.rule}:${issue.jsonPath ?? ""}`),
+  );
+  const persistedIssues = (verification?.findings ?? [])
+    .filter((finding) => !validatorKeys.has(`${finding.rule_code}:${finding.payload.path ?? ""}`))
+    .map((finding) => verificationFindingToIssue(finding));
+  return [...validatorIssues, ...persistedIssues];
+}
+
+function verificationFindingToIssue(finding: VerificationFindingView): ValidationIssue {
+  const objectRefs = finding.refs.filter(
+    (ref) => ref.ref_kind === "object" && ref.role !== "related",
+  );
+  const eventRefs = finding.refs.filter((ref) => ref.ref_kind === "event");
+  const target = finding.refs.find((ref) => ref.role === "target");
+  const severity = finding.severity === "blocker" || finding.severity === "error"
+    ? "S1"
+    : finding.severity === "warning" ? "S2" : "S0";
+  return {
+    id: `verification:${finding.finding_id}`,
+    severity,
+    title: finding.title,
+    summary: finding.message,
+    eventId: eventRefs[0]?.ref_key ?? null,
+    rule: finding.rule_code,
+    evidenceIds: objectRefs.map((ref) => ref.ref_key),
+    beforeKnowledge: "",
+    eventClaim: "",
+    afterKnowledge: "",
+    patchBefore: "",
+    patchAfter: finding.suggested_fix ?? "",
+    source: (finding.kind === "llm" ? "agent" : "validator") as "agent" | "validator",
+    targetObjectId: target?.ref_kind === "object" ? target.ref_key : null,
+    targetObjectType: null,
+    fieldPath: typeof finding.payload.path === "string" ? finding.payload.path : undefined,
+    jsonPath: typeof finding.payload.path === "string" ? finding.payload.path : undefined,
+    fixHint: finding.suggested_fix ?? undefined,
+    explanation: finding.message,
+    verificationFinding: {
+      findingId: finding.finding_id,
+      kind: finding.kind,
+      status: finding.status,
+      confidence: finding.confidence,
+    },
+  };
 }
 
 function buildReferenceCatalog(caseFile: CaseFileDocument): Map<string, ReferenceCatalogEntry> {
@@ -1318,9 +1363,10 @@ export function mapCaseFileToWorkbenchModel(
   caseFile: CaseFileDocument,
   draftRevision: number,
   validation: WorkbenchValidationView | null = null,
+  verification: VerificationReadModelView | null = null,
 ): WorkbenchModel {
   const caseObjects = buildCaseObjects(caseFile);
-  const validationIssues = buildValidationIssues(validation);
+  const validationIssues = buildValidationIssues(validation, verification);
   const timelineEvents = buildTimeline(caseFile, caseObjects, validationIssues);
   const relationshipGraph = buildRelationshipGraph(caseFile, caseObjects);
   const reasoningPaths = buildReasoningPaths(caseFile);

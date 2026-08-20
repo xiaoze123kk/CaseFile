@@ -48,6 +48,10 @@ from casefile.agent_runtime import (
     ReverseParseRequest,
     ReverseParseResult,
 )
+from casefile.agent_runtime.chat_execution import (
+    ChatExecutionRunner,
+    prepare_chat_request_artifacts,
+)
 from casefile.agent_runtime.chat_intent import (
     INTENT_ROUTER_VERSION,
     RuleRoute,
@@ -128,7 +132,6 @@ from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
 from casefile.application.workflow_service import (
-    ChatReferenceValidationError,
     WorkflowService,
     append_task_event,
     source_view,
@@ -796,6 +799,7 @@ class Worker:
                     provider=provider,
                     previous=previous_routing,
                 )
+                chat_request = prepare_chat_request_artifacts(chat_request)
                 if chat_request.route is not None:
                     if previous_routing is None:
                         self._emit_chat_routing_events(task_run_id, chat_request)
@@ -806,58 +810,42 @@ class Worker:
                                 "routing",
                                 route_public_payload(chat_request.route),
                             )
-                chat_request = self._emit_chat_context_events(
-                    task_run_id, task_snapshot, chat_request
-                )
-                chat_result = provider.chat(chat_request)
-                candidate = chat_result.candidate.model_dump(mode="json")
-                usage = chat_result.usage
-                repair_attempted = False
-                while True:
-                    try:
-                        self._complete_chat(
-                            task_run_id,
-                            attempt_id,
-                            chat_result,
-                            route=chat_request.route,
-                        )
-                        break
-                    except ChatReferenceValidationError as error:
-                        if repair_attempted:
-                            error.repair_attempted = True
-                            raise
-                        repair_attempted = True
-                        repair_message = (
-                            "上一轮结构化结果被系统拒绝：以下引用 ID 不存在于"
-                            "当前卷宗或验证快照，"
-                            f" objects={list(error.object_ids)!r}, "
-                            f"events={list(error.event_ids)!r}, "
-                            f"validation_issues={list(error.issue_ids)!r}。"
-                            "这些 ID 可能出现在顶层 referenced_* 槽或"
-                            " audit_findings 的证据槽中，需一并修正；"
-                            "允许的 ID 只来自当前 casefile 的 records/focus_objects/"
-                            "工具结果以及 validation_issues；禁止 src_*、clm_* 等"
-                            " source/brief 内部 ID。只修正引用槽，保留正文结论。"
+                    if (
+                        chat_request.task_understanding is not None
+                        and chat_request.task_understanding.primary_intent
+                        == "logic_audit"
+                    ):
+                        verification_trigger = str(
+                            task_snapshot.input_jsonb.get(
+                                "verification_trigger", "chat"
+                            )
                         )
                         self._emit(
                             task_run_id,
-                            "model.reference_repair_started",
-                            "repairing",
+                            "verification.started",
+                            "verification",
                             {
-                                "repair_no": 1,
-                                "max_repairs": 1,
-                                "unknown_object_ids": list(error.object_ids),
-                                "unknown_event_ids": list(error.event_ids),
-                                "unknown_issue_ids": list(error.issue_ids),
+                                "trigger": verification_trigger,
+                                "profile": "balanced",
+                                "draft_revision": task_snapshot.input_draft_revision,
+                                "input_hash": task_snapshot.input_hash,
                             },
                         )
-                        chat_request = replace(
-                            chat_request,
-                            repair_feedback=(repair_message,),
-                        )
-                        chat_result = provider.chat(chat_request)
-                        candidate = chat_result.candidate.model_dump(mode="json")
-                        usage = _merge_chat_usage((usage, chat_result.usage))
+                chat_request = self._emit_chat_context_events(
+                    task_run_id, task_snapshot, chat_request
+                )
+                execution = ChatExecutionRunner(provider).run(
+                    chat_request,
+                    complete=lambda result: self._complete_chat(
+                        task_run_id,
+                        attempt_id,
+                        result,
+                        route=chat_request.route,
+                    ),
+                )
+                chat_result = execution.result
+                candidate = chat_result.candidate.model_dump(mode="json")
+                usage = execution.usage
                 self._maybe_compact_chat_thread(
                     task_snapshot,
                     provider,
@@ -935,6 +923,12 @@ class Worker:
                 validation_errors=validation_errors,
             )
         except Exception as error:
+            provider_usage = getattr(error, "usage", None)
+            if isinstance(provider_usage, dict):
+                usage = _merge_numeric_usage(usage, provider_usage)
+            provider_tools = getattr(error, "tools", None)
+            if provider_tools is not None and hasattr(provider_tools, "as_dict"):
+                usage["tool_metrics"] = provider_tools.as_dict()
             if self._cancel(
                 task_run_id,
                 attempt_id,
@@ -1339,11 +1333,15 @@ class Worker:
         if thread_memory_policy:
             thread_memory_state, memory_warning = self._load_chat_thread_memory_state(task)
             extra_input["thread_memory_state"] = thread_memory_state
+        context_frozen_input = {
+            **task.input_jsonb,
+            "validation": dict(request.validation),
+        }
         hard_input_tokens = _context_hard_input_tokens()
         try:
             result = build_chat_context_manifest(
                 policy_version=request.context_policy_version,
-                frozen_input=task.input_jsonb,
+                frozen_input=context_frozen_input,
                 input_hash=task.input_hash,
                 routing=chat_routing_payload_as_dict(request),
                 prebuilt_input=executor_input,
@@ -1425,7 +1423,7 @@ class Worker:
                 )
             )
         )
-        if request.prompt_version != expected_prompt:
+        if request.prompt_version not in {expected_prompt, "casefile-chat-v13"}:
             raise RuntimeError(
                 "Context policy "
                 f"{request.context_policy_version!r} requires prompt version "
@@ -2256,6 +2254,34 @@ class Worker:
                         if public_failure is not None
                         else "Agent 本次没有完成回复，请稍后重试。"
                     )
+            verification_started = session.scalar(
+                select(TaskEvent.id)
+                .where(
+                    TaskEvent.task_run_id == task.id,
+                    TaskEvent.event_type == "verification.started",
+                )
+                .limit(1)
+            )
+            if verification_started is not None:
+                verification_trigger = str(
+                    task.input_jsonb.get("verification_trigger", "chat")
+                )
+                append_task_event(
+                    session,
+                    task,
+                    "verification.failed",
+                    "verification",
+                    {
+                        "trigger": verification_trigger,
+                        "profile": "balanced",
+                        "error_code": error_code,
+                        "message": (
+                            public_failure["message"]
+                            if public_failure is not None
+                            else "验证复查没有完成，未更改当前工作稿。"
+                        ),
+                    },
+                )
             append_task_event(
                 session,
                 task,
@@ -2687,19 +2713,6 @@ def _previous_attempt_repair_feedback(
     return ({"issues": issues},) if issues else ()
 
 
-def _merge_chat_usage(records: tuple[dict[str, Any], ...]) -> dict[str, Any]:
-    """Sum numeric token counters and keep the latest tool metrics snapshot."""
-
-    merged: dict[str, Any] = {}
-    for record in records:
-        for key, value in record.items():
-            if isinstance(value, int) and not isinstance(value, bool):
-                merged[key] = int(merged.get(key, 0)) + value
-            else:
-                merged[key] = value
-    return merged
-
-
 def _terminal_attempt_usage(
     session: Session,
     attempt_id: int,
@@ -2750,6 +2763,15 @@ def _terminal_attempt_usage(
 
 
 def _error_code(error: Exception) -> str:
+    explicit = getattr(error, "error_code", None)
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    if error.__class__.__name__ == "MaxTurnsExceeded":
+        return "max_turns_exceeded"
+    if "structured_output_validation_failed" in str(error):
+        return "structured_output_validation_failed"
+    if "completion_validation" in str(error):
+        return "completion_validation_failed"
     if isinstance(error, (ContractValidationError, ProviderProtocolError)):
         return "candidate_validation_failed"
     if isinstance(error, AuthenticationError):
@@ -2761,6 +2783,16 @@ def _error_code(error: Exception) -> str:
     if isinstance(error, APIConnectionError):
         return "provider_connection_failed"
     return "generation_failed"
+
+
+def _merge_numeric_usage(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(left)
+    for key, value in right.items():
+        if isinstance(value, int) and not isinstance(value, bool):
+            merged[key] = int(merged.get(key, 0)) + value
+        else:
+            merged[key] = value
+    return merged
 
 
 def _network_retries(task: TaskRun) -> int:

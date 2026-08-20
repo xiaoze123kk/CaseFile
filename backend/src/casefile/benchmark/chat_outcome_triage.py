@@ -29,6 +29,11 @@ CAPABILITY_SIGNATURES = {
     "reference_recall",
     "suggestion_legality",
 }
+ENVIRONMENT_ERROR_KINDS = frozenset({"transport", "timeout"})
+EXECUTION_ERROR_KINDS = frozenset({"max_turns", "tool", "protocol"})
+VALIDATION_ERROR_KINDS = frozenset(
+    {"output_validation", "completion_validation", "unknown"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +69,6 @@ def _categories_for_failures(
     route_source: str,
 ) -> tuple[str, ...]:
     categories: set[str] = set()
-    if "provider_error" in failures:
-        return ("environment_error",)
     if any(signature in AGENT_ERROR_SIGNATURES for signature in failures):
         categories.add("agent_error")
     if any(signature in CAPABILITY_SIGNATURES for signature in failures):
@@ -77,6 +80,27 @@ def _categories_for_failures(
     if not categories:
         categories.add("needs_review")
     return tuple(sorted(categories))
+
+
+def _categories_for_row(row: dict[str, Any]) -> tuple[str, ...]:
+    """Prefer runner diagnostics over the legacy provider_error signature."""
+
+    kind = row.get("error_kind")
+    if isinstance(kind, str):
+        if kind in ENVIRONMENT_ERROR_KINDS:
+            return ("environment_error",)
+        if kind in EXECUTION_ERROR_KINDS:
+            return ("execution_error",)
+        if kind in VALIDATION_ERROR_KINDS:
+            return ("protocol_or_validation_error",)
+    failures = _row_failures(row)
+    if "provider_error" in failures:
+        return ("environment_error",)
+    return _categories_for_failures(
+        failures,
+        danger_miss=bool(row.get("danger_miss")),
+        route_source=str(row.get("route_source") or ""),
+    )
 
 
 def triage_chat_outcome_report(report: dict[str, Any]) -> ChatOutcomeTriageReport:
@@ -92,11 +116,7 @@ def triage_chat_outcome_report(report: dict[str, Any]) -> ChatOutcomeTriageRepor
         for signature in failures:
             signature_counter[signature] += 1
         task_id = str(row.get("task_id") or "unknown")
-        categories = _categories_for_failures(
-            failures,
-            danger_miss=bool(row.get("danger_miss")),
-            route_source=str(row.get("route_source") or ""),
-        )
+        categories = _categories_for_row(row)
         suggested_categories.setdefault(task_id, set()).update(categories)
 
     failing_tasks = tuple(sorted({str(row.get("task_id") or "unknown") for row in failing_rows}))

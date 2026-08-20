@@ -13,7 +13,12 @@ AUDIT_FINDING_KINDS = frozenset(
     {"dangling_ref", "contradiction", "temporal", "motivation_gap", "scope_gap"}
 )
 AUDIT_FINDING_SEVERITIES = frozenset({"S1", "S2", "S3"})
-MAX_AUDIT_FINDINGS = 50
+MAX_AUDIT_FINDINGS = 5
+
+# These finding kinds describe a relation, not a one-sided observation.  The
+# executor must therefore provide both endpoints (or two temporal anchors)
+# before a finding can reach persistence.
+_TWO_SIDED_KINDS = frozenset({"contradiction", "temporal", "motivation_gap", "dangling_ref"})
 
 _STRING_FIELDS = ("finding_id", "kind", "severity", "title", "statement")
 _EVIDENCE_FIELDS = (
@@ -99,6 +104,15 @@ def normalize_audit_findings(
                 if item and item not in deduped:
                     deduped.append(item)
             finding[field_name] = deduped
+        if finding["kind"] in _TWO_SIDED_KINDS:
+            evidence_count = sum(
+                len(finding[field_name])
+                for field_name in _EVIDENCE_FIELDS
+            )
+            if evidence_count < 2:
+                raise ValueError(
+                    f"audit_finding_evidence_incomplete:{finding_id}:{finding['kind']}"
+                )
         for object_id in finding["evidence_object_ids"]:
             if object_id not in frozen_object_ids:
                 missing_objects.add(object_id)

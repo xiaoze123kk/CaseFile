@@ -205,6 +205,13 @@
 .agentInspectorNav button[aria-current="true"] { color: var(--primary-strong); border-color: var(--primary-strong); background: var(--primary-soft); }
 .agentInspectorEmpty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .agentPatchSimulationNote, .agentPatchBlocker { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
+.agentPatchSimulation { display: grid; gap: 6px; padding: 8px; border: 1px solid rgba(199, 139, 60, .4); background: rgba(199, 139, 60, .06); }
+.agentPatchSimulation header { display: flex; justify-content: space-between; gap: 8px; }
+.agentPatchSimulation dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0; }
+.agentPatchSimulation dl div { padding: 4px; background: rgba(0, 0, 0, .08); }
+.agentPatchSimulation dt { color: var(--muted); font-size: 9px; }
+.agentPatchSimulation dd { margin: 2px 0 0; color: var(--ink); font: 600 11px/1 "Cascadia Mono", Consolas, monospace; }
+.agentPatchSimulation p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .agentPatchBlocker { color: #a34f3d; }
 .agentPatchConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
 .agentPatchConfirm strong { flex-basis: 100%; color: var(--ink); font-size: 10px; }

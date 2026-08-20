@@ -6,7 +6,9 @@ import type {
   AgentAuditFindingView,
   AgentMessageView,
   AgentPatchOperationView,
+  AgentPatchSimulationView,
   AgentPatchSetView,
+  VerificationFindingView,
 } from "@/lib/api-client";
 
 import styles from "./workbench-agent.module.css";
@@ -55,12 +57,14 @@ export function WorkbenchAgentInspector({
   patches,
   patchError,
   findings,
+  verificationFindings = [],
   focusPatchSetId,
   focusFindingId,
   objectLabels,
   eventLabels,
   issueLabels,
   onApply,
+  onSimulate,
   requireApplyConfirmation = true,
   onFocusPatch,
   onUndo,
@@ -73,12 +77,20 @@ export function WorkbenchAgentInspector({
   patches: Array<{ message: AgentMessageView; patchSet: AgentPatchSetView }>;
   patchError?: string | null;
   findings: Array<{ message: AgentMessageView; finding: AgentAuditFindingView }>;
+  verificationFindings?: Array<{
+    message: AgentMessageView;
+    finding: VerificationFindingView;
+  }>;
   focusPatchSetId: number | null;
   focusFindingId: string | null;
   objectLabels: Record<string, string>;
   eventLabels: Record<string, string>;
   issueLabels: Record<string, string>;
   onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null) => void;
+  onSimulate?: (
+    patchSet: AgentPatchSetView,
+    operationIds: number[],
+  ) => Promise<AgentPatchSimulationView | null>;
   requireApplyConfirmation?: boolean;
   onFocusPatch: (patchSetId: number) => void;
   onUndo: (patchSet: AgentPatchSetView) => void;
@@ -106,7 +118,9 @@ export function WorkbenchAgentInspector({
         </div>
         <small>
           {patches.length > 0 ? `待审修改 ${patches.length}` : "暂无待审修改"}
-          {findings.length > 0 ? ` · 验证发现 ${findings.length}` : ""}
+          {findings.length + verificationFindings.length > 0
+            ? ` · 验证发现 ${findings.length + verificationFindings.length}`
+            : ""}
           {findings.some(({ finding }) => finding.needs_manual_review)
             ? ` · 待人工确认 ${findings.filter(({ finding }) => finding.needs_manual_review).length}`
             : ""}
@@ -134,6 +148,11 @@ export function WorkbenchAgentInspector({
           busy={busyPatchSetId === activePatch.patchSet.patch_set_id}
           objectLabels={objectLabels}
           onApply={(operationIds) => onApply(activePatch.patchSet, operationIds)}
+          onSimulate={
+            onSimulate
+              ? (operationIds) => onSimulate(activePatch.patchSet, operationIds)
+              : undefined
+          }
           requireApplyConfirmation={requireApplyConfirmation}
           onLocateObject={onLocateObject}
           onRetry={() => onRetry(activePatch.message)}
@@ -157,8 +176,20 @@ export function WorkbenchAgentInspector({
           onLocateObject={onLocateObject}
         />
       ))}
+      {verificationFindings.map(({ finding }) => (
+        <VerificationFindingReview
+          eventLabels={eventLabels}
+          finding={finding}
+          issueLabels={issueLabels}
+          key={`verification:${finding.finding_id}`}
+          objectLabels={objectLabels}
+          onLocateEvent={onLocateEvent}
+          onLocateIssue={onLocateIssue}
+          onLocateObject={onLocateObject}
+        />
+      ))}
 
-      {patches.length === 0 && findings.length === 0 ? (
+      {patches.length === 0 && findings.length === 0 && verificationFindings.length === 0 ? (
         <p className={styles.agentInspectorEmpty}>对话产生的修改建议和验证发现会出现在这里。</p>
       ) : null}
     </section>
@@ -246,11 +277,65 @@ function AgentFindingReview({
   );
 }
 
+function VerificationFindingReview({
+  finding,
+  objectLabels,
+  eventLabels,
+  issueLabels,
+  onLocateObject,
+  onLocateEvent,
+  onLocateIssue,
+}: {
+  finding: VerificationFindingView;
+  objectLabels: Record<string, string>;
+  eventLabels: Record<string, string>;
+  issueLabels: Record<string, string>;
+  onLocateObject: (id: string) => void;
+  onLocateEvent: (id: string) => void;
+  onLocateIssue: (id: string) => void;
+}) {
+  const objectRefs = finding.refs.filter((ref) => ref.ref_kind === "object");
+  const eventRefs = finding.refs.filter((ref) => ref.ref_kind === "event");
+  const issueRefs = finding.refs.filter((ref) => ref.ref_kind === "validation_issue");
+  return (
+    <article aria-label="持久化验证发现" className={styles.agentFindingReview}>
+      <header className={styles.agentAuditHeader}>
+        <strong>{finding.title}</strong>
+        <span>服务端记录 · {finding.severity}</span>
+      </header>
+      <div className={styles.agentFindingMeta}>
+        <span>{finding.kind === "deterministic" ? "确定性验证" : "Agent 复查"}</span>
+        <b>{finding.status === "open" ? "待处理" : finding.status}</b>
+      </div>
+      <p>{finding.message}</p>
+      {finding.suggested_fix ? <p>建议：{finding.suggested_fix}</p> : null}
+      <div className={styles.agentFindingEvidence}>
+        {objectRefs.map((ref) => (
+          <button key={`object:${ref.ref_key}`} onClick={() => onLocateObject(ref.ref_key)} type="button">
+            目标 · {objectLabels[ref.ref_key] ?? ref.ref_key}
+          </button>
+        ))}
+        {eventRefs.map((ref) => (
+          <button key={`event:${ref.ref_key}`} onClick={() => onLocateEvent(ref.ref_key)} type="button">
+            事件 · {eventLabels[ref.ref_key] ?? ref.ref_key}
+          </button>
+        ))}
+        {issueRefs.map((ref) => (
+          <button key={`issue:${ref.ref_key}`} onClick={() => onLocateIssue(ref.ref_key)} type="button">
+            验证 · {issueLabels[ref.ref_key] ?? ref.ref_key}
+          </button>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 export function AgentPatchReview({
   patchSet,
   objectLabels,
   busy,
   onApply,
+  onSimulate,
   requireApplyConfirmation,
   onUndo,
   onRetry,
@@ -260,6 +345,7 @@ export function AgentPatchReview({
   objectLabels: Record<string, string>;
   busy: boolean;
   onApply: (operationIds: number[] | null) => void;
+  onSimulate?: (operationIds: number[]) => Promise<AgentPatchSimulationView | null>;
   requireApplyConfirmation: boolean;
   onUndo: () => void;
   onRetry?: () => void;
@@ -271,6 +357,7 @@ export function AgentPatchReview({
   >();
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [issuesExpanded, setIssuesExpanded] = useState(false);
+  const [simulation, setSimulation] = useState<AgentPatchSimulationView | null>(null);
   const actionable = patchSet.status === "pending" && !patchSet.is_stale;
   const operations = useMemo(
     () => [...patchSet.operations].sort((left, right) => left.ordinal - right.ordinal),
@@ -288,6 +375,14 @@ export function AgentPatchReview({
     if (busy || !actionable) return;
     if (requireApplyConfirmation) setConfirmingApply({ operationIds });
     else onApply(operationIds);
+  }
+
+  async function simulateSelected() {
+    if (!onSimulate || busy) return;
+    const operationIds = selectedIds.length > 0
+      ? selectedIds
+      : operations.map((operation) => operation.operation_id);
+    setSimulation(await onSimulate(operationIds));
   }
 
   function rejectAll() {
@@ -362,6 +457,23 @@ export function AgentPatchReview({
         </div>
       ) : null}
       {patchSet.validation_warning ? <p className={styles.agentPatchWarning}>服务端标记应用后仍有 {patchSet.validator_issues.length} 条验证警告，应用结果后会刷新工作台。</p> : null}
+      {simulation ? (
+        <div className={styles.agentPatchSimulation} data-can-apply={simulation.can_apply}>
+          <header>
+            <strong>批量预演</strong>
+            <span>{simulation.can_apply ? "可应用" : "已阻断"}</span>
+          </header>
+          <dl>
+            <div><dt>已修复</dt><dd>{simulation.fixed_finding_keys.length}</dd></div>
+            <div><dt>残留</dt><dd>{simulation.residual_finding_keys.length}</dd></div>
+            <div><dt>新增</dt><dd>{simulation.new_finding_keys.length}</dd></div>
+            <div><dt>待复查</dt><dd>{simulation.pending_recheck_finding_keys.length}</dd></div>
+          </dl>
+          <p>影响：{simulation.impact.collections.length ? simulation.impact.collections.join("、") : "无可见画布"}{simulation.impact.full_rebuild ? " · 需要完整刷新" : " · 局部刷新"}</p>
+          {!simulation.can_apply ? <p>阻断原因：{simulation.reason_code ?? "应用前验证未通过"}</p> : null}
+          {simulation.structure_lock_conflicts.length ? <p>结构锁：{simulation.structure_lock_conflicts.join("、")}</p> : null}
+        </div>
+      ) : null}
       <div className={styles.agentPatchActions}>
         {actionable ? confirmingApply ? (
           <span className={styles.agentPatchConfirm}>
@@ -371,8 +483,9 @@ export function AgentPatchReview({
           </span>
         ) : (
           <>
-            <button disabled={busy} onClick={() => requestApply(null)} type="button">全部采纳</button>
-            <button disabled={busy || selectedIds.length === 0} onClick={() => requestApply(selectedIds)} type="button">采纳所选（{selectedIds.length}）</button>
+            {onSimulate ? <button disabled={busy} onClick={() => void simulateSelected()} type="button">预演批量修改</button> : null}
+            <button disabled={busy || simulation?.can_apply === false} onClick={() => requestApply(null)} type="button">全部采纳</button>
+            <button disabled={busy || selectedIds.length === 0 || simulation?.can_apply === false} onClick={() => requestApply(selectedIds)} type="button">采纳所选（{selectedIds.length}）</button>
             {confirmingReject ? <><button className={styles.agentPatchDanger} disabled={busy} onClick={rejectAll} type="button">确认拒绝</button><button disabled={busy} onClick={() => setConfirmingReject(false)} type="button">取消</button></> : <button disabled={busy} onClick={rejectAll} type="button">全部拒绝</button>}
           </>
         ) : null}

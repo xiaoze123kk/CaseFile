@@ -97,13 +97,19 @@ export interface ValidationIssue {
   afterKnowledge: string;
   patchBefore: string;
   patchAfter: string;
-  source?: "fixture" | "validator";
+  source?: "fixture" | "validator" | "agent";
   targetObjectId?: string | null;
   targetObjectType?: string | null;
   fieldPath?: string;
   jsonPath?: string;
   fixHint?: string;
   explanation?: string;
+  verificationFinding?: {
+    findingId: number;
+    kind: "deterministic" | "llm";
+    status: "open" | "resolved" | "reopened" | "dismissed";
+    confidence: number | null;
+  };
 }
 
 export interface SourceItem {

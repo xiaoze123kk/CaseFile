@@ -16,13 +16,17 @@ function Get-Sha256Hex {
         [Parameter(Mandatory = $true)][string]$Path
     )
 
-    $stream = [System.IO.File]::OpenRead($Path)
+    # Generated contract files are UTF-8 text. Git can materialize text=auto
+    # files as CRLF on Windows even though the generator emits LF, so compare
+    # the content with normalized line endings rather than reporting drift for
+    # a checkout-only representation change.
+    $content = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($content.Replace("`r`n", "`n"))
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
     try {
-        return ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace("-", "")
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($bytes))).Replace("-", "")
     } finally {
         $sha256.Dispose()
-        $stream.Dispose()
     }
 }
 

@@ -20,6 +20,75 @@ from casefile.agent_runtime.models import (
 )
 
 INTENT_ROUTER_VERSION = "casefile-chat-router-v2"
+
+_EDIT_FIELD_ALIASES = {
+    "/description": ("描述", "description", "简介"),
+    "/aliases": ("别名", "aliases"),
+    "/name": ("名称", "名字", "name"),
+    "/title": ("标题", "title"),
+    "/summary": ("摘要", "summary"),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class EditTarget:
+    object_id: str
+    path: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"object_id": self.object_id, "path": self.path}
+
+
+@dataclass(frozen=True, slots=True)
+class EditTargetManifest:
+    targets: tuple[EditTarget, ...] = ()
+    ambiguous: bool = False
+
+    def as_list(self) -> list[dict[str, str]]:
+        return [target.as_dict() for target in self.targets]
+
+
+def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManifest:
+    """Freeze explicit object/field pairs that resolve uniquely."""
+
+    message = request.message.casefold()
+    matches: dict[str, list[str]] = {}
+    collection_by_id: dict[str, str] = {}
+    for collection, values in request.casefile.items():
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            object_id = str(item["id"])
+            collection_by_id[object_id] = collection
+            for field in ("name", "title"):
+                label = item.get(field)
+                if isinstance(label, str) and label.strip() and label.casefold() in message:
+                    matches.setdefault(label.casefold(), []).append(object_id)
+    matched_ids = {
+        ids[0]
+        for label, ids in matches.items()
+        if len(ids) == 1
+        and not any(label != other and label in other for other in matches)
+    }
+    requested_paths = {
+        path
+        for path, aliases in _EDIT_FIELD_ALIASES.items()
+        if any(alias.casefold() in message for alias in aliases)
+    }
+    targets: list[EditTarget] = []
+    for object_id in sorted(matched_ids):
+        editable = set(
+            request.editable_fields_by_collection.get(collection_by_id[object_id], ())
+        )
+        for path in sorted(requested_paths):
+            if path in editable or path.removeprefix("/") in editable:
+                targets.append(EditTarget(object_id=object_id, path=path))
+    return EditTargetManifest(
+        targets=tuple(targets),
+        ambiguous=bool(matches) and not bool(targets),
+    )
 ALLOWED_PRESET_IDS = frozenset({"inspect", "evidence", "compare", "gate", "audit"})
 VALID_ENTRYPOINTS = frozenset({"free_text", "preset", "issue_action"})
 
@@ -426,10 +495,13 @@ def route_result_summary(
 
 __all__ = [
     "ALLOWED_PRESET_IDS",
+    "EditTarget",
+    "EditTargetManifest",
     "INTENT_ROUTER_VERSION",
     "PRESET_ROUTE_TABLE",
     "RuleRoute",
     "confidence_gate_decision",
+    "build_edit_target_manifest",
     "normalize_routing_hint",
     "resolve_intent_mentions",
     "resolve_rule_route",

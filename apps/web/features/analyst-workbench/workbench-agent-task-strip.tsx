@@ -7,6 +7,11 @@ export interface AgentTaskContextOccupancy {
   budgetTokens: number | null;
 }
 
+export interface AgentVerificationProgress {
+  status: string;
+  findingCount: number;
+}
+
 function taskStageLabel(task: TaskView): string {
   if (task.status === "queued") return "任务已排队";
   if (task.status === "running") return task.stage || "等待任务阶段";
@@ -28,10 +33,12 @@ function taskSummary(task: TaskView): string | null {
 export function WorkbenchAgentTaskStrip({
   task,
   contextOccupancy,
+  verificationProgress,
   onCancel,
 }: {
   task: TaskView | null;
   contextOccupancy?: AgentTaskContextOccupancy | null;
+  verificationProgress?: AgentVerificationProgress | null;
   onCancel?: () => void;
 }) {
   if (task === null) return null;
@@ -41,6 +48,11 @@ export function WorkbenchAgentTaskStrip({
     task.status === "cancelling";
   const summary = taskSummary(task);
   const stage = taskStageLabel(task);
+  const verificationStage =
+    verificationProgress?.status === "started" ||
+    verificationProgress?.status === "finding"
+      ? `验证复查 · 已发现 ${verificationProgress.findingCount} 项`
+      : stage;
 
   return (
     <section
@@ -53,7 +65,7 @@ export function WorkbenchAgentTaskStrip({
       <div className={styles.agentTaskPrimary}>
         <i aria-hidden="true" />
         <span>
-          <strong>{active ? `Agent 正在回复 · ${stage}` : stage}</strong>
+          <strong>{active ? `Agent 正在回复 · ${verificationStage}` : stage}</strong>
           {contextOccupancy ? (
             <small>
               上下文 {contextOccupancy.usedTokens}

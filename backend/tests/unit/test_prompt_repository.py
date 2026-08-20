@@ -314,6 +314,19 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-clarify": "294ec6838eccd48fdf515116f67fc3ac04fd5e617c412ed61cb72d60e6c08d1a",  # noqa: E501
         "fragment:executor-scope": "285ca23292f6c7cca2f886f539c730dc205c9c7b0a16636d9b9634b049997ea2",  # noqa: E501
     },
+    ("casefile_chat", "casefile-chat-v13"): {
+        "fragment:shared": "4f54caa4bf708f433084fbd66636987cfadbbc87b7623cba16083dfad55e4f93",  # noqa: E501
+        "fragment:router": "c177dad4180922e118c1a2ea9648c3909593fdafec835a19032d6e9445276f49",  # noqa: E501
+        "fragment:rewrite": "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921",  # noqa: E501
+        "fragment:executor-chat": "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070",  # noqa: E501
+        "fragment:executor-analysis": "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd",  # noqa: E501
+        "fragment:executor-audit": "4481fb1965e46e482254fb8f2d75c57020757d69b3343fa80dab1d26072a8354",  # noqa: E501
+        "fragment:executor-issue": "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9",  # noqa: E501
+        "fragment:executor-edit": "9e3f5b753d56f5f9b785404c0b6d8a2ec8e1baa2d1b0f40c32117815948bba85",  # noqa: E501
+        "fragment:executor-gate": "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb",  # noqa: E501
+        "fragment:executor-clarify": "9a9df160de21d2a395a34bd2df3f3eca4e3c54ee8db4df7eff18952c324cc1b9",  # noqa: E501
+        "fragment:executor-scope": "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276",  # noqa: E501
+    },
     ("casefile_chat_context_compactor", "casefile-chat-context-compactor-v1"): {
         "fragment:compact": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5",  # noqa: E501
     },

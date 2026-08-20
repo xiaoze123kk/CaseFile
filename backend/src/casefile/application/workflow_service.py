@@ -95,6 +95,14 @@ from casefile.application.task_cancellation import (
 )
 from casefile.application.task_events import append_task_event
 from casefile.application.v1_editing import EDITABLE_FIELDS, V1EditingService
+from casefile.application.verification_engine import (
+    BatchSimulation,
+    VerificationEngine,
+)
+from casefile.application.verification_engine import (
+    PatchOperation as VerificationPatchOperation,
+)
+from casefile.application.verification_service import VerificationService
 from casefile.application.workbench_read_model import WorkbenchReadModel
 from casefile.application.workflow_brief_validation import (
     require_confirmed_atomics as _require_confirmed_atomics,
@@ -114,7 +122,7 @@ from casefile.application.workflow_views import (
     task_view,
     time_view,
 )
-from casefile.contracts import CASEFILE_SCHEMA_VERSION
+from casefile.contracts import CASEFILE_SCHEMA_VERSION, validate_casefile
 from casefile.data_postgres.models import (
     AgentMessage,
     AgentPatchOperation,
@@ -129,6 +137,8 @@ from casefile.data_postgres.models import (
     TaskEvent,
     TaskRun,
     UserProviderSetting,
+    VerificationFinding,
+    VerificationFindingPatchOperation,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
 
@@ -460,9 +470,12 @@ class WorkflowService:
         provider: str = DEFAULT_PROVIDER,
         focus: dict[str, Any] | None = None,
         routing_hint: dict[str, Any] | None = None,
+        verification_trigger: str = "chat",
     ) -> dict[str, Any]:
         provider = _supported_provider(provider)
         content = content.strip()
+        if verification_trigger not in {"chat", "manual"}:
+            raise ValueError("Unsupported verification trigger")
         if not content:
             raise ApplicationError(
                 "agent_message_empty",
@@ -579,6 +592,7 @@ class WorkflowService:
                     if routing_hint is None
                     else normalize_routing_hint(routing_hint)
                 ),
+                "verification_trigger": verification_trigger,
                 "router_version": INTENT_ROUTER_VERSION,
                 "context_state": _latest_context_state_ref(
                     self.session,
@@ -613,6 +627,46 @@ class WorkflowService:
                 ),
                 "task": task_result,
             }
+
+    def rerun_verification(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        *,
+        expected_draft_id: int,
+        expected_draft_revision: int,
+        provider: str = DEFAULT_PROVIDER,
+    ) -> dict[str, Any]:
+        """Queue one balanced logic-audit TaskRun without writing the Draft.
+
+        VerificationRun remains a result observation.  This method intentionally
+        creates an ordinary casefile_chat TaskRun so provider/model snapshots,
+        leases and SSE recovery stay in the existing task infrastructure.
+        """
+
+        thread = self.create_agent_thread(
+            actor_user_id,
+            project_id,
+            expected_draft_id=expected_draft_id,
+            expected_draft_revision=expected_draft_revision,
+            title="验证复查",
+        )
+        return self.send_agent_message(
+            actor_user_id,
+            project_id,
+            int(thread["thread_id"]),
+            expected_draft_id=expected_draft_id,
+            expected_draft_revision=expected_draft_revision,
+            content=(
+                "对当前工作稿执行一次平衡验证复查：先运行确定性检查，再复查"
+                "矛盾、断链、时序错误和动机缺口。所有发现必须绑定现有证据；"
+                "不要自动修改工作稿。"
+            ),
+            provider=provider,
+            focus={"view": "evidence"},
+            routing_hint={"entrypoint": "preset", "preset_id": "audit"},
+            verification_trigger="manual",
+        )
 
     def submit_agent_routing_feedback(
         self,
@@ -1085,6 +1139,74 @@ class WorkflowService:
             tool_metrics = tools or usage.get("tool_metrics") or {}
             if routing_summary is not None:
                 routing_summary["tool_metrics"] = tool_metrics
+            verification_trigger = str(
+                task.input_jsonb.get("verification_trigger", "chat")
+            )
+            if verification_trigger not in {"chat", "manual"}:
+                raise RuntimeError("CaseFile chat TaskRun has an invalid verification trigger")
+            verification_observation = VerificationService(self.session).record_chat_result(
+                owned=owned,
+                task_run_id=task.id,
+                document=frozen_casefile,
+                audit_findings=audit_findings,
+                profile=(
+                    "balanced"
+                    if route_primary_intent(route) == "logic_audit"
+                    else "fast"
+                ),
+                trigger=verification_trigger,
+                draft_revision=task.input_draft_revision,
+                patch_set_id=None if patch_set is None else patch_set.id,
+            )
+            if verification_observation is not None:
+                verification_run, verification_result = verification_observation
+                total_findings = len(verification_result.findings)
+                for finding_index, verification_finding in enumerate(
+                    verification_result.findings,
+                    start=1,
+                ):
+                    _append_event(
+                        self.session,
+                        task,
+                        "verification.finding",
+                        "verification",
+                        {
+                            "verification_run_id": verification_run.id,
+                            "finding_key": verification_finding.finding_key,
+                            "kind": verification_finding.kind,
+                            "severity": verification_finding.severity,
+                            "status": verification_finding.status,
+                            "title": verification_finding.title,
+                            "rule_code": verification_finding.rule_code,
+                            "confidence": verification_finding.confidence,
+                            "refs": [
+                                ref.as_dict()
+                                for ref in verification_finding.refs
+                            ],
+                            "current": finding_index,
+                            "total": total_findings,
+                        },
+                    )
+                _append_event(
+                    self.session,
+                    task,
+                    "verification.completed",
+                    "verification",
+                    {
+                        "verification_run_id": verification_run.id,
+                        "trigger": verification_run.trigger,
+                        "profile": verification_run.profile,
+                        "draft_revision": verification_run.draft_revision,
+                        "finding_count": len(verification_result.findings),
+                        "deterministic_finding_count": sum(
+                            item.kind == "deterministic"
+                            for item in verification_result.findings
+                        ),
+                        "llm_finding_count": sum(
+                            item.kind == "llm" for item in verification_result.findings
+                        ),
+                    },
+                )
             result_payload: dict[str, Any] = {
                 "answer": answer,
                 "referenced_object_ids": referenced,
@@ -1096,6 +1218,24 @@ class WorkflowService:
                 "audit_findings": audit_findings,
                 "tool_metrics": tool_metrics,
             }
+            if verification_observation is not None:
+                verification_run, _ = verification_observation
+                result_payload["verification_run_id"] = verification_run.id
+                if patch_set is not None:
+                    self.session.flush()
+                    VerificationService(self.session).link_patch_operations(
+                        project_id=task.project_id,
+                        verification_run_id=verification_run.id,
+                        operations=patch_operations,
+                        finding_refs_by_operation_id={
+                            operation.id: (
+                                str(suggestions[index].get("finding_ref"))
+                                if suggestions[index].get("finding_ref") is not None
+                                else None
+                            )
+                            for index, operation in enumerate(patch_operations)
+                        },
+                    )
             if routing_summary is not None:
                 result_payload["routing"] = routing_summary
             output_message.status = "completed"
@@ -1166,6 +1306,7 @@ class WorkflowService:
         expected_draft_id: int,
         expected_revision: int,
         operation_ids: list[int] | None,
+        target_finding_ids: list[int] | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
@@ -1243,8 +1384,6 @@ class WorkflowService:
             reviewed_at = datetime.now(UTC)
             batch: list[dict[str, Any]] = []
             for operation in operations:
-                operation.decision = "accepted" if operation.id in selected else "rejected"
-                operation.reviewed_at = reviewed_at
                 if operation.id not in selected:
                     continue
                 registry = registries.get(operation.target_object_id)
@@ -1261,6 +1400,47 @@ class WorkflowService:
                         "new_value": operation.new_value_jsonb,
                     }
                 )
+            current_document = build_casefile_document(self.session, owned)
+            target_finding_keys = self._target_finding_keys(
+                project_id,
+                owned.draft.id,
+                target_finding_ids,
+            )
+            simulation = self._simulate_patch_batch(
+                current_document,
+                operations,
+                selected,
+                registries,
+                target_finding_keys=target_finding_keys,
+            )
+            if not simulation.can_apply:
+                if simulation.reason_code == "post_document_invalid":
+                    validate_casefile(dict(simulation.document))
+                raise ApplicationError(
+                    simulation.reason_code or "agent_patch_verification_blocked",
+                    "应用前验证未通过，Draft 未发生变化。",
+                    status_code=409,
+                    details={"simulation": simulation.as_dict()},
+                )
+            pre_result = VerificationEngine(
+                profile="fast",
+                draft_revision=expected_revision,
+            ).verify(current_document)
+            pre_run = (
+                VerificationService(self.session).record_result(
+                    owned=owned,
+                    document=current_document,
+                    result=pre_result,
+                    profile="fast",
+                    trigger="pre_apply",
+                    patch_set_id=patch_set.id,
+                )
+                if VerificationService.enabled_for_persistence()
+                else None
+            )
+            for operation in operations:
+                operation.decision = "accepted" if operation.id in selected else "rejected"
+                operation.reviewed_at = reviewed_at
             revision, group_no, applied = V1EditingService(self.session).apply_operation_batch(
                 owned,
                 operations=batch,
@@ -1274,6 +1454,23 @@ class WorkflowService:
             patch_set.applied_to_revision = revision
             patch_set.applied_at = reviewed_at
             current_document = build_casefile_document(self.session, owned)
+            post_result = VerificationEngine(
+                profile="fast",
+                draft_revision=revision,
+            ).verify(current_document)
+            post_run = (
+                VerificationService(self.session).record_result(
+                    owned=owned,
+                    document=current_document,
+                    result=post_result,
+                    profile="fast",
+                    trigger="post_apply",
+                    patch_set_id=patch_set.id,
+                    draft_revision=revision,
+                )
+                if VerificationService.enabled_for_persistence()
+                else None
+            )
             validator_issues = _nonblocking_validator_issues(current_document, applied)
             self.session.flush()
             return {
@@ -1285,6 +1482,95 @@ class WorkflowService:
                     validator_issues=validator_issues,
                 ),
                 "draft_revision": revision,
+                "pre_apply_verification_run_id": None if pre_run is None else pre_run.id,
+                "post_apply_verification_run_id": None if post_run is None else post_run.id,
+                "simulation": simulation.as_dict(),
+            }
+
+    def simulate_agent_patch_set(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        patch_set_id: int,
+        *,
+        expected_draft_id: int,
+        base_revision: int,
+        operation_ids: list[int] | None,
+        target_finding_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        with self.session.begin():
+            owned = self._owned(actor_user_id, project_id, lock=True)
+            patch_set = self._agent_patch_set(owned, patch_set_id, lock=True)
+            if patch_set.status != "pending":
+                raise ApplicationError(
+                    "agent_patch_not_pending",
+                    "只有待处理的 Agent 建议才能模拟。",
+                    status_code=409,
+                    details={"status": patch_set.status},
+                )
+            if (
+                owned.draft.id != expected_draft_id
+                or owned.draft.revision != base_revision
+                or patch_set.base_draft_revision != base_revision
+            ):
+                raise ApplicationError(
+                    "agent_patch_stale",
+                    "生成这条建议后，CaseFile 已发生变化。",
+                    status_code=409,
+                    details={
+                        "current_revision": owned.draft.revision,
+                        "base_revision": patch_set.base_draft_revision,
+                    },
+                )
+            operations = list(
+                self.session.scalars(
+                    select(AgentPatchOperation)
+                    .where(AgentPatchOperation.patch_set_id == patch_set.id)
+                    .order_by(AgentPatchOperation.ordinal)
+                )
+            )
+            selected = (
+                {operation.id for operation in operations}
+                if operation_ids is None
+                else set(operation_ids)
+            )
+            known = {operation.id for operation in operations}
+            if not selected.issubset(known):
+                raise ApplicationError(
+                    "agent_patch_selection_invalid",
+                    "已选择的操作不属于当前 Agent 修改批次。",
+                    status_code=422,
+                    details={"unknown_operation_ids": sorted(selected - known)},
+                )
+            registries = {
+                row.id: row
+                for row in self.session.scalars(
+                    select(CaseFileObject).where(
+                        CaseFileObject.id.in_(
+                            operation.target_object_id for operation in operations
+                        )
+                    )
+                )
+            }
+            document = build_casefile_document(self.session, owned)
+            target_finding_keys = self._target_finding_keys(
+                project_id,
+                owned.draft.id,
+                target_finding_ids,
+            )
+            simulation = self._simulate_patch_batch(
+                document,
+                operations,
+                selected,
+                registries,
+                target_finding_keys=target_finding_keys,
+            )
+            return {
+                "patch_set_id": patch_set.id,
+                "draft_id": owned.draft.id,
+                "base_revision": base_revision,
+                "simulation": simulation.as_dict(),
+                "can_apply": simulation.can_apply,
             }
 
     def undo_agent_patch_set(
@@ -1357,6 +1643,39 @@ class WorkflowService:
                         "new_value": operation.old_value_jsonb,
                     }
                 )
+            current_document = build_casefile_document(self.session, owned)
+            simulation = self._simulate_patch_batch(
+                current_document,
+                operations,
+                {operation.id for operation in operations},
+                registries,
+                inverse=True,
+            )
+            if not simulation.can_apply:
+                if simulation.reason_code == "post_document_invalid":
+                    validate_casefile(dict(simulation.document))
+                raise ApplicationError(
+                    simulation.reason_code or "agent_patch_undo_verification_blocked",
+                    "撤销前验证未通过，Draft 未发生变化。",
+                    status_code=409,
+                    details={"simulation": simulation.as_dict()},
+                )
+            pre_result = VerificationEngine(
+                profile="fast",
+                draft_revision=expected_revision,
+            ).verify(current_document)
+            pre_run = (
+                VerificationService(self.session).record_result(
+                    owned=owned,
+                    document=current_document,
+                    result=pre_result,
+                    profile="fast",
+                    trigger="pre_apply",
+                    patch_set_id=patch_set.id,
+                )
+                if VerificationService.enabled_for_persistence()
+                else None
+            )
             revision, group_no, _ = V1EditingService(self.session).apply_operation_batch(
                 owned,
                 operations=inverse,
@@ -1369,6 +1688,24 @@ class WorkflowService:
             patch_set.undone_operation_group_no = group_no
             patch_set.undone_to_revision = revision
             patch_set.undone_at = now
+            current_document = build_casefile_document(self.session, owned)
+            post_result = VerificationEngine(
+                profile="fast",
+                draft_revision=revision,
+            ).verify(current_document)
+            post_run = (
+                VerificationService(self.session).record_result(
+                    owned=owned,
+                    document=current_document,
+                    result=post_result,
+                    profile="fast",
+                    trigger="post_apply",
+                    patch_set_id=patch_set.id,
+                    draft_revision=revision,
+                )
+                if VerificationService.enabled_for_persistence()
+                else None
+            )
             self.session.flush()
             return {
                 **self._patch_set_view(
@@ -1378,7 +1715,91 @@ class WorkflowService:
                     validator_issues=[],
                 ),
                 "draft_revision": revision,
+                "pre_apply_verification_run_id": None if pre_run is None else pre_run.id,
+                "post_apply_verification_run_id": None if post_run is None else post_run.id,
+                "simulation": simulation.as_dict(),
             }
+
+    def _simulate_patch_batch(
+        self,
+        document: dict[str, Any],
+        operations: list[AgentPatchOperation],
+        selected: set[int],
+        registries: dict[int, CaseFileObject],
+        *,
+        inverse: bool = False,
+        target_finding_keys: list[str] | None = None,
+    ) -> BatchSimulation:
+        proposed: list[VerificationPatchOperation] = []
+        revisions: dict[str, int] = {}
+        for operation in operations:
+            if operation.id not in selected:
+                continue
+            registry = registries.get(operation.target_object_id)
+            if registry is None:
+                raise RuntimeError("Agent patch target object disappeared")
+            revisions[registry.object_id] = registry.revision
+            proposed.append(
+                VerificationPatchOperation(
+                    operation_id=operation.operation_id,
+                    object_id=registry.object_id,
+                    field_path=operation.field_path,
+                    old_value=(
+                        operation.new_value_jsonb
+                        if inverse
+                        else operation.old_value_jsonb
+                    ),
+                    new_value=(
+                        operation.old_value_jsonb
+                        if inverse
+                        else operation.new_value_jsonb
+                    ),
+                    object_type=registry.object_type,
+                    operation_type="replace",
+                    expected_object_revision=registry.revision,
+                )
+            )
+        simulation = VerificationEngine(
+            profile="fast",
+            draft_revision=document.get("revision", 1)
+            if isinstance(document.get("revision"), int)
+            else 1,
+            editable_fields_by_type=EDITABLE_FIELDS,
+        ).simulate_patch_operation_batch(
+            document,
+            proposed,
+            object_revisions=revisions,
+            target_finding_keys=target_finding_keys or (),
+        )
+        return simulation
+
+    def _target_finding_keys(
+        self,
+        project_id: int,
+        draft_id: int,
+        finding_ids: list[int] | None,
+    ) -> list[str]:
+        if not finding_ids:
+            return []
+        rows = list(
+            self.session.scalars(
+                select(VerificationFinding).where(
+                    VerificationFinding.project_id == project_id,
+                    VerificationFinding.draft_id == draft_id,
+                    VerificationFinding.id.in_(finding_ids),
+                )
+            )
+        )
+        found = {row.id for row in rows}
+        unknown = sorted(set(finding_ids) - found)
+        if unknown:
+            raise ApplicationError(
+                "verification_finding_not_found",
+                "目标验证问题不属于当前工作稿。",
+                status_code=422,
+                details={"finding_ids": unknown},
+            )
+        return [row.finding_key for row in rows]
 
     def get_provider_setting(
         self,
@@ -2270,6 +2691,21 @@ class WorkflowService:
                 )
             )
         }
+        finding_ids_by_operation: dict[int, list[int]] = {}
+        operation_ids = [operation.id for operation in operations]
+        if operation_ids:
+            links = list(
+                self.session.scalars(
+                    select(VerificationFindingPatchOperation).where(
+                        VerificationFindingPatchOperation.project_id == owned.project.id,
+                        VerificationFindingPatchOperation.patch_operation_id.in_(operation_ids),
+                    )
+                )
+            )
+            for link in links:
+                finding_ids_by_operation.setdefault(link.patch_operation_id, []).append(
+                    link.finding_id
+                )
         if validator_issues is None:
             validator_issues = []
             if patch_set.status == "applied":
@@ -2322,6 +2758,7 @@ class WorkflowService:
                     "reason": operation.reason,
                     "decision": operation.decision,
                     "reviewed_at": _time(operation.reviewed_at),
+                    "finding_ids": finding_ids_by_operation.get(operation.id, []),
                 }
                 for operation in operations
             ],
@@ -2387,6 +2824,9 @@ class WorkflowService:
                 prompt_version = CHAT_CONTEXT_PROMPT_V9_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
+            if os.environ.get("CASEFILE_CHAT_PROMPT_ROLLOUT", "").strip() == "casefile-chat-v13":
+                # Explicit gray entry only; registry/current default remains v12.
+                prompt_version = "casefile-chat-v13"
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,

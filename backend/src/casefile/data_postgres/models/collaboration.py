@@ -276,6 +276,11 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "operation_id",
             name="uq_agent_patch_operations_patch_set_operation_id",
         ),
+        UniqueConstraint(
+            "project_id",
+            "id",
+            name="uq_agent_patch_operations_project_id_id",
+        ),
         CheckConstraint("ordinal >= 1", name="ordinal_positive"),
         CheckConstraint(
             "operation_id ~ '^op_[a-z0-9][a-z0-9_]{0,57}$'",

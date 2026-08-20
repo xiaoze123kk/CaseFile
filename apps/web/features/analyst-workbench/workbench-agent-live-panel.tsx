@@ -7,21 +7,25 @@ import {
   applyAgentPatchSet,
   createAgentThread,
   errorMessage,
+  getVerificationRun,
   listAgentMessages,
   listAgentThreads,
   sendAgentMessage,
   sendAgentRoutingFeedback,
+  simulateAgentPatchSet,
   undoAgentPatchSet,
   updateAgentThread,
   type AgentChatFocus,
   type AgentChatRoutingHint,
   type AgentMessageView,
   type AgentPatchSetView,
+  type AgentPatchSimulationView,
   type AgentRoutingCorrectIntent,
   type AgentSuggestedView,
   type AgentThreadView,
   type TaskEventView,
   type TaskView,
+  type VerificationFindingView,
 } from "@/lib/api-client";
 import { LOCAL_ACTOR_ID } from "@/lib/local-session";
 import {
@@ -207,6 +211,12 @@ export function AgentLivePanel({
   const [contextByTask, setContextByTask] = useState<
     Record<number, ContextOccupancy | null>
   >({});
+  const [verificationByTask, setVerificationByTask] = useState<
+    Record<number, { status: string; findingCount: number }>
+  >({});
+  const [verificationByMessage, setVerificationByMessage] = useState<
+    Record<number, VerificationFindingView[]>
+  >({});
 
   const followsRef = useRef(new Map<number, AbortController>());
   const followedTaskIdsRef = useRef(new Set<number>());
@@ -309,6 +319,33 @@ export function AgentLivePanel({
   }, [bootstrap]);
 
   useEffect(() => {
+    const candidates = messages.filter((message) => {
+      const result = message.task?.result;
+      return (
+        message.role === "assistant" &&
+        result !== null &&
+        result !== undefined &&
+        typeof result === "object" &&
+        typeof (result as { verification_run_id?: unknown }).verification_run_id ===
+          "number" &&
+        verificationByMessage[message.message_id] === undefined
+      );
+    });
+    for (const message of candidates) {
+      const runId = (message.task?.result as { verification_run_id: number })
+        .verification_run_id;
+      void getVerificationRun(LOCAL_ACTOR_ID, projectId, runId)
+        .then((run) => {
+          setVerificationByMessage((previous) => ({
+            ...previous,
+            [message.message_id]: run.findings,
+          }));
+        })
+        .catch(() => undefined);
+    }
+  }, [messages, projectId, verificationByMessage]);
+
+  useEffect(() => {
     if (selectedThreadId === null) return;
     let active = true;
     const requestId = ++messagesRequestRef.current;
@@ -355,6 +392,26 @@ export function AgentLivePanel({
               setContextByTask((previous) => ({
                 ...previous,
                 [taskRunId]: occupancy,
+              }));
+            }
+            if (event.event_type.startsWith("verification.")) {
+              const status = event.event_type.slice("verification.".length);
+              const payload = event.payload;
+              const findingCount =
+                typeof payload === "object" && payload !== null &&
+                typeof (payload as { finding_count?: unknown }).finding_count === "number"
+                  ? (payload as { finding_count: number }).finding_count
+                  : undefined;
+              setVerificationByTask((previous) => ({
+                ...previous,
+                [taskRunId]: {
+                  status,
+                  findingCount:
+                    findingCount ??
+                    (status === "finding"
+                      ? (previous[taskRunId]?.findingCount ?? 0) + 1
+                      : (previous[taskRunId]?.findingCount ?? 0)),
+                },
               }));
             }
           });
@@ -628,6 +685,38 @@ export function AgentLivePanel({
     }
   }
 
+  async function simulatePatchSet(
+    patchSet: AgentPatchSetView,
+    operationIds: number[],
+  ): Promise<AgentPatchSimulationView | null> {
+    if (patchBusyId !== null) return null;
+    setPatchBusyId(patchSet.patch_set_id);
+    setPatchError(null);
+    setMessagesError(null);
+    try {
+      const targetFindingIds = patchSet.operations
+        .filter((operation) => operationIds.includes(operation.operation_id))
+        .flatMap((operation) => operation.finding_ids ?? []);
+      const result = await simulateAgentPatchSet(
+        LOCAL_ACTOR_ID,
+        projectId,
+        patchSet.patch_set_id,
+        draftId,
+        patchSet.base_draft_revision,
+        operationIds,
+        targetFindingIds.length > 0 ? targetFindingIds : undefined,
+      );
+      return result.simulation;
+    } catch (caught) {
+      const message = errorMessage(caught);
+      setPatchError(message);
+      setMessagesError(message);
+      return null;
+    } finally {
+      setPatchBusyId(null);
+    }
+  }
+
   async function undoPatchSet(patchSet: AgentPatchSetView) {
     if (
       patchBusyId !== null ||
@@ -706,29 +795,43 @@ export function AgentLivePanel({
   );
   const inspectorFindings = useMemo(
     () => messages.flatMap((message) =>
-      agentAuditFindingsFor(message).map((finding) => ({ message, finding })),
+      verificationByMessage[message.message_id] === undefined
+        ? agentAuditFindingsFor(message).map((finding) => ({ message, finding }))
+        : [],
     ),
-    [messages],
+    [messages, verificationByMessage],
   );
+  const inspectorVerificationFindings = useMemo(
+    () => Object.entries(verificationByMessage).flatMap(([messageId, findings]) => {
+      const message = messages.find((item) => item.message_id === Number(messageId));
+      return message ? findings.map((finding) => ({ message, finding })) : [];
+    }),
+    [messages, verificationByMessage],
+  );
+  const inspectorProps = {
+    busyPatchSetId: patchBusyId,
+    patchError,
+    eventLabels: referenceLabels.events,
+    findings: inspectorFindings,
+    verificationFindings: inspectorVerificationFindings,
+    focusFindingId: focusFindingId ?? localFocusFindingId,
+    focusPatchSetId: focusPatchSetId ?? localFocusPatchSetId,
+    issueLabels: referenceLabels.issues,
+    objectLabels: referenceLabels.objects,
+    onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null) => void applyPatchSet(patchSet, operationIds),
+    onSimulate: (patchSet: AgentPatchSetView, operationIds: number[]) => simulatePatchSet(patchSet, operationIds),
+    onLocateEvent: onLocateEvent,
+    onLocateIssue: onLocateIssue,
+    onLocateObject: onLocateObject,
+    onRetry: retryMessage,
+    onUndo: (patchSet: AgentPatchSetView) => void undoPatchSet(patchSet),
+    patches: inspectorPatches,
+  };
   const inspectorPortal = inspectorHost
     ? createPortal(
         <WorkbenchAgentInspector
-          busyPatchSetId={patchBusyId}
-          patchError={patchError}
-          eventLabels={referenceLabels.events}
-          findings={inspectorFindings}
-          focusFindingId={focusFindingId ?? localFocusFindingId}
-          focusPatchSetId={focusPatchSetId ?? localFocusPatchSetId}
-          issueLabels={referenceLabels.issues}
-          objectLabels={referenceLabels.objects}
-          onApply={(patchSet, operationIds) => void applyPatchSet(patchSet, operationIds)}
-            onFocusPatch={(id) => { setLocalFocusPatchSetId(id); setLocalFocusFindingId(null); onFocusPatch(id); }}
-          onLocateEvent={onLocateEvent}
-          onLocateIssue={onLocateIssue}
-          onLocateObject={onLocateObject}
-          onRetry={retryMessage}
-          onUndo={(patchSet) => void undoPatchSet(patchSet)}
-          patches={inspectorPatches}
+          {...inspectorProps}
+          onFocusPatch={(id) => { setLocalFocusPatchSetId(id); setLocalFocusFindingId(null); onFocusPatch(id); }}
         />,
         inspectorHost,
       )
@@ -827,6 +930,11 @@ export function AgentLivePanel({
               ? null
               : (contextByTask[taskForStrip.task_run_id] ?? null)
           }
+          verificationProgress={
+            taskForStrip === null
+              ? null
+              : (verificationByTask[taskForStrip.task_run_id] ?? null)
+          }
           onCancel={
             busy && pendingEntry !== null
               ? () => void cancelCurrentTask()
@@ -853,25 +961,16 @@ export function AgentLivePanel({
         />
       }
     />
-    {inspectorPortal ?? (localFocusPatchSetId !== null || localFocusFindingId !== null ? (
+    {inspectorPortal ?? (
+      inspectorVerificationFindings.length > 0 ||
+      (inspectorPatches.length > 0 && !messages.some((message) => routingSummaryFor(message)?.intent === "logic_audit")) ||
+      localFocusPatchSetId !== null ||
+      localFocusFindingId !== null
+    ? (
       <WorkbenchAgentInspector
-        busyPatchSetId={patchBusyId}
-        patchError={patchError}
-        eventLabels={referenceLabels.events}
-        findings={inspectorFindings}
-        focusFindingId={localFocusFindingId}
-        focusPatchSetId={localFocusPatchSetId}
-        issueLabels={referenceLabels.issues}
-        objectLabels={referenceLabels.objects}
-        onApply={(patchSet, operationIds) => void applyPatchSet(patchSet, operationIds)}
+        {...inspectorProps}
         requireApplyConfirmation={false}
         onFocusPatch={focusPatch}
-        onLocateEvent={onLocateEvent}
-        onLocateIssue={onLocateIssue}
-        onLocateObject={onLocateObject}
-        onRetry={retryMessage}
-        onUndo={(patchSet) => void undoPatchSet(patchSet)}
-        patches={inspectorPatches}
       />
     ) : null)}
     </>

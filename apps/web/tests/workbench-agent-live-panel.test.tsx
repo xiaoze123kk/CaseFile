@@ -22,10 +22,12 @@ const mocks = vi.hoisted(() => ({
   applyAgentPatchSet: vi.fn(),
   cancelTask: vi.fn(),
   createAgentThread: vi.fn(),
+  getVerificationRun: vi.fn(),
   listAgentMessages: vi.fn(),
   listAgentThreads: vi.fn(),
   sendAgentMessage: vi.fn(),
   sendAgentRoutingFeedback: vi.fn(),
+  simulateAgentPatchSet: vi.fn(),
   undoAgentPatchSet: vi.fn(),
   updateAgentThread: vi.fn(),
   waitForTask: vi.fn(),
@@ -46,10 +48,12 @@ vi.mock("@/lib/api-client", async (importOriginal) => {
     ...actual,
     applyAgentPatchSet: mocks.applyAgentPatchSet,
     createAgentThread: mocks.createAgentThread,
+    getVerificationRun: mocks.getVerificationRun,
     listAgentMessages: mocks.listAgentMessages,
     listAgentThreads: mocks.listAgentThreads,
     sendAgentMessage: mocks.sendAgentMessage,
     sendAgentRoutingFeedback: mocks.sendAgentRoutingFeedback,
+    simulateAgentPatchSet: mocks.simulateAgentPatchSet,
     undoAgentPatchSet: mocks.undoAgentPatchSet,
     updateAgentThread: mocks.updateAgentThread,
   };
@@ -539,6 +543,212 @@ describe("workbench agent live panel", () => {
     expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
     expect(locateMocks.event).toHaveBeenCalledWith("event:known");
     expect(locateMocks.issue).toHaveBeenCalledWith("validator:issue-1");
+  });
+
+  it("prefers persisted verification findings over legacy chat findings", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 3,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "服务端验证已完成。",
+        task: makeTask({
+          status: "succeeded",
+          result: {
+            answer: "服务端验证已完成。",
+            referenced_object_ids: [],
+            referenced_event_ids: [],
+            referenced_validation_issue_ids: [],
+            suggested_view: null,
+            patch_set_id: null,
+            stale: false,
+            verification_run_id: 501,
+            audit_findings: [
+              {
+                finding_id: "F-legacy",
+                kind: "contradiction",
+                severity: "S1",
+                title: "不应显示的旧发现",
+                statement: "旧结果仅用于兼容回退。",
+                needs_manual_review: false,
+                evidence_object_ids: [],
+                evidence_event_ids: [],
+                evidence_validation_issue_ids: [],
+              },
+            ],
+          },
+        }),
+      }),
+    ]);
+    mocks.getVerificationRun.mockResolvedValue({
+      verification_run_id: 501,
+      project_id: 1,
+      casefile_id: 2,
+      draft_id: 9,
+      source_task_run_id: 77,
+      patch_set_id: null,
+      trigger: "chat",
+      profile: "balanced",
+      engine_version: "verification-engine-v1",
+      draft_revision: 3,
+      input_hash: "a".repeat(64),
+      status: "succeeded",
+      started_at: "2026-08-16T08:02:00Z",
+      completed_at: "2026-08-16T08:02:01Z",
+      finding_count: 1,
+      deterministic_finding_count: 1,
+      llm_finding_count: 0,
+      findings: [
+        {
+          finding_id: 901,
+          verification_run_id: 501,
+          finding_key: "F1",
+          kind: "deterministic",
+          severity: "blocker",
+          status: "open",
+          title: "持久化验证发现",
+          message: "当前 Draft 存在确定性阻断。",
+          suggested_fix: "修正对象引用。",
+          rule_code: "CF-REF-001",
+          confidence: 1,
+          draft_revision: 3,
+          refs: [
+            { ref_kind: "object", ref_key: "object:person_1", role: "target" },
+          ],
+          payload: {},
+          first_seen_at: "2026-08-16T08:02:01Z",
+          last_seen_at: "2026-08-16T08:02:01Z",
+          resolved_at: null,
+        },
+      ],
+    });
+
+    renderPanel();
+
+    expect(await screen.findByText("持久化验证发现")).toBeInTheDocument();
+    expect(screen.getByText(/服务端记录/)).toBeInTheDocument();
+    expect(screen.queryByText("不应显示的旧发现")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "目标 · 研究员" }));
+    expect(locateMocks.object).toHaveBeenCalledWith("object:person_1");
+    expect(mocks.getVerificationRun).toHaveBeenCalledWith(1, 1, 501);
+  });
+
+  it("renders the ordered batch simulation and disables a blocked apply", async () => {
+    const basePatch = makePatchSet();
+    const patch = makePatchSet({
+      operations: basePatch.operations.map((operation, index) => ({
+        ...operation,
+        finding_ids: index === 0 ? [901] : [],
+      })),
+    });
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 2,
+        sequence_no: 1,
+        role: "assistant",
+        status: "completed",
+        content: "建议如下。",
+        task: makeTask({ status: "succeeded" }),
+        patch_set: patch,
+      }),
+    ]);
+    mocks.simulateAgentPatchSet.mockResolvedValue({
+      patch_set_id: 200,
+      draft_id: 9,
+      base_revision: 3,
+      can_apply: false,
+      simulation: {
+        valid: true,
+        can_apply: false,
+        reason_code: "structure_lock_conflict",
+        fixed_finding_keys: ["F1"],
+        residual_finding_keys: ["F2"],
+        new_finding_keys: ["F3"],
+        pending_recheck_finding_keys: ["F4"],
+        severity_delta: { blocker: 0 },
+        structure_lock_conflicts: ["lock:resolution"],
+        impact: {
+          collections: ["timeline", "reasoning"],
+          counts: { timeline: 2, reasoning: 1 },
+          full_rebuild: true,
+          reasons: ["结论依赖受到影响"],
+        },
+      },
+    });
+
+    renderPanel();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "预演批量修改" }),
+    );
+
+    expect(await screen.findByText("批量预演")).toBeInTheDocument();
+    expect(screen.getByText("已修复")).toBeInTheDocument();
+    expect(screen.getByText("影响：timeline、reasoning · 需要完整刷新")).toBeInTheDocument();
+    expect(screen.getByText("阻断原因：structure_lock_conflict")).toBeInTheDocument();
+    expect(screen.getByText("结构锁：lock:resolution")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "全部采纳" })).toBeDisabled();
+    expect(mocks.simulateAgentPatchSet).toHaveBeenCalledWith(
+      1,
+      1,
+      200,
+      9,
+      3,
+      [201, 202],
+      [901],
+    );
+  });
+
+  it("shows real verification progress from task events", async () => {
+    mocks.listAgentThreads.mockResolvedValue([makeThread()]);
+    mocks.listAgentMessages.mockResolvedValue([
+      makeMessage({
+        message_id: 4,
+        sequence_no: 1,
+        role: "assistant",
+        status: "pending",
+        content: null,
+        task: makeTask({ status: "queued" }),
+      }),
+    ]);
+    let resolveTask: (task: TaskView) => void = () => undefined;
+    mocks.waitForTask.mockImplementation(
+      (_projectId, _taskRunId, onTick, _signal, onEvent) => {
+        onTick?.(makeTask({ status: "running", stage: "logic_audit" }));
+        onEvent?.({
+          event_id: 1,
+          task_run_id: 77,
+          sequence_no: 1,
+          event_type: "verification.started",
+          stage: "verification",
+          payload: { finding_count: 0 },
+          occurred_at: "2026-08-16T08:02:00Z",
+        });
+        onEvent?.({
+          event_id: 2,
+          task_run_id: 77,
+          sequence_no: 2,
+          event_type: "verification.finding",
+          stage: "verification",
+          payload: { finding_count: 1 },
+          occurred_at: "2026-08-16T08:02:01Z",
+        });
+        return new Promise<TaskView>((resolve) => {
+          resolveTask = resolve;
+        });
+      },
+    );
+
+    renderPanel();
+
+    expect(
+      await screen.findByText("Agent 正在回复 · 验证复查 · 已发现 1 项"),
+    ).toBeInTheDocument();
+    await act(async () => {
+      resolveTask(makeTask({ status: "succeeded" }));
+    });
   });
 
   it("renders four kinds of clickable references and routes them into the workbench", async () => {

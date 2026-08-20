@@ -102,3 +102,19 @@ def test_fake_provider_live_smoke_runs_without_network() -> None:
     assert len(report.rows) == 2
     assert report.dangerous_confusion_recall == 1.0
     assert isinstance(report.status, str)
+
+
+def test_live_runner_can_freeze_v13_for_a_trial() -> None:
+    task = build_outcome_tasks()[0]
+    report = run_live_chat_outcome_eval(
+        lambda: ReferenceEchoProvider(task.reference_candidate),
+        provider_name="fake",
+        model_id="reference-echo",
+        api_key="fake",
+        tasks=(task,),
+        trials=1,
+        prompt_version="casefile-chat-v13",
+    )
+
+    assert report.prompt_versions == ("casefile-chat-v13",)
+    assert report.suite_fingerprint

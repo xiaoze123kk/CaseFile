@@ -17,6 +17,7 @@ import {
   ApiError,
   errorMessage,
   fetchWorkbenchContext,
+  rerunVerification,
   type AgentChatRoutingHint,
   type DraftCandidatePreviewView,
   type DraftView,
@@ -1210,6 +1211,24 @@ function AnalystWorkbenchSurface({
     announce(`已把验证问题“${issue.title}”交给 Agent 处理。`);
   }
 
+  async function rerunCurrentVerification() {
+    if (!realData || projectId === null || currentDraft === null) return;
+    try {
+      await rerunVerification(
+        LOCAL_ACTOR_ID,
+        projectId,
+        currentDraft.draft_id,
+        currentDraft.revision,
+      );
+      setAgentKickoff(null);
+      setAgentSurface("desk");
+      setAgentFocusRequest((version) => version + 1);
+      announce("验证复查已进入队列；Agent 面板将显示真实进度和结果。");
+    } catch (caught) {
+      announce(errorMessage(caught));
+    }
+  }
+
   function requestPatch() {
     if (!selectedIssue) return;
     setIssueStatuses((statuses) => ({ ...statuses, [selectedIssue.id]: "patch-ready" }));
@@ -1821,6 +1840,7 @@ function AnalystWorkbenchSurface({
                     onSelectIssue={openIssue}
                     onSelectObject={(objectId) => selectObject(objectId)}
                     onSendToAgent={sendIssueToAgent}
+                    onRerunVerification={() => void rerunCurrentVerification()}
                     onStartEditing={() => { setManualEditing(true); announce("人工修订编辑器已打开。"); }}
                     realData={realData}
                     seed={seed}
