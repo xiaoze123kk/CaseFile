@@ -7,7 +7,9 @@ the WorkflowService calls them inside the ``complete_chat_task`` transaction.
 from __future__ import annotations
 
 from collections.abc import Set
-from typing import Any
+from typing import Any, NoReturn
+
+from casefile.agent_runtime.chat_validation import ValidationIssue
 
 AUDIT_FINDING_KINDS = frozenset(
     {"dangling_ref", "contradiction", "temporal", "motivation_gap", "scope_gap"}
@@ -26,6 +28,34 @@ _EVIDENCE_FIELDS = (
     "evidence_event_ids",
     "evidence_validation_issue_ids",
 )
+
+
+class ChatAuditValidationError(ValueError):
+    """Stable structural audit error that may enter bounded repair."""
+
+    def __init__(self, issue: ValidationIssue) -> None:
+        self.issue = issue
+        self.code = issue.code
+        super().__init__(issue.code)
+
+
+def _raise_issue(
+    code: str,
+    *,
+    path: str = "/audit_findings",
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> NoReturn:
+    raise ChatAuditValidationError(
+        ValidationIssue(
+            code=code,
+            stage="audit",
+            path=path,
+            message=message,
+            repairable=True,
+            details=details or {},
+        )
+    )
 
 
 def route_primary_intent(route: dict[str, Any] | None) -> str | None:
@@ -55,13 +85,15 @@ def normalize_audit_findings(
 ) -> tuple[list[dict[str, Any]], list[str], list[str], list[str]]:
     """Normalize and evidence-check findings; return missing evidence IDs.
 
-    Structural violations raise ``ValueError`` with a stable reason code.
+    Structural violations raise ``ChatAuditValidationError`` with a stable issue.
     Missing evidence references are returned so the caller can feed the
     existing ChatReferenceValidationError repair loop.
     """
     if len(audit_findings) > MAX_AUDIT_FINDINGS:
-        raise ValueError(
-            f"audit_findings_exceeds_limit:{len(audit_findings)}>{MAX_AUDIT_FINDINGS}"
+        _raise_issue(
+            "audit_findings_exceeds_limit",
+            message="审计发现超过最多 5 条的限制。",
+            details={"actual": len(audit_findings), "limit": MAX_AUDIT_FINDINGS},
         )
 
     normalized: list[dict[str, Any]] = []
@@ -71,22 +103,43 @@ def normalize_audit_findings(
     missing_issues: set[str] = set()
     for raw in audit_findings:
         if not isinstance(raw, dict):
-            raise ValueError("audit_finding_item_must_be_object")
+            _raise_issue(
+                "audit_finding_item_must_be_object",
+                message="审计发现必须是对象。",
+            )
         finding: dict[str, Any] = {}
         for field_name in _STRING_FIELDS:
             value = raw.get(field_name)
             if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"audit_finding_missing:{field_name}")
+                _raise_issue(
+                    "audit_finding_required_field_missing",
+                    path=f"/audit_findings/{len(normalized)}/{field_name}",
+                    message=f"审计发现缺少必填字段 {field_name}。",
+                    details={"field": field_name, "finding_index": len(normalized)},
+                )
             finding[field_name] = value.strip()
         finding_id = finding["finding_id"]
         if finding_id in seen_ids:
-            raise ValueError(f"audit_finding_id_duplicate:{finding_id}")
+            _raise_issue(
+                "audit_finding_id_duplicate",
+                path=f"/audit_findings/{len(normalized)}/finding_id",
+                message=f"审计发现 ID {finding_id} 重复。",
+                details={"finding_id": finding_id},
+            )
         seen_ids.add(finding_id)
         if finding["kind"] not in AUDIT_FINDING_KINDS:
-            raise ValueError(f"audit_finding_kind_invalid:{finding['kind']}")
+            _raise_issue(
+                "audit_finding_kind_invalid",
+                path=f"/audit_findings/{len(normalized)}/kind",
+                message="审计发现类型不合法。",
+                details={"finding_id": finding_id, "kind": finding["kind"]},
+            )
         if finding["severity"] not in AUDIT_FINDING_SEVERITIES:
-            raise ValueError(
-                f"audit_finding_severity_invalid:{finding['severity']}"
+            _raise_issue(
+                "audit_finding_severity_invalid",
+                path=f"/audit_findings/{len(normalized)}/severity",
+                message="审计发现严重度不合法。",
+                details={"finding_id": finding_id, "severity": finding["severity"]},
             )
         manual_review = bool(raw.get("needs_manual_review"))
         finding["needs_manual_review"] = manual_review
@@ -97,22 +150,33 @@ def normalize_audit_findings(
             if not isinstance(value, list) or any(
                 not isinstance(item, str) or not item for item in value
             ):
-                raise ValueError(f"audit_finding_evidence_invalid:{field_name}")
+                _raise_issue(
+                    "audit_finding_evidence_invalid",
+                    path=f"/audit_findings/{len(normalized)}/{field_name}",
+                    message=f"审计证据槽 {field_name} 不合法。",
+                    details={"finding_id": finding_id, "field": field_name},
+                )
             deduped: list[str] = []
             for item in value:
                 item = item.strip()
                 if item and item not in deduped:
                     deduped.append(item)
             finding[field_name] = deduped
-        if finding["kind"] in _TWO_SIDED_KINDS:
-            evidence_count = sum(
-                len(finding[field_name])
-                for field_name in _EVIDENCE_FIELDS
+        evidence_count = sum(len(finding[field_name]) for field_name in _EVIDENCE_FIELDS)
+        required_evidence = 1 if manual_review else 2
+        if finding["kind"] in _TWO_SIDED_KINDS and evidence_count < required_evidence:
+            _raise_issue(
+                "audit_finding_evidence_incomplete",
+                path=f"/audit_findings/{len(normalized)}",
+                message="关系类审计发现缺少足够的真实证据端点。",
+                details={
+                    "finding_id": finding_id,
+                    "kind": finding["kind"],
+                    "needs_manual_review": manual_review,
+                    "required": required_evidence,
+                    "actual": evidence_count,
+                },
             )
-            if evidence_count < 2:
-                raise ValueError(
-                    f"audit_finding_evidence_incomplete:{finding_id}:{finding['kind']}"
-                )
         for object_id in finding["evidence_object_ids"]:
             if object_id not in frozen_object_ids:
                 missing_objects.add(object_id)
@@ -132,10 +196,20 @@ def normalize_audit_findings(
     }
     unknown_refs = sorted(referenced_finding_ids - seen_ids)
     if unknown_refs:
-        raise ValueError(f"audit_finding_ref_unknown:{','.join(unknown_refs)}")
+        _raise_issue(
+            "audit_finding_ref_unknown",
+            path="/suggestions",
+            message="建议引用了不存在的审计发现。",
+            details={"unknown_finding_refs": unknown_refs},
+        )
     manual_refs = sorted(referenced_finding_ids & manual_review_ids)
     if manual_refs:
-        raise ValueError(f"audit_finding_ref_manual_review:{','.join(manual_refs)}")
+        _raise_issue(
+            "audit_finding_ref_manual_review",
+            path="/suggestions",
+            message="待人工确认的发现不能绑定修改建议。",
+            details={"manual_review_finding_refs": manual_refs},
+        )
 
     return (
         normalized,

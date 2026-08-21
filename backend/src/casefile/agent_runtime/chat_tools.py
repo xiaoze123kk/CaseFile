@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Any
 
 from agents import RunContextWrapper, Tool, function_tool
@@ -65,9 +66,7 @@ _RECENT_TOOL_RESULTS = 3
 # frozen v1-toolset replays keep their original read surface.
 _V2_ONLY_TOOLS = frozenset({"list_casefile_records", "get_related_objects"})
 # Phase 4 Context Tools are v3 and v4; v1/v2 replays never see them.
-_V3_ONLY_TOOLS = frozenset(
-    {"retrieve_thread_evidence", "request_thread_compaction"}
-)
+_V3_ONLY_TOOLS = frozenset({"retrieve_thread_evidence", "request_thread_compaction"})
 # The dry-run patch preview is v4-only; earlier replays keep their exact read surface.
 _V4_ONLY_TOOLS = frozenset({"simulate_patch_application"})
 _LIST_LIMIT_MAX = 50
@@ -153,6 +152,106 @@ class ChatToolContext:
             "recent": recent,
             "folded": folded,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class ToolLedgerEntry:
+    ordinal: int
+    tool_name: str
+    sanitized_arguments: dict[str, Any]
+    status: str
+    bounded_result: dict[str, Any]
+    result_hash: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "ordinal": self.ordinal,
+            "tool_name": self.tool_name,
+            "sanitized_arguments": self.sanitized_arguments,
+            "status": self.status,
+            "bounded_result": self.bounded_result,
+            "result_hash": self.result_hash,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ChatToolLedger:
+    input_hash: str
+    route_id: str
+    entries: tuple[ToolLedgerEntry, ...]
+    retrieved_object_ids: tuple[str, ...]
+    retrieved_evidence_ids: tuple[str, ...]
+    evidence_summary: str
+    budget_exhausted: bool
+    ledger_hash: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "input_hash": self.input_hash,
+            "route_id": self.route_id,
+            "entries": [entry.as_dict() for entry in self.entries],
+            "retrieved_object_ids": list(self.retrieved_object_ids),
+            "retrieved_evidence_ids": list(self.retrieved_evidence_ids),
+            "evidence_summary": self.evidence_summary,
+            "budget_exhausted": self.budget_exhausted,
+            "ledger_hash": self.ledger_hash,
+        }
+
+
+def freeze_chat_tool_ledger(
+    context: ChatToolContext,
+    *,
+    evidence_summary: str,
+) -> ChatToolLedger:
+    """Freeze the already bounded tool results for a no-tool finalizer."""
+
+    entries: list[ToolLedgerEntry] = []
+    for ordinal, raw in enumerate(context.recent_tool_results, start=1):
+        result_json = json.dumps(
+            raw["payload"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        entries.append(
+            ToolLedgerEntry(
+                ordinal=ordinal,
+                tool_name=str(raw["tool"]),
+                sanitized_arguments=dict(raw["args"]),
+                status=str(raw["status"]),
+                bounded_result=deepcopy(raw["payload"]),
+                result_hash=sha256(result_json.encode("utf-8")).hexdigest(),
+            )
+        )
+    route_id = str(context.route.execution_profile.get("profile_id") or "") or str(
+        context.route.execution_profile.get("primary_intent") or "unknown"
+    )
+    input_hash = context.request.input_hash
+    retrieved_object_ids = tuple(sorted(set(context.metrics.retrieved_object_ids)))
+    retrieved_evidence_ids = tuple(sorted(set(context.metrics.retrieved_evidence_ids)))
+    summary = evidence_summary.strip()[:20_000]
+    budget_exhausted = context.metrics.budget_exhausted > 0
+    payload = {
+        "input_hash": input_hash,
+        "route_id": route_id,
+        "entries": [entry.as_dict() for entry in entries],
+        "retrieved_object_ids": list(retrieved_object_ids),
+        "retrieved_evidence_ids": list(retrieved_evidence_ids),
+        "evidence_summary": summary,
+        "budget_exhausted": budget_exhausted,
+    }
+    ledger_hash = sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    return ChatToolLedger(
+        input_hash=input_hash,
+        route_id=route_id,
+        entries=tuple(entries),
+        retrieved_object_ids=retrieved_object_ids,
+        retrieved_evidence_ids=retrieved_evidence_ids,
+        evidence_summary=summary,
+        budget_exhausted=budget_exhausted,
+        ledger_hash=ledger_hash,
+    )
 
 
 def _record_label(item: dict[str, Any]) -> str:
@@ -289,9 +388,7 @@ def _bigrams(text: str) -> set[str]:
     normalized = text.lower().strip()
     if not normalized:
         return set()
-    return {normalized[index : index + 2] for index in range(len(normalized) - 1)} | {
-        normalized
-    }
+    return {normalized[index : index + 2] for index in range(len(normalized) - 1)} | {normalized}
 
 
 def _match_score(query: str, object_id: str, label: str) -> float:
@@ -381,9 +478,7 @@ def _pointer_parts(path: str) -> list[str]:
 
     if not path.startswith("/") or path == "/":
         return []
-    return [
-        part.replace("~1", "/").replace("~0", "~") for part in path[1:].split("/")
-    ]
+    return [part.replace("~1", "/").replace("~0", "~") for part in path[1:].split("/")]
 
 
 def _pointer_value(value: Any, path: str) -> Any:
@@ -445,9 +540,7 @@ def _check_patch_proposal(
         return _ProposalCheck("object_not_found", object_id=object_id)
     collection, item = found
     top_level_field = path.lstrip("/").split("/")[0] if path.startswith("/") else ""
-    allowed_fields = tuple(
-        context.request.editable_fields_by_collection.get(collection, ())
-    )
+    allowed_fields = tuple(context.request.editable_fields_by_collection.get(collection, ()))
     if not top_level_field or top_level_field not in allowed_fields:
         return _ProposalCheck(
             "field_not_editable",
@@ -520,11 +613,7 @@ def _issue_keys_to_ids(
         code = issue.get("code")
         path = issue.get("path")
         issue_id = issue.get("issue_id")
-        if (
-            isinstance(code, str)
-            and isinstance(path, str)
-            and isinstance(issue_id, str)
-        ):
+        if isinstance(code, str) and isinstance(path, str) and isinstance(issue_id, str):
             result[(code, path)] = issue_id
     return result
 
@@ -605,9 +694,9 @@ def simulate_patch_delta(
             "path": path,
         }
 
-    baseline_keys = _validation_issue_keys(
-        validation_issues
-    ) | _validation_issue_keys(validate_casefile_semantics(base_document))
+    baseline_keys = _validation_issue_keys(validation_issues) | _validation_issue_keys(
+        validate_casefile_semantics(base_document)
+    )
     baseline_ids = _issue_keys_to_ids(validation_issues)
 
     patched_document = deepcopy(base_document)
@@ -623,9 +712,7 @@ def simulate_patch_delta(
     new_keys = sorted(after_keys - baseline_keys)
     unchanged_keys = sorted(baseline_keys & after_keys)
     fixed_issue_ids = [baseline_ids[key] for key in fixed_keys if key in baseline_ids]
-    unchanged_issue_ids = [
-        baseline_ids[key] for key in unchanged_keys if key in baseline_ids
-    ]
+    unchanged_issue_ids = [baseline_ids[key] for key in unchanged_keys if key in baseline_ids]
     new_issues = [
         {"code": issue["code"], "path": issue["path"], "message": issue["message"]}
         for issue in after_issues
@@ -693,9 +780,7 @@ def page_casefile_records(
     ]
     total = len(items)
     start = _clamp_tool_count(offset, default=0, minimum=0, maximum=max(0, total))
-    page_limit = _clamp_tool_count(
-        limit, default=20, minimum=1, maximum=_LIST_LIMIT_MAX
-    )
+    page_limit = _clamp_tool_count(limit, default=20, minimum=1, maximum=_LIST_LIMIT_MAX)
     records = [
         {
             "collection": collection,
@@ -739,13 +824,9 @@ def related_casefile_objects(
     normalized_relation_types: frozenset[str] | None = None
     if relation_types:
         normalized_relation_types = frozenset(
-            str(item).strip()
-            for item in relation_types
-            if isinstance(item, str) and item.strip()
+            str(item).strip() for item in relation_types if isinstance(item, str) and item.strip()
         )
-    page_limit = _clamp_tool_count(
-        limit, default=20, minimum=1, maximum=_RELATED_LIMIT_MAX
-    )
+    page_limit = _clamp_tool_count(limit, default=20, minimum=1, maximum=_RELATED_LIMIT_MAX)
     hits: list[tuple[dict[str, Any], str | None]] = []
     for item in casefile.get("relationships") or []:
         if not isinstance(item, dict) or not isinstance(item.get("id"), str):
@@ -770,9 +851,7 @@ def related_casefile_objects(
     selected = hits[:page_limit]
     objects: list[dict[str, Any]] = []
     seen_object_ids: set[str] = set()
-    unresolved_refs = [
-        seed for seed in object_ids if find_casefile_object(casefile, seed) is None
-    ]
+    unresolved_refs = [seed for seed in object_ids if find_casefile_object(casefile, seed) is None]
     for _summary, neighbor_ref in selected:
         if neighbor_ref is None:
             continue
@@ -1078,9 +1157,7 @@ def get_related_objects(
         )
     seeds = list(
         dict.fromkeys(
-            str(item).strip()
-            for item in object_ids
-            if isinstance(item, str) and item.strip()
+            str(item).strip() for item in object_ids if isinstance(item, str) and item.strip()
         )
     )
     if not seeds:
@@ -1158,9 +1235,7 @@ def get_validation_issues(
         )
     _emit_started(context, "get_validation_issues", {"page": page, "limit": limit})
     issues = list(context.request.validation_issues)
-    page_limit = _clamp_tool_count(
-        limit, default=20, minimum=1, maximum=_LIST_LIMIT_MAX
-    )
+    page_limit = _clamp_tool_count(limit, default=20, minimum=1, maximum=_LIST_LIMIT_MAX)
     page_max = max(0, (len(issues) + page_limit - 1) // page_limit - 1)
     page_no = _clamp_tool_count(page, default=0, minimum=0, maximum=page_max)
     start = page_no * page_limit
@@ -1332,11 +1407,7 @@ def retrieve_thread_evidence(
     context.metrics.valid_calls += 1
     assembled = context.request.assembled_input or {}
     dashboard = assembled.get("context_dashboard")
-    declared = (
-        dashboard.get("recoverable_evidence_ids", [])
-        if isinstance(dashboard, dict)
-        else []
-    )
+    declared = dashboard.get("recoverable_evidence_ids", []) if isinstance(dashboard, dict) else []
     if not isinstance(declared, list) or evidence_id not in declared:
         payload = {
             "valid": False,
@@ -1450,21 +1521,16 @@ def chat_tool_manifest(
     for tool_name in allowed:
         if not isinstance(tool_name, str):
             continue
-        if (
-            tool_name in _V2_ONLY_TOOLS
-            and toolset_version
-            not in {
-                CHAT_TOOLSET_VERSION,
-                CHAT_TOOLSET_V3_VERSION,
-                CHAT_TOOLSET_V4_VERSION,
-            }
-        ):
+        if tool_name in _V2_ONLY_TOOLS and toolset_version not in {
+            CHAT_TOOLSET_VERSION,
+            CHAT_TOOLSET_V3_VERSION,
+            CHAT_TOOLSET_V4_VERSION,
+        }:
             continue
-        if (
-            tool_name in _V3_ONLY_TOOLS
-            and toolset_version
-            not in {CHAT_TOOLSET_V3_VERSION, CHAT_TOOLSET_V4_VERSION}
-        ):
+        if tool_name in _V3_ONLY_TOOLS and toolset_version not in {
+            CHAT_TOOLSET_V3_VERSION,
+            CHAT_TOOLSET_V4_VERSION,
+        }:
             continue
         if tool_name in _V4_ONLY_TOOLS and toolset_version != CHAT_TOOLSET_V4_VERSION:
             continue
@@ -1482,10 +1548,12 @@ __all__ = [
     "LEGACY_CHAT_TOOLSET_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
+    "ChatToolLedger",
     "chat_tool_manifest",
     "bounded_tool_result_json",
     "find_casefile_object",
     "fold_tool_results",
+    "freeze_chat_tool_ledger",
     "get_casefile_object",
     "get_related_objects",
     "get_validation_issues",

@@ -61,8 +61,10 @@ from casefile.agent_runtime.context.thread_memory import (
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatCandidateV2,
+    ChatEvidenceOutputV1,
     ChatExecutorInputV1,
     ChatExecutorInputV2,
+    ChatFinalizerInputV1,
     ChatIntentRouterInputV1,
     ChatRewriteInputV1,
     ChatTaskUnderstandingOutput,
@@ -141,6 +143,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-rewrite-input-v1": ChatRewriteInputV1,
         "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
         "casefile-chat-prompt-input-v2": ChatExecutorInputV2,
+        "casefile-chat-finalizer-input-v1": ChatFinalizerInputV1,
         "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
     }
 )
@@ -160,6 +163,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-rewrite-v1": QueryRewriteOutput,
         "casefile-chat-output-v1": CaseFileChatCandidate,
         "casefile-chat-output-v2": CaseFileChatCandidateV2,
+        "casefile-chat-evidence-v1": ChatEvidenceOutputV1,
         "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
     }
 )
@@ -326,9 +330,7 @@ def render_prompt_package(
     try:
         validated_input = contract.model_validate(input_value)
     except ValidationError as error:
-        raise PromptPackageError(
-            f"Prompt Package input does not satisfy {contract_id}"
-        ) from error
+        raise PromptPackageError(f"Prompt Package input does not satisfy {contract_id}") from error
 
     instruction_parts = [
         package.fragments[fragment_id].content.rstrip("\n")

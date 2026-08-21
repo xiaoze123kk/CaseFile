@@ -7,13 +7,14 @@ from dataclasses import dataclass, field, is_dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
 )
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EventSink(Protocol):
@@ -174,9 +175,7 @@ class CaseFileChatCandidate(StrictAgentOutput):
     answer: str = Field(min_length=1)
     referenced_object_ids: list[str] = Field(default_factory=list, max_length=50)
     referenced_event_ids: list[str] = Field(default_factory=list, max_length=50)
-    referenced_validation_issue_ids: list[str] = Field(
-        default_factory=list, max_length=50
-    )
+    referenced_validation_issue_ids: list[str] = Field(default_factory=list, max_length=50)
     suggested_view: str | None = Field(
         default=None,
         pattern=r"^(?:timeline|relations|reasoning|map|export|compile|evidence)$",
@@ -205,9 +204,7 @@ class CaseFileChatAuditFindingCandidate(StrictAgentOutput):
     needs_manual_review: bool = False
     evidence_object_ids: list[str] = Field(default_factory=list, max_length=20)
     evidence_event_ids: list[str] = Field(default_factory=list, max_length=20)
-    evidence_validation_issue_ids: list[str] = Field(
-        default_factory=list, max_length=20
-    )
+    evidence_validation_issue_ids: list[str] = Field(default_factory=list, max_length=20)
 
 
 class CaseFileChatSuggestionCandidateV2(StrictAgentOutput):
@@ -234,16 +231,14 @@ class CaseFileChatCandidateV2(StrictAgentOutput):
     answer: str = Field(min_length=1)
     referenced_object_ids: list[str] = Field(default_factory=list, max_length=50)
     referenced_event_ids: list[str] = Field(default_factory=list, max_length=50)
-    referenced_validation_issue_ids: list[str] = Field(
-        default_factory=list, max_length=50
-    )
+    referenced_validation_issue_ids: list[str] = Field(default_factory=list, max_length=50)
     suggested_view: str | None = Field(
         default=None,
         pattern=r"^(?:timeline|relations|reasoning|map|export|compile|evidence)$",
     )
     suggestions: list[CaseFileChatSuggestionCandidateV2] = Field(default_factory=list)
     audit_findings: list[CaseFileChatAuditFindingCandidate] = Field(
-        default_factory=list, max_length=50
+        default_factory=list, max_length=5
     )
 
 
@@ -377,6 +372,21 @@ class ChatExecutorInputV2(StrictAgentOutput):
     validation: dict[str, Any] = Field(default_factory=dict)
     validation_issues: list[dict[str, Any]] = Field(default_factory=list)
     routing: dict[str, Any] | None = None
+
+
+class ChatFinalizerInputV1(ChatExecutorInputV2):
+    """Frozen v14 finalizer input: context plus a server-owned tool ledger."""
+
+    tool_ledger: dict[str, Any] | None = None
+    evidence_summary: str = Field(default="", max_length=20_000)
+    previous_candidate: dict[str, Any] | None = None
+    repair_plan: dict[str, Any] | None = None
+
+
+class ChatEvidenceOutputV1(StrictAgentOutput):
+    """Small tool-agent handoff; the server owns the authoritative ledger."""
+
+    evidence_summary: str = Field(min_length=1, max_length=20_000)
 
 
 @dataclass(frozen=True, slots=True)
@@ -552,6 +562,9 @@ class CaseFileChatRequest:
     thread_id: int | None = None
     thread_evidence_resolver: ThreadEvidenceResolver | None = None
     repair_feedback: tuple[str, ...] = ()
+    frozen_tool_ledger: dict[str, Any] | None = None
+    previous_candidate: dict[str, Any] | None = None
+    repair_plan: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -605,6 +618,7 @@ class CaseFileChatResult:
     candidate: CaseFileChatCandidate | CaseFileChatCandidateV2
     usage: dict[str, Any]
     tools: ToolMetrics = field(default_factory=ToolMetrics)
+    tool_ledger: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -712,12 +726,21 @@ class ReverseParseItem(StrictAgentOutput):
     """One extracted item with grading and source block evidence."""
 
     item_type: Literal[
-        "entity_alias", "event", "information_unit", "knowledge_state",
-        "relationship_causality", "candidate_question", "candidate_conclusion",
+        "entity_alias",
+        "event",
+        "information_unit",
+        "knowledge_state",
+        "relationship_causality",
+        "candidate_question",
+        "candidate_conclusion",
     ]
     content: dict[str, Any]
     grading: Literal[
-        "explicit", "inferred", "needs_confirmation", "conflicting", "missing_important",
+        "explicit",
+        "inferred",
+        "needs_confirmation",
+        "conflicting",
+        "missing_important",
     ]
     source_block_refs: list[int] = Field(default_factory=list)
     source_quote: str = Field(min_length=1, max_length=800)
@@ -785,9 +808,7 @@ def chat_routing_payload_as_dict(request: CaseFileChatRequest) -> dict[str, Any]
         return None
     routing_payload: dict[str, Any] = {"route": chat_state_as_dict(request.route)}
     if request.task_understanding is not None:
-        routing_payload["task_understanding"] = chat_state_as_dict(
-            request.task_understanding
-        )
+        routing_payload["task_understanding"] = chat_state_as_dict(request.task_understanding)
     if request.rewrite is not None:
         routing_payload["rewrite"] = chat_state_as_dict(request.rewrite)
     return routing_payload

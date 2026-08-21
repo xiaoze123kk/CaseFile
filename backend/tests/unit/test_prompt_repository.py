@@ -327,6 +327,20 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-clarify": "9a9df160de21d2a395a34bd2df3f3eca4e3c54ee8db4df7eff18952c324cc1b9",  # noqa: E501
         "fragment:executor-scope": "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276",  # noqa: E501
     },
+    ("casefile_chat", "casefile-chat-v14"): {
+        "fragment:evidence": "aea4f79e0cf236855a8bc4c97a605eaa853a57b3f9049ec9466735a9341e280b",  # noqa: E501
+        "fragment:executor-analysis": "f63d951a6ad655566794f55e102b94c1d40bf77389ed9f2fd553da1f5c0239ab",  # noqa: E501
+        "fragment:executor-audit": "45d30a13918f2f942fae0953dfe296a9b7a6e96ab5b9746b7b30cffd1606e9c2",  # noqa: E501
+        "fragment:executor-chat": "29bbdade80e10692f1a64d4b05c79bd0b31dbe561c80126d8e8478e8e483d55e",  # noqa: E501
+        "fragment:executor-clarify": "46fa3b1a7611ab7550e1f4fc0bad20691b8a315973e675fd08c85035fd08ffc8",  # noqa: E501
+        "fragment:executor-edit": "2e63533e8b5700722628ff3ecb4303b858060a54ec1a92fe2c989fbaaa119770",  # noqa: E501
+        "fragment:executor-gate": "eccd75c74ab77dd41788e50305a86196e38bdce4eeb7250a2aa9494f7d4470df",  # noqa: E501
+        "fragment:executor-issue": "386005fc57e48722285a4fea6ec8c91e18034d5a7ae4bd2d8810f27c2bb505f6",  # noqa: E501
+        "fragment:executor-scope": "fec8e6c687786ffac0d57c0bd9d1ff7ef8035617ba679373822e4ea24a2e9618",  # noqa: E501
+        "fragment:finalizer": "bb494611940b45dff868edb61b74b4b9618d593834e3e45a8083525fd0be5299",  # noqa: E501
+        "fragment:rewrite": "e3ef7f0ff1206b43e30c765f488552d8960c03d21bc3520b5cdb21ae93711ca4",
+        "fragment:router": "ccdacc39ec8ef8c7cc2653c66e71f4d8f86ef6679e8b31db514ef26206aa8f19",
+    },
     ("casefile_chat_context_compactor", "casefile-chat-context-compactor-v1"): {
         "fragment:compact": "5ea1c71108018f929389f371c3a5b7ba7c451a0f696b21498f8b89cefd690ba5",  # noqa: E501
     },
@@ -518,10 +532,7 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         v2_chat.package.components["router"].output_schema_id
         == "casefile-chat-task-understanding-v1"
     )
-    assert (
-        v2_chat.package.components["rewrite"].output_schema_id
-        == "casefile-chat-rewrite-v1"
-    )
+    assert v2_chat.package.components["rewrite"].output_schema_id == "casefile-chat-rewrite-v1"
     assert all(
         component.output_schema_id == "casefile-chat-output-v1"
         for component_id, component in v2_chat.package.components.items()
@@ -535,9 +546,7 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert v2_chat.package.components["analysis"].tool_policy_id == "chat-read-v1"
     assert v2_chat.package.components["issue"].tool_policy_id == "chat-issue-v1"
     assert v2_chat.package.components["edit"].tool_policy_id == "chat-edit-v1"
-    assert (
-        v2_chat.package.components["gate"].tool_policy_id == "no-tools-v1"
-    )
+    assert v2_chat.package.components["gate"].tool_policy_id == "no-tools-v1"
     assert "只能调用系统明确给出的工具" in v2_chat.component_prompts["analysis"]
     assert "`validate_patch_proposal`" in v2_chat.component_prompts["edit"]
     v3_chat = load_prompt("casefile_chat", "casefile-chat-v3")

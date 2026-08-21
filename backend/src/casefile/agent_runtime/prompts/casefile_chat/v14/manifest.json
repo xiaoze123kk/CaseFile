@@ -1,0 +1,42 @@
+{
+  "schema_version": 2,
+  "agent_id": "casefile_chat",
+  "version": "casefile-chat-v14",
+  "previous_version": "casefile-chat-v13",
+  "change_summary": "Chat Validation Pipeline v2：工具调查与无工具 Structured Finalizer 分离，统一精确修复契约。",
+  "runtime": {"agent_version": "casefile-single-agent-v2", "toolset_version": "casefile-chat-tools-v4"},
+  "fragments": {
+    "router": {"file": "router.md", "sha256": "ccdacc39ec8ef8c7cc2653c66e71f4d8f86ef6679e8b31db514ef26206aa8f19"},
+    "rewrite": {"file": "rewrite.md", "sha256": "e3ef7f0ff1206b43e30c765f488552d8960c03d21bc3520b5cdb21ae93711ca4"},
+    "evidence": {"file": "evidence.md", "sha256": "aea4f79e0cf236855a8bc4c97a605eaa853a57b3f9049ec9466735a9341e280b"},
+    "finalizer": {"file": "finalizer.md", "sha256": "bb494611940b45dff868edb61b74b4b9618d593834e3e45a8083525fd0be5299"},
+    "executor-chat": {"file": "executor-chat.md", "sha256": "29bbdade80e10692f1a64d4b05c79bd0b31dbe561c80126d8e8478e8e483d55e"},
+    "executor-analysis": {"file": "executor-analysis.md", "sha256": "f63d951a6ad655566794f55e102b94c1d40bf77389ed9f2fd553da1f5c0239ab"},
+    "executor-audit": {"file": "executor-audit.md", "sha256": "45d30a13918f2f942fae0953dfe296a9b7a6e96ab5b9746b7b30cffd1606e9c2"},
+    "executor-issue": {"file": "executor-issue.md", "sha256": "386005fc57e48722285a4fea6ec8c91e18034d5a7ae4bd2d8810f27c2bb505f6"},
+    "executor-edit": {"file": "executor-edit.md", "sha256": "2e63533e8b5700722628ff3ecb4303b858060a54ec1a92fe2c989fbaaa119770"},
+    "executor-gate": {"file": "executor-gate.md", "sha256": "eccd75c74ab77dd41788e50305a86196e38bdce4eeb7250a2aa9494f7d4470df"},
+    "executor-clarify": {"file": "executor-clarify.md", "sha256": "46fa3b1a7611ab7550e1f4fc0bad20691b8a315973e675fd08c85035fd08ffc8"},
+    "executor-scope": {"file": "executor-scope.md", "sha256": "fec8e6c687786ffac0d57c0bd9d1ff7ef8035617ba679373822e4ea24a2e9618"}
+  },
+  "components": {
+    "router": {"instruction_fragments": ["router"], "input_contract_id": "casefile-chat-intent-input-v1", "output_schema_id": "casefile-chat-task-understanding-v1", "tool_policy_id": "no-tools-v1"},
+    "rewrite": {"instruction_fragments": ["rewrite"], "input_contract_id": "casefile-chat-rewrite-input-v1", "output_schema_id": "casefile-chat-rewrite-v1", "tool_policy_id": "no-tools-v1"},
+    "chat": {"instruction_fragments": ["evidence", "executor-chat"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "chat-read-v3"},
+    "analysis": {"instruction_fragments": ["evidence", "executor-analysis"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "chat-read-v3"},
+    "audit": {"instruction_fragments": ["evidence", "executor-audit"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "chat-audit-v4"},
+    "issue": {"instruction_fragments": ["evidence", "executor-issue"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "chat-issue-v3"},
+    "edit": {"instruction_fragments": ["evidence", "executor-edit"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "chat-edit-v3"},
+    "gate": {"instruction_fragments": ["evidence", "executor-gate"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "no-tools-v1"},
+    "clarify": {"instruction_fragments": ["evidence", "executor-clarify"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "no-tools-v1"},
+    "scope": {"instruction_fragments": ["evidence", "executor-scope"], "input_contract_id": "casefile-chat-prompt-input-v2", "output_schema_id": "casefile-chat-evidence-v1", "tool_policy_id": "no-tools-v1"},
+    "chat_finalizer": {"instruction_fragments": ["finalizer", "executor-chat"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"},
+    "analysis_finalizer": {"instruction_fragments": ["finalizer", "executor-analysis"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"},
+    "audit_finalizer": {"instruction_fragments": ["finalizer", "executor-audit"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v2", "tool_policy_id": "no-tools-v1"},
+    "issue_finalizer": {"instruction_fragments": ["finalizer", "executor-issue"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"},
+    "edit_finalizer": {"instruction_fragments": ["finalizer", "executor-edit"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"},
+    "gate_finalizer": {"instruction_fragments": ["finalizer", "executor-gate"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"},
+    "clarify_finalizer": {"instruction_fragments": ["finalizer", "executor-clarify"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"},
+    "scope_finalizer": {"instruction_fragments": ["finalizer", "executor-scope"], "input_contract_id": "casefile-chat-finalizer-input-v1", "output_schema_id": "casefile-chat-output-v1", "tool_policy_id": "no-tools-v1"}
+  }
+}

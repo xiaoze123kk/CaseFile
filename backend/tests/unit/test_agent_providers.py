@@ -8,10 +8,18 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
-import casefile.agent_runtime.providers as providers_module
 import httpx
 import pytest
 from agents.tool_context import ToolContext
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ValidationError
+
+import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
@@ -58,13 +66,6 @@ from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
 from casefile_contracts import CaseFile, ObjectRef
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -117,7 +118,7 @@ def test_deepseek_json_object_text_extracts_candidate_from_dsml_output() -> None
     raw_output = (
         '<DSML parameter name="value_json" string="true">'
         '{"end":"2042-06-01T20:03","kind":"range"}'
-        '</DSML parameter>'
+        "</DSML parameter>"
         f"</DSML invoke>{candidate}</DSML tool_calls>"
     )
 
@@ -592,9 +593,7 @@ def test_partition_validation_reports_contract_and_planned_id_issues_together() 
 
     assert any(issue["path"] == "/title" for issue in caught.value.errors)
     id_issue = next(
-        issue
-        for issue in caught.value.errors
-        if issue["code"] == "planned_object_ids_mismatch"
+        issue for issue in caught.value.errors if issue["code"] == "planned_object_ids_mismatch"
     )
     assert id_issue["path"] == "/resolution_specs"
     assert "res_t1_01" in id_issue["message"]
@@ -732,9 +731,7 @@ def test_fake_provider_chat_consumes_retrieval_queries_under_route_budget() -> N
             model_id="fake",
             api_key=None,
             max_turns=6,
-            emit=lambda event_type, stage, payload: emitted.append(
-                (event_type, stage, payload)
-            ),
+            emit=lambda event_type, stage, payload: emitted.append((event_type, stage, payload)),
             route=RouteDecision(
                 execution_profile={
                     "toolset": ["search_casefile"],
@@ -761,6 +758,60 @@ def test_fake_provider_chat_consumes_retrieval_queries_under_route_budget() -> N
         "tool.completed",
         "tool.completed",
     ]
+
+
+def test_v14_fake_chat_freezes_ledger_before_no_tool_finalizer() -> None:
+    emitted: list[tuple[str, str, dict[str, Any]]] = []
+    route = RouteDecision(
+        execution_profile={
+            "primary_intent": "question",
+            "prompt_component": "chat",
+            "toolset": ["search_casefile"],
+            "max_tool_calls": 2,
+            "max_turns": 4,
+        }
+    )
+    request = CaseFileChatRequest(
+        task_run_id=314,
+        prompt_version="casefile-chat-v14",
+        casefile={"entities": [{"id": "ent_1", "name": "张三"}]},
+        history=(),
+        message="张三是谁",
+        editable_fields_by_collection={"entities": ("description",)},
+        input_hash="e" * 64,
+        model_id="fake",
+        api_key=None,
+        max_turns=4,
+        emit=lambda event_type, stage, payload: emitted.append((event_type, stage, payload)),
+        route=route,
+        toolset_version="casefile-chat-tools-v4",
+        assembled_input={
+            "input_hash": "e" * 64,
+            "casefile": {"entities": [{"id": "ent_1", "name": "张三"}]},
+            "focus_objects": {},
+            "thread_history": [],
+            "thread_memory": None,
+            "context_dashboard": None,
+            "author_message": "张三是谁",
+            "editable_fields_by_collection": {"entities": ["description"]},
+            "focus": {},
+            "validation": {},
+            "validation_issues": [],
+            "routing": {"execution_profile": route.execution_profile},
+        },
+    )
+
+    result = FakeProvider().chat(request)
+
+    event_types = [item[0] for item in emitted]
+    assert (
+        event_types.index("model.tool_agent.completed")
+        < event_types.index("model.tool_ledger.frozen")
+        < event_types.index("model.finalizer.started")
+    )
+    assert result.tool_ledger is not None
+    assert len(result.tool_ledger["ledger_hash"]) == 64
+    assert result.candidate.suggestions == []
 
 
 def test_fake_provider_chat_stops_retrieval_when_budget_is_exhausted() -> None:

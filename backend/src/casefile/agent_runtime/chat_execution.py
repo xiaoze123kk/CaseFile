@@ -6,9 +6,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
-from casefile.agent_runtime.chat_audit_validation import normalize_audit_findings
+from casefile.agent_runtime.chat_audit_validation import (
+    ChatAuditValidationError,
+    normalize_audit_findings,
+)
 from casefile.agent_runtime.chat_intent import build_edit_target_manifest
 from casefile.agent_runtime.chat_reference_autofill import autofill_chat_references
+from casefile.agent_runtime.chat_validation import (
+    RepairPlan,
+    ValidationIssue,
+    plan_repairs,
+    target_label,
+)
 from casefile.agent_runtime.context import build_chat_context_manifest
 from casefile.agent_runtime.context.assembly_render import chat_input_payload_from_assembly
 from casefile.agent_runtime.context.audit_evidence import build_audit_evidence_bundle
@@ -41,6 +50,8 @@ class ChatCompletionValidationError(RuntimeError):
         wrong_slot_object_ids: tuple[str, ...] = (),
         wrong_slot_event_ids: tuple[str, ...] = (),
         code: str = "chat_reference_validation_failed",
+        issues: tuple[ValidationIssue, ...] = (),
+        repair_plan: RepairPlan | None = None,
     ) -> None:
         self.object_ids = object_ids
         self.event_ids = event_ids
@@ -48,9 +59,20 @@ class ChatCompletionValidationError(RuntimeError):
         self.wrong_slot_object_ids = wrong_slot_object_ids
         self.wrong_slot_event_ids = wrong_slot_event_ids
         self.code = code
+        self.issues = issues
+        self.repair_plan = repair_plan or plan_repairs(issues)
         super().__init__(code)
 
     def repair_feedback(self) -> str:
+        if self.issues:
+            issue_payloads = [issue.as_dict() for issue in self.issues]
+            return (
+                "上一轮结构化结果未通过系统校验。"
+                f"validation_issues={issue_payloads!r}；"
+                f"repair_plan={self.repair_plan.as_dict()!r}。"
+                "严格按 repair_plan 修复：preserve 项原样保留，add 项必须补齐，"
+                "remove 项必须删除，fix 项逐条修正；不得改写其他已通过内容。"
+            )
         return (
             "上一轮结构化结果被系统拒绝："
             f"objects={list(self.object_ids)!r}, events={list(self.event_ids)!r}, "
@@ -77,7 +99,7 @@ class ChatExecutionResult:
 def prepare_chat_request_artifacts(request: CaseFileChatRequest) -> CaseFileChatRequest:
     """Freeze v13 Bundle/manifest before context rendering and provider I/O."""
 
-    if request.prompt_version != "casefile-chat-v13":
+    if request.prompt_version not in {"casefile-chat-v13", "casefile-chat-v14"}:
         return request
     validation = dict(request.validation)
     intent = (
@@ -185,7 +207,27 @@ def validate_chat_candidate(
             if isinstance(item, dict)
         }
         if len(actual) != len(suggestions) or expected != actual:
-            raise ChatCompletionValidationError(code="edit_target_manifest_incomplete")
+            missing = expected - actual
+            extra = actual - expected
+            preserve = expected & actual
+            issue = ValidationIssue(
+                code="edit_target_manifest_incomplete",
+                stage="edit",
+                path="/suggestions",
+                message="修改建议没有完整且唯一地覆盖冻结编辑目标。",
+                repairable=True,
+                details={
+                    "expected": sorted(target_label(*item) for item in expected),
+                    "actual": sorted(target_label(*item) for item in actual),
+                    "missing": sorted(target_label(*item) for item in missing),
+                    "extra": sorted(target_label(*item) for item in extra),
+                    "preserve": sorted(target_label(*item) for item in preserve),
+                },
+            )
+            raise ChatCompletionValidationError(
+                code=issue.code,
+                issues=(issue,),
+            )
     if findings:
         bundle = request.validation.get("audit_evidence_bundle")
         evidence_object_ids = object_ids
@@ -249,6 +291,20 @@ def validate_chat_candidate(
                         raise ChatCompletionValidationError(
                             code="audit_suggestion_reference_missing"
                         )
+        if (
+            request.prompt_version == "casefile-chat-v14"
+            and request.route is not None
+            and request.route.execution_profile.get("primary_intent") == "logic_audit"
+        ):
+            ledger = result.tool_ledger or request.frozen_tool_ledger
+            simulation_issues = (
+                _audit_simulation_issues(suggestions, ledger) if ledger is not None else ()
+            )
+            if simulation_issues:
+                raise ChatCompletionValidationError(
+                    code=simulation_issues[0].code,
+                    issues=simulation_issues,
+                )
     missing_objects: tuple[str, ...] = tuple(sorted(referenced_objects - object_ids))
     missing_events: tuple[str, ...] = tuple(sorted(referenced_events - event_ids))
     missing_issues: tuple[str, ...] = tuple(sorted(referenced_issues - issue_ids))
@@ -267,6 +323,68 @@ def validate_chat_candidate(
         )
 
 
+def _audit_simulation_issues(
+    suggestions: list[dict[str, Any]],
+    ledger: dict[str, Any] | None,
+) -> tuple[ValidationIssue, ...]:
+    """Require every v14 audit suggestion to match a safe frozen simulation."""
+
+    if not suggestions:
+        return ()
+    entries = ledger.get("entries", []) if isinstance(ledger, dict) else []
+    simulations: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("tool_name") != "simulate_patch_application":
+            continue
+        arguments = entry.get("sanitized_arguments")
+        payload = entry.get("bounded_result")
+        if not isinstance(arguments, dict) or not isinstance(payload, dict):
+            continue
+        key = (
+            str(arguments.get("object_id") or ""),
+            str(arguments.get("path") or ""),
+            str(arguments.get("value_json") or ""),
+        )
+        simulations[key] = payload
+    issues: list[ValidationIssue] = []
+    for index, suggestion in enumerate(suggestions):
+        key = (
+            str(suggestion.get("object_id") or ""),
+            str(suggestion.get("path") or ""),
+            str(suggestion.get("value_json") or ""),
+        )
+        simulation = simulations.get(key)
+        target = target_label(key[0], key[1])
+        safe = (
+            simulation is not None
+            and simulation.get("valid") is True
+            and simulation.get("advice") != "introduces_new_issues"
+            and int(simulation.get("counts", {}).get("new", 0)) == 0
+        )
+        if safe:
+            continue
+        issues.append(
+            ValidationIssue(
+                code=(
+                    "audit_suggestion_not_simulated"
+                    if simulation is None
+                    else "audit_suggestion_simulation_failed"
+                ),
+                stage="patch",
+                path=f"/suggestions/{index}",
+                message="审计建议缺少成功且不引入新问题的冻结补丁预演。",
+                repairable=True,
+                details={
+                    "extra": [target],
+                    "object_id": key[0],
+                    "path": key[1],
+                    "simulation": simulation or {},
+                },
+            )
+        )
+    return tuple(issues)
+
+
 def _normalize_finding_reference_slots(
     findings: list[dict[str, Any]],
     object_ids: set[str],
@@ -276,9 +394,6 @@ def _normalize_finding_reference_slots(
 
     normalized: list[dict[str, Any]] = []
     for finding in findings:
-        if not isinstance(finding, dict):
-            normalized.append(finding)
-            continue
         item = dict(finding)
         objects = list(item.get("evidence_object_ids", []))
         events = list(item.get("evidence_event_ids", []))
@@ -348,7 +463,12 @@ def _normalize_reference_slots(
         updates["audit_findings"] = payload["audit_findings"]
     if not updates:
         return result
-    return replace(result, candidate=candidate.model_copy(update=updates))
+    normalized_payload = candidate.model_dump(mode="json")
+    normalized_payload.update(updates)
+    return replace(
+        result,
+        candidate=candidate.__class__.model_validate(normalized_payload),
+    )
 
 
 def _apply_deterministic_audit_gate(
@@ -452,7 +572,7 @@ class ChatExecutionRunner:
                     complete(result)
             except Exception as error:
                 validation = _as_validation_error(error)
-                if validation is None or attempt == 2:
+                if validation is None:
                     _attach_failure_metrics(
                         error,
                         usages,
@@ -461,6 +581,15 @@ class ChatExecutionRunner:
                         repair_attempted=repair_attempted,
                     )
                     raise
+                if attempt == 2:
+                    _attach_failure_metrics(
+                        validation,
+                        usages,
+                        tools,
+                        attempts=attempt,
+                        repair_attempted=repair_attempted,
+                    )
+                    raise validation from error
                 repair_attempted = True
                 request.emit(
                     "model.reference_repair_started",
@@ -473,9 +602,19 @@ class ChatExecutionRunner:
                         "unknown_issue_ids": list(validation.issue_ids),
                         "wrong_slot_object_ids": list(validation.wrong_slot_object_ids),
                         "wrong_slot_event_ids": list(validation.wrong_slot_event_ids),
+                        "validation_issues": [
+                            issue.as_dict() for issue in validation.issues
+                        ],
+                        "repair_plan": validation.repair_plan.as_dict(),
                     },
                 )
-                request = replace(request, repair_feedback=(validation.repair_feedback(),))
+                request = replace(
+                    request,
+                    repair_feedback=(validation.repair_feedback(),),
+                    frozen_tool_ledger=result.tool_ledger,
+                    previous_candidate=result.candidate.model_dump(mode="json"),
+                    repair_plan=validation.repair_plan.as_dict(),
+                )
                 continue
             return ChatExecutionResult(
                 result=result,
@@ -510,6 +649,11 @@ def _attach_failure_metrics(
 def _as_validation_error(error: Exception) -> ChatCompletionValidationError | None:
     if isinstance(error, ChatCompletionValidationError):
         return error
+    if isinstance(error, ChatAuditValidationError):
+        return ChatCompletionValidationError(
+            code=error.code,
+            issues=(error.issue,),
+        )
     object_ids = getattr(error, "object_ids", None)
     event_ids = getattr(error, "event_ids", None)
     issue_ids = getattr(error, "issue_ids", None)

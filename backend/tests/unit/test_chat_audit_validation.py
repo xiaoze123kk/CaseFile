@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.chat_audit_validation import (
     audit_findings_suppressed_for,
     normalize_audit_findings,
@@ -14,7 +16,6 @@ from casefile.agent_runtime.models import (
     CaseFileChatSuggestionCandidateV2,
 )
 from casefile.agent_runtime.prompt_package import OUTPUT_SCHEMAS
-from pydantic import ValidationError
 
 
 def make_finding(**overrides: object) -> dict:
@@ -60,9 +61,7 @@ def test_v2_candidate_carries_audit_findings_and_binds_suggestions() -> None:
 
 
 def test_v1_candidate_stays_frozen_without_audit_findings() -> None:
-    candidate = CaseFileChatCandidate.model_validate(
-        {"answer": "普通问答", "suggestions": []}
-    )
+    candidate = CaseFileChatCandidate.model_validate({"answer": "普通问答", "suggestions": []})
     assert not hasattr(candidate, "audit_findings")
     assert "casefile-chat-output-v1" in OUTPUT_SCHEMAS
     assert OUTPUT_SCHEMAS["casefile-chat-output-v1"] is CaseFileChatCandidate
@@ -86,15 +85,10 @@ def test_route_intent_and_findings_suppression() -> None:
     assert route_primary_intent(None) is None
     assert audit_findings_suppressed_for(None) is False
     assert (
-        audit_findings_suppressed_for(
-            {"execution_profile": {"primary_intent": "question"}}
-        )
-        is True
+        audit_findings_suppressed_for({"execution_profile": {"primary_intent": "question"}}) is True
     )
     assert (
-        audit_findings_suppressed_for(
-            {"execution_profile": {"primary_intent": "logic_audit"}}
-        )
+        audit_findings_suppressed_for({"execution_profile": {"primary_intent": "logic_audit"}})
         is False
     )
 
@@ -127,7 +121,7 @@ def test_normalize_audit_findings_rejects_structural_violations() -> None:
         normalize_audit_findings([make_finding(kind="style")], **shared)
     with pytest.raises(ValueError, match="audit_finding_severity_invalid"):
         normalize_audit_findings([make_finding(severity="S9")], **shared)
-    with pytest.raises(ValueError, match="audit_finding_missing:title"):
+    with pytest.raises(ValueError, match="audit_finding_required_field_missing"):
         normalize_audit_findings([make_finding(title="")], **shared)
 
 
@@ -166,3 +160,45 @@ def test_normalize_audit_findings_collects_all_evidence_violations() -> None:
     assert missing_o == []
     assert missing_e == ["evt_ghost"]
     assert missing_i == ["iss_ghost"]
+
+
+def test_manual_review_relationship_requires_one_real_anchor() -> None:
+    normalized, *_ = normalize_audit_findings(
+        [
+            make_finding(
+                needs_manual_review=True,
+                evidence_object_ids=["ent_lucy"],
+                evidence_event_ids=[],
+                evidence_validation_issue_ids=[],
+            )
+        ],
+        frozen_object_ids={"ent_lucy"},
+        frozen_event_ids=set(),
+        known_issue_ids=set(),
+        suggestion_finding_refs=[],
+    )
+    assert normalized[0]["needs_manual_review"] is True
+
+    with pytest.raises(ValueError, match="audit_finding_evidence_incomplete"):
+        normalize_audit_findings(
+            [
+                make_finding(
+                    needs_manual_review=True,
+                    evidence_object_ids=[],
+                    evidence_event_ids=[],
+                    evidence_validation_issue_ids=[],
+                )
+            ],
+            frozen_object_ids=set(),
+            frozen_event_ids=set(),
+            known_issue_ids=set(),
+            suggestion_finding_refs=[],
+        )
+
+
+def test_v2_candidate_limits_audit_findings_to_five() -> None:
+    findings = [make_finding(finding_id=f"F{index}") for index in range(1, 7)]
+    with pytest.raises(ValidationError):
+        CaseFileChatCandidateV2.model_validate(
+            {"answer": "发现较多问题。", "audit_findings": findings}
+        )
