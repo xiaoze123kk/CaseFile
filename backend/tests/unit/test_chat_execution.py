@@ -13,9 +13,18 @@ from casefile.agent_runtime.chat_execution import (
     prepare_chat_request_artifacts,
     validate_chat_candidate,
 )
+from casefile.agent_runtime.chat_routing import fallback_route
 from casefile.agent_runtime.chat_validation import ValidationIssue, plan_repairs
 from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V6_VERSION
-from casefile.agent_runtime.models import CaseFileChatResult, ToolMetrics
+from casefile.agent_runtime.models import (
+    CaseFileChatResult,
+    CaseFileChatTargetLockedRepairOutput,
+    ToolMetrics,
+)
+from casefile.agent_runtime.prompt import (
+    chat_finalizer_output_type,
+    render_chat_finalizer_prompt,
+)
 from casefile.benchmark.chat_outcome_eval import (
     _request_for_task,
     build_outcome_tasks,
@@ -71,6 +80,67 @@ def test_runner_stops_after_one_failed_repair() -> None:
 
     assert caught.value.code == "chat_reference_validation_failed"
     assert len(provider.requests) == 2
+
+
+def test_runner_suppresses_denied_route_suggestions_before_completion() -> None:
+    question_task = next(
+        item for item in build_outcome_tasks() if item.task_id == "golden-entity-question"
+    )
+    edit_task = next(
+        item for item in build_outcome_tasks() if item.task_id == "golden-edit-description"
+    )
+    candidate = question_task.reference_candidate.model_copy(
+        update={"suggestions": [edit_task.reference_candidate.suggestions[0]]}
+    )
+    events: list[tuple[str, str, dict]] = []
+    persisted: list[CaseFileChatResult] = []
+    request = replace(
+        _request_for_task(question_task),
+        route=fallback_route(reason_codes=("confidence_gate_sensitive",)),
+        emit=lambda event_type, stage, payload: events.append(
+            (event_type, stage, payload)
+        ),
+    )
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(
+        request,
+        complete=persisted.append,
+    )
+
+    assert execution.attempts == 1
+    assert execution.result.candidate.suggestions == []
+    assert persisted[0].candidate.suggestions == []
+    assert len(events) == 1
+    event_type, stage, payload = events[0]
+    assert event_type == "route.suggestions_suppressed"
+    assert stage == "routing"
+    assert payload["route_source"] == "fallback"
+    assert payload["execution_profile"]["primary_intent"] == "question"
+    assert payload["suggestion_policy"] == "deny"
+    assert payload["suppressed_count"] == 1
+    assert payload["source"] == "shared_execution_runner"
+
+
+def test_runner_repairs_a_non_audit_suggestion_rejected_by_server_gate() -> None:
+    task = next(
+        item for item in build_outcome_tasks() if item.task_id == "golden-edit-description"
+    )
+    invalid_suggestion = task.reference_candidate.suggestions[0].model_copy(
+        update={"value_json": "```not-json```"}
+    )
+    invalid = task.reference_candidate.model_copy(
+        update={"suggestions": [invalid_suggestion]}
+    )
+    provider = SequenceProvider([_result(invalid, 1), _result(task.reference_candidate, 1)])
+
+    execution = ChatExecutionRunner(provider).run(resolve_task_route(task))
+
+    assert execution.attempts == 2
+    assert execution.result.candidate.suggestions == task.reference_candidate.suggestions
+    repair_plan = provider.requests[1].repair_plan
+    assert repair_plan is not None
+    assert repair_plan["add"] == ["ent_lucy:/description"]
+    assert repair_plan["replace"][0]["reason_code"] == "value_json_wrapped_in_markdown"
 
 
 def test_runner_suppresses_structured_clean_noop_hallucination() -> None:
@@ -530,6 +600,145 @@ def test_v15_repair_expectation_replaces_an_unrelated_safe_target() -> None:
     assert repair_plan["add"] == ["ent_researcher:/description"]
     assert repair_plan["remove"] == ["evt_restart_seven:/truth_status"]
     assert repair_plan["fix"][0]["code"] == "audit_repair_expectation_missing_target"
+
+
+def test_v15_target_locked_repair_materializes_only_the_server_locked_target() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-restart-loop"
+    )
+    events: list[tuple[str, str, dict]] = []
+    request = replace(
+        resolve_task_route(task),
+        prompt_version="casefile-chat-v15",
+        emit=lambda event_type, stage, payload: events.append((event_type, stage, payload)),
+    )
+    unrelated = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "evt_restart_seven",
+            "path": "/truth_status",
+            "value_json": '"canon_true"',
+        }
+    )
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [unrelated]})
+    expected = task.reference_candidate.suggestions[0]
+    hard_output = CaseFileChatTargetLockedRepairOutput(
+        value_json=expected.value_json,
+        reason=expected.reason,
+    )
+    provider = SequenceProvider(
+        [_result(invalid, 1), _result(invalid, 1), _result(hard_output, 1)]
+    )
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.attempts == 3
+    assert len(provider.requests) == 3
+    target_locked_repair = provider.requests[2].target_locked_repair
+    assert target_locked_repair == {
+        "issue_code": "audit_repair_expectation_missing_target",
+        "object_id": "ent_researcher",
+        "path": "/description",
+        "finding_ref": "F1",
+        "preserve": ["F1"],
+        "remove": ["evt_restart_seven:/truth_status"],
+        "current_value_json": provider.requests[2].validation["audit_evidence_bundle"][
+            "repair_expectation"
+        ]["candidate_patch_targets"][0]["current_value_json"],
+        "value_type": "str",
+    }
+    assert chat_finalizer_output_type(provider.requests[2]) is CaseFileChatTargetLockedRepairOutput
+    instructions, _ = render_chat_finalizer_prompt(
+        provider.requests[2],
+        tool_ledger=provider.requests[2].frozen_tool_ledger,
+        evidence_summary="",
+        previous_candidate=provider.requests[2].previous_candidate,
+        repair_plan=provider.requests[2].repair_plan,
+    )
+    assert "你只能输出 value_json 和 reason 两个字段" in instructions
+    assert [
+        (suggestion.object_id, suggestion.path, suggestion.finding_ref)
+        for suggestion in execution.result.candidate.suggestions
+    ] == [("ent_researcher", "/description", "F1")]
+    assert execution.result.candidate.answer == invalid.answer
+    assert execution.result.candidate.audit_findings == invalid.audit_findings
+    assert execution.diagnostics["repair_history"][1]["repair_mode"] == "target_locked"
+    assert events[-1][0] == "model.safe_patch_gated"
+    assert any(event[0] == "model.target_locked_repair_started" for event in events)
+
+
+def test_v15_target_locked_repair_still_fails_closed_when_its_value_is_invalid() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-restart-loop"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    unrelated = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "evt_restart_seven",
+            "path": "/truth_status",
+            "value_json": '"canon_true"',
+        }
+    )
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [unrelated]})
+    provider = SequenceProvider(
+        [
+            _result(invalid, 1),
+            _result(invalid, 1),
+            _result(
+                CaseFileChatTargetLockedRepairOutput(
+                    value_json="null",
+                    reason="类型不匹配的值必须被服务器拦截。",
+                ),
+                1,
+            ),
+        ]
+    )
+
+    with pytest.raises(ChatCompletionValidationError) as caught:
+        ChatExecutionRunner(provider).run(request)
+
+    assert caught.value.code == "audit_suggestion_server_gate_failed"
+    assert len(provider.requests) == 3
+
+
+def test_v15_target_locked_repair_rejects_non_json_output_without_a_fourth_attempt() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-restart-loop"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    unrelated = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "evt_restart_seven",
+            "path": "/truth_status",
+            "value_json": '"canon_true"',
+        }
+    )
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [unrelated]})
+    provider = SequenceProvider(
+        [
+            _result(invalid, 1),
+            _result(invalid, 1),
+            _result(
+                CaseFileChatTargetLockedRepairOutput(
+                    value_json="not-json",
+                    reason="必须拒绝未编码的字符串。",
+                ),
+                1,
+            ),
+        ]
+    )
+
+    with pytest.raises(ChatCompletionValidationError) as caught:
+        ChatExecutionRunner(provider).run(request)
+
+    assert caught.value.code == "audit_target_locked_repair_value_invalid"
+    assert caught.value.attempts == 3
+    assert len(provider.requests) == 3
 
 
 def test_repair_plan_keeps_a_required_target_when_an_invalid_value_is_removed() -> None:

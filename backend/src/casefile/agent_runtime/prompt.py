@@ -11,6 +11,7 @@ from casefile.agent_runtime.context.thread_memory import ThreadCompactionRequest
 from casefile.agent_runtime.models import (
     BriefStrategyOptionsRequest,
     CaseFileChatRequest,
+    CaseFileChatTargetLockedRepairOutput,
     GenerationRequest,
     RouteSpecificRewriteRequest,
     chat_routing_payload_as_dict,
@@ -332,6 +333,11 @@ def chat_executor_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
 def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
     """Resolve the no-tool finalizer output schema for a v14 route."""
 
+    if (
+        request.prompt_version == "casefile-chat-v15"
+        and request.target_locked_repair is not None
+    ):
+        return CaseFileChatTargetLockedRepairOutput
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
         return chat_executor_output_type(request)
@@ -417,6 +423,15 @@ def render_chat_finalizer_prompt(
             "\n\n系统修复契约（最高优先级，必须逐项满足）：\n"
             + json.dumps(repair_plan, ensure_ascii=False, sort_keys=True)
             + "\n不得重新调用工具；只使用同一个 Frozen Tool Ledger。"
+        )
+    if request.target_locked_repair is not None:
+        instructions += (
+            "\n\n系统第二级强约束修复（最高优先级）：\n"
+            + json.dumps(request.target_locked_repair, ensure_ascii=False, sort_keys=True)
+            + "\n服务器已锁定 object_id、path、finding_ref，并将保留既有 Candidate。"
+            "current_value_json 仅用于遵循 value_type 编码，不得原样复用为补丁值。"
+            "你只能输出 value_json 和 reason 两个字段；不得输出完整 Candidate、"
+            "不得选择或新增任何 target、finding 或 suggestion。"
         )
     return instructions, rendered.input_text
 

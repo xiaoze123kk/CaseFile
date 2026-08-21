@@ -61,6 +61,7 @@ from casefile.agent_runtime.models import (
     CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatResult,
+    CaseFileChatTargetLockedRepairOutput,
     ChatTaskUnderstandingOutput,
     GenerationPlan,
     GenerationRequest,
@@ -1158,6 +1159,11 @@ class FakeProvider:
         ]
         candidate = output_type.model_validate(
             {
+                "value_json": '"已根据冻结证据补充说明。"',
+                "reason": "补丁仅修正服务器锁定的审计目标。",
+            }
+            if output_type is CaseFileChatTargetLockedRepairOutput
+            else {
                 "answer": "我已核对冻结卷宗；本次没有自动修改工作稿。",
                 "referenced_object_ids": referenced,
                 "suggestions": [],

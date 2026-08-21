@@ -29,6 +29,14 @@ _EDIT_FIELD_ALIASES = {
     "/summary": ("摘要", "summary"),
 }
 
+_DESTRUCTIVE_ACTION_MARKERS = (
+    "删除",
+    "删掉",
+    "移除",
+    "delete",
+    "remove",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class EditTarget:
@@ -155,6 +163,13 @@ def normalize_routing_hint(raw: dict[str, Any] | None) -> dict[str, Any]:
 def resolve_rule_route(request: CaseFileChatRequest) -> RuleRoute | None:
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
+    if any(marker in request.message.casefold() for marker in _DESTRUCTIVE_ACTION_MARKERS):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="unsupported_action",
+            profile="unsupported_action.scope",
+            reason_code="rule_safety:destructive_action",
+        )
     hint = request.routing_hint
     if not hint:
         return None

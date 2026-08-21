@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
@@ -12,20 +14,20 @@ from casefile.agent_runtime.chat_intent import (
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
-from pydantic import ValidationError
 
 
 def make_chat_request(
     *,
     hint: dict | None = None,
     focus: dict | None = None,
+    message: str = "检查卷宗。",
 ) -> CaseFileChatRequest:
     return CaseFileChatRequest(
         task_run_id=1,
         prompt_version="casefile-chat-v1",
         casefile={},
         history=(),
-        message="检查卷宗。",
+        message=message,
         editable_fields_by_collection={},
         input_hash="a" * 64,
         model_id="fake",
@@ -97,6 +99,18 @@ def test_issue_action_without_validation_issue_focus_does_not_hit_a_rule() -> No
 
 def test_no_hint_returns_none_for_the_legacy_path() -> None:
     assert resolve_rule_route(make_chat_request(hint={})) is None
+
+
+def test_destructive_free_text_uses_the_deterministic_scope_route() -> None:
+    rule = resolve_rule_route(
+        make_chat_request(message="请把这个对象删除。", hint={"entrypoint": "free_text"})
+    )
+
+    assert rule is not None
+    assert rule.route_source == "rule_safety"
+    assert rule.primary_intent == "unsupported_action"
+    assert rule.profile == "unsupported_action.scope"
+    assert rule.reason_code == "rule_safety:destructive_action"
 
 
 def test_unknown_preset_normalizes_to_free_text_and_does_not_hit_rules() -> None:

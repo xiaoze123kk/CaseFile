@@ -4,21 +4,28 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from casefile.agent_runtime.chat_audit_validation import (
     ChatAuditValidationError,
     normalize_audit_findings,
     rank_and_dedupe_audit_findings,
 )
-from casefile.agent_runtime.chat_intent import build_edit_target_manifest
+from casefile.agent_runtime.chat_intent import (
+    build_edit_target_manifest,
+    route_allows_suggestions,
+    route_public_payload,
+    route_suggestion_policy,
+)
 from casefile.agent_runtime.chat_reference_autofill import autofill_chat_references
 from casefile.agent_runtime.chat_safe_patches import (
     SafePatchRegistry,
+    canonicalize_value_json,
     materialize_unique_safe_patches,
     safe_patch_registry_from_dict,
     server_gate_audit_suggestions,
 )
+from casefile.agent_runtime.chat_tools import check_patch_proposal
 from casefile.agent_runtime.chat_validation import (
     RepairPlan,
     ValidationIssue,
@@ -34,11 +41,16 @@ from casefile.agent_runtime.context.thread_memory import (
 )
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
+    CaseFileChatCandidateV2,
     CaseFileChatRequest,
     CaseFileChatResult,
+    CaseFileChatSuggestionCandidateV2,
+    CaseFileChatTargetLockedRepairOutput,
     ToolMetrics,
     chat_routing_payload_as_dict,
 )
+
+_TARGET_LOCKED_REPAIR_CODES = frozenset({"audit_repair_expectation_missing_target"})
 
 
 class ChatProvider(Protocol):
@@ -240,6 +252,57 @@ def validate_chat_candidate(
                 code=issue.code,
                 issues=(issue,),
             )
+    patch_issues: list[ValidationIssue] = []
+    for index, suggestion in enumerate(suggestions):
+        if not isinstance(suggestion, dict):
+            continue
+        object_id = suggestion.get("object_id")
+        path = suggestion.get("path")
+        value_json = suggestion.get("value_json")
+        if not (
+            isinstance(object_id, str)
+            and object_id
+            and isinstance(path, str)
+            and path
+            and isinstance(value_json, str)
+            and value_json
+        ):
+            continue
+        check = check_patch_proposal(
+            request,
+            object_id,
+            path,
+            value_json,
+            require_path_exists=True,
+        )
+        if check.reason_code is None:
+            continue
+        target = target_label(object_id, path)
+        patch_issues.append(
+            ValidationIssue(
+                code="chat_suggestion_server_gate_failed",
+                stage="patch",
+                path=f"/suggestions/{index}",
+                message="修改建议未通过服务器字段和值门禁。",
+                repairable=True,
+                details={
+                    "missing": [target],
+                    "replace": [
+                        {
+                            "object_id": object_id,
+                            "path": path,
+                            "reason_code": check.reason_code,
+                            "allowed_fields": list(check.allowed_fields),
+                        }
+                    ],
+                },
+            )
+        )
+    if patch_issues:
+        raise ChatCompletionValidationError(
+            code=patch_issues[0].code,
+            issues=tuple(patch_issues),
+        )
     if findings:
         bundle = request.validation.get("audit_evidence_bundle")
         evidence_object_ids = object_ids
@@ -595,6 +658,134 @@ def _audit_repair_integrity(
     return tuple(issues)
 
 
+def _target_locked_repair_contract(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+    validation: ChatCompletionValidationError,
+) -> dict[str, Any] | None:
+    """Return a server-owned hard-repair contract only for one exact audit delta."""
+
+    route = request.route
+    if (
+        request.prompt_version != "casefile-chat-v15"
+        or route is None
+        or route.execution_profile.get("primary_intent") != "logic_audit"
+        or not isinstance(result.candidate, CaseFileChatCandidateV2)
+    ):
+        return None
+    issues = [
+        issue for issue in validation.issues if issue.code in _TARGET_LOCKED_REPAIR_CODES
+    ]
+    if len(issues) != 1 or any(
+        issue.code not in _TARGET_LOCKED_REPAIR_CODES for issue in validation.issues
+    ):
+        return None
+    issue = issues[0]
+    details = issue.details
+    object_id = details.get("object_id")
+    path = details.get("path")
+    finding_ref = details.get("finding_ref")
+    if not all(isinstance(value, str) and value for value in (object_id, path, finding_ref)):
+        return None
+    target = target_label(object_id, path)
+    if validation.repair_plan.add != (target,) or validation.repair_plan.replace:
+        return None
+    if not any(
+        finding.finding_id == finding_ref and not finding.needs_manual_review
+        for finding in result.candidate.audit_findings
+    ):
+        return None
+    bundle = request.validation.get("audit_evidence_bundle")
+    expectation = bundle.get("repair_expectation") if isinstance(bundle, dict) else None
+    targets = (
+        expectation.get("candidate_patch_targets")
+        if isinstance(expectation, dict)
+        else None
+    )
+    locked_target = next(
+        (
+            item
+            for item in targets or ()
+            if isinstance(item, dict)
+            and item.get("object_id") == object_id
+            and item.get("path") == path
+            and isinstance(item.get("current_value_json"), str)
+            and isinstance(item.get("value_type"), str)
+        ),
+        None,
+    )
+    if locked_target is None:
+        return None
+    return {
+        "issue_code": issue.code,
+        "object_id": object_id,
+        "path": path,
+        "finding_ref": finding_ref,
+        "preserve": list(validation.repair_plan.preserve),
+        "remove": list(validation.repair_plan.remove),
+        "current_value_json": locked_target["current_value_json"],
+        "value_type": locked_target["value_type"],
+    }
+
+
+def _materialize_target_locked_repair(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Compose a full audit candidate from a locked target and minimal model output."""
+
+    contract = request.target_locked_repair
+    repair_output = cast(CaseFileChatTargetLockedRepairOutput, result.candidate)
+    if not isinstance(contract, dict) or not isinstance(
+        repair_output, CaseFileChatTargetLockedRepairOutput
+    ):
+        raise ChatCompletionValidationError(code="audit_target_locked_repair_output_invalid")
+    object_id = contract.get("object_id")
+    path = contract.get("path")
+    finding_ref = contract.get("finding_ref")
+    previous = request.previous_candidate
+    if not (
+        isinstance(object_id, str)
+        and isinstance(path, str)
+        and isinstance(finding_ref, str)
+        and isinstance(previous, dict)
+    ):
+        raise ChatCompletionValidationError(code="audit_target_locked_repair_contract_invalid")
+    try:
+        candidate = CaseFileChatCandidateV2.model_validate(previous)
+    except ValueError as error:
+        raise ChatCompletionValidationError(
+            code="audit_target_locked_repair_contract_invalid"
+        ) from error
+    if not any(
+        finding.finding_id == finding_ref and not finding.needs_manual_review
+        for finding in candidate.audit_findings
+    ):
+        raise ChatCompletionValidationError(code="audit_target_locked_repair_contract_invalid")
+    if canonicalize_value_json(repair_output.value_json) is None:
+        raise ChatCompletionValidationError(code="audit_target_locked_repair_value_invalid")
+    remove = {
+        value for value in contract.get("remove", ()) if isinstance(value, str)
+    }
+    target = target_label(object_id, path)
+    remove.add(target)
+    suggestions = [
+        suggestion
+        for suggestion in candidate.suggestions
+        if target_label(suggestion.object_id, suggestion.path) not in remove
+    ]
+    suggestions.append(
+        CaseFileChatSuggestionCandidateV2(
+            object_id=object_id,
+            path=path,
+            value_json=repair_output.value_json,
+            reason=repair_output.reason,
+            finding_ref=finding_ref,
+        )
+    )
+    return replace(result, candidate=candidate.model_copy(update={"suggestions": suggestions}))
+
+
 def _normalize_finding_reference_slots(
     findings: list[dict[str, Any]],
     object_ids: set[str],
@@ -860,6 +1051,37 @@ def _apply_deterministic_audit_gate(
     return replace(result, candidate=candidate.model_copy(update=updates))
 
 
+def _apply_route_suggestion_policy(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Return the post-permission candidate shared by Worker and M2.
+
+    Validate the model candidate before this call so an edit-target repair can
+    still reason about the original proposal. A denied route must nevertheless
+    never expose that proposal to persistence or the outcome grader.
+    """
+
+    route = request.route
+    suggestions = result.candidate.suggestions
+    if route is None or route_allows_suggestions(route) or not suggestions:
+        return result
+    request.emit(
+        "route.suggestions_suppressed",
+        "routing",
+        {
+            **route_public_payload(route),
+            "suggestion_policy": route_suggestion_policy(route),
+            "suppressed_count": len(suggestions),
+            "source": "shared_execution_runner",
+        },
+    )
+    return replace(
+        result,
+        candidate=result.candidate.model_copy(update={"suggestions": []}),
+    )
+
+
 def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
     merged: dict[str, Any] = {}
     for record in records:
@@ -900,7 +1122,7 @@ class ChatExecutionRunner:
         repair_attempted = False
         repair_history: list[dict[str, Any]] = []
         materialization_history: list[dict[str, Any]] = []
-        for attempt in (1, 2):
+        for attempt in (1, 2, 3):
             server_gate_issues: tuple[ValidationIssue, ...] = ()
             try:
                 result = self.provider.chat(request)
@@ -923,6 +1145,18 @@ class ChatExecutionRunner:
                 raise
             usages.append(result.usage)
             tools.append(result.tools)
+            if request.target_locked_repair is not None:
+                try:
+                    result = _materialize_target_locked_repair(request, result)
+                except Exception as error:
+                    _attach_failure_metrics(
+                        error,
+                        usages,
+                        tools,
+                        attempts=attempt,
+                        repair_attempted=repair_attempted,
+                    )
+                    raise
             if (
                 request.prompt_version == "casefile-chat-v15"
                 and request.route is not None
@@ -1025,6 +1259,7 @@ class ChatExecutionRunner:
                         issues=server_gate_issues,
                     )
                 validate_chat_candidate(request, result)
+                result = _apply_route_suggestion_policy(request, result)
                 if complete is not None:
                     complete(result)
             except Exception as error:
@@ -1038,7 +1273,12 @@ class ChatExecutionRunner:
                         repair_attempted=repair_attempted,
                     )
                     raise
-                if attempt == 2:
+                target_locked_repair = (
+                    _target_locked_repair_contract(request, result, validation)
+                    if attempt == 2
+                    else None
+                )
+                if attempt == 3 or (attempt == 2 and target_locked_repair is None):
                     _attach_failure_metrics(
                         validation,
                         usages,
@@ -1048,8 +1288,14 @@ class ChatExecutionRunner:
                     )
                     raise validation from error
                 repair_attempted = True
+                repair_no = 2 if target_locked_repair is not None else 1
+                repair_mode = (
+                    "target_locked" if target_locked_repair is not None else "minimal"
+                )
                 repair_record = {
                     "attempt": attempt,
+                    "repair_no": repair_no,
+                    "repair_mode": repair_mode,
                     "validation_issues": [
                         issue.as_dict() for issue in validation.issues
                     ],
@@ -1060,13 +1306,20 @@ class ChatExecutionRunner:
                         for item in result.candidate.suggestions
                     ],
                 }
+                if target_locked_repair is not None:
+                    repair_record["target_locked_repair"] = target_locked_repair
                 repair_history.append(repair_record)
                 request.emit(
-                    "model.reference_repair_started",
+                    (
+                        "model.target_locked_repair_started"
+                        if target_locked_repair is not None
+                        else "model.reference_repair_started"
+                    ),
                     "repairing",
                     {
-                        "repair_no": 1,
-                        "max_repairs": 1,
+                        "repair_no": repair_no,
+                        "max_repairs": 2 if target_locked_repair is not None else 1,
+                        "repair_mode": repair_mode,
                         "unknown_object_ids": list(validation.object_ids),
                         "unknown_event_ids": list(validation.event_ids),
                         "unknown_issue_ids": list(validation.issue_ids),
@@ -1080,6 +1333,11 @@ class ChatExecutionRunner:
                             "suggestion_count": repair_record["suggestion_count"],
                             "suggestion_targets": repair_record["suggestion_targets"],
                         },
+                        **(
+                            {"target_locked_repair": target_locked_repair}
+                            if target_locked_repair is not None
+                            else {}
+                        ),
                     },
                 )
                 request = replace(
@@ -1089,6 +1347,7 @@ class ChatExecutionRunner:
                     safe_patch_registry=result.safe_patch_registry,
                     previous_candidate=result.candidate.model_dump(mode="json"),
                     repair_plan=validation.repair_plan.as_dict(),
+                    target_locked_repair=target_locked_repair,
                 )
                 continue
             return ChatExecutionResult(
