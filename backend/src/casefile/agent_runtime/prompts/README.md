@@ -40,6 +40,8 @@ Prompt 版本有三种互斥形态：
 
 `casefile-chat-v14` 引入 Chat Validation Pipeline v2：带工具的 route 先运行 Evidence Agent 并冻结有序、限长、带哈希的 Tool Ledger，再由无工具 Structured Finalizer 生成最终候选；领域错误统一为结构化 issue/repair plan，修复轮次复用同一 Ledger，不重新调用工具。v14 仅允许通过显式灰度变量选择，Registry 默认版本不自动切换。
 
+`casefile-chat-v15` 在 v14 编排上增加服务端 Safe Patch Registry：只收录冻结 Ledger 中验证成功且不引入新问题的补丁预演；Finalizer 只能选择这些补丁，运行时在目标唯一时确定性恢复冻结 `value_json`，修复历史与补丁物化记录进入 Benchmark 诊断。v15 同样只允许显式灰度选择，不自动移动 Registry。
+
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
 ## Prompt Package 边界

@@ -65,6 +65,7 @@ from casefile.agent_runtime.models import (
     ChatExecutorInputV1,
     ChatExecutorInputV2,
     ChatFinalizerInputV1,
+    ChatFinalizerInputV2,
     ChatIntentRouterInputV1,
     ChatRewriteInputV1,
     ChatTaskUnderstandingOutput,
@@ -144,6 +145,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-prompt-input-v1": ChatExecutorInputV1,
         "casefile-chat-prompt-input-v2": ChatExecutorInputV2,
         "casefile-chat-finalizer-input-v1": ChatFinalizerInputV1,
+        "casefile-chat-finalizer-input-v2": ChatFinalizerInputV2,
         "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
     }
 )

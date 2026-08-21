@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import re
+from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from time import perf_counter
@@ -28,6 +29,7 @@ from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generatio
 from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
 from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
+from casefile.agent_runtime.chat_safe_patches import compile_safe_patch_registry
 from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
     ChatToolLedger,
@@ -1052,7 +1054,7 @@ class FakeProvider:
         return IdeaGenerationResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
-        if request.prompt_version == "casefile-chat-v14":
+        if request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}:
             return self._chat_v14(request)
         render_chat_executor_prompt(request)
         request.emit("model.started", "responding", {"model_id": request.model_id})
@@ -1108,6 +1110,7 @@ class FakeProvider:
                     else len(ledger_payload.get("entries", [])),
                 },
             )
+        request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         render_chat_finalizer_prompt(
             request,
             tool_ledger=ledger_payload,
@@ -1150,6 +1153,7 @@ class FakeProvider:
             usage=usage,
             tools=metrics,
             tool_ledger=ledger_payload,
+            safe_patch_registry=safe_patch_registry,
         )
 
     def compact_thread_memory(
@@ -1605,7 +1609,7 @@ class OpenAIAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
-        if request.prompt_version == "casefile-chat-v14":
+        if request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
@@ -1656,6 +1660,7 @@ class OpenAIAgentsProvider:
             evidence_summary = ledger.evidence_summary
             usage_records.append(tool_usage)
             metrics = context.metrics
+        request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
             request,
             tool_ledger=ledger_payload,
@@ -1700,6 +1705,7 @@ class OpenAIAgentsProvider:
             usage=_merge_structured_usage(usage_records),
             tools=metrics,
             tool_ledger=ledger_payload,
+            safe_patch_registry=safe_patch_registry,
         )
 
     async def _gather_chat_evidence(
@@ -2099,7 +2105,7 @@ class DeepSeekAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
-        if request.prompt_version == "casefile-chat-v14":
+        if request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
@@ -2152,6 +2158,7 @@ class DeepSeekAgentsProvider:
             evidence_summary = ledger.evidence_summary
             usage_records.append(tool_usage)
             metrics = context.metrics
+        request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
             request,
             tool_ledger=ledger_payload,
@@ -2197,6 +2204,7 @@ class DeepSeekAgentsProvider:
             usage=_merge_structured_usage(usage_records),
             tools=metrics,
             tool_ledger=ledger_payload,
+            safe_patch_registry=safe_patch_registry,
         )
 
     async def _gather_chat_evidence(
@@ -3823,6 +3831,23 @@ def _remove_absent_optional_fields(value: Any) -> Any:
             if not (key in {"description", "spatial_position"} and item is None)
         }
     return value
+
+
+def _bind_safe_patch_registry(
+    request: CaseFileChatRequest,
+    ledger_payload: dict[str, Any] | None,
+) -> tuple[CaseFileChatRequest, dict[str, Any] | None]:
+    """Attach the v15 server-owned patch registry before finalization."""
+
+    if request.prompt_version != "casefile-chat-v15":
+        return request, None
+    registry_payload = request.safe_patch_registry
+    if registry_payload is None:
+        registry_payload = compile_safe_patch_registry(
+            ledger_payload,
+            expected_input_hash=request.input_hash,
+        ).as_dict()
+    return replace(request, safe_patch_registry=registry_payload), registry_payload
 
 
 def _validate_generated_descriptions(candidate: dict[str, Any]) -> None:

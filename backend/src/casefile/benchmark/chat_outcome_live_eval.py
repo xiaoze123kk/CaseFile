@@ -309,13 +309,19 @@ def run_live_chat_outcome_eval(
             attempts = 1
             validation_issues: list[dict[str, Any]] = []
             repair_plan: dict[str, Any] | None = None
+            repair_history: list[dict[str, Any]] = []
+            safe_patch_materializations: list[dict[str, Any]] = []
             ledger_hash: str | None = None
             last_output_protocol: str | None = None
             stage = "routing"
             started = time.perf_counter()
             try:
                 resolved = _resolve_chat_route(request, provider=provider)
-                if prompt_version in {"casefile-chat-v13", "casefile-chat-v14"}:
+                if prompt_version in {
+                    "casefile-chat-v13",
+                    "casefile-chat-v14",
+                    "casefile-chat-v15",
+                }:
                     resolved = replace(
                         prepare_chat_request_artifacts(resolved),
                         context_policy_version=CHAT_CONTEXT_POLICY_V6_VERSION,
@@ -340,6 +346,10 @@ def run_live_chat_outcome_eval(
                 stage = "provider"
                 execution = ChatExecutionRunner(provider).run(resolved)
                 result = execution.result
+                repair_history = list(execution.diagnostics.get("repair_history", []))
+                safe_patch_materializations = list(
+                    execution.diagnostics.get("safe_patch_materializations", [])
+                )
                 attempts = execution.attempts
                 input_tokens, output_tokens = _usage_tokens(execution.usage)
                 tool_calls = execution.tools.calls
@@ -392,6 +402,22 @@ def run_live_chat_outcome_eval(
                     verdict = _provider_error_verdict(task, trial_no)
                     actual_intent = "provider_error"
 
+            if not repair_history:
+                repair_history = [
+                    dict(event.get("payload", {}))
+                    for event in events
+                    if event.get("event_type") == "model.reference_repair_started"
+                    and isinstance(event.get("payload"), dict)
+                ]
+            if not safe_patch_materializations:
+                safe_patch_materializations = [
+                    change
+                    for event in events
+                    if event.get("event_type") == "model.safe_patch_materialized"
+                    and isinstance(event.get("payload"), dict)
+                    for change in event["payload"].get("changes", [])
+                    if isinstance(change, dict)
+                ]
             protocol_events = [
                 event
                 for event in events
@@ -442,6 +468,8 @@ def run_live_chat_outcome_eval(
                     "error_stage": error_stage,
                     "validation_issues": validation_issues,
                     "repair_plan": repair_plan,
+                    "repair_history": repair_history,
+                    "safe_patch_materializations": safe_patch_materializations,
                     "ledger_hash": ledger_hash,
                     "last_output_protocol": last_output_protocol,
                     "tool_agent_calls": sum(
@@ -707,7 +735,12 @@ def main() -> None:
     parser.add_argument("--report-path", type=Path)
     parser.add_argument(
         "--prompt-version",
-        choices=("casefile-chat-v12", "casefile-chat-v13", "casefile-chat-v14"),
+        choices=(
+            "casefile-chat-v12",
+            "casefile-chat-v13",
+            "casefile-chat-v14",
+            "casefile-chat-v15",
+        ),
         default="casefile-chat-v14",
         help="Explicit immutable Chat Prompt version for this M2 run",
     )

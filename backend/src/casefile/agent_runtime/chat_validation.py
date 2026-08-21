@@ -38,6 +38,7 @@ class RepairPlan:
     preserve: tuple[str, ...] = ()
     add: tuple[str, ...] = ()
     remove: tuple[str, ...] = ()
+    replace: tuple[Mapping[str, Any], ...] = ()
     fix: tuple[Mapping[str, Any], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
@@ -45,11 +46,12 @@ class RepairPlan:
             "preserve": list(self.preserve),
             "add": list(self.add),
             "remove": list(self.remove),
+            "replace": [dict(item) for item in self.replace],
             "fix": [dict(item) for item in self.fix],
         }
 
     def is_empty(self) -> bool:
-        return not (self.preserve or self.add or self.remove or self.fix)
+        return not (self.preserve or self.add or self.remove or self.replace or self.fix)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,6 +76,7 @@ def plan_repairs(issues: tuple[ValidationIssue, ...]) -> RepairPlan:
     preserve: set[str] = set()
     add: set[str] = set()
     remove: set[str] = set()
+    replacements: list[Mapping[str, Any]] = []
     fixes: list[Mapping[str, Any]] = []
     for issue in issues:
         if not issue.repairable:
@@ -82,6 +85,9 @@ def plan_repairs(issues: tuple[ValidationIssue, ...]) -> RepairPlan:
         preserve.update(str(item) for item in details.get("preserve", ()))
         add.update(str(item) for item in details.get("missing", ()))
         remove.update(str(item) for item in details.get("extra", ()))
+        replacements.extend(
+            dict(item) for item in details.get("replace", ()) if isinstance(item, Mapping)
+        )
         fixes.append(
             {
                 "code": issue.code,
@@ -93,6 +99,7 @@ def plan_repairs(issues: tuple[ValidationIssue, ...]) -> RepairPlan:
         preserve=tuple(sorted(preserve)),
         add=tuple(sorted(add)),
         remove=tuple(sorted(remove)),
+        replace=tuple(replacements),
         fix=tuple(fixes),
     )
 

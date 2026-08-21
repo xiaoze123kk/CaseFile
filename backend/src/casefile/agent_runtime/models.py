@@ -383,6 +383,12 @@ class ChatFinalizerInputV1(ChatExecutorInputV2):
     repair_plan: dict[str, Any] | None = None
 
 
+class ChatFinalizerInputV2(ChatFinalizerInputV1):
+    """v15 finalizer input with server-compiled safe patch candidates."""
+
+    safe_patch_registry: dict[str, Any] | None = None
+
+
 class ChatEvidenceOutputV1(StrictAgentOutput):
     """Small tool-agent handoff; the server owns the authoritative ledger."""
 
@@ -563,6 +569,7 @@ class CaseFileChatRequest:
     thread_evidence_resolver: ThreadEvidenceResolver | None = None
     repair_feedback: tuple[str, ...] = ()
     frozen_tool_ledger: dict[str, Any] | None = None
+    safe_patch_registry: dict[str, Any] | None = None
     previous_candidate: dict[str, Any] | None = None
     repair_plan: dict[str, Any] | None = None
 
@@ -619,6 +626,7 @@ class CaseFileChatResult:
     usage: dict[str, Any]
     tools: ToolMetrics = field(default_factory=ToolMetrics)
     tool_ledger: dict[str, Any] | None = None
+    safe_patch_registry: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -52,6 +52,8 @@ def test_runner_repairs_one_dangling_reference_and_merges_metrics() -> None:
     assert execution.repair_attempted is True
     assert execution.usage["input_tokens"] == 5
     assert execution.tools.calls == 2
+    assert execution.diagnostics["repair_history"][0]["attempt"] == 1
+    assert execution.diagnostics["repair_history"][0]["suggestion_count"] == 0
     assert provider.requests[1].repair_feedback
     assert "obj_does_not_exist" in provider.requests[1].repair_feedback[0]
 
@@ -209,6 +211,88 @@ def test_v14_audit_rejects_suggestion_with_unsafe_frozen_simulation() -> None:
     assert caught.value.repair_plan.remove == (
         f"{suggestion.object_id}:{suggestion.path}",
     )
+
+
+def _safe_simulation_ledger(request, suggestions):  # type: ignore[no-untyped-def]
+    return {
+        "input_hash": request.input_hash,
+        "ledger_hash": "a" * 64,
+        "entries": [
+            {
+                "ordinal": index,
+                "tool_name": "simulate_patch_application",
+                "status": "ok",
+                "sanitized_arguments": {
+                    "object_id": suggestion.object_id,
+                    "path": suggestion.path,
+                    "value_json": suggestion.value_json,
+                },
+                "bounded_result": {
+                    "valid": True,
+                    "advice": "safe_to_propose",
+                    "counts": {"new": 0},
+                },
+            }
+            for index, suggestion in enumerate(suggestions, start=1)
+        ],
+    }
+
+
+def test_v15_materializes_unique_safe_patch_without_model_repair() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    frozen = task.reference_candidate.suggestions[0]
+    rewritten = frozen.model_copy(
+        update={"value_json": '"叛逃后双方已经不再互信。"'}
+    )
+    candidate = task.reference_candidate.model_copy(update={"suggestions": [rewritten]})
+    result = replace(
+        _result(candidate, 1),
+        tool_ledger=_safe_simulation_ledger(request, [frozen]),
+    )
+    provider = SequenceProvider([result])
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.attempts == 1
+    assert execution.repair_attempted is False
+    assert execution.result.candidate.suggestions[0].value_json == frozen.value_json
+    assert execution.diagnostics["safe_patch_materializations"] == [
+        {
+            "suggestion_index": 0,
+            "target": f"{frozen.object_id}:{frozen.path}",
+            "patch_id": "P1",
+            "reason": "unique_safe_target",
+        }
+    ]
+
+
+def test_v15_ambiguous_safe_patch_enters_explicit_replace_plan() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    frozen = task.reference_candidate.suggestions[0]
+    alternative = frozen.model_copy(update={"value_json": '"同盟已经公开决裂。"'})
+    rewritten = frozen.model_copy(update={"value_json": '"双方关系已经变化。"'})
+    candidate = task.reference_candidate.model_copy(update={"suggestions": [rewritten]})
+    result = replace(
+        _result(candidate, 1),
+        tool_ledger=_safe_simulation_ledger(request, [frozen, alternative]),
+    )
+
+    with pytest.raises(ChatCompletionValidationError) as caught:
+        validate_chat_candidate(request, result)
+
+    assert caught.value.code == "audit_suggestion_value_not_frozen"
+    assert [item["patch_id"] for item in caught.value.repair_plan.replace] == ["P1", "P2"]
+    assert caught.value.repair_plan.remove == ()
 
 
 def test_runner_moves_known_event_out_of_object_slot() -> None:

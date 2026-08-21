@@ -74,6 +74,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v12",
         "casefile-chat-v13",
         "casefile-chat-v14",
+        "casefile-chat-v15",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -403,6 +404,8 @@ def render_chat_finalizer_prompt(
             "repair_plan": repair_plan,
         }
     )
+    if request.prompt_version == "casefile-chat-v15":
+        payload["safe_patch_registry"] = request.safe_patch_registry
     rendered = render_prompt_package(
         definition.package,
         finalizer_component,

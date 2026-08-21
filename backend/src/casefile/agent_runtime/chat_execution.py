@@ -12,6 +12,12 @@ from casefile.agent_runtime.chat_audit_validation import (
 )
 from casefile.agent_runtime.chat_intent import build_edit_target_manifest
 from casefile.agent_runtime.chat_reference_autofill import autofill_chat_references
+from casefile.agent_runtime.chat_safe_patches import (
+    SafePatchRegistry,
+    compile_safe_patch_registry,
+    materialize_unique_safe_patches,
+    safe_patch_registry_from_dict,
+)
 from casefile.agent_runtime.chat_validation import (
     RepairPlan,
     ValidationIssue,
@@ -71,7 +77,8 @@ class ChatCompletionValidationError(RuntimeError):
                 f"validation_issues={issue_payloads!r}；"
                 f"repair_plan={self.repair_plan.as_dict()!r}。"
                 "严格按 repair_plan 修复：preserve 项原样保留，add 项必须补齐，"
-                "remove 项必须删除，fix 项逐条修正；不得改写其他已通过内容。"
+                "remove 项必须删除，replace 项必须使用指定冻结补丁，"
+                "fix 项逐条修正；不得改写其他已通过内容。"
             )
         return (
             "上一轮结构化结果被系统拒绝："
@@ -99,7 +106,11 @@ class ChatExecutionResult:
 def prepare_chat_request_artifacts(request: CaseFileChatRequest) -> CaseFileChatRequest:
     """Freeze v13 Bundle/manifest before context rendering and provider I/O."""
 
-    if request.prompt_version not in {"casefile-chat-v13", "casefile-chat-v14"}:
+    if request.prompt_version not in {
+        "casefile-chat-v13",
+        "casefile-chat-v14",
+        "casefile-chat-v15",
+    }:
         return request
     validation = dict(request.validation)
     intent = (
@@ -292,13 +303,22 @@ def validate_chat_candidate(
                             code="audit_suggestion_reference_missing"
                         )
         if (
-            request.prompt_version == "casefile-chat-v14"
+            request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}
             and request.route is not None
             and request.route.execution_profile.get("primary_intent") == "logic_audit"
         ):
             ledger = result.tool_ledger or request.frozen_tool_ledger
+            registry: SafePatchRegistry | None = None
+            if isinstance(result.safe_patch_registry, dict):
+                registry = safe_patch_registry_from_dict(result.safe_patch_registry)
+            elif isinstance(request.safe_patch_registry, dict):
+                registry = safe_patch_registry_from_dict(request.safe_patch_registry)
+            elif request.prompt_version == "casefile-chat-v15" and ledger is not None:
+                registry = compile_safe_patch_registry(ledger)
             simulation_issues = (
-                _audit_simulation_issues(suggestions, ledger) if ledger is not None else ()
+                _audit_simulation_issues(suggestions, ledger, registry=registry)
+                if ledger is not None
+                else ()
             )
             if simulation_issues:
                 raise ChatCompletionValidationError(
@@ -326,6 +346,8 @@ def validate_chat_candidate(
 def _audit_simulation_issues(
     suggestions: list[dict[str, Any]],
     ledger: dict[str, Any] | None,
+    *,
+    registry: SafePatchRegistry | None = None,
 ) -> tuple[ValidationIssue, ...]:
     """Require every v14 audit suggestion to match a safe frozen simulation."""
 
@@ -362,6 +384,25 @@ def _audit_simulation_issues(
             and int(simulation.get("counts", {}).get("new", 0)) == 0
         )
         if safe:
+            continue
+        target_candidates = (
+            registry.candidates_for_target(key[0], key[1]) if registry is not None else ()
+        )
+        if target_candidates:
+            issues.append(
+                ValidationIssue(
+                    code="audit_suggestion_value_not_frozen",
+                    stage="patch",
+                    path=f"/suggestions/{index}",
+                    message="审计建议目标已有冻结安全补丁，但值未使用冻结候选。",
+                    repairable=True,
+                    details={
+                        "object_id": key[0],
+                        "path": key[1],
+                        "replace": [candidate.as_dict() for candidate in target_candidates],
+                    },
+                )
+            )
             continue
         issues.append(
             ValidationIssue(
@@ -542,6 +583,8 @@ class ChatExecutionRunner:
         usages: list[dict[str, Any]] = []
         tools: list[ToolMetrics] = []
         repair_attempted = False
+        repair_history: list[dict[str, Any]] = []
+        materialization_history: list[dict[str, Any]] = []
         for attempt in (1, 2):
             try:
                 result = self.provider.chat(request)
@@ -564,6 +607,51 @@ class ChatExecutionRunner:
                 raise
             usages.append(result.usage)
             tools.append(result.tools)
+            if (
+                request.prompt_version == "casefile-chat-v15"
+                and request.route is not None
+                and request.route.execution_profile.get("primary_intent") == "logic_audit"
+            ):
+                ledger = result.tool_ledger or request.frozen_tool_ledger
+                registry = (
+                    safe_patch_registry_from_dict(result.safe_patch_registry)
+                    if isinstance(result.safe_patch_registry, dict)
+                    else (
+                        safe_patch_registry_from_dict(request.safe_patch_registry)
+                        if isinstance(request.safe_patch_registry, dict)
+                        else compile_safe_patch_registry(
+                            ledger,
+                            expected_input_hash=request.input_hash,
+                        )
+                    )
+                )
+                candidate_payload = result.candidate.model_dump(mode="json")
+                raw_suggestions = candidate_payload.get("suggestions")
+                if isinstance(raw_suggestions, list):
+                    materialized, changes = materialize_unique_safe_patches(
+                        [item for item in raw_suggestions if isinstance(item, dict)],
+                        registry,
+                    )
+                    if materialized != raw_suggestions:
+                        candidate_payload["suggestions"] = materialized
+                        result = replace(
+                            result,
+                            candidate=result.candidate.__class__.model_validate(
+                                candidate_payload
+                            ),
+                        )
+                    result = replace(result, safe_patch_registry=registry.as_dict())
+                    if changes:
+                        change_payloads = [change.as_dict() for change in changes]
+                        materialization_history.extend(change_payloads)
+                        request.emit(
+                            "model.safe_patch_materialized",
+                            "validating",
+                            {
+                                "ledger_hash": registry.ledger_hash,
+                                "changes": change_payloads,
+                            },
+                        )
             result = _normalize_reference_slots(request, result)
             result = _apply_deterministic_audit_gate(request, result)
             try:
@@ -591,6 +679,19 @@ class ChatExecutionRunner:
                     )
                     raise validation from error
                 repair_attempted = True
+                repair_record = {
+                    "attempt": attempt,
+                    "validation_issues": [
+                        issue.as_dict() for issue in validation.issues
+                    ],
+                    "repair_plan": validation.repair_plan.as_dict(),
+                    "suggestion_count": len(result.candidate.suggestions),
+                    "suggestion_targets": [
+                        target_label(item.object_id, item.path)
+                        for item in result.candidate.suggestions
+                    ],
+                }
+                repair_history.append(repair_record)
                 request.emit(
                     "model.reference_repair_started",
                     "repairing",
@@ -606,12 +707,17 @@ class ChatExecutionRunner:
                             issue.as_dict() for issue in validation.issues
                         ],
                         "repair_plan": validation.repair_plan.as_dict(),
+                        "candidate_summary": {
+                            "suggestion_count": repair_record["suggestion_count"],
+                            "suggestion_targets": repair_record["suggestion_targets"],
+                        },
                     },
                 )
                 request = replace(
                     request,
                     repair_feedback=(validation.repair_feedback(),),
                     frozen_tool_ledger=result.tool_ledger,
+                    safe_patch_registry=result.safe_patch_registry,
                     previous_candidate=result.candidate.model_dump(mode="json"),
                     repair_plan=validation.repair_plan.as_dict(),
                 )
@@ -622,7 +728,12 @@ class ChatExecutionRunner:
                 tools=_merge_tools(tools),
                 attempts=attempt,
                 repair_attempted=repair_attempted,
-                diagnostics={"error_code": None, "attempts": attempt},
+                diagnostics={
+                    "error_code": None,
+                    "attempts": attempt,
+                    "repair_history": repair_history,
+                    "safe_patch_materializations": materialization_history,
+                },
             )
         raise AssertionError("unreachable")
 
