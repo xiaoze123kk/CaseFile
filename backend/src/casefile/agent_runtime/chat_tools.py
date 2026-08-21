@@ -459,7 +459,7 @@ def find_casefile_object(
 
 
 @dataclass(frozen=True, slots=True)
-class _ProposalCheck:
+class PatchProposalCheck:
     """Normalized outcome of one patch-proposal validation pass."""
 
     reason_code: str | None
@@ -501,6 +501,26 @@ def _pointer_value(value: Any, path: str) -> Any:
     return current
 
 
+def patch_target_string_value(
+    request: CaseFileChatRequest,
+    object_id: str,
+    path: str,
+) -> str | None:
+    """Return a frozen string target only when the full pointer resolves.
+
+    The post-finalizer gate uses this narrow read helper to normalize a common
+    transport mismatch: a model may put plain text in ``value_json`` for a
+    field whose frozen value is demonstrably a string.  It deliberately does
+    not coerce arrays, objects, numbers, or unknown paths.
+    """
+
+    found = find_casefile_object(request.casefile, object_id.strip())
+    if found is None:
+        return None
+    value = _pointer_value(found[1], path)
+    return value if isinstance(value, str) else None
+
+
 def _pointer_set(target: Any, path: str, new_value: Any) -> None:
     """Set one JSON Pointer node in place; the path must already resolve."""
 
@@ -524,25 +544,30 @@ def _pointer_set(target: Any, path: str, new_value: Any) -> None:
         raise RuntimeError(f"Pointer path is missing: {path}")
 
 
-def _check_patch_proposal(
-    context: ChatToolContext,
+def check_patch_proposal(
+    request: CaseFileChatRequest,
     object_id: str,
     path: str,
     value_json: str,
     *,
     require_path_exists: bool = False,
-) -> _ProposalCheck:
-    """Shared validation for proposal-producing and proposal-previewing tools."""
+) -> PatchProposalCheck:
+    """Validate one frozen-request patch proposal without tool-side effects.
+
+    This is the server-side core shared by the interactive patch-preview tool
+    and the mandatory post-finalizer audit gate. It deliberately does not
+    consume a tool budget or emit events.
+    """
 
     stripped_object_id = object_id.strip()
-    found = find_casefile_object(context.request.casefile, stripped_object_id)
+    found = find_casefile_object(request.casefile, stripped_object_id)
     if found is None:
-        return _ProposalCheck("object_not_found", object_id=object_id)
+        return PatchProposalCheck("object_not_found", object_id=object_id)
     collection, item = found
     top_level_field = path.lstrip("/").split("/")[0] if path.startswith("/") else ""
-    allowed_fields = tuple(context.request.editable_fields_by_collection.get(collection, ()))
+    allowed_fields = tuple(request.editable_fields_by_collection.get(collection, ()))
     if not top_level_field or top_level_field not in allowed_fields:
-        return _ProposalCheck(
+        return PatchProposalCheck(
             "field_not_editable",
             object_id=object_id,
             collection=collection,
@@ -560,26 +585,45 @@ def _check_patch_proposal(
         else:
             reason = None
     if reason is not None:
-        return _ProposalCheck(
+        return PatchProposalCheck(
             reason,
             object_id=object_id,
             collection=collection,
             item=item,
         )
     if require_path_exists and _pointer_value(item, path) is _MISSING:
-        return _ProposalCheck(
+        return PatchProposalCheck(
             "path_not_found",
             object_id=object_id,
             collection=collection,
             item=item,
         )
-    return _ProposalCheck(
+    return PatchProposalCheck(
         None,
         object_id=object_id,
         collection=collection,
         item=item,
         value=value,
         allowed_fields=allowed_fields,
+    )
+
+
+def _check_patch_proposal(
+    context: ChatToolContext,
+    object_id: str,
+    path: str,
+    value_json: str,
+    *,
+    require_path_exists: bool = False,
+) -> PatchProposalCheck:
+    """Tool adapter for the pure request-level proposal checker."""
+
+    return check_patch_proposal(
+        context.request,
+        object_id,
+        path,
+        value_json,
+        require_path_exists=require_path_exists,
     )
 
 
@@ -1551,6 +1595,7 @@ __all__ = [
     "ChatToolLedger",
     "chat_tool_manifest",
     "bounded_tool_result_json",
+    "check_patch_proposal",
     "find_casefile_object",
     "fold_tool_results",
     "freeze_chat_tool_ledger",
@@ -1560,6 +1605,7 @@ __all__ = [
     "list_casefile_collections",
     "list_casefile_records",
     "page_casefile_records",
+    "patch_target_string_value",
     "related_casefile_objects",
     "request_thread_compaction",
     "retrieve_thread_evidence",

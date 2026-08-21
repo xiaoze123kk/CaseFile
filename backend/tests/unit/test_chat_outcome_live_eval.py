@@ -41,6 +41,36 @@ class FlakyOnceReferenceProvider(ReferenceEchoProvider):
         return super().chat(request)
 
 
+class ProtocolTelemetryProvider(ReferenceEchoProvider):
+    """Emit structured-output diagnostics exactly as a live provider would."""
+
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        request.emit(
+            "model.output_protocol_selected",
+            "finalizing",
+            {"protocol": "strict_tool", "attempt_no": 1},
+        )
+        request.emit(
+            "model.output_protocol_fallback",
+            "finalizing",
+            {
+                "from": "strict_tool",
+                "to": "json_object",
+                "reason_code": "strict_schema_violation",
+            },
+        )
+        request.emit(
+            "agent.model_call.failed",
+            "finalizing",
+            {
+                "failure_layer": "pydantic",
+                "attempt_no": 1,
+                "issues": [{"path": "/audit_findings/0", "message": "invalid"}],
+            },
+        )
+        return super().chat(request)
+
+
 def test_reference_live_trials_all_pass() -> None:
     task = build_outcome_tasks()[0]
     report = run_live_chat_outcome_eval(
@@ -118,3 +148,33 @@ def test_live_runner_can_freeze_v13_for_a_trial() -> None:
 
     assert report.prompt_versions == ("casefile-chat-v13",)
     assert report.suite_fingerprint
+
+
+def test_live_report_keeps_protocol_and_validation_history() -> None:
+    task = build_outcome_tasks()[0]
+    report = run_live_chat_outcome_eval(
+        lambda: ProtocolTelemetryProvider(task.reference_candidate),
+        provider_name="fake",
+        model_id="telemetry",
+        api_key="fake",
+        tasks=(task,),
+        trials=1,
+    )
+
+    row = report.rows[0]
+    assert row["output_protocol_history"] == [
+        {
+            "attempt": 1,
+            "from": "strict_tool",
+            "to": "json_object",
+            "reason_code": "strict_schema_violation",
+            "stage": "finalizing",
+        }
+    ]
+    assert row["output_validation_history"] == [
+        {
+            "attempt": 1,
+            "stage": "finalizing",
+            "issues": [{"path": "/audit_findings/0", "message": "invalid"}],
+        }
+    ]

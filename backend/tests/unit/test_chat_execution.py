@@ -13,6 +13,7 @@ from casefile.agent_runtime.chat_execution import (
     prepare_chat_request_artifacts,
     validate_chat_candidate,
 )
+from casefile.agent_runtime.chat_validation import ValidationIssue, plan_repairs
 from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V6_VERSION
 from casefile.agent_runtime.models import CaseFileChatResult, ToolMetrics
 from casefile.benchmark.chat_outcome_eval import (
@@ -238,61 +239,323 @@ def _safe_simulation_ledger(request, suggestions):  # type: ignore[no-untyped-de
     }
 
 
-def test_v15_materializes_unique_safe_patch_without_model_repair() -> None:
+def test_v15_server_gate_proves_safe_patch_without_tool_simulation() -> None:
     task = next(
         item
         for item in build_outcome_tasks()
         if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
-    frozen = task.reference_candidate.suggestions[0]
-    rewritten = frozen.model_copy(
+    proposed = task.reference_candidate.suggestions[0].model_copy(
         update={"value_json": '"叛逃后双方已经不再互信。"'}
     )
-    candidate = task.reference_candidate.model_copy(update={"suggestions": [rewritten]})
-    result = replace(
-        _result(candidate, 1),
-        tool_ledger=_safe_simulation_ledger(request, [frozen]),
-    )
+    candidate = task.reference_candidate.model_copy(update={"suggestions": [proposed]})
+    result = _result(candidate, 1)
     provider = SequenceProvider([result])
 
     execution = ChatExecutionRunner(provider).run(request)
 
     assert execution.attempts == 1
     assert execution.repair_attempted is False
-    assert execution.result.candidate.suggestions[0].value_json == frozen.value_json
-    assert execution.diagnostics["safe_patch_materializations"] == [
-        {
-            "suggestion_index": 0,
-            "target": f"{frozen.object_id}:{frozen.path}",
-            "patch_id": "P1",
-            "reason": "unique_safe_target",
-        }
-    ]
+    assert execution.result.candidate.suggestions[0].value_json == proposed.value_json
+    registry = execution.result.safe_patch_registry
+    assert registry is not None
+    assert registry["candidates"][0]["source"] == "server_post_finalizer_gate"
+    assert registry["candidates"][0]["simulation_passed"] is True
+    assert provider.requests[0].frozen_tool_ledger is None
 
 
-def test_v15_ambiguous_safe_patch_enters_explicit_replace_plan() -> None:
+def test_v15_server_gate_quotes_plain_text_and_discards_redundant_target() -> None:
     task = next(
         item
         for item in build_outcome_tasks()
         if item.task_id == "golden-audit-fractured-alliance"
     )
     request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
-    frozen = task.reference_candidate.suggestions[0]
-    alternative = frozen.model_copy(update={"value_json": '"同盟已经公开决裂。"'})
-    rewritten = frozen.model_copy(update={"value_json": '"双方关系已经变化。"'})
-    candidate = task.reference_candidate.model_copy(update={"suggestions": [rewritten]})
-    result = replace(
-        _result(candidate, 1),
-        tool_ledger=_safe_simulation_ledger(request, [frozen, alternative]),
+    first = task.reference_candidate.suggestions[0].model_copy(
+        update={"value_json": "叛逃后双方已经不再互信。"}
+    )
+    duplicate = task.reference_candidate.suggestions[0].model_copy(
+        update={"value_json": '"同盟已经决裂。"'}
+    )
+    candidate = task.reference_candidate.model_copy(update={"suggestions": [first, duplicate]})
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
+
+    assert execution.repair_attempted is False
+    assert len(execution.result.candidate.suggestions) == 1
+    assert execution.result.candidate.suggestions[0].value_json == '"叛逃后双方已经不再互信。"'
+    assert execution.result.safe_patch_registry is not None
+    assert len(execution.result.safe_patch_registry["candidates"]) == 1
+
+
+def test_v15_server_gate_rejects_unsafe_patch_then_repairs() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    unsafe = task.reference_candidate.suggestions[0].model_copy(update={"path": "/id"})
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [unsafe]})
+    provider = SequenceProvider([_result(invalid, 1), _result(task.reference_candidate, 1)])
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.repair_attempted is True
+    repair = execution.diagnostics["repair_history"][0]
+    assert repair["validation_issues"][0]["code"] == "audit_suggestion_server_gate_failed"
+    assert provider.requests[1].repair_plan is not None
+    assert provider.requests[1].repair_plan["remove"] == ["ent_leader:/id"]
+    assert provider.requests[1].repair_plan["add"] == ["ent_leader:/description"]
+
+
+def test_v15_empty_suggestions_with_repairable_finding_enters_repair_plan() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    missing = task.reference_candidate.model_copy(update={"suggestions": []})
+    provider = SequenceProvider([_result(missing, 1), _result(task.reference_candidate, 1)])
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.repair_attempted is True
+    repair_plan = provider.requests[1].repair_plan
+    assert repair_plan is not None
+    assert repair_plan["add"] == ["ent_leader:/description"]
+    assert repair_plan["fix"][0]["code"] == "audit_repairable_finding_missing_suggestion"
+
+
+def test_v15_dedupes_same_endpoint_findings_and_rebinds_suggestion() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    first = task.reference_candidate.audit_findings[0]
+    duplicate = first.model_copy(
+        update={
+            "finding_id": "F2",
+            "kind": "scope_gap",
+            "title": "同一证据对的重复表述",
+        }
+    )
+    suggestion = task.reference_candidate.suggestions[0].model_copy(update={"finding_ref": "F2"})
+    candidate = task.reference_candidate.model_copy(
+        update={"audit_findings": [first, duplicate], "suggestions": [suggestion]}
     )
 
-    with pytest.raises(ChatCompletionValidationError) as caught:
-        validate_chat_candidate(request, result)
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
 
-    assert caught.value.code == "audit_suggestion_value_not_frozen"
-    assert [item["patch_id"] for item in caught.value.repair_plan.replace] == ["P1", "P2"]
-    assert caught.value.repair_plan.remove == ()
+    assert [finding.finding_id for finding in execution.result.candidate.audit_findings] == ["F1"]
+    assert execution.result.candidate.suggestions[0].finding_ref == "F1"
+
+
+def test_v15_adds_event_suggestion_to_the_event_reference_slot() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-vanishing-route"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    finding = task.reference_candidate.audit_findings[0].model_copy(
+        update={"evidence_object_ids": ["ent_captain"]}
+    )
+    candidate = task.reference_candidate.model_copy(
+        update={"referenced_event_ids": [], "audit_findings": [finding]}
+    )
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
+
+    assert "evt_departure" in execution.result.candidate.referenced_event_ids
+
+
+def test_v15_accepts_one_event_id_for_a_same_event_field_conflict() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-vanishing-route"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+
+    execution = ChatExecutionRunner(
+        SequenceProvider([_result(task.reference_candidate, 1)])
+    ).run(request)
+
+    assert execution.result.candidate.audit_findings[0].evidence_event_ids == ["evt_departure"]
+
+
+def test_v15_autofills_connected_deterministic_pair_evidence() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-restart-loop"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    finding = task.reference_candidate.audit_findings[0].model_copy(
+        update={
+            "evidence_object_ids": ["ent_researcher", "claim_backup_trigger"],
+        }
+    )
+    candidate = task.reference_candidate.model_copy(update={"audit_findings": [finding]})
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
+
+    assert "ent_backup_system" in execution.result.candidate.audit_findings[0].evidence_object_ids
+
+
+def test_v15_unbinds_suggestion_from_a_manual_review_finding() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    manual = task.reference_candidate.audit_findings[0].model_copy(
+        update={"needs_manual_review": True}
+    )
+    candidate = task.reference_candidate.model_copy(update={"audit_findings": [manual]})
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
+
+    assert execution.result.candidate.suggestions[0].finding_ref is None
+
+
+def test_v15_dedupes_manual_finding_suggestions_before_unbinding() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    manual = task.reference_candidate.audit_findings[0].model_copy(
+        update={"needs_manual_review": True}
+    )
+    extra = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "ent_defector",
+            "path": "/description",
+            "value_json": '"叛逃已经让同盟公开破裂。"',
+        }
+    )
+    candidate = task.reference_candidate.model_copy(
+        update={
+            "audit_findings": [manual],
+            "suggestions": [task.reference_candidate.suggestions[0], extra],
+        }
+    )
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
+
+    assert len(execution.result.candidate.suggestions) == 1
+    assert execution.result.candidate.suggestions[0].object_id == "ent_leader"
+    assert execution.result.candidate.suggestions[0].finding_ref is None
+
+
+def test_v15_keeps_one_minimal_suggestion_per_finding() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    extra = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "ent_defector",
+            "path": "/description",
+            "value_json": '"叛逃已经让同盟公开破裂。"',
+        }
+    )
+    candidate = task.reference_candidate.model_copy(
+        update={"suggestions": [task.reference_candidate.suggestions[0], extra]}
+    )
+
+    execution = ChatExecutionRunner(SequenceProvider([_result(candidate, 1)])).run(request)
+
+    assert len(execution.result.candidate.suggestions) == 1
+    assert execution.result.candidate.suggestions[0].object_id == "ent_leader"
+
+
+def test_v15_manual_only_deterministic_pair_requires_an_unbound_repair() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    manual = task.reference_candidate.audit_findings[0].model_copy(
+        update={"needs_manual_review": True}
+    )
+    incomplete = task.reference_candidate.model_copy(
+        update={"audit_findings": [manual], "suggestions": []}
+    )
+    provider = SequenceProvider([_result(incomplete, 1), _result(task.reference_candidate, 1)])
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.repair_attempted is True
+    assert provider.requests[1].repair_plan is not None
+    assert provider.requests[1].repair_plan["fix"][0]["code"] == (
+        "audit_deterministic_pair_missing_suggestion"
+    )
+    assert provider.requests[1].repair_plan["fix"][0]["details"]["finding_ref"] is None
+
+
+def test_v15_repair_expectation_replaces_an_unrelated_safe_target() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-restart-loop"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    unrelated = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "evt_restart_seven",
+            "path": "/truth_status",
+            "value_json": '"canon_true"',
+        }
+    )
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [unrelated]})
+    provider = SequenceProvider([_result(invalid, 1), _result(task.reference_candidate, 1)])
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.repair_attempted is True
+    repair_plan = provider.requests[1].repair_plan
+    assert repair_plan is not None
+    assert repair_plan["add"] == ["ent_researcher:/description"]
+    assert repair_plan["remove"] == ["evt_restart_seven:/truth_status"]
+    assert repair_plan["fix"][0]["code"] == "audit_repair_expectation_missing_target"
+
+
+def test_repair_plan_keeps_a_required_target_when_an_invalid_value_is_removed() -> None:
+    plan = plan_repairs(
+        (
+            ValidationIssue(
+                code="audit_suggestion_server_gate_failed",
+                stage="patch",
+                path="/suggestions/0",
+                message="invalid",
+                repairable=True,
+                details={"extra": ["ent_leader:/description"]},
+            ),
+            ValidationIssue(
+                code="audit_repairable_finding_missing_suggestion",
+                stage="audit",
+                path="/suggestions",
+                message="missing",
+                repairable=True,
+                details={"missing": ["ent_leader:/description"]},
+            ),
+        )
+    )
+
+    assert plan.add == ("ent_leader:/description",)
+    assert plan.remove == ()
 
 
 def test_runner_moves_known_event_out_of_object_slot() -> None:

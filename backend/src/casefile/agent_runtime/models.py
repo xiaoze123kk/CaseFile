@@ -384,9 +384,7 @@ class ChatFinalizerInputV1(ChatExecutorInputV2):
 
 
 class ChatFinalizerInputV2(ChatFinalizerInputV1):
-    """v15 finalizer input with server-compiled safe patch candidates."""
-
-    safe_patch_registry: dict[str, Any] | None = None
+    """v15 finalizer input before the server post-finalizer patch gate."""
 
 
 class ChatEvidenceOutputV1(StrictAgentOutput):

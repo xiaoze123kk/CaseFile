@@ -90,11 +90,19 @@ def build_audit_evidence_bundle(
                     continue
                 shared_tokens = left_text & _record_text(right)
                 conflict_terms = _conflict_terms(_record_excerpt(left), _record_excerpt(right))
-                if shared_tokens and conflict_terms:
+                # Direct opposed terms are sufficient for a candidate.  A
+                # shared token improves recall but cannot be mandatory: the
+                # researcher may say "人工误操作" while the system record
+                # states "自动触发" without repeating the same noun.
+                if conflict_terms:
                     candidate_pairs.append(
                         {
                             "kind": "cross_record_conflict_candidate",
-                            "source_rule": "shared_term_with_opposed_terms",
+                            "source_rule": (
+                                "shared_term_with_opposed_terms"
+                                if shared_tokens
+                                else "opposed_terms"
+                            ),
                             "left_id": str(left["id"]),
                             "right_id": str(right["id"]),
                             "left_collection": str(left["collection"]),
@@ -126,6 +134,47 @@ def build_audit_evidence_bundle(
             and isinstance(record.get("description"), str)
             and _conflict_terms(str(record["title"]), str(record["description"]))
         )
+        event_participants = {
+            str(event["id"]): [
+                str(ref["object_id"])
+                for ref in event.get("participant_refs", [])
+                if isinstance(ref, dict) and isinstance(ref.get("object_id"), str)
+            ]
+            for event in casefile.get("events", [])
+            if isinstance(event, dict) and isinstance(event.get("id"), str)
+        }
+        event_records = [
+            record for record in relevant_records if record["collection"] == "events"
+        ]
+        for record in relevant_records:
+            if record["collection"] == "events":
+                continue
+            for event in event_records:
+                shared_terms = _record_text(record) & _record_text(event)
+                if not shared_terms:
+                    continue
+                for participant_id in event_participants.get(str(event["id"]), []):
+                    if participant_id == record["id"]:
+                        continue
+                    candidate_pairs.append(
+                        {
+                            "kind": "event_participant_context_candidate",
+                            "source_rule": "shared_event_with_participant",
+                            "left_id": str(record["id"]),
+                            "right_id": participant_id,
+                            "event_id": str(event["id"]),
+                            "shared_terms": sorted(shared_terms)[:8],
+                            "left_collection": str(record["collection"]),
+                            "right_collection": "event_participant",
+                            "left_excerpt": _record_excerpt(record),
+                            "right_excerpt": _record_excerpt(event),
+                        }
+                    )
+    repair_targets = _repair_candidate_targets(
+        candidate_pairs,
+        records,
+        editable_fields_by_collection or {},
+    )
     base = {
         "schema_version": "audit-evidence-v1",
         "casefile_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
@@ -148,6 +197,10 @@ def build_audit_evidence_bundle(
             ]
             for record in records
         },
+        # A deterministic capability hint, not a golden answer. It tells the
+        # finalizer repair path that the frozen evidence exposes at least one
+        # editable, existing field for a detected pair.
+        "repair_expectation": {"candidate_patch_targets": repair_targets},
     }
     selected: list[dict[str, Any]] = []
     for record in records:
@@ -165,6 +218,13 @@ def build_audit_evidence_bundle(
         "uncovered_record_count": len(records) - len(selected),
         "uncovered_ids": [object_id for object_id in all_ids if object_id not in included],
     }
+    payload["repair_expectation"] = {
+        "candidate_patch_targets": [
+            target
+            for target in repair_targets
+            if target["object_id"] in included
+        ]
+    }
     payload["clean_noop_eligible"] = bool(
         not truncated
         and not payload["deterministic_findings"]
@@ -172,6 +232,92 @@ def build_audit_evidence_bundle(
         and not payload["tool_counterevidence"]
     )
     return AuditEvidenceBundle(payload=payload, included_ids=included, truncated=truncated)
+
+
+def _repair_candidate_targets(
+    candidate_pairs: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+    editable_fields_by_collection: dict[str, tuple[str, ...]],
+) -> list[dict[str, str]]:
+    """Select stable, existing editable targets from the frozen audit Bundle.
+
+    This intentionally ranks direct same-record conflicts ahead of broader
+    cross-record candidates. It proves that a repair is possible without
+    deciding the semantic replacement value, which remains the finalizer's
+    responsibility.
+    """
+
+    records_by_id = {
+        str(record["id"]): record
+        for record in records
+        if isinstance(record.get("id"), str)
+    }
+    ranked_pairs = sorted(
+        enumerate(candidate_pairs),
+        key=lambda item: (
+            0 if item[1].get("kind") == "same_record_field_conflict_candidate" else 1,
+            item[0],
+        ),
+    )
+    targets: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for pair_index, pair in ranked_pairs:
+        if pair.get("kind") not in _REPAIRABLE_PAIR_KINDS:
+            # Event-participant edges expand a finding's evidence graph. They
+            # do not independently establish what text should be repaired.
+            continue
+        target = _repair_target_for_pair(pair, records_by_id, editable_fields_by_collection)
+        if target is None:
+            continue
+        key = (target["object_id"], target["path"])
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(
+            {
+                **target,
+                "source_kind": str(pair.get("kind") or "candidate_pair"),
+                "pair_index": str(pair_index),
+            }
+        )
+    return targets
+
+
+def _repair_target_for_pair(
+    pair: dict[str, Any],
+    records_by_id: dict[str, dict[str, Any]],
+    editable_fields_by_collection: dict[str, tuple[str, ...]],
+) -> dict[str, str] | None:
+    left_id = pair.get("left_id")
+    right_id = pair.get("right_id")
+    direct_field = pair.get("left_field")
+    ordered_ids = [value for value in (left_id, right_id) if isinstance(value, str)]
+    for index, object_id in enumerate(ordered_ids):
+        record = records_by_id.get(object_id)
+        if record is None:
+            continue
+        collection = record.get("collection")
+        if not isinstance(collection, str):
+            continue
+        allowed = set(editable_fields_by_collection.get(collection, ()))
+        preferred = (
+            [str(direct_field)]
+            if index == 0 and isinstance(direct_field, str)
+            else ["description", "statement", "title", "motivation", "summary", "name"]
+        )
+        for field in preferred:
+            if field in allowed and field in record:
+                return {
+                    "object_id": object_id,
+                    "path": f"/{field}",
+                    "current_value_json": json.dumps(
+                        record[field],
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    "value_type": type(record[field]).__name__,
+                }
+    return None
 
 
 def _record_text(record: dict[str, Any]) -> set[str]:
@@ -211,6 +357,10 @@ _OPPOSED_TERMS = (
     ("存在", "不存在"),
     ("开启", "关闭"),
     ("成功", "失败"),
+)
+
+_REPAIRABLE_PAIR_KINDS = frozenset(
+    {"cross_record_conflict_candidate", "same_record_field_conflict_candidate"}
 )
 
 

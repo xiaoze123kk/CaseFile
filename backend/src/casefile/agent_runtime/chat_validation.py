@@ -95,6 +95,10 @@ def plan_repairs(issues: tuple[ValidationIssue, ...]) -> RepairPlan:
                 **({"details": dict(details)} if details else {}),
             }
         )
+    # A target can be rejected for its current value and simultaneously be
+    # required by the audit capability contract.  The next Finalizer must
+    # rebuild that target, not receive contradictory add/remove instructions.
+    remove.difference_update(add)
     return RepairPlan(
         preserve=tuple(sorted(preserve)),
         add=tuple(sorted(add)),

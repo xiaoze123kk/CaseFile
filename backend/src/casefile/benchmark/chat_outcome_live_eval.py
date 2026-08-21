@@ -313,6 +313,8 @@ def run_live_chat_outcome_eval(
             safe_patch_materializations: list[dict[str, Any]] = []
             ledger_hash: str | None = None
             last_output_protocol: str | None = None
+            output_protocol_history: list[dict[str, Any]] = []
+            output_validation_history: list[dict[str, Any]] = []
             stage = "routing"
             started = time.perf_counter()
             try:
@@ -427,6 +429,58 @@ def run_live_chat_outcome_eval(
                 last_output_protocol = str(
                     protocol_events[-1].get("payload", {}).get("protocol")
                 )
+            last_attempt_by_stage: dict[str, int] = {}
+            for event in events:
+                event_type = event.get("event_type")
+                stage_name = str(event.get("stage") or "unknown")
+                payload = event.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                if event_type == "model.output_protocol_selected":
+                    attempt = payload.get("attempt_no")
+                    if isinstance(attempt, int):
+                        last_attempt_by_stage[stage_name] = attempt
+                elif event_type == "model.output_protocol_fallback":
+                    attempt = payload.get("attempt_no")
+                    output_protocol_history.append(
+                        {
+                            "attempt": (
+                                attempt
+                                if isinstance(attempt, int)
+                                else last_attempt_by_stage.get(stage_name, 1)
+                            ),
+                            "from": str(payload.get("from") or "unknown"),
+                            "to": str(payload.get("to") or "unknown"),
+                            "reason_code": str(payload.get("reason_code") or "unknown"),
+                            "stage": stage_name,
+                        }
+                    )
+                elif (
+                    event_type == "agent.model_call.failed"
+                    and payload.get("failure_layer") == "pydantic"
+                ):
+                    issues = payload.get("issues")
+                    output_validation_history.append(
+                        {
+                            "attempt": payload.get("attempt_no"),
+                            "stage": stage_name,
+                            "issues": issues if isinstance(issues, list) else [],
+                        }
+                    )
+                elif event_type == "model.output_repair_started":
+                    issues = payload.get("issues")
+                    next_attempt = payload.get("attempt_no")
+                    output_validation_history.append(
+                        {
+                            "attempt": (
+                                max(1, next_attempt - 1)
+                                if isinstance(next_attempt, int)
+                                else last_attempt_by_stage.get(stage_name, 1)
+                            ),
+                            "stage": stage_name,
+                            "issues": issues if isinstance(issues, list) else [],
+                        }
+                    )
             ledger_events = [
                 event
                 for event in events
@@ -472,6 +526,8 @@ def run_live_chat_outcome_eval(
                     "safe_patch_materializations": safe_patch_materializations,
                     "ledger_hash": ledger_hash,
                     "last_output_protocol": last_output_protocol,
+                    "output_protocol_history": output_protocol_history,
+                    "output_validation_history": output_validation_history,
                     "tool_agent_calls": sum(
                         event.get("event_type") == "model.tool_agent.started"
                         for event in events

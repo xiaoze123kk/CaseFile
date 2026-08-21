@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import re
-from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from time import perf_counter
@@ -29,7 +28,6 @@ from casefile.agent_runtime.brief_to_draft_v12.workflow import run_v12_generatio
 from casefile.agent_runtime.brief_to_draft_v13.workflow import run_v13_generation
 from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generation
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
-from casefile.agent_runtime.chat_safe_patches import compile_safe_patch_registry
 from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
     ChatToolLedger,
@@ -622,12 +620,25 @@ async def _run_chat_tool_agent(
             trace_include_sensitive_data=False,
         ),
     )
-    if not isinstance(result.final_output, str) or not result.final_output.strip():
-        raise ProviderProtocolError("CaseFile tool agent returned an empty evidence summary")
+    summary = (
+        result.final_output.strip()
+        if isinstance(result.final_output, str) and result.final_output.strip()
+        else _frozen_evidence_summary(context)
+    )
+    if summary != result.final_output:
+        request.emit(
+            "model.tool_agent.summary_fallback",
+            "gathering_evidence",
+            {
+                "reason_code": "empty_evidence_summary",
+                "tool_calls": context.metrics.calls,
+                "successful_calls": context.metrics.successful_calls,
+            },
+        )
     usage = _usage_json(result.context_wrapper.usage)
     ledger = freeze_chat_tool_ledger(
         context,
-        evidence_summary=result.final_output,
+        evidence_summary=summary,
     )
     request.emit(
         "model.tool_agent.completed",
@@ -650,6 +661,20 @@ async def _run_chat_tool_agent(
         },
     )
     return ledger, usage
+
+
+def _frozen_evidence_summary(context: ChatToolContext) -> str:
+    """Provide a bounded handoff when tools succeeded but the narrative is empty."""
+
+    retrieved = sorted(set(context.metrics.retrieved_object_ids))
+    evidence = sorted(set(context.metrics.retrieved_evidence_ids))
+    return (
+        "Evidence Agent 未返回文字摘要；Finalizer 必须以 Frozen Tool Ledger 为准。"
+        f"已完成只读工具调用 {context.metrics.successful_calls}/{context.metrics.calls} 次；"
+        f"读取对象={','.join(retrieved) or '无'}；"
+        f"证据={','.join(evidence) or '无'}；"
+        f"预算耗尽={'是' if context.metrics.budget_exhausted else '否'}。"
+    )[:20_000]
 
 
 class FakeProvider:
@@ -1646,20 +1671,43 @@ class OpenAIAgentsProvider:
         if ledger_payload is not None:
             evidence_summary = str(ledger_payload.get("evidence_summary") or "")
         elif tools and context is not None:
-            ledger, tool_usage = asyncio.run(
-                self._gather_chat_evidence(
-                    request,
-                    instructions=instructions,
-                    input_text=input_text,
-                    tools=tools,
-                    context=context,
-                    max_turns=max_turns,
+            try:
+                ledger, tool_usage = asyncio.run(
+                    self._gather_chat_evidence(
+                        request,
+                        instructions=instructions,
+                        input_text=input_text,
+                        tools=tools,
+                        context=context,
+                        max_turns=max_turns,
+                    )
                 )
-            )
-            ledger_payload = ledger.as_dict()
-            evidence_summary = ledger.evidence_summary
-            usage_records.append(tool_usage)
-            metrics = context.metrics
+            except Exception as error:
+                # v15's deterministic Bundle is authoritative.  A bounded
+                # Evidence Agent failure must not block the no-tool Finalizer
+                # from completing against that frozen evidence.
+                if request.prompt_version != "casefile-chat-v15":
+                    raise
+                request.emit(
+                    "model.tool_agent.failed",
+                    "gathering_evidence",
+                    {
+                        "reason_code": "evidence_agent_failed",
+                        "error_class": type(error).__name__,
+                        "fallback": "frozen_bundle",
+                        "tool_calls": context.metrics.calls,
+                        "successful_calls": context.metrics.successful_calls,
+                    },
+                )
+                ledger = None
+                tool_usage = {}
+                evidence_summary = _frozen_evidence_summary(context)
+            if ledger is not None:
+                ledger_payload = ledger.as_dict()
+                evidence_summary = ledger.evidence_summary
+                usage_records.append(tool_usage)
+            else:
+                metrics = context.metrics
         request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
             request,
@@ -2144,19 +2192,38 @@ class DeepSeekAgentsProvider:
         if ledger_payload is not None:
             evidence_summary = str(ledger_payload.get("evidence_summary") or "")
         elif tools and context is not None:
-            ledger, tool_usage = asyncio.run(
-                self._gather_chat_evidence(
-                    request,
-                    instructions=instructions,
-                    input_text=input_text,
-                    tools=tools,
-                    context=context,
-                    max_turns=max_turns,
+            try:
+                ledger, tool_usage = asyncio.run(
+                    self._gather_chat_evidence(
+                        request,
+                        instructions=instructions,
+                        input_text=input_text,
+                        tools=tools,
+                        context=context,
+                        max_turns=max_turns,
+                    )
                 )
-            )
-            ledger_payload = ledger.as_dict()
-            evidence_summary = ledger.evidence_summary
-            usage_records.append(tool_usage)
+            except Exception as error:
+                if request.prompt_version != "casefile-chat-v15":
+                    raise
+                request.emit(
+                    "model.tool_agent.failed",
+                    "gathering_evidence",
+                    {
+                        "reason_code": "evidence_agent_failed",
+                        "error_class": type(error).__name__,
+                        "fallback": "frozen_bundle",
+                        "tool_calls": context.metrics.calls,
+                        "successful_calls": context.metrics.successful_calls,
+                    },
+                )
+                ledger = None
+                tool_usage = {}
+                evidence_summary = _frozen_evidence_summary(context)
+            if ledger is not None:
+                ledger_payload = ledger.as_dict()
+                evidence_summary = ledger.evidence_summary
+                usage_records.append(tool_usage)
             metrics = context.metrics
         request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
@@ -3837,17 +3904,14 @@ def _bind_safe_patch_registry(
     request: CaseFileChatRequest,
     ledger_payload: dict[str, Any] | None,
 ) -> tuple[CaseFileChatRequest, dict[str, Any] | None]:
-    """Attach the v15 server-owned patch registry before finalization."""
+    """Keep pre-finalizer inputs free of a v15 safe-patch registry.
 
-    if request.prompt_version != "casefile-chat-v15":
-        return request, None
-    registry_payload = request.safe_patch_registry
-    if registry_payload is None:
-        registry_payload = compile_safe_patch_registry(
-            ledger_payload,
-            expected_input_hash=request.input_hash,
-        ).as_dict()
-    return replace(request, safe_patch_registry=registry_payload), registry_payload
+    v15 now proves proposal safety only after the no-tool Finalizer returns;
+    the ledger remains evidence and cannot pre-supply finalizer patch values.
+    """
+
+    del ledger_payload
+    return request, None
 
 
 def _validate_generated_descriptions(candidate: dict[str, Any]) -> None:

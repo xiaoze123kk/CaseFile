@@ -9,14 +9,15 @@ from typing import Any, Protocol
 from casefile.agent_runtime.chat_audit_validation import (
     ChatAuditValidationError,
     normalize_audit_findings,
+    rank_and_dedupe_audit_findings,
 )
 from casefile.agent_runtime.chat_intent import build_edit_target_manifest
 from casefile.agent_runtime.chat_reference_autofill import autofill_chat_references
 from casefile.agent_runtime.chat_safe_patches import (
     SafePatchRegistry,
-    compile_safe_patch_registry,
     materialize_unique_safe_patches,
     safe_patch_registry_from_dict,
+    server_gate_audit_suggestions,
 )
 from casefile.agent_runtime.chat_validation import (
     RepairPlan,
@@ -269,6 +270,13 @@ def validate_chat_candidate(
                 item.get("finding_ref") if isinstance(item, dict) else None
                 for item in suggestions
             ],
+            deterministic_pairs=(
+                bundle.get("candidate_pairs")
+                if isinstance(bundle, dict)
+                and isinstance(bundle.get("candidate_pairs"), list)
+                else None
+            ),
+            require_deterministic_pair=request.prompt_version == "casefile-chat-v15",
         )
         for finding in normalized:
             referenced_objects.update(finding["evidence_object_ids"])
@@ -298,7 +306,10 @@ def validate_chat_candidate(
                         raise ChatCompletionValidationError(
                             code="audit_suggestion_field_not_allowed"
                         )
-                    if object_id not in referenced_objects:
+                    reference_slot = (
+                        referenced_events if object_id in event_ids else referenced_objects
+                    )
+                    if object_id not in reference_slot:
                         raise ChatCompletionValidationError(
                             code="audit_suggestion_reference_missing"
                         )
@@ -307,24 +318,45 @@ def validate_chat_candidate(
             and request.route is not None
             and request.route.execution_profile.get("primary_intent") == "logic_audit"
         ):
-            ledger = result.tool_ledger or request.frozen_tool_ledger
-            registry: SafePatchRegistry | None = None
-            if isinstance(result.safe_patch_registry, dict):
-                registry = safe_patch_registry_from_dict(result.safe_patch_registry)
-            elif isinstance(request.safe_patch_registry, dict):
-                registry = safe_patch_registry_from_dict(request.safe_patch_registry)
-            elif request.prompt_version == "casefile-chat-v15" and ledger is not None:
-                registry = compile_safe_patch_registry(ledger)
-            simulation_issues = (
-                _audit_simulation_issues(suggestions, ledger, registry=registry)
-                if ledger is not None
-                else ()
-            )
+            if request.prompt_version == "casefile-chat-v15":
+                registry = (
+                    safe_patch_registry_from_dict(result.safe_patch_registry)
+                    if isinstance(result.safe_patch_registry, dict)
+                    else None
+                )
+                simulation_issues = _audit_server_gate_issues(suggestions, registry)
+            else:
+                ledger = result.tool_ledger or request.frozen_tool_ledger
+                registry = None
+                if isinstance(result.safe_patch_registry, dict):
+                    registry = safe_patch_registry_from_dict(result.safe_patch_registry)
+                elif isinstance(request.safe_patch_registry, dict):
+                    registry = safe_patch_registry_from_dict(request.safe_patch_registry)
+                simulation_issues = (
+                    _audit_simulation_issues(suggestions, ledger, registry=registry)
+                    if ledger is not None
+                    else ()
+                )
             if simulation_issues:
                 raise ChatCompletionValidationError(
                     code=simulation_issues[0].code,
                     issues=simulation_issues,
                 )
+            if (
+                request.prompt_version == "casefile-chat-v15"
+                and request.route is not None
+                and request.route.execution_profile.get("primary_intent") == "logic_audit"
+            ):
+                integrity_issues = _audit_repair_integrity(
+                    bundle,
+                    findings,
+                    suggestions,
+                )
+                if integrity_issues:
+                    raise ChatCompletionValidationError(
+                        code=integrity_issues[0].code,
+                        issues=integrity_issues,
+                    )
     missing_objects: tuple[str, ...] = tuple(sorted(referenced_objects - object_ids))
     missing_events: tuple[str, ...] = tuple(sorted(referenced_events - event_ids))
     missing_issues: tuple[str, ...] = tuple(sorted(referenced_issues - issue_ids))
@@ -426,6 +458,143 @@ def _audit_simulation_issues(
     return tuple(issues)
 
 
+def _audit_server_gate_issues(
+    suggestions: list[dict[str, Any]],
+    registry: SafePatchRegistry | None,
+) -> tuple[ValidationIssue, ...]:
+    """Require v15 suggestions to match server-proven registry entries."""
+
+    issues: list[ValidationIssue] = []
+    for index, suggestion in enumerate(suggestions):
+        object_id = str(suggestion.get("object_id") or "")
+        path = str(suggestion.get("path") or "")
+        value_json = suggestion.get("value_json")
+        exact = (
+            registry.exact_candidate(object_id, path, value_json)
+            if registry is not None
+            else None
+        )
+        if exact is not None:
+            continue
+        candidates = registry.candidates_for_target(object_id, path) if registry else ()
+        issues.append(
+            ValidationIssue(
+                code=(
+                    "audit_suggestion_value_not_frozen"
+                    if candidates
+                    else "audit_suggestion_server_gate_failed"
+                ),
+                stage="patch",
+                path=f"/suggestions/{index}",
+                message=(
+                    "审计建议未通过服务器确定性补丁门禁。"
+                    if not candidates
+                    else "审计建议目标已有安全证明，但值未使用服务器冻结候选。"
+                ),
+                repairable=True,
+                details={
+                    "object_id": object_id,
+                    "path": path,
+                    "extra": [target_label(object_id, path)],
+                    "replace": [candidate.as_dict() for candidate in candidates],
+                },
+            )
+        )
+    return tuple(issues)
+
+
+def _audit_repair_integrity(
+    bundle: Any,
+    findings: list[dict[str, Any]],
+    suggestions: list[dict[str, Any]],
+) -> tuple[ValidationIssue, ...]:
+    """Reject an empty proposal set when frozen evidence exposes repairable targets."""
+
+    if not isinstance(bundle, dict) or not findings:
+        return ()
+    expectation = bundle.get("repair_expectation")
+    targets = expectation.get("candidate_patch_targets") if isinstance(expectation, dict) else None
+    if not isinstance(targets, list) or not targets:
+        return ()
+    non_manual = [
+        finding
+        for finding in findings
+        if isinstance(finding, dict) and not finding.get("needs_manual_review")
+    ]
+    expected_targets = {
+        (str(target.get("object_id")), str(target.get("path")))
+        for target in targets
+        if isinstance(target, dict)
+        and isinstance(target.get("object_id"), str)
+        and isinstance(target.get("path"), str)
+    }
+    if suggestions and any(
+        (
+            str(suggestion.get("object_id")),
+            str(suggestion.get("path")),
+        )
+        in expected_targets
+        for suggestion in suggestions
+        if isinstance(suggestion, dict)
+    ):
+        return ()
+    issues: list[ValidationIssue] = []
+    finding_ids = [
+        str(item.get("finding_id"))
+        for item in findings
+        if isinstance(item, dict) and item.get("finding_id")
+    ]
+    finding_ref = next(
+        (
+            str(item.get("finding_id"))
+            for item in non_manual
+            if item.get("finding_id")
+        ),
+        None,
+    )
+    issue_code = "audit_repairable_finding_missing_suggestion"
+    if suggestions:
+        issue_code = "audit_repair_expectation_missing_target"
+    elif finding_ref is None:
+        issue_code = "audit_deterministic_pair_missing_suggestion"
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        object_id = target.get("object_id")
+        path = target.get("path")
+        if not isinstance(object_id, str) or not isinstance(path, str):
+            continue
+        label = target_label(object_id, path)
+        issues.append(
+            ValidationIssue(
+                code=issue_code,
+                stage="audit",
+                path="/suggestions",
+                message="存在有证据且可编辑的审计发现，但最终结果缺少补丁提案。",
+                repairable=True,
+                details={
+                    "missing": [label],
+                    "preserve": finding_ids,
+                    "extra": [
+                        target_label(item.get("object_id"), item.get("path"))
+                        for item in suggestions
+                        if isinstance(item, dict)
+                    ],
+                    "finding_ref": finding_ref,
+                    "object_id": object_id,
+                    "path": path,
+                },
+            )
+        )
+        # One precise missing-target repair is sufficient to wake the
+        # Finalizer; independent findings remain available in the frozen
+        # Bundle for subsequent audit passes. A manual-only result still
+        # reaches this path when the Bundle exposes a deterministic conflict
+        # pair and editable target; its proposal must remain unbound.
+        break
+    return tuple(issues)
+
+
 def _normalize_finding_reference_slots(
     findings: list[dict[str, Any]],
     object_ids: set[str],
@@ -446,6 +615,66 @@ def _normalize_finding_reference_slots(
         if moved_objects:
             events = [value for value in events if value not in object_ids]
             objects.extend(value for value in moved_objects if value not in objects)
+        item["evidence_object_ids"] = objects
+        item["evidence_event_ids"] = events
+        normalized.append(item)
+    return normalized
+
+
+def _autofill_pair_evidence(
+    findings: list[dict[str, Any]],
+    *,
+    object_ids: set[str],
+    event_ids: set[str],
+    deterministic_pairs: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Add one-hop frozen pair endpoints to an already grounded finding.
+
+    The Finalizer still identifies the finding. This only completes its
+    evidence citation from the Bundle's deterministic conflict graph, so an
+    output citing ``researcher + trigger claim`` also retains the directly
+    connected backup-system record that establishes the opposed mechanism.
+    """
+
+    adjacency: dict[str, set[str]] = {}
+    for pair in deterministic_pairs or []:
+        left_id = pair.get("left_id")
+        right_id = pair.get("right_id")
+        if not isinstance(left_id, str) or not isinstance(right_id, str):
+            continue
+        if left_id not in object_ids | event_ids or right_id not in object_ids | event_ids:
+            continue
+        adjacency.setdefault(left_id, set()).add(right_id)
+        adjacency.setdefault(right_id, set()).add(left_id)
+    if not adjacency:
+        return findings
+    normalized: list[dict[str, Any]] = []
+    for finding in findings:
+        item = dict(finding)
+        current = {
+            str(value)
+            for field in (
+                "evidence_object_ids",
+                "evidence_event_ids",
+            )
+            for value in item.get(field, [])
+            if isinstance(value, str)
+        }
+        additions = sorted(
+            {
+                neighbor
+                for object_id in current
+                for neighbor in adjacency.get(object_id, set())
+            }
+            - current
+        )
+        objects = list(item.get("evidence_object_ids", []))
+        events = list(item.get("evidence_event_ids", []))
+        for object_id in additions:
+            if object_id in event_ids and object_id not in events:
+                events.append(object_id)
+            elif object_id in object_ids and object_id not in objects:
+                objects.append(object_id)
         item["evidence_object_ids"] = objects
         item["evidence_event_ids"] = events
         normalized.append(item)
@@ -481,8 +710,90 @@ def _normalize_reference_slots(
         normalized_findings = _normalize_finding_reference_slots(
             findings, object_ids, event_ids
         )
-        if normalized_findings != findings:
-            payload["audit_findings"] = normalized_findings
+        deterministic_pairs = (
+            request.validation.get("audit_evidence_bundle", {}).get("candidate_pairs")
+            if isinstance(request.validation.get("audit_evidence_bundle"), dict)
+            else None
+        )
+        if request.prompt_version == "casefile-chat-v15":
+            normalized_findings = _autofill_pair_evidence(
+                normalized_findings,
+                object_ids=object_ids,
+                event_ids=event_ids,
+                deterministic_pairs=(
+                    deterministic_pairs if isinstance(deterministic_pairs, list) else None
+                ),
+            )
+        deduped_findings, finding_aliases = rank_and_dedupe_audit_findings(
+            normalized_findings,
+            deterministic_pairs=(
+                deterministic_pairs if isinstance(deterministic_pairs, list) else None
+            ),
+            require_deterministic_pair=request.prompt_version == "casefile-chat-v15",
+        )
+        if deduped_findings != findings:
+            payload["audit_findings"] = deduped_findings
+        raw_suggestions = payload.get("suggestions")
+        if isinstance(raw_suggestions, list):
+            valid_finding_ids = {
+                str(item.get("finding_id"))
+                for item in deduped_findings
+                if item.get("finding_id")
+            }
+            rebound_suggestions = []
+            for suggestion in raw_suggestions:
+                item = dict(suggestion)
+                finding_ref = item.get("finding_ref")
+                if isinstance(finding_ref, str) and finding_ref in finding_aliases:
+                    item["finding_ref"] = finding_aliases[finding_ref]
+                elif isinstance(finding_ref, str) and finding_ref not in valid_finding_ids:
+                    continue
+                rebound_suggestions.append(item)
+            if rebound_suggestions != raw_suggestions:
+                payload["suggestions"] = rebound_suggestions
+        if isinstance(payload.get("suggestions"), list):
+            seen_finding_refs: set[str] = set()
+            minimal_suggestions = []
+            for suggestion in payload["suggestions"]:
+                item = dict(suggestion)
+                finding_ref = item.get("finding_ref")
+                if isinstance(finding_ref, str):
+                    if finding_ref in seen_finding_refs:
+                        continue
+                    seen_finding_refs.add(finding_ref)
+                minimal_suggestions.append(item)
+            payload["suggestions"] = minimal_suggestions
+        if request.prompt_version == "casefile-chat-v15" and isinstance(
+            payload.get("suggestions"), list
+        ):
+            manual_ids = {
+                str(item.get("finding_id"))
+                for item in deduped_findings
+                if item.get("needs_manual_review") and item.get("finding_id")
+            }
+            if manual_ids:
+                unbound_suggestions = []
+                for suggestion in payload["suggestions"]:
+                    item = dict(suggestion)
+                    if item.get("finding_ref") in manual_ids:
+                        # Dedupe while the original finding_ref is still
+                        # present. Once it becomes None, duplicate manual
+                        # proposals would no longer share a stable key.
+                        item["finding_ref"] = None
+                    unbound_suggestions.append(item)
+                payload["suggestions"] = unbound_suggestions
+    suggestions = payload.get("suggestions", [])
+    if isinstance(suggestions, list):
+        for suggestion in suggestions:
+            if not isinstance(suggestion, dict):
+                continue
+            object_id = suggestion.get("object_id")
+            if not isinstance(object_id, str):
+                continue
+            if object_id in event_ids and object_id not in events:
+                events.append(object_id)
+            elif object_id in object_ids and object_id not in objects:
+                objects.append(object_id)
     # Fill only empty top-level slots, preserving all existing legal entries.
     if not objects or not events:
         auto_objects, auto_events = autofill_chat_references(
@@ -502,6 +813,10 @@ def _normalize_reference_slots(
         "audit_findings", []
     ):
         updates["audit_findings"] = payload["audit_findings"]
+    if payload.get("suggestions", []) != candidate.model_dump(mode="json").get(
+        "suggestions", []
+    ):
+        updates["suggestions"] = payload["suggestions"]
     if not updates:
         return result
     normalized_payload = candidate.model_dump(mode="json")
@@ -586,6 +901,7 @@ class ChatExecutionRunner:
         repair_history: list[dict[str, Any]] = []
         materialization_history: list[dict[str, Any]] = []
         for attempt in (1, 2):
+            server_gate_issues: tuple[ValidationIssue, ...] = ()
             try:
                 result = self.provider.chat(request)
             except Exception as error:
@@ -612,25 +928,31 @@ class ChatExecutionRunner:
                 and request.route is not None
                 and request.route.execution_profile.get("primary_intent") == "logic_audit"
             ):
-                ledger = result.tool_ledger or request.frozen_tool_ledger
-                registry = (
-                    safe_patch_registry_from_dict(result.safe_patch_registry)
-                    if isinstance(result.safe_patch_registry, dict)
-                    else (
-                        safe_patch_registry_from_dict(request.safe_patch_registry)
-                        if isinstance(request.safe_patch_registry, dict)
-                        else compile_safe_patch_registry(
-                            ledger,
-                            expected_input_hash=request.input_hash,
-                        )
-                    )
-                )
                 candidate_payload = result.candidate.model_dump(mode="json")
                 raw_suggestions = candidate_payload.get("suggestions")
                 if isinstance(raw_suggestions, list):
+                    proposals = [item for item in raw_suggestions if isinstance(item, dict)]
+                    gate = server_gate_audit_suggestions(request, proposals)
+                    ledger = result.tool_ledger or request.frozen_tool_ledger
+                    if isinstance(ledger, dict):
+                        gate = replace(
+                            gate,
+                            registry=replace(
+                                gate.registry,
+                                ledger_hash=str(ledger.get("ledger_hash") or ""),
+                            ),
+                        )
+                    rejected_indexes = {
+                        failure.suggestion_index for failure in gate.failures
+                    } | {discard.suggestion_index for discard in gate.discards}
+                    safe_suggestions = [
+                        suggestion
+                        for index, suggestion in enumerate(proposals)
+                        if index not in rejected_indexes
+                    ]
                     materialized, changes = materialize_unique_safe_patches(
-                        [item for item in raw_suggestions if isinstance(item, dict)],
-                        registry,
+                        safe_suggestions,
+                        gate.registry,
                     )
                     if materialized != raw_suggestions:
                         candidate_payload["suggestions"] = materialized
@@ -640,7 +962,17 @@ class ChatExecutionRunner:
                                 candidate_payload
                             ),
                         )
-                    result = replace(result, safe_patch_registry=registry.as_dict())
+                    result = replace(result, safe_patch_registry=gate.registry.as_dict())
+                    request.emit(
+                        "model.safe_patch_gated",
+                        "validating",
+                        {
+                            "source": "server_post_finalizer_gate",
+                            "safe_count": len(gate.registry.candidates),
+                            "rejected": [failure.as_dict() for failure in gate.failures],
+                            "discarded": [discard.as_dict() for discard in gate.discards],
+                        },
+                    )
                     if changes:
                         change_payloads = [change.as_dict() for change in changes]
                         materialization_history.extend(change_payloads)
@@ -648,13 +980,50 @@ class ChatExecutionRunner:
                             "model.safe_patch_materialized",
                             "validating",
                             {
-                                "ledger_hash": registry.ledger_hash,
+                                "ledger_hash": gate.registry.ledger_hash,
+                                "source": gate.registry.source,
                                 "changes": change_payloads,
                             },
+                        )
+                    if gate.failures:
+                        preserved = sorted(
+                            target_label(item.get("object_id"), item.get("path"))
+                            for item in materialized
+                        )
+                        server_gate_issues = tuple(
+                            ValidationIssue(
+                                code="audit_suggestion_server_gate_failed",
+                                stage="patch",
+                                path=f"/suggestions/{failure.suggestion_index}",
+                                message="审计建议未通过服务器确定性补丁门禁。",
+                                repairable=True,
+                                details={
+                                    "extra": [failure.target],
+                                    "preserve": preserved,
+                                    "object_id": failure.object_id,
+                                    "path": failure.path,
+                                    "reason_code": failure.reason_code,
+                                    "validation": failure.validation,
+                                    "simulation": failure.simulation,
+                                },
+                            )
+                            for failure in gate.failures
                         )
             result = _normalize_reference_slots(request, result)
             result = _apply_deterministic_audit_gate(request, result)
             try:
+                if server_gate_issues:
+                    candidate_payload = result.candidate.model_dump(mode="json")
+                    integrity_issues = _audit_repair_integrity(
+                        request.validation.get("audit_evidence_bundle"),
+                        candidate_payload.get("audit_findings", []),
+                        candidate_payload.get("suggestions", []),
+                    )
+                    server_gate_issues = (*server_gate_issues, *integrity_issues)
+                    raise ChatCompletionValidationError(
+                        code=server_gate_issues[0].code,
+                        issues=server_gate_issues,
+                    )
                 validate_chat_candidate(request, result)
                 if complete is not None:
                     complete(result)
