@@ -73,6 +73,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v11",
         "casefile-chat-v12",
         "casefile-chat-v13",
+        "casefile-chat-v14",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -327,6 +328,20 @@ def chat_executor_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
     return OUTPUT_SCHEMAS[schema_id]
 
 
+def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
+    """Resolve the no-tool finalizer output schema for a v14 route."""
+
+    definition = load_prompt("casefile_chat", request.prompt_version)
+    if definition.package is None:
+        return chat_executor_output_type(request)
+    base_component = _chat_executor_component_id(definition, request)
+    finalizer_component = f"{base_component}_finalizer"
+    component = definition.package.components.get(finalizer_component)
+    if component is None:
+        return chat_executor_output_type(request)
+    return OUTPUT_SCHEMAS[component.output_schema_id]
+
+
 def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
     """Render the route-specific executor component.
 
@@ -358,6 +373,51 @@ def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]
         toolset_version=definition.package.runtime_toolset_version,
     )
     return _with_chat_repair_feedback(rendered.instructions, request), rendered.input_text
+
+
+def render_chat_finalizer_prompt(
+    request: CaseFileChatRequest,
+    *,
+    tool_ledger: dict[str, Any] | None,
+    evidence_summary: str,
+    previous_candidate: dict[str, Any] | None = None,
+    repair_plan: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Render the v14 no-tool finalizer from frozen executor input and ledger."""
+
+    definition = load_prompt("casefile_chat", request.prompt_version)
+    if definition.package is None:
+        raise ValueError("Structured chat finalizer requires a Prompt Package")
+    base_component = _chat_executor_component_id(definition, request)
+    finalizer_component = f"{base_component}_finalizer"
+    if finalizer_component not in definition.package.components:
+        raise ValueError(
+            f"Prompt Package {request.prompt_version} has no finalizer for {base_component}"
+        )
+    payload = dict(request.assembled_input or _casefile_chat_payload(request))
+    payload.update(
+        {
+            "tool_ledger": tool_ledger,
+            "evidence_summary": evidence_summary,
+            "previous_candidate": previous_candidate,
+            "repair_plan": repair_plan,
+        }
+    )
+    rendered = render_prompt_package(
+        definition.package,
+        finalizer_component,
+        payload,
+        agent_version=agent_version_for_task("casefile_chat", request.prompt_version),
+        toolset_version=definition.package.runtime_toolset_version,
+    )
+    instructions = rendered.instructions
+    if repair_plan:
+        instructions += (
+            "\n\n系统修复契约（最高优先级，必须逐项满足）：\n"
+            + json.dumps(repair_plan, ensure_ascii=False, sort_keys=True)
+            + "\n不得重新调用工具；只使用同一个 Frozen Tool Ledger。"
+        )
+    return instructions, rendered.input_text
 
 
 def render_chat_rewrite_prompt(

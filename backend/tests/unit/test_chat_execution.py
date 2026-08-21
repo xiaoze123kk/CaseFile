@@ -11,6 +11,7 @@ from casefile.agent_runtime.chat_execution import (
     ChatExecutionRunner,
     bind_chat_context_input,
     prepare_chat_request_artifacts,
+    validate_chat_candidate,
 )
 from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V6_VERSION
 from casefile.agent_runtime.models import CaseFileChatResult, ToolMetrics
@@ -73,8 +74,9 @@ def test_runner_suppresses_structured_clean_noop_hallucination() -> None:
     task = next(
         item for item in build_outcome_tasks() if item.task_id == "golden-audit-clean-no-op"
     )
-    hallucinated = task.reference_candidate.model_copy(
-        update={
+    hallucinated_payload = task.reference_candidate.model_dump(mode="json")
+    hallucinated_payload.update(
+        {
             "audit_findings": [
                 {
                     "finding_id": "F1",
@@ -90,6 +92,9 @@ def test_runner_suppresses_structured_clean_noop_hallucination() -> None:
             ],
             "suggestions": [],
         }
+    )
+    hallucinated = task.reference_candidate.__class__.model_validate(
+        hallucinated_payload
     )
     provider = SequenceProvider([_result(hallucinated, 1)])
 
@@ -114,6 +119,96 @@ def test_runner_rejects_duplicate_or_extra_edit_targets() -> None:
         ChatExecutionRunner(provider).run(
             replace(resolve_task_route(task), prompt_version="casefile-chat-v13")
         )
+
+    feedback = provider.requests[1].repair_feedback[0]
+    assert "preserve" in feedback
+    assert "extra" in feedback
+
+
+def test_runner_repairs_missing_edit_target_with_exact_delta() -> None:
+    task = next(
+        item for item in build_outcome_tasks() if item.task_id == "golden-multi-field-edit"
+    )
+    valid = task.reference_candidate
+    incomplete = valid.model_copy(update={"suggestions": valid.suggestions[:1]})
+    provider = SequenceProvider([_result(incomplete, 1), _result(valid, 1)])
+
+    execution = ChatExecutionRunner(provider).run(
+        replace(resolve_task_route(task), prompt_version="casefile-chat-v14")
+    )
+
+    assert execution.repair_attempted is True
+    plan = provider.requests[1].repair_plan
+    assert plan is not None
+    assert "ent_lucy:/aliases" in plan["add"]
+    assert "ent_lucy:/description" in plan["preserve"]
+
+
+def test_runner_repairs_incomplete_audit_evidence() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    valid = task.reference_candidate
+    broken_finding = valid.audit_findings[0].model_copy(
+        update={
+            "evidence_object_ids": valid.audit_findings[0].evidence_object_ids[:1],
+            "evidence_event_ids": [],
+            "evidence_validation_issue_ids": [],
+        }
+    )
+    incomplete = valid.model_copy(update={"audit_findings": [broken_finding]})
+    provider = SequenceProvider([_result(incomplete, 1), _result(valid, 1)])
+
+    execution = ChatExecutionRunner(provider).run(
+        replace(resolve_task_route(task), prompt_version="casefile-chat-v14")
+    )
+
+    assert execution.repair_attempted is True
+    assert provider.requests[1].repair_plan is not None
+    assert provider.requests[1].repair_plan["fix"][0]["code"] == (
+        "audit_finding_evidence_incomplete"
+    )
+
+
+def test_v14_audit_rejects_suggestion_with_unsafe_frozen_simulation() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-fractured-alliance"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v14")
+    suggestion = task.reference_candidate.suggestions[0]
+    result = _result(task.reference_candidate, 1)
+    result = replace(
+        result,
+        tool_ledger={
+            "entries": [
+                {
+                    "tool_name": "simulate_patch_application",
+                    "sanitized_arguments": {
+                        "object_id": suggestion.object_id,
+                        "path": suggestion.path,
+                        "value_json": suggestion.value_json,
+                    },
+                    "bounded_result": {
+                        "valid": True,
+                        "advice": "introduces_new_issues",
+                        "counts": {"new": 1},
+                    },
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(ChatCompletionValidationError) as caught:
+        validate_chat_candidate(request, result)
+
+    assert caught.value.code == "audit_suggestion_simulation_failed"
+    assert caught.value.repair_plan.remove == (
+        f"{suggestion.object_id}:{suggestion.path}",
+    )
 
 
 def test_runner_moves_known_event_out_of_object_slot() -> None:

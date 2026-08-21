@@ -15,15 +15,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel, create_model
@@ -39,8 +30,10 @@ from casefile.agent_runtime.brief_to_draft_v14.workflow import run_v14_generatio
 from casefile.agent_runtime.brief_to_draft_v15.workflow import run_v15_generation
 from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
+    ChatToolLedger,
     ChatToolMetrics,
     chat_tool_manifest,
+    freeze_chat_tool_ledger,
     search_casefile_records,
 )
 from casefile.agent_runtime.context.thread_memory import (
@@ -97,10 +90,12 @@ from casefile.agent_runtime.prompt import (
     brief_intake_synthesize_input,
     brief_strategy_options_input,
     chat_executor_output_type,
+    chat_finalizer_output_type,
     generation_input,
     idea_generation_input,
     polish_input,
     render_chat_executor_prompt,
+    render_chat_finalizer_prompt,
     render_chat_rewrite_prompt,
     render_chat_router_prompt,
     reverse_parse_input,
@@ -125,6 +120,15 @@ from casefile.agent_runtime.structured_output import (
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    CaseFile,
+)
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
 _CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_ACCEPTANCE"
@@ -171,9 +175,7 @@ class AgentProvider(GenerationProvider, Protocol):
         request: ThreadCompactionRequest,
     ) -> ThreadCompactionResult: ...
 
-    def understand_intent(
-        self, request: CaseFileChatRequest
-    ) -> IntentUnderstandingResult: ...
+    def understand_intent(self, request: CaseFileChatRequest) -> IntentUnderstandingResult: ...
 
     def rewrite_for_route(
         self,
@@ -192,13 +194,9 @@ class AgentProvider(GenerationProvider, Protocol):
         self, request: BriefStrategyOptionsRequest
     ) -> BriefStrategyOptionsResult: ...
 
-    def generate_ideas(
-        self, request: IdeaGenerationRequest
-    ) -> IdeaGenerationResult: ...
+    def generate_ideas(self, request: IdeaGenerationRequest) -> IdeaGenerationResult: ...
 
-    def reverse_parse(
-        self, request: ReverseParseRequest
-    ) -> ReverseParseResult: ...
+    def reverse_parse(self, request: ReverseParseRequest) -> ReverseParseResult: ...
 
 
 class ProviderProtocolError(RuntimeError):
@@ -402,9 +400,7 @@ def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
             primary_intent="edit_request",
             sub_intents=["modify_fields"],
             entities=_fake_intent_entities(
-                object_mentions=[IntentEntityMention(text="它")]
-                if "它" in text
-                else None
+                object_mentions=[IntentEntityMention(text="它")] if "它" in text else None
             ),
             constraints=_fake_intent_constraints(
                 preserved_actions=[
@@ -579,6 +575,79 @@ def _chat_tool_runtime(
         ChatToolContext(request=request, route=route),
         max_turns if isinstance(max_turns, int) and max_turns > 0 else None,
     )
+
+
+async def _run_chat_tool_agent(
+    request: CaseFileChatRequest,
+    *,
+    model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
+    model_settings: ModelSettings,
+    instructions: str,
+    input_text: str,
+    tools: list[Tool],
+    context: ChatToolContext,
+    max_turns: int | None,
+    tracing_disabled: bool,
+) -> tuple[ChatToolLedger, dict[str, Any]]:
+    """Run tools without asking the model to serialize the final candidate."""
+
+    request.emit(
+        "model.tool_agent.started",
+        "gathering_evidence",
+        {"model_id": request.model_id, "tool_count": len(tools)},
+    )
+    tool_instructions = (
+        instructions.rstrip() + "\n\n本阶段只负责调用工具、核对事实并形成简短的证据摘要。"
+        "不要输出最终 CaseFile Chat JSON，不要展示隐藏推理。"
+        "最终仅写可审计的事实、证据 ID、建议目标和未覆盖范围。"
+    )
+    agent: Agent[Any] = Agent(
+        name="CaseFile Evidence Agent",
+        instructions=tool_instructions,
+        model=model,
+        model_settings=model_settings,
+        tools=tools,
+        output_type=str,
+    )
+    result = await Runner.run(
+        agent,
+        input_text,
+        context=context,
+        max_turns=max_turns or request.max_turns,
+        run_config=RunConfig(
+            workflow_name="CaseFile gathering_evidence",
+            tracing_disabled=tracing_disabled,
+            trace_include_sensitive_data=False,
+        ),
+    )
+    if not isinstance(result.final_output, str) or not result.final_output.strip():
+        raise ProviderProtocolError("CaseFile tool agent returned an empty evidence summary")
+    usage = _usage_json(result.context_wrapper.usage)
+    ledger = freeze_chat_tool_ledger(
+        context,
+        evidence_summary=result.final_output,
+    )
+    request.emit(
+        "model.tool_agent.completed",
+        "gathering_evidence",
+        {
+            "usage": usage,
+            "tool_calls": context.metrics.calls,
+            "ledger_entry_count": len(ledger.entries),
+        },
+    )
+    request.emit(
+        "model.tool_ledger.frozen",
+        "finalizing",
+        {
+            "ledger_hash": ledger.ledger_hash,
+            "entry_count": len(ledger.entries),
+            "retrieved_object_ids": list(ledger.retrieved_object_ids),
+            "retrieved_evidence_ids": list(ledger.retrieved_evidence_ids),
+            "budget_exhausted": ledger.budget_exhausted,
+        },
+    )
+    return ledger, usage
 
 
 class FakeProvider:
@@ -804,8 +873,11 @@ class FakeProvider:
             ),
             ReverseParseItem(
                 item_type="event",
-                content={"title": "发现异常记录", "order_index": 1,
-                         "description": "林晚发现三份记录指向不存在的时间"},
+                content={
+                    "title": "发现异常记录",
+                    "order_index": 1,
+                    "description": "林晚发现三份记录指向不存在的时间",
+                },
                 grading="explicit",
                 source_block_refs=[1],
                 source_quote="三份记录都指向一段不存在的时间",
@@ -836,15 +908,39 @@ class FakeProvider:
         import random
 
         PROFESSIONS = [
-            "法医", "退休警官", "调查记者", "档案管理员", "心理治疗师",
-            "黑客", "保险理赔员", "古董估价师", "人类学家", "图书管理员",
-            "前情报人员", "AI工程师", "天文台研究员", "海事调查员", "语言学教授",
-            "游戏设计师", "刑辩律师", "气象学家", "策展人", "遗传学家",
+            "法医",
+            "退休警官",
+            "调查记者",
+            "档案管理员",
+            "心理治疗师",
+            "黑客",
+            "保险理赔员",
+            "古董估价师",
+            "人类学家",
+            "图书管理员",
+            "前情报人员",
+            "AI工程师",
+            "天文台研究员",
+            "海事调查员",
+            "语言学教授",
+            "游戏设计师",
+            "刑辩律师",
+            "气象学家",
+            "策展人",
+            "遗传学家",
         ]
         SETTINGS = [
-            "小镇档案馆", "废弃的地下实验室", "远洋科考船", "百年图书馆",
-            "私人侦探事务所", "无人机物流中心", "极地研究站", "古城遗址",
-            "直播公司后台", "老式胶片放映厅", "虚拟现实服务器机房",
+            "小镇档案馆",
+            "废弃的地下实验室",
+            "远洋科考船",
+            "百年图书馆",
+            "私人侦探事务所",
+            "无人机物流中心",
+            "极地研究站",
+            "古城遗址",
+            "直播公司后台",
+            "老式胶片放映厅",
+            "虚拟现实服务器机房",
         ]
         PREMISES = [
             "发现一组无法解释的加密数据与未破悬案吻合",
@@ -924,18 +1020,21 @@ class FakeProvider:
             suspense_core = hint[0] if hint else "看似平常的迹象中隐藏的模式"
             experience = hint[1] if hint else random.choice(EXPERIENCES)
 
-            chosen.append({
-                "concept": concept,
-                "core_suspense": (
-                    f"主角必须从{suspense_core}中锁定真相，同时应对来自"
-                    f"{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}的外部压力。"
-                ),
-                "reasoning_type": REASONING_TYPES[i % len(REASONING_TYPES)],
-                "conclusion_mode": CONCLUSION_MODES[i % len(CONCLUSION_MODES)],
-                "target_experience": experience,
-                "design_risk": random.choice(RISKS),
-                "scale_estimate": random.choice(SCALES),
-            })
+            chosen.append(
+                {
+                    "concept": concept,
+                    "core_suspense": (
+                        f"主角必须从{suspense_core}中锁定真相，同时应对来自"
+                        f"{random.choice(['同行质疑', '权力掩盖', '公众误解', '时间毁灭'])}"
+                        "的外部压力。"
+                    ),
+                    "reasoning_type": REASONING_TYPES[i % len(REASONING_TYPES)],
+                    "conclusion_mode": CONCLUSION_MODES[i % len(CONCLUSION_MODES)],
+                    "target_experience": experience,
+                    "design_risk": random.choice(RISKS),
+                    "scale_estimate": random.choice(SCALES),
+                }
+            )
 
         if request.regenerate and request.existing_concepts:
             for c in chosen:
@@ -953,6 +1052,8 @@ class FakeProvider:
         return IdeaGenerationResult(candidate=candidate, usage=usage)
 
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        if request.prompt_version == "casefile-chat-v14":
+            return self._chat_v14(request)
         render_chat_executor_prompt(request)
         request.emit("model.started", "responding", {"model_id": request.model_id})
         referenced = [
@@ -973,6 +1074,83 @@ class FakeProvider:
         usage["tool_metrics"] = metrics.as_dict()
         request.emit("model.completed", "responding", {"usage": usage})
         return CaseFileChatResult(candidate=candidate, usage=usage, tools=metrics)
+
+    def _chat_v14(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        render_chat_executor_prompt(request)
+        metrics = _fake_chat_tool_metrics(request)
+        ledger_payload = request.frozen_tool_ledger
+        if ledger_payload is None:
+            request.emit(
+                "model.tool_agent.started",
+                "gathering_evidence",
+                {"model_id": request.model_id},
+            )
+            if request.route is not None:
+                context = ChatToolContext(request=request, route=request.route, metrics=metrics)
+                ledger_payload = freeze_chat_tool_ledger(
+                    context,
+                    evidence_summary="FakeProvider 已核对冻结输入，未发现需要补充的外部证据。",
+                ).as_dict()
+            request.emit(
+                "model.tool_agent.completed",
+                "gathering_evidence",
+                {"usage": _zero_usage(), "tool_calls": metrics.calls},
+            )
+            request.emit(
+                "model.tool_ledger.frozen",
+                "finalizing",
+                {
+                    "ledger_hash": None
+                    if ledger_payload is None
+                    else ledger_payload.get("ledger_hash"),
+                    "entry_count": 0
+                    if ledger_payload is None
+                    else len(ledger_payload.get("entries", [])),
+                },
+            )
+        render_chat_finalizer_prompt(
+            request,
+            tool_ledger=ledger_payload,
+            evidence_summary=""
+            if ledger_payload is None
+            else str(ledger_payload.get("evidence_summary") or ""),
+            previous_candidate=request.previous_candidate,
+            repair_plan=request.repair_plan,
+        )
+        output_type = chat_finalizer_output_type(request)
+        request.emit(
+            "model.finalizer.started",
+            "finalizing",
+            {"model_id": request.model_id, "repair": request.repair_plan is not None},
+        )
+        referenced = [
+            object_id
+            for object_id in _casefile_object_ids(request.casefile)
+            if object_id in request.message
+        ]
+        candidate = output_type.model_validate(
+            {
+                "answer": "我已核对冻结卷宗；本次没有自动修改工作稿。",
+                "referenced_object_ids": referenced,
+                "suggestions": [],
+                **({"audit_findings": []} if output_type is CaseFileChatCandidateV2 else {}),
+            }
+        )
+        usage = _zero_usage()
+        request.emit(
+            "model.finalizer.completed",
+            "finalizing",
+            {"usage": usage, "repair": request.repair_plan is not None},
+        )
+        return CaseFileChatResult(
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                candidate,
+            ),
+            usage=usage,
+            tools=metrics,
+            tool_ledger=ledger_payload,
+        )
 
     def compact_thread_memory(
         self,
@@ -1104,9 +1282,7 @@ class FakeProvider:
                     output = _fake_matrix_evaluation_output(json.loads(input_text))
                 else:
                     output = _fake_v8_output(output_type)
-                    if resolve_pipeline_spec(
-                        request.prompt_version
-                    ).features.competition_matrix:
+                    if resolve_pipeline_spec(request.prompt_version).features.competition_matrix:
                         _add_fake_v10_matrix_plan(output_type, output)
                     if output_type.__name__ in {
                         "ResolutionGovernanceIRV1",
@@ -1429,6 +1605,8 @@ class OpenAIAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
+        if request.prompt_version == "casefile-chat-v14":
+            return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
         output_type = chat_executor_output_type(request)
@@ -1453,6 +1631,108 @@ class OpenAIAgentsProvider:
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )
+
+    def _chat_v14(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
+        usage_records: list[dict[str, Any]] = []
+        ledger_payload = request.frozen_tool_ledger
+        evidence_summary = ""
+        metrics: ToolMetrics = ToolMetrics()
+        if ledger_payload is not None:
+            evidence_summary = str(ledger_payload.get("evidence_summary") or "")
+        elif tools and context is not None:
+            ledger, tool_usage = asyncio.run(
+                self._gather_chat_evidence(
+                    request,
+                    instructions=instructions,
+                    input_text=input_text,
+                    tools=tools,
+                    context=context,
+                    max_turns=max_turns,
+                )
+            )
+            ledger_payload = ledger.as_dict()
+            evidence_summary = ledger.evidence_summary
+            usage_records.append(tool_usage)
+            metrics = context.metrics
+        finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
+            request,
+            tool_ledger=ledger_payload,
+            evidence_summary=evidence_summary,
+            previous_candidate=request.previous_candidate,
+            repair_plan=request.repair_plan,
+        )
+        output_type = chat_finalizer_output_type(request)
+        request.emit(
+            "model.finalizer.started",
+            "finalizing",
+            {
+                "model_id": request.model_id,
+                "schema_id": output_type.__name__,
+                "ledger_hash": (
+                    None if ledger_payload is None else ledger_payload.get("ledger_hash")
+                ),
+                "repair": request.repair_plan is not None,
+            },
+        )
+        candidate, finalizer_usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=finalizer_instructions,
+                input_text=finalizer_input,
+                output_type=output_type,
+                stage="finalizing",
+                temperature=_chat_live_temperature(),
+            )
+        )
+        usage_records.append(finalizer_usage)
+        request.emit(
+            "model.finalizer.completed",
+            "finalizing",
+            {"usage": finalizer_usage, "repair": request.repair_plan is not None},
+        )
+        return CaseFileChatResult(
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                output_type.model_validate(candidate),
+            ),
+            usage=_merge_structured_usage(usage_records),
+            tools=metrics,
+            tool_ledger=ledger_payload,
+        )
+
+    async def _gather_chat_evidence(
+        self,
+        request: CaseFileChatRequest,
+        *,
+        instructions: str,
+        input_text: str,
+        tools: list[Tool],
+        context: ChatToolContext,
+        max_turns: int | None,
+    ) -> tuple[ChatToolLedger, dict[str, Any]]:
+        client = AsyncOpenAI(api_key=request.api_key, max_retries=request.network_retries)
+        try:
+            return await _run_chat_tool_agent(
+                request,
+                model=OpenAIResponsesModel(model=request.model_id, openai_client=client),
+                model_settings=ModelSettings(
+                    temperature=_chat_live_temperature(),
+                    reasoning=Reasoning(effort="low"),
+                    verbosity="low",
+                    include_usage=True,
+                    parallel_tool_calls=False,
+                ),
+                instructions=instructions,
+                input_text=input_text,
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+                tracing_disabled=False,
+            )
+        finally:
+            await client.close()
 
     def compact_thread_memory(
         self,
@@ -1819,14 +2099,12 @@ class DeepSeekAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
+        if request.prompt_version == "casefile-chat-v14":
+            return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
         output_type = chat_executor_output_type(request)
-        output_protocol = (
-            "json_object"
-            if tools
-            else _deepseek_v8_output_protocol(request.model_id)
-        )
+        output_protocol = "json_object" if tools else _deepseek_v8_output_protocol(request.model_id)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
@@ -1849,6 +2127,105 @@ class DeepSeekAgentsProvider:
             usage=usage,
             tools=context.metrics if context is not None else ToolMetrics(),
         )
+
+    def _chat_v14(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        instructions, input_text = render_chat_executor_prompt(request)
+        tools, context, max_turns = _chat_tool_runtime(request)
+        usage_records: list[dict[str, Any]] = []
+        ledger_payload = request.frozen_tool_ledger
+        evidence_summary = ""
+        metrics: ToolMetrics = ToolMetrics()
+        if ledger_payload is not None:
+            evidence_summary = str(ledger_payload.get("evidence_summary") or "")
+        elif tools and context is not None:
+            ledger, tool_usage = asyncio.run(
+                self._gather_chat_evidence(
+                    request,
+                    instructions=instructions,
+                    input_text=input_text,
+                    tools=tools,
+                    context=context,
+                    max_turns=max_turns,
+                )
+            )
+            ledger_payload = ledger.as_dict()
+            evidence_summary = ledger.evidence_summary
+            usage_records.append(tool_usage)
+            metrics = context.metrics
+        finalizer_instructions, finalizer_input = render_chat_finalizer_prompt(
+            request,
+            tool_ledger=ledger_payload,
+            evidence_summary=evidence_summary,
+            previous_candidate=request.previous_candidate,
+            repair_plan=request.repair_plan,
+        )
+        output_type = chat_finalizer_output_type(request)
+        request.emit(
+            "model.finalizer.started",
+            "finalizing",
+            {
+                "model_id": request.model_id,
+                "schema_id": output_type.__name__,
+                "ledger_hash": (
+                    None if ledger_payload is None else ledger_payload.get("ledger_hash")
+                ),
+                "repair": request.repair_plan is not None,
+            },
+        )
+        candidate, finalizer_usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=finalizer_instructions,
+                input_text=finalizer_input,
+                output_type=output_type,
+                stage="finalizing",
+                deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
+                temperature=_chat_live_temperature(),
+            )
+        )
+        usage_records.append(finalizer_usage)
+        request.emit(
+            "model.finalizer.completed",
+            "finalizing",
+            {"usage": finalizer_usage, "repair": request.repair_plan is not None},
+        )
+        return CaseFileChatResult(
+            candidate=cast(
+                CaseFileChatCandidate | CaseFileChatCandidateV2,
+                output_type.model_validate(candidate),
+            ),
+            usage=_merge_structured_usage(usage_records),
+            tools=metrics,
+            tool_ledger=ledger_payload,
+        )
+
+    async def _gather_chat_evidence(
+        self,
+        request: CaseFileChatRequest,
+        *,
+        instructions: str,
+        input_text: str,
+        tools: list[Tool],
+        context: ChatToolContext,
+        max_turns: int | None,
+    ) -> tuple[ChatToolLedger, dict[str, Any]]:
+        model = self.create_model(request)
+        client = _model_client(model)
+        try:
+            return await _run_chat_tool_agent(
+                request,
+                model=model,
+                model_settings=_deepseek_model_settings(temperature=_chat_live_temperature()),
+                instructions=instructions,
+                input_text=input_text,
+                tools=tools,
+                context=context,
+                max_turns=max_turns,
+                tracing_disabled=True,
+            )
+        finally:
+            if client is not None:
+                await client.close()
 
     def compact_thread_memory(
         self,
@@ -1955,9 +2332,7 @@ class DeepSeekAgentsProvider:
                         tracing_disabled=True,
                         component_id=component_id,
                         schema_id=schema_id,
-                        deepseek_output_protocol=_deepseek_v8_output_protocol(
-                            request.model_id
-                        ),
+                        deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
                     )
 
                 runner = _brief_to_draft_runner(request.prompt_version)
@@ -2027,8 +2402,7 @@ class DeepSeekAgentsProvider:
                 component_id=component_id,
                 schema_id=schema_id,
                 deepseek_output_protocol=(
-                    deepseek_output_protocol
-                    or _deepseek_v8_output_protocol(request.model_id)
+                    deepseek_output_protocol or _deepseek_v8_output_protocol(request.model_id)
                 ),
                 tools=tools,
                 context=context,

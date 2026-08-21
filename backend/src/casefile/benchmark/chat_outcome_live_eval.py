@@ -307,11 +307,15 @@ def run_live_chat_outcome_eval(
             error_class: str | None = None
             error_stage: str | None = None
             attempts = 1
+            validation_issues: list[dict[str, Any]] = []
+            repair_plan: dict[str, Any] | None = None
+            ledger_hash: str | None = None
+            last_output_protocol: str | None = None
             stage = "routing"
             started = time.perf_counter()
             try:
                 resolved = _resolve_chat_route(request, provider=provider)
-                if prompt_version == "casefile-chat-v13":
+                if prompt_version in {"casefile-chat-v13", "casefile-chat-v14"}:
                     resolved = replace(
                         prepare_chat_request_artifacts(resolved),
                         context_policy_version=CHAT_CONTEXT_POLICY_V6_VERSION,
@@ -336,9 +340,15 @@ def run_live_chat_outcome_eval(
                 stage = "provider"
                 execution = ChatExecutionRunner(provider).run(resolved)
                 result = execution.result
+                attempts = execution.attempts
                 input_tokens, output_tokens = _usage_tokens(execution.usage)
                 tool_calls = execution.tools.calls
                 tool_metrics = execution.tools.as_dict()
+                ledger_hash = (
+                    execution.result.tool_ledger.get("ledger_hash")
+                    if execution.result.tool_ledger
+                    else None
+                )
                 verdict = grade_chat_outcome(
                     task,
                     result.candidate,
@@ -365,6 +375,8 @@ def run_live_chat_outcome_eval(
                 )
                 if isinstance(error, ChatCompletionValidationError):
                     error_stage = "completion"
+                    validation_issues = [issue.as_dict() for issue in error.issues]
+                    repair_plan = error.repair_plan.as_dict()
                 error_kind, error_code = classify_trial_error(error, stage=error_stage or stage)
                 error_class = type(error).__name__
                 if error_kind == "completion_validation":
@@ -379,6 +391,24 @@ def run_live_chat_outcome_eval(
                     error_stage = stage
                     verdict = _provider_error_verdict(task, trial_no)
                     actual_intent = "provider_error"
+
+            protocol_events = [
+                event
+                for event in events
+                if event.get("event_type") == "model.output_protocol_selected"
+            ]
+            if protocol_events:
+                last_output_protocol = str(
+                    protocol_events[-1].get("payload", {}).get("protocol")
+                )
+            ledger_events = [
+                event
+                for event in events
+                if event.get("event_type") == "model.tool_ledger.frozen"
+            ]
+            if ledger_hash is None and ledger_events:
+                value = ledger_events[-1].get("payload", {}).get("ledger_hash")
+                ledger_hash = str(value) if value else None
 
             verdicts_by_task[task.task_id].append(verdict)
             input_tokens_total += input_tokens
@@ -410,6 +440,23 @@ def run_live_chat_outcome_eval(
                     "error_code": error_code,
                     "error_class": error_class,
                     "error_stage": error_stage,
+                    "validation_issues": validation_issues,
+                    "repair_plan": repair_plan,
+                    "ledger_hash": ledger_hash,
+                    "last_output_protocol": last_output_protocol,
+                    "tool_agent_calls": sum(
+                        event.get("event_type") == "model.tool_agent.started"
+                        for event in events
+                    ),
+                    "finalizer_attempts": sum(
+                        event.get("event_type") == "model.finalizer.started"
+                        for event in events
+                    ),
+                    "total_model_calls": sum(
+                        event.get("event_type")
+                        in {"model.tool_agent.started", "model.started"}
+                        for event in events
+                    ),
                     **verdict.as_dict(),
                 }
             rows.append(row)
@@ -660,8 +707,8 @@ def main() -> None:
     parser.add_argument("--report-path", type=Path)
     parser.add_argument(
         "--prompt-version",
-        choices=("casefile-chat-v12", "casefile-chat-v13"),
-        default="casefile-chat-v13",
+        choices=("casefile-chat-v12", "casefile-chat-v13", "casefile-chat-v14"),
+        default="casefile-chat-v14",
         help="Explicit immutable Chat Prompt version for this M2 run",
     )
     parser.add_argument(

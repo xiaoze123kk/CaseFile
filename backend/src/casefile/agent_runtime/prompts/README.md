@@ -38,6 +38,8 @@ Prompt 版本有三种互斥形态：
 
 `casefile-chat-v12` 在 v11 基础上加固意图路由器：`sub_intents` 增加明确取值表与必填硬规则，确保 `MULTI_QUERY/DECOMPOSE` 后置重写可被稳定触发；“低置信度/随便”修饰的全卷逻辑漏洞复查明确降级为安全问答；其余组件与契约继承 v11。
 
+`casefile-chat-v14` 引入 Chat Validation Pipeline v2：带工具的 route 先运行 Evidence Agent 并冻结有序、限长、带哈希的 Tool Ledger，再由无工具 Structured Finalizer 生成最终候选；领域错误统一为结构化 issue/repair plan，修复轮次复用同一 Ledger，不重新调用工具。v14 仅允许通过显式灰度变量选择，Registry 默认版本不自动切换。
+
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
 ## Prompt Package 边界

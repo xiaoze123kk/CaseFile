@@ -1423,7 +1423,11 @@ class Worker:
                 )
             )
         )
-        if request.prompt_version not in {expected_prompt, "casefile-chat-v13"}:
+        if request.prompt_version not in {
+            expected_prompt,
+            "casefile-chat-v13",
+            "casefile-chat-v14",
+        }:
             raise RuntimeError(
                 "Context policy "
                 f"{request.context_policy_version!r} requires prompt version "

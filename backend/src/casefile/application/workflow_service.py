@@ -2824,9 +2824,10 @@ class WorkflowService:
                 prompt_version = CHAT_CONTEXT_PROMPT_V9_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
-            if os.environ.get("CASEFILE_CHAT_PROMPT_ROLLOUT", "").strip() == "casefile-chat-v13":
-                # Explicit gray entry only; registry/current default remains v12.
-                prompt_version = "casefile-chat-v13"
+            rollout_prompt = os.environ.get("CASEFILE_CHAT_PROMPT_ROLLOUT", "").strip()
+            if rollout_prompt in {"casefile-chat-v13", "casefile-chat-v14"}:
+                # Explicit gray entry only; registry/current default remains unchanged.
+                prompt_version = rollout_prompt
         return TaskRun(
             project_id=owned.project.id,
             casefile_id=owned.casefile.id,
