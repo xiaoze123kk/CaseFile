@@ -56,6 +56,18 @@ def evaluate_reasoning_rules(context: ClosureContext) -> list[ClosureIssue]:
                     ("attach_information_input", "make_path_optional"),
                 )
             )
+        if health.required_for_resolution and health.incompatible_claim_input_ids:
+            result.append(
+                issue(
+                    context,
+                    "reasoning_required_path_incompatible_claim_input",
+                    "repair_required",
+                    "必要推理路径使用了未成立的 Claim",
+                    "标记为解答所需的推理路径不能依赖当前未成立的 Claim 输入。",
+                    (path_id, *health.incompatible_claim_input_ids),
+                    ("repair_input_claim", "make_path_optional"),
+                )
+            )
     return result
 
 
@@ -106,7 +118,10 @@ def evaluate_resolution_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "resolution_basis_path_unhealthy",
                     "repair_required",
                     "结论依据路径不健康",
-                    "答案结论使用了类型、信息接地或 required 状态不满足要求的路径。",
+                    (
+                        "答案结论使用了目标类型、信息接地、Claim 输入状态"
+                        "或 required 状态不满足要求的路径。"
+                    ),
                     (resolution_id, *unhealthy),
                     ("repair_reasoning_path", "make_resolution_undetermined"),
                 )

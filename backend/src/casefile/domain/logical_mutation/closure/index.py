@@ -21,6 +21,8 @@ _COLLECTION_TYPES = {
     "structure_locks": "structure_lock",
 }
 
+_CLAIM_INCOMPATIBLE = {"unsupported", "refuted", "disputed", "unresolved"}
+
 
 @dataclass(frozen=True, slots=True)
 class ReasoningPathHealth:
@@ -28,6 +30,7 @@ class ReasoningPathHealth:
     target_type: str | None
     information_grounded: bool
     invalid_output_ids: tuple[str, ...]
+    incompatible_claim_input_ids: tuple[str, ...]
     required_for_resolution: bool
 
     @property
@@ -37,6 +40,7 @@ class ReasoningPathHealth:
             and self.information_grounded
             and self.target_type in {"claim", "hypothesis", "resolution_spec"}
             and not self.invalid_output_ids
+            and not self.incompatible_claim_input_ids
         )
 
 
@@ -115,6 +119,7 @@ def build_closure_index(document: Mapping[str, Any]) -> ClosureIndex:
             paths_by_target.setdefault(target_id, set()).add(path_id)
         inputs: set[str] = set()
         invalid_outputs: set[str] = set()
+        incompatible_claim_inputs: set[str] = set()
         for step in path.get("steps", []):
             for ref in step.get("input_refs", []):
                 input_id = _ref_id(ref)
@@ -122,6 +127,11 @@ def build_closure_index(document: Mapping[str, Any]) -> ClosureIndex:
                     continue
                 if object_types.get(input_id) == "information_unit":
                     inputs.add(input_id)
+                elif (
+                    object_types.get(input_id) == "claim"
+                    and objects[input_id].get("status") in _CLAIM_INCOMPATIBLE
+                ):
+                    incompatible_claim_inputs.add(input_id)
             output_id = _ref_id(step.get("output_ref"))
             if output_id is not None and object_types.get(output_id) not in {
                 "claim",
@@ -134,6 +144,7 @@ def build_closure_index(document: Mapping[str, Any]) -> ClosureIndex:
             target_type=object_types.get(target_id) if target_id is not None else None,
             information_grounded=bool(inputs),
             invalid_output_ids=tuple(sorted(invalid_outputs)),
+            incompatible_claim_input_ids=tuple(sorted(incompatible_claim_inputs)),
             required_for_resolution=bool(path.get("required_for_resolution")),
         )
 

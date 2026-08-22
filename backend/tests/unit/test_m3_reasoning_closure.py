@@ -16,6 +16,7 @@ from casefile.domain.logical_mutation import (
     UpdateField,
     compile_logical_graph,
 )
+from casefile.domain.logical_mutation.closure import build_closure_index
 from casefile.domain.verification_engine import VerificationEngine
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -164,6 +165,103 @@ def test_claim_hypothesis_reasoning_and_resolution_rules() -> None:
         ),
     )
     assert "resolution_required_claim_incompatible" in _codes(incompatible)
+
+
+def test_required_reasoning_path_rejects_refuted_claim_input() -> None:
+    document = _document()
+    steps = copy.deepcopy(document["reasoning_paths"][0]["steps"])
+    steps[0]["input_refs"].append(
+        {"object_type": "claim", "object_id": "claim_manual_trigger"}
+    )
+
+    simulation = _simulate(
+        document,
+        UpdateField(
+            "op_path_inputs",
+            "path_causal_restart",
+            "/steps",
+            steps,
+            document["reasoning_paths"][0]["steps"],
+        ),
+        UpdateField(
+            "op_claim_status",
+            "claim_manual_trigger",
+            "/status",
+            "refuted",
+            "supported",
+        ),
+    )
+
+    assert "reasoning_required_path_incompatible_claim_input" in _codes(simulation)
+    assert "resolution_basis_path_unhealthy" in _codes(simulation)
+
+
+def test_reasoning_claim_input_health_is_deduplicated_and_deterministic() -> None:
+    document = _document()
+    document["claims"][0]["status"] = "unsupported"
+    document["claims"][1]["status"] = "disputed"
+    path = document["reasoning_paths"][0]
+    path["steps"] = [
+        {
+            "step_id": "step_read_inputs",
+            "input_refs": [
+                {"object_type": "information_unit", "object_id": "info_restart_log"},
+                {"object_type": "claim", "object_id": "claim_manual_trigger"},
+                {"object_type": "claim", "object_id": "claim_backup_trigger"},
+            ],
+            "operation": "infer",
+            "output_ref": {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger",
+            },
+        },
+        {
+            "step_id": "step_repeat_input",
+            "input_refs": [
+                {"object_type": "claim", "object_id": "claim_manual_trigger"}
+            ],
+            "operation": "compare",
+            "output_ref": {
+                "object_type": "hypothesis",
+                "object_id": "hyp_automatic_restart",
+            },
+        },
+    ]
+
+    first = build_closure_index(document).path_health_by_id["path_causal_restart"]
+    second = build_closure_index(copy.deepcopy(document)).path_health_by_id[
+        "path_causal_restart"
+    ]
+
+    assert first.incompatible_claim_input_ids == (
+        "claim_backup_trigger",
+        "claim_manual_trigger",
+    )
+    assert first == second
+    assert first.healthy_for_resolution is False
+
+
+def test_existing_incompatible_claim_input_debt_is_grandfathered() -> None:
+    document = _document()
+    document["claims"][1]["status"] = "unsupported"
+    document["reasoning_paths"][0]["steps"][0]["input_refs"].append(
+        {"object_type": "claim", "object_id": "claim_manual_trigger"}
+    )
+
+    simulation = _simulate(
+        document,
+        UpdateField(
+            "op_unrelated_title",
+            "res_shutdown_rule",
+            "/title",
+            "更新后的安全规则组合",
+            document["resolution_specs"][1]["title"],
+        ),
+    )
+
+    assert "reasoning_required_path_incompatible_claim_input" in _codes(simulation)
+    assert simulation.can_apply is True
+    assert not simulation.authorization_required_finding_keys
 
 
 def test_claim_refutation_dependency_and_overlap_levels() -> None:
