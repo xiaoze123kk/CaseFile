@@ -7,14 +7,13 @@ from dataclasses import dataclass, field, is_dataclass
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
 from casefile_contracts import (
     BriefIntakeCandidate as BriefIntakeCandidateContract,
 )
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class EventSink(Protocol):

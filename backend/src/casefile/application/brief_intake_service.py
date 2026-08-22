@@ -25,11 +25,8 @@ from casefile.agent_runtime.prompt import AGENT_VERSION
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.errors import ApplicationError, not_found
-from casefile.application.workflow_service import (
-    append_task_event,
-    source_view,
-    task_view,
-)
+from casefile.application.task_events import append_task_event
+from casefile.application.workflow_views import source_view, task_view
 from casefile.contracts import CASEFILE_SCHEMA_VERSION
 from casefile.data_postgres.models import (
     Brief,

@@ -37,8 +37,9 @@
 
 ## 模块依赖方向
 
-- `backend/src/casefile/core` 是纯领域与应用层，不得 import FastAPI、SQLAlchemy、Provider SDK 或具体文件系统实现。
+- `backend/src/casefile/domain` 与 `backend/src/casefile/core` 是纯领域层，不得 import FastAPI、SQLAlchemy、Provider SDK、Worker 或具体文件系统实现；`application` 可组合领域规则与持久化端口，但不得反向依赖 API/Worker。
 - `backend/src/casefile/api` 和 `backend/src/casefile/worker` 是两个运行入口；可组合 core 与外层 adapter，但互不调用对方入口。
+- `backend/src/casefile/agent_runtime` 是不依赖数据库的 Agent 领域与 Provider 端口层，不得 import `application`、`data_postgres`、SQLAlchemy 或 FastAPI；context/validation 纯模块不得反向依赖具体 Provider。
 - `contracts/schemas` 是跨语言机器契约的唯一源头；`contracts/generated` 只存生成物，禁止手改。
 - 跨领域调用必须经过 `core` 中公开的应用端口，不能跨模块直接查询数据表。API route 只完成协议转换、依赖解析和调用应用服务，不写业务规则。
 - 骨架目录中的 `.gitkeep` 只用于追踪尚未实现的模块边界。首次加入真实文件时必须删除同目录 `.gitkeep`，并在本文登记真实职责。

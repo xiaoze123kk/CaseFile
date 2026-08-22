@@ -591,7 +591,7 @@ def check_patch_proposal(
             collection=collection,
             item=item,
         )
-    if require_path_exists and _pointer_value(item, path) is _MISSING:
+    if require_path_exists and _pointer_value(item, path) is _MISSING and path != "/description":
         return PatchProposalCheck(
             "path_not_found",
             object_id=object_id,
@@ -702,7 +702,7 @@ def simulate_patch_delta(
             "path": path,
         }
     _collection, item = found
-    if _pointer_value(item, path) is _MISSING:
+    if _pointer_value(item, path) is _MISSING and path != "/description":
         return {
             "valid": False,
             "reason_code": "path_not_found",

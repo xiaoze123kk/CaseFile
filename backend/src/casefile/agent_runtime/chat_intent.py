@@ -13,6 +13,7 @@ from typing import Any
 
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
+    CaseFileChatResult,
     ChatTaskUnderstanding,
     ChatTaskUnderstandingOutput,
     RouteDecision,
@@ -575,7 +576,40 @@ def route_result_summary(
     }
 
 
+
+
+def apply_route_suggestion_policy(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Return the post-permission candidate shared by Worker and M2.
+
+    Validate the model candidate before this call so an edit-target repair can
+    still reason about the original proposal. A denied route must nevertheless
+    never expose that proposal to persistence or the outcome grader.
+    """
+
+    route = request.route
+    suggestions = result.candidate.suggestions
+    if route is None or route_allows_suggestions(route) or not suggestions:
+        return result
+    request.emit(
+        "route.suggestions_suppressed",
+        "routing",
+        {
+            **route_public_payload(route),
+            "suggestion_policy": route_suggestion_policy(route),
+            "suppressed_count": len(suggestions),
+            "source": "shared_execution_runner",
+        },
+    )
+    return replace(
+        result,
+        candidate=result.candidate.model_copy(update={"suggestions": []}),
+    )
+
 __all__ = [
+    "apply_route_suggestion_policy",
     "ALLOWED_PRESET_IDS",
     "EditTarget",
     "EditTargetManifest",

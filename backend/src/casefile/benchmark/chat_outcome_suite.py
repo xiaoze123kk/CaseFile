@@ -39,7 +39,7 @@ from casefile.agent_runtime.models import (
 )
 from casefile.agent_runtime.providers import FakeProvider
 from casefile.application.v1_editing import editable_fields_by_collection
-from casefile.worker.runtime import _resolve_chat_route
+from casefile.worker.executors.chat import resolve_chat_route
 
 REFERENCE_PRECISION_TARGET = 1.0
 REFERENCE_RECALL_TARGET = 1.0
@@ -842,7 +842,7 @@ def _request_for_task(
 
 def resolve_task_route(task: ChatOutcomeTask) -> CaseFileChatRequest:
     """Run the exact Worker routing cascade with FakeProvider, no network."""
-    return _resolve_chat_route(
+    return resolve_chat_route(
         _request_for_task(task),
         provider=FakeProvider(),
     )

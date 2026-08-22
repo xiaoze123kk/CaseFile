@@ -10,7 +10,7 @@ from casefile.benchmark.chat_outcome_suite import (
     _focus as _focus,
     _request_for_task as _request_for_task,
     _suggestion as _suggestion,
-    main,
+    main as main,
 )
 
 

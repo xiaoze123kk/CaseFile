@@ -18,11 +18,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from chat_outcome_canned_support import run_canned_trial
-from sqlalchemy import Engine, select
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.chat_outcome_canned import CannedChatOutcomeProvider
@@ -40,6 +35,10 @@ from casefile.data_postgres.models import (
     VerificationRun,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
+from chat_outcome_canned_support import run_canned_trial
+from sqlalchemy import Engine, select
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

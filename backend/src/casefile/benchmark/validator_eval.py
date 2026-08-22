@@ -30,7 +30,7 @@ from casefile.agent_runtime.chat_validation import (
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.application.v1_editing import EDITABLE_FIELDS, editable_fields_by_collection
-from casefile.application.verification_engine import PatchOperation, VerificationEngine
+from casefile.domain.verification_engine import PatchOperation, VerificationEngine
 
 REPORT_SCHEMA_VERSION = "casefile-validator-benchmark-report-v1"
 SUITE_SCHEMA_VERSION = "casefile-validator-benchmark-v1"

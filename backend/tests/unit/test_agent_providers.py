@@ -8,18 +8,10 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
 
+import casefile.agent_runtime.provider_adapters.openai as openai_adapter
 import httpx
 import pytest
 from agents.tool_context import ToolContext
-from openai import (
-    APIConnectionError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
-from pydantic import BaseModel, ValidationError
-
-import casefile.agent_runtime.providers as providers_module
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
@@ -64,8 +56,16 @@ from casefile.application.casefile_v1 import generation_candidate_summary
 from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
-from casefile.worker.runtime import _error_code, _safe_error_message, provider_for_task
+from casefile.worker.runtime import provider_for_task
+from casefile.worker.support import error_code, safe_error_message
 from casefile_contracts import CaseFile, ObjectRef
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
+from pydantic import BaseModel, ValidationError
 
 
 def _request(api_key: str | None = "sk-deepseek-test") -> GenerationRequest:
@@ -199,7 +199,7 @@ def test_openai_provider_loads_the_prompt_version_frozen_on_the_request(
         )
 
     monkeypatch.setattr(
-        providers_module,
+        openai_adapter,
         "system_prompt_for_task",
         fake_system_prompt_for_task,
     )
@@ -958,7 +958,7 @@ def test_worker_rejects_unknown_frozen_provider() -> None:
 
 def test_worker_redacts_provider_credentials_from_persisted_errors() -> None:
     secret = "sk-deepseek-super-secret-123456"
-    message = _safe_error_message(
+    message = safe_error_message(
         RuntimeError(f"Authorization: Bearer {secret}; api_key={secret}"),
         (secret,),
     )
@@ -1128,10 +1128,10 @@ def test_provider_transport_errors_have_stable_failure_codes() -> None:
     response_401 = httpx.Response(401, request=request)
     response_429 = httpx.Response(429, request=request)
 
-    assert _error_code(APIConnectionError(request=request)) == "provider_connection_failed"
-    assert _error_code(APITimeoutError(request=request)) == "provider_timeout"
+    assert error_code(APIConnectionError(request=request)) == "provider_connection_failed"
+    assert error_code(APITimeoutError(request=request)) == "provider_timeout"
     assert (
-        _error_code(
+        error_code(
             AuthenticationError(
                 "invalid credential",
                 response=response_401,
@@ -1141,7 +1141,7 @@ def test_provider_transport_errors_have_stable_failure_codes() -> None:
         == "provider_authentication_failed"
     )
     assert (
-        _error_code(
+        error_code(
             RateLimitError(
                 "rate limited",
                 response=response_429,

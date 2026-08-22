@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from casefile.agent_runtime.chat_execution import (
     ChatCompletionValidationError,
     ChatExecutionRunner,
@@ -14,7 +13,11 @@ from casefile.agent_runtime.chat_execution import (
     validate_chat_candidate,
 )
 from casefile.agent_runtime.chat_routing import fallback_route
-from casefile.agent_runtime.chat_validation import ValidationIssue, plan_repairs
+from casefile.agent_runtime.chat_validation import (
+    ValidationIssue,
+    plan_repairs,
+    select_semantic_repair_mode,
+)
 from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V6_VERSION
 from casefile.agent_runtime.models import (
     CaseFileChatResult,
@@ -47,6 +50,57 @@ def _result(candidate, tokens: int) -> CaseFileChatResult:  # type: ignore[no-un
         candidate=candidate,
         usage={"input_tokens": tokens, "output_tokens": tokens},
         tools=ToolMetrics(calls=1, valid_calls=1, successful_calls=1),
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "attempt",
+        "has_authoritative_target",
+        "currently_target_locked",
+        "no_progress",
+        "expected_mode",
+    ),
+    (
+        (1, False, False, False, "minimal"),
+        (2, False, False, False, "minimal"),
+        (2, False, False, True, None),
+        (2, True, False, False, "target_locked"),
+        (3, False, False, False, None),
+        (3, True, False, True, "target_locked"),
+        (3, True, True, True, "target_locked"),
+        (4, True, True, False, None),
+    ),
+)
+def test_semantic_repair_policy_freezes_runner_transition_matrix(
+    attempt: int,
+    has_authoritative_target: bool,
+    currently_target_locked: bool,
+    no_progress: bool,
+    expected_mode: str | None,
+) -> None:
+    plan = plan_repairs(
+        (
+            ValidationIssue(
+                code="repairable",
+                stage="validation",
+                path="/suggestions",
+                message="需要修复。",
+                repairable=True,
+                details={"missing": ["ent_target:/description"]},
+            ),
+        )
+    )
+
+    assert (
+        select_semantic_repair_mode(
+            attempt=attempt,
+            repair_plan=plan,
+            has_authoritative_target=has_authoritative_target,
+            currently_target_locked=currently_target_locked,
+            no_progress=no_progress,
+        )
+        == expected_mode
     )
 
 

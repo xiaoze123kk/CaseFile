@@ -108,8 +108,7 @@ _V11_SCENARIOS = (
     AcceptanceScenario(
         scenario_id="time_exact_range",
         source_text=(
-            "调查在2026-08-08T20:00准时开始；监控中断发生在"
-            "2026-08-08T20:15至2026-08-08T20:25之间。"
+            "调查在2026-08-08T20:00准时开始；监控中断发生在2026-08-08T20:15至2026-08-08T20:25之间。"
         ),
         creative_intent="保留精确到分钟的开始时间和同精度时间区间。",
         reasoning_proposition="谁在监控中断区间进入了档案室？",
@@ -120,8 +119,7 @@ _V11_SCENARIOS = (
     AcceptanceScenario(
         scenario_id="time_uncertain_relative",
         source_text=(
-            "警报大约在2026-08-08T21时响起；停电发生在警报之后约10分钟；"
-            "备用门何时开启完全未知。"
+            "警报大约在2026-08-08T21时响起；停电发生在警报之后约10分钟；备用门何时开启完全未知。"
         ),
         creative_intent="同时保留 approximate、relative 和 unknown 三类时间确定性。",
         reasoning_proposition="停电是否利用警报后的窗口触发？",
@@ -142,10 +140,7 @@ _V11_SCENARIOS = (
     ),
     AcceptanceScenario(
         scenario_id="spatial_wgs84",
-        source_text=(
-            "外部信标的显式坐标为 坐标：31.2304, 121.4737；"
-            "内部仓库没有可靠坐标。"
-        ),
+        source_text=("外部信标的显式坐标为 坐标：31.2304, 121.4737；内部仓库没有可靠坐标。"),
         creative_intent="仅把外部信标结构化为明确给出的 WGS84 坐标。",
         reasoning_proposition="信标记录是否能证明人员到达外部位置？",
         author_answer="信标记录证明人员到达外部位置。",
@@ -226,8 +221,7 @@ def _filtered_scenarios(
     filtered = tuple(item for item in scenarios if item.scenario_id in wanted)
     if not filtered:
         raise ValueError(
-            "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER matched no scenario: "
-            f"{sorted(wanted)}"
+            f"CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER matched no scenario: {sorted(wanted)}"
         )
     return filtered
 
@@ -398,9 +392,7 @@ def _dense_candidate(
                 "id": hypothesis_id,
                 "target_resolution_ref": {"object_id": "res_01"},
                 "competing_hypothesis_refs": [
-                    {"object_id": peer_id}
-                    for peer_id in hypothesis_ids
-                    if peer_id != hypothesis_id
+                    {"object_id": peer_id} for peer_id in hypothesis_ids if peer_id != hypothesis_id
                 ],
                 "evidence_assessments": [
                     {"information_ref": {"object_id": information_id}}
@@ -416,18 +408,14 @@ def test_dense_matrix_scenario_candidate_checks() -> None:
     dense = _COMPETITION_MATRIX_DENSE_SCENARIO
     triple = _COMPETITION_MATRIX_TRIPLE_SCENARIO
 
-    assert _scenario_candidate_violations(
-        _dense_candidate(hypotheses=2, columns=8), dense
-    ) == []
-    assert _scenario_candidate_violations(
-        _dense_candidate(hypotheses=2, columns=7), dense
-    ) == ["scenario_competition_matrix_incomplete"]
-    assert _scenario_candidate_violations(
-        _dense_candidate(hypotheses=2, columns=8), triple
-    ) == ["scenario_competing_hypotheses_missing"]
-    assert _scenario_candidate_violations(
-        _dense_candidate(hypotheses=3, columns=8), triple
-    ) == []
+    assert _scenario_candidate_violations(_dense_candidate(hypotheses=2, columns=8), dense) == []
+    assert _scenario_candidate_violations(_dense_candidate(hypotheses=2, columns=7), dense) == [
+        "scenario_competition_matrix_incomplete"
+    ]
+    assert _scenario_candidate_violations(_dense_candidate(hypotheses=2, columns=8), triple) == [
+        "scenario_competing_hypotheses_missing"
+    ]
+    assert _scenario_candidate_violations(_dense_candidate(hypotheses=3, columns=8), triple) == []
 
 
 def test_evidence_quality_summary_rates() -> None:
@@ -538,13 +526,11 @@ def test_live_brief_to_draft_runtime_acceptance() -> None:
             app = create_app(config.test_database_url)
             worker = Worker(
                 factory,
-                config=WorkerConfig(
-                    worker_id=f"{config.prompt_version}-live-acceptance"
-                ),
+                config=WorkerConfig(worker_id=f"{config.prompt_version}-live-acceptance"),
             )
             with (
                 patch(
-                    "casefile.application.workflow_service.prompt_version_for_task",
+                    "casefile.application.workflow.content.prompt_version_for_task",
                     return_value=config.prompt_version,
                 ),
                 TestClient(app) as client,
@@ -603,15 +589,11 @@ def _live_config() -> LiveAcceptanceConfig:
         prompt_version_for_task("brief_to_draft"),
     ).strip()
     try:
-        repair_attempts = int(
-            os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS", "5")
-        )
+        repair_attempts = int(os.getenv("CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS", "5"))
     except ValueError:
         pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS must be an integer.")
     if not 0 <= repair_attempts <= 10:
-        pytest.fail(
-            "CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS must be between 0 and 10."
-        )
+        pytest.fail("CASEFILE_LIVE_ACCEPTANCE_REPAIR_ATTEMPTS must be between 0 and 10.")
     try:
         load_prompt("brief_to_draft", prompt_version)
     except PromptRepositoryError:
@@ -627,9 +609,7 @@ def _live_config() -> LiveAcceptanceConfig:
         prompt_version=prompt_version,
         repeats=repeats,
         report_path=Path(report_value) if report_value else None,
-        scenario_filter=os.getenv(
-            "CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER", ""
-        ).strip(),
+        scenario_filter=os.getenv("CASEFILE_LIVE_ACCEPTANCE_SCENARIO_FILTER", "").strip(),
         repair_attempts=repair_attempts,
     )
 
@@ -665,9 +645,10 @@ def _copy_configured_provider_setting(
     source_engine = create_engine(source_database_url)
     try:
         with source_engine.connect() as connection:
-            row = connection.execute(
-                text(
-                    """
+            row = (
+                connection.execute(
+                    text(
+                        """
                     SELECT
                         setting.user_id,
                         setting.model_id,
@@ -686,9 +667,12 @@ def _copy_configured_provider_setting(
                     ORDER BY setting.updated_at DESC, setting.id DESC
                     LIMIT 1
                     """
-                ),
-                {"provider": provider},
-            ).mappings().one_or_none()
+                    ),
+                    {"provider": provider},
+                )
+                .mappings()
+                .one_or_none()
+            )
     finally:
         source_engine.dispose()
     if row is None:
@@ -822,12 +806,8 @@ def _run_acceptance_suite(
                 task=task,
                 scenario=scenario,
             )
-            scenario_violations = [
-                item for item in violations if item.startswith("scenario_")
-            ]
-            invariant_violations = [
-                item for item in violations if not item.startswith("scenario_")
-            ]
+            scenario_violations = [item for item in violations if item.startswith("scenario_")]
+            invariant_violations = [item for item in violations if not item.startswith("scenario_")]
             task_record["scenario_passed"] = not scenario_violations
             task_record["scenario_violations"] = scenario_violations
             task_record["evidence_quality"] = _evidence_quality_for_task(
@@ -1016,9 +996,7 @@ def _successful_task_violations(
     latest_steps = _latest_steps_by_component(task)
     if any(step.get("status") not in {"succeeded", "reused"} for step in latest_steps.values()):
         violations.append("successful_task_has_unresolved_component")
-    failed_steps = [
-        step for step in task["component_steps"] if step.get("status") == "failed"
-    ]
+    failed_steps = [step for step in task["component_steps"] if step.get("status") == "failed"]
     if failed_steps and not _diagnostics_complete_for_steps(failed_steps):
         violations.append("successful_task_has_incomplete_repair_diagnostic")
     draft = client.get(f"/api/v1/projects/{project_id}/draft", headers=headers)
@@ -1112,9 +1090,7 @@ def _scenario_candidate_violations(
             and item["spatial_position"].get("coordinate_system") == "wgs84"
         ]
         expected = {(31.2304, 121.4737)}
-        actual = {
-            (float(item["latitude"]), float(item["longitude"])) for item in wgs84
-        }
+        actual = {(float(item["latitude"]), float(item["longitude"])) for item in wgs84}
         return [] if actual == expected else ["scenario_explicit_wgs84_not_preserved"]
     if scenario.scenario_id in {
         "competition_matrix",
@@ -1149,9 +1125,7 @@ def _scenario_candidate_violations(
                 if isinstance(assessment, dict)
             }
             columns.append({item for item in assessed if isinstance(item, str)})
-        if len(columns[0]) < minimum_columns or any(
-            column != columns[0] for column in columns[1:]
-        ):
+        if len(columns[0]) < minimum_columns or any(column != columns[0] for column in columns[1:]):
             return ["scenario_competition_matrix_incomplete"]
         return []
     return ["scenario_unknown"]
@@ -1183,8 +1157,7 @@ def _failed_task_write_boundary_violations(
     return violations
 
 
-def _record_global_write_boundaries(
-    factory: sessionmaker[Session], report: dict[str, Any]) -> None:
+def _record_global_write_boundaries(factory: sessionmaker[Session], report: dict[str, Any]) -> None:
     with factory() as session:
         snapshot_count = int(session.scalar(select(func.count()).select_from(DraftSnapshot)) or 0)
         canon_count = int(session.scalar(select(func.count()).select_from(CanonVersion)) or 0)
@@ -1205,14 +1178,10 @@ def _task_execution_metrics(
 
     with factory() as session:
         steps = list(
-            session.scalars(
-                select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id)
-            )
+            session.scalars(select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id))
         )
         calls = list(
-            session.scalars(
-                select(AgentModelCall).where(AgentModelCall.task_run_id == task_run_id)
-            )
+            session.scalars(select(AgentModelCall).where(AgentModelCall.task_run_id == task_run_id))
         )
 
     call_summary: dict[str, Any] = {
@@ -1249,9 +1218,7 @@ def _task_execution_metrics(
                 component[token_key] += value
                 protocol[token_key] += value
         if call.status == "failed":
-            _increment_named_count(
-                failed_by_error_code, call.error_code or "unknown_error"
-            )
+            _increment_named_count(failed_by_error_code, call.error_code or "unknown_error")
             for issue in call.issues_jsonb:
                 if isinstance(issue, dict):
                     _increment_named_count(
@@ -1282,9 +1249,7 @@ def _task_execution_metrics(
             component["duration_ms_total"] = round(
                 float(component["duration_ms_total"]) + duration_ms, 3
             )
-            component["duration_ms_max"] = max(
-                float(component["duration_ms_max"]), duration_ms
-            )
+            component["duration_ms_max"] = max(float(component["duration_ms_max"]), duration_ms)
     return {"model_calls": call_summary, "component_steps": step_summary}
 
 
@@ -1307,9 +1272,7 @@ def _evidence_quality_for_task(
     is_v15 = prompt_version == "brief-to-draft-v15"
     with factory() as session:
         steps = list(
-            session.scalars(
-                select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id)
-            )
+            session.scalars(select(AgentStepRun).where(AgentStepRun.task_run_id == task_run_id))
         )
     evidence_steps = sorted(
         (
@@ -1417,9 +1380,7 @@ def _evidence_quality_for_task(
                 matrix_issues = matrix_evaluation_issues(evaluated, cells)
                 clean = not matrix_issues
                 for issue in matrix_issues:
-                    _increment_named_count(
-                        issue_counts, str(issue.get("code") or "unknown_issue")
-                    )
+                    _increment_named_count(issue_counts, str(issue.get("code") or "unknown_issue"))
             matrix_clean_flags.append(clean)
         if matrix_clean_flags:
             first_matrix_clean = matrix_clean_flags[0]
@@ -1592,9 +1553,7 @@ def _latency_summary(values: list[float]) -> dict[str, float | int]:
     }
 
 
-def _aggregate_metric_group(
-    details: list[object], group_name: str
-) -> dict[str, Any]:
+def _aggregate_metric_group(details: list[object], group_name: str) -> dict[str, Any]:
     totals: dict[str, Any] = {
         "total": 0,
         "succeeded": 0,

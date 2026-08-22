@@ -15,7 +15,7 @@ from casefile.agent_runtime.chat_tools import CHAT_TOOLSET_VERSION
 from casefile.agent_runtime.context.assembly_render import CHAT_CONTEXT_PROMPT_V9_VERSION
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.agent_runtime.providers import FakeProvider
-from casefile.worker.runtime import _resolve_chat_route
+from casefile.worker.executors.chat import resolve_chat_route
 
 IntentResolver = Callable[["ChatRouterFixture"], CaseFileChatRequest]
 
@@ -372,7 +372,7 @@ def _request_for_fixture(
 
 
 def fake_router_resolver(fixture: ChatRouterFixture) -> CaseFileChatRequest:
-    return _resolve_chat_route(
+    return resolve_chat_route(
         _request_for_fixture(fixture, task_run_id=1),
         provider=FakeProvider(),
     )

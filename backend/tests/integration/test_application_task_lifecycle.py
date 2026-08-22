@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-import casefile.agent_runtime.providers as agent_providers
+import casefile.agent_runtime.provider_adapters.fake as agent_providers
 import pytest
 from application_services_test_support import (
     _draft_revision_and_content,
@@ -349,7 +349,7 @@ def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
     with (
         patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}),
         patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ),
         patch.object(
@@ -378,32 +378,24 @@ def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
             )
             assert task_row is not None
             assert attempt_one is not None
-            expected_quality_steps = (
-                int(task_row.budget_jsonb["structural_repair_attempts"]) + 1
-            )
+            expected_quality_steps = int(task_row.budget_jsonb["structural_repair_attempts"]) + 1
             attempt_one_steps = list(
                 session.scalars(
-                    select(AgentStepRun).where(
-                        AgentStepRun.task_attempt_id == attempt_one.id
-                    )
+                    select(AgentStepRun).where(AgentStepRun.task_attempt_id == attempt_one.id)
                 )
             )
 
         assert failed["status"] == "failed"
         assert failed["failure"]["retryable"] is True
-        assert {
-            issue["code"] for issue in failed["failure"]["issues"]
-        } == {"competing_hypothesis_path_plan_missing"}
+        assert {issue["code"] for issue in failed["failure"]["issues"]} == {
+            "competing_hypothesis_path_plan_missing"
+        }
         quality_steps = [
-            step
-            for step in attempt_one_steps
-            if step.component_id == "quality_repair_gate"
+            step for step in attempt_one_steps if step.component_id == "quality_repair_gate"
         ]
         assert len(quality_steps) == expected_quality_steps
         assert all(step.status == "failed" for step in quality_steps)
-        assert not any(
-            step.component_id == "run_coordinator" for step in attempt_one_steps
-        )
+        assert not any(step.component_id == "run_coordinator" for step in attempt_one_steps)
 
         fail_planner = False
         with factory() as session:
@@ -424,8 +416,7 @@ def test_planner_semantic_failure_persists_gate_and_resumes_without_reuse(
         attempt_two_planner = [
             step
             for step in recovered["component_steps"]
-            if step["attempt_no"] == 2
-            and step["component_id"] == "case_blueprint_planner"
+            if step["attempt_no"] == 2 and step["component_id"] == "case_blueprint_planner"
         ]
         assert len(attempt_two_planner) == 1
         assert attempt_two_planner[0]["status"] == "succeeded"

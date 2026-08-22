@@ -14,12 +14,6 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
@@ -36,6 +30,11 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -512,7 +511,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             provider_factory=lambda _task: recoverable_provider,
         )
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ):
             recoverable_queued = client.post(
@@ -905,8 +904,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         with engine.connect() as connection:
             stored_prompt_version, stored_toolset_version = connection.execute(
                 text(
-                    "SELECT prompt_version, toolset_version FROM task_runs "
-                    "WHERE id = :task_run_id"
+                    "SELECT prompt_version, toolset_version FROM task_runs WHERE id = :task_run_id"
                 ),
                 {"task_run_id": chat_task_id},
             ).one()

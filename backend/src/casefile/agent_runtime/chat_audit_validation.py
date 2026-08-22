@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 from collections.abc import Set
+from dataclasses import replace
 from itertools import combinations
 from typing import Any, NoReturn
 
-from casefile.agent_runtime.chat_validation import ValidationIssue
+from casefile.agent_runtime.chat_safe_patches import SafePatchRegistry
+from casefile.agent_runtime.chat_validation_contracts import ValidationIssue, target_label
+from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult
 
 AUDIT_FINDING_KINDS = frozenset(
     {"dangling_ref", "contradiction", "temporal", "motivation_gap", "scope_gap"}
@@ -395,3 +398,258 @@ def audit_finding_kind_labels() -> dict[str, str]:
 
 def audit_finding_severity_labels() -> dict[str, str]:
     return {"S1": "致命", "S2": "主要", "S3": "次要"}
+
+
+
+def audit_simulation_issues(
+    suggestions: list[dict[str, Any]],
+    ledger: dict[str, Any] | None,
+    *,
+    registry: SafePatchRegistry | None = None,
+) -> tuple[ValidationIssue, ...]:
+    """Require every v14 audit suggestion to match a safe frozen simulation."""
+
+    if not suggestions:
+        return ()
+    entries = ledger.get("entries", []) if isinstance(ledger, dict) else []
+    simulations: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("tool_name") != "simulate_patch_application":
+            continue
+        arguments = entry.get("sanitized_arguments")
+        payload = entry.get("bounded_result")
+        if not isinstance(arguments, dict) or not isinstance(payload, dict):
+            continue
+        key = (
+            str(arguments.get("object_id") or ""),
+            str(arguments.get("path") or ""),
+            str(arguments.get("value_json") or ""),
+        )
+        simulations[key] = payload
+    issues: list[ValidationIssue] = []
+    for index, suggestion in enumerate(suggestions):
+        key = (
+            str(suggestion.get("object_id") or ""),
+            str(suggestion.get("path") or ""),
+            str(suggestion.get("value_json") or ""),
+        )
+        simulation = simulations.get(key)
+        target = target_label(key[0], key[1])
+        safe = (
+            simulation is not None
+            and simulation.get("valid") is True
+            and simulation.get("advice") != "introduces_new_issues"
+            and int(simulation.get("counts", {}).get("new", 0)) == 0
+        )
+        if safe:
+            continue
+        target_candidates = (
+            registry.candidates_for_target(key[0], key[1]) if registry is not None else ()
+        )
+        if target_candidates:
+            issues.append(
+                ValidationIssue(
+                    code="audit_suggestion_value_not_frozen",
+                    stage="patch",
+                    path=f"/suggestions/{index}",
+                    message="审计建议目标已有冻结安全补丁，但值未使用冻结候选。",
+                    repairable=True,
+                    details={
+                        "object_id": key[0],
+                        "path": key[1],
+                        "replace": [candidate.as_dict() for candidate in target_candidates],
+                    },
+                )
+            )
+            continue
+        issues.append(
+            ValidationIssue(
+                code=(
+                    "audit_suggestion_not_simulated"
+                    if simulation is None
+                    else "audit_suggestion_simulation_failed"
+                ),
+                stage="patch",
+                path=f"/suggestions/{index}",
+                message="审计建议缺少成功且不引入新问题的冻结补丁预演。",
+                repairable=True,
+                details={
+                    "extra": [target],
+                    "object_id": key[0],
+                    "path": key[1],
+                    "simulation": simulation or {},
+                },
+            )
+        )
+    return tuple(issues)
+
+
+def audit_server_gate_issues(
+    suggestions: list[dict[str, Any]],
+    registry: SafePatchRegistry | None,
+) -> tuple[ValidationIssue, ...]:
+    """Require v15 suggestions to match server-proven registry entries."""
+
+    issues: list[ValidationIssue] = []
+    for index, suggestion in enumerate(suggestions):
+        object_id = str(suggestion.get("object_id") or "")
+        path = str(suggestion.get("path") or "")
+        value_json = suggestion.get("value_json")
+        exact = (
+            registry.exact_candidate(object_id, path, value_json)
+            if registry is not None
+            else None
+        )
+        if exact is not None:
+            continue
+        candidates = registry.candidates_for_target(object_id, path) if registry else ()
+        issues.append(
+            ValidationIssue(
+                code=(
+                    "audit_suggestion_value_not_frozen"
+                    if candidates
+                    else "audit_suggestion_server_gate_failed"
+                ),
+                stage="patch",
+                path=f"/suggestions/{index}",
+                message=(
+                    "审计建议未通过服务器确定性补丁门禁。"
+                    if not candidates
+                    else "审计建议目标已有安全证明，但值未使用服务器冻结候选。"
+                ),
+                repairable=True,
+                details={
+                    "object_id": object_id,
+                    "path": path,
+                    "extra": [target_label(object_id, path)],
+                    "replace": [candidate.as_dict() for candidate in candidates],
+                },
+            )
+        )
+    return tuple(issues)
+
+
+def audit_repair_integrity(
+    bundle: Any,
+    findings: list[dict[str, Any]],
+    suggestions: list[dict[str, Any]],
+) -> tuple[ValidationIssue, ...]:
+    """Reject an empty proposal set when frozen evidence exposes repairable targets."""
+
+    if not isinstance(bundle, dict) or not findings:
+        return ()
+    expectation = bundle.get("repair_expectation")
+    targets = expectation.get("candidate_patch_targets") if isinstance(expectation, dict) else None
+    if not isinstance(targets, list) or not targets:
+        return ()
+    non_manual = [
+        finding
+        for finding in findings
+        if isinstance(finding, dict) and not finding.get("needs_manual_review")
+    ]
+    expected_targets = {
+        (str(target.get("object_id")), str(target.get("path")))
+        for target in targets
+        if isinstance(target, dict)
+        and isinstance(target.get("object_id"), str)
+        and isinstance(target.get("path"), str)
+    }
+    if suggestions and any(
+        (
+            str(suggestion.get("object_id")),
+            str(suggestion.get("path")),
+        )
+        in expected_targets
+        for suggestion in suggestions
+        if isinstance(suggestion, dict)
+    ):
+        return ()
+    issues: list[ValidationIssue] = []
+    finding_ids = [
+        str(item.get("finding_id"))
+        for item in findings
+        if isinstance(item, dict) and item.get("finding_id")
+    ]
+    finding_ref = next(
+        (
+            str(item.get("finding_id"))
+            for item in non_manual
+            if item.get("finding_id")
+        ),
+        None,
+    )
+    issue_code = "audit_repairable_finding_missing_suggestion"
+    if suggestions:
+        issue_code = "audit_repair_expectation_missing_target"
+    elif finding_ref is None:
+        issue_code = "audit_deterministic_pair_missing_suggestion"
+    for target in targets:
+        if not isinstance(target, dict):
+            continue
+        object_id = target.get("object_id")
+        path = target.get("path")
+        if not isinstance(object_id, str) or not isinstance(path, str):
+            continue
+        label = target_label(object_id, path)
+        issues.append(
+            ValidationIssue(
+                code=issue_code,
+                stage="audit",
+                path="/suggestions",
+                message="存在有证据且可编辑的审计发现，但最终结果缺少补丁提案。",
+                repairable=True,
+                details={
+                    "missing": [label],
+                    "preserve": finding_ids,
+                    "extra": [
+                        target_label(item.get("object_id"), item.get("path"))
+                        for item in suggestions
+                        if isinstance(item, dict)
+                    ],
+                    "finding_ref": finding_ref,
+                    "object_id": object_id,
+                    "path": path,
+                },
+            )
+        )
+        # One precise missing-target repair is sufficient to wake the
+        # Finalizer; independent findings remain available in the frozen
+        # Bundle for subsequent audit passes. A manual-only result still
+        # reaches this path when the Bundle exposes a deterministic conflict
+        # pair and editable target; its proposal must remain unbound.
+        break
+    return tuple(issues)
+
+
+
+def apply_deterministic_audit_gate(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Apply the server-owned clean-no-op conclusion before persistence.
+
+    A model cannot manufacture an audit finding when the frozen deterministic
+    verification and the evidence bundle both say there is no candidate pair.
+    Keep the prose answer (it is useful to the author), but remove structured
+    findings and patches from the candidate that proceeds to completion.
+    """
+
+    route = request.route
+    if route is None or route.execution_profile.get("primary_intent") != "logic_audit":
+        return result
+    bundle = request.validation.get("audit_evidence_bundle")
+    if not isinstance(bundle, dict):
+        return result
+    if bundle.get("clean_noop_eligible") is not True:
+        return result
+    if bundle.get("deterministic_findings"):
+        return result
+    if bundle.get("candidate_pairs") or bundle.get("tool_counterevidence"):
+        return result
+    candidate = result.candidate
+    updates: dict[str, Any] = {"suggestions": [], "audit_findings": []}
+    # v1 candidates do not define audit_findings; Pydantic ignores no fields,
+    # so only update the slot when it exists on the concrete model.
+    if not hasattr(candidate, "audit_findings"):
+        updates.pop("audit_findings")
+    return replace(result, candidate=candidate.model_copy(update=updates))

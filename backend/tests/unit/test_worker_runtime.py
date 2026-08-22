@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from casefile.worker.runtime import _previous_attempt_failed_steps
+from casefile.worker.support import previous_attempt_failed_steps
 
 
 def test_previous_attempt_failed_steps_uses_only_last_generation_run() -> None:
@@ -44,7 +44,7 @@ def test_previous_attempt_failed_steps_uses_only_last_generation_run() -> None:
     ]
     task = SimpleNamespace(id=17, attempt_count=2)
 
-    failed_steps = _previous_attempt_failed_steps(session, task)
+    failed_steps = previous_attempt_failed_steps(session, task)
 
     assert failed_steps == [latest_temporal_failure]
 
@@ -62,4 +62,4 @@ def test_previous_attempt_failed_steps_returns_empty_without_failures() -> None:
     ]
     task = SimpleNamespace(id=17, attempt_count=2)
 
-    assert _previous_attempt_failed_steps(session, task) == []
+    assert previous_attempt_failed_steps(session, task) == []

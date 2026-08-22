@@ -39,7 +39,7 @@ from casefile.benchmark.chat_router_eval import (
 )
 from casefile.data_postgres.models import UserProviderSetting
 from casefile.data_postgres.session import create_database_engine, create_session_factory
-from casefile.worker.runtime import _resolve_chat_route
+from casefile.worker.executors.chat import resolve_chat_route
 
 ROUTE_ACCURACY_TARGET = 0.90
 DANGEROUS_CONFUSION_TARGET = 1.0
@@ -116,7 +116,7 @@ def _resolver_for_provider(
             emit=emit,
         )
         event_count_before = len(events)
-        resolved = _resolve_chat_route(request, provider=provider)
+        resolved = resolve_chat_route(request, provider=provider)
         understanding = resolved.task_understanding
         route = resolved.route
         rewrite = resolved.rewrite
