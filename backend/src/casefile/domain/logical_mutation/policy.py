@@ -10,7 +10,7 @@ ClosurePolicyVersion = Literal["logical-mutation-v1", "logical-mutation-v2"]
 
 CLOSURE_POLICY_V1: ClosurePolicyVersion = "logical-mutation-v1"
 CLOSURE_POLICY_V2: ClosurePolicyVersion = "logical-mutation-v2"
-ACTIVE_APPLY_POLICY: ClosurePolicyVersion = CLOSURE_POLICY_V1
+ACTIVE_APPLY_POLICY: ClosurePolicyVersion = CLOSURE_POLICY_V2
 SHADOW_POLICY: ClosurePolicyVersion = CLOSURE_POLICY_V2
 SUPPORTED_CLOSURE_POLICY_VERSIONS = frozenset(
     {CLOSURE_POLICY_V1, CLOSURE_POLICY_V2}
