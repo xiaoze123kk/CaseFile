@@ -9,6 +9,12 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Literal, cast
 
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
@@ -81,12 +87,6 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _validate_generated_descriptions,
 )
 from casefile.contracts import validate_casefile
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 
 
 def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:

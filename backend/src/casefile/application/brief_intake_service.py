@@ -8,6 +8,15 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import rfc8785
+from casefile_contracts import (
+    Brief as BriefContract,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,15 +39,6 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
-from casefile_contracts import (
-    Brief as BriefContract,
-)
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")

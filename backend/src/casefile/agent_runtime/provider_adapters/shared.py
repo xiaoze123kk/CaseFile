@@ -11,6 +11,9 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    CaseFile,
+)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -58,9 +61,6 @@ from casefile.agent_runtime.structured_output import (
 )
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
-from casefile_contracts import (
-    CaseFile,
-)
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
 

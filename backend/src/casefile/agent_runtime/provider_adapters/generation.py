@@ -11,6 +11,9 @@ from typing import Any, cast
 from agents import ModelSettings
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
+from casefile_contracts import (
+    CaseFile,
+)
 from pydantic import BaseModel, create_model
 
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
@@ -39,9 +42,6 @@ from casefile.agent_runtime.provider_adapters.shared import (
 )
 from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.contracts.validation import COLLECTION_OBJECT_TYPES
-from casefile_contracts import (
-    CaseFile,
-)
 
 _PARTITION_FIELDS: dict[str, tuple[str, ...]] = {
     "story": ("entities", "relationships", "locations", "events"),
