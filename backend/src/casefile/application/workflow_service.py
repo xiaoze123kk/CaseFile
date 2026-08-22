@@ -1,4 +1,9 @@
-"""Sources, versioned Briefs, provider settings, and durable Agent TaskRuns."""
+"""Stable transactional façade for Workflow application use cases.
+
+Owns dependency construction and the public ``WorkflowService(session)`` API.
+Does not own validation, projections, event serialization, or individual use-
+case implementations; those live in the delegated workflow modules.
+"""
 
 from __future__ import annotations
 

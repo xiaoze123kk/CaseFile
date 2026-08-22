@@ -1,4 +1,9 @@
-"""Stable public entrypoint for CaseFile Agent provider adapters."""
+"""Stable public façade for CaseFile Agent provider adapters.
+
+Owns compatibility exports for Provider protocols and implementations. Does
+not own vendor protocols, generation orchestration, output normalization, or
+test fixtures; those live in ``provider_adapters``.
+"""
 
 from casefile.agent_runtime.provider_adapters.deepseek import DeepSeekAgentsProvider
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider

@@ -32,6 +32,11 @@ try {
         throw "Python compilation check failed."
     }
 
+    & $python (Join-Path $PSScriptRoot "check-backend-architecture.py")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Backend architecture check failed."
+    }
+
     & $python -m ruff check --config backend/pyproject.toml backend/src backend/migrations backend/tests
     if ($LASTEXITCODE -ne 0) {
         throw "Ruff check failed."

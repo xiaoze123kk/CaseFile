@@ -1,4 +1,9 @@
-"""Shared, persistence-free execution loop for CaseFile Chat candidates."""
+"""Stable, persistence-free CaseFile Chat execution entrypoint.
+
+Owns Provider calls, bounded retry state, event callbacks, and diagnostic
+aggregation. Does not own request preparation, candidate/audit validation,
+context policy, or safe-patch domain rules; those are delegated to pure modules.
+"""
 
 from __future__ import annotations
 

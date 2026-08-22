@@ -1,4 +1,9 @@
-"""Lease-based PostgreSQL queue consumer and generation task executor."""
+"""Stable Worker entrypoint.
+
+Owns the claim -> dispatch -> execute -> finalize loop and public Worker
+configuration. Does not own routing, context, validation, repair, or provider
+protocol rules. Public API: ``Worker``, ``WorkerConfig``, ``provider_for_task``.
+"""
 
 from __future__ import annotations
 
@@ -49,12 +54,10 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import ProjectRepository
-from casefile.worker.executors.chat import ChatTaskExecutorMixin
-from casefile.worker.executors.chat import _chat_intent_event_payload as _chat_intent_event_payload
 from casefile.worker.executors.chat import (
-    _chat_rewrite_event_payload as _chat_rewrite_event_payload,
+    ChatTaskExecutorMixin,
+    resolve_chat_route,
 )
-from casefile.worker.executors.chat import _resolve_chat_route as _resolve_chat_route
 from casefile.worker.executors.completion import CompletionExecutorMixin
 from casefile.worker.finalization import TaskFinalizationMixin
 from casefile.worker.queue import QueueMixin
@@ -70,9 +73,6 @@ from casefile.worker.support import (
     _required_string,
     _reusable_component_steps,
     _text_hash,
-)
-from casefile.worker.support import (
-    _previous_attempt_failed_steps as _previous_attempt_failed_steps,
 )
 
 ProviderFactory = Callable[[TaskRun], AgentProvider]
@@ -316,7 +316,7 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
             if task_snapshot.task_type == "casefile_chat":
                 chat_request = self._load_chat_request(task_snapshot, api_key)
                 previous_routing = self._load_previous_chat_routing(task_snapshot.id)
-                chat_request = _resolve_chat_route(
+                chat_request = resolve_chat_route(
                     chat_request,
                     budget=task_snapshot.budget_jsonb,
                     provider=provider,
@@ -595,3 +595,6 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                 agent_version=task.agent_version,
                 toolset_version=task.toolset_version,
             )
+
+
+__all__ = ["Worker", "WorkerConfig", "provider_for_task"]
