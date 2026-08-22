@@ -31,6 +31,7 @@ from casefile.agent_runtime.chat_validation import (
     ValidationIssue,
     plan_repairs,
     resolve_authoritative_repair_target,
+    select_semantic_repair_mode,
     target_label,
 )
 from casefile.agent_runtime.context import build_chat_context_manifest
@@ -1330,9 +1331,18 @@ class ChatExecutionRunner:
                     previous_failure_signature is not None
                     and previous_failure_signature == current_signature
                 )
-                if attempt == MAX_FINALIZER_ATTEMPTS or (
-                    attempt >= 3 and target_locked_repair is None
-                ) or (attempt > 1 and target_locked_repair is None and no_progress):
+                repair_mode = select_semantic_repair_mode(
+                    attempt=attempt,
+                    repair_plan=validation.repair_plan,
+                    has_authoritative_target=target_locked_repair is not None,
+                    currently_target_locked=(
+                        request.target_locked_repair is not None
+                        and target_locked_repair is not None
+                    ),
+                    no_progress=no_progress,
+                    max_attempts=MAX_FINALIZER_ATTEMPTS,
+                )
+                if repair_mode is None:
                     _attach_failure_metrics(
                         validation,
                         usages,
@@ -1345,9 +1355,6 @@ class ChatExecutionRunner:
                     raise validation from error
                 repair_attempted = True
                 repair_no = len(repair_history) + 1
-                repair_mode = (
-                    "target_locked" if target_locked_repair is not None else "minimal"
-                )
                 repair_record = {
                     "attempt": attempt,
                     "repair_no": repair_no,

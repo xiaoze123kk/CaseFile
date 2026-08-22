@@ -194,14 +194,17 @@ def select_semantic_repair_mode(
     no_progress: bool,
     max_attempts: int = 4,
 ) -> Literal["minimal", "target_locked"] | None:
-    """Choose the next bounded repair mode without invoking a provider."""
+    """Choose the next bounded repair mode without invoking a provider.
+
+    ``repair_plan`` remains part of the stable policy contract because callers persist
+    it with diagnostics.  A validation error may still carry an empty plan, so the
+    bounded production loop must preserve its historical minimal-retry behaviour.
+    """
 
     if attempt >= max_attempts:
         return None
     if currently_target_locked:
-        return "target_locked" if attempt < max_attempts else None
-    if repair_plan.is_empty():
-        return None
+        return "target_locked"
     if attempt == 1:
         return "minimal"
     if has_authoritative_target:
