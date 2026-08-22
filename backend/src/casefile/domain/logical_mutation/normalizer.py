@@ -57,6 +57,7 @@ def normalize_mutation(
     working = deepcopy(dict(document))
     ordered = _order_operations(working, mutation_set.operations)
     mechanical: list[MechanicalOperation] = []
+    created_ids: set[str] = set()
     deleted_ids: set[str] = set()
     existing_changed_ids: set[str] = set()
     touched_relations: list[tuple[str, str]] = []
@@ -70,6 +71,7 @@ def normalize_mutation(
             if _find_object(working, operation.object_id) is not None:
                 raise MutationNormalizationError("object_id_conflict")
             working[operation.collection].append(deepcopy(dict(operation.object_value)))
+            created_ids.add(operation.object_id)
             touched_relations.append((operation.object_id, ""))
         elif isinstance(operation, UpdateField):
             found = _find_object(working, operation.object_id)
@@ -113,9 +115,14 @@ def normalize_mutation(
     for deleted_id in sorted(deleted_ids):
         _remove_inbound_refs(working, deleted_id, mechanical)
     for object_id, field_path in touched_relations:
+        _normalize_touched_ref_lists(working, object_id, field_path, mechanical)
+    for object_id, field_path in touched_relations:
         _synchronize_relation(working, object_id, field_path, mechanical)
-    _stable_sort_relations(working)
-    existing_changed_ids.update(operation.object_id for operation in mechanical)
+    existing_changed_ids.update(
+        operation.object_id
+        for operation in mechanical
+        if operation.object_id not in created_ids
+    )
     for object_id in sorted(existing_changed_ids - deleted_ids):
         found = _find_object(working, object_id)
         if found is not None:
@@ -265,10 +272,10 @@ def _synchronize_relation(
             target_item = target[2]
             old = deepcopy(target_item.get(target_field, []))
             if object_id not in {entry.get("object_id") for entry in old}:
-                target_item[target_field] = [
+                target_item[target_field] = _canonical_ref_list([
                     *old,
                     {"object_type": object_type, "object_id": object_id},
-                ]
+                ])
                 mechanical.append(
                     _mechanical(
                         target_id,
@@ -282,7 +289,9 @@ def _synchronize_relation(
             if target_item["id"] in desired:
                 continue
             old = deepcopy(target_item.get(target_field, []))
-            new = [entry for entry in old if entry.get("object_id") != object_id]
+            new = _canonical_ref_list(
+                [entry for entry in old if entry.get("object_id") != object_id]
+            )
             if new != old:
                 target_item[target_field] = new
                 mechanical.append(
@@ -296,23 +305,62 @@ def _synchronize_relation(
                 )
 
 
-def _stable_sort_relations(document: dict[str, Any]) -> None:
-    for collection in COLLECTION_BY_TYPE.values():
-        for item in document.get(collection, []):
-            _sort_ref_lists(item)
+def _normalize_touched_ref_lists(
+    document: dict[str, Any],
+    object_id: str,
+    field_path: str,
+    mechanical: list[MechanicalOperation],
+) -> None:
+    found = _find_object(document, object_id)
+    if found is None:
+        return
+    item = found[2]
+    value = item if not field_path else _pointer_get(item, field_path)
+    if value is _MISSING:
+        return
+    _normalize_ref_lists(value, object_id, field_path, mechanical)
 
 
-def _sort_ref_lists(value: Any) -> None:
+def _normalize_ref_lists(
+    value: Any,
+    owner_id: str,
+    path: str,
+    mechanical: list[MechanicalOperation],
+) -> None:
     if isinstance(value, dict):
-        for child in value.values():
-            _sort_ref_lists(child)
+        for key, child in value.items():
+            _normalize_ref_lists(
+                child,
+                owner_id,
+                f"{path}/{_escape(key)}",
+                mechanical,
+            )
     elif isinstance(value, list):
         if all(isinstance(item, dict) and "object_id" in item for item in value):
-            unique = {(item.get("object_type"), item.get("object_id")): item for item in value}
-            value[:] = [unique[key] for key in sorted(unique)]
+            old = deepcopy(value)
+            value[:] = _canonical_ref_list(value)
+            if value != old:
+                mechanical.append(
+                    _mechanical(
+                        owner_id,
+                        path,
+                        old,
+                        deepcopy(value),
+                        "relation_order_normalized",
+                    )
+                )
         else:
-            for child in value:
-                _sort_ref_lists(child)
+            for index, child in enumerate(value):
+                _normalize_ref_lists(child, owner_id, f"{path}/{index}", mechanical)
+
+
+def _canonical_ref_list(value: list[Any]) -> list[Any]:
+    unique = {
+        (item.get("object_type"), item.get("object_id")): item
+        for item in value
+        if isinstance(item, dict)
+    }
+    return [unique[key] for key in sorted(unique)]
 
 
 def _objects_of_type(document: Mapping[str, Any], object_type: str) -> list[dict[str, Any]]:

@@ -3,8 +3,13 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from casefile.application.errors import ApplicationError
+from casefile.application.logical_mutation_rollout import LogicalMutationRolloutService
+from casefile.application.logical_mutation_service import _mutation_set
+from casefile.application.v1_editing import V1EditingService
 from casefile.contracts import validate_casefile
 from casefile.domain.logical_mutation import (
     CreateObject,
@@ -16,6 +21,7 @@ from casefile.domain.logical_mutation import (
     compile_logical_graph,
     evaluate_closure_rules,
     normalize_mutation,
+    relation_policy,
 )
 from casefile.domain.verification_engine import VerificationEngine
 
@@ -265,3 +271,185 @@ def test_immutable_metadata_and_structure_locks_fail_closed() -> None:
     assert "structure_lock_conflict" in {
         finding.rule_code for finding in simulation.final_findings
     }
+
+
+def test_unrelated_reference_order_is_not_silently_rewritten() -> None:
+    document = _restart_loop()
+    claim = document["claims"][0]
+    claim["support_refs"] = [
+        {"object_type": "information_unit", "object_id": "info_z"},
+        {"object_type": "information_unit", "object_id": "info_a"},
+    ]
+    original_claim = copy.deepcopy(claim)
+
+    normalized = normalize_mutation(
+        document,
+        _mutation(
+            UpdateField(
+                "op_title",
+                "res_root_cause",
+                "/title",
+                "更新后的标题",
+                document["resolution_specs"][0]["title"],
+            )
+        ),
+    )
+
+    assert normalized.candidate_document["claims"][0] == original_claim
+    assert all(
+        operation.object_id != claim["id"]
+        for operation in normalized.mechanical_operations
+    )
+
+
+def test_touched_relation_normalization_is_audited() -> None:
+    document = _restart_loop()
+    claim = document["claims"][0]
+    support = copy.deepcopy(claim["support_refs"][0])
+
+    normalized = normalize_mutation(
+        document,
+        _mutation(
+            UpdateField(
+                "op_supports",
+                claim["id"],
+                "/support_refs",
+                [support, support],
+                claim["support_refs"],
+                claim["revision"],
+            )
+        ),
+    )
+
+    candidate_claim = normalized.candidate_document["claims"][0]
+    assert candidate_claim["support_refs"] == [support]
+    assert candidate_claim["revision"] == claim["revision"] + 1
+    assert any(
+        operation.object_id == claim["id"]
+        and operation.field_path == "/support_refs"
+        and operation.reason_code == "relation_order_normalized"
+        for operation in normalized.mechanical_operations
+    )
+
+
+def test_relation_policy_drives_strength_and_hypothesis_impact() -> None:
+    document = _restart_loop()
+    graph = compile_logical_graph(document)
+    assert all(edge.strength == relation_policy(edge.relation).strength for edge in graph.edges)
+
+    target_edge = next(edge for edge in graph.edges if edge.relation == "targets_resolution")
+    mutation = _mutation(DeleteObject("op_delete_hypothesis", target_edge.prerequisite_id))
+    candidate = copy.deepcopy(document)
+    candidate["hypotheses"] = [
+        item for item in candidate["hypotheses"] if item["id"] != target_edge.prerequisite_id
+    ]
+    impact = analyze_impact(graph, compile_logical_graph(candidate), mutation)
+
+    assert target_edge.dependent_id in impact.direct_object_ids
+    assert target_edge.dependent_id in impact.affected_resolution_ids
+
+
+def test_snapshot_closure_is_shared_with_strict_verification() -> None:
+    document = _restart_loop()
+    document["claims"][0]["dependency_claim_refs"] = [
+        {"object_type": "claim", "object_id": document["claims"][0]["id"]}
+    ]
+    engine = VerificationEngine(profile="strict", draft_revision=1)
+
+    direct = {finding.finding_key for finding in engine.evaluate_snapshot_closure(document)}
+    strict = {finding.finding_key for finding in engine.verify(document).findings}
+
+    assert direct
+    assert direct <= strict
+    assert "claim_dependency_cycle" in {
+        finding.rule_code for finding in engine.evaluate_snapshot_closure(document)
+    }
+
+
+def test_shadow_scan_includes_snapshot_closure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _restart_loop()
+    document["claims"][0]["dependency_claim_refs"] = [
+        {"object_type": "claim", "object_id": document["claims"][0]["id"]}
+    ]
+    owned = SimpleNamespace(draft=SimpleNamespace(id=7, revision=3))
+    service = LogicalMutationRolloutService(object())  # type: ignore[arg-type]
+    service.projects = SimpleNamespace(get_owned=lambda _actor, _project: owned)
+    monkeypatch.setattr(
+        "casefile.application.logical_mutation_rollout.build_casefile_document",
+        lambda _session, _owned: document,
+    )
+    monkeypatch.setattr(
+        "casefile.application.logical_mutation_rollout.casefile_content_hash",
+        lambda _document: "a" * 64,
+    )
+
+    result = service.shadow_scan(1, 1)
+
+    assert result["blocking_enabled"] is False
+    assert result["finding_counts"]["hard_invariant"] >= 1
+    assert "claim_dependency_cycle" in {
+        finding["rule_code"] for finding in result["findings"]
+    }
+
+
+def test_shadow_scan_reports_not_ready_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owned = SimpleNamespace(draft=SimpleNamespace(id=9, revision=1))
+    service = LogicalMutationRolloutService(object())  # type: ignore[arg-type]
+    service.projects = SimpleNamespace(get_owned=lambda _actor, _project: owned)
+
+    def raise_not_ready(_session: object, _owned: object) -> None:
+        raise ApplicationError(
+            "brief_version_missing",
+            "Draft 尚未形成 CaseFile。",
+            status_code=409,
+        )
+
+    monkeypatch.setattr(
+        "casefile.application.logical_mutation_rollout.build_casefile_document",
+        raise_not_ready,
+    )
+
+    result = service.shadow_scan(1, 1)
+
+    assert result["scan_status"] == "not_ready"
+    assert result["reason_code"] == "brief_version_missing"
+    assert result["content_hash"] is None
+    assert result["findings"] == []
+
+
+def test_unknown_operation_type_and_non_human_debt_fail_closed() -> None:
+    with pytest.raises(ApplicationError) as operation_error:
+        _mutation_set(
+            {
+                "mutation_set_id": "mutation_bad",
+                "base_draft_id": 1,
+                "base_revision": 1,
+                "mode": "normal",
+                "closure_policy_version": "logical-mutation-v1",
+                "operations": [
+                    {
+                        "operation_type": "udpate_field",
+                        "operation_id": "op_bad",
+                        "object_id": "claim_backup_trigger",
+                    }
+                ],
+            }
+        )
+    assert operation_error.value.code == "mutation_operation_type_invalid"
+
+    owned = SimpleNamespace(draft=SimpleNamespace(id=1, revision=1))
+    with pytest.raises(ApplicationError) as debt_error:
+        V1EditingService(object()).apply_mutation_set(  # type: ignore[arg-type]
+            owned,  # type: ignore[arg-type]
+            mutation_set=_mutation(
+                DeleteObject("op_delete_info", "info_restart_log"), actor="agent"
+            ),
+            actor_user_id=None,
+            accepted_debt_finding_keys=("det:accepted",),
+            debt_acceptance_reason="不应允许非人类调用方授权。",
+        )
+    assert debt_error.value.code == "logical_debt_requires_human_authorization"

@@ -4,25 +4,13 @@ from __future__ import annotations
 
 from casefile.domain.logical_mutation.graph import LogicalGraph
 from casefile.domain.logical_mutation.models import ImpactCone, MutationSet
-
-_PROPAGATION_RELATIONS = {
-    "supports",
-    "refutes",
-    "claim_dependency",
-    "required_by_hypothesis",
-    "required_by_resolution",
-    "selected_by_resolution",
-    "basis_of_resolution",
-    "reasoning_target",
-    "reasoning_input",
-    "relative_time",
-    "protected_by_lock",
-}
+from casefile.domain.logical_mutation.policy import cycle_relations, propagating_relations
 
 
 def analyze_impact(
     baseline_graph: LogicalGraph, candidate_graph: LogicalGraph, mutation_set: MutationSet
 ) -> ImpactCone:
+    propagation_relations = propagating_relations()
     roots = tuple(sorted({operation.object_id for operation in mutation_set.operations}))
     direct: set[str] = set()
     transitive: set[str] = set()
@@ -31,8 +19,8 @@ def analyze_impact(
     resolutions: set[str] = set()
     for root in roots:
         for graph in (baseline_graph, candidate_graph):
-            root_direct = set(graph.direct_dependents(root, relations=_PROPAGATION_RELATIONS))
-            root_all = set(graph.dependents(root, relations=_PROPAGATION_RELATIONS))
+            root_direct = set(graph.direct_dependents(root, relations=propagation_relations))
+            root_all = set(graph.dependents(root, relations=propagation_relations))
             direct.update(root_direct)
             transitive.update(root_all - root_direct)
             for edge in graph.edges:
@@ -42,14 +30,20 @@ def analyze_impact(
                 item for item in root_all if graph.object_type(item) == "resolution_spec"
             }
             resolutions.update(target_resolutions)
-            paths.update(graph.paths(root, target_resolutions, relations=_PROPAGATION_RELATIONS))
+            paths.update(graph.paths(root, target_resolutions, relations=propagation_relations))
     cycles = tuple(
         sorted(
             {
-                *baseline_graph.cycles("claim_dependency"),
-                *candidate_graph.cycles("claim_dependency"),
-                *baseline_graph.cycles("relative_time"),
-                *candidate_graph.cycles("relative_time"),
+                *(
+                    cycle
+                    for relation in cycle_relations()
+                    for cycle in baseline_graph.cycles(relation)
+                ),
+                *(
+                    cycle
+                    for relation in cycle_relations()
+                    for cycle in candidate_graph.cycles(relation)
+                ),
             },
             key=lambda item: (item.relation, item.object_ids),
         )

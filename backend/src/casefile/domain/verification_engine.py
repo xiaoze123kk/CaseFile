@@ -307,6 +307,30 @@ class VerificationEngine:
             engine_version=self.VERSION,
         )
 
+    def evaluate_snapshot_closure(
+        self, document: Mapping[str, Any]
+    ) -> tuple[VerificationFinding, ...]:
+        """Evaluate versioned closure policy for one structurally valid snapshot."""
+
+        graph = compile_logical_graph(document)
+        empty_mutation = MutationSet(
+            mutation_set_id="verification_snapshot",
+            base_draft_id=1,
+            base_revision=self.draft_revision,
+            operations=(),
+            actor="system",
+        )
+        return tuple(
+            self._closure_finding(closure_issue)
+            for closure_issue in evaluate_closure_rules(
+                document,
+                document,
+                graph,
+                graph,
+                empty_mutation,
+            )
+        )
+
     def normalize_llm_findings(
         self,
         findings: Sequence[Mapping[str, Any]],
@@ -388,23 +412,7 @@ class VerificationEngine:
         baseline_hash = _document_hash(document)
         baseline_result = self.verify(document)
         baseline_graph = compile_logical_graph(document)
-        baseline_snapshot_mutation = MutationSet(
-            mutation_set_id="baseline_snapshot",
-            base_draft_id=mutation_set.base_draft_id,
-            base_revision=mutation_set.base_revision,
-            operations=(),
-            actor="system",
-        )
-        baseline_closure = tuple(
-            self._closure_finding(issue)
-            for issue in evaluate_closure_rules(
-                document,
-                document,
-                baseline_graph,
-                baseline_graph,
-                baseline_snapshot_mutation,
-            )
-        )
+        baseline_closure = self.evaluate_snapshot_closure(document)
         baseline_result = VerificationResult(
             findings=tuple(
                 {
@@ -738,22 +746,7 @@ class VerificationEngine:
                 )
             )
         if structural_valid and self.profile == "strict":
-            graph = compile_logical_graph(document)
-            empty_mutation = MutationSet(
-                mutation_set_id="verification_snapshot",
-                base_draft_id=1,
-                base_revision=self.draft_revision,
-                operations=(),
-                actor="system",
-            )
-            for closure_issue in evaluate_closure_rules(
-                document,
-                document,
-                graph,
-                graph,
-                empty_mutation,
-            ):
-                findings.append(self._closure_finding(closure_issue))
+            findings.extend(self.evaluate_snapshot_closure(document))
         return tuple(findings), structural_valid
 
     def _closure_finding(self, issue: ClosureIssue) -> VerificationFinding:

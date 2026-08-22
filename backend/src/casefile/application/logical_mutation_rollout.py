@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
-from casefile.application.errors import not_found
+from casefile.application.errors import ApplicationError, not_found
 from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.domain.logical_mutation import CLOSURE_POLICY_VERSION, MutationSet, UpdateField
@@ -31,23 +31,50 @@ class LogicalMutationRolloutService:
         owned = self.projects.get_owned(actor_user_id, project_id)
         if owned is None:
             raise not_found("Project")
-        document = build_casefile_document(self.session, owned)
+        try:
+            document = build_casefile_document(self.session, owned)
+        except ApplicationError as error:
+            if error.code != "brief_version_missing":
+                raise
+            return {
+                "draft_id": owned.draft.id,
+                "draft_revision": owned.draft.revision,
+                "scan_status": "not_ready",
+                "reason_code": error.code,
+                "closure_policy_version": CLOSURE_POLICY_VERSION,
+                "content_hash": None,
+                "mechanical_mismatches": [],
+                "mechanical_mismatch_count": 0,
+                "finding_counts": {},
+                "findings": [],
+                "blocking_enabled": False,
+            }
         mismatches = _reciprocal_mismatches(document)
-        result = VerificationEngine(
+        engine = VerificationEngine(
             profile="fast", draft_revision=owned.draft.revision
-        ).verify(document)
+        )
+        result = engine.verify(document)
+        findings = result.findings
+        if result.structural_valid:
+            findings = tuple(
+                {
+                    item.finding_key: item
+                    for item in (*findings, *engine.evaluate_snapshot_closure(document))
+                }.values()
+            )
         by_level = Counter(
-            str(item.payload.get("closure_level", "legacy")) for item in result.findings
+            str(item.payload.get("closure_level", "legacy")) for item in findings
         )
         return {
             "draft_id": owned.draft.id,
             "draft_revision": owned.draft.revision,
+            "scan_status": "completed",
             "closure_policy_version": CLOSURE_POLICY_VERSION,
             "content_hash": casefile_content_hash(document),
             "mechanical_mismatches": mismatches,
             "mechanical_mismatch_count": len(mismatches),
             "finding_counts": dict(sorted(by_level.items())),
-            "findings": [item.as_dict() for item in result.findings],
+            "findings": [item.as_dict() for item in findings],
             "blocking_enabled": False,
         }
 

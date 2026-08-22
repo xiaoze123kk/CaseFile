@@ -34,6 +34,7 @@ from casefile.data_postgres.models import (
     AgentModelCall,
     AgentPatchSet,
     AgentStepRun,
+    AuditEvent,
     DraftOperation,
     TaskRun,
 )
@@ -202,6 +203,17 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 )
             )
             assert operation_types == ["logical_mutation_apply"]
+            debt_audit = session.scalar(
+                select(AuditEvent).where(
+                    AuditEvent.project_id == project_id,
+                    AuditEvent.action == "logical_mutation.debt_accepted",
+                )
+            )
+            assert debt_audit is not None
+            assert debt_audit.actor_user_id == actor_id
+            assert debt_audit.details_jsonb["finding_keys"] == debt_keys
+            assert debt_audit.details_jsonb["closure_policy_version"] == "logical-mutation-v1"
+            assert debt_audit.details_jsonb["accepted_at"]
 
         with factory() as session:
             undone = WorkflowService(session).undo_agent_patch_set(
