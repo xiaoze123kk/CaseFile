@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
+from dataclasses import replace
 
+import pytest
 from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
+    build_edit_target_manifest,
     normalize_routing_hint,
     resolve_rule_route,
     task_understanding_for_rule,
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
+from pydantic import ValidationError
 
 
 def make_chat_request(
@@ -111,6 +113,101 @@ def test_destructive_free_text_uses_the_deterministic_scope_route() -> None:
     assert rule.primary_intent == "unsupported_action"
     assert rule.profile == "unsupported_action.scope"
     assert rule.reason_code == "rule_safety:destructive_action"
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "直接修改 Draft 数据。",
+        "直接写入工作稿。",
+        "绕过审阅修改 Draft。",
+        "skip review and edit Draft",
+    ),
+)
+def test_review_bypass_free_text_uses_the_deterministic_scope_route(
+    message: str,
+) -> None:
+    rule = resolve_rule_route(
+        make_chat_request(message=message, hint={"entrypoint": "free_text"})
+    )
+
+    assert rule is not None
+    assert rule.route_source == "rule_safety"
+    assert rule.primary_intent == "unsupported_action"
+    assert rule.reason_code == "rule_safety:direct_draft_bypass"
+
+
+@pytest.mark.parametrize("message", ("直接修改 Lucy 的描述。", "修改 Lucy 的描述。"))
+def test_direct_object_edit_is_not_mistaken_for_review_bypass(message: str) -> None:
+    assert (
+        resolve_rule_route(
+            make_chat_request(message=message, hint={"entrypoint": "free_text"})
+        )
+        is None
+    )
+
+
+def _manifest_request(*, focus: dict, message: str = "调整午夜重启的标题。") -> CaseFileChatRequest:
+    request = make_chat_request(message=message, focus=focus)
+    return replace(
+        request,
+        casefile={
+            "events": [{"id": "evt_restart", "title": "午夜重启"}],
+            "resolution_specs": [{"id": "res_restart", "title": "午夜重启"}],
+            "entities": [{"id": "ent_lucy", "name": "Lucy"}],
+        },
+        editable_fields_by_collection={
+            "events": ("title",),
+            "resolution_specs": ("title",),
+            "entities": ("description",),
+        },
+    )
+
+
+def test_edit_manifest_uses_focus_to_disambiguate_duplicate_labels() -> None:
+    manifest = build_edit_target_manifest(
+        _manifest_request(focus={"event_ids": ["evt_restart"]})
+    )
+
+    assert manifest.as_list() == [{"object_id": "evt_restart", "path": "/title"}]
+    assert manifest.ambiguous is False
+
+
+def test_edit_manifest_keeps_unresolved_duplicate_label_ambiguous() -> None:
+    for focus in ({}, {"event_ids": ["evt_restart"], "object_ids": ["res_restart"]}):
+        manifest = build_edit_target_manifest(_manifest_request(focus=focus))
+        assert manifest.targets == ()
+        assert manifest.ambiguous is True
+
+
+def test_edit_manifest_reports_partial_ambiguity_without_dropping_unique_target() -> None:
+    manifest = build_edit_target_manifest(
+        _manifest_request(
+            focus={},
+            message="调整 Lucy 的描述和午夜重启的标题。",
+        )
+    )
+
+    assert manifest.as_list() == [{"object_id": "ent_lucy", "path": "/description"}]
+    assert manifest.ambiguous is True
+
+
+def test_edit_manifest_assigns_each_field_to_its_nearest_object_mention() -> None:
+    manifest = build_edit_target_manifest(
+        _manifest_request(
+            focus={"event_ids": ["evt_restart"]},
+            message=(
+                "把 Lucy 的描述改成负责调查午夜异常的研究员，"
+                "并把午夜重启的标题改成午夜例行重启。"
+            ),
+        )
+    )
+
+    assert manifest.as_list() == [
+        {"object_id": "ent_lucy", "path": "/description"},
+        {"object_id": "evt_restart", "path": "/title"},
+    ]
+    assert manifest.ambiguous is False
 
 
 def test_unknown_preset_normalizes_to_free_text_and_does_not_hit_rules() -> None:

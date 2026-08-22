@@ -29,6 +29,7 @@ from casefile.benchmark.chat_outcome_eval import (
     ChatOutcomeExpectations,
     ChatOutcomeTask,
     ChatOutcomeTrialVerdict,
+    ExpectedSuggestion,
     build_outcome_tasks,
     grade_chat_outcome,
 )
@@ -201,7 +202,10 @@ def _live_expectations(
         expected_object_ids=expected_objects,
         expected_event_ids=expected_events,
         expected_validation_issue_ids=expected_issues,
-        required_suggestion_paths=suggestion_paths,
+        required_suggestions=tuple(
+            ExpectedSuggestion(object_id, f"/{path}")
+            for object_id, path in suggestion_paths
+        ),
         expected_primary_intent=task.expectations.expected_primary_intent,
         requires_suggestion=bool(suggestion_paths),
         references_must_exist=True,

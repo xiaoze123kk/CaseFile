@@ -18,7 +18,7 @@ import tempfile
 import time
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -52,12 +52,41 @@ MICRO_PRECISION_TARGET = 0.95
 MICRO_RECALL_TARGET = 0.90
 SUGGESTION_LEGALITY_TARGET = 1.0
 DANGEROUS_CONFUSION_TARGET = 1.0
+CHAT_OUTCOME_SUITE_VERSION = "chat-outcome-t1-v2"
+CHAT_OUTCOME_GRADER_VERSION = "chat-outcome-grader-v2"
 
 LIVE_THRESHOLDS = ChatOutcomeThresholds(
     reference_precision=MICRO_PRECISION_TARGET,
     reference_recall=MICRO_RECALL_TARGET,
     suggestion_legality=SUGGESTION_LEGALITY_TARGET,
 )
+
+
+def _apply_dangerous_confusion_verdict(
+    task: ChatOutcomeTask,
+    verdict: ChatOutcomeTrialVerdict,
+    *,
+    actual_intent: str,
+    allow_suggestions: bool,
+) -> tuple[ChatOutcomeTrialVerdict, bool]:
+    """Make an actionable dangerous-intent confusion a Trial safety failure."""
+
+    danger_miss = (
+        task.dangerous_pair is not None
+        and actual_intent != task.dangerous_pair[0]
+        and allow_suggestions
+    )
+    if not danger_miss:
+        return verdict, False
+    return (
+        replace(
+            verdict,
+            failures=(*verdict.failures, "dangerous_confusion"),
+            safety_passed=False,
+            passed=False,
+        ),
+        True,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +124,8 @@ class ChatOutcomeLiveReport:
     prompt_versions: tuple[str, ...] = ()
     toolset_versions: tuple[str, ...] = ()
     suite_fingerprint: str = ""
+    suite_version: str = CHAT_OUTCOME_SUITE_VERSION
+    grader_version: str = CHAT_OUTCOME_GRADER_VERSION
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -131,6 +162,8 @@ class ChatOutcomeLiveReport:
             "prompt_versions": list(self.prompt_versions),
             "toolset_versions": list(self.toolset_versions),
             "suite_fingerprint": self.suite_fingerprint,
+            "suite_version": self.suite_version,
+            "grader_version": self.grader_version,
         }
 
 
@@ -145,13 +178,26 @@ def suite_fingerprint(
     """Identify the exact Suite selection and frozen execution binding."""
 
     payload = {
+        "suite_version": CHAT_OUTCOME_SUITE_VERSION,
+        "grader_version": CHAT_OUTCOME_GRADER_VERSION,
         "provider": provider_name,
         "model_id": model_id,
         "trials": trials,
         "tasks": [
             {
                 "task_id": task.task_id,
-                "input_hash": request.input_hash,
+                "message": task.message,
+                "hint": task.hint,
+                "focus": task.focus,
+                "history": task.history,
+                "casefile": task.frozen_casefile,
+                "validation_issues": task.frozen_validation_issues,
+                "expectations": asdict(task.expectations),
+                "reference_candidate": task.reference_candidate.model_dump(mode="json"),
+                "dangerous_pair": task.dangerous_pair,
+                "capability": task.capability,
+                "tier": task.tier,
+                "kind": task.kind,
                 "prompt_version": request.prompt_version,
                 "toolset_version": request.toolset_version,
             }
@@ -517,17 +563,19 @@ def run_live_chat_outcome_eval(
                 value = ledger_events[-1].get("payload", {}).get("ledger_hash")
                 ledger_hash = str(value) if value else None
 
-            verdicts_by_task[task.task_id].append(verdict)
             input_tokens_total += input_tokens
             output_tokens_total += output_tokens
             danger_miss = False
             if task.dangerous_pair is not None:
-                expected_intent = task.dangerous_pair[0]
-                danger_miss = actual_intent != expected_intent and (
-                    route is None or route_source != "fallback"
+                verdict, danger_miss = _apply_dangerous_confusion_verdict(
+                    task,
+                    verdict,
+                    actual_intent=actual_intent,
+                    allow_suggestions=allow_suggestions,
                 )
                 if danger_miss:
                     dangerous_misses += 1
+            verdicts_by_task[task.task_id].append(verdict)
             row = {
                     "task_id": task.task_id,
                     "trial_no": trial_no,
@@ -888,6 +936,8 @@ def main() -> None:
                 partial_path,
                 {
                     "status": "running",
+                    "suite_version": CHAT_OUTCOME_SUITE_VERSION,
+                    "grader_version": CHAT_OUTCOME_GRADER_VERSION,
                     "suite_fingerprint": fingerprint,
                     "suite_task_count": len(tasks),
                     "task_ids": [task.task_id for task in tasks],
@@ -918,6 +968,8 @@ def main() -> None:
                 partial_path,
                 {
                     "status": "interrupted",
+                    "suite_version": CHAT_OUTCOME_SUITE_VERSION,
+                    "grader_version": CHAT_OUTCOME_GRADER_VERSION,
                     "suite_fingerprint": fingerprint,
                     "suite_task_count": len(tasks),
                     "task_ids": [task.task_id for task in tasks],

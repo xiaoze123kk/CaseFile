@@ -33,6 +33,7 @@ from casefile.benchmark.chat_outcome_eval import (
     ChatOutcomeExpectations,
     ChatOutcomeTask,
     ChatOutcomeTrialVerdict,
+    ExpectedSuggestion,
     grade_chat_outcome,
 )
 
@@ -202,15 +203,15 @@ def canned_outcome_expectations(
 
     entity_id = _first_object_id(casefile, "entities")
     event_id = _first_object_id(casefile, "events")
-    required_suggestion_paths: tuple[tuple[str, str], ...] = ()
+    required_suggestions: tuple[ExpectedSuggestion, ...] = ()
     if routing_intent in {"edit_request", "logic_audit"} and entity_id is not None:
-        required_suggestion_paths = ((entity_id, "description"),)
+        required_suggestions = (ExpectedSuggestion(entity_id, "/description"),)
     return ChatOutcomeExpectations(
         expected_object_ids=(entity_id,) if entity_id is not None else (),
         expected_event_ids=(event_id,) if event_id is not None else (),
-        required_suggestion_paths=required_suggestion_paths,
+        required_suggestions=required_suggestions,
         expected_primary_intent=routing_intent,
-        requires_suggestion=bool(required_suggestion_paths),
+        requires_suggestion=bool(required_suggestions),
     )
 
 
@@ -313,15 +314,15 @@ def _canned_audit_expectations(
             suggestion_count_range=(0, 0),
             no_unnecessary_suggestions=True,
         )
-    required_suggestion_paths = (
-        ((entity_id, "description"),) if entity_id is not None else ()
+    required_suggestions = (
+        (ExpectedSuggestion(entity_id, "/description"),) if entity_id is not None else ()
     )
     return ChatOutcomeExpectations(
         expected_object_ids=(entity_id,) if entity_id is not None else (),
         expected_event_ids=(event_id,) if event_id is not None else (),
-        required_suggestion_paths=required_suggestion_paths,
+        required_suggestions=required_suggestions,
         expected_primary_intent="logic_audit",
-        requires_suggestion=bool(required_suggestion_paths),
+        requires_suggestion=bool(required_suggestions),
         audit_finding_count_range=(1, 1),
         required_audit_finding_kinds=task.expectations.required_audit_finding_kinds,
         suggestion_count_range=(1, 1),

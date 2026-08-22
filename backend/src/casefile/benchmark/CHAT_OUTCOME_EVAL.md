@@ -13,14 +13,17 @@ Outcome 划分，门禁只信任确定性 Grader 与落库事实。
 | L3 反馈 | `python -m casefile.benchmark chat-feedback --database-url ...` | 只读聚合采纳/拒绝/撤销/stale/采纳后重写率 |
 | 失败分诊 | `python -m casefile.benchmark.chat_outcome_triage --report report.json` | 按失败签名分组，指示先看哪些 Transcript |
 
-当前 T1 Suite 为 34 Task。M0/M2 报告必须保存 `suite_task_count`、实际选中的
-`task_ids`、`prompt_versions`、`toolset_versions` 和 `suite_fingerprint`；子集诊断不能
+当前 T1 Suite 为 34 Task。M0 在 Reference Grader 前验证 frozen IDs、精确 suggestion
+JSON 值、非 no-op 和生产 patch/simulation gate。M2 报告必须保存 `suite_task_count`、
+实际选中的 `task_ids`、`prompt_versions`、`toolset_versions`、`suite_version`、
+`grader_version` 和 `suite_fingerprint`；子集诊断不能
 替代完整 34×5 发布门禁。
 
 M2 默认冻结 `casefile-chat-v13`；如需重放历史基线，必须显式传入
 `--prompt-version casefile-chat-v12`。使用 `--report-path <path> --resume` 可从 `<path>.partial.json` 续跑。Runner 每个
 Trial 完成后原子更新 checkpoint，并输出精确 `completed/total` 进度；续跑只接受 Suite、
-模型、Trial 数和冻结输入完全一致的 fingerprint。中断报告不保存凭据、URL、请求正文或
+模型、Trial 数、冻结输入、success criteria、Reference 和 Grader 版本完全一致的
+fingerprint。中断报告不保存凭据、URL、请求正文或
 Provider 原始响应。
 
 ## Failure triage

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace
+
 from casefile.agent_runtime.models import CaseFileChatCandidateV2
 from casefile.agent_runtime.prompt import chat_executor_output_type
 from casefile.benchmark.chat_outcome_eval import (
@@ -12,6 +15,7 @@ from casefile.benchmark.chat_outcome_eval import (
     grade_reference_solution,
     resolve_task_route,
     run_calibration,
+    validate_task_contract,
 )
 
 
@@ -30,6 +34,12 @@ def test_outcome_suite_is_balanced() -> None:
     assert sum(task.kind == "adversarial" for task in tasks) == 8
 
 
+def test_fourteen_golden_series_tasks_have_one_capability() -> None:
+    goldens = [task for task in build_outcome_tasks() if task.task_id.startswith("golden-")]
+    assert len(goldens) == 14
+    assert all(task.capability for task in goldens)
+
+
 def test_every_reference_solution_passes_grader() -> None:
     for task in build_outcome_tasks():
         verdict = grade_reference_solution(task)
@@ -40,8 +50,9 @@ def test_calibration_accepts_references_and_catches_mutations() -> None:
     report = run_calibration()
     assert report.status == "passed"
     assert report.reference_failures == ()
+    assert report.contract_failures == ()
     assert report.mutation_misses == ()
-    assert len(report.mutation_verdicts) == 12
+    assert len(report.mutation_verdicts) == 16
 
 
 def test_mutations_fail_their_expected_gate() -> None:
@@ -86,3 +97,48 @@ def test_live_request_binds_v12_and_audit_output_v2() -> None:
     resolved = resolve_task_route(task)
     assert resolved.route is not None
     assert chat_executor_output_type(resolved) is CaseFileChatCandidateV2
+
+
+def test_calibrated_edit_references_are_non_noop_and_production_safe() -> None:
+    edit_tasks = [
+        task for task in build_outcome_tasks() if task.reference_candidate.suggestions
+    ]
+    assert edit_tasks
+    for task in edit_tasks:
+        assert validate_task_contract(task) == ()
+
+
+def test_contract_gate_rejects_a_noop_reference() -> None:
+    task = next(
+        task for task in build_outcome_tasks() if task.task_id == "golden-edit-description"
+    )
+    casefile = deepcopy(task.frozen_casefile)
+    suggestion = task.reference_candidate.suggestions[0]
+    casefile["entities"][0]["description"] = __import__("json").loads(
+        suggestion.value_json
+    )
+
+    failures = validate_task_contract(replace(task, casefile=casefile))
+
+    assert any("reference_patch_noop" in failure for failure in failures)
+
+
+def test_recalibrated_fixture_contracts_are_explicit() -> None:
+    tasks = {task.task_id: task for task in build_outcome_tasks()}
+    inspect = tasks["golden-analysis-inspect"].expectations
+    assert inspect.expected_object_ids == ()
+    assert inspect.expected_event_ids == ("evt_restart",)
+    assert inspect.expected_validation_issue_ids == ("validator:issue-1",)
+    assert "boundary-duplicate-label-with-focus" in tasks
+    assert "boundary-cross-collection-refs" not in tasks
+
+    multi_field = tasks["golden-multi-field-edit"]
+    assert all(
+        item.value_json is not None
+        for item in multi_field.expectations.required_suggestions
+    )
+    multi_object = tasks["golden-multi-object-edit"]
+    assert all(
+        item.value_json is not None
+        for item in multi_object.expectations.required_suggestions
+    )

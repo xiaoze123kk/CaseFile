@@ -37,6 +37,21 @@ _DESTRUCTIVE_ACTION_MARKERS = (
     "remove",
 )
 
+_DRAFT_TARGET_MARKERS = ("draft", "工作稿")
+_REVIEW_BYPASS_MARKERS = (
+    "直接修改",
+    "直接改",
+    "直接写入",
+    "绕过审阅",
+    "跳过审阅",
+    "不经审阅",
+    "directly modify",
+    "directly edit",
+    "write directly",
+    "bypass review",
+    "skip review",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class EditTarget:
@@ -74,28 +89,70 @@ def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManife
                 label = item.get(field)
                 if isinstance(label, str) and label.strip() and label.casefold() in message:
                     matches.setdefault(label.casefold(), []).append(object_id)
-    matched_ids = {
-        ids[0]
-        for label, ids in matches.items()
-        if len(ids) == 1
-        and not any(label != other and label in other for other in matches)
+    focused_ids = {
+        object_id
+        for slot in ("object_ids", "event_ids")
+        for object_id in request.focus.get(slot, ())
+        if isinstance(object_id, str)
     }
-    requested_paths = {
-        path
-        for path, aliases in _EDIT_FIELD_ALIASES.items()
-        if any(alias.casefold() in message for alias in aliases)
-    }
+    resolved_labels: dict[str, str] = {}
+    unresolved_label = False
+    for label, ids in matches.items():
+        unique_ids = tuple(dict.fromkeys(ids))
+        if any(label != other and label in other for other in matches):
+            unresolved_label = True
+            continue
+        if len(unique_ids) == 1:
+            resolved_labels[label] = unique_ids[0]
+            continue
+        focused_matches = tuple(
+            object_id for object_id in unique_ids if object_id in focused_ids
+        )
+        if len(focused_matches) == 1:
+            resolved_labels[label] = focused_matches[0]
+        else:
+            unresolved_label = True
+    label_occurrences = [
+        (message.index(label), label)
+        for label in matches
+        if label in message
+    ]
+    paths_by_id: dict[str, set[str]] = {}
+    for path, aliases in _EDIT_FIELD_ALIASES.items():
+        for alias in aliases:
+            alias_folded = alias.casefold()
+            start = 0
+            while (alias_position := message.find(alias_folded, start)) >= 0:
+                if label_occurrences:
+                    preceding_labels = [
+                        occurrence
+                        for occurrence in label_occurrences
+                        if occurrence[0] <= alias_position
+                    ]
+                    if preceding_labels:
+                        _, nearest_label = max(preceding_labels)
+                    else:
+                        _, nearest_label = min(
+                            label_occurrences,
+                            key=lambda occurrence: abs(
+                                occurrence[0] - alias_position
+                            ),
+                        )
+                    resolved_object_id = resolved_labels.get(nearest_label)
+                    if resolved_object_id is not None:
+                        paths_by_id.setdefault(resolved_object_id, set()).add(path)
+                start = alias_position + len(alias_folded)
     targets: list[EditTarget] = []
-    for object_id in sorted(matched_ids):
+    for object_id in sorted(paths_by_id):
         editable = set(
             request.editable_fields_by_collection.get(collection_by_id[object_id], ())
         )
-        for path in sorted(requested_paths):
+        for path in sorted(paths_by_id[object_id]):
             if path in editable or path.removeprefix("/") in editable:
                 targets.append(EditTarget(object_id=object_id, path=path))
     return EditTargetManifest(
         targets=tuple(targets),
-        ambiguous=bool(matches) and not bool(targets),
+        ambiguous=unresolved_label or (bool(matches) and not bool(targets)),
     )
 ALLOWED_PRESET_IDS = frozenset({"inspect", "evidence", "compare", "gate", "audit"})
 VALID_ENTRYPOINTS = frozenset({"free_text", "preset", "issue_action"})
@@ -169,6 +226,16 @@ def resolve_rule_route(request: CaseFileChatRequest) -> RuleRoute | None:
             primary_intent="unsupported_action",
             profile="unsupported_action.scope",
             reason_code="rule_safety:destructive_action",
+        )
+    normalized_message = request.message.casefold()
+    if any(marker in normalized_message for marker in _DRAFT_TARGET_MARKERS) and any(
+        marker in normalized_message for marker in _REVIEW_BYPASS_MARKERS
+    ):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="unsupported_action",
+            profile="unsupported_action.scope",
+            reason_code="rule_safety:direct_draft_bypass",
         )
     hint = request.routing_hint
     if not hint:

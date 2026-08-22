@@ -12,8 +12,15 @@ from casefile.agent_runtime.models import (
     ToolMetrics,
 )
 from casefile.agent_runtime.providers import FakeProvider
-from casefile.benchmark.chat_outcome_eval import build_outcome_tasks
-from casefile.benchmark.chat_outcome_live_eval import run_live_chat_outcome_eval
+from casefile.benchmark.chat_outcome_eval import (
+    ChatOutcomeTrialVerdict,
+    build_outcome_tasks,
+)
+from casefile.benchmark.chat_outcome_live_eval import (
+    _apply_dangerous_confusion_verdict,
+    run_live_chat_outcome_eval,
+    suite_fingerprint,
+)
 
 
 class ReferenceEchoProvider(FakeProvider):
@@ -216,6 +223,104 @@ def test_live_runner_can_freeze_v13_for_a_trial() -> None:
 
     assert report.prompt_versions == ("casefile-chat-v13",)
     assert report.suite_fingerprint
+
+
+def test_dangerous_confusion_is_a_trial_safety_failure_only_when_actionable() -> None:
+    task = next(
+        task
+        for task in build_outcome_tasks()
+        if task.task_id == "adversarial-danger-direct-draft"
+    )
+    verdict = ChatOutcomeTrialVerdict(task_id=task.task_id)
+
+    unsafe, danger_miss = _apply_dangerous_confusion_verdict(
+        task,
+        verdict,
+        actual_intent="edit_request",
+        allow_suggestions=True,
+    )
+    assert danger_miss is True
+    assert unsafe.safety_passed is False
+    assert unsafe.passed is False
+    assert "dangerous_confusion" in unsafe.failures
+
+    fail_closed, danger_miss = _apply_dangerous_confusion_verdict(
+        task,
+        verdict,
+        actual_intent="edit_request",
+        allow_suggestions=False,
+    )
+    assert danger_miss is False
+    assert fail_closed == verdict
+
+
+def test_danger_miss_updates_trial_and_aggregate_safety(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    task = next(
+        task
+        for task in build_outcome_tasks()
+        if task.task_id == "adversarial-danger-direct-draft"
+    )
+
+    def force_danger(task, verdict, **_kwargs):  # type: ignore[no-untyped-def]
+        return (
+            replace(
+                verdict,
+                failures=(*verdict.failures, "dangerous_confusion"),
+                safety_passed=False,
+                passed=False,
+            ),
+            True,
+        )
+
+    monkeypatch.setattr(live_eval, "_apply_dangerous_confusion_verdict", force_danger)
+    report = run_live_chat_outcome_eval(
+        lambda: ReferenceEchoProvider(task.reference_candidate),
+        provider_name="fake",
+        model_id="forced-danger",
+        api_key="fake",
+        tasks=(task,),
+        trials=1,
+    )
+
+    assert report.rows[0]["danger_miss"] is True
+    assert report.rows[0]["safety_passed"] is False
+    assert report.dangerous_confusion_recall == 0.0
+    assert report.safety_pass_at_k == 0.0
+    assert report.unsafe_trial_rate == 1.0
+    assert report.status == "failed"
+
+
+def test_suite_fingerprint_covers_frozen_contract_and_grader_version(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    task = build_outcome_tasks()[0]
+
+    def fingerprint(candidate=task):  # type: ignore[no-untyped-def]
+        return suite_fingerprint(
+            [candidate],
+            trials=5,
+            provider_name="fake",
+            model_id="fake",
+        )
+
+    baseline = fingerprint()
+    assert fingerprint(replace(task, message=f"{task.message} ")) != baseline
+    assert fingerprint(
+        replace(
+            task,
+            expectations=replace(task.expectations, expected_answer_markers=("Lucy",)),
+        )
+    ) != baseline
+    assert fingerprint(
+        replace(
+            task,
+            reference_candidate=task.reference_candidate.model_copy(
+                update={"answer": "变更"}
+            ),
+        )
+    ) != baseline
+    monkeypatch.setattr(live_eval, "CHAT_OUTCOME_GRADER_VERSION", "test-grader-version")
+    assert fingerprint() != baseline
 
 
 def test_live_report_keeps_protocol_and_validation_history() -> None:
