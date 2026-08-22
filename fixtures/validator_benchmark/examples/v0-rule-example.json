@@ -1,0 +1,49 @@
+{
+  "case_id": "example-temporal-rule",
+  "mutations": [
+    {
+      "op": "add",
+      "path": "/events/-",
+      "value": {
+        "id": "evt_remote_overlap",
+        "title": "远端走廊检查",
+        "truth_status": "canon_true",
+        "time": {
+          "kind": "range",
+          "start": "2042-06-01T20:01",
+          "end": "2042-06-01T20:02",
+          "precision": "minute"
+        },
+        "participant_refs": [
+          {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        ],
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_corridor"
+        },
+        "cause_refs": [],
+        "effect_refs": [],
+        "observed_by_refs": [],
+        "tags": [],
+        "source_refs": [],
+        "confidence": 1.0,
+        "confirmation_status": "user_confirmed",
+        "created_by": {
+          "actor_type": "user",
+          "actor_id": "user_local_owner"
+        },
+        "updated_at": "2042-06-01T12:00:00Z",
+        "revision": 1
+      }
+    }
+  ],
+  "expected": {
+    "structural_valid": true,
+    "required_rule_codes": [
+      "temporal_exclusivity_violation"
+    ]
+  }
+}

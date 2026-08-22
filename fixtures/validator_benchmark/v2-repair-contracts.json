@@ -1,0 +1,267 @@
+{
+  "schema_version": "casefile-validator-benchmark-v1",
+  "suite_id": "validator-v2-repair-contracts",
+  "cases": [
+    {
+      "case_id": "v2-empty-plan",
+      "issues": [],
+      "expected_plan": {
+        "preserve": [],
+        "add": [],
+        "remove": [],
+        "replace": [],
+        "fix": []
+      }
+    },
+    {
+      "case_id": "v2-missing-target-becomes-add",
+      "issues": [
+        {
+          "code": "missing_required_suggestion",
+          "stage": "audit",
+          "path": "/suggestions",
+          "repairable": true,
+          "details": {
+            "missing": [
+              "ent_researcher:/description"
+            ]
+          }
+        }
+      ],
+      "expected_plan": {
+        "preserve": [],
+        "add": [
+          "ent_researcher:/description"
+        ],
+        "remove": [],
+        "replace": [],
+        "fix": [
+          {
+            "code": "missing_required_suggestion",
+            "path": "/suggestions",
+            "details": {
+              "missing": [
+                "ent_researcher:/description"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "v2-extra-target-becomes-remove",
+      "issues": [
+        {
+          "code": "wrong_target",
+          "stage": "audit",
+          "path": "/suggestions/0",
+          "repairable": true,
+          "details": {
+            "extra": [
+              "evt_restart_seven:/truth_status"
+            ]
+          }
+        }
+      ],
+      "expected_plan": {
+        "preserve": [],
+        "add": [],
+        "remove": [
+          "evt_restart_seven:/truth_status"
+        ],
+        "replace": [],
+        "fix": [
+          {
+            "code": "wrong_target",
+            "path": "/suggestions/0",
+            "details": {
+              "extra": [
+                "evt_restart_seven:/truth_status"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "v2-add-wins-over-remove-for-same-target",
+      "issues": [
+        {
+          "code": "audit_suggestion_server_gate_failed",
+          "stage": "patch",
+          "path": "/suggestions/0",
+          "repairable": true,
+          "details": {
+            "extra": [
+              "ent_researcher:/description"
+            ]
+          }
+        },
+        {
+          "code": "audit_repairable_finding_missing_suggestion",
+          "stage": "audit",
+          "path": "/suggestions",
+          "repairable": true,
+          "details": {
+            "missing": [
+              "ent_researcher:/description"
+            ]
+          }
+        }
+      ],
+      "expected_plan": {
+        "preserve": [],
+        "add": [
+          "ent_researcher:/description"
+        ],
+        "remove": [],
+        "replace": [],
+        "fix": [
+          {
+            "code": "audit_suggestion_server_gate_failed",
+            "path": "/suggestions/0",
+            "details": {
+              "extra": [
+                "ent_researcher:/description"
+              ]
+            }
+          },
+          {
+            "code": "audit_repairable_finding_missing_suggestion",
+            "path": "/suggestions",
+            "details": {
+              "missing": [
+                "ent_researcher:/description"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "v2-preserve-is-deduped-and-sorted",
+      "issues": [
+        {
+          "code": "audit_integrity",
+          "stage": "audit",
+          "path": "/audit_findings",
+          "repairable": true,
+          "details": {
+            "preserve": [
+              "F2",
+              "F1",
+              "F2"
+            ]
+          }
+        }
+      ],
+      "expected_plan": {
+        "preserve": [
+          "F1",
+          "F2"
+        ],
+        "add": [],
+        "remove": [],
+        "replace": [],
+        "fix": [
+          {
+            "code": "audit_integrity",
+            "path": "/audit_findings",
+            "details": {
+              "preserve": [
+                "F2",
+                "F1",
+                "F2"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "v2-replacement-payload-is-preserved",
+      "issues": [
+        {
+          "code": "audit_suggestion_value_not_frozen",
+          "stage": "patch",
+          "path": "/suggestions/0",
+          "repairable": true,
+          "details": {
+            "replace": [
+              {
+                "object_id": "ent_researcher",
+                "path": "/description",
+                "reason_code": "value_mismatch",
+                "allowed_fields": [
+                  "description",
+                  "name"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "expected_plan": {
+        "preserve": [],
+        "add": [],
+        "remove": [],
+        "replace": [
+          {
+            "object_id": "ent_researcher",
+            "path": "/description",
+            "reason_code": "value_mismatch",
+            "allowed_fields": [
+              "description",
+              "name"
+            ]
+          }
+        ],
+        "fix": [
+          {
+            "code": "audit_suggestion_value_not_frozen",
+            "path": "/suggestions/0",
+            "details": {
+              "replace": [
+                {
+                  "object_id": "ent_researcher",
+                  "path": "/description",
+                  "reason_code": "value_mismatch",
+                  "allowed_fields": [
+                    "description",
+                    "name"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "v2-nonrepairable-issue-is-ignored",
+      "issues": [
+        {
+          "code": "hard_invariant",
+          "stage": "patch",
+          "path": "/suggestions/0",
+          "repairable": false,
+          "details": {
+            "missing": [
+              "ent_researcher:/description"
+            ],
+            "extra": [
+              "evt_restart_seven:/time"
+            ]
+          }
+        }
+      ],
+      "expected_plan": {
+        "preserve": [],
+        "add": [],
+        "remove": [],
+        "replace": [],
+        "fix": []
+      }
+    }
+  ]
+}

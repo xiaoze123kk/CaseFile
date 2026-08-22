@@ -1,0 +1,370 @@
+{
+  "schema_version": "casefile-validator-benchmark-v1",
+  "suite_id": "validator-v0-rules",
+  "base_fixture": "fixtures/casefiles/restart_loop.casefile.json",
+  "document_cases": [
+    {
+      "case_id": "v0-clean-baseline",
+      "mutations": [],
+      "expected": {
+        "structural_valid": true,
+        "exact_rule_codes": [],
+        "clean": true
+      }
+    },
+    {
+      "case_id": "v0-knowledge-before-source-detected",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_future_log",
+            "title": "稍后生成的补充日志",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:10",
+              "end": "2042-06-01T20:11",
+              "precision": "minute"
+            },
+            "participant_refs": [],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/information_units/0/source_event_ref",
+          "value": {
+            "object_type": "event",
+            "object_id": "evt_future_log"
+          }
+        }
+      ],
+      "expected": {
+        "structural_valid": true,
+        "required_rule_codes": [
+          "knowledge_state_available_before_source"
+        ],
+        "exact_rule_codes": [
+          "knowledge_state_available_before_source"
+        ]
+      }
+    },
+    {
+      "case_id": "v0-knowledge-same-time-boundary-clean",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_same_time_log",
+            "title": "同时生成的补充日志",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:00",
+              "end": "2042-06-01T20:00",
+              "precision": "minute"
+            },
+            "participant_refs": [],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        },
+        {
+          "op": "replace",
+          "path": "/information_units/0/source_event_ref",
+          "value": {
+            "object_type": "event",
+            "object_id": "evt_same_time_log"
+          }
+        }
+      ],
+      "expected": {
+        "structural_valid": true,
+        "exact_rule_codes": [],
+        "clean": true
+      }
+    },
+    {
+      "case_id": "v0-temporal-exclusivity-detected",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/events/0/participant_refs/-",
+          "value": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_overlap",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:01",
+              "end": "2042-06-01T20:02",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "expected": {
+        "structural_valid": true,
+        "required_rule_codes": [
+          "temporal_exclusivity_violation"
+        ],
+        "exact_rule_codes": [
+          "temporal_exclusivity_violation"
+        ]
+      }
+    },
+    {
+      "case_id": "v0-temporal-nonoverlap-boundary-clean",
+      "mutations": [
+        {
+          "op": "add",
+          "path": "/events/0/participant_refs/-",
+          "value": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_after",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:04",
+              "end": "2042-06-01T20:05",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "expected": {
+        "structural_valid": true,
+        "exact_rule_codes": [],
+        "clean": true
+      }
+    },
+    {
+      "case_id": "v0-dangling-location-is-structural-invalid",
+      "mutations": [
+        {
+          "op": "replace",
+          "path": "/events/0/location_ref",
+          "value": {
+            "object_type": "location",
+            "object_id": "loc_missing"
+          }
+        }
+      ],
+      "expected": {
+        "structural_valid": false,
+        "min_findings": 1
+      }
+    }
+  ],
+  "normalization_cases": [
+    {
+      "case_id": "v0-normalize-legacy-finding",
+      "findings": [
+        {
+          "finding_id": "F1",
+          "kind": "contradiction",
+          "severity": "S2",
+          "title": "描述冲突",
+          "statement": "两个证据互相冲突。",
+          "evidence_object_ids": [
+            "ent_researcher"
+          ],
+          "evidence_event_ids": [
+            "evt_restart_seven"
+          ],
+          "confidence": 0.8
+        }
+      ],
+      "expected": {
+        "count": 1,
+        "severity": "error",
+        "ref_keys": [
+          "ent_researcher",
+          "evt_restart_seven"
+        ]
+      }
+    },
+    {
+      "case_id": "v0-normalize-rejects-bad-severity",
+      "findings": [
+        {
+          "kind": "contradiction",
+          "severity": "S4",
+          "title": "错误",
+          "statement": "错误"
+        }
+      ],
+      "expected": {
+        "error_prefix": "finding_severity_invalid"
+      }
+    },
+    {
+      "case_id": "v0-normalize-rejects-missing-required-field",
+      "findings": [
+        {
+          "kind": "contradiction",
+          "severity": "S2",
+          "title": "",
+          "statement": "错误"
+        }
+      ],
+      "expected": {
+        "error_prefix": "llm_finding_required_field_missing"
+      }
+    },
+    {
+      "case_id": "v0-normalize-rejects-invalid-confidence",
+      "findings": [
+        {
+          "kind": "contradiction",
+          "severity": "S2",
+          "title": "错误",
+          "statement": "错误",
+          "confidence": 1.5
+        }
+      ],
+      "expected": {
+        "error_prefix": "finding_confidence_invalid"
+      }
+    },
+    {
+      "case_id": "v0-normalize-rejects-invalid-evidence",
+      "findings": [
+        {
+          "kind": "contradiction",
+          "severity": "S2",
+          "title": "错误",
+          "statement": "错误",
+          "evidence_object_ids": "ent_researcher"
+        }
+      ],
+      "expected": {
+        "error_prefix": "finding_evidence_invalid"
+      }
+    },
+    {
+      "case_id": "v0-normalize-rejects-duplicate-finding",
+      "findings": [
+        {
+          "finding_id": "F1",
+          "kind": "contradiction",
+          "severity": "S2",
+          "title": "A",
+          "statement": "A",
+          "evidence_object_ids": [
+            "ent_researcher"
+          ]
+        },
+        {
+          "finding_id": "F2",
+          "kind": "contradiction",
+          "severity": "S2",
+          "title": "B",
+          "statement": "B",
+          "evidence_object_ids": [
+            "ent_researcher"
+          ]
+        }
+      ],
+      "expected": {
+        "error_prefix": "finding_duplicate"
+      }
+    }
+  ]
+}

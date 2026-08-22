@@ -1,0 +1,35 @@
+{
+  "case_id": "example-repair-plan",
+  "issues": [
+    {
+      "code": "missing_required_suggestion",
+      "stage": "audit",
+      "path": "/suggestions",
+      "repairable": true,
+      "details": {
+        "missing": [
+          "ent_researcher:/description"
+        ]
+      }
+    }
+  ],
+  "expected_plan": {
+    "preserve": [],
+    "add": [
+      "ent_researcher:/description"
+    ],
+    "remove": [],
+    "replace": [],
+    "fix": [
+      {
+        "code": "missing_required_suggestion",
+        "path": "/suggestions",
+        "details": {
+          "missing": [
+            "ent_researcher:/description"
+          ]
+        }
+      }
+    ]
+  }
+}

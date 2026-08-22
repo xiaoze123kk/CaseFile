@@ -1,0 +1,16 @@
+{
+  "case_id": "example-safe-patch",
+  "operation": {
+    "operation_id": "op_safe",
+    "object_id": "ent_researcher",
+    "field_path": "/name",
+    "old_value": "林研究员",
+    "new_value": "林调查员",
+    "object_type": "entity"
+  },
+  "expected": {
+    "valid": true,
+    "can_apply": true,
+    "reason_code": null
+  }
+}
