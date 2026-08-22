@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from casefile.application.verification_engine import VerificationEngine
+from casefile.domain.verification_engine import VerificationEngine
 
 AUDIT_COLLECTIONS = (
     "entities",
