@@ -19,7 +19,7 @@ from openai import (
 )
 from pydantic import BaseModel, ValidationError
 
-import casefile.agent_runtime.providers as providers_module
+import casefile.agent_runtime.provider_adapters.openai as openai_adapter
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
 from casefile.agent_runtime.models import (
@@ -200,7 +200,7 @@ def test_openai_provider_loads_the_prompt_version_frozen_on_the_request(
         )
 
     monkeypatch.setattr(
-        providers_module,
+        openai_adapter,
         "system_prompt_for_task",
         fake_system_prompt_for_task,
     )

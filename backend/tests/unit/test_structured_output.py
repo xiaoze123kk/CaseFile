@@ -7,11 +7,13 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
-import casefile.agent_runtime.providers as providers_module
-import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+import casefile.agent_runtime.provider_adapters.shared as provider_shared
+import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
@@ -31,7 +33,6 @@ from casefile.agent_runtime.structured_output import (
     validate_model_json,
 )
 from casefile.contracts import ContractValidationError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class _StrictSchemaFixture(BaseModel):
@@ -193,7 +194,7 @@ def test_temporal_normalization_emits_an_observable_event(
             context_wrapper=SimpleNamespace(usage=_usage()),
         )
 
-    monkeypatch.setattr(providers_module.Runner, "run", fake_runner_run)
+    monkeypatch.setattr(provider_shared.Runner, "run", fake_runner_run)
     request = _request(events)
     output, _usage_result = asyncio.run(
         _run_auxiliary_agent(
@@ -376,8 +377,8 @@ def test_deepseek_protocol_fallback_then_repair_is_bounded_to_three_attempts(
             context_wrapper=SimpleNamespace(usage=_usage()),
         )
 
-    monkeypatch.setattr(providers_module, "call_deepseek_strict_tool", fake_strict_call)
-    monkeypatch.setattr(providers_module.Runner, "run", fake_runner_run)
+    monkeypatch.setattr(provider_shared, "call_deepseek_strict_tool", fake_strict_call)
+    monkeypatch.setattr(provider_shared.Runner, "run", fake_runner_run)
     request = _request(events)
     output, usage = asyncio.run(
         _run_auxiliary_agent(
@@ -434,7 +435,7 @@ def test_openai_native_structured_output_retries_only_model_validation_failure(
         calls += 1
         return FakeResult(valid=calls == 2)
 
-    monkeypatch.setattr(providers_module.Runner, "run", fake_runner_run)
+    monkeypatch.setattr(provider_shared.Runner, "run", fake_runner_run)
     request = _request(events)
     output, usage = asyncio.run(
         _run_auxiliary_agent(
@@ -497,8 +498,8 @@ def test_strict_schema_violation_preserves_stable_repair_budget(
             context_wrapper=SimpleNamespace(usage=_usage()),
         )
 
-    monkeypatch.setattr(providers_module, "call_deepseek_strict_tool", fake_strict_call)
-    monkeypatch.setattr(providers_module.Runner, "run", fake_runner_run)
+    monkeypatch.setattr(provider_shared, "call_deepseek_strict_tool", fake_strict_call)
+    monkeypatch.setattr(provider_shared.Runner, "run", fake_runner_run)
     request = _request(events)
     output, usage = asyncio.run(
         _run_auxiliary_agent(
@@ -534,7 +535,7 @@ def test_unknown_strict_error_does_not_fallback(
     async def fake_strict_call(**_kwargs: Any) -> StructuredCallResult:
         raise RuntimeError("authentication or transport failure")
 
-    monkeypatch.setattr(providers_module, "call_deepseek_strict_tool", fake_strict_call)
+    monkeypatch.setattr(provider_shared, "call_deepseek_strict_tool", fake_strict_call)
     with pytest.raises(RuntimeError, match="transport failure"):
         request = _request(events)
         asyncio.run(
