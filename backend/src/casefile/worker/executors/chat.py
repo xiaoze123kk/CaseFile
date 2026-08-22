@@ -83,9 +83,7 @@ from casefile.agent_runtime.query_rewrite import (
 from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
-from casefile.application.workflow_service import (
-    WorkflowService,
-)
+from casefile.application.workflow_service import WorkflowService
 from casefile.data_postgres.models import (
     AgentMessage,
     AgentPatchOperation,

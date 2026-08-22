@@ -9,9 +9,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.application.task_cancellation import finalize_task_cancellation
-from casefile.application.workflow_service import (
-    append_task_event,
-)
+from casefile.application.task_events import append_task_event
 from casefile.data_postgres.models import (
     TaskAttempt,
     TaskRun,

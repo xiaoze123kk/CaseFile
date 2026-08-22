@@ -30,10 +30,8 @@ from casefile.application.casefile_v1 import (
     validate_generation_candidate_context,
 )
 from casefile.application.reverse_parse_service import ReverseParseService
-from casefile.application.workflow_service import (
-    append_task_event,
-    source_view,
-)
+from casefile.application.task_events import append_task_event
+from casefile.application.workflow_views import source_view
 from casefile.data_postgres.models import (
     Brief,
     BriefVersion,

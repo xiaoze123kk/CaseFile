@@ -22,9 +22,7 @@ from casefile.agent_runtime.prompt import (
     COMPONENT_GENERATION_PROMPT_VERSIONS,
 )
 from casefile.agent_runtime.providers import ProviderProtocolError
-from casefile.application.workflow_service import (
-    append_task_event,
-)
+from casefile.application.task_events import append_task_event
 from casefile.contracts import (
     ContractValidationError,
 )

@@ -12,10 +12,8 @@ from casefile.agent_runtime.prompt import (
     COMPONENT_GENERATION_PROMPT_VERSIONS,
 )
 from casefile.application.task_cancellation import finalize_task_cancellation
-from casefile.application.workflow_service import (
-    append_task_event,
-    task_failure_view,
-)
+from casefile.application.task_events import append_task_event
+from casefile.application.workflow_views import task_failure_view
 from casefile.data_postgres.models import (
     AgentMessage,
     AgentStepRun,

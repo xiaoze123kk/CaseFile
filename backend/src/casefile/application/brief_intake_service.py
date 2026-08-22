@@ -8,15 +8,6 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import rfc8785
-from casefile_contracts import (
-    Brief as BriefContract,
-)
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,11 +16,8 @@ from casefile.agent_runtime.prompt import AGENT_VERSION
 from casefile.agent_runtime.prompt_repository import prompt_version_for_task
 from casefile.agent_runtime.tools import TOOLSET_VERSION
 from casefile.application.errors import ApplicationError, not_found
-from casefile.application.workflow_service import (
-    append_task_event,
-    source_view,
-    task_view,
-)
+from casefile.application.task_events import append_task_event
+from casefile.application.workflow_views import source_view, task_view
 from casefile.contracts import CASEFILE_SCHEMA_VERSION
 from casefile.data_postgres.models import (
     Brief,
@@ -42,6 +30,15 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile_contracts import (
+    Brief as BriefContract,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 
 SUPPORTED_PROVIDERS = frozenset({"deepseek", "openai"})
 ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
