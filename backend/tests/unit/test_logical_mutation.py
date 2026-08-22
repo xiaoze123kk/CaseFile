@@ -388,6 +388,15 @@ def test_shadow_scan_includes_snapshot_closure(
     result = service.shadow_scan(1, 1)
 
     assert result["blocking_enabled"] is False
+    assert result["active_policy"] == "logical-mutation-v1"
+    assert result["shadow_policy"] == "logical-mutation-v2"
+    assert isinstance(result["shadow_only_finding_keys"], list)
+    assert isinstance(result["shadow_finding_counts"], dict)
+    assert all(
+        item["payload"].get("closure_policy_version")
+        in {None, "logical-mutation-v2"}
+        for item in result["shadow_findings"]
+    )
     assert result["finding_counts"]["hard_invariant"] >= 1
     assert "claim_dependency_cycle" in {
         finding["rule_code"] for finding in result["findings"]
@@ -419,6 +428,9 @@ def test_shadow_scan_reports_not_ready_draft(
     assert result["reason_code"] == "brief_version_missing"
     assert result["content_hash"] is None
     assert result["findings"] == []
+    assert result["shadow_findings"] == []
+    assert result["active_policy"] == "logical-mutation-v1"
+    assert result["shadow_policy"] == "logical-mutation-v2"
 
 
 def test_unknown_operation_type_and_non_human_debt_fail_closed() -> None:

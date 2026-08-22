@@ -22,7 +22,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `fixtures/casefiles/` | 合法 CaseFile 开发与契约样例。 |
+| `fixtures/casefiles/` | 合法 CaseFile 开发与契约样例；`m3_reasoning_closure.casefile.json` 固定两组竞争 Hypothesis、共享 Evidence 矩阵、Claim 依赖、两条 ReasoningPath 与一个答案 Resolution，作为 M3.1 确定性闭包 Golden。 |
 | `fixtures/editing/` | ValidationIssue、PatchCandidate 与编辑冲突样例。 |
 | `fixtures/invalid/` | 结构错误和语义不变量的失败样例。 |
 | `fixtures/imports/` | 导入来源与预期映射样例。 |
