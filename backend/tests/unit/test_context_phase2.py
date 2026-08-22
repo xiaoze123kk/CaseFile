@@ -369,26 +369,26 @@ def test_context_policy_defaults_to_v6_with_older_switches(monkeypatch) -> None:
         CHAT_CONTEXT_POLICY_V5_VERSION,
         CHAT_CONTEXT_POLICY_V6_VERSION,
     )
-    from casefile.application.workflow_service import _chat_context_policy_version
+    from casefile.application.workflow_common import chat_context_policy_version
 
     monkeypatch.delenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", raising=False)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "agent-focus-v1")
-    assert _chat_context_policy_version() == "agent-focus-v1"
+    assert chat_context_policy_version() == "agent-focus-v1"
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_VERSION)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V2_VERSION)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V2_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V2_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V3_VERSION)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V3_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V3_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V4_VERSION)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V4_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V4_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V5_VERSION)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V5_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V5_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", CHAT_CONTEXT_POLICY_V6_VERSION)
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
     monkeypatch.setenv("CASEFILE_CHAT_CONTEXT_ROLLOUT", "unexpected")
-    assert _chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
+    assert chat_context_policy_version() == CHAT_CONTEXT_POLICY_V6_VERSION
 
 
 def test_bounded_tool_result_marks_and_caps_oversized_payloads() -> None:
