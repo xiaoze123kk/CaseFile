@@ -78,7 +78,7 @@ def test_graph_compilation_and_delete_impact_are_deterministic() -> None:
     assert ("info_restart_log", "claim_backup_trigger", "res_root_cause") in impact.dependency_paths
 
 
-def test_delete_only_support_produces_repair_required_issue() -> None:
+def test_delete_only_support_produces_v2_repair_required_issues() -> None:
     document = _restart_loop()
     mutation = _mutation(DeleteObject("op_delete_info", "info_restart_log"))
     normalized = normalize_mutation(document, mutation)
@@ -93,7 +93,10 @@ def test_delete_only_support_produces_repair_required_issue() -> None:
         mutation,
     )
 
-    assert "critical_claim_support_lost" in {issue.rule_code for issue in issues}
+    assert {
+        "claim_supported_without_support",
+        "reasoning_required_path_without_information_input",
+    } <= {issue.rule_code for issue in issues}
     assert normalized.candidate_document["claims"][0]["support_refs"] == []
 
 
@@ -213,7 +216,7 @@ def test_mutation_simulation_requires_exact_author_debt_acceptance() -> None:
     agent_preview = engine.simulate_mutation_set(document, agent_mutation)
     assert agent_preview.can_apply is False
     assert agent_preview.reason_code == "repair_required"
-    assert len(agent_preview.authorization_required_finding_keys) == 1
+    assert len(agent_preview.authorization_required_finding_keys) == 2
     assert agent_preview.impact_cone is not None
     assert agent_preview.candidate_hash != agent_preview.baseline_hash
 
@@ -387,8 +390,8 @@ def test_shadow_scan_includes_snapshot_closure(
 
     result = service.shadow_scan(1, 1)
 
-    assert result["blocking_enabled"] is False
-    assert result["active_policy"] == "logical-mutation-v1"
+    assert result["blocking_enabled"] is True
+    assert result["active_policy"] == "logical-mutation-v2"
     assert result["shadow_policy"] == "logical-mutation-v2"
     assert isinstance(result["shadow_only_finding_keys"], list)
     assert isinstance(result["shadow_new_finding_keys"], list)
@@ -400,6 +403,9 @@ def test_shadow_scan_includes_snapshot_closure(
         for item in result["shadow_findings"]
     )
     assert result["finding_counts"]["hard_invariant"] >= 1
+    assert result["shadow_only_finding_keys"] == []
+    assert result["shadow_new_finding_keys"] == []
+    assert result["shadow_promoted_findings"] == []
     assert "claim_dependency_cycle" in {
         finding["rule_code"] for finding in result["findings"]
     }
@@ -434,8 +440,9 @@ def test_shadow_scan_reports_not_ready_draft(
     assert result["shadow_only_finding_keys"] == []
     assert result["shadow_new_finding_keys"] == []
     assert result["shadow_promoted_findings"] == []
-    assert result["active_policy"] == "logical-mutation-v1"
+    assert result["active_policy"] == "logical-mutation-v2"
     assert result["shadow_policy"] == "logical-mutation-v2"
+    assert result["blocking_enabled"] is True
 
 
 def test_shadow_scan_classifies_cross_policy_key_change_as_promotion(
@@ -463,6 +470,10 @@ def test_shadow_scan_classifies_cross_policy_key_change_as_promotion(
     monkeypatch.setattr(
         "casefile.application.logical_mutation_rollout.casefile_content_hash",
         lambda _document: "b" * 64,
+    )
+    monkeypatch.setattr(
+        "casefile.application.logical_mutation_rollout.ACTIVE_APPLY_POLICY",
+        "logical-mutation-v1",
     )
 
     result = service.shadow_scan(1, 1)

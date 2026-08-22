@@ -38,7 +38,7 @@ from casefile.data_postgres.models import (
     DraftOperation,
     TaskRun,
 )
-from casefile.domain.logical_mutation import CLOSURE_POLICY_V2
+from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.worker.runtime import Worker, WorkerConfig
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
@@ -112,7 +112,11 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             config=WorkerConfig(worker_id="chat-suggestion-worker"),
             provider_factory=lambda _task: provider,
         )
-        assert chat_worker.run_once() is True
+        with patch(
+            "casefile.application.workflow.agent.CLOSURE_POLICY_VERSION",
+            CLOSURE_POLICY_V1,
+        ):
+            assert chat_worker.run_once() is True
         assert len(provider.requests) == 1
         assert provider.requests[0].message == "请通读整个卷宗并给出可以审阅的修改建议。"
         routed_request = provider.requests[0]
@@ -157,25 +161,24 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert assistant["referenced_object_ids"]
             patch_set = assistant["patch_set"]
             assert patch_set["status"] == "pending"
+            assert patch_set["closure_policy_version"] == CLOSURE_POLICY_V1
             assert len(patch_set["operations"]) == 2
             operation_ids = [operation["operation_id"] for operation in patch_set["operations"]]
-            preview = workflow.simulate_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                base_revision=2,
-                operation_ids=operation_ids,
-            )
+            with patch(
+                "casefile.application.workflow.agent.CLOSURE_POLICY_VERSION",
+                CLOSURE_POLICY_V1,
+            ):
+                preview = workflow.simulate_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
+                    base_revision=2,
+                    operation_ids=operation_ids,
+                )
             debt_keys = preview["simulation"]["authorization_required_finding_keys"]
             assert debt_keys
-            with (
-                patch(
-                    "casefile.application.workflow.agent.CLOSURE_POLICY_VERSION",
-                    CLOSURE_POLICY_V2,
-                ),
-                pytest.raises(ApplicationError) as stale_error,
-            ):
+            with pytest.raises(ApplicationError) as stale_error:
                 workflow.apply_agent_patch_set(
                     actor_id,
                     project_id,
@@ -187,16 +190,26 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                     debt_acceptance_reason="旧策略待处理批次不能在新策略下直接应用。",
                 )
             assert stale_error.value.code == "closure_policy_version_stale"
-            applied = workflow.apply_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=2,
-                operation_ids=operation_ids,
-                accepted_debt_finding_keys=debt_keys,
-                debt_acceptance_reason="测试作者明确接受关键 Claim 暂时失去支撑的逻辑债务。",
-            )
+            with (
+                patch(
+                    "casefile.application.workflow.agent.CLOSURE_POLICY_VERSION",
+                    CLOSURE_POLICY_V1,
+                ),
+                patch(
+                    "casefile.application.v1_editing.CLOSURE_POLICY_VERSION",
+                    CLOSURE_POLICY_V1,
+                ),
+            ):
+                applied = workflow.apply_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
+                    expected_revision=2,
+                    operation_ids=operation_ids,
+                    accepted_debt_finding_keys=debt_keys,
+                    debt_acceptance_reason="测试作者明确接受关键 Claim 暂时失去支撑的逻辑债务。",
+                )
             assert applied["draft_revision"] == 3
             assert applied["status"] == "applied"
             assert {issue["rule_id"] for issue in applied["validator_issues"]} == {"CF-W-CLAIM-001"}
@@ -235,26 +248,16 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert debt_audit.details_jsonb["accepted_at"]
 
         with factory() as session:
-            with (
-                patch(
-                    "casefile.application.workflow.agent.CLOSURE_POLICY_VERSION",
-                    CLOSURE_POLICY_V2,
-                ),
-                patch(
-                    "casefile.application.v1_editing.CLOSURE_POLICY_VERSION",
-                    CLOSURE_POLICY_V2,
-                ),
-            ):
-                undone = WorkflowService(session).undo_agent_patch_set(
-                    actor_id,
-                    project_id,
-                    patch_set["patch_set_id"],
-                    expected_draft_id=draft_id,
-                    expected_revision=3,
-                )
-                assert undone["draft_revision"] == 4
-                assert undone["status"] == "undone"
-                assert undone["simulation"]["closure_policy_version"] == CLOSURE_POLICY_V2
+            undone = WorkflowService(session).undo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=3,
+            )
+            assert undone["draft_revision"] == 4
+            assert undone["status"] == "undone"
+            assert undone["simulation"]["closure_policy_version"] == CLOSURE_POLICY_V2
 
         with factory() as session:
             restored = CaseFileService(session).get_draft(actor_id, project_id)
@@ -288,13 +291,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             )
 
         with factory() as session:
-            with (
-                patch(
-                    "casefile.application.workflow.mutation_history.ACTIVE_APPLY_POLICY",
-                    CLOSURE_POLICY_V2,
-                ),
-                pytest.raises(ApplicationError) as redo_error,
-            ):
+            with pytest.raises(ApplicationError) as redo_error:
                 WorkflowService(session).redo_agent_patch_set(
                     actor_id,
                     project_id,
@@ -305,13 +302,23 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert redo_error.value.code == "agent_patch_redo_policy_stale"
 
         with factory() as session:
-            redone = WorkflowService(session).redo_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=4,
-            )
+            with (
+                patch(
+                    "casefile.application.workflow.mutation_history.ACTIVE_APPLY_POLICY",
+                    CLOSURE_POLICY_V1,
+                ),
+                patch(
+                    "casefile.application.v1_editing.CLOSURE_POLICY_VERSION",
+                    CLOSURE_POLICY_V1,
+                ),
+            ):
+                redone = WorkflowService(session).redo_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
+                    expected_revision=4,
+                )
             assert redone["draft_revision"] == 5
             assert redone["status"] == "applied"
 

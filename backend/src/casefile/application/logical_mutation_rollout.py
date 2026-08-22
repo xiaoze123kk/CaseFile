@@ -13,6 +13,7 @@ from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
+    CLOSURE_POLICY_V2,
     SHADOW_POLICY,
     MutationSet,
     UpdateField,
@@ -59,7 +60,7 @@ class LogicalMutationRolloutService:
                 "shadow_new_finding_keys": [],
                 "shadow_promoted_findings": [],
                 "shadow_finding_counts": {},
-                "blocking_enabled": False,
+                "blocking_enabled": ACTIVE_APPLY_POLICY == CLOSURE_POLICY_V2,
             }
         mismatches = _reciprocal_mismatches(document)
         active_engine = VerificationEngine(
@@ -155,7 +156,7 @@ class LogicalMutationRolloutService:
                 ),
             ),
             "shadow_finding_counts": dict(sorted(shadow_by_level.items())),
-            "blocking_enabled": False,
+            "blocking_enabled": ACTIVE_APPLY_POLICY == CLOSURE_POLICY_V2,
         }
     def normalize_mechanical(
         self,

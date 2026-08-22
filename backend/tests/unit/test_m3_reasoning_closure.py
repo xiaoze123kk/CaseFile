@@ -10,6 +10,7 @@ from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
     CLOSURE_POLICY_V1,
     CLOSURE_POLICY_V2,
+    CLOSURE_POLICY_VERSION,
     CreateObject,
     DeleteObject,
     MutationSet,
@@ -52,9 +53,16 @@ def _codes(simulation: object) -> set[str]:
     return {item.rule_code for item in simulation.final_findings}  # type: ignore[attr-defined]
 
 
-def test_v1_remains_active_and_v2_assessment_edges_expand_impact() -> None:
+def test_v2_is_active_and_v1_remains_explicitly_available() -> None:
     document = _document()
-    assert ACTIVE_APPLY_POLICY == CLOSURE_POLICY_V1
+    assert ACTIVE_APPLY_POLICY == CLOSURE_POLICY_V2
+    assert CLOSURE_POLICY_VERSION == CLOSURE_POLICY_V2
+    assert MutationSet(
+        mutation_set_id="active_default",
+        base_draft_id=1,
+        base_revision=1,
+        operations=(),
+    ).closure_policy_version == CLOSURE_POLICY_V2
     operation = UpdateField(
         "op_v1_parity",
         "res_shutdown_rule",
@@ -70,11 +78,11 @@ def test_v1_remains_active_and_v2_assessment_edges_expand_impact() -> None:
         actor="agent",
         closure_policy_version=CLOSURE_POLICY_V1,
     )
-    assert VerificationEngine().simulate_mutation_set(
-        document, v1_mutation
-    ).as_dict() == VerificationEngine(
+    v1_simulation = VerificationEngine(
         closure_policy_version=CLOSURE_POLICY_V1
-    ).simulate_mutation_set(document, v1_mutation).as_dict()
+    ).simulate_mutation_set(document, v1_mutation)
+    assert v1_simulation.closure_policy_version == CLOSURE_POLICY_V1
+    assert v1_simulation.reason_code is None
     assert not any(
         edge.relation == "assessed_by_hypothesis"
         for edge in compile_logical_graph(document, policy_version=CLOSURE_POLICY_V1).edges
@@ -86,16 +94,24 @@ def test_v1_remains_active_and_v2_assessment_edges_expand_impact() -> None:
         and edge.relation == "assessed_by_hypothesis"
         for edge in v2_graph.edges
     )
-    simulation = _simulate(
+    simulation = VerificationEngine().simulate_mutation_set(
         document,
-        UpdateField(
-            "op_content",
-            "info_manual_trace",
-            "/content",
-            "控制台人工操作痕迹已复核。",
-            document["information_units"][1]["content"],
+        MutationSet(
+            mutation_set_id="active_v2_impact",
+            base_draft_id=1,
+            base_revision=1,
+            operations=(
+                UpdateField(
+                    "op_content",
+                    "info_manual_trace",
+                    "/content",
+                    "控制台人工操作痕迹已复核。",
+                    document["information_units"][1]["content"],
+                ),
+            ),
         ),
     )
+    assert simulation.closure_policy_version == CLOSURE_POLICY_V2
     assert simulation.impact_cone is not None
     assert "hyp_automatic_restart" in simulation.impact_cone.direct_object_ids
     assert "res_root_cause" in simulation.impact_cone.affected_resolution_ids
@@ -425,6 +441,43 @@ def test_v2_semantic_bridge_grandfathers_existing_debt_and_requires_exact_author
     )
     assert unrelated.can_apply is True
     assert not unrelated.authorization_required_finding_keys
+
+
+def test_v2_grandfathers_existing_knowledge_timing_debt() -> None:
+    document = _document()
+    later_event = copy.deepcopy(document["events"][0])
+    later_event.update(
+        id="evt_later_source",
+        title="稍后产生的信息来源",
+        time={"kind": "exact", "value": "2042-06-01T21:00", "precision": "minute"},
+    )
+    document["events"].append(later_event)
+    document["information_units"][0]["source_event_ref"] = {
+        "object_type": "event",
+        "object_id": "evt_later_source",
+    }
+
+    simulation = VerificationEngine().simulate_mutation_set(
+        document,
+        MutationSet(
+            mutation_set_id="existing_knowledge_debt",
+            base_draft_id=1,
+            base_revision=1,
+            operations=(
+                UpdateField(
+                    "op_unrelated_title",
+                    "res_shutdown_rule",
+                    "/title",
+                    "更新后的安全规则组合",
+                    document["resolution_specs"][1]["title"],
+                ),
+            ),
+        ),
+    )
+
+    assert "knowledge_state_available_before_source" in _codes(simulation)
+    assert simulation.can_apply is True
+    assert not simulation.authorization_required_finding_keys
 
 
 def test_new_object_typed_integration_and_repeatability() -> None:
