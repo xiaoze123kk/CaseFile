@@ -416,23 +416,66 @@ def test_explicit_one_way_travel_time_is_shadow_warning_only() -> None:
     assert "temporal_travel_time_violation" not in _codes(child_simulation)
 
 
-def test_v2_grandfathers_existing_hard_debt_but_never_authorizes_new_hard_debt() -> None:
+def test_v2_blocks_existing_hard_debt_unless_normalization_explicitly_allows_it() -> None:
     document = _document()
     document["claims"][1]["dependency_claim_refs"] = [
         {"object_type": "claim", "object_id": "claim_manual_trigger"}
     ]
-    unrelated = _simulate(
-        document,
-        UpdateField(
-            "op_unrelated",
-            "res_shutdown_rule",
-            "/title",
-            "不相关标题修改",
-            document["resolution_specs"][1]["title"],
-        ),
+    unrelated_operation = UpdateField(
+        "op_unrelated",
+        "res_shutdown_rule",
+        "/title",
+        "不相关标题修改",
+        document["resolution_specs"][1]["title"],
     )
-    assert unrelated.can_apply is True
+    unrelated = _simulate(document, unrelated_operation)
+    assert unrelated.can_apply is False
+    assert unrelated.reason_code == "hard_invariant_failed"
 
+    v1_mutation = MutationSet(
+        mutation_set_id="m3_v1_existing_hard",
+        base_draft_id=1,
+        base_revision=1,
+        operations=(unrelated_operation,),
+        actor="agent",
+        closure_policy_version=CLOSURE_POLICY_V1,
+    )
+    v1_unrelated = VerificationEngine(
+        closure_policy_version=CLOSURE_POLICY_V1
+    ).simulate_mutation_set(document, v1_mutation)
+    assert v1_unrelated.can_apply is False
+    assert v1_unrelated.reason_code == "hard_invariant_failed"
+
+    normalization = VerificationEngine(
+        closure_policy_version=CLOSURE_POLICY_V2
+    ).simulate_mutation_set(
+        document,
+        _mutation(unrelated_operation),
+        allow_existing_hard_invariants=True,
+    )
+    assert normalization.can_apply is True
+
+    valid_document = _document()
+    new_hard = VerificationEngine(
+        closure_policy_version=CLOSURE_POLICY_V2
+    ).simulate_mutation_set(
+        valid_document,
+        _mutation(
+            UpdateField(
+                "op_new_cycle",
+                "claim_manual_trigger",
+                "/dependency_claim_refs",
+                [{"object_type": "claim", "object_id": "claim_manual_trigger"}],
+                valid_document["claims"][1]["dependency_claim_refs"],
+            )
+        ),
+        allow_existing_hard_invariants=True,
+    )
+    assert new_hard.can_apply is False
+    assert new_hard.reason_code == "hard_invariant_failed"
+
+
+def test_v2_invalid_target_remains_a_hard_failure() -> None:
     valid_document = _document()
     invalid_target = _simulate(
         valid_document,
