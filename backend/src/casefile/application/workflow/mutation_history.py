@@ -12,6 +12,7 @@ from casefile.application.casefile_v1 import build_casefile_document, casefile_c
 from casefile.application.errors import ApplicationError
 from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.models import AgentPatchOperation, CaseFileObject, DraftOperation
+from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
 
 
 class AgentMutationHistoryMixin:
@@ -35,6 +36,12 @@ class AgentMutationHistoryMixin:
                 raise ApplicationError(
                     "agent_patch_not_undone",
                     "只有栈顶已撤销的修改批次才能重做。",
+                    status_code=409,
+                )
+            if patch_set.closure_policy_version != ACTIVE_APPLY_POLICY:
+                raise ApplicationError(
+                    "agent_patch_redo_policy_stale",
+                    "该修改批次使用旧逻辑策略，不能直接重做，请重新生成 MutationSet。",
                     status_code=409,
                 )
             if (

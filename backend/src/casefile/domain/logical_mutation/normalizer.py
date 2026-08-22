@@ -42,9 +42,12 @@ class MutationNormalizationError(ValueError):
 
 
 def normalize_mutation(
-    document: Mapping[str, Any], mutation_set: MutationSet
+    document: Mapping[str, Any],
+    mutation_set: MutationSet,
+    *,
+    expected_policy_version: str = CLOSURE_POLICY_VERSION,
 ) -> NormalizedMutation:
-    if mutation_set.closure_policy_version != CLOSURE_POLICY_VERSION:
+    if mutation_set.closure_policy_version != expected_policy_version:
         raise MutationNormalizationError("closure_policy_version_stale")
     if mutation_set.base_draft_id < 1 or mutation_set.base_revision < 1:
         raise MutationNormalizationError("mutation_base_invalid")

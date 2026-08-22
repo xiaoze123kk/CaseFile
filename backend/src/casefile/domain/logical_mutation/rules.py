@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from casefile.domain.logical_mutation.closure.context import build_closure_context
 from casefile.domain.logical_mutation.graph import LogicalGraph
 from casefile.domain.logical_mutation.models import (
     ClosureIssue,
@@ -13,7 +14,12 @@ from casefile.domain.logical_mutation.models import (
     MutationSet,
     UpdateField,
 )
-from casefile.domain.logical_mutation.policy import cycle_policies
+from casefile.domain.logical_mutation.policy import (
+    CLOSURE_POLICY_V1,
+    CLOSURE_POLICY_V2,
+    cycle_policies,
+    validate_closure_policy_version,
+)
 
 _ROOT_TYPES = {"resolution_spec", "structure_lock"}
 _SKELETON_TYPES = {"resolution_spec", "hypothesis", "reasoning_path", "claim", "structure_lock"}
@@ -26,18 +32,60 @@ def evaluate_closure_rules(
     baseline_graph: LogicalGraph,
     candidate_graph: LogicalGraph,
     mutation_set: MutationSet,
+    *,
+    policy_version: str | None = None,
 ) -> tuple[ClosureIssue, ...]:
+    version = validate_closure_policy_version(
+        policy_version or mutation_set.closure_policy_version
+    )
+    issues = _evaluate_legacy_rules(
+        candidate,
+        baseline_graph,
+        candidate_graph,
+        mutation_set,
+        policy_version=version,
+        include_critical_support=version == CLOSURE_POLICY_V1,
+        include_integration=version == CLOSURE_POLICY_V1,
+    )
+    if version == CLOSURE_POLICY_V2:
+        from casefile.domain.logical_mutation.closure.v2_rules import (
+            evaluate_v2_rules,
+        )
+
+        context = build_closure_context(
+            baseline,
+            candidate,
+            baseline_graph,
+            candidate_graph,
+            mutation_set,
+            policy_version=version,
+        )
+        issues.extend(evaluate_v2_rules(context))
+    return tuple(sorted(issues, key=lambda issue: (issue.rule_code, issue.object_ids)))
+
+
+def _evaluate_legacy_rules(
+    candidate: Mapping[str, Any],
+    baseline_graph: LogicalGraph,
+    candidate_graph: LogicalGraph,
+    mutation_set: MutationSet,
+    *,
+    policy_version: str,
+    include_critical_support: bool,
+    include_integration: bool,
+) -> list[ClosureIssue]:
     issues: list[ClosureIssue] = []
     issues.extend(_reciprocity_issues(candidate, mutation_set))
-    issues.extend(_cycle_issues(candidate_graph))
-    issues.extend(_critical_support_issues(candidate, mutation_set))
+    issues.extend(_cycle_issues(candidate_graph, policy_version))
+    if include_critical_support:
+        issues.extend(_critical_support_issues(candidate, mutation_set))
     issues.extend(_hypothesis_requirement_issues(candidate, mutation_set))
     issues.extend(_resolution_basis_issues(candidate, mutation_set))
-    issues.extend(_new_object_integration_issues(candidate_graph, mutation_set))
+    if include_integration:
+        issues.extend(_new_object_integration_issues(candidate_graph, mutation_set))
     issues.extend(_structure_lock_issues(candidate, mutation_set))
     issues.extend(_root_delete_issues(baseline_graph, mutation_set))
-    del baseline
-    return tuple(sorted(issues, key=lambda issue: (issue.rule_code, issue.object_ids)))
+    return issues
 
 
 def _reciprocity_issues(
@@ -72,9 +120,9 @@ def _reciprocity_issues(
     return result
 
 
-def _cycle_issues(graph: LogicalGraph) -> list[ClosureIssue]:
+def _cycle_issues(graph: LogicalGraph, policy_version: str) -> list[ClosureIssue]:
     result = []
-    for policy in cycle_policies():
+    for policy in cycle_policies(policy_version):
         for cycle in graph.cycles(policy.relation):
             result.append(
                 ClosureIssue(

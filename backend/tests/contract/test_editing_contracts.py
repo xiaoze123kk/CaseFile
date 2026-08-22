@@ -187,11 +187,11 @@ def test_all_schema_files_are_valid_draft_2020_12(
         Draft202012Validator.check_schema(schema)
 
 
-def test_three_casefiles_validate_and_cover_contract_foundation(
+def test_casefiles_validate_and_cover_contract_foundation(
     validators: dict[str, Draft202012Validator],
 ) -> None:
     paths = sorted((FIXTURE_ROOT / "casefiles").glob("*.casefile.json"))
-    assert len(paths) == 3
+    assert len(paths) == 4
 
     question_types: set[str] = set()
     conclusion_modes: set[str] = set()

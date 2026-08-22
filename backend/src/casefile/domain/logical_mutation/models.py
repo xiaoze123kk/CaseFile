@@ -6,7 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-CLOSURE_POLICY_VERSION = "logical-mutation-v1"
+from casefile.domain.logical_mutation.policy import ACTIVE_APPLY_POLICY
+
+CLOSURE_POLICY_VERSION = ACTIVE_APPLY_POLICY
 MutationMode = Literal["normal", "restructure"]
 MutationActor = Literal["author", "agent", "import", "system"]
 ClosureLevel = Literal["hard_invariant", "repair_required", "warning"]

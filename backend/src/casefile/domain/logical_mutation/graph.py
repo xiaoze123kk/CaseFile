@@ -8,7 +8,12 @@ from typing import Any
 import networkx as nx
 
 from casefile.domain.logical_mutation.models import LogicCycle, LogicEdge
-from casefile.domain.logical_mutation.policy import relation_policy
+from casefile.domain.logical_mutation.policy import (
+    ACTIVE_APPLY_POLICY,
+    CLOSURE_POLICY_V2,
+    relation_policy,
+    validate_closure_policy_version,
+)
 
 COLLECTION_BY_TYPE = {
     "resolution_spec": "resolution_specs",
@@ -123,7 +128,12 @@ class LogicalGraph:
         return result
 
 
-def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
+def compile_logical_graph(
+    document: Mapping[str, Any],
+    *,
+    policy_version: str = ACTIVE_APPLY_POLICY,
+) -> LogicalGraph:
+    policy_version = validate_closure_policy_version(policy_version)
     object_types: dict[str, str] = {}
     for object_type, collection in COLLECTION_BY_TYPE.items():
         for item in document.get(collection, []):
@@ -139,7 +149,7 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
         source_path: str,
     ) -> None:
         if prerequisite_id and dependent_id:
-            policy = relation_policy(relation)
+            policy = relation_policy(relation, policy_version)
             edges.append(
                 LogicEdge(
                     prerequisite_id,
@@ -205,6 +215,16 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 "competes_with",
                 f"/competing_hypothesis_refs/{index}",
             )
+        if policy_version == CLOSURE_POLICY_V2:
+            for index, assessment in enumerate(
+                hypothesis.get("evidence_assessments", [])
+            ):
+                add(
+                    _ref_id(assessment.get("information_ref")),
+                    hypothesis_id,
+                    "assessed_by_hypothesis",
+                    f"/evidence_assessments/{index}/information_ref",
+                )
 
     for resolution in document.get("resolution_specs", []):
         resolution_id = str(resolution["id"])

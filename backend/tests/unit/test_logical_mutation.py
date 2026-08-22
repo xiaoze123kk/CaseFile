@@ -388,6 +388,17 @@ def test_shadow_scan_includes_snapshot_closure(
     result = service.shadow_scan(1, 1)
 
     assert result["blocking_enabled"] is False
+    assert result["active_policy"] == "logical-mutation-v1"
+    assert result["shadow_policy"] == "logical-mutation-v2"
+    assert isinstance(result["shadow_only_finding_keys"], list)
+    assert isinstance(result["shadow_new_finding_keys"], list)
+    assert isinstance(result["shadow_promoted_findings"], list)
+    assert isinstance(result["shadow_finding_counts"], dict)
+    assert all(
+        item["payload"].get("closure_policy_version")
+        in {None, "logical-mutation-v2"}
+        for item in result["shadow_findings"]
+    )
     assert result["finding_counts"]["hard_invariant"] >= 1
     assert "claim_dependency_cycle" in {
         finding["rule_code"] for finding in result["findings"]
@@ -419,6 +430,53 @@ def test_shadow_scan_reports_not_ready_draft(
     assert result["reason_code"] == "brief_version_missing"
     assert result["content_hash"] is None
     assert result["findings"] == []
+    assert result["shadow_findings"] == []
+    assert result["shadow_only_finding_keys"] == []
+    assert result["shadow_new_finding_keys"] == []
+    assert result["shadow_promoted_findings"] == []
+    assert result["active_policy"] == "logical-mutation-v1"
+    assert result["shadow_policy"] == "logical-mutation-v2"
+
+
+def test_shadow_scan_classifies_cross_policy_key_change_as_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _restart_loop()
+    later_event = copy.deepcopy(document["events"][0])
+    later_event.update(
+        id="evt_later_source",
+        title="稍后产生的信息来源",
+        time={"kind": "exact", "value": "2042-06-01T21:00", "precision": "minute"},
+    )
+    document["events"].append(later_event)
+    document["information_units"][0]["source_event_ref"] = {
+        "object_type": "event",
+        "object_id": "evt_later_source",
+    }
+    owned = SimpleNamespace(draft=SimpleNamespace(id=7, revision=3))
+    service = LogicalMutationRolloutService(object())  # type: ignore[arg-type]
+    service.projects = SimpleNamespace(get_owned=lambda _actor, _project: owned)
+    monkeypatch.setattr(
+        "casefile.application.logical_mutation_rollout.build_casefile_document",
+        lambda _session, _owned: document,
+    )
+    monkeypatch.setattr(
+        "casefile.application.logical_mutation_rollout.casefile_content_hash",
+        lambda _document: "b" * 64,
+    )
+
+    result = service.shadow_scan(1, 1)
+
+    promotion = next(
+        item
+        for item in result["shadow_promoted_findings"]
+        if item["rule_code"] == "knowledge_state_available_before_source"
+    )
+    assert promotion["active_finding_key"] != promotion["shadow_finding_key"]
+    assert promotion["active_level"] == "legacy"
+    assert promotion["shadow_level"] == "repair_required"
+    assert promotion["shadow_finding_key"] not in result["shadow_new_finding_keys"]
+    assert promotion["shadow_finding_key"] in result["shadow_only_finding_keys"]
 
 
 def test_unknown_operation_type_and_non_human_debt_fail_closed() -> None:

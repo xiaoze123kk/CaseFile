@@ -665,6 +665,7 @@ class V1EditingService:
         debt_acceptance_reason: str | None = None,
         target_finding_keys: tuple[str, ...] = (),
         source_patch_set_id: int | None = None,
+        source_closure_policy_version: str | None = None,
     ) -> tuple[int, int, MutationSimulation]:
         """Re-simulate and atomically project one canonical MutationSet."""
 
@@ -690,7 +691,11 @@ class V1EditingService:
                 status_code=403,
             )
         before = build_casefile_document(self.session, owned)
-        engine = VerificationEngine(profile="fast", draft_revision=owned.draft.revision)
+        engine = VerificationEngine(
+            profile="fast",
+            draft_revision=owned.draft.revision,
+            closure_policy_version=CLOSURE_POLICY_VERSION,
+        )
         simulation = engine.simulate_mutation_set(
             before,
             mutation_set,
@@ -801,6 +806,7 @@ class V1EditingService:
             "accepted_debt_finding_keys": list(accepted_debt_finding_keys),
             "debt_acceptance_reason": debt_acceptance_reason,
             "source_patch_set_id": source_patch_set_id,
+            "source_closure_policy_version": source_closure_policy_version,
         }
         is_user_actor = mutation_set.actor == "author"
         if is_user_actor and actor_user_id is None:
