@@ -691,7 +691,11 @@ class V1EditingService:
                 status_code=403,
             )
         before = build_casefile_document(self.session, owned)
-        engine = VerificationEngine(profile="fast", draft_revision=owned.draft.revision)
+        engine = VerificationEngine(
+            profile="fast",
+            draft_revision=owned.draft.revision,
+            closure_policy_version=CLOSURE_POLICY_VERSION,
+        )
         simulation = engine.simulate_mutation_set(
             before,
             mutation_set,

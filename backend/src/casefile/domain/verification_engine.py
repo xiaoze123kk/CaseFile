@@ -24,7 +24,6 @@ from casefile.contracts import (
 )
 from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
-    CLOSURE_POLICY_V1,
     ClosureIssue,
     ImpactCone,
     MutationNormalizationError,
@@ -494,28 +493,18 @@ class VerificationEngine:
             )
         )
         residual_targets = tuple(sorted(set(target_finding_keys) & set(final_by_key)))
-        if self.closure_policy_version == CLOSURE_POLICY_V1:
-            hard = tuple(
-                sorted(
-                    item.finding_key
-                    for item in final_findings
-                    if item.payload.get("closure_level") == "hard_invariant"
-                    and (
-                        not allow_existing_hard_invariants
-                        or item.finding_key not in baseline_by_key
-                        or item.finding_key in worsened
-                    )
+        hard = tuple(
+            sorted(
+                item.finding_key
+                for item in final_findings
+                if item.payload.get("closure_level") == "hard_invariant"
+                and (
+                    not allow_existing_hard_invariants
+                    or item.finding_key not in baseline_by_key
+                    or item.finding_key in worsened
                 )
             )
-        else:
-            hard = tuple(
-                sorted(
-                    key
-                    for key in {*introduced, *worsened}
-                    if final_by_key[key].payload.get("closure_level")
-                    == "hard_invariant"
-                )
-            )
+        )
         repair_required = tuple(
             sorted(
                 key

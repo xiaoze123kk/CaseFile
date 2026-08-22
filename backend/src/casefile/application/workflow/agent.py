@@ -1279,6 +1279,7 @@ class AgentWorkflowMixin:
             pre_result = VerificationEngine(
                 profile="fast",
                 draft_revision=expected_revision,
+                closure_policy_version=CLOSURE_POLICY_VERSION,
             ).verify(current_document)
             pre_run = (
                 VerificationService(self.session).record_result(
@@ -1327,6 +1328,7 @@ class AgentWorkflowMixin:
             post_result = VerificationEngine(
                 profile="fast",
                 draft_revision=revision,
+                closure_policy_version=CLOSURE_POLICY_VERSION,
             ).verify(current_document)
             post_run = (
                 VerificationService(self.session).record_result(
@@ -1529,10 +1531,10 @@ class AgentWorkflowMixin:
                 actor="author",
                 closure_policy_version=CLOSURE_POLICY_VERSION,
             )
-            simulation = VerificationEngine(profile="fast").simulate_mutation_set(
-                current_document,
-                inverse_mutation,
-            )
+            simulation = VerificationEngine(
+                profile="fast",
+                closure_policy_version=CLOSURE_POLICY_VERSION,
+            ).simulate_mutation_set(current_document, inverse_mutation)
             if not simulation.can_apply:
                 if simulation.reason_code == "post_document_invalid":
                     validate_casefile(dict(simulation.document))
@@ -1545,6 +1547,7 @@ class AgentWorkflowMixin:
             pre_result = VerificationEngine(
                 profile="fast",
                 draft_revision=expected_revision,
+                closure_policy_version=CLOSURE_POLICY_VERSION,
             ).verify(current_document)
             pre_run = (
                 VerificationService(self.session).record_result(
@@ -1578,6 +1581,7 @@ class AgentWorkflowMixin:
             post_result = VerificationEngine(
                 profile="fast",
                 draft_revision=revision,
+                closure_policy_version=CLOSURE_POLICY_VERSION,
             ).verify(current_document)
             post_run = (
                 VerificationService(self.session).record_result(
@@ -1666,7 +1670,10 @@ class AgentWorkflowMixin:
                 mode=patch_set.mutation_mode,  # type: ignore[arg-type]
                 closure_policy_version=patch_set.closure_policy_version,
             )
-        return VerificationEngine(profile="fast").simulate_mutation_set(
+        return VerificationEngine(
+            profile="fast",
+            closure_policy_version=CLOSURE_POLICY_VERSION,
+        ).simulate_mutation_set(
             document,
             mutation,
             target_finding_keys=target_finding_keys or (),

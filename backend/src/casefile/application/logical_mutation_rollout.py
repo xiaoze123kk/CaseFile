@@ -17,7 +17,7 @@ from casefile.domain.logical_mutation import (
     MutationSet,
     UpdateField,
 )
-from casefile.domain.verification_engine import VerificationEngine
+from casefile.domain.verification_engine import VerificationEngine, VerificationFinding
 
 _RECIPROCALS = (
     ("information_units", "supports_claim_refs", "claims", "support_refs"),
@@ -56,6 +56,8 @@ class LogicalMutationRolloutService:
                 "findings": [],
                 "shadow_findings": [],
                 "shadow_only_finding_keys": [],
+                "shadow_new_finding_keys": [],
+                "shadow_promoted_findings": [],
                 "shadow_finding_counts": {},
                 "blocking_enabled": False,
             }
@@ -109,6 +111,26 @@ class LogicalMutationRolloutService:
                 if item.finding_key not in active_keys
             )
         )
+        active_by_identity = {_finding_identity(item): item for item in findings}
+        shadow_new: list[str] = []
+        shadow_promoted: list[dict[str, str]] = []
+        for item in shadow_findings:
+            active_item = active_by_identity.get(_finding_identity(item))
+            if active_item is None:
+                shadow_new.append(item.finding_key)
+                continue
+            active_level = str(active_item.payload.get("closure_level", "legacy"))
+            shadow_level = str(item.payload.get("closure_level", "legacy"))
+            if active_level != shadow_level:
+                shadow_promoted.append(
+                    {
+                        "rule_code": item.rule_code,
+                        "active_finding_key": active_item.finding_key,
+                        "shadow_finding_key": item.finding_key,
+                        "active_level": active_level,
+                        "shadow_level": shadow_level,
+                    }
+                )
         return {
             "draft_id": owned.draft.id,
             "draft_revision": owned.draft.revision,
@@ -123,10 +145,18 @@ class LogicalMutationRolloutService:
             "findings": [item.as_dict() for item in findings],
             "shadow_findings": [item.as_dict() for item in shadow_findings],
             "shadow_only_finding_keys": list(shadow_only),
+            "shadow_new_finding_keys": sorted(shadow_new),
+            "shadow_promoted_findings": sorted(
+                shadow_promoted,
+                key=lambda item: (
+                    item["rule_code"],
+                    item["active_finding_key"],
+                    item["shadow_finding_key"],
+                ),
+            ),
             "shadow_finding_counts": dict(sorted(shadow_by_level.items())),
             "blocking_enabled": False,
         }
-
     def normalize_mechanical(
         self,
         actor_user_id: int,
@@ -198,6 +228,17 @@ class LogicalMutationRolloutService:
                 "before_hash": simulation.baseline_hash,
                 "after_hash": simulation.candidate_hash,
             }
+
+
+def _finding_identity(
+    finding: VerificationFinding,
+) -> tuple[str, tuple[tuple[str, str, str], ...]]:
+    return (
+        finding.rule_code,
+        tuple(
+            sorted((ref.ref_kind, ref.ref_key, ref.role) for ref in finding.refs)
+        ),
+    )
 
 
 def _reciprocal_mismatches(document: dict[str, Any]) -> list[dict[str, str]]:
