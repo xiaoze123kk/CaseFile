@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, replace
+from typing import Any, cast
 
 from casefile.agent_runtime.chat_tools import (
     check_patch_proposal,
     patch_target_string_value,
     simulate_patch_delta,
 )
-from casefile.agent_runtime.models import CaseFileChatRequest
+from casefile.agent_runtime.chat_validation_contracts import (
+    ChatCompletionValidationError,
+    resolve_authoritative_repair_target,
+    target_label,
+)
+from casefile.agent_runtime.models import (
+    CaseFileChatCandidateV2,
+    CaseFileChatRequest,
+    CaseFileChatResult,
+    CaseFileChatSuggestionCandidateV2,
+    CaseFileChatTargetLockedRepairOutput,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -496,6 +507,108 @@ def materialize_unique_safe_patches(
     return materialized, tuple(changes)
 
 
+
+
+def target_locked_repair_contract(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+    validation: ChatCompletionValidationError,
+) -> dict[str, Any] | None:
+    """Return a server-owned hard-repair contract only for one exact audit delta."""
+
+    route = request.route
+    if (
+        request.prompt_version != "casefile-chat-v15"
+        or route is None
+        or route.execution_profile.get("primary_intent") != "logic_audit"
+        or not isinstance(result.candidate, CaseFileChatCandidateV2)
+    ):
+        return None
+    bundle = request.validation.get("audit_evidence_bundle")
+    if not isinstance(bundle, dict):
+        return None
+    return resolve_authoritative_repair_target(
+        bundle=bundle,
+        findings=tuple(
+            finding.model_dump(mode="json")
+            for finding in result.candidate.audit_findings
+        ),
+        issues=validation.issues,
+        repair_plan=validation.repair_plan,
+    )
+
+
+def materialize_target_locked_repair(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Compose a full audit candidate from a locked target and minimal model output."""
+
+    contract = request.target_locked_repair
+    repair_output = cast(CaseFileChatTargetLockedRepairOutput, result.candidate)
+    if not isinstance(contract, dict) or not isinstance(
+        repair_output, CaseFileChatTargetLockedRepairOutput
+    ):
+        raise ChatCompletionValidationError(code="audit_target_locked_repair_output_invalid")
+    object_id = contract.get("object_id")
+    path = contract.get("path")
+    finding_ref = contract.get("finding_ref")
+    previous = request.previous_candidate
+    if not (
+        isinstance(object_id, str)
+        and isinstance(path, str)
+        and isinstance(finding_ref, str)
+        and isinstance(previous, dict)
+    ):
+        raise ChatCompletionValidationError(code="audittarget_locked_repair_contract_invalid")
+    try:
+        candidate = CaseFileChatCandidateV2.model_validate(previous)
+    except ValueError as error:
+        raise ChatCompletionValidationError(
+            code="audittarget_locked_repair_contract_invalid"
+        ) from error
+    if not any(
+        finding.finding_id == finding_ref and not finding.needs_manual_review
+        for finding in candidate.audit_findings
+    ):
+        raise ChatCompletionValidationError(code="audittarget_locked_repair_contract_invalid")
+    canonical_value = canonicalize_value_json(repair_output.value_json)
+    if canonical_value is None:
+        raise ChatCompletionValidationError(code="audit_target_locked_repair_value_invalid")
+    previous_failure = contract.get("previous_failure")
+    previous_value = (
+        previous_failure.get("value_json")
+        if isinstance(previous_failure, dict)
+        else None
+    )
+    if (
+        previous_value is not None
+        and canonicalize_value_json(previous_value) == canonical_value
+    ):
+        raise ChatCompletionValidationError(
+            code="audit_target_locked_repair_no_progress"
+        )
+    remove = {
+        value for value in contract.get("remove", ()) if isinstance(value, str)
+    }
+    target = target_label(object_id, path)
+    remove.add(target)
+    suggestions = [
+        suggestion
+        for suggestion in candidate.suggestions
+        if target_label(suggestion.object_id, suggestion.path) not in remove
+    ]
+    suggestions.append(
+        CaseFileChatSuggestionCandidateV2(
+            object_id=object_id,
+            path=path,
+            value_json=repair_output.value_json,
+            reason=repair_output.reason,
+            finding_ref=finding_ref,
+        )
+    )
+    return replace(result, candidate=candidate.model_copy(update={"suggestions": suggestions}))
+
 __all__ = [
     "PatchMaterialization",
     "SafePatchCandidate",
@@ -503,6 +616,8 @@ __all__ = [
     "SafePatchRegistry",
     "canonicalize_value_json",
     "compile_safe_patch_registry",
+    "materialize_target_locked_repair",
     "materialize_unique_safe_patches",
     "safe_patch_registry_from_dict",
+    "target_locked_repair_contract",
 ]
