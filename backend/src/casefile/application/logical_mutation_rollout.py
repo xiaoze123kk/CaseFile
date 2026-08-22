@@ -11,7 +11,12 @@ from casefile.application.casefile_v1 import build_casefile_document, casefile_c
 from casefile.application.errors import ApplicationError, not_found
 from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.repositories import ProjectRepository
-from casefile.domain.logical_mutation import CLOSURE_POLICY_VERSION, MutationSet, UpdateField
+from casefile.domain.logical_mutation import (
+    ACTIVE_APPLY_POLICY,
+    SHADOW_POLICY,
+    MutationSet,
+    UpdateField,
+)
 from casefile.domain.verification_engine import VerificationEngine
 
 _RECIPROCALS = (
@@ -41,40 +46,84 @@ class LogicalMutationRolloutService:
                 "draft_revision": owned.draft.revision,
                 "scan_status": "not_ready",
                 "reason_code": error.code,
-                "closure_policy_version": CLOSURE_POLICY_VERSION,
+                "closure_policy_version": ACTIVE_APPLY_POLICY,
+                "active_policy": ACTIVE_APPLY_POLICY,
+                "shadow_policy": SHADOW_POLICY,
                 "content_hash": None,
                 "mechanical_mismatches": [],
                 "mechanical_mismatch_count": 0,
                 "finding_counts": {},
                 "findings": [],
+                "shadow_findings": [],
+                "shadow_only_finding_keys": [],
+                "shadow_finding_counts": {},
                 "blocking_enabled": False,
             }
         mismatches = _reciprocal_mismatches(document)
-        engine = VerificationEngine(
-            profile="fast", draft_revision=owned.draft.revision
+        active_engine = VerificationEngine(
+            profile="fast",
+            draft_revision=owned.draft.revision,
+            closure_policy_version=ACTIVE_APPLY_POLICY,
         )
-        result = engine.verify(document)
+        result = active_engine.verify(document)
         findings = result.findings
         if result.structural_valid:
             findings = tuple(
                 {
                     item.finding_key: item
-                    for item in (*findings, *engine.evaluate_snapshot_closure(document))
+                    for item in (
+                        *findings,
+                        *active_engine.evaluate_snapshot_closure(document),
+                    )
+                }.values()
+            )
+        shadow_engine = VerificationEngine(
+            profile="fast",
+            draft_revision=owned.draft.revision,
+            closure_policy_version=SHADOW_POLICY,
+        )
+        shadow_result = shadow_engine.verify(document)
+        shadow_findings = shadow_result.findings
+        if shadow_result.structural_valid:
+            shadow_findings = tuple(
+                {
+                    item.finding_key: item
+                    for item in (
+                        *shadow_findings,
+                        *shadow_engine.evaluate_snapshot_closure(document),
+                    )
                 }.values()
             )
         by_level = Counter(
             str(item.payload.get("closure_level", "legacy")) for item in findings
         )
+        shadow_by_level = Counter(
+            str(item.payload.get("closure_level", "legacy"))
+            for item in shadow_findings
+        )
+        active_keys = {item.finding_key for item in findings}
+        shadow_only = tuple(
+            sorted(
+                item.finding_key
+                for item in shadow_findings
+                if item.finding_key not in active_keys
+            )
+        )
         return {
             "draft_id": owned.draft.id,
             "draft_revision": owned.draft.revision,
             "scan_status": "completed",
-            "closure_policy_version": CLOSURE_POLICY_VERSION,
+            "closure_policy_version": ACTIVE_APPLY_POLICY,
+            "active_policy": ACTIVE_APPLY_POLICY,
+            "shadow_policy": SHADOW_POLICY,
             "content_hash": casefile_content_hash(document),
             "mechanical_mismatches": mismatches,
             "mechanical_mismatch_count": len(mismatches),
             "finding_counts": dict(sorted(by_level.items())),
             "findings": [item.as_dict() for item in findings],
+            "shadow_findings": [item.as_dict() for item in shadow_findings],
+            "shadow_only_finding_keys": list(shadow_only),
+            "shadow_finding_counts": dict(sorted(shadow_by_level.items())),
             "blocking_enabled": False,
         }
 

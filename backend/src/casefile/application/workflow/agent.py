@@ -1527,7 +1527,7 @@ class AgentWorkflowMixin:
                     )
                 ),
                 actor="author",
-                closure_policy_version=patch_set.closure_policy_version,
+                closure_policy_version=CLOSURE_POLICY_VERSION,
             )
             simulation = VerificationEngine(profile="fast").simulate_mutation_set(
                 current_document,
@@ -1566,6 +1566,7 @@ class AgentWorkflowMixin:
                 actor_user_id=actor_user_id,
                 draft_operation_type="logical_mutation_undo",
                 source_patch_set_id=patch_set.id,
+                source_closure_policy_version=patch_set.closure_policy_version,
             )
             now = datetime.now(UTC)
             patch_set.status = "undone"

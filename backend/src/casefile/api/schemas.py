@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from casefile.application.commands import ProjectCreate
+from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
 
 
 class StrictRequest(BaseModel):
@@ -362,7 +363,7 @@ class LogicalMutationPreviewRequest(StrictRequest):
     base_draft_id: int = Field(ge=1)
     base_revision: int = Field(ge=1)
     mode: Literal["normal", "restructure"] = "normal"
-    closure_policy_version: str = Field(default="logical-mutation-v1", max_length=64)
+    closure_policy_version: str = Field(default=ACTIVE_APPLY_POLICY, max_length=64)
     operations: list[MutationOperationRequest] = Field(min_length=1, max_length=100)
     target_finding_keys: list[str] = Field(default_factory=list, max_length=100)
     accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
