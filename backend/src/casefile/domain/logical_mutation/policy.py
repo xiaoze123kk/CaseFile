@@ -6,6 +6,15 @@ from dataclasses import dataclass
 from typing import Literal
 
 RelationStrength = Literal["hard", "conditional", "contextual"]
+ClosurePolicyVersion = Literal["logical-mutation-v1", "logical-mutation-v2"]
+
+CLOSURE_POLICY_V1: ClosurePolicyVersion = "logical-mutation-v1"
+CLOSURE_POLICY_V2: ClosurePolicyVersion = "logical-mutation-v2"
+ACTIVE_APPLY_POLICY: ClosurePolicyVersion = CLOSURE_POLICY_V1
+SHADOW_POLICY: ClosurePolicyVersion = CLOSURE_POLICY_V2
+SUPPORTED_CLOSURE_POLICY_VERSIONS = frozenset(
+    {CLOSURE_POLICY_V1, CLOSURE_POLICY_V2}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +30,7 @@ class RelationPolicy:
         return self.cycle_rule_code is not None
 
 
-RELATION_POLICIES: dict[str, RelationPolicy] = {
+_BASE_RELATION_POLICIES: dict[str, RelationPolicy] = {
     policy.relation: policy
     for policy in (
         RelationPolicy("produced_by", "contextual", False),
@@ -59,31 +68,81 @@ RELATION_POLICIES: dict[str, RelationPolicy] = {
     )
 }
 
+_V2_RELATION_POLICIES = {
+    **_BASE_RELATION_POLICIES,
+    "assessed_by_hypothesis": RelationPolicy(
+        "assessed_by_hypothesis", "conditional", True
+    ),
+}
 
-def relation_policy(relation: str) -> RelationPolicy:
+# Compatibility export: callers that do not select a policy continue to see v1.
+RELATION_POLICIES = _BASE_RELATION_POLICIES
+
+
+def validate_closure_policy_version(policy_version: str) -> ClosurePolicyVersion:
+    if policy_version not in SUPPORTED_CLOSURE_POLICY_VERSIONS:
+        raise ValueError(f"closure_policy_version_unsupported:{policy_version}")
+    return policy_version
+
+
+def relation_policies(
+    policy_version: str = ACTIVE_APPLY_POLICY,
+) -> dict[str, RelationPolicy]:
+    version = validate_closure_policy_version(policy_version)
+    return (
+        _BASE_RELATION_POLICIES
+        if version == CLOSURE_POLICY_V1
+        else _V2_RELATION_POLICIES
+    )
+
+
+def relation_policy(
+    relation: str, policy_version: str = ACTIVE_APPLY_POLICY
+) -> RelationPolicy:
     try:
-        return RELATION_POLICIES[relation]
+        return relation_policies(policy_version)[relation]
     except KeyError as error:
         raise ValueError(f"logical_relation_policy_missing:{relation}") from error
 
 
-def propagating_relations() -> frozenset[str]:
+def propagating_relations(
+    policy_version: str = ACTIVE_APPLY_POLICY,
+) -> frozenset[str]:
     return frozenset(
         relation
-        for relation, policy in RELATION_POLICIES.items()
+        for relation, policy in relation_policies(policy_version).items()
         if policy.propagates_to_dependents
     )
 
 
-def cycle_relations() -> frozenset[str]:
+def cycle_relations(policy_version: str = ACTIVE_APPLY_POLICY) -> frozenset[str]:
     return frozenset(
-        relation for relation, policy in RELATION_POLICIES.items() if policy.detects_cycles
-    )
-
-
-def cycle_policies() -> tuple[RelationPolicy, ...]:
-    return tuple(
-        policy
-        for _relation, policy in sorted(RELATION_POLICIES.items())
+        relation
+        for relation, policy in relation_policies(policy_version).items()
         if policy.detects_cycles
     )
+
+
+def cycle_policies(
+    policy_version: str = ACTIVE_APPLY_POLICY,
+) -> tuple[RelationPolicy, ...]:
+    return tuple(
+        policy
+        for _relation, policy in sorted(relation_policies(policy_version).items())
+        if policy.detects_cycles
+    )
+
+
+_V2_SEMANTIC_FINDING_LEVELS = {
+    "knowledge_state_available_before_source": "repair_required",
+    "temporal_exclusivity_violation": "repair_required",
+}
+
+
+def semantic_finding_closure_level(
+    rule_code: str, policy_version: str
+) -> Literal["repair_required"] | None:
+    version = validate_closure_policy_version(policy_version)
+    if version == CLOSURE_POLICY_V1:
+        return None
+    return _V2_SEMANTIC_FINDING_LEVELS.get(rule_code)  # type: ignore[return-value]

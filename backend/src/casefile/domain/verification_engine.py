@@ -23,7 +23,8 @@ from casefile.contracts import (
     validate_casefile_semantics,
 )
 from casefile.domain.logical_mutation import (
-    CLOSURE_POLICY_VERSION,
+    ACTIVE_APPLY_POLICY,
+    CLOSURE_POLICY_V1,
     ClosureIssue,
     ImpactCone,
     MutationNormalizationError,
@@ -32,6 +33,8 @@ from casefile.domain.logical_mutation import (
     compile_logical_graph,
     evaluate_closure_rules,
     normalize_mutation,
+    semantic_finding_closure_level,
+    validate_closure_policy_version,
 )
 
 FindingKind = Literal["deterministic", "llm"]
@@ -272,6 +275,7 @@ class VerificationEngine:
         profile: Literal["fast", "balanced", "strict"] = "fast",
         draft_revision: int = 1,
         editable_fields_by_type: Mapping[str, Collection[str]] | None = None,
+        closure_policy_version: str = ACTIVE_APPLY_POLICY,
     ) -> None:
         if profile not in {"fast", "balanced", "strict"}:
             raise ValueError(f"Unsupported verification profile: {profile}")
@@ -279,6 +283,9 @@ class VerificationEngine:
             raise ValueError("draft_revision must be positive")
         self.profile = profile
         self.draft_revision = draft_revision
+        self.closure_policy_version = validate_closure_policy_version(
+            closure_policy_version
+        )
         self.editable_fields_by_type = {
             key: frozenset(value) for key, value in (editable_fields_by_type or {}).items()
         }
@@ -312,13 +319,16 @@ class VerificationEngine:
     ) -> tuple[VerificationFinding, ...]:
         """Evaluate versioned closure policy for one structurally valid snapshot."""
 
-        graph = compile_logical_graph(document)
+        graph = compile_logical_graph(
+            document, policy_version=self.closure_policy_version
+        )
         empty_mutation = MutationSet(
             mutation_set_id="verification_snapshot",
             base_draft_id=1,
             base_revision=self.draft_revision,
             operations=(),
             actor="system",
+            closure_policy_version=self.closure_policy_version,
         )
         return tuple(
             self._closure_finding(closure_issue)
@@ -328,6 +338,7 @@ class VerificationEngine:
                 graph,
                 graph,
                 empty_mutation,
+                policy_version=self.closure_policy_version,
             )
         )
 
@@ -411,7 +422,9 @@ class VerificationEngine:
 
         baseline_hash = _document_hash(document)
         baseline_result = self.verify(document)
-        baseline_graph = compile_logical_graph(document)
+        baseline_graph = compile_logical_graph(
+            document, policy_version=self.closure_policy_version
+        )
         baseline_closure = self.evaluate_snapshot_closure(document)
         baseline_result = VerificationResult(
             findings=tuple(
@@ -424,7 +437,11 @@ class VerificationEngine:
             engine_version=baseline_result.engine_version,
         )
         try:
-            normalized = normalize_mutation(document, mutation_set)
+            normalized = normalize_mutation(
+                document,
+                mutation_set,
+                expected_policy_version=self.closure_policy_version,
+            )
         except MutationNormalizationError as error:
             return MutationSimulation(
                 valid=False,
@@ -447,7 +464,9 @@ class VerificationEngine:
 
         candidate = dict(normalized.candidate_document)
         candidate_result = self.verify(candidate)
-        candidate_graph = compile_logical_graph(candidate)
+        candidate_graph = compile_logical_graph(
+            candidate, policy_version=self.closure_policy_version
+        )
         mutation_findings = tuple(
             self._closure_finding(closure_issue)
             for closure_issue in evaluate_closure_rules(
@@ -456,6 +475,7 @@ class VerificationEngine:
                 baseline_graph,
                 candidate_graph,
                 mutation_set,
+                policy_version=self.closure_policy_version,
             )
         )
         merged_final = {item.finding_key: item for item in candidate_result.findings}
@@ -474,18 +494,28 @@ class VerificationEngine:
             )
         )
         residual_targets = tuple(sorted(set(target_finding_keys) & set(final_by_key)))
-        hard = tuple(
-            sorted(
-                item.finding_key
-                for item in final_findings
-                if item.payload.get("closure_level") == "hard_invariant"
-                and (
-                    not allow_existing_hard_invariants
-                    or item.finding_key not in baseline_by_key
-                    or item.finding_key in worsened
+        if self.closure_policy_version == CLOSURE_POLICY_V1:
+            hard = tuple(
+                sorted(
+                    item.finding_key
+                    for item in final_findings
+                    if item.payload.get("closure_level") == "hard_invariant"
+                    and (
+                        not allow_existing_hard_invariants
+                        or item.finding_key not in baseline_by_key
+                        or item.finding_key in worsened
+                    )
                 )
             )
-        )
+        else:
+            hard = tuple(
+                sorted(
+                    key
+                    for key in {*introduced, *worsened}
+                    if final_by_key[key].payload.get("closure_level")
+                    == "hard_invariant"
+                )
+            )
         repair_required = tuple(
             sorted(
                 key
@@ -525,7 +555,12 @@ class VerificationEngine:
         elif repair_required:
             reason_code = None if author_acceptance else "repair_required"
 
-        impact = analyze_impact(baseline_graph, candidate_graph, mutation_set)
+        impact = analyze_impact(
+            baseline_graph,
+            candidate_graph,
+            mutation_set,
+            policy_version=self.closure_policy_version,
+        )
         return MutationSimulation(
             valid=True,
             can_apply=can_apply,
@@ -721,10 +756,16 @@ class VerificationEngine:
             path = str(issue.get("path", ""))
             refs = _refs_from_issue(issue, document)
             public_issues = public_validation_issues([issue])
-            key = (
-                f"det:{code}:"
-                f"{_fingerprint({'path': path, 'refs': [r.as_dict() for r in refs]})[:24]}"
+            key_basis: dict[str, Any] = {
+                "path": path,
+                "refs": [r.as_dict() for r in refs],
+            }
+            closure_level = semantic_finding_closure_level(
+                code, self.closure_policy_version
             )
+            if closure_level is not None:
+                key_basis = {"refs": [r.as_dict() for r in refs]}
+            key = f"det:{code}:{_fingerprint(key_basis)[:24]}"
             severity = LEGACY_SEVERITY_MAP.get(str(issue.get("severity", "S2")), "error")
             findings.append(
                 VerificationFinding(
@@ -742,6 +783,14 @@ class VerificationEngine:
                         "path": path,
                         "public_issue": public_issues[0] if public_issues else None,
                         "impact_refs": deepcopy(issue.get("impact_refs", [])),
+                        **(
+                            {
+                                "closure_level": closure_level,
+                                "closure_policy_version": self.closure_policy_version,
+                            }
+                            if closure_level is not None
+                            else {}
+                        ),
                     },
                 )
             )
@@ -770,7 +819,7 @@ class VerificationEngine:
             refs=refs,
             payload={
                 "closure_level": issue.level,
-                "closure_policy_version": CLOSURE_POLICY_VERSION,
+                "closure_policy_version": self.closure_policy_version,
                 "caused_by_operation_ids": list(issue.caused_by_operation_ids),
                 "dependency_path": list(issue.dependency_path),
                 "repair_kinds": list(issue.repair_kinds),

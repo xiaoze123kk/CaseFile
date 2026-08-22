@@ -8,9 +8,14 @@ from casefile.domain.logical_mutation.policy import cycle_relations, propagating
 
 
 def analyze_impact(
-    baseline_graph: LogicalGraph, candidate_graph: LogicalGraph, mutation_set: MutationSet
+    baseline_graph: LogicalGraph,
+    candidate_graph: LogicalGraph,
+    mutation_set: MutationSet,
+    *,
+    policy_version: str | None = None,
 ) -> ImpactCone:
-    propagation_relations = propagating_relations()
+    version = policy_version or mutation_set.closure_policy_version
+    propagation_relations = propagating_relations(version)
     roots = tuple(sorted({operation.object_id for operation in mutation_set.operations}))
     direct: set[str] = set()
     transitive: set[str] = set()
@@ -36,12 +41,12 @@ def analyze_impact(
             {
                 *(
                     cycle
-                    for relation in cycle_relations()
+                    for relation in cycle_relations(version)
                     for cycle in baseline_graph.cycles(relation)
                 ),
                 *(
                     cycle
-                    for relation in cycle_relations()
+                    for relation in cycle_relations(version)
                     for cycle in candidate_graph.cycles(relation)
                 ),
             },

@@ -21,15 +21,25 @@ from casefile.domain.logical_mutation.normalizer import (
     normalize_mutation,
 )
 from casefile.domain.logical_mutation.policy import (
+    ACTIVE_APPLY_POLICY,
+    CLOSURE_POLICY_V1,
+    CLOSURE_POLICY_V2,
     RELATION_POLICIES,
+    SHADOW_POLICY,
+    SUPPORTED_CLOSURE_POLICY_VERSIONS,
     RelationPolicy,
     cycle_policies,
     cycle_relations,
     relation_policy,
+    semantic_finding_closure_level,
+    validate_closure_policy_version,
 )
 from casefile.domain.logical_mutation.rules import evaluate_closure_rules
 
 __all__ = [
+    "ACTIVE_APPLY_POLICY",
+    "CLOSURE_POLICY_V1",
+    "CLOSURE_POLICY_V2",
     "CLOSURE_POLICY_VERSION",
     "ClosureIssue",
     "CreateObject",
@@ -44,6 +54,8 @@ __all__ = [
     "NormalizedMutation",
     "OLD_VALUE_UNSET",
     "RELATION_POLICIES",
+    "SHADOW_POLICY",
+    "SUPPORTED_CLOSURE_POLICY_VERSIONS",
     "RelationPolicy",
     "UpdateField",
     "analyze_impact",
@@ -53,4 +65,6 @@ __all__ = [
     "evaluate_closure_rules",
     "normalize_mutation",
     "relation_policy",
+    "semantic_finding_closure_level",
+    "validate_closure_policy_version",
 ]
