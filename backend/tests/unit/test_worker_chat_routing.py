@@ -16,10 +16,10 @@ from casefile.agent_runtime.prompt import (
     render_chat_router_prompt,
 )
 from casefile.agent_runtime.providers import FakeProvider
-from casefile.worker.runtime import (
-    _chat_intent_event_payload,
-    _chat_rewrite_event_payload,
-    _resolve_chat_route,
+from casefile.worker.executors.chat import (
+    chat_intent_event_payload,
+    chat_rewrite_event_payload,
+    resolve_chat_route,
 )
 
 
@@ -51,7 +51,7 @@ def make_request(
 
 
 def test_preset_hint_resolves_route_rewrite_and_task_state_before_model_call() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(hint={"entrypoint": "preset", "preset_id": "inspect"})
     )
 
@@ -66,7 +66,7 @@ def test_preset_hint_resolves_route_rewrite_and_task_state_before_model_call() -
 
 
 def test_issue_action_hint_resolves_to_explain_issue_profile() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(
             hint={"entrypoint": "issue_action"},
             message="请处理当前焦点中的验证问题。",
@@ -83,7 +83,7 @@ def test_issue_action_hint_resolves_to_explain_issue_profile() -> None:
 
 
 def test_audit_preset_resolves_to_logic_audit_profile_with_suggestions_allowed() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(hint={"entrypoint": "preset", "preset_id": "audit"})
     )
 
@@ -101,7 +101,7 @@ def test_audit_preset_resolves_to_logic_audit_profile_with_suggestions_allowed()
 
 
 def test_free_text_without_router_falls_back_and_denies_suggestions() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(hint={"entrypoint": "free_text"}, message="帮我看看 Lucy。")
     )
 
@@ -117,7 +117,7 @@ def test_free_text_without_router_falls_back_and_denies_suggestions() -> None:
 
 
 def test_free_text_llm_question_routes_through_confidence_gate() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(hint={"entrypoint": "free_text"}, message="帮我看看 Lucy。"),
         provider=FakeProvider(),
     )
@@ -134,7 +134,7 @@ def test_free_text_llm_question_routes_through_confidence_gate() -> None:
 
 
 def test_free_text_llm_edit_resolves_mentions_and_contextualizes() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(
             hint={"entrypoint": "free_text"},
             message="它的描述太夸张，改得克制点，但别动时间线。",
@@ -157,7 +157,7 @@ def test_free_text_llm_edit_resolves_mentions_and_contextualizes() -> None:
 
 
 def test_low_confidence_sensitive_edit_hits_the_gate_and_falls_back() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(
             hint={"entrypoint": "free_text"},
             message="这段描述低置信度地改一下。",
@@ -183,7 +183,7 @@ def test_analysis_route_selects_multi_query_and_calls_post_route_rewrite() -> No
         hint={"entrypoint": "free_text"},
         message="对比一下候选解释。",
     )
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         replace(request, emit=emit),
         provider=FakeProvider(),
     )
@@ -203,7 +203,7 @@ def test_analysis_route_selects_multi_query_and_calls_post_route_rewrite() -> No
 
 def test_no_hint_keeps_the_legacy_request_untouched() -> None:
     request = make_request(hint=None)
-    resolved = _resolve_chat_route(request)
+    resolved = resolve_chat_route(request)
 
     assert resolved is request
     assert resolved.route is None
@@ -221,7 +221,7 @@ def test_v2_prompt_package_renders_router_executor_and_rewrite_components() -> N
     assert "意图理解组件" in router_instructions
     assert json.loads(router_input)["author_message"] == "对比一下候选解释。"
 
-    resolved = _resolve_chat_route(request, provider=FakeProvider())
+    resolved = resolve_chat_route(request, provider=FakeProvider())
     executor_instructions, executor_input = render_chat_executor_prompt(resolved)
     assert "本路由组件为只读分析" in executor_instructions
     executor_payload = json.loads(executor_input)
@@ -267,7 +267,7 @@ def test_v3_prompt_package_renders_the_v2_read_tool_guidance() -> None:
         hint={"entrypoint": "preset", "preset_id": "inspect"},
         prompt_version="casefile-chat-v3",
     )
-    resolved = _resolve_chat_route(request)
+    resolved = resolve_chat_route(request)
 
     instructions, input_text = render_chat_executor_prompt(resolved)
 
@@ -283,7 +283,7 @@ def test_v8_prompt_package_renders_the_logic_audit_executor() -> None:
         hint={"entrypoint": "preset", "preset_id": "audit"},
         prompt_version="casefile-chat-v8",
     )
-    resolved = _resolve_chat_route(request)
+    resolved = resolve_chat_route(request)
 
     instructions, input_text = render_chat_executor_prompt(resolved)
 
@@ -297,12 +297,12 @@ def test_v8_prompt_package_renders_the_logic_audit_executor() -> None:
 
 
 def test_routing_event_payloads_are_json_serializable_and_small() -> None:
-    resolved = _resolve_chat_route(
+    resolved = resolve_chat_route(
         make_request(hint={"entrypoint": "preset", "preset_id": "gate"})
     )
 
-    intent_payload = _chat_intent_event_payload(resolved)
-    rewrite_payload = _chat_rewrite_event_payload(resolved)
+    intent_payload = chat_intent_event_payload(resolved)
+    rewrite_payload = chat_rewrite_event_payload(resolved)
 
     assert intent_payload["primary_intent"] == "validate_request"
     assert intent_payload["confidence"] == 1.0
@@ -319,7 +319,7 @@ def test_chat_input_renders_routing_block_only_when_route_exists() -> None:
     legacy_payload = json.loads(legacy_text.split("\n", 1)[1])
 
     routed_text = casefile_chat_input(
-        _resolve_chat_route(
+        resolve_chat_route(
             make_request(hint={"entrypoint": "preset", "preset_id": "inspect"})
         )
     )

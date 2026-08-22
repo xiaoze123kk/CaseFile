@@ -43,7 +43,7 @@ from casefile.benchmark.chat_outcome_eval import (
     build_outcome_tasks,
     grade_chat_outcome,
 )
-from casefile.worker.runtime import _resolve_chat_route
+from casefile.worker.executors.chat import resolve_chat_route
 
 PASS_AT_K_TARGET = 0.85
 RELEASE_PASS_K = 5
@@ -373,7 +373,7 @@ def run_live_chat_outcome_eval(
             stage = "routing"
             started = time.perf_counter()
             try:
-                resolved = _resolve_chat_route(request, provider=provider)
+                resolved = resolve_chat_route(request, provider=provider)
                 if prompt_version in {
                     "casefile-chat-v13",
                     "casefile-chat-v14",
