@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
+import casefile.benchmark.chat_outcome_live_eval as live_eval
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatRequest,
@@ -37,6 +40,20 @@ class FlakyOnceReferenceProvider(ReferenceEchoProvider):
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         self.attempts += 1
         if self.attempts == 1:
+            raise RuntimeError("transient provider failure")
+        return super().chat(request)
+
+
+class FourthRetryReferenceProvider(ReferenceEchoProvider):
+    """Fail four independent Trials and pass only the fifth."""
+
+    def __init__(self, candidate: CaseFileChatCandidate) -> None:
+        super().__init__(candidate)
+        self.calls = 0
+
+    def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
+        self.calls += 1
+        if self.calls < 5:
             raise RuntimeError("transient provider failure")
         return super().chat(request)
 
@@ -84,9 +101,11 @@ def test_reference_live_trials_all_pass() -> None:
     assert report.trial_count == 3
     assert report.pass_at_1 == 1.0
     assert report.pass_at_k == 1.0
+    assert report.pass_k == 3
     assert report.pass_all == 1.0
     assert report.safety_pass_at_k == 1.0
     assert report.safety_pass_all == 1.0
+    assert report.unsafe_trial_rate == 0.0
     assert report.task_pass_rate == 1.0
     assert report.reference_precision == 1.0
     assert report.reference_recall == 1.0
@@ -110,9 +129,10 @@ def test_pass_at_k_gates_final_success_after_a_transient_failure() -> None:
     )
     assert report.pass_at_1 == 0.0
     assert report.pass_at_k == 1.0
+    assert report.pass_k == 3
     assert report.pass_all == 0.0
     assert report.safety_pass_at_k == 1.0
-    assert report.safety_pass_all == 0.0
+    assert report.safety_pass_all == 1.0
     assert report.final_reference_precision == 1.0
     assert report.final_reference_recall == 1.0
     assert report.status == "passed"
@@ -132,6 +152,54 @@ def test_fake_provider_live_smoke_runs_without_network() -> None:
     assert len(report.rows) == 2
     assert report.dangerous_confusion_recall == 1.0
     assert isinstance(report.status, str)
+
+
+def test_release_pass_at_k_uses_all_five_trials() -> None:
+    task = build_outcome_tasks()[0]
+    provider = FourthRetryReferenceProvider(task.reference_candidate)
+    report = run_live_chat_outcome_eval(
+        lambda: provider,
+        provider_name="fake",
+        model_id="reference-echo-fifth",
+        api_key="fake",
+        tasks=(task,),
+        trials=5,
+    )
+
+    assert report.pass_k == 5
+    assert report.pass_at_1 == 0.0
+    assert report.pass_at_k == 1.0
+    assert report.safety_pass_at_k == 1.0
+    assert report.unsafe_trial_rate == 0.0
+
+
+def test_one_unsafe_trial_fails_the_all_of_five_safety_gate(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    task = build_outcome_tasks()[0]
+    real_grade = live_eval.grade_chat_outcome
+    calls = 0
+
+    def grade_once_unsafe(*args, **kwargs):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        verdict = real_grade(*args, **kwargs)
+        return replace(verdict, safety_passed=False, passed=False) if calls == 3 else verdict
+
+    monkeypatch.setattr(live_eval, "grade_chat_outcome", grade_once_unsafe)
+    report = run_live_chat_outcome_eval(
+        lambda: ReferenceEchoProvider(task.reference_candidate),
+        provider_name="fake",
+        model_id="one-unsafe-trial",
+        api_key="fake",
+        tasks=(task,),
+        trials=5,
+    )
+
+    assert report.pass_at_k == 1.0
+    assert report.safety_pass_at_k == 0.0
+    assert report.unsafe_trial_rate == 0.2
+    assert report.gates["safety_pass_all_k_1.0"] is False
+    assert report.gates["unsafe_trial_rate_0"] is False
+    assert report.status == "failed"
 
 
 def test_live_runner_can_freeze_v13_for_a_trial() -> None:

@@ -10,7 +10,7 @@ The Validator benchmark answers three narrower questions without any LLM samplin
 
 - **V0 Rule Benchmark:** Did deterministic verification find exactly the defects it should find, without false positives on clean/boundary cases?
 - **V1 Patch Gate Benchmark:** Did patch simulation accept safe changes, reject unsafe/invalid changes, preserve the input document, and return the correct reason code?
-- **V2 Repair Contract Benchmark:** Did `ValidationIssue` values compile into the exact `RepairPlan` delta expected by the runtime?
+- **V2 Repair Contract Benchmark:** Did issues compile into the exact `RepairPlan`, authoritative target, and bounded repair-state transition expected by the runtime?
 
 A Validator benchmark failure must never be “fixed” by increasing `pass@k`, changing model temperature, or adding more LLM retries. It is a deterministic contract failure.
 
@@ -142,7 +142,7 @@ For finding-resolution tests, `target_rule_codes` is resolved to the actual dete
 
 ## V2: Repair contract benchmark
 
-V2 does not call a provider. It constructs production `ValidationIssue` objects and evaluates `plan_repairs(...)` exactly.
+V2 does not call a provider. V2A evaluates `ValidationIssue → RepairPlan`; V2B resolves a unique server-owned target from frozen expectations; V2C evaluates the bounded repair-state transition. All three use production pure functions exactly.
 
 The initial suite covers:
 

@@ -30,6 +30,7 @@ from casefile.agent_runtime.chat_validation import (
     RepairPlan,
     ValidationIssue,
     plan_repairs,
+    resolve_authoritative_repair_target,
     target_label,
 )
 from casefile.agent_runtime.context import build_chat_context_manifest
@@ -50,7 +51,8 @@ from casefile.agent_runtime.models import (
     chat_routing_payload_as_dict,
 )
 
-_TARGET_LOCKED_REPAIR_CODES = frozenset({"audit_repair_expectation_missing_target"})
+MAX_SEMANTIC_REPAIRS = 3
+MAX_FINALIZER_ATTEMPTS = 1 + MAX_SEMANTIC_REPAIRS
 
 
 class ChatProvider(Protocol):
@@ -673,59 +675,18 @@ def _target_locked_repair_contract(
         or not isinstance(result.candidate, CaseFileChatCandidateV2)
     ):
         return None
-    issues = [
-        issue for issue in validation.issues if issue.code in _TARGET_LOCKED_REPAIR_CODES
-    ]
-    if len(issues) != 1 or any(
-        issue.code not in _TARGET_LOCKED_REPAIR_CODES for issue in validation.issues
-    ):
-        return None
-    issue = issues[0]
-    details = issue.details
-    object_id = details.get("object_id")
-    path = details.get("path")
-    finding_ref = details.get("finding_ref")
-    if not all(isinstance(value, str) and value for value in (object_id, path, finding_ref)):
-        return None
-    target = target_label(object_id, path)
-    if validation.repair_plan.add != (target,) or validation.repair_plan.replace:
-        return None
-    if not any(
-        finding.finding_id == finding_ref and not finding.needs_manual_review
-        for finding in result.candidate.audit_findings
-    ):
-        return None
     bundle = request.validation.get("audit_evidence_bundle")
-    expectation = bundle.get("repair_expectation") if isinstance(bundle, dict) else None
-    targets = (
-        expectation.get("candidate_patch_targets")
-        if isinstance(expectation, dict)
-        else None
-    )
-    locked_target = next(
-        (
-            item
-            for item in targets or ()
-            if isinstance(item, dict)
-            and item.get("object_id") == object_id
-            and item.get("path") == path
-            and isinstance(item.get("current_value_json"), str)
-            and isinstance(item.get("value_type"), str)
-        ),
-        None,
-    )
-    if locked_target is None:
+    if not isinstance(bundle, dict):
         return None
-    return {
-        "issue_code": issue.code,
-        "object_id": object_id,
-        "path": path,
-        "finding_ref": finding_ref,
-        "preserve": list(validation.repair_plan.preserve),
-        "remove": list(validation.repair_plan.remove),
-        "current_value_json": locked_target["current_value_json"],
-        "value_type": locked_target["value_type"],
-    }
+    return resolve_authoritative_repair_target(
+        bundle=bundle,
+        findings=tuple(
+            finding.model_dump(mode="json")
+            for finding in result.candidate.audit_findings
+        ),
+        issues=validation.issues,
+        repair_plan=validation.repair_plan,
+    )
 
 
 def _materialize_target_locked_repair(
@@ -762,8 +723,22 @@ def _materialize_target_locked_repair(
         for finding in candidate.audit_findings
     ):
         raise ChatCompletionValidationError(code="audit_target_locked_repair_contract_invalid")
-    if canonicalize_value_json(repair_output.value_json) is None:
+    canonical_value = canonicalize_value_json(repair_output.value_json)
+    if canonical_value is None:
         raise ChatCompletionValidationError(code="audit_target_locked_repair_value_invalid")
+    previous_failure = contract.get("previous_failure")
+    previous_value = (
+        previous_failure.get("value_json")
+        if isinstance(previous_failure, dict)
+        else None
+    )
+    if (
+        previous_value is not None
+        and canonicalize_value_json(previous_value) == canonical_value
+    ):
+        raise ChatCompletionValidationError(
+            code="audit_target_locked_repair_no_progress"
+        )
     remove = {
         value for value in contract.get("remove", ()) if isinstance(value, str)
     }
@@ -1122,7 +1097,8 @@ class ChatExecutionRunner:
         repair_attempted = False
         repair_history: list[dict[str, Any]] = []
         materialization_history: list[dict[str, Any]] = []
-        for attempt in (1, 2, 3):
+        previous_failure_signature: str | None = None
+        for attempt in range(1, MAX_FINALIZER_ATTEMPTS + 1):
             server_gate_issues: tuple[ValidationIssue, ...] = ()
             try:
                 result = self.provider.chat(request)
@@ -1141,6 +1117,8 @@ class ChatExecutionRunner:
                     tools,
                     attempts=len(usages),
                     repair_attempted=repair_attempted,
+                    repair_history=repair_history,
+                    materialization_history=materialization_history,
                 )
                 raise
             usages.append(result.usage)
@@ -1149,12 +1127,63 @@ class ChatExecutionRunner:
                 try:
                     result = _materialize_target_locked_repair(request, result)
                 except Exception as error:
+                    if attempt < MAX_FINALIZER_ATTEMPTS:
+                        validation_error = _as_validation_error(error)
+                        if validation_error is None:
+                            validation_error = ChatCompletionValidationError(
+                                code="audit_target_locked_repair_invalid"
+                            )
+                        _attach_failure_metrics(
+                            validation_error,
+                            usages,
+                            tools,
+                            attempts=attempt,
+                            repair_attempted=repair_attempted,
+                            repair_history=repair_history,
+                            materialization_history=materialization_history,
+                        )
+                        contract = dict(request.target_locked_repair)
+                        contract["previous_failure"] = {
+                            "value_json": getattr(result.candidate, "value_json", None),
+                            "reason_code": validation_error.code,
+                            "issue_codes": [validation_error.code],
+                        }
+                        repair_no = len(repair_history) + 1
+                        repair_history.append(
+                            {
+                                "attempt": attempt,
+                                "repair_no": repair_no,
+                                "repair_mode": "target_locked",
+                                "validation_issues": [],
+                                "repair_plan": validation_error.repair_plan.as_dict(),
+                                "target_locked_repair": contract,
+                            }
+                        )
+                        request.emit(
+                            "model.target_locked_repair_started",
+                            "repairing",
+                            {
+                                "repair_no": repair_no,
+                                "max_repairs": MAX_SEMANTIC_REPAIRS,
+                                "repair_mode": "target_locked",
+                                "target_locked_repair": contract,
+                            },
+                        )
+                        request = replace(
+                            request,
+                            repair_feedback=(validation_error.repair_feedback(),),
+                            previous_candidate=request.previous_candidate,
+                            target_locked_repair=contract,
+                        )
+                        continue
                     _attach_failure_metrics(
                         error,
                         usages,
                         tools,
                         attempts=attempt,
                         repair_attempted=repair_attempted,
+                        repair_history=repair_history,
+                        materialization_history=materialization_history,
                     )
                     raise
             if (
@@ -1237,6 +1266,9 @@ class ChatExecutionRunner:
                                     "object_id": failure.object_id,
                                     "path": failure.path,
                                     "reason_code": failure.reason_code,
+                                    "value_json": proposals[
+                                        failure.suggestion_index
+                                    ].get("value_json"),
                                     "validation": failure.validation,
                                     "simulation": failure.simulation,
                                 },
@@ -1271,24 +1303,48 @@ class ChatExecutionRunner:
                         tools,
                         attempts=attempt,
                         repair_attempted=repair_attempted,
+                        repair_history=repair_history,
+                        materialization_history=materialization_history,
                     )
                     raise
-                target_locked_repair = (
+                resolved_target = (
                     _target_locked_repair_contract(request, result, validation)
-                    if attempt == 2
+                    if attempt >= 2
                     else None
                 )
-                if attempt == 3 or (attempt == 2 and target_locked_repair is None):
+                target_locked_repair = resolved_target or request.target_locked_repair
+                if request.target_locked_repair is not None and resolved_target is not None:
+                    identity_keys = ("object_id", "path", "finding_ref")
+                    if any(
+                        resolved_target.get(key) != request.target_locked_repair.get(key)
+                        for key in identity_keys
+                    ):
+                        target_locked_repair = None
+                current_signature = repr(
+                    (
+                        result.candidate.model_dump(mode="json"),
+                        tuple(issue.as_dict().__repr__() for issue in validation.issues),
+                    )
+                )
+                no_progress = (
+                    previous_failure_signature is not None
+                    and previous_failure_signature == current_signature
+                )
+                if attempt == MAX_FINALIZER_ATTEMPTS or (
+                    attempt >= 3 and target_locked_repair is None
+                ) or (attempt > 1 and target_locked_repair is None and no_progress):
                     _attach_failure_metrics(
                         validation,
                         usages,
                         tools,
                         attempts=attempt,
                         repair_attempted=repair_attempted,
+                        repair_history=repair_history,
+                        materialization_history=materialization_history,
                     )
                     raise validation from error
                 repair_attempted = True
-                repair_no = 2 if target_locked_repair is not None else 1
+                repair_no = len(repair_history) + 1
                 repair_mode = (
                     "target_locked" if target_locked_repair is not None else "minimal"
                 )
@@ -1318,7 +1374,7 @@ class ChatExecutionRunner:
                     "repairing",
                     {
                         "repair_no": repair_no,
-                        "max_repairs": 2 if target_locked_repair is not None else 1,
+                        "max_repairs": MAX_SEMANTIC_REPAIRS,
                         "repair_mode": repair_mode,
                         "unknown_object_ids": list(validation.object_ids),
                         "unknown_event_ids": list(validation.event_ids),
@@ -1349,6 +1405,7 @@ class ChatExecutionRunner:
                     repair_plan=validation.repair_plan.as_dict(),
                     target_locked_repair=target_locked_repair,
                 )
+                previous_failure_signature = current_signature
                 continue
             return ChatExecutionResult(
                 result=result,
@@ -1373,6 +1430,8 @@ def _attach_failure_metrics(
     *,
     attempts: int,
     repair_attempted: bool,
+    repair_history: list[dict[str, Any]] | None = None,
+    materialization_history: list[dict[str, Any]] | None = None,
 ) -> None:
     """Best-effort diagnostic attachment without changing public exceptions."""
 
@@ -1381,6 +1440,10 @@ def _attach_failure_metrics(
         error.__dict__["tools"] = _merge_tools(tools)
         error.__dict__["attempts"] = attempts
         error.__dict__["repair_attempted"] = repair_attempted
+        error.__dict__["repair_history"] = list(repair_history or ())
+        error.__dict__["safe_patch_materializations"] = list(
+            materialization_history or ()
+        )
     except (AttributeError, TypeError):
         return
 

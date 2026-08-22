@@ -22,7 +22,12 @@ from pathlib import Path
 from typing import Any
 
 from casefile.agent_runtime.chat_safe_patches import server_gate_audit_suggestions
-from casefile.agent_runtime.chat_validation import ValidationIssue, plan_repairs
+from casefile.agent_runtime.chat_validation import (
+    ValidationIssue,
+    plan_repairs,
+    resolve_authoritative_repair_target,
+    select_semantic_repair_mode,
+)
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.application.v1_editing import EDITABLE_FIELDS, editable_fields_by_collection
 from casefile.application.verification_engine import PatchOperation, VerificationEngine
@@ -597,12 +602,37 @@ def _repair_targets(plan: Mapping[str, Any]) -> set[str]:
 
 def _run_v2_case(case: Mapping[str, Any]) -> CaseVerdict:
     case_id = str(case["case_id"])
-    expected = case.get("expected_plan") or {}
+    expected: Any = case.get("expected_plan") or {}
+    if case.get("kind") in {"target_resolution", "state_transition"}:
+        expected = {}
     if not isinstance(expected, Mapping):
         raise ValueError(f"{case_id}: expected_plan must be an object")
     issues = tuple(_validation_issue(item) for item in case.get("issues", ()))
-    actual = plan_repairs(issues).as_dict()
-    failures = () if actual == dict(expected) else ("repair_plan_exact_match",)
+    plan = plan_repairs(issues)
+    if case.get("kind") == "target_resolution":
+        actual: Any = {
+            "target": resolve_authoritative_repair_target(
+                bundle=case.get("bundle", {}),
+                findings=tuple(case.get("findings", ())),
+                issues=issues,
+                repair_plan=plan,
+            )
+        }
+        expected = {"target": case.get("expected_target")}
+    elif case.get("kind") == "state_transition":
+        actual = {
+            "mode": select_semantic_repair_mode(
+                attempt=int(case.get("attempt", 1)),
+                repair_plan=plan,
+                has_authoritative_target=bool(case.get("has_authoritative_target")),
+                currently_target_locked=bool(case.get("currently_target_locked")),
+                no_progress=bool(case.get("no_progress")),
+            )
+        }
+        expected = case.get("expected_state", {})
+    else:
+        actual = plan.as_dict()
+    failures = () if actual == expected else ("repair_contract_exact_match",)
     return CaseVerdict(
         case_id=case_id,
         layer="V2",

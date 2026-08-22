@@ -108,10 +108,115 @@ def plan_repairs(issues: tuple[ValidationIssue, ...]) -> RepairPlan:
     )
 
 
+def resolve_authoritative_repair_target(
+    *,
+    bundle: Mapping[str, Any],
+    findings: tuple[Mapping[str, Any], ...],
+    issues: tuple[ValidationIssue, ...],
+    repair_plan: RepairPlan,
+) -> dict[str, Any] | None:
+    """Resolve one server-owned audit target without trusting model identity."""
+
+    if not issues or any(not issue.repairable for issue in issues):
+        return None
+    expectation = bundle.get("repair_expectation")
+    targets = (
+        expectation.get("candidate_patch_targets")
+        if isinstance(expectation, Mapping)
+        else None
+    )
+    if not isinstance(targets, list):
+        return None
+    expected_by_label = {
+        target_label(item.get("object_id"), item.get("path")): item
+        for item in targets
+        if isinstance(item, Mapping)
+        and isinstance(item.get("object_id"), str)
+        and isinstance(item.get("path"), str)
+        and isinstance(item.get("current_value_json"), str)
+        and isinstance(item.get("value_type"), str)
+    }
+    required = set(repair_plan.add) & set(expected_by_label)
+    if len(required) != 1 or repair_plan.replace:
+        return None
+    label = next(iter(required))
+    locked_target = expected_by_label[label]
+    object_id = locked_target["object_id"]
+    path = locked_target["path"]
+    finding_refs = {
+        str(issue.details["finding_ref"])
+        for issue in issues
+        if issue.details.get("object_id") == object_id
+        and issue.details.get("path") == path
+        and isinstance(issue.details.get("finding_ref"), str)
+    }
+    if len(finding_refs) != 1:
+        return None
+    finding_ref = next(iter(finding_refs))
+    if not any(
+        item.get("finding_id") == finding_ref and not item.get("needs_manual_review")
+        for item in findings
+    ):
+        return None
+    failure_issue = next(
+        (
+            issue
+            for issue in issues
+            if issue.details.get("object_id") == object_id
+            and issue.details.get("path") == path
+            and issue.details.get("reason_code")
+        ),
+        None,
+    )
+    return {
+        "issue_code": issues[0].code,
+        "object_id": object_id,
+        "path": path,
+        "finding_ref": finding_ref,
+        "preserve": list(repair_plan.preserve),
+        "remove": list(repair_plan.remove),
+        "current_value_json": locked_target["current_value_json"],
+        "value_type": locked_target["value_type"],
+        "previous_failure": {
+            "value_json": failure_issue.details.get("value_json") if failure_issue else None,
+            "reason_code": failure_issue.details.get("reason_code") if failure_issue else None,
+            "issue_codes": sorted({issue.code for issue in issues}),
+        },
+    }
+
+
+def select_semantic_repair_mode(
+    *,
+    attempt: int,
+    repair_plan: RepairPlan,
+    has_authoritative_target: bool,
+    currently_target_locked: bool,
+    no_progress: bool,
+    max_attempts: int = 4,
+) -> Literal["minimal", "target_locked"] | None:
+    """Choose the next bounded repair mode without invoking a provider."""
+
+    if attempt >= max_attempts:
+        return None
+    if currently_target_locked:
+        return "target_locked" if attempt < max_attempts else None
+    if repair_plan.is_empty():
+        return None
+    if attempt == 1:
+        return "minimal"
+    if has_authoritative_target:
+        return "target_locked"
+    if attempt == 2 and not no_progress:
+        return "minimal"
+    return None
+
+
 __all__ = [
     "RepairPlan",
     "ValidationIssue",
     "ValidationReport",
     "plan_repairs",
+    "resolve_authoritative_repair_target",
+    "select_semantic_repair_mode",
     "target_label",
 ]

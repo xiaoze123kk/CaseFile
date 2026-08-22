@@ -54,7 +54,7 @@ def test_m1_canned_outcome_suite_passes_through_production_path(
         outcome = run_canned_trial(engine, actor_id, master_key, task)
         verdicts.append(outcome.verdict)
         assert outcome.verdict.passed, (task.task_id, outcome.verdict.failures)
-    assert len(verdicts) == 35
+    assert len(verdicts) == 34
     assert all(verdict.draft_unchanged for verdict in verdicts)
 
 
@@ -63,7 +63,9 @@ def test_m1_canned_logic_audit_preset_yields_pending_patch_set(
 ) -> None:
     engine, actor_id, master_key = workflow_database
     task = next(
-        task for task in build_outcome_tasks() if task.task_id == "golden-logic-audit"
+        task
+        for task in build_outcome_tasks()
+        if task.task_id == "golden-audit-fractured-alliance"
     )
     outcome = run_canned_trial(engine, actor_id, master_key, task)
 

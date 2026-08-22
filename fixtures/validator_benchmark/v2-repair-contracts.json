@@ -262,6 +262,64 @@
         "replace": [],
         "fix": []
       }
+    },
+    {
+      "case_id": "v2-authoritative-unique-target",
+      "kind": "target_resolution",
+      "bundle": {"repair_expectation": {"candidate_patch_targets": [{"object_id": "ent_researcher", "path": "/description", "current_value_json": "\"旧描述\"", "value_type": "str"}]}},
+      "findings": [{"finding_id": "F1", "needs_manual_review": false}],
+      "issues": [{"code": "audit_repairable_finding_missing_suggestion", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_researcher:/description"], "finding_ref": "F1", "object_id": "ent_researcher", "path": "/description"}}],
+      "expected_target": {"issue_code": "audit_repairable_finding_missing_suggestion", "object_id": "ent_researcher", "path": "/description", "finding_ref": "F1", "preserve": [], "remove": [], "current_value_json": "\"旧描述\"", "value_type": "str", "previous_failure": {"value_json": null, "reason_code": null, "issue_codes": ["audit_repairable_finding_missing_suggestion"]}}
+    },
+    {
+      "case_id": "v2-authoritative-gate-failure-retains-target",
+      "kind": "target_resolution",
+      "bundle": {"repair_expectation": {"candidate_patch_targets": [{"object_id": "ent_researcher", "path": "/description", "current_value_json": "\"旧描述\"", "value_type": "str"}]}},
+      "findings": [{"finding_id": "F1", "needs_manual_review": false}],
+      "issues": [
+        {"code": "audit_suggestion_server_gate_failed", "stage": "patch", "path": "/suggestions/0", "repairable": true, "details": {"extra": ["ent_researcher:/description"], "object_id": "ent_researcher", "path": "/description", "value_json": "null", "reason_code": "simulation_failed"}},
+        {"code": "audit_repairable_finding_missing_suggestion", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_researcher:/description"], "finding_ref": "F1", "object_id": "ent_researcher", "path": "/description"}}
+      ],
+      "expected_target": {"issue_code": "audit_suggestion_server_gate_failed", "object_id": "ent_researcher", "path": "/description", "finding_ref": "F1", "preserve": [], "remove": [], "current_value_json": "\"旧描述\"", "value_type": "str", "previous_failure": {"value_json": "null", "reason_code": "simulation_failed", "issue_codes": ["audit_repairable_finding_missing_suggestion", "audit_suggestion_server_gate_failed"]}}
+    },
+    {
+      "case_id": "v2-authoritative-multiple-targets-refused",
+      "kind": "target_resolution",
+      "bundle": {"repair_expectation": {"candidate_patch_targets": [{"object_id": "ent_a", "path": "/description", "current_value_json": "\"A\"", "value_type": "str"}, {"object_id": "ent_b", "path": "/description", "current_value_json": "\"B\"", "value_type": "str"}]}},
+      "findings": [{"finding_id": "F1", "needs_manual_review": false}],
+      "issues": [{"code": "missing", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_a:/description", "ent_b:/description"], "finding_ref": "F1", "object_id": "ent_a", "path": "/description"}}],
+      "expected_target": null
+    },
+    {
+      "case_id": "v2-authoritative-manual-finding-refused",
+      "kind": "target_resolution",
+      "bundle": {"repair_expectation": {"candidate_patch_targets": [{"object_id": "ent_researcher", "path": "/description", "current_value_json": "\"旧描述\"", "value_type": "str"}]}},
+      "findings": [{"finding_id": "F1", "needs_manual_review": true}],
+      "issues": [{"code": "missing", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_researcher:/description"], "finding_ref": "F1", "object_id": "ent_researcher", "path": "/description"}}],
+      "expected_target": null
+    },
+    {
+      "case_id": "v2-state-initial-minimal",
+      "kind": "state_transition",
+      "attempt": 1,
+      "issues": [{"code": "missing", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_researcher:/description"]}}],
+      "expected_state": {"mode": "minimal"}
+    },
+    {
+      "case_id": "v2-state-second-target-locked",
+      "kind": "state_transition",
+      "attempt": 2,
+      "has_authoritative_target": true,
+      "issues": [{"code": "missing", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_researcher:/description"]}}],
+      "expected_state": {"mode": "target_locked"}
+    },
+    {
+      "case_id": "v2-state-no-progress-stops",
+      "kind": "state_transition",
+      "attempt": 2,
+      "no_progress": true,
+      "issues": [{"code": "missing", "stage": "audit", "path": "/suggestions", "repairable": true, "details": {"missing": ["ent_researcher:/description"]}}],
+      "expected_state": {"mode": null}
     }
   ]
 }

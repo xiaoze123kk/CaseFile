@@ -647,6 +647,11 @@ def test_v15_target_locked_repair_materializes_only_the_server_locked_target() -
             "repair_expectation"
         ]["candidate_patch_targets"][0]["current_value_json"],
         "value_type": "str",
+        "previous_failure": {
+            "value_json": None,
+            "reason_code": None,
+            "issue_codes": ["audit_repair_expectation_missing_target"],
+        },
     }
     assert chat_finalizer_output_type(provider.requests[2]) is CaseFileChatTargetLockedRepairOutput
     instructions, _ = render_chat_finalizer_prompt(
@@ -694,17 +699,80 @@ def test_v15_target_locked_repair_still_fails_closed_when_its_value_is_invalid()
                 ),
                 1,
             ),
+            _result(
+                CaseFileChatTargetLockedRepairOutput(
+                    value_json="null",
+                    reason="重复的不安全值仍应被服务器拦截。",
+                ),
+                1,
+            ),
         ]
     )
 
     with pytest.raises(ChatCompletionValidationError) as caught:
         ChatExecutionRunner(provider).run(request)
 
-    assert caught.value.code == "audit_suggestion_server_gate_failed"
-    assert len(provider.requests) == 3
+    assert caught.value.code == "audit_target_locked_repair_no_progress"
+    assert len(provider.requests) == 4
 
 
-def test_v15_target_locked_repair_rejects_non_json_output_without_a_fourth_attempt() -> None:
+def test_v15_third_semantic_repair_rescues_the_same_locked_target() -> None:
+    task = next(
+        item
+        for item in build_outcome_tasks()
+        if item.task_id == "golden-audit-restart-loop"
+    )
+    request = replace(resolve_task_route(task), prompt_version="casefile-chat-v15")
+    unrelated = task.reference_candidate.suggestions[0].model_copy(
+        update={
+            "object_id": "evt_restart_seven",
+            "path": "/truth_status",
+            "value_json": '"canon_true"',
+        }
+    )
+    invalid = task.reference_candidate.model_copy(update={"suggestions": [unrelated]})
+    expected = task.reference_candidate.suggestions[0]
+    provider = SequenceProvider(
+        [
+            _result(invalid, 1),
+            _result(invalid, 1),
+            _result(
+                CaseFileChatTargetLockedRepairOutput(
+                    value_json="null",
+                    reason="第一次锁定值仍不安全。",
+                ),
+                1,
+            ),
+            _result(
+                CaseFileChatTargetLockedRepairOutput(
+                    value_json=expected.value_json,
+                    reason=expected.reason,
+                ),
+                1,
+            ),
+        ]
+    )
+
+    execution = ChatExecutionRunner(provider).run(request)
+
+    assert execution.attempts == 4
+    assert len(provider.requests) == 4
+    identity = ("object_id", "path", "finding_ref")
+    assert {
+        key: provider.requests[2].target_locked_repair[key] for key in identity
+    } == {key: provider.requests[3].target_locked_repair[key] for key in identity}
+    assert provider.requests[3].target_locked_repair["previous_failure"] == {
+        "value_json": "null",
+        "reason_code": "simulation_failed",
+        "issue_codes": [
+            "audit_repairable_finding_missing_suggestion",
+            "audit_suggestion_server_gate_failed",
+        ],
+    }
+    assert execution.diagnostics["repair_history"][-1]["repair_no"] == 3
+
+
+def test_v15_target_locked_repair_rejects_non_json_output_after_final_rescue() -> None:
     task = next(
         item
         for item in build_outcome_tasks()
@@ -730,6 +798,13 @@ def test_v15_target_locked_repair_rejects_non_json_output_without_a_fourth_attem
                 ),
                 1,
             ),
+            _result(
+                CaseFileChatTargetLockedRepairOutput(
+                    value_json="still-not-json",
+                    reason="最终救援仍必须拒绝未编码字符串。",
+                ),
+                1,
+            ),
         ]
     )
 
@@ -737,8 +812,8 @@ def test_v15_target_locked_repair_rejects_non_json_output_without_a_fourth_attem
         ChatExecutionRunner(provider).run(request)
 
     assert caught.value.code == "audit_target_locked_repair_value_invalid"
-    assert caught.value.attempts == 3
-    assert len(provider.requests) == 3
+    assert caught.value.attempts == 4
+    assert len(provider.requests) == 4
 
 
 def test_repair_plan_keeps_a_required_target_when_an_invalid_value_is_removed() -> None:
