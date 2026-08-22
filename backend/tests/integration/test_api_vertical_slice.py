@@ -511,7 +511,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             provider_factory=lambda _task: recoverable_provider,
         )
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ):
             recoverable_queued = client.post(
@@ -904,8 +904,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         with engine.connect() as connection:
             stored_prompt_version, stored_toolset_version = connection.execute(
                 text(
-                    "SELECT prompt_version, toolset_version FROM task_runs "
-                    "WHERE id = :task_run_id"
+                    "SELECT prompt_version, toolset_version FROM task_runs WHERE id = :task_run_id"
                 ),
                 {"task_run_id": chat_task_id},
             ).one()

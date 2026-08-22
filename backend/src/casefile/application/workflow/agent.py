@@ -706,6 +706,20 @@ class AgentWorkflowMixin:
                             "suppressed_count": suppressed_count,
                         },
                     )
+                else:
+                    suppression_event = self.session.scalar(
+                        select(TaskEvent)
+                        .where(
+                            TaskEvent.task_run_id == task.id,
+                            TaskEvent.event_type == "route.suggestions_suppressed",
+                        )
+                        .order_by(TaskEvent.sequence_no.desc())
+                        .limit(1)
+                    )
+                    if suppression_event is not None:
+                        suppressed_count = int(
+                            suppression_event.payload_jsonb.get("suppressed_count", 0)
+                        )
 
             # Structured logic-audit findings belong to the audit executor only:
             # other routes (question, gate, issue, ...) drop the optional slot

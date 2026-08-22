@@ -54,7 +54,7 @@ def test_provider_credential_deletion_blocks_active_tasks_and_erases_material(
     factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v3",
         ):
             _project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -252,7 +252,7 @@ def test_v11_worker_candidate_adopts_into_workbench_ready_current_draft(
     engine, actor_id, master_key = workflow_database
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v11",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -305,7 +305,7 @@ def test_v12_worker_persists_temporal_step_for_workbench_ready_candidate(
     engine, actor_id, master_key = workflow_database
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v12",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -650,7 +650,7 @@ def test_historical_worker_repairs_structural_output_with_actionable_feedback(
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v6",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -702,7 +702,7 @@ def test_historical_worker_exhausts_structural_repairs_without_persisting_candid
     provider = StructuralFailureProvider(failures_before_success=99)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v6",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -725,9 +725,7 @@ def test_historical_worker_exhausts_structural_repairs_without_persisting_candid
             )
             task_row = session.get(TaskRun, task_run_id)
             assert task_row is not None
-            expected_calls = (
-                int(task_row.budget_jsonb["structural_repair_attempts"]) + 1
-            )
+            expected_calls = int(task_row.budget_jsonb["structural_repair_attempts"]) + 1
 
         assert task["status"] == "failed"
         assert task["error_code"] == "candidate_validation_failed"
@@ -761,7 +759,7 @@ def test_v7_worker_does_not_retry_a_whole_invalid_casefile(
     provider = StructuralFailureProvider(failures_before_success=1)
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
         with patch(
-            "casefile.application.workflow_service.prompt_version_for_task",
+            "casefile.application.workflow.content.prompt_version_for_task",
             return_value="brief-to-draft-v7",
         ):
             project_id, task_run_id = _prepare_task(engine, actor_id)
@@ -1285,7 +1283,6 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             "y": 61,
         }
 
-
         with factory() as session:
             saved_location, revision = V1EditingService(session).patch_object(
                 actor_id,
@@ -1489,9 +1486,10 @@ def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
                 )
             )
             assert batch_operation is not None
-            assert batch_operation.new_value_jsonb["operations"][0]["value"][
-                "review_status"
-            ] == "proposed"
+            assert (
+                batch_operation.new_value_jsonb["operations"][0]["value"]["review_status"]
+                == "proposed"
+            )
             audit_actions = list(
                 session.scalars(
                     select(AuditEvent.action)

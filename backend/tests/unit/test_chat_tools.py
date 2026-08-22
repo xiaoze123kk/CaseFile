@@ -139,9 +139,7 @@ def test_search_finds_exact_id_substring_and_chinese_bigram_overlap() -> None:
     assert "object:person_1" in {
         result["id"] for result in search_casefile_records(casefile, "张三")
     }
-    assert "loc_1" in {
-        result["id"] for result in search_casefile_records(casefile, "三号库区")
-    }
+    assert "loc_1" in {result["id"] for result in search_casefile_records(casefile, "三号库区")}
     assert search_casefile_records(casefile, "") == []
 
 
@@ -188,12 +186,8 @@ def test_get_object_rejects_unknown_ids_without_scanning_other_contract_data() -
     request = make_request(toolset=["get_casefile_object"], max_tool_calls=2)
     context = ChatToolContext(request=request, route=request.route)
 
-    found = json.loads(
-        invoke(get_casefile_object, context, {"object_id": "object:person_1"})
-    )
-    missing = json.loads(
-        invoke(get_casefile_object, context, {"object_id": "object:missing"})
-    )
+    found = json.loads(invoke(get_casefile_object, context, {"object_id": "object:person_1"}))
+    missing = json.loads(invoke(get_casefile_object, context, {"object_id": "object:missing"}))
 
     assert found["object_id"] == "object:person_1"
     assert found["collection"] == "entities"
@@ -245,7 +239,7 @@ def test_validate_patch_proposal_enforces_collection_field_whitelist() -> None:
             {
                 "object_id": "object:person_1",
                 "path": "/description",
-                "value_json": "```json\n\"值\"\n```",
+                "value_json": '```json\n"值"\n```',
             },
         )
     )
@@ -277,7 +271,7 @@ def make_restart_loop_request(
     )
 
 
-def test_simulate_patch_rejects_invalid_proposals_without_touching_casefile() -> None:
+def test_simulate_patch_accepts_optional_description_without_touching_casefile() -> None:
     request = make_restart_loop_request(
         editable_fields_by_collection={"entities": ("name", "description")},
     )
@@ -306,7 +300,7 @@ def test_simulate_patch_rejects_invalid_proposals_without_touching_casefile() ->
             },
         )
     )
-    missing_path = json.loads(
+    optional_description = json.loads(
         invoke(
             simulate_patch_application,
             context,
@@ -332,10 +326,11 @@ def test_simulate_patch_rejects_invalid_proposals_without_touching_casefile() ->
     assert missing_object["reason_code"] == "object_not_found"
     assert forbidden_field["reason_code"] == "field_not_editable"
     assert forbidden_field["allowed_fields"] == ["name", "description"]
-    assert missing_path["reason_code"] == "path_not_found"
+    assert optional_description["valid"] is True
+    assert optional_description["advice"] == "safe_to_propose"
     assert invalid_json["reason_code"] == "value_json_invalid"
     assert request.casefile == before
-    assert context.metrics.successful_calls == 0
+    assert context.metrics.successful_calls == 1
     assert context.metrics.calls == 4
 
 
@@ -385,9 +380,7 @@ def test_simulate_patch_reports_issues_the_patch_would_introduce() -> None:
     assert result["advice"] == "introduces_new_issues"
     assert result["new_issue_ids"] == []
     assert any(issue["code"] == "schema_invalid" for issue in result["new_issues"])
-    assert any(
-        issue["path"] == "/entities/0/name" for issue in result["new_issues"]
-    )
+    assert any(issue["path"] == "/entities/0/name" for issue in result["new_issues"])
     assert result["counts"]["new"] >= 1
 
 
@@ -491,18 +484,27 @@ def test_manifest_gates_v2_tools_by_frozen_toolset_version() -> None:
         toolset_version=CHAT_TOOLSET_VERSION,
     )
 
-    v2_names = [tool.name for tool in chat_tool_manifest(
-        request.route,
-        toolset_version=CHAT_TOOLSET_VERSION,
-    )]
-    v4_names = [tool.name for tool in chat_tool_manifest(
-        request.route,
-        toolset_version=CHAT_TOOLSET_V4_VERSION,
-    )]
-    legacy_names = [tool.name for tool in chat_tool_manifest(
-        request.route,
-        toolset_version=LEGACY_CHAT_TOOLSET_VERSION,
-    )]
+    v2_names = [
+        tool.name
+        for tool in chat_tool_manifest(
+            request.route,
+            toolset_version=CHAT_TOOLSET_VERSION,
+        )
+    ]
+    v4_names = [
+        tool.name
+        for tool in chat_tool_manifest(
+            request.route,
+            toolset_version=CHAT_TOOLSET_V4_VERSION,
+        )
+    ]
+    legacy_names = [
+        tool.name
+        for tool in chat_tool_manifest(
+            request.route,
+            toolset_version=LEGACY_CHAT_TOOLSET_VERSION,
+        )
+    ]
 
     assert v2_names == FULL_V2_TOOLSET
     assert v4_names == FULL_V2_TOOLSET
@@ -521,12 +523,10 @@ def test_manifest_gates_simulate_patch_to_v4_toolset() -> None:
     )
 
     v3_names = [
-        tool.name
-        for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V3_VERSION)
+        tool.name for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V3_VERSION)
     ]
     v4_names = [
-        tool.name
-        for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V4_VERSION)
+        tool.name for tool in chat_tool_manifest(route, toolset_version=CHAT_TOOLSET_V4_VERSION)
     ]
 
     assert v3_names == [
@@ -697,12 +697,8 @@ def test_related_tool_obeys_the_same_budget_gate() -> None:
     )
     context = ChatToolContext(request=request, route=request.route)
 
-    first = json.loads(
-        invoke(get_related_objects, context, {"object_ids": ["object:person_1"]})
-    )
-    second = json.loads(
-        invoke(get_related_objects, context, {"object_ids": ["object:person_1"]})
-    )
+    first = json.loads(invoke(get_related_objects, context, {"object_ids": ["object:person_1"]}))
+    second = json.loads(invoke(get_related_objects, context, {"object_ids": ["object:person_1"]}))
 
     assert first["objects"][0]["id"] == "object:company_1"
     assert second["error"] == "tool_budget_exhausted"
@@ -728,10 +724,13 @@ def test_v3_context_tools_are_gated_by_toolset_and_route_profile() -> None:
         }
     )
     assert [tool.name for tool in chat_tool_manifest(route)] == ["search_casefile"]
-    assert [tool.name for tool in chat_tool_manifest(
-        route,
-        toolset_version=CHAT_TOOLSET_VERSION,
-    )] == ["search_casefile"]
+    assert [
+        tool.name
+        for tool in chat_tool_manifest(
+            route,
+            toolset_version=CHAT_TOOLSET_VERSION,
+        )
+    ] == ["search_casefile"]
     v3_names = [
         tool.name
         for tool in chat_tool_manifest(
