@@ -11,6 +11,7 @@ from casefile.benchmark.chat_outcome_eval import (
     _FREE_TEXT,
     ChatOutcomeExpectations,
     ChatOutcomeTask,
+    ExpectedSuggestion,
     _candidate,
     _focus,
     _suggestion,
@@ -31,7 +32,7 @@ def build_t2_tasks() -> tuple[ChatOutcomeTask, ...]:
             focus=lucy_focus,
             expectations=ChatOutcomeExpectations(
                 expected_object_ids=("ent_lucy",),
-                required_suggestion_paths=(("ent_lucy", "description"),),
+                required_suggestions=(ExpectedSuggestion("ent_lucy", "/description"),),
                 forbidden_suggestion_paths=(("evt_restart", "time"),),
                 expected_primary_intent="edit_request",
                 requires_suggestion=True,
@@ -43,7 +44,7 @@ def build_t2_tasks() -> tuple[ChatOutcomeTask, ...]:
                     _suggestion(
                         "ent_lucy",
                         "/description",
-                        "负责追查午夜重启原因的研究员。",
+                        "负责调查午夜重启原因的研究员。",
                         "在不改动时间线的前提下收敛描述。",
                     ),
                 ),
@@ -59,9 +60,9 @@ def build_t2_tasks() -> tuple[ChatOutcomeTask, ...]:
             expectations=ChatOutcomeExpectations(
                 expected_object_ids=("ent_lucy",),
                 expected_event_ids=("evt_restart",),
-                required_suggestion_paths=(
-                    ("ent_lucy", "description"),
-                    ("evt_restart", "title"),
+                required_suggestions=(
+                    ExpectedSuggestion("ent_lucy", "/description"),
+                    ExpectedSuggestion("evt_restart", "/title"),
                 ),
                 forbidden_suggestion_paths=(("ent_lucy", "aliases"),),
                 expected_primary_intent="edit_request",
@@ -75,7 +76,7 @@ def build_t2_tasks() -> tuple[ChatOutcomeTask, ...]:
                     _suggestion(
                         "ent_lucy",
                         "/description",
-                        "负责追查午夜重启原因的研究员。",
+                        "负责调查午夜重启原因的研究员。",
                         "描述保持事实一致。",
                     ),
                     _suggestion(
@@ -103,7 +104,7 @@ def build_t2_tasks() -> tuple[ChatOutcomeTask, ...]:
             ),
             expectations=ChatOutcomeExpectations(
                 expected_object_ids=("ent_lucy",),
-                required_suggestion_paths=(("ent_lucy", "description"),),
+                required_suggestions=(ExpectedSuggestion("ent_lucy", "/description"),),
                 expected_primary_intent="edit_request",
                 requires_suggestion=True,
             ),
@@ -114,7 +115,7 @@ def build_t2_tasks() -> tuple[ChatOutcomeTask, ...]:
                     _suggestion(
                         "ent_lucy",
                         "/description",
-                        "负责追查午夜重启原因的研究员。",
+                        "负责调查午夜重启原因的研究员。",
                         "采用与上一轮建议相反的克制风格。",
                     ),
                 ),

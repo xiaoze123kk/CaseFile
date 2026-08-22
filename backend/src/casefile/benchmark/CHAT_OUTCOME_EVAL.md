@@ -7,20 +7,23 @@ Outcome 划分，门禁只信任确定性 Grader 与落库事实。
 
 | 模式 | 命令 | 说明 |
 |---|---|---|
-| M0 校准 | `python -m casefile.benchmark chat-outcome --mode calibrate` | 当前 35 条 Reference Solution 全过 + 动态变异集全抓；已进 `scripts/check.ps1` |
+| M0 校准 | `python -m casefile.benchmark chat-outcome --mode calibrate` | 当前 34 条 Reference Solution 全过 + 动态变异集全抓；已进 `scripts/check.ps1` |
 | M1 Canned Outcome | `pytest tests/integration/test_chat_outcome_canned.py` | 走真实 `send_agent_message → Worker → complete_chat_task`，对落库 Outcome 打分；已进 `scripts/check.ps1` |
-| M2 Live | `python -m casefile.benchmark chat-outcome --mode live --provider deepseek --trials 3 --database-url ...` | 真实模型跑批，输出 `pass@1 / pass^3 / safety_pass^3` |
+| M2 Live | `python -m casefile.benchmark chat-outcome --mode live --provider deepseek --trials 5 --database-url ...` | 真实模型跑批，输出 `pass@1 / pass@5 / safety_pass_all_5` |
 | L3 反馈 | `python -m casefile.benchmark chat-feedback --database-url ...` | 只读聚合采纳/拒绝/撤销/stale/采纳后重写率 |
 | 失败分诊 | `python -m casefile.benchmark.chat_outcome_triage --report report.json` | 按失败签名分组，指示先看哪些 Transcript |
 
-当前 T1 Suite 为 35 Task。M0/M2 报告必须保存 `suite_task_count`、实际选中的
-`task_ids`、`prompt_versions`、`toolset_versions` 和 `suite_fingerprint`；子集诊断不能
-替代完整 35×3 发布门禁。
+当前 T1 Suite 为 34 Task。M0 在 Reference Grader 前验证 frozen IDs、精确 suggestion
+JSON 值、非 no-op 和生产 patch/simulation gate。M2 报告必须保存 `suite_task_count`、
+实际选中的 `task_ids`、`prompt_versions`、`toolset_versions`、`suite_version`、
+`grader_version` 和 `suite_fingerprint`；子集诊断不能
+替代完整 34×5 发布门禁。
 
 M2 默认冻结 `casefile-chat-v13`；如需重放历史基线，必须显式传入
 `--prompt-version casefile-chat-v12`。使用 `--report-path <path> --resume` 可从 `<path>.partial.json` 续跑。Runner 每个
 Trial 完成后原子更新 checkpoint，并输出精确 `completed/total` 进度；续跑只接受 Suite、
-模型、Trial 数和冻结输入完全一致的 fingerprint。中断报告不保存凭据、URL、请求正文或
+模型、Trial 数、冻结输入、success criteria、Reference 和 Grader 版本完全一致的
+fingerprint。中断报告不保存凭据、URL、请求正文或
 Provider 原始响应。
 
 ## Failure triage
@@ -38,7 +41,7 @@ unnecessary / draft change）可直接判
 
 ## Saturation policy
 
-- 当连续两次 M2 Live 达到 `pass@1 >= 0.95` 且 `pass^3 >= 0.90`：
+- 当连续两次 M2 Live 达到 `pass@1 >= 0.95` 且 `pass@5 >= 0.90`：
   1. 把 `chat_outcome_t2.build_t2_tasks()` 中的 5 条 T2 任务升入 T1；
   2. 从 `router.feedback` 导出、L3 `rejected/stale/rewrite_after` 样本和线上排障记录补新 T2。
 - T1 全绿只代表防回归，不代表能力继续提升；难度层级必须持续前移。

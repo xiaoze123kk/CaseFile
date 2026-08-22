@@ -6,7 +6,9 @@ the WorkflowService calls them inside the ``complete_chat_task`` transaction.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Set
+from itertools import combinations
 from typing import Any, NoReturn
 
 from casefile.agent_runtime.chat_validation import ValidationIssue
@@ -82,6 +84,8 @@ def normalize_audit_findings(
     frozen_event_ids: Set[str],
     known_issue_ids: Set[str],
     suggestion_finding_refs: list[str | None],
+    deterministic_pairs: list[dict[str, Any]] | None = None,
+    require_deterministic_pair: bool = False,
 ) -> tuple[list[dict[str, Any]], list[str], list[str], list[str]]:
     """Normalize and evidence-check findings; return missing evidence IDs.
 
@@ -89,18 +93,18 @@ def normalize_audit_findings(
     Missing evidence references are returned so the caller can feed the
     existing ChatReferenceValidationError repair loop.
     """
-    if len(audit_findings) > MAX_AUDIT_FINDINGS:
-        _raise_issue(
-            "audit_findings_exceeds_limit",
-            message="审计发现超过最多 5 条的限制。",
-            details={"actual": len(audit_findings), "limit": MAX_AUDIT_FINDINGS},
-        )
-
     normalized: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
     missing_objects: set[str] = set()
     missing_events: set[str] = set()
     missing_issues: set[str] = set()
+    same_record_pair_ids = {
+        str(pair["left_id"])
+        for pair in deterministic_pairs or []
+        if isinstance(pair, dict)
+        and pair.get("left_id") == pair.get("right_id")
+        and isinstance(pair.get("left_id"), str)
+    }
     for raw in audit_findings:
         if not isinstance(raw, dict):
             _raise_issue(
@@ -164,7 +168,20 @@ def normalize_audit_findings(
             finding[field_name] = deduped
         evidence_count = sum(len(finding[field_name]) for field_name in _EVIDENCE_FIELDS)
         required_evidence = 1 if manual_review else 2
-        if finding["kind"] in _TWO_SIDED_KINDS and evidence_count < required_evidence:
+        same_record_pair_covered = (
+            evidence_count == 1
+            and not manual_review
+            and any(
+                object_id in same_record_pair_ids
+                for field_name in _EVIDENCE_FIELDS
+                for object_id in finding[field_name]
+            )
+        )
+        if (
+            finding["kind"] in _TWO_SIDED_KINDS
+            and evidence_count < required_evidence
+            and not same_record_pair_covered
+        ):
             _raise_issue(
                 "audit_finding_evidence_incomplete",
                 path=f"/audit_findings/{len(normalized)}",
@@ -188,11 +205,24 @@ def normalize_audit_findings(
                 missing_issues.add(issue_id)
         normalized.append(finding)
 
+    normalized, aliases = rank_and_dedupe_audit_findings(
+        normalized,
+        deterministic_pairs=deterministic_pairs,
+        require_deterministic_pair=require_deterministic_pair,
+    )
+    if len(normalized) > MAX_AUDIT_FINDINGS:
+        _raise_issue(
+            "audit_findings_exceeds_limit",
+            message="审计发现超过最多 5 条的限制。",
+            details={"actual": len(normalized), "limit": MAX_AUDIT_FINDINGS},
+        )
+
+    seen_ids = {item["finding_id"] for item in normalized}
     manual_review_ids = {
         item["finding_id"] for item in normalized if item["needs_manual_review"]
     }
     referenced_finding_ids = {
-        ref for ref in suggestion_finding_refs if ref is not None
+        aliases.get(ref, ref) for ref in suggestion_finding_refs if ref is not None
     }
     unknown_refs = sorted(referenced_finding_ids - seen_ids)
     if unknown_refs:
@@ -217,6 +247,131 @@ def normalize_audit_findings(
         sorted(missing_events),
         sorted(missing_issues),
     )
+
+
+def rank_and_dedupe_audit_findings(
+    findings: list[dict[str, Any]],
+    *,
+    deterministic_pairs: list[dict[str, Any]] | None = None,
+    require_deterministic_pair: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Collapse overlapping findings while retaining the strongest evidence."""
+
+    severity_rank = {"S1": 0, "S2": 1, "S3": 2}
+
+    def evidence_ids(finding: dict[str, Any]) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                str(value)
+                for field in _EVIDENCE_FIELDS
+                for value in finding.get(field, [])
+            )
+        )
+
+    deterministic_endpoint_sets = {
+        tuple(sorted((str(pair["left_id"]), str(pair["right_id"]))))
+        for pair in deterministic_pairs or []
+        if isinstance(pair, dict)
+        and isinstance(pair.get("left_id"), str)
+        and isinstance(pair.get("right_id"), str)
+    }
+
+    def has_deterministic_match(finding: dict[str, Any]) -> bool:
+        evidence = set(evidence_ids(finding))
+        return any(set(pair).issubset(evidence) for pair in deterministic_endpoint_sets)
+
+    def deterministic_pair_key(finding: dict[str, Any]) -> tuple[str, ...]:
+        evidence = set(evidence_ids(finding))
+        matches = [
+            pair for pair in deterministic_endpoint_sets if set(pair).issubset(evidence)
+        ]
+        return min(matches) if matches else ()
+
+    ranked = sorted(
+        enumerate(findings),
+        key=lambda item: (
+            severity_rank.get(str(item[1].get("severity")), 99),
+            -sum(len(item[1].get(field, [])) for field in _EVIDENCE_FIELDS),
+            -int(has_deterministic_match(item[1])),
+            1 if item[1].get("needs_manual_review") else 0,
+            item[0],
+        ),
+    )
+    selected: list[dict[str, Any]] = []
+    aliases: dict[str, str] = {}
+    exact_signatures: set[str] = set()
+    kind_evidence_signatures: set[tuple[str, tuple[str, ...]]] = set()
+    endpoint_signatures: set[tuple[str, str]] = set()
+    deterministic_pair_signatures: set[tuple[str, ...]] = set()
+    for _index, finding in ranked:
+        evidence = evidence_ids(finding)
+        signature = (str(finding.get("kind") or ""), evidence)
+        exact = json.dumps(
+            {
+                key: value
+                for key, value in finding.items()
+                if key not in {"finding_id", "title", "statement"}
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        endpoint_pairs = set(combinations(evidence, 2))
+        deterministic_pair = deterministic_pair_key(finding)
+        if require_deterministic_pair and deterministic_endpoint_sets and not deterministic_pair:
+            continue
+        if (
+            exact in exact_signatures
+            or signature in kind_evidence_signatures
+            or bool(endpoint_pairs & endpoint_signatures)
+            or (
+                deterministic_pair
+                and deterministic_pair in deterministic_pair_signatures
+            )
+        ):
+            representative = next(
+                (
+                    item["finding_id"]
+                    for item in selected
+                    if (str(item.get("kind") or ""), tuple(
+                        sorted(
+                            str(value)
+                            for field in _EVIDENCE_FIELDS
+                            for value in item.get(field, [])
+                        )
+                    )) == signature
+                    or bool(
+                        endpoint_pairs
+                        & {
+                            pair
+                            for pair in combinations(
+                                tuple(
+                                    sorted(
+                                        str(value)
+                                        for field in _EVIDENCE_FIELDS
+                                        for value in item.get(field, [])
+                                    )
+                                ),
+                                2,
+                            )
+                        }
+                    )
+                    or (
+                        deterministic_pair
+                        and deterministic_pair_key(item) == deterministic_pair
+                    )
+                ),
+                None,
+            )
+            if isinstance(representative, str):
+                aliases[str(finding["finding_id"])] = representative
+            continue
+        exact_signatures.add(exact)
+        kind_evidence_signatures.add(signature)
+        endpoint_signatures.update(endpoint_pairs)
+        if deterministic_pair:
+            deterministic_pair_signatures.add(deterministic_pair)
+        selected.append(finding)
+    return selected, aliases
 
 
 def audit_finding_ids(finding: dict[str, Any]) -> set[str]:

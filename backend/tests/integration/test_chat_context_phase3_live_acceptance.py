@@ -23,9 +23,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
@@ -47,12 +44,15 @@ from casefile.benchmark.chat_outcome_eval import (
     ChatOutcomeExpectations,
     ChatOutcomeTask,
     ChatOutcomeTrialVerdict,
+    ExpectedSuggestion,
     build_outcome_tasks,
     grade_chat_outcome,
 )
 from casefile.benchmark.chat_outcome_live_eval import LIVE_THRESHOLDS
 from casefile.data_postgres.models import AgentThreadContextState, TaskEvent, TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -316,7 +316,10 @@ def _live_expectations(
         expected_object_ids=expected_objects,
         expected_event_ids=expected_events,
         expected_validation_issue_ids=expected_issues,
-        required_suggestion_paths=suggestion_paths,
+        required_suggestions=tuple(
+            ExpectedSuggestion(object_id, f"/{path}")
+            for object_id, path in suggestion_paths
+        ),
         expected_primary_intent=task.expectations.expected_primary_intent,
         requires_suggestion=bool(suggestion_paths),
         references_must_exist=True,

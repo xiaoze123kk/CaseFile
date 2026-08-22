@@ -1427,6 +1427,7 @@ class Worker:
             expected_prompt,
             "casefile-chat-v13",
             "casefile-chat-v14",
+            "casefile-chat-v15",
         }:
             raise RuntimeError(
                 "Context policy "

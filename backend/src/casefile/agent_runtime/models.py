@@ -225,6 +225,13 @@ class CaseFileChatSuggestionCandidateV2(StrictAgentOutput):
     )
 
 
+class CaseFileChatTargetLockedRepairOutput(StrictAgentOutput):
+    """The only model-authored fields in a server-locked audit repair."""
+
+    value_json: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
 class CaseFileChatCandidateV2(StrictAgentOutput):
     """v2 chat output: v1 fields plus the structured logic-audit findings."""
 
@@ -381,6 +388,10 @@ class ChatFinalizerInputV1(ChatExecutorInputV2):
     evidence_summary: str = Field(default="", max_length=20_000)
     previous_candidate: dict[str, Any] | None = None
     repair_plan: dict[str, Any] | None = None
+
+
+class ChatFinalizerInputV2(ChatFinalizerInputV1):
+    """v15 finalizer input before the server post-finalizer patch gate."""
 
 
 class ChatEvidenceOutputV1(StrictAgentOutput):
@@ -563,8 +574,10 @@ class CaseFileChatRequest:
     thread_evidence_resolver: ThreadEvidenceResolver | None = None
     repair_feedback: tuple[str, ...] = ()
     frozen_tool_ledger: dict[str, Any] | None = None
+    safe_patch_registry: dict[str, Any] | None = None
     previous_candidate: dict[str, Any] | None = None
     repair_plan: dict[str, Any] | None = None
+    target_locked_repair: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -619,6 +632,7 @@ class CaseFileChatResult:
     usage: dict[str, Any]
     tools: ToolMetrics = field(default_factory=ToolMetrics)
     tool_ledger: dict[str, Any] | None = None
+    safe_patch_registry: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

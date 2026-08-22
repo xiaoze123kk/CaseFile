@@ -27,4 +27,5 @@
 | `fixtures/invalid/` | 结构错误和语义不变量的失败样例。 |
 | `fixtures/imports/` | 导入来源与预期映射样例。 |
 | `fixtures/benchmark/` | 最小 `brief_to_draft` Benchmark 输入、预期与指标基线。 |
+| `fixtures/validator_benchmark/` | Validator V0 规则、V1 patch/safe-gate、V2 RepairPlan/authoritative-target/repair-state 确定性 release-gate fixtures，包含可拷贝示例和扩展约定。 |
 | `fixtures/compiler/` | Compiler 输入、IR、Source Map 和期望产物的预留落位。 |

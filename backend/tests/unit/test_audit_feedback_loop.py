@@ -94,9 +94,10 @@ def test_applied_feedback_becomes_golden_audit_task() -> None:
         "ent_researcher",
         "ent_backup_system",
     )
-    assert task.expectations.required_suggestion_paths == (
-        ("ent_researcher", "description"),
-    )
+    assert tuple(
+        (item.object_id, item.path)
+        for item in task.expectations.required_suggestions
+    ) == (("ent_researcher", "/description"),)
     assert task.expectations.simulate_suggestions is True
 
     verdict = grade_reference_solution(task)

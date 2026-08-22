@@ -1,0 +1,764 @@
+{
+  "schema_version": "casefile-validator-benchmark-v1",
+  "suite_id": "validator-v1-patch-gates",
+  "base_fixture": "fixtures/casefiles/restart_loop.casefile.json",
+  "batch_cases": [
+    {
+      "case_id": "v1-safe-entity-rename",
+      "operation": {
+        "operation_id": "op_safe_name",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "old_value": "林研究员",
+        "new_value": "林调查员",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": true,
+        "can_apply": true,
+        "reason_code": null
+      }
+    },
+    {
+      "case_id": "v1-operation-limit-exceeded",
+      "repeat_operation": {
+        "count": 101,
+        "operation": {
+          "operation_id": "op_many",
+          "object_id": "ent_researcher",
+          "field_path": "/name",
+          "new_value": "林研究员",
+          "object_type": "entity"
+        }
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "operation_limit_exceeded"
+      }
+    },
+    {
+      "case_id": "v1-base-document-invalid",
+      "document_mutations": [
+        {
+          "op": "replace",
+          "path": "/events/0/location_ref",
+          "value": {
+            "object_type": "location",
+            "object_id": "loc_missing"
+          }
+        }
+      ],
+      "operation": {
+        "operation_id": "op_name",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "new_value": "林调查员",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "base_document_invalid"
+      }
+    },
+    {
+      "case_id": "v1-operation-id-missing",
+      "operation": {
+        "operation_id": "",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "new_value": "林调查员",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "operation_id_missing"
+      }
+    },
+    {
+      "case_id": "v1-object-id-missing",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "",
+        "field_path": "/name",
+        "new_value": "林调查员",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "object_id_missing"
+      }
+    },
+    {
+      "case_id": "v1-field-path-invalid",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "",
+        "new_value": "林调查员",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "field_path_invalid"
+      }
+    },
+    {
+      "case_id": "v1-operation-type-not-supported",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "new_value": "林调查员",
+        "object_type": "entity",
+        "operation_type": "add"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "operation_type_not_supported"
+      }
+    },
+    {
+      "case_id": "v1-object-revision-conflict",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "new_value": "林调查员",
+        "object_type": "entity",
+        "expected_object_revision": 2
+      },
+      "object_revisions": {
+        "ent_researcher": 1
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "object_revision_conflict"
+      }
+    },
+    {
+      "case_id": "v1-object-not-found",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_missing",
+        "field_path": "/name",
+        "new_value": "不存在",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "object_not_found"
+      }
+    },
+    {
+      "case_id": "v1-object-type-conflict",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "new_value": "林调查员",
+        "object_type": "event"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "object_type_conflict"
+      }
+    },
+    {
+      "case_id": "v1-field-not-editable",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "/revision",
+        "new_value": 2,
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "field_not_editable"
+      }
+    },
+    {
+      "case_id": "v1-path-not-found",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "/description/detail",
+        "new_value": "x",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "path_not_found"
+      }
+    },
+    {
+      "case_id": "v1-old-value-conflict",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_researcher",
+        "field_path": "/name",
+        "old_value": "错误旧值",
+        "new_value": "林调查员",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": false,
+        "can_apply": false,
+        "reason_code": "old_value_conflict"
+      }
+    },
+    {
+      "case_id": "v1-post-document-invalid",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "evt_restart_seven",
+        "field_path": "/location_ref",
+        "new_value": {
+          "object_type": "location",
+          "object_id": "loc_missing"
+        },
+        "object_type": "event"
+      },
+      "expected": {
+        "valid": true,
+        "can_apply": false,
+        "reason_code": "post_document_invalid"
+      }
+    },
+    {
+      "case_id": "v1-target-finding-not-resolved",
+      "document_mutations": [
+        {
+          "op": "add",
+          "path": "/events/0/participant_refs/-",
+          "value": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_overlap",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:01",
+              "end": "2042-06-01T20:02",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "target_rule_codes": [
+        "temporal_exclusivity_violation"
+      ],
+      "operation": {
+        "operation_id": "op",
+        "object_id": "ent_backup_system",
+        "field_path": "/name",
+        "new_value": "备用系统 B",
+        "object_type": "entity"
+      },
+      "expected": {
+        "valid": true,
+        "can_apply": false,
+        "reason_code": "finding_not_resolved"
+      }
+    },
+    {
+      "case_id": "v1-structure-lock-conflict",
+      "operation": {
+        "operation_id": "op",
+        "object_id": "res_root_cause",
+        "field_path": "/accepted_answers",
+        "new_value": [
+          "备用系统自动触发"
+        ],
+        "object_type": "resolution_spec"
+      },
+      "expected": {
+        "valid": true,
+        "can_apply": false,
+        "reason_code": "structure_lock_conflict",
+        "structure_lock_conflicts": [
+          "lock_root_answer"
+        ]
+      }
+    },
+    {
+      "case_id": "v1-deterministic-severity-regression",
+      "document_mutations": [
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_overlap",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:01",
+              "end": "2042-06-01T20:02",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "operation": {
+        "operation_id": "op",
+        "object_id": "evt_restart_seven",
+        "field_path": "/participant_refs",
+        "new_value": [
+          {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        ],
+        "object_type": "event"
+      },
+      "expected": {
+        "valid": true,
+        "can_apply": false,
+        "reason_code": "deterministic_severity_regression"
+      }
+    },
+    {
+      "case_id": "v1-resolves-target-finding",
+      "document_mutations": [
+        {
+          "op": "add",
+          "path": "/events/0/participant_refs/-",
+          "value": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_overlap",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:01",
+              "end": "2042-06-01T20:02",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "target_rule_codes": [
+        "temporal_exclusivity_violation"
+      ],
+      "operation": {
+        "operation_id": "op",
+        "object_id": "evt_remote_overlap",
+        "field_path": "/participant_refs",
+        "old_value": [
+          {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        ],
+        "new_value": [],
+        "object_type": "event"
+      },
+      "expected": {
+        "valid": true,
+        "can_apply": true,
+        "reason_code": null,
+        "fixed_rule_codes": [
+          "temporal_exclusivity_violation"
+        ]
+      }
+    }
+  ],
+  "chat_gate_cases": [
+    {
+      "case_id": "v1-chat-gate-safe-canonical-json",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "path": "/name",
+          "value_json": "\"林调查员\"",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 1,
+        "failure_reason_codes": [],
+        "discard_reason_codes": [],
+        "candidate_targets": [
+          "ent_researcher:/name"
+        ],
+        "candidate_value_json": [
+          "\"林调查员\""
+        ],
+        "candidate_finding_refs": [
+          "F1"
+        ]
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-normalizes-plain-string",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "path": "/name",
+          "value_json": "林调查员",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 1,
+        "failure_reason_codes": [],
+        "discard_reason_codes": [],
+        "candidate_targets": [
+          "ent_researcher:/name"
+        ],
+        "candidate_value_json": [
+          "\"林调查员\""
+        ],
+        "candidate_finding_refs": [
+          "F1"
+        ]
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-rejects-missing-object",
+      "proposals": [
+        {
+          "object_id": "ent_missing",
+          "path": "/name",
+          "value_json": "\"不存在\"",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 0,
+        "failure_reason_codes": [
+          "object_not_found"
+        ],
+        "discard_reason_codes": []
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-rejects-uneditable-field",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "path": "/revision",
+          "value_json": "2",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 0,
+        "failure_reason_codes": [
+          "field_not_editable"
+        ],
+        "discard_reason_codes": []
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-rejects-missing-path",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "path": "/description/detail",
+          "value_json": "\"x\"",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 0,
+        "failure_reason_codes": [
+          "path_not_found"
+        ],
+        "discard_reason_codes": []
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-rejects-markdown-value",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "path": "/name",
+          "value_json": "```json\\n\"林调查员\"\\n```",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 0,
+        "failure_reason_codes": [
+          "value_json_wrapped_in_markdown"
+        ],
+        "discard_reason_codes": []
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-rejects-semantic-regression",
+      "document_mutations": [
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_overlap",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:01",
+              "end": "2042-06-01T20:02",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "proposals": [
+        {
+          "object_id": "evt_restart_seven",
+          "path": "/participant_refs",
+          "value_json": "[{\"object_type\":\"entity\",\"object_id\":\"ent_backup_system\"},{\"object_type\":\"entity\",\"object_id\":\"ent_researcher\"}]",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 0,
+        "failure_reason_codes": [
+          "simulation_failed"
+        ],
+        "discard_reason_codes": []
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-accepts-semantic-fix",
+      "document_mutations": [
+        {
+          "op": "add",
+          "path": "/events/0/participant_refs/-",
+          "value": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          }
+        },
+        {
+          "op": "add",
+          "path": "/events/-",
+          "value": {
+            "id": "evt_remote_overlap",
+            "title": "远端走廊检查",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:01",
+              "end": "2042-06-01T20:02",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "cause_refs": [],
+            "effect_refs": [],
+            "observed_by_refs": [],
+            "tags": [],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1
+          }
+        }
+      ],
+      "proposals": [
+        {
+          "object_id": "evt_remote_overlap",
+          "path": "/participant_refs",
+          "value_json": "[]",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 1,
+        "failure_reason_codes": [],
+        "discard_reason_codes": [],
+        "candidate_targets": [
+          "evt_remote_overlap:/participant_refs"
+        ],
+        "candidate_value_json": [
+          "[]"
+        ],
+        "candidate_finding_refs": [
+          "F1"
+        ]
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-discards-duplicate-target",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "path": "/name",
+          "value_json": "\"林调查员\"",
+          "finding_ref": "F1"
+        },
+        {
+          "object_id": "ent_researcher",
+          "path": "/name",
+          "value_json": "\"林首席调查员\"",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 1,
+        "failure_reason_codes": [],
+        "discard_reason_codes": [
+          "duplicate_patch_target"
+        ],
+        "candidate_targets": [
+          "ent_researcher:/name"
+        ]
+      }
+    },
+    {
+      "case_id": "v1-chat-gate-rejects-malformed-proposal-shape",
+      "proposals": [
+        {
+          "object_id": "ent_researcher",
+          "value_json": "\"林调查员\"",
+          "finding_ref": "F1"
+        }
+      ],
+      "expected": {
+        "safe_count": 0,
+        "failure_reason_codes": [
+          "proposal_shape_invalid"
+        ],
+        "discard_reason_codes": []
+      }
+    }
+  ]
+}

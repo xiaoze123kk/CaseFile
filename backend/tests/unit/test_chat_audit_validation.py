@@ -196,6 +196,31 @@ def test_manual_review_relationship_requires_one_real_anchor() -> None:
         )
 
 
+def test_same_event_field_pair_counts_as_two_deterministic_endpoints() -> None:
+    normalized, *_ = normalize_audit_findings(
+        [
+            make_finding(
+                evidence_object_ids=[],
+                evidence_event_ids=["evt_departure"],
+                evidence_validation_issue_ids=[],
+            )
+        ],
+        frozen_object_ids=set(),
+        frozen_event_ids={"evt_departure"},
+        known_issue_ids=set(),
+        suggestion_finding_refs=[],
+        deterministic_pairs=[
+            {
+                "kind": "same_record_field_conflict_candidate",
+                "left_id": "evt_departure",
+                "right_id": "evt_departure",
+            }
+        ],
+    )
+
+    assert normalized[0]["evidence_event_ids"] == ["evt_departure"]
+
+
 def test_v2_candidate_limits_audit_findings_to_five() -> None:
     findings = [make_finding(finding_id=f"F{index}") for index in range(1, 7)]
     with pytest.raises(ValidationError):
