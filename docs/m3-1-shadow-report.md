@@ -27,7 +27,12 @@ Shadow API 保留原有 `shadow_only_finding_keys`，并使用 `rule_code + 排�
 - `shadow_promoted_findings`：10 个 `repair_required`。
 - `shadow_new_finding_keys`：3 个 warning。
 - 新增 `hard_invariant`：0。
-- 实现审查中未归类项：0；10 个 promoted 债务仍待产品作者确认。
+- genuinely-new `repair_required`：0。
+- 实现审查中未归类项：0。
+
+M3.1-07.6 增加 `reasoning_required_path_incompatible_claim_input` 后以同一范围重扫，
+没有发现使用不兼容 Claim 输入的既有 required ReasoningPath，因此未引入新的 rollout
+债务或 hard finding。
 
 Shadow `hard_invariant`：0，因此 hard false positive：0。
 
@@ -36,5 +41,11 @@ Shadow `hard_invariant`：0，因此 hard false positive：0。
 - v1 仍为线上 Apply policy；Shadow 扫描本身未改变 `can_apply`。
 - 10 个 `repair_required` 均为 baseline 既有债务，继续按 introduced/worsened grandfather；hard invariant 则默认检查 candidate 全量，仅机械 normalization 显式允许既有 hard。
 - Agent 不能授权新增债务；只有作者精确接受全部 finding key 并填写理由后才可继续。
-- 因 `repair_required` 尚未完成人类作者确认，本次不执行 v2 policy flip。
+- Project 46 的 10 个 `knowledge_state_available_before_source` 被接受为 pre-v2
+  baseline debt，不作为 M3.1 activation blocker；这是 rollout 决策，不修改或替作者
+  接受具体 CaseFile 内容。
+- 完整仓库门禁通过：653 passed、9 skipped；额外 Context v2 验收 2 passed，Context
+  v3 验收 1 passed、3 skipped。
+- 本次 pre-flip Go Gate 通过，可以在 M3.1 代码合并且 Active 仍保持 v1 后，从新的
+  `main` 创建独立 rollout 分支执行 v2 activation。
 - 本报告只证明当前可扫描 Draft 的 Shadow 分类，不替代后续生产样本观察。
