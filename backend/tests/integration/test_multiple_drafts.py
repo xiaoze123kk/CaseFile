@@ -288,7 +288,10 @@ def test_switching_isolates_edits_snapshots_validation_sources_and_audit(
         assert context_a["draft_id"] == draft_a_id
         assert context_a["validation"]["status"] == "passed"
         assert context_a["sources"]
-        assert any(entry["action"] == "replace" for entry in context_a["audit_entries"])
+        assert any(
+            entry["action"] == "logical_mutation_apply"
+            for entry in context_a["audit_entries"]
+        )
         assert snapshots_a
         assert {item["draft_id"] for item in snapshots_a} == {draft_a_id}
         assert snapshot_a["id"] in {item["id"] for item in snapshots_a}

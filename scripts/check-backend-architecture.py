@@ -32,6 +32,7 @@ STABLE_EXPORTS = {
         "FindingSeverity",
         "ImpactPlanner",
         "ImpactSummary",
+        "MutationSimulation",
         "OperationDelta",
         "PatchOperation",
         "VerificationEngine",

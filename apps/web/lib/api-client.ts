@@ -580,7 +580,8 @@ export interface AgentPatchOperationView {
   ordinal: number;
   object_id: string | null;
   object_type: string | null;
-  operation_type: string;
+  target_collection?: string;
+  operation_type: "add" | "remove" | "replace" | "field_update" | "create_object" | "update_field" | "delete_object";
   field_path: string;
   expected_object_revision: number | null;
   old_value: unknown;
@@ -597,6 +598,10 @@ export interface AgentPatchSetView {
   source_message_id: number;
   task_run_id: number | null;
   base_draft_revision: number;
+  closure_policy_version?: string;
+  mutation_mode?: "normal" | "restructure";
+  baseline_hash?: string | null;
+  candidate_hash?: string | null;
   reason_summary: string | null;
   status: "pending" | "stale" | "applied" | "undone" | "rejected";
   is_stale: boolean;
@@ -614,18 +619,42 @@ export interface AgentPatchSimulationView {
   valid: boolean;
   can_apply: boolean;
   reason_code: string | null;
+  closure_policy_version?: string;
+  baseline_hash?: string;
+  candidate_hash?: string;
   fixed_finding_keys: string[];
-  residual_finding_keys: string[];
-  new_finding_keys: string[];
-  pending_recheck_finding_keys: string[];
-  severity_delta: Record<string, number>;
-  structure_lock_conflicts: string[];
-  impact: {
-    collections: string[];
-    counts: Record<string, number>;
-    full_rebuild: boolean;
-    reasons: string[];
-  };
+  introduced_finding_keys?: string[];
+  worsened_finding_keys?: string[];
+  residual_target_finding_keys?: string[];
+  authorization_required_finding_keys?: string[];
+  residual_finding_keys?: string[];
+  new_finding_keys?: string[];
+  pending_recheck_finding_keys?: string[];
+  structure_lock_conflicts?: string[];
+  impact?: { collections: string[]; counts: Record<string, number>; full_rebuild: boolean; reasons: string[] };
+  normalized_mutation: {
+    mutation_set_id: string;
+    mode: "normal" | "restructure";
+    actor: "author" | "agent" | "import" | "system";
+    operation_ids: string[];
+    mechanical_operations: Array<{
+      operation_id: string;
+      operation_type: "update_field";
+      reason_code: string;
+      object_id: string;
+      field_path: string;
+      old_value: unknown;
+      new_value: unknown;
+    }>;
+  } | null;
+  impact_cone: {
+    root_object_ids: string[];
+    direct_object_ids: string[];
+    transitive_object_ids: string[];
+    affected_resolution_ids: string[];
+    dependency_paths: string[][];
+    cycles: Array<{ relation: string; object_ids: string[] }>;
+  } | null;
 }
 
 export interface AgentPatchSimulationResult {
@@ -1183,6 +1212,8 @@ export async function applyAgentPatchSet(
   expectedRevision: number,
   operationIds: number[] | null,
   targetFindingIds?: number[],
+  acceptedDebtFindingKeys: string[] = [],
+  debtAcceptanceReason?: string,
 ) {
   return apiRequest<AgentPatchApplyResult>(
     `/projects/${projectId}/agent/patch-sets/${patchSetId}/apply`,
@@ -1194,6 +1225,8 @@ export async function applyAgentPatchSet(
         expected_revision: expectedRevision,
         ...(operationIds === null ? {} : { operation_ids: operationIds }),
         ...(targetFindingIds === undefined ? {} : { target_finding_ids: targetFindingIds }),
+        accepted_debt_finding_keys: acceptedDebtFindingKeys,
+        ...(debtAcceptanceReason === undefined ? {} : { debt_acceptance_reason: debtAcceptanceReason }),
       },
     },
   );
@@ -1207,6 +1240,8 @@ export async function simulateAgentPatchSet(
   baseRevision: number,
   operationIds: number[] | null,
   targetFindingIds?: number[],
+  acceptedDebtFindingKeys: string[] = [],
+  debtAcceptanceReason?: string,
 ) {
   return apiRequest<AgentPatchSimulationResult>(`/projects/${projectId}/agent/patch-sets/${patchSetId}/simulate`, {
     actorId,
@@ -1216,6 +1251,8 @@ export async function simulateAgentPatchSet(
       base_revision: baseRevision,
       ...(operationIds === null ? {} : { operation_ids: operationIds }),
       ...(targetFindingIds === undefined ? {} : { target_finding_ids: targetFindingIds }),
+      accepted_debt_finding_keys: acceptedDebtFindingKeys,
+      ...(debtAcceptanceReason === undefined ? {} : { debt_acceptance_reason: debtAcceptanceReason }),
     },
   });
 }
@@ -1229,6 +1266,26 @@ export async function undoAgentPatchSet(
 ) {
   return apiRequest<AgentPatchApplyResult>(
     `/projects/${projectId}/agent/patch-sets/${patchSetId}/undo`,
+    {
+      actorId,
+      method: "POST",
+      body: {
+        expected_draft_id: draftId,
+        expected_revision: expectedRevision,
+      },
+    },
+  );
+}
+
+export async function redoAgentPatchSet(
+  actorId: number,
+  projectId: number,
+  patchSetId: number,
+  draftId: number,
+  expectedRevision: number,
+) {
+  return apiRequest<AgentPatchApplyResult>(
+    `/projects/${projectId}/agent/patch-sets/${patchSetId}/redo`,
     {
       actorId,
       method: "POST",

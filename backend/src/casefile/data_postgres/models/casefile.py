@@ -493,7 +493,9 @@ class DraftOperation(BigIntIdentityPrimaryKeyMixin, Base):
         CheckConstraint(
             "operation_type IN "
             "('add', 'remove', 'replace', 'agent_generate_from_brief', "
-            "'agent_adopt_brief_candidate', 'agent_patch_apply', 'agent_patch_undo')",
+            "'agent_adopt_brief_candidate', 'agent_patch_apply', 'agent_patch_undo', "
+            "'logical_mutation_apply', 'logical_mutation_undo', "
+            "'logical_mutation_redo', 'logical_mutation_normalize')",
             name="type_allowed",
         ),
         CheckConstraint(

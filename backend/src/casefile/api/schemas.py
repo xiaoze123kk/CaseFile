@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -249,6 +249,8 @@ class AgentPatchApplyRequest(StrictRequest):
     expected_revision: int = Field(ge=1)
     operation_ids: list[int] | None = None
     target_finding_ids: list[int] | None = None
+    accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
+    debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)
 
     @model_validator(mode="after")
     def unique_operation_ids(self) -> Self:
@@ -256,6 +258,14 @@ class AgentPatchApplyRequest(StrictRequest):
             self.operation_ids
         ):
             raise ValueError("operation_ids must be unique")
+        if len(set(self.accepted_debt_finding_keys)) != len(
+            self.accepted_debt_finding_keys
+        ):
+            raise ValueError("accepted_debt_finding_keys must be unique")
+        if self.accepted_debt_finding_keys and not (
+            self.debt_acceptance_reason or ""
+        ).strip():
+            raise ValueError("debt_acceptance_reason is required")
         return self
 
 
@@ -264,11 +274,17 @@ class AgentPatchUndoRequest(StrictRequest):
     expected_revision: int = Field(ge=1)
 
 
+class AgentPatchRedoRequest(AgentPatchUndoRequest):
+    pass
+
+
 class AgentPatchSimulateRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     base_revision: int = Field(ge=1)
     operation_ids: list[int] | None = None
     target_finding_ids: list[int] | None = None
+    accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
+    debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)
 
     @model_validator(mode="after")
     def unique_operation_ids(self) -> Self:
@@ -276,6 +292,10 @@ class AgentPatchSimulateRequest(StrictRequest):
             self.operation_ids
         ):
             raise ValueError("operation_ids must be unique")
+        if len(set(self.accepted_debt_finding_keys)) != len(
+            self.accepted_debt_finding_keys
+        ):
+            raise ValueError("accepted_debt_finding_keys must be unique")
         return self
 
 
@@ -299,6 +319,58 @@ class ObjectPatchRequest(StrictRequest):
 class ResolutionConclusionActionRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
+
+
+class LogicalNormalizationRequest(ResolutionConclusionActionRequest):
+    pass
+
+
+class MutationCreateOperationRequest(StrictRequest):
+    operation_type: Literal["create_object"]
+    operation_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+    collection: str
+    object_value: dict[str, Any]
+
+
+class MutationUpdateOperationRequest(StrictRequest):
+    operation_type: Literal["update_field"]
+    operation_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+    object_id: str
+    field_path: str
+    old_value: Any
+    new_value: Any
+    expected_object_revision: int | None = Field(default=None, ge=1)
+
+
+class MutationDeleteOperationRequest(StrictRequest):
+    operation_type: Literal["delete_object"]
+    operation_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+    object_id: str
+    old_object_value: dict[str, Any] | None = None
+
+
+MutationOperationRequest = Annotated[
+    MutationCreateOperationRequest
+    | MutationUpdateOperationRequest
+    | MutationDeleteOperationRequest,
+    Field(discriminator="operation_type"),
+]
+
+
+class LogicalMutationPreviewRequest(StrictRequest):
+    mutation_set_id: str = Field(min_length=1, max_length=128)
+    base_draft_id: int = Field(ge=1)
+    base_revision: int = Field(ge=1)
+    mode: Literal["normal", "restructure"] = "normal"
+    closure_policy_version: str = Field(default="logical-mutation-v1", max_length=64)
+    operations: list[MutationOperationRequest] = Field(min_length=1, max_length=100)
+    target_finding_keys: list[str] = Field(default_factory=list, max_length=100)
+    accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
+    debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)
+
+
+class LogicalMutationApplyRequest(LogicalMutationPreviewRequest):
+    expected_candidate_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class TimelineTimePreviewRequest(StrictRequest):

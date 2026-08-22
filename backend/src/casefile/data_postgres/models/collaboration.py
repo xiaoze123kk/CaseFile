@@ -178,6 +178,22 @@ class AgentPatchSet(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("task_run_id", name="uq_agent_patch_sets_task_run_id"),
         CheckConstraint("base_draft_revision >= 1", name="base_revision_positive"),
         CheckConstraint(
+            "mutation_mode IN ('normal', 'restructure')",
+            name="mutation_mode_allowed",
+        ),
+        CheckConstraint(
+            "length(btrim(closure_policy_version)) > 0",
+            name="closure_policy_version_not_blank",
+        ),
+        CheckConstraint(
+            "baseline_hash IS NULL OR baseline_hash ~ '^[0-9a-f]{64}$'",
+            name="baseline_hash_format",
+        ),
+        CheckConstraint(
+            "candidate_hash IS NULL OR candidate_hash ~ '^[0-9a-f]{64}$'",
+            name="candidate_hash_format",
+        ),
+        CheckConstraint(
             "status IN ('pending', 'stale', 'applied', 'undone', 'rejected')",
             name="status_allowed",
         ),
@@ -229,6 +245,18 @@ class AgentPatchSet(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     source_message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     task_run_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     base_draft_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    closure_policy_version: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        server_default=text("'logical-mutation-v1'"),
+    )
+    mutation_mode: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=text("'normal'"),
+    )
+    baseline_hash: Mapped[str | None] = mapped_column(String(64))
+    candidate_hash: Mapped[str | None] = mapped_column(String(64))
     reason_summary: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16),
@@ -287,10 +315,31 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="operation_id_format",
         ),
         CheckConstraint(
-            "operation_type IN ('add', 'remove', 'replace')",
+            "operation_type IN "
+            "('add', 'remove', 'replace', 'create_object', 'update_field', 'delete_object')",
             name="operation_type_allowed",
         ),
-        CheckConstraint("field_path ~ '^/'", name="field_path_json_pointer"),
+        CheckConstraint(
+            "(operation_type IN ('create_object', 'delete_object') AND field_path = '') OR "
+            "(operation_type NOT IN ('create_object', 'delete_object') AND field_path ~ '^/')",
+            name="field_path_shape",
+        ),
+        CheckConstraint(
+            "(operation_type = 'create_object' AND target_object_id IS NULL) OR "
+            "(operation_type <> 'create_object' AND target_object_id IS NOT NULL)",
+            name="target_object_shape",
+        ),
+        CheckConstraint(
+            "length(btrim(target_object_key)) > 0",
+            name="target_object_key_not_blank",
+        ),
+        CheckConstraint(
+            "target_collection IN "
+            "('resolution_specs', 'entities', 'relationships', 'locations', 'events', "
+            "'information_units', 'claims', 'hypotheses', 'reasoning_paths', "
+            "'constraints', 'structure_locks')",
+            name="target_collection_allowed",
+        ),
         CheckConstraint(
             "expected_object_revision IS NULL OR expected_object_revision >= 1",
             name="expected_revision_positive",
@@ -316,7 +365,9 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     patch_set_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    target_object_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    target_object_id: Mapped[int | None] = mapped_column(BigInteger)
+    target_object_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    target_collection: Mapped[str] = mapped_column(String(40), nullable=False)
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     operation_id: Mapped[str] = mapped_column(String(64), nullable=False)
     operation_type: Mapped[str] = mapped_column(

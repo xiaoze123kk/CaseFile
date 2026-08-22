@@ -1317,9 +1317,14 @@ def test_v1_editing_updates_supported_objects_and_preserves_contract(
             )
             assert final["revision"] == 7
             assert len(position_operations) == 1
-            assert position_operations[0].field_path == f"/locations/{location_id}"
-            assert position_operations[0].old_value_jsonb == before_location
-            assert position_operations[0].new_value_jsonb == saved_location
+            assert position_operations[0].field_path == ""
+            history_before = position_operations[0].old_value_jsonb
+            history_after = position_operations[0].new_value_jsonb
+            assert history_before["document"]["locations"][0] == before_location
+            assert history_after["document"]["locations"][0] == saved_location
+            assert history_after["mutation_set"]["operations"][0]["field_path"] == (
+                "/spatial_position"
+            )
 
 
 def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
@@ -1419,7 +1424,7 @@ def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
                 expected_revision=5,
                 changes={"content": information["content"] + "（已复核原始日志。）"},
             )
-            assert revision == 7
+            assert revision == 6
 
         with factory() as session:
             current = CaseFileService(session).get_draft(actor_id, project_id)
@@ -1430,9 +1435,9 @@ def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
                 project_id,
                 resolution_id,
                 expected_draft_id=draft_id,
-                expected_revision=7,
+                expected_revision=6,
             )
-            assert revision == 8
+            assert revision == 7
 
         with factory() as session:
             withdrawn, revision = V1EditingService(session).withdraw_conclusion(
@@ -1440,9 +1445,9 @@ def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
                 project_id,
                 resolution_id,
                 expected_draft_id=draft_id,
-                expected_revision=8,
+                expected_revision=7,
             )
-            assert revision == 9
+            assert revision == 8
             assert withdrawn["conclusion"]["review_status"] == "proposed"
 
         with factory() as session, session.begin():
@@ -1470,7 +1475,7 @@ def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
                 operation_type="agent_patch_apply",
                 patch_set_id=901,
             )
-            assert revision == 10
+            assert revision == 9
             assert applied[0]["new_value"]["review_status"] == "proposed"
 
         with factory() as session:
@@ -1482,12 +1487,14 @@ def test_resolution_conclusion_confirm_withdraw_invalidation_and_agent_audit(
             batch_operation = session.scalar(
                 select(DraftOperation).where(
                     DraftOperation.operation_type == "agent_patch_apply",
-                    DraftOperation.result_revision == 10,
+                    DraftOperation.result_revision == 9,
                 )
             )
             assert batch_operation is not None
             assert (
-                batch_operation.new_value_jsonb["operations"][0]["value"]["review_status"]
+                batch_operation.new_value_jsonb["mutation_set"]["operations"][0]["new_value"][
+                    "review_status"
+                ]
                 == "proposed"
             )
             audit_actions = list(
@@ -1567,7 +1574,10 @@ def test_v1_editing_supports_all_eleven_object_collections(
                 expected_revision=revision,
                 changes={"participant_refs": entity_refs},
             )
-            assert event["participant_refs"] == entity_refs
+            assert event["participant_refs"] == sorted(
+                entity_refs,
+                key=lambda ref: (ref["object_type"], ref["object_id"]),
+            )
             assert next_revision == revision + 1
             revision = next_revision
 
@@ -1590,7 +1600,7 @@ def test_v1_editing_supports_all_eleven_object_collections(
                 session.scalars(
                     select(DraftOperation).where(
                         DraftOperation.project_id == project_id,
-                        DraftOperation.operation_type == "replace",
+                        DraftOperation.operation_type == "logical_mutation_apply",
                     )
                 )
             )

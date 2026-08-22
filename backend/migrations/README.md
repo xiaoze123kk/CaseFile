@@ -248,6 +248,13 @@ drafts ── exposure_plans（独立 revision 指针）
 - 所有表带 Project/CaseFile/Draft 归属约束。finding review 追加审阅记录，确定性 finding 仍可在后续 run 中重新出现；验证事实不允许普通物理删除，run/ref/review/lineage 也不允许改写。
 - `casefile_chat` 完成时双写 `result_jsonb.audit_findings`（兼容旧读）与规范化 VerificationRun/findings；patch apply/undo 的锁内 preflight 与 post-apply observation 通过 `patch_set_id` 追踪，不创建伪造 TaskRun。
 
+## V20260822193348 Logical Mutation 契约
+
+- `agent_patch_sets` 增加 closure policy、mutation mode、baseline/candidate hash；旧 PatchSet 生命周期继续承载通用 Mutation proposal，不创建平行 proposal 表。
+- `agent_patch_operations` 扩展 `create_object/update_field/delete_object`，保存稳定对象 key 与 collection；CREATE 可无数据库 target row，UPDATE/DELETE 必须指向现存 registry，旧 `add/remove/replace` 保持兼容读取。
+- `draft_operations` 增加 logical apply/undo/redo/normalize 追加式事件；每次动作只推进一次 Draft revision，完整 before/after 文档和 hash 用于严格 LIFO、Revert 判定及投影证明。
+- 删除仍只设置 `casefile_objects.deleted_at`；业务引用清理来自 Normalizer 的显式机械 operations，数据库 cascade 不承担业务删除语义。
+
 ## 关系与数据库门禁
 
 - Project : CaseFile = 1:1；CaseFile : Draft = 1:N；CaseFile : Current Draft = 1:1；Project : Brief = 1:1；Project : SourceRecord = 1:N；Brief : BriefVersion = 1:N。

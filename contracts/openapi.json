@@ -410,6 +410,57 @@
         }
       }
     },
+    "/api/v1/projects/clear-archived": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Clear Archived Projects",
+        "operationId": "clear_archived_projects_api_v1_projects_clear_archived_post",
+        "parameters": [
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Clear Archived Projects Api V1 Projects Clear Archived Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/draft": {
       "get": {
         "tags": [
@@ -674,6 +725,434 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Patch V1 Object Api V1 Projects  Project Id  Draft Objects  Object Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/logical-mutation/shadow-scan": {
+      "get": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Shadow Scan Logical Mutation",
+        "operationId": "shadow_scan_logical_mutation_api_v1_projects__project_id__draft_logical_mutation_shadow_scan_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Shadow Scan Logical Mutation Api V1 Projects  Project Id  Draft Logical Mutation Shadow Scan Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/logical-mutations/preview": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Preview Logical Mutation",
+        "operationId": "preview_logical_mutation_api_v1_projects__project_id__draft_logical_mutations_preview_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogicalMutationPreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Preview Logical Mutation Api V1 Projects  Project Id  Draft Logical Mutations Preview Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/logical-mutations/apply": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Apply Logical Mutation",
+        "operationId": "apply_logical_mutation_api_v1_projects__project_id__draft_logical_mutations_apply_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogicalMutationApplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Apply Logical Mutation Api V1 Projects  Project Id  Draft Logical Mutations Apply Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/logical-mutation/normalize": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Normalize Logical Mutation",
+        "operationId": "normalize_logical_mutation_api_v1_projects__project_id__draft_logical_mutation_normalize_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogicalNormalizationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Normalize Logical Mutation Api V1 Projects  Project Id  Draft Logical Mutation Normalize Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/confirm": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Confirm Resolution Conclusion",
+        "operationId": "confirm_resolution_conclusion_api_v1_projects__project_id__draft_resolutions__resolution_id__conclusion_confirm_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "resolution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Resolution Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolutionConclusionActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Confirm Resolution Conclusion Api V1 Projects  Project Id  Draft Resolutions  Resolution Id  Conclusion Confirm Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/withdraw": {
+      "post": {
+        "tags": [
+          "casefile"
+        ],
+        "summary": "Withdraw Resolution Conclusion",
+        "operationId": "withdraw_resolution_conclusion_api_v1_projects__project_id__draft_resolutions__resolution_id__conclusion_withdraw_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "resolution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Resolution Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolutionConclusionActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Withdraw Resolution Conclusion Api V1 Projects  Project Id  Draft Resolutions  Resolution Id  Conclusion Withdraw Post"
                 }
               }
             }
@@ -1163,6 +1642,66 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Get Brief Intake Api V1 Projects  Project Id  Brief Intake Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/brief-intake/revision": {
+      "post": {
+        "tags": [
+          "brief-intake"
+        ],
+        "summary": "Begin Brief Intake Revision",
+        "operationId": "begin_brief_intake_revision_api_v1_projects__project_id__brief_intake_revision_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Begin Brief Intake Revision Api V1 Projects  Project Id  Brief Intake Revision Post"
                 }
               }
             }
@@ -1759,6 +2298,902 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Create Brief Intake Synthesize Task Api V1 Projects  Project Id  Tasks Brief Intake Synthesize Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/ideas": {
+      "get": {
+        "tags": [
+          "ideas"
+        ],
+        "summary": "List Ideas",
+        "operationId": "list_ideas_api_v1_projects__project_id__ideas_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Ideas Api V1 Projects  Project Id  Ideas Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/ideas/generate": {
+      "post": {
+        "tags": [
+          "ideas"
+        ],
+        "summary": "Generate Ideas",
+        "operationId": "generate_ideas_api_v1_projects__project_id__ideas_generate_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IdeaGenerateBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Generate Ideas Api V1 Projects  Project Id  Ideas Generate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/ideas/{idea_id}/bookmark": {
+      "post": {
+        "tags": [
+          "ideas"
+        ],
+        "summary": "Bookmark Idea",
+        "operationId": "bookmark_idea_api_v1_projects__project_id__ideas__idea_id__bookmark_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idea_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idea Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Bookmark Idea Api V1 Projects  Project Id  Ideas  Idea Id  Bookmark Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/ideas/{idea_id}/archive": {
+      "post": {
+        "tags": [
+          "ideas"
+        ],
+        "summary": "Archive Idea",
+        "operationId": "archive_idea_api_v1_projects__project_id__ideas__idea_id__archive_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idea_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idea Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Archive Idea Api V1 Projects  Project Id  Ideas  Idea Id  Archive Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/ideas/{idea_id}/select": {
+      "post": {
+        "tags": [
+          "ideas"
+        ],
+        "summary": "Select Idea",
+        "operationId": "select_idea_api_v1_projects__project_id__ideas__idea_id__select_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idea_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idea Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Select Idea Api V1 Projects  Project Id  Ideas  Idea Id  Select Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/ideas/{idea_id}/regenerate": {
+      "post": {
+        "tags": [
+          "ideas"
+        ],
+        "summary": "Regenerate Idea",
+        "operationId": "regenerate_idea_api_v1_projects__project_id__ideas__idea_id__regenerate_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "idea_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Idea Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Regenerate Idea Api V1 Projects  Project Id  Ideas  Idea Id  Regenerate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/reverse-parse/documents": {
+      "post": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "Upload Document",
+        "operationId": "upload_document_api_v1_projects__project_id__reverse_parse_documents_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_api_v1_projects__project_id__reverse_parse_documents_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Upload Document Api V1 Projects  Project Id  Reverse Parse Documents Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "List Documents",
+        "operationId": "list_documents_api_v1_projects__project_id__reverse_parse_documents_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response List Documents Api V1 Projects  Project Id  Reverse Parse Documents Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/reverse-parse/documents/{document_id}": {
+      "get": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "Get Document",
+        "operationId": "get_document_api_v1_projects__project_id__reverse_parse_documents__document_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Document Api V1 Projects  Project Id  Reverse Parse Documents  Document Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/reverse-parse/documents/{document_id}/blocks": {
+      "get": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "Get Blocks",
+        "operationId": "get_blocks_api_v1_projects__project_id__reverse_parse_documents__document_id__blocks_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Blocks Api V1 Projects  Project Id  Reverse Parse Documents  Document Id  Blocks Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/reverse-parse/items/{item_id}": {
+      "patch": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "Confirm Item",
+        "operationId": "confirm_item_api_v1_projects__project_id__reverse_parse_items__item_id__patch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Item Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Confirm Item Api V1 Projects  Project Id  Reverse Parse Items  Item Id  Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/reverse-parse/documents/{document_id}/retry": {
+      "post": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "Retry Parse",
+        "operationId": "retry_parse_api_v1_projects__project_id__reverse_parse_documents__document_id__retry_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Retry Parse Api V1 Projects  Project Id  Reverse Parse Documents  Document Id  Retry Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/reverse-parse/documents/{document_id}/form-brief": {
+      "post": {
+        "tags": [
+          "reverse-parse"
+        ],
+        "summary": "Form Brief",
+        "operationId": "form_brief_api_v1_projects__project_id__reverse_parse_documents__document_id__form_brief_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Form Brief Api V1 Projects  Project Id  Reverse Parse Documents  Document Id  Form Brief Post"
                 }
               }
             }
@@ -2685,6 +4120,94 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages/{message_id}/routing-feedback": {
+      "post": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Submit Agent Routing Feedback",
+        "operationId": "submit_agent_routing_feedback_api_v1_projects__project_id__agent_threads__thread_id__messages__message_id__routing_feedback_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "thread_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Thread Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRoutingFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Submit Agent Routing Feedback Api V1 Projects  Project Id  Agent Threads  Thread Id  Messages  Message Id  Routing Feedback Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply": {
       "post": {
         "tags": [
@@ -2764,6 +4287,85 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate": {
+      "post": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Simulate Agent Patch Set",
+        "operationId": "simulate_agent_patch_set_api_v1_projects__project_id__agent_patch_sets__patch_set_id__simulate_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "patch_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Patch Set Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPatchSimulateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Simulate Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Simulate Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo": {
       "post": {
         "tags": [
@@ -2826,6 +4428,85 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Undo Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Undo Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo": {
+      "post": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Redo Agent Patch Set",
+        "operationId": "redo_agent_patch_set_api_v1_projects__project_id__agent_patch_sets__patch_set_id__redo_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "patch_set_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Patch Set Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentPatchRedoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Redo Agent Patch Set Api V1 Projects  Project Id  Agent Patch Sets  Patch Set Id  Redo Post"
                 }
               }
             }
@@ -3918,10 +5599,397 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{project_id}/verification-runs/rerun": {
+      "post": {
+        "tags": [
+          "verification"
+        ],
+        "summary": "Rerun Verification",
+        "operationId": "rerun_verification_api_v1_projects__project_id__verification_runs_rerun_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationRerunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Rerun Verification Api V1 Projects  Project Id  Verification Runs Rerun Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/verification-runs/{verification_run_id}": {
+      "get": {
+        "tags": [
+          "verification"
+        ],
+        "summary": "Get Verification Run",
+        "operationId": "get_verification_run_api_v1_projects__project_id__verification_runs__verification_run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "verification_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Verification Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Verification Run Api V1 Projects  Project Id  Verification Runs  Verification Run Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/verification-findings": {
+      "get": {
+        "tags": [
+          "verification"
+        ],
+        "summary": "List Verification Findings",
+        "operationId": "list_verification_findings_api_v1_projects__project_id__verification_findings_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "draft_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Verification Findings Api V1 Projects  Project Id  Verification Findings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/verification-findings/{finding_id}/review": {
+      "post": {
+        "tags": [
+          "verification"
+        ],
+        "summary": "Review Verification Finding",
+        "operationId": "review_verification_finding_api_v1_projects__project_id__verification_findings__finding_id__review_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "finding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Finding Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerificationFindingReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Review Verification Finding Api V1 Projects  Project Id  Verification Findings  Finding Id  Review Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AgentChatFocus": {
+        "properties": {
+          "object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Object Ids"
+          },
+          "event_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Event Ids"
+          },
+          "validation_issue_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "title": "Validation Issue Ids"
+          },
+          "view": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AgentChatFocus"
+      },
+      "AgentChatRoutingHint": {
+        "properties": {
+          "entrypoint": {
+            "type": "string",
+            "enum": [
+              "free_text",
+              "preset",
+              "issue_action"
+            ],
+            "title": "Entrypoint",
+            "default": "free_text"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AgentChatRoutingHint"
+      },
       "AgentMessageCreateRequest": {
         "properties": {
           "expected_draft_id": {
@@ -3948,6 +6016,26 @@
             ],
             "title": "Provider",
             "default": "openai"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentChatFocus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "routing_hint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentChatRoutingHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -3984,6 +6072,40 @@
               }
             ],
             "title": "Operation Ids"
+          },
+          "target_finding_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Finding Ids"
+          },
+          "accepted_debt_finding_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Accepted Debt Finding Keys"
+          },
+          "debt_acceptance_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Acceptance Reason"
           }
         },
         "additionalProperties": false,
@@ -3993,6 +6115,96 @@
           "expected_revision"
         ],
         "title": "AgentPatchApplyRequest"
+      },
+      "AgentPatchRedoRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_revision"
+        ],
+        "title": "AgentPatchRedoRequest"
+      },
+      "AgentPatchSimulateRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Base Revision"
+          },
+          "operation_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Ids"
+          },
+          "target_finding_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Finding Ids"
+          },
+          "accepted_debt_finding_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Accepted Debt Finding Keys"
+          },
+          "debt_acceptance_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Acceptance Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "base_revision"
+        ],
+        "title": "AgentPatchSimulateRequest"
       },
       "AgentPatchUndoRequest": {
         "properties": {
@@ -4014,6 +6226,46 @@
           "expected_revision"
         ],
         "title": "AgentPatchUndoRequest"
+      },
+      "AgentRoutingFeedbackRequest": {
+        "properties": {
+          "correct_intent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "question",
+                  "analysis",
+                  "explain_issue",
+                  "edit_request",
+                  "validate_request",
+                  "unsupported_action",
+                  "clarify",
+                  "out_of_scope"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correct Intent"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AgentRoutingFeedbackRequest"
       },
       "AgentThreadCreateRequest": {
         "properties": {
@@ -4104,6 +6356,20 @@
           "expected_draft_revision"
         ],
         "title": "AgentThreadUpdateRequest"
+      },
+      "Body_upload_document_api_v1_projects__project_id__reverse_parse_documents_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_document_api_v1_projects__project_id__reverse_parse_documents_post"
       },
       "BriefAnchorExtractTaskRequest": {
         "properties": {
@@ -4683,6 +6949,385 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "IdeaGenerateBody": {
+        "properties": {
+          "preferences": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferences"
+          }
+        },
+        "type": "object",
+        "title": "IdeaGenerateBody",
+        "description": "可选的创作偏好：时代、场景、氛围与自由关键词（均为软约束）。"
+      },
+      "ItemActionRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ItemActionRequest"
+      },
+      "LogicalMutationApplyRequest": {
+        "properties": {
+          "mutation_set_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Mutation Set Id"
+          },
+          "base_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Base Draft Id"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Base Revision"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "restructure"
+            ],
+            "title": "Mode",
+            "default": "normal"
+          },
+          "closure_policy_version": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Closure Policy Version",
+            "default": "logical-mutation-v1"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/MutationCreateOperationRequest"
+                },
+                {
+                  "$ref": "#/components/schemas/MutationUpdateOperationRequest"
+                },
+                {
+                  "$ref": "#/components/schemas/MutationDeleteOperationRequest"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "operation_type",
+                "mapping": {
+                  "create_object": "#/components/schemas/MutationCreateOperationRequest",
+                  "delete_object": "#/components/schemas/MutationDeleteOperationRequest",
+                  "update_field": "#/components/schemas/MutationUpdateOperationRequest"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Operations"
+          },
+          "target_finding_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Target Finding Keys"
+          },
+          "accepted_debt_finding_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Accepted Debt Finding Keys"
+          },
+          "debt_acceptance_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Acceptance Reason"
+          },
+          "expected_candidate_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Expected Candidate Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mutation_set_id",
+          "base_draft_id",
+          "base_revision",
+          "operations",
+          "expected_candidate_hash"
+        ],
+        "title": "LogicalMutationApplyRequest"
+      },
+      "LogicalMutationPreviewRequest": {
+        "properties": {
+          "mutation_set_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Mutation Set Id"
+          },
+          "base_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Base Draft Id"
+          },
+          "base_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Base Revision"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "restructure"
+            ],
+            "title": "Mode",
+            "default": "normal"
+          },
+          "closure_policy_version": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Closure Policy Version",
+            "default": "logical-mutation-v1"
+          },
+          "operations": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/MutationCreateOperationRequest"
+                },
+                {
+                  "$ref": "#/components/schemas/MutationUpdateOperationRequest"
+                },
+                {
+                  "$ref": "#/components/schemas/MutationDeleteOperationRequest"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "operation_type",
+                "mapping": {
+                  "create_object": "#/components/schemas/MutationCreateOperationRequest",
+                  "delete_object": "#/components/schemas/MutationDeleteOperationRequest",
+                  "update_field": "#/components/schemas/MutationUpdateOperationRequest"
+                }
+              }
+            },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Operations"
+          },
+          "target_finding_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Target Finding Keys"
+          },
+          "accepted_debt_finding_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Accepted Debt Finding Keys"
+          },
+          "debt_acceptance_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Debt Acceptance Reason"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mutation_set_id",
+          "base_draft_id",
+          "base_revision",
+          "operations"
+        ],
+        "title": "LogicalMutationPreviewRequest"
+      },
+      "LogicalNormalizationRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_revision"
+        ],
+        "title": "LogicalNormalizationRequest"
+      },
+      "MutationCreateOperationRequest": {
+        "properties": {
+          "operation_type": {
+            "type": "string",
+            "const": "create_object",
+            "title": "Operation Type"
+          },
+          "operation_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Operation Id"
+          },
+          "collection": {
+            "type": "string",
+            "title": "Collection"
+          },
+          "object_value": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Object Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_type",
+          "operation_id",
+          "collection",
+          "object_value"
+        ],
+        "title": "MutationCreateOperationRequest"
+      },
+      "MutationDeleteOperationRequest": {
+        "properties": {
+          "operation_type": {
+            "type": "string",
+            "const": "delete_object",
+            "title": "Operation Type"
+          },
+          "operation_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Operation Id"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "old_object_value": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Object Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_type",
+          "operation_id",
+          "object_id"
+        ],
+        "title": "MutationDeleteOperationRequest"
+      },
+      "MutationUpdateOperationRequest": {
+        "properties": {
+          "operation_type": {
+            "type": "string",
+            "const": "update_field",
+            "title": "Operation Type"
+          },
+          "operation_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$",
+            "title": "Operation Id"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id"
+          },
+          "field_path": {
+            "type": "string",
+            "title": "Field Path"
+          },
+          "old_value": {
+            "title": "Old Value"
+          },
+          "new_value": {
+            "title": "New Value"
+          },
+          "expected_object_revision": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Object Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation_type",
+          "operation_id",
+          "object_id",
+          "field_path",
+          "old_value",
+          "new_value"
+        ],
+        "title": "MutationUpdateOperationRequest"
+      },
       "ObjectPatchRequest": {
         "properties": {
           "expected_draft_id": {
@@ -4823,6 +7468,27 @@
         ],
         "title": "ProviderSettingRequest"
       },
+      "ResolutionConclusionActionRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Revision"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_revision"
+        ],
+        "title": "ResolutionConclusionActionRequest"
+      },
       "ResumeGenerationTaskRequest": {
         "properties": {
           "expected_draft_id": {
@@ -4953,6 +7619,68 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerificationFindingReviewRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "confirm",
+              "resolve",
+              "reopen",
+              "dismiss"
+            ],
+            "title": "Decision"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "VerificationFindingReviewRequest"
+      },
+      "VerificationRerunRequest": {
+        "properties": {
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Revision"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "openai",
+              "deepseek"
+            ],
+            "title": "Provider",
+            "default": "deepseek"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_draft_id",
+          "expected_draft_revision"
+        ],
+        "title": "VerificationRerunRequest"
       }
     }
   }

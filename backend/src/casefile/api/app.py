@@ -28,6 +28,9 @@ from casefile.api.reverse_parse import reverse_parse_router
 from casefile.api.schemas import (
     DraftActivateRequest,
     ExposurePlanPutRequest,
+    LogicalMutationApplyRequest,
+    LogicalMutationPreviewRequest,
+    LogicalNormalizationRequest,
     ObjectPatchRequest,
     ProjectCreateRequest,
     ProjectUpdateRequest,
@@ -39,6 +42,8 @@ from casefile.api.workbench import workbench_router
 from casefile.api.workflow import workflow_router
 from casefile.application.errors import ApplicationError
 from casefile.application.exposure_plan import ExposurePlanService
+from casefile.application.logical_mutation_rollout import LogicalMutationRolloutService
+from casefile.application.logical_mutation_service import LogicalMutationService
 from casefile.application.services import CaseFileService
 from casefile.application.timeline import TimelineService
 from casefile.application.v1_editing import V1EditingService
@@ -377,6 +382,56 @@ def _api_router() -> APIRouter:
             changes=payload.changes,
         )
         _set_revision(response, revision)
+        return result
+
+    @router.get("/projects/{project_id}/draft/logical-mutation/shadow-scan")
+    def shadow_scan_logical_mutation(
+        project_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return LogicalMutationRolloutService(session).shadow_scan(actor, project_id)
+
+    @router.post("/projects/{project_id}/draft/logical-mutations/preview")
+    def preview_logical_mutation(
+        project_id: int,
+        payload: LogicalMutationPreviewRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return LogicalMutationService(session).preview(
+            actor, project_id, payload.model_dump()
+        )
+
+    @router.post("/projects/{project_id}/draft/logical-mutations/apply")
+    def apply_logical_mutation(
+        project_id: int,
+        payload: LogicalMutationApplyRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = LogicalMutationService(session).apply(
+            actor, project_id, payload.model_dump()
+        )
+        _set_revision(response, result["draft_revision"])
+        return result
+
+    @router.post("/projects/{project_id}/draft/logical-mutation/normalize")
+    def normalize_logical_mutation(
+        project_id: int,
+        payload: LogicalNormalizationRequest,
+        response: Response,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        result = LogicalMutationRolloutService(session).normalize_mechanical(
+            actor,
+            project_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+        )
+        _set_revision(response, result["draft_revision"])
         return result
 
     @router.post("/projects/{project_id}/draft/resolutions/{resolution_id}/conclusion/confirm")

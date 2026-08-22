@@ -114,13 +114,26 @@ def test_chat_feedback_metrics_pending_apply_undo_lifecycle(
 
     factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     with factory() as session:
-        applied = WorkflowService(session).apply_agent_patch_set(
+        workflow = WorkflowService(session)
+        preview = workflow.simulate_agent_patch_set(
+            actor_id,
+            project_id,
+            patch_set_id,
+            expected_draft_id=draft_id,
+            base_revision=revision,
+            operation_ids=None,
+        )
+        debt_keys = preview["simulation"]["authorization_required_finding_keys"]
+        assert debt_keys
+        applied = workflow.apply_agent_patch_set(
             actor_id,
             project_id,
             patch_set_id,
             expected_draft_id=draft_id,
             expected_revision=revision,
             operation_ids=None,
+            accepted_debt_finding_keys=debt_keys,
+            debt_acceptance_reason="测试作者明确接受关键 Claim 暂时失去支撑的逻辑债务。",
         )
     after_apply = run_chat_feedback_metrics(engine, project_id=project_id)
     assert after_apply.applied == 1

@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from casefile.application.casefile_v1 import (
     build_casefile_document,
+    casefile_content_hash,
+    create_casefile_objects,
     iter_contract_object_refs,
 )
 from casefile.application.errors import ApplicationError, not_found, revision_conflict
@@ -36,7 +38,14 @@ from casefile.data_postgres.models import (
     ResolutionSpec,
     StructureLock,
 )
-from casefile.data_postgres.repositories import DraftRepository, OwnedDraft, ProjectRepository
+from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile.domain.logical_mutation import (
+    CLOSURE_POLICY_VERSION,
+    CreateObject,
+    MutationSet,
+    UpdateField,
+)
+from casefile.domain.verification_engine import MutationSimulation, VerificationEngine
 
 COMMON_EDITABLE_FIELDS = {"description", "tags"}
 CONCLUSION_INVALIDATING_RESOLUTION_FIELDS = {
@@ -191,7 +200,6 @@ class V1EditingService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.projects = ProjectRepository(session)
-        self.drafts = DraftRepository(session)
 
     def patch_object(
         self,
@@ -214,70 +222,83 @@ class V1EditingService:
                 )
             registry = self._registry(owned, object_id)
             self._require_editable_fields(registry.object_type, set(changes))
-
             collection = COLLECTIONS[registry.object_type]
             before_document = build_casefile_document(self.session, owned)
             before = _find(before_document[collection], object_id)
             proposed = deepcopy(before)
-            proposed.update(changes)
-            conclusion_was_invalidated = False
+            proposed.update(deepcopy(changes))
             if registry.object_type == "resolution_spec" and (
                 set(changes) & CONCLUSION_INVALIDATING_RESOLUTION_FIELDS
             ):
                 conclusion = proposed.get("conclusion")
                 if conclusion is not None:
-                    conclusion_was_invalidated = (
-                        (before.get("conclusion") or {}).get("review_status") == "confirmed"
-                    )
                     conclusion["review_status"] = "proposed"
-                proposed["conclusion"] = conclusion
-            self._apply_object(owned, registry, proposed)
-            self.session.flush()
-            self._advance_object_revision(registry)
-            self.session.flush()
-            after_document = build_casefile_document(self.session, owned)
-            after = _find(after_document[collection], object_id)
-            revision = self.drafts.add_operation(
-                owned,
-                registry=registry,
-                operation_type="replace",
-                field_path=f"/{collection}/{object_id}",
-                old_value=before,
-                new_value=after,
+            operations = [
+                UpdateField(
+                    operation_id=f"manual_{index:02d}",
+                    object_id=object_id,
+                    field_path=f"/{field}",
+                    old_value=deepcopy(before.get(field)),
+                    new_value=deepcopy(proposed.get(field)),
+                    expected_object_revision=registry.revision,
+                )
+                for index, field in enumerate(sorted(changes), start=1)
+            ]
+            invalidated_resolution_ids: list[str] = []
+            if (
+                registry.object_type == "resolution_spec"
+                and (before.get("conclusion") or {}).get("review_status") == "confirmed"
+                and (proposed.get("conclusion") or {}).get("review_status") == "proposed"
+            ):
+                operations.append(
+                    UpdateField(
+                        operation_id="manual_conclusion_invalidation",
+                        object_id=object_id,
+                        field_path="/conclusion/review_status",
+                        old_value="confirmed",
+                        new_value="proposed",
+                        expected_object_revision=registry.revision,
+                    )
+                )
+                invalidated_resolution_ids.append(object_id)
+            if registry.object_type != "resolution_spec":
+                for resolution in before_document["resolution_specs"]:
+                    conclusion = resolution.get("conclusion")
+                    if (
+                        conclusion is not None
+                        and conclusion.get("review_status") == "confirmed"
+                        and _conclusion_references_object(
+                            before_document, resolution, object_id
+                        )
+                    ):
+                        resolution_registry = self._registry(owned, resolution["id"])
+                        operations.append(
+                            UpdateField(
+                                operation_id=(
+                                    f"manual_invalidate_{resolution['id']}"
+                                ),
+                                object_id=resolution["id"],
+                                field_path="/conclusion/review_status",
+                                old_value="confirmed",
+                                new_value="proposed",
+                                expected_object_revision=resolution_registry.revision,
+                            )
+                        )
+                        invalidated_resolution_ids.append(resolution["id"])
+            mutation = MutationSet(
+                mutation_set_id=f"manual_{owned.draft.id}_{expected_revision}_{object_id}",
+                base_draft_id=owned.draft.id,
                 base_revision=expected_revision,
+                operations=tuple(operations),
+                actor="author",
+            )
+            revision, _group_no, simulation = self.apply_mutation_set(
+                owned,
+                mutation_set=mutation,
                 actor_user_id=actor_user_id,
             )
-            # A dependency edit invalidates any confirmed conclusion that cites
-            # it.  Record this after the primary operation so every operation
-            # advances the Draft revision monotonically and remains auditable.
-            if registry.object_type != "resolution_spec":
-                invalidated = self._invalidate_dependent_conclusions(
-                    owned,
-                    registry.object_id,
-                    actor_user_id=actor_user_id,
-                    dependency_document=before_document,
-                )
-                for dependent_registry in invalidated:
-                    dependent_before = {"review_status": "confirmed"}
-                    self._advance_object_revision(dependent_registry)
-                    revision = self.drafts.add_operation(
-                        owned,
-                        registry=dependent_registry,
-                        operation_type="replace",
-                        field_path=(
-                            f"/resolution_specs/{dependent_registry.object_id}"
-                            "/conclusion/review_status"
-                        ),
-                        old_value=dependent_before["review_status"],
-                        new_value="proposed",
-                        base_revision=revision,
-                        actor_user_id=actor_user_id,
-                    )
-            if registry.object_type == "resolution_spec" and (
-                "conclusion" in changes or conclusion_was_invalidated
-            ):
-                old_status = (before.get("conclusion") or {}).get("review_status")
-                new_status = (after.get("conclusion") or {}).get("review_status")
+            for invalidated_id in invalidated_resolution_ids:
+                invalidated_registry = self._registry(owned, invalidated_id)
                 self.session.add(
                     AuditEvent(
                         project_id=owned.project.id,
@@ -285,24 +306,17 @@ class V1EditingService:
                         actor_kind="user",
                         actor_user_id=actor_user_id,
                         actor_ref=None,
-                        action=(
-                            "resolution.conclusion_invalidated"
-                            if conclusion_was_invalidated
-                            else "resolution.conclusion_edited"
-                        ),
+                        action="resolution.conclusion_invalidated",
                         target_type="resolution_spec",
-                        target_id=registry.id,
+                        target_id=invalidated_registry.id,
                         trace_id=None,
                         details_jsonb={
-                            "old_status": old_status,
-                            "new_status": new_status,
-                            "draft_revision": expected_revision,
-                            "changed_fields": sorted(changes),
+                            "basis_object_id": object_id,
+                            "draft_revision": revision,
                         },
                     )
                 )
-            self.session.refresh(owned.draft)
-            return after, revision
+            return _find(dict(simulation.document)[collection], object_id), revision
 
     def _invalidate_dependent_conclusions(
         self,
@@ -436,28 +450,37 @@ class V1EditingService:
                 raise ApplicationError(
                     "conclusion_transition_invalid", "只有已确认结论可以撤回。", status_code=409
                 )
-            row = self._content_row(ResolutionSpec, registry, "ResolutionSpec")
-            row.conclusion_review_status = target_status
-            row.conclusion_confirmed_by_user_id = (
-                actor_user_id if target_status == "confirmed" else None
-            )
-            row.conclusion_confirmed_at = (
-                datetime.now(UTC) if target_status == "confirmed" else None
-            )
-            self._advance_object_revision(registry)
-            self.session.flush()
-            after_document = build_casefile_document(self.session, owned)
-            after = _find(after_document[collection], resolution_id)
-            revision = self.drafts.add_operation(
-                owned,
-                registry=registry,
-                operation_type="replace",
-                field_path=f"/{collection}/{resolution_id}/conclusion/review_status",
-                old_value=current_status,
-                new_value=target_status,
+            mutation = MutationSet(
+                mutation_set_id=(
+                    f"conclusion_{target_status}_{owned.draft.id}_{expected_revision}"
+                ),
+                base_draft_id=owned.draft.id,
                 base_revision=expected_revision,
+                operations=(
+                    UpdateField(
+                        operation_id="conclusion_status",
+                        object_id=resolution_id,
+                        field_path="/conclusion/review_status",
+                        old_value=current_status,
+                        new_value=target_status,
+                        expected_object_revision=registry.revision,
+                    ),
+                ),
+                actor="author",
+            )
+            row = self._content_row(ResolutionSpec, registry, "ResolutionSpec")
+            if target_status == "confirmed":
+                # Keep the database confirmation constraint true at every flush:
+                # _apply_resolution writes the confirmed status during canonical
+                # materialization, so its author metadata must already be present.
+                row.conclusion_confirmed_by_user_id = actor_user_id
+                row.conclusion_confirmed_at = datetime.now(UTC)
+            revision, _group_no, simulation = self.apply_mutation_set(
+                owned,
+                mutation_set=mutation,
                 actor_user_id=actor_user_id,
             )
+            after = _find(dict(simulation.document)[collection], resolution_id)
             self.session.add(
                 AuditEvent(
                     project_id=owned.project.id,
@@ -561,7 +584,7 @@ class V1EditingService:
         operation_type: str,
         patch_set_id: int,
     ) -> tuple[int, int, list[dict[str, Any]]]:
-        """Apply many field replacements in one transaction and one Draft revision."""
+        """Compatibility adapter for legacy Agent field replacements."""
 
         if operation_type not in {"agent_patch_apply", "agent_patch_undo"}:
             raise ValueError(f"Unsupported batch operation type: {operation_type}")
@@ -572,14 +595,8 @@ class V1EditingService:
                 status_code=422,
             )
 
-        base_revision = owned.draft.revision
-        before_document = build_casefile_document(self.session, owned)
-        working: dict[str, dict[str, Any]] = {}
-        registries: dict[str, CaseFileObject] = {}
-        applied: list[dict[str, Any]] = []
-        directly_invalidated_resolutions: set[str] = set()
-
-        for operation in operations:
+        logical_operations: list[UpdateField] = []
+        for index, operation in enumerate(operations, start=1):
             if operation.get("operation_type", "replace") != "replace":
                 raise ApplicationError(
                     "patch_operation_not_supported",
@@ -588,160 +605,176 @@ class V1EditingService:
                     details={"operation_id": operation.get("operation_id")},
                 )
             object_id = str(operation["object_id"])
-            registry = registries.get(object_id)
-            if registry is None:
-                registry = self._registry(owned, object_id)
-                registries[object_id] = registry
-            expected_object_revision = operation.get("expected_object_revision")
-            if (
-                expected_object_revision is not None
-                and registry.revision != expected_object_revision
-            ):
-                raise ApplicationError(
-                    "patch_object_revision_conflict",
-                    "Agent 读取后，该建议对象已发生变化。",
-                    status_code=409,
-                    details={
-                        "object_id": object_id,
-                        "current_revision": registry.revision,
-                        "expected_revision": expected_object_revision,
-                    },
-                )
-            collection = COLLECTIONS.get(registry.object_type)
-            if collection is None:
-                raise self._object_read_only(registry.object_type)
-            current = working.get(object_id)
-            if current is None:
-                current = deepcopy(_find(before_document[collection], object_id))
-                working[object_id] = current
+            registry = self._registry(owned, object_id)
             field_path = str(operation["field_path"])
-            top_level_field = _top_level_field(field_path)
-            self._require_editable_fields(registry.object_type, {top_level_field})
-            old_value = (
-                deepcopy(current.get("description"))
-                if field_path == "/description"
-                else _pointer_value(current, field_path)
-            )
-            if old_value != operation.get("old_value"):
-                raise ApplicationError(
-                    "patch_old_value_conflict",
-                    "建议字段已不再匹配冻结时的值。",
-                    status_code=409,
-                    details={
-                        "object_id": object_id,
-                        "field_path": field_path,
-                    },
-                )
             new_value = deepcopy(operation.get("new_value"))
-            _replace_pointer(current, field_path, new_value)
-            # Agent patches may edit the nested conclusion object, but they can
-            # never manufacture an author-confirmed state. Confirmation is a
-            # separate user-only transition endpoint.
-            if registry.object_type == "resolution_spec" and (
-                top_level_field in CONCLUSION_INVALIDATING_RESOLUTION_FIELDS
+            if (
+                registry.object_type == "resolution_spec"
+                and _top_level_field(field_path) in CONCLUSION_INVALIDATING_RESOLUTION_FIELDS
             ):
-                conclusion = current.get("conclusion")
-                if conclusion is not None:
-                    before_resolution = _find(before_document[collection], object_id)
-                    if (
-                        (before_resolution.get("conclusion") or {}).get("review_status")
-                        == "confirmed"
-                    ):
-                        directly_invalidated_resolutions.add(object_id)
-                    conclusion["review_status"] = "proposed"
-            effective_new_value = (
-                deepcopy(current.get("description"))
-                if field_path == "/description"
-                else deepcopy(_pointer_value(current, field_path))
-            )
-            applied.append(
-                {
-                    "operation_id": operation.get("operation_id"),
-                    "object_id": object_id,
-                    "object_type": registry.object_type,
-                    "field_path": field_path,
-                    "old_value": old_value,
-                    "new_value": effective_new_value,
-                }
-            )
-
-        for object_id in sorted(directly_invalidated_resolutions):
-            if not any(
-                item["object_id"] == object_id
-                and item["field_path"] == "/conclusion/review_status"
-                for item in applied
-            ):
-                applied.append(
-                    {
-                        "operation_id": None,
-                        "object_id": object_id,
-                        "object_type": "resolution_spec",
-                        "field_path": "/conclusion/review_status",
-                        "old_value": "confirmed",
-                        "new_value": "proposed",
-                    }
+                if field_path == "/conclusion" and isinstance(new_value, dict):
+                    new_value["review_status"] = "proposed"
+                elif field_path == "/conclusion/review_status" and new_value == "confirmed":
+                    new_value = "proposed"
+            logical_operations.append(
+                UpdateField(
+                    operation_id=str(operation.get("operation_id") or f"legacy_{index}"),
+                    object_id=object_id,
+                    field_path=field_path,
+                    old_value=deepcopy(operation.get("old_value")),
+                    new_value=new_value,
+                    expected_object_revision=operation.get("expected_object_revision"),
                 )
-
-        for object_id, proposed in working.items():
-            registry = registries[object_id]
-            self._apply_object(owned, registry, proposed)
-            self._advance_object_revision(registry)
-        self.session.flush()
-
-        # Dependency edits invalidate confirmed conclusions in the same atomic
-        # Draft operation.  Include those state changes in the operation payload
-        # and advance their object revisions before the projection gate.
-        changed_non_resolutions = [
-            object_id
-            for object_id, registry in registries.items()
-            if registry.object_type != "resolution_spec"
+            )
+        mutation = MutationSet(
+            mutation_set_id=f"agent_patch_{patch_set_id}_{owned.draft.revision}",
+            base_draft_id=owned.draft.id,
+            base_revision=owned.draft.revision,
+            operations=tuple(logical_operations),
+            actor="author" if operation_type == "agent_patch_undo" else "agent",
+        )
+        revision, group_no, simulation = self.apply_mutation_set(
+            owned,
+            mutation_set=mutation,
+            actor_user_id=actor_user_id,
+            draft_operation_type=operation_type,
+            source_patch_set_id=patch_set_id,
+        )
+        applied = [
+            {
+                "operation_id": operation.operation_id,
+                "object_id": operation.object_id,
+                "object_type": self._registry(owned, operation.object_id).object_type,
+                "field_path": operation.field_path,
+                "old_value": deepcopy(operation.old_value),
+                "new_value": deepcopy(operation.new_value),
+            }
+            for operation in logical_operations
         ]
-        for changed_object_id in changed_non_resolutions:
-            for dependent_registry in self._invalidate_dependent_conclusions(
-                owned,
-                changed_object_id,
-                actor_user_id=actor_user_id,
-                dependency_document=before_document,
-            ):
-                self._advance_object_revision(dependent_registry)
-                applied.append(
-                    {
-                        "operation_id": None,
-                        "object_id": dependent_registry.object_id,
-                        "object_type": "resolution_spec",
-                        "field_path": (
-                            f"/resolution_specs/{dependent_registry.object_id}"
-                            "/conclusion/review_status"
-                        ),
-                        "old_value": "confirmed",
-                        "new_value": "proposed",
-                    }
-                )
-        for object_id in sorted(directly_invalidated_resolutions):
-            registry = registries[object_id]
-            self.session.add(
-                AuditEvent(
-                    project_id=owned.project.id,
-                    casefile_id=owned.casefile.id,
-                    actor_kind="user",
-                    actor_user_id=actor_user_id,
-                    actor_ref=None,
-                    action="resolution.conclusion_invalidated",
-                    target_type="resolution_spec",
-                    target_id=registry.id,
-                    trace_id=None,
-                    details_jsonb={
-                        "old_status": "confirmed",
-                        "new_status": "proposed",
-                        "patch_set_id": patch_set_id,
-                    },
+        return revision, group_no, applied
+
+    def apply_mutation_set(
+        self,
+        owned: OwnedDraft,
+        *,
+        mutation_set: MutationSet,
+        actor_user_id: int | None,
+        draft_operation_type: str = "logical_mutation_apply",
+        expected_candidate_hash: str | None = None,
+        accepted_debt_finding_keys: tuple[str, ...] = (),
+        debt_acceptance_reason: str | None = None,
+        target_finding_keys: tuple[str, ...] = (),
+        source_patch_set_id: int | None = None,
+    ) -> tuple[int, int, MutationSimulation]:
+        """Re-simulate and atomically project one canonical MutationSet."""
+
+        if mutation_set.closure_policy_version != CLOSURE_POLICY_VERSION:
+            raise ApplicationError(
+                "closure_policy_version_stale",
+                "逻辑门禁策略已更新，请重新预演。",
+                status_code=409,
+            )
+        if (
+            mutation_set.base_draft_id != owned.draft.id
+            or mutation_set.base_revision != owned.draft.revision
+        ):
+            raise ApplicationError(
+                "mutation_revision_conflict",
+                "Draft 已变化，请重新预演。",
+                status_code=409,
+            )
+        before = build_casefile_document(self.session, owned)
+        engine = VerificationEngine(profile="fast", draft_revision=owned.draft.revision)
+        simulation = engine.simulate_mutation_set(
+            before,
+            mutation_set,
+            accepted_debt_finding_keys=accepted_debt_finding_keys,
+            debt_acceptance_reason=debt_acceptance_reason,
+            target_finding_keys=target_finding_keys,
+            allow_author_debt_acceptance=True,
+            allow_existing_hard_invariants=(
+                draft_operation_type == "logical_mutation_normalize"
+            ),
+        )
+        if not simulation.can_apply:
+            raise ApplicationError(
+                simulation.reason_code or "logical_mutation_blocked",
+                "逻辑修改未通过统一门禁，Draft 未发生变化。",
+                status_code=409,
+                details={"simulation": simulation.as_dict()},
+            )
+        if expected_candidate_hash and expected_candidate_hash != simulation.candidate_hash:
+            raise ApplicationError(
+                "mutation_candidate_hash_stale",
+                "预演候选已失效，请重新预演。",
+                status_code=409,
+            )
+
+        candidate = dict(simulation.document)
+        before_by_id = _document_objects(before)
+        candidate_by_id = _document_objects(candidate)
+        created_ids = set(candidate_by_id) - set(before_by_id)
+        deleted_ids = set(before_by_id) - set(candidate_by_id)
+        changed_ids = {
+            object_id
+            for object_id in set(before_by_id) & set(candidate_by_id)
+            if before_by_id[object_id][1] != candidate_by_id[object_id][1]
+        }
+        creates: dict[str, list[dict[str, Any]]] = {}
+        restored: list[tuple[CaseFileObject, dict[str, Any]]] = []
+        for object_id in sorted(created_ids):
+            collection, value = candidate_by_id[object_id]
+            deleted_registry = self.session.scalar(
+                select(CaseFileObject).where(
+                    CaseFileObject.draft_id == owned.draft.id,
+                    CaseFileObject.object_id == object_id,
+                    CaseFileObject.deleted_at.is_not(None),
                 )
             )
+            if deleted_registry is None:
+                creates.setdefault(collection, []).append(deepcopy(value))
+            else:
+                if draft_operation_type not in {
+                    "logical_mutation_undo",
+                    "logical_mutation_redo",
+                }:
+                    raise ApplicationError(
+                        "deleted_object_id_reuse",
+                        "已删除对象的稳定 ID 不能用于创建新对象。",
+                        status_code=409,
+                        details={"object_id": object_id},
+                    )
+                restored.append((deleted_registry, value))
+        if creates:
+            create_casefile_objects(self.session, owned, creates)
+        for registry, value in restored:
+            registry.deleted_at = None
+            self._apply_object(owned, registry, value)
+            registry.revision = int(value["revision"])
+            registry.contract_updated_at = str(value["updated_at"])
+        for object_id in sorted(changed_ids):
+            registry = self._registry(owned, object_id)
+            value = candidate_by_id[object_id][1]
+            self._apply_object(owned, registry, value)
+            registry.revision = int(value["revision"])
+            registry.contract_updated_at = str(value["updated_at"])
+        now = datetime.now(UTC)
+        for object_id in sorted(deleted_ids):
+            self._registry(owned, object_id).deleted_at = now
         self.session.flush()
 
-        # Projection performs the complete schema, reference, and deterministic
-        # integrity gate. Any failure rolls the entire batch back.
-        build_casefile_document(self.session, owned)
+        projected = build_casefile_document(self.session, owned)
+        projected_hash = casefile_content_hash(projected)
+        if projected != candidate or projected_hash != simulation.candidate_hash:
+            raise ApplicationError(
+                "mutation_projection_hash_mismatch",
+                "数据库投影与预演候选不一致，修改已整体回滚。",
+                status_code=500,
+                details={
+                    "candidate_hash": simulation.candidate_hash,
+                    "projected_hash": projected_hash,
+                },
+            )
         sequence_no = int(
             self.session.scalar(
                 select(func.coalesce(func.max(DraftOperation.sequence_no), 0) + 1).where(
@@ -750,7 +783,22 @@ class V1EditingService:
             )
             or 1
         )
-        operation_group_no = sequence_no
+        payload = {
+            "mutation_set": _mutation_set_payload(mutation_set),
+            "mechanical_operations": (
+                simulation.normalized_mutation or {}
+            ).get("mechanical_operations", []),
+            "closure_policy_version": mutation_set.closure_policy_version,
+            "mode": mutation_set.mode,
+            "before_hash": simulation.baseline_hash,
+            "after_hash": simulation.candidate_hash,
+            "accepted_debt_finding_keys": list(accepted_debt_finding_keys),
+            "debt_acceptance_reason": debt_acceptance_reason,
+            "source_patch_set_id": source_patch_set_id,
+        }
+        is_user_actor = mutation_set.actor == "author"
+        if is_user_actor and actor_user_id is None:
+            raise ValueError("Author mutations require actor_user_id")
         self.session.add(
             DraftOperation(
                 project_id=owned.project.id,
@@ -758,45 +806,40 @@ class V1EditingService:
                 draft_id=owned.draft.id,
                 casefile_object_id=None,
                 sequence_no=sequence_no,
-                operation_group_no=operation_group_no,
-                operation_type=operation_type,
+                operation_group_no=sequence_no,
+                operation_type=draft_operation_type,
                 field_path="",
-                old_value_jsonb={
-                    "patch_set_id": patch_set_id,
-                    "operations": [
-                        {
-                            "operation_id": item["operation_id"],
-                            "object_id": item["object_id"],
-                            "object_type": item["object_type"],
-                            "field_path": item["field_path"],
-                            "value": item["old_value"],
-                        }
-                        for item in applied
-                    ],
-                },
-                new_value_jsonb={
-                    "patch_set_id": patch_set_id,
-                    "operations": [
-                        {
-                            "operation_id": item["operation_id"],
-                            "object_id": item["object_id"],
-                            "object_type": item["object_type"],
-                            "field_path": item["field_path"],
-                            "value": item["new_value"],
-                        }
-                        for item in applied
-                    ],
-                },
-                base_revision=base_revision,
-                result_revision=base_revision + 1,
-                actor_kind="user",
-                actor_user_id=actor_user_id,
-                actor_ref=None,
+                old_value_jsonb={**payload, "document": before},
+                new_value_jsonb={**payload, "document": candidate},
+                base_revision=owned.draft.revision,
+                result_revision=owned.draft.revision + 1,
+                actor_kind="user" if is_user_actor else mutation_set.actor,
+                actor_user_id=actor_user_id if is_user_actor else None,
+                actor_ref=None if is_user_actor else f"logical-mutation:{mutation_set.actor}",
             )
         )
+        if accepted_debt_finding_keys and actor_user_id is not None:
+            self.session.add(
+                AuditEvent(
+                    project_id=owned.project.id,
+                    casefile_id=owned.casefile.id,
+                    actor_kind="user",
+                    actor_user_id=actor_user_id,
+                    actor_ref=None,
+                    action="logical_mutation.debt_accepted",
+                    target_type="draft",
+                    target_id=owned.draft.id,
+                    trace_id=None,
+                    details_jsonb={
+                        "finding_keys": list(accepted_debt_finding_keys),
+                        "reason": debt_acceptance_reason,
+                        "candidate_hash": simulation.candidate_hash,
+                    },
+                )
+            )
         self.session.flush()
         self.session.refresh(owned.draft)
-        return owned.draft.revision, operation_group_no, applied
+        return owned.draft.revision, sequence_no, simulation
 
     def _registry(self, owned: OwnedDraft, object_id: str) -> CaseFileObject:
         registry = self.session.scalar(
@@ -1106,6 +1149,64 @@ def _find(values: list[dict[str, Any]], object_id: str) -> dict[str, Any]:
         if value["id"] == object_id:
             return value
     raise not_found("CaseFileObject")
+
+
+def _document_objects(
+    document: dict[str, Any],
+) -> dict[str, tuple[str, dict[str, Any]]]:
+    return {
+        str(value["id"]): (collection, value)
+        for collection in COLLECTIONS.values()
+        for value in document[collection]
+    }
+
+
+def _mutation_set_payload(mutation_set: MutationSet) -> dict[str, Any]:
+    operations: list[dict[str, Any]] = []
+    for operation in mutation_set.operations:
+        if isinstance(operation, CreateObject):
+            operations.append(
+                {
+                    "operation_id": operation.operation_id,
+                    "operation_type": operation.operation_type,
+                    "collection": operation.collection,
+                    "object_value": deepcopy(dict(operation.object_value)),
+                }
+            )
+        elif isinstance(operation, UpdateField):
+            operations.append(
+                {
+                    "operation_id": operation.operation_id,
+                    "operation_type": operation.operation_type,
+                    "object_id": operation.object_id,
+                    "field_path": operation.field_path,
+                    "old_value": deepcopy(operation.old_value),
+                    "new_value": deepcopy(operation.new_value),
+                    "expected_object_revision": operation.expected_object_revision,
+                }
+            )
+        else:
+            operations.append(
+                {
+                    "operation_id": operation.operation_id,
+                    "operation_type": operation.operation_type,
+                    "object_id": operation.object_id,
+                    "old_object_value": (
+                        None
+                        if operation.old_object_value is None
+                        else deepcopy(dict(operation.old_object_value))
+                    ),
+                }
+            )
+    return {
+        "mutation_set_id": mutation_set.mutation_set_id,
+        "base_draft_id": mutation_set.base_draft_id,
+        "base_revision": mutation_set.base_revision,
+        "actor": mutation_set.actor,
+        "mode": mutation_set.mode,
+        "closure_policy_version": mutation_set.closure_policy_version,
+        "operations": operations,
+    }
 
 
 def _conclusion_references_object(

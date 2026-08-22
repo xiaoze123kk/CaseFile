@@ -68,6 +68,7 @@ export function WorkbenchAgentInspector({
   requireApplyConfirmation = true,
   onFocusPatch,
   onUndo,
+  onRedo,
   onRetry,
   onLocateObject,
   onLocateEvent,
@@ -86,14 +87,17 @@ export function WorkbenchAgentInspector({
   objectLabels: Record<string, string>;
   eventLabels: Record<string, string>;
   issueLabels: Record<string, string>;
-  onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null) => void;
+  onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null, acceptedDebtFindingKeys?: string[], debtAcceptanceReason?: string) => void;
   onSimulate?: (
     patchSet: AgentPatchSetView,
     operationIds: number[],
+    acceptedDebtFindingKeys?: string[],
+    debtAcceptanceReason?: string,
   ) => Promise<AgentPatchSimulationView | null>;
   requireApplyConfirmation?: boolean;
   onFocusPatch: (patchSetId: number) => void;
   onUndo: (patchSet: AgentPatchSetView) => void;
+  onRedo?: (patchSet: AgentPatchSetView) => void;
   onRetry: (message: AgentMessageView) => void;
   onLocateObject: (objectId: string) => void;
   onLocateEvent: (eventId: string) => void;
@@ -147,16 +151,17 @@ export function WorkbenchAgentInspector({
           key={`${activePatch.patchSet.patch_set_id}:${activePatch.patchSet.status}:${activePatch.patchSet.updated_at}`}
           busy={busyPatchSetId === activePatch.patchSet.patch_set_id}
           objectLabels={objectLabels}
-          onApply={(operationIds) => onApply(activePatch.patchSet, operationIds)}
+          onApply={(operationIds, keys, reason) => keys?.length || reason ? onApply(activePatch.patchSet, operationIds, keys, reason) : onApply(activePatch.patchSet, operationIds)}
           onSimulate={
             onSimulate
-              ? (operationIds) => onSimulate(activePatch.patchSet, operationIds)
+              ? (operationIds, keys, reason) => keys?.length || reason ? onSimulate(activePatch.patchSet, operationIds, keys, reason) : onSimulate(activePatch.patchSet, operationIds)
               : undefined
           }
           requireApplyConfirmation={requireApplyConfirmation}
           onLocateObject={onLocateObject}
           onRetry={() => onRetry(activePatch.message)}
           onUndo={() => onUndo(activePatch.patchSet)}
+          onRedo={onRedo ? () => onRedo(activePatch.patchSet) : undefined}
           patchSet={activePatch.patchSet}
         />
       ) : null}
@@ -338,16 +343,18 @@ export function AgentPatchReview({
   onSimulate,
   requireApplyConfirmation,
   onUndo,
+  onRedo,
   onRetry,
   onLocateObject,
 }: {
   patchSet: AgentPatchSetView;
   objectLabels: Record<string, string>;
   busy: boolean;
-  onApply: (operationIds: number[] | null) => void;
-  onSimulate?: (operationIds: number[]) => Promise<AgentPatchSimulationView | null>;
+  onApply: (operationIds: number[] | null, acceptedDebtFindingKeys?: string[], debtAcceptanceReason?: string) => void;
+  onSimulate?: (operationIds: number[], acceptedDebtFindingKeys?: string[], debtAcceptanceReason?: string) => Promise<AgentPatchSimulationView | null>;
   requireApplyConfirmation: boolean;
   onUndo: () => void;
+  onRedo?: () => void;
   onRetry?: () => void;
   onLocateObject?: (objectId: string) => void;
 }) {
@@ -358,6 +365,7 @@ export function AgentPatchReview({
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [issuesExpanded, setIssuesExpanded] = useState(false);
   const [simulation, setSimulation] = useState<AgentPatchSimulationView | null>(null);
+  const [debtReason, setDebtReason] = useState("");
   const actionable = patchSet.status === "pending" && !patchSet.is_stale;
   const operations = useMemo(
     () => [...patchSet.operations].sort((left, right) => left.ordinal - right.ordinal),
@@ -374,6 +382,7 @@ export function AgentPatchReview({
   function requestApply(operationIds: number[] | null) {
     if (busy || !actionable) return;
     if (requireApplyConfirmation) setConfirmingApply({ operationIds });
+    else if (simulation?.authorization_required_finding_keys?.length || debtReason.trim()) onApply(operationIds, simulation?.authorization_required_finding_keys ?? [], debtReason.trim() || undefined);
     else onApply(operationIds);
   }
 
@@ -383,6 +392,14 @@ export function AgentPatchReview({
       ? selectedIds
       : operations.map((operation) => operation.operation_id);
     setSimulation(await onSimulate(operationIds));
+  }
+
+  async function acceptDebtAndResimulate() {
+    if (!onSimulate || !simulation || !debtReason.trim()) return;
+    const operationIds = selectedIds.length > 0
+      ? selectedIds
+      : operations.map((operation) => operation.operation_id);
+    setSimulation(await onSimulate(operationIds, simulation.authorization_required_finding_keys ?? [], debtReason.trim()));
   }
 
   function rejectAll() {
@@ -465,20 +482,22 @@ export function AgentPatchReview({
           </header>
           <dl>
             <div><dt>已修复</dt><dd>{simulation.fixed_finding_keys.length}</dd></div>
-            <div><dt>残留</dt><dd>{simulation.residual_finding_keys.length}</dd></div>
-            <div><dt>新增</dt><dd>{simulation.new_finding_keys.length}</dd></div>
-            <div><dt>待复查</dt><dd>{simulation.pending_recheck_finding_keys.length}</dd></div>
+            <div><dt>目标残留</dt><dd>{(simulation.residual_target_finding_keys ?? simulation.residual_finding_keys ?? []).length}</dd></div>
+            <div><dt>新增</dt><dd>{(simulation.introduced_finding_keys ?? simulation.new_finding_keys ?? []).length}</dd></div>
+            <div><dt>恶化</dt><dd>{(simulation.worsened_finding_keys ?? []).length}</dd></div>
           </dl>
-          <p>影响：{simulation.impact.collections.length ? simulation.impact.collections.join("、") : "无可见画布"}{simulation.impact.full_rebuild ? " · 需要完整刷新" : " · 局部刷新"}</p>
+          {simulation.impact ? <p>影响：{simulation.impact.collections.length ? simulation.impact.collections.join("、") : "无可见画布"}{simulation.impact.full_rebuild ? " · 需要完整刷新" : " · 局部刷新"}</p> : <p>影响对象：{simulation.impact_cone?.transitive_object_ids.length ?? 0} · 受影响结论：{simulation.impact_cone?.affected_resolution_ids.length ?? 0}</p>}
+          {simulation.closure_policy_version ? <p>机械补全：{simulation.normalized_mutation?.mechanical_operations.length ?? 0} 项 · {simulation.closure_policy_version}</p> : null}
           {!simulation.can_apply ? <p>阻断原因：{simulation.reason_code ?? "应用前验证未通过"}</p> : null}
-          {simulation.structure_lock_conflicts.length ? <p>结构锁：{simulation.structure_lock_conflicts.join("、")}</p> : null}
+          {simulation.structure_lock_conflicts?.length ? <p>结构锁：{simulation.structure_lock_conflicts.join("、")}</p> : null}
+          {(simulation.authorization_required_finding_keys?.length ?? 0) > 0 ? <div><label>接受逻辑债务理由<input onChange={(event) => setDebtReason(event.target.value)} value={debtReason} /></label><button disabled={!debtReason.trim() || busy} onClick={() => void acceptDebtAndResimulate()} type="button">精确授权并重新预演</button></div> : null}
         </div>
       ) : null}
       <div className={styles.agentPatchActions}>
         {actionable ? confirmingApply ? (
           <span className={styles.agentPatchConfirm}>
             <strong>{confirmingApply.operationIds === null ? "确认按 ordinal 顺序应用全部修改？" : `确认应用所选 ${confirmingApply.operationIds.length} 项？`}</strong>
-            <button disabled={busy} onClick={() => { const choice = confirmingApply.operationIds; setConfirmingApply(undefined); onApply(choice); }} type="button">确认应用</button>
+            <button disabled={busy} onClick={() => { const choice = confirmingApply.operationIds; setConfirmingApply(undefined); if (simulation?.authorization_required_finding_keys?.length || debtReason.trim()) onApply(choice, simulation?.authorization_required_finding_keys ?? [], debtReason.trim() || undefined); else onApply(choice); }} type="button">确认应用</button>
             <button disabled={busy} onClick={() => setConfirmingApply(undefined)} type="button">返回预演</button>
           </span>
         ) : (
@@ -490,6 +509,7 @@ export function AgentPatchReview({
           </>
         ) : null}
         {patchSet.status === "applied" ? <button disabled={busy} onClick={onUndo} type="button">撤销应用</button> : null}
+        {patchSet.status === "undone" && onRedo ? <button disabled={busy} onClick={onRedo} type="button">重做应用</button> : null}
         {patchSet.is_stale && onRetry ? <button disabled={busy} onClick={onRetry} type="button">重新生成建议</button> : null}
       </div>
     </article>
