@@ -45,7 +45,9 @@
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 v1 CaseFile JSON 与规范化当前态之间执行原子写入、完整投影、契约引用映射和规范哈希。 |
 | `backend/src/casefile/application/v1_editing.py` | Entity、Location、Event 的有限字段编辑、revision 冲突检查和 v1 契约往返门禁。 |
-| `backend/src/casefile/application/workflow_service.py` | Provider 设置、不可变 SourceRecord、Brief 草稿/原子确认/冻结版本、三类 TaskRun 创建、最近任务恢复与 SSE 事件查询的事务边界；CaseFile Chat 在完成时双写规范化 VerificationRun/findings，提供手动 balanced 重跑与锁内有序 patch simulate/apply/undo。发送 Agent 消息时把最新 `agent_thread_context_states` 引用（id/version/range/hash）冻结进 TaskRun `input_jsonb.context_state`，并按 `CASEFILE_CHAT_CONTEXT_ROLLOUT` 把策略版本配对到 Prompt 版本。 |
+| `backend/src/casefile/application/workflow_service.py` | `WorkflowService(session)` 稳定门面，只初始化事务依赖并组合内部工作流用例；保留既有公开方法和兼容 helper 导出，不再承载具体规则。 |
+| `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Patch review/simulate/apply/undo；`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
+| `backend/src/casefile/application/workflow_common.py` | Workflow 用例共享的稳定默认配置、TaskRun 创建、冻结输入和小型事务 helper；不拥有 HTTP DTO 或 Worker 编排。 |
 | `backend/src/casefile/application/workflow_brief_validation.py` | Workflow 使用的 Brief 契约、语义与已确认原子项门禁。 |
 | `backend/src/casefile/application/workflow_views.py` | Workflow 实体、部件步骤与公开失败信息的稳定 HTTP 读模型序列化。 |
 | `backend/src/casefile/application/task_events.py` | 在调用方事务中追加单调序号的不可变 TaskEvent。 |
@@ -55,8 +57,9 @@
 | `backend/src/casefile/application/exposure_plan.py` | 读取与修订 Current Draft 的单一线性 Exposure Plan，执行独立 revision 门禁、同 Draft 引用校验和审计；不得推进 Draft revision 或写入 Canon/Event.time。 |
 | `backend/src/casefile/application/a_path_metrics.py` | 只读地从 Brief-to-Draft `AgentModelCall`/`TaskAttempt`/`TaskRun` 分层用量、`TaskEvent` 与采用后的 `draft_operations` 推导 A 路径漏斗、完整重试用量和人工续编指标；同一 Attempt 只消费一个权威层级，不新增分析表。 |
 | `backend/src/casefile/application/reverse_parse_service.py` | 路径 C 服务层事务边界：上传提取、解析块与逐项确认/拒绝、失败文档保留与重试重建、高风险项门禁，以及仅由 confirmed 项拼装目标无关 Brief 候选。 |
-| `backend/src/casefile/application/verification_engine.py` | 脱离 API/数据库/Provider 的纯验证内核：Finding contract、确定性/LLM 合并、severity policy、ordered batch simulation 和 ImpactPlanner。 |
+| `backend/src/casefile/application/verification_engine.py` | VerificationEngine 的兼容导入门面；稳定 re-export 既有公开类型，纯规则实现在 domain 层。 |
 | `backend/src/casefile/application/verification_service.py` | VerificationEngine 的 SQLAlchemy application adapter：VerificationRun/finding 双写、refs/reviews/patch lineage 与 Workbench 查询读模型。 |
+| `backend/src/casefile/domain/verification_engine.py` | 脱离 API、数据库、Worker 和 Provider 的纯验证内核：Finding contract、确定性/LLM 合并、severity policy、ordered batch simulation 和 ImpactPlanner。 |
 
 ## API 与 Worker
 
@@ -69,8 +72,11 @@
 | `backend/src/casefile/api/workbench.py` | 分析师工作台验证、来源与审计只读上下文的 HTTP 路由。 |
 | `backend/src/casefile/api/verification.py` | 手动验证重跑、规范化 VerificationRun/finding 查询和作者审阅 HTTP 路由；只做协议转换，不承载验证规则。 |
 | `backend/src/casefile/api/reverse_parse.py` | 路径 C 反向解析 HTTP 路由：文档上传/读取、解析块与逐项查询、逐项确认、失败重试与形成 Brief 候选。 |
-| `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的三类 TaskRun 领取、lease/Attempt 恢复、Agent 执行、结果/事件原子持久化。 |
-| `backend/src/casefile/worker/runtime.py` | Worker 任务执行中枢。chat 上下文装配时读取 `CASEFILE_CHAT_CONTEXT_HARD_INPUT_TOKENS`（默认 128000）作为不可放宽的总输入硬上限，超限发 `context.guardrail` 后拒绝 Provider 调用；v2/v3 线程发 `context.guardrail` 记录 Dashboard 违规并把只读 `context_dashboard` 绑定进执行器 payload；v3 线程还注入 `thread_evidence_resolver`（只读解析 `thread://{thread_id}/message/{seq}` 指针）供 Context Tools 使用。chat 任务完成后对 `casefile-chat-context-v2/v3` 线程运行 Rolling Compaction Monitor：语义边界/新增轮次/历史 Token/无并行任务四重门禁（模型经 `request_thread_compaction` 请求时可跳过历史与最小轮数阈值，但仍受语义边界/区间已压缩/并行任务硬门禁约束），调用 `ThreadMemoryCompactorV1` 合并旧状态与新增原文，执行 Schema/保留/证据指针校验后追加新状态，发 `context.compacted`/`context.compaction_failed`/`context.compaction_skipped`/`context.compaction_requested` 事件；压缩失败永不失败聊天任务。 |
+| `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的 TaskRun 领取、lease/Attempt 恢复、任务执行、结果/事件原子持久化；只拥有运行与持久化编排，不拥有 Agent 领域规则。 |
+| `backend/src/casefile/worker/runtime.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环及请求加载，不实现 routing、context、validation 或 repair 规则。 |
+| `backend/src/casefile/worker/queue.py` | TaskRun claim、lease 恢复、取消观察和 Attempt 初始化；不执行具体任务。 |
+| `backend/src/casefile/worker/finalization.py` | TaskRun 成功、失败、取消、可重试状态收敛与稳定错误/事件落库。 |
+| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
 
 ## 领域模块
 
@@ -80,7 +86,10 @@
 | `backend/src/casefile/benchmark/chat_outcome_eval.py`、`chat_outcome_suite.py`、`chat_outcome_fixtures.py` | CaseFile Chat Outcome Eval 的稳定入口、确定性 Grader/Contract Gate，以及独立的 34-task 冻结 fixture assembly；精确编辑按 JSON 语义值评分，Reference 必须通过生产 patch/simulation 门禁且禁止 no-op。 |
 | `backend/src/casefile/agent_runtime/` | 目标无关的版本化 Prompt、OpenAI Responses/DeepSeek Chat Completions/Fake Provider、AES-256-GCM 用户密钥，以及全部 Agent 任务的结构化结果与 Validator 指标。`structured_output.py` 统一 Pydantic Schema 编译、OpenAI 原生 Structured Output、DeepSeek Beta strict tool、正式 JSON 模式降级、有限定向重试与用量汇总；当前 `brief_to_draft` 先生成对象计划，再由独立 Temporal Planner 建立作品内时间，随后生成故事世界和证据推理；竞争矩阵版本的 Evidence 在进入 Governance 前先执行至多两次携带上一份失败输出的语义定向修复（分阶段校验竞争组、信息接地路径与矩阵格子），v10–v14 由 Evidence Drafter 直接生成比较矩阵，v15 则把矩阵格子改为程序按路径确定性计算（`brief_to_draft_v15/matrix.py`），模型只对固定格子输出判定并由程序回填，失败时只针对剩余格子定向修复；再由 v15 Governance 基于实际 Evidence IR 建议答案或诚实未定论；所有 AI 结论固定为 `proposed`，只有作者能确认。v13 明确无时区壁钟精度格式，v14 强制创作者可见自然语言为简体中文，v8–v14 历史协议保持不变。`casefile_chat/v4` 为骨架上下文执行器包（`casefile-chat-prompt-input-v2`），阶段 2 验收通过后 registry 当前版本已切换为 `casefile-chat-v4`；`casefile_chat/v5` 为阶段 3 压缩后上下文执行器包，新增 `thread_memory` 输入块；阶段 4 起 shared 指令声明 `context_dashboard` 为只读仪表（预算耗尽停止工具、不得要求放宽限制）；`casefile_chat/v6` 复用 v5 契约并绑定 `casefile-chat-tools-v3`，新增 `retrieve_thread_evidence`/`request_thread_compaction` 使用规则；`casefile_chat_context_compactor/v1` 为只含 `compact` 组件、禁用工具、输出 `ThreadMemoryDelta` 的辅助 Agent 包，供 Provider `compact_thread_memory()` 复用 `_run_auxiliary`。 |
 | `backend/src/casefile/agent_runtime/chat_execution.py` | Worker 与 M2 共用的纯执行内核：对冻结 Chat Request 调用 Provider、执行完成前引用与 audit finding 证据校验、通用 suggestion 字段和值门禁、路由 suggestion 权限收束、v15 Finalizer 后服务器补丁门禁、能力完整性 repair 和 usage/tool metrics 合并；最多执行三次有进展的 semantic repair，最终救援只允许服务器唯一 target-locked，耗尽后 fail-closed；不依赖 SQLAlchemy、FastAPI 或持久化。 |
+| `backend/src/casefile/agent_runtime/chat_preparation.py` | Chat 请求 artifact 准备、上下文绑定、冻结输入与审计/编辑目标装配；不调用 Provider。 |
 | `backend/src/casefile/agent_runtime/chat_validation.py` | CaseFile Chat 纯验证编排契约：稳定 ValidationIssue、ValidationReport、RepairPlan、authoritative target resolution 及 bounded repair-state 选择；不调用 Provider 或持久化。 |
+| `backend/src/casefile/agent_runtime/chat_validation_contracts.py` | Chat validation 的不可变 issue/report/repair 数据契约与稳定序列化。 |
+| `backend/src/casefile/agent_runtime/chat_reference_normalization.py` | 候选引用槽规范化、保守唯一引用补全和 audit finding 排序去重；不拥有 Provider 重试。 |
 | `backend/src/casefile/agent_runtime/chat_safe_patches.py` | 记录 v15 Finalizer 后由服务器证明安全的补丁候选，复用 chat_tools 的字段校验与 issue-delta simulation，执行 JSON 值规范等价比较与唯一目标确定性物化；不调用 Provider、不写 Draft。旧 Ledger 编译接口仅供历史 v14 回放。 |
 | `backend/src/casefile/agent_runtime/chat_tools.py` | `casefile_chat` 的确定性只读/建议校验工具集与 Frozen Tool Ledger：全卷集合清单与分页浏览 `list_casefile_records`、一跳关系读取 `get_related_objects`、关键字检索 `search_casefile`、单对象全文 `get_casefile_object`、分页冻结验证快照 `get_validation_issues` 与补丁白名单校验 `validate_patch_proposal`；`check_patch_proposal` 与 `simulate_patch_delta` 同时作为 v15 服务器门禁的纯核心。工具按路由 profile 选择、按 TaskRun 冻结 `toolset_version` 拒绝 v2 新工具给旧任务，所有结果只来自冻结 CaseFile，不触网不写库。阶段 2 起所有工具结果经 `bounded_tool_result_json` 套字符上限并标记 `truncated`，`ChatToolContext` 维护最近原文与折叠区账本；v14/v15 将其冻结为带 entry/result hash 的无工具 Finalizer 输入。`casefile-chat-tools-v3` 按路由 `context_tools` 声明只读开放 `retrieve_thread_evidence` 与 `request_thread_compaction`。 |
 | `backend/src/casefile/agent_runtime/context/` | 可插拔、版本化的 casefile-chat 上下文工程基座。`models.py` 定义 ContextBlock/ContextPolicy/ContextAssembly/ContextManifest 等数据契约（block 带 age_turns/last_access_turn 生命周期字段）；`protocols.py` 定义 ContextStage/TokenEstimator 插件协议；`registry.py` 按名称注册策略并校验 Policy 引用；`engine.py` 按 Policy 声明顺序确定性执行 Stage，未知策略版本回退 legacy 并产出 fallback 决策；`manifest.py` 把装配结果投影为不含 payload 的审计账本；`estimators.py` 提供多厂商通用保守 Token 估算、按 provider/model 选择的估算器注册表与 usage 校准比；`budget.py` 在 enforce_budget 开启时按 block_limits/trim_order 确定性裁剪可裁剪文本块，受保护块只记账不删改；`dashboard.py` 投影只读上下文仪表（已用/剩余预算、最大块、受保护块、可恢复证据 ID）并校验 Runtime 护栏（pinned 不可裁剪、Recent Turns 受保护、归档必须可恢复、总输入硬上限）；`evidence.py` 提供 `scheme://id` 证据指针契约与解析器注册表（不删原文，只换指针）；`thread_memory.py` 定义 `ChatThreadMemoryState`/`ThreadMemoryDelta` 严格契约、`ThreadMemoryCompactorV1`（旧状态+新增原文确定性合并，constraints/decisions 原文 carry-forward、verified_facts 按 source 去重，永不 memory+memory）、校验/保留检查、压缩输入哈希与默认压缩器注册表；`assembly_render.py` 把装配块投影为 `casefile-chat-prompt-input-v2` 契约载荷（含可选 `thread_memory` 与 `context_dashboard` 块），供 v4/v5 Prompt 包在 Provider 前校验渲染。 |
@@ -89,6 +98,8 @@
 | `backend/src/casefile/agent_runtime/context/strategies/selectors/history_window.py` | 按路由 profile 保留最近 K 条原文；首条用户消息（线程锚点）与含否定/硬约束词的消息确定性 Pin，裁剪决策入 `context.built` 审计账本。 |
 | `backend/src/casefile/agent_runtime/context/strategies/transformers/validation_trim.py` | 焦点/本轮 mention 命中的 issue 全量保留，其余压缩为 id/rule_id/severity/title/message(≤200)/object_refs；`validate_request` 门禁路由保留全量快照。 |
 | `backend/src/casefile/agent_runtime/context/strategies/legacy.py` | `LegacyChatInputStage`：把 Worker 预渲染的既有 executor 输入包装成可计 Token 的上下文块；`legacy_chat_routing_payload` 兼容别名复用 `models.chat_routing_payload_as_dict`，保证 Prompt 渲染与上下文审计的 routing 序列化一致。 |
+| `backend/src/casefile/agent_runtime/brief_to_draft_v8/validation.py` | v8+ 生成工作流复用的 blueprint、story、evidence 和竞争矩阵纯验证/定向修复 helper；不拥有组件调用顺序。 |
+| `backend/src/casefile/agent_runtime/provider_adapters/` | Provider 适配器边界：`protocols.py` 定义端口与稳定错误；`fake.py` 提供零网络测试实现；`openai.py`、`deepseek.py` 分别保留协议差异；`generation.py` 负责任务版本选择、分区生成与候选装配；`shared.py` 统一输出规范化、错误映射、辅助 Agent 与 usage 合并。`providers.py` 仅作兼容门面。 |
 | `backend/src/casefile/agent_runtime/observability.py` | 对成功候选执行不参与门禁的确定性 Brief 语义覆盖代理，并把请求、缓存、推理 Token 标准化为可追溯但不虚构价格的成本输入。 |
 | `backend/src/casefile/core/` | 后续纯领域与应用端口的公共落位；不得依赖 FastAPI、SQLAlchemy 或具体 Provider。 |
 | `backend/src/casefile/reasoning/` | 推理图分析与搜索策略的预留落位。 |
