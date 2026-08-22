@@ -13,6 +13,7 @@ from casefile.domain.logical_mutation.models import (
     MutationSet,
     UpdateField,
 )
+from casefile.domain.logical_mutation.policy import cycle_policies
 
 _ROOT_TYPES = {"resolution_spec", "structure_lock"}
 _SKELETON_TYPES = {"resolution_spec", "hypothesis", "reasoning_path", "claim", "structure_lock"}
@@ -73,16 +74,13 @@ def _reciprocity_issues(
 
 def _cycle_issues(graph: LogicalGraph) -> list[ClosureIssue]:
     result = []
-    for relation, code, title in (
-        ("claim_dependency", "claim_dependency_cycle", "Claim 依赖形成循环"),
-        ("relative_time", "relative_time_cycle", "相对时间形成循环"),
-    ):
-        for cycle in graph.cycles(relation):
+    for policy in cycle_policies():
+        for cycle in graph.cycles(policy.relation):
             result.append(
                 ClosureIssue(
-                    code,
+                    policy.cycle_rule_code or "logical_relation_cycle",
                     "hard_invariant",
-                    title,
+                    policy.cycle_title or "逻辑关系形成循环",
                     "该依赖无法得到确定的闭包顺序。",
                     cycle.object_ids,
                     dependency_path=cycle.object_ids,

@@ -683,6 +683,12 @@ class V1EditingService:
                 "Draft 已变化，请重新预演。",
                 status_code=409,
             )
+        if accepted_debt_finding_keys and actor_user_id is None:
+            raise ApplicationError(
+                "logical_debt_requires_human_authorization",
+                "逻辑债务必须由当前用户明确授权。",
+                status_code=403,
+            )
         before = build_casefile_document(self.session, owned)
         engine = VerificationEngine(profile="fast", draft_revision=owned.draft.revision)
         simulation = engine.simulate_mutation_set(
@@ -819,6 +825,7 @@ class V1EditingService:
             )
         )
         if accepted_debt_finding_keys and actor_user_id is not None:
+            accepted_at = datetime.now(UTC)
             self.session.add(
                 AuditEvent(
                     project_id=owned.project.id,
@@ -833,7 +840,9 @@ class V1EditingService:
                     details_jsonb={
                         "finding_keys": list(accepted_debt_finding_keys),
                         "reason": debt_acceptance_reason,
+                        "closure_policy_version": mutation_set.closure_policy_version,
                         "candidate_hash": simulation.candidate_hash,
+                        "accepted_at": accepted_at.isoformat(),
                     },
                 )
             )

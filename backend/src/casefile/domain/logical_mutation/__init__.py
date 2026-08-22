@@ -20,6 +20,13 @@ from casefile.domain.logical_mutation.normalizer import (
     MutationNormalizationError,
     normalize_mutation,
 )
+from casefile.domain.logical_mutation.policy import (
+    RELATION_POLICIES,
+    RelationPolicy,
+    cycle_policies,
+    cycle_relations,
+    relation_policy,
+)
 from casefile.domain.logical_mutation.rules import evaluate_closure_rules
 
 __all__ = [
@@ -36,9 +43,14 @@ __all__ = [
     "MutationSet",
     "NormalizedMutation",
     "OLD_VALUE_UNSET",
+    "RELATION_POLICIES",
+    "RelationPolicy",
     "UpdateField",
     "analyze_impact",
     "compile_logical_graph",
+    "cycle_policies",
+    "cycle_relations",
     "evaluate_closure_rules",
     "normalize_mutation",
+    "relation_policy",
 ]

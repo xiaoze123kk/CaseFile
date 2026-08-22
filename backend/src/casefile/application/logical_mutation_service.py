@@ -101,11 +101,18 @@ def _mutation_set(payload: dict[str, Any]) -> MutationSet:
                     item.get("expected_object_revision"),
                 )
             )
-        else:
+        elif kind == "delete_object":
             operations.append(
                 DeleteObject(
                     item["operation_id"], item["object_id"], item.get("old_object_value")
                 )
+            )
+        else:
+            raise ApplicationError(
+                "mutation_operation_type_invalid",
+                "逻辑修改包含不支持的操作类型。",
+                status_code=422,
+                details={"operation_type": kind},
             )
     return MutationSet(
         mutation_set_id=payload["mutation_set_id"],

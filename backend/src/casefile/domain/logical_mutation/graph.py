@@ -8,6 +8,7 @@ from typing import Any
 import networkx as nx
 
 from casefile.domain.logical_mutation.models import LogicCycle, LogicEdge
+from casefile.domain.logical_mutation.policy import relation_policy
 
 COLLECTION_BY_TYPE = {
     "resolution_spec": "resolution_specs",
@@ -135,16 +136,16 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
         prerequisite_id: str | None,
         dependent_id: str | None,
         relation: str,
-        strength: str,
         source_path: str,
     ) -> None:
         if prerequisite_id and dependent_id:
+            policy = relation_policy(relation)
             edges.append(
                 LogicEdge(
                     prerequisite_id,
                     dependent_id,
                     relation,
-                    strength,  # type: ignore[arg-type]
+                    policy.strength,
                     source_path,
                 )
             )
@@ -155,7 +156,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
             _ref_id(unit.get("source_event_ref")),
             unit_id,
             "produced_by",
-            "contextual",
             "/source_event_ref",
         )
         for index, ref in enumerate(unit.get("supports_claim_refs", [])):
@@ -163,7 +163,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 unit_id,
                 str(ref["object_id"]),
                 "supports",
-                "conditional",
                 f"/supports_claim_refs/{index}",
             )
         for index, ref in enumerate(unit.get("refutes_claim_refs", [])):
@@ -171,7 +170,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 unit_id,
                 str(ref["object_id"]),
                 "refutes",
-                "conditional",
                 f"/refutes_claim_refs/{index}",
             )
 
@@ -182,7 +180,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 str(ref["object_id"]),
                 claim_id,
                 "claim_dependency",
-                "conditional",
                 f"/dependency_claim_refs/{index}",
             )
 
@@ -192,7 +189,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
             hypothesis_id,
             _required_ref_id(hypothesis["target_resolution_ref"]),
             "targets_resolution",
-            "hard",
             "/target_resolution_ref",
         )
         for index, ref in enumerate(hypothesis.get("required_claim_refs", [])):
@@ -200,7 +196,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 str(ref["object_id"]),
                 hypothesis_id,
                 "required_by_hypothesis",
-                "conditional",
                 f"/required_claim_refs/{index}",
             )
         for index, ref in enumerate(hypothesis.get("competing_hypothesis_refs", [])):
@@ -208,7 +203,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 str(ref["object_id"]),
                 hypothesis_id,
                 "competes_with",
-                "contextual",
                 f"/competing_hypothesis_refs/{index}",
             )
 
@@ -219,7 +213,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 str(ref["object_id"]),
                 resolution_id,
                 "required_by_resolution",
-                "conditional",
                 f"/required_claim_refs/{index}",
             )
         conclusion = resolution.get("conclusion") or {}
@@ -228,7 +221,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 str(ref["object_id"]),
                 resolution_id,
                 "selected_by_resolution",
-                "hard",
                 f"/conclusion/selected_hypothesis_refs/{index}",
             )
         for index, ref in enumerate(conclusion.get("supporting_reasoning_path_refs", [])):
@@ -236,29 +228,24 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 str(ref["object_id"]),
                 resolution_id,
                 "basis_of_resolution",
-                "hard",
                 f"/conclusion/supporting_reasoning_path_refs/{index}",
             )
 
     for path in document.get("reasoning_paths", []):
         path_id = str(path["id"])
-        add(
-            _required_ref_id(path["target_ref"]), path_id, "reasoning_target", "hard", "/target_ref"
-        )
+        add(_required_ref_id(path["target_ref"]), path_id, "reasoning_target", "/target_ref")
         for step_index, step in enumerate(path.get("steps", [])):
             for ref_index, ref in enumerate(step.get("input_refs", [])):
                 add(
                     str(ref["object_id"]),
                     path_id,
                     "reasoning_input",
-                    "conditional",
                     f"/steps/{step_index}/input_refs/{ref_index}",
                 )
             add(
                 _required_ref_id(step["output_ref"]),
                 path_id,
                 "reasoning_output",
-                "conditional",
                 f"/steps/{step_index}/output_ref",
             )
 
@@ -270,18 +257,14 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 _ref_id(time.get("anchor_event_ref")),
                 event_id,
                 "relative_time",
-                "hard",
                 "/time/anchor_event_ref",
             )
-        add(
-            _ref_id(event.get("location_ref")), event_id, "occurs_at", "contextual", "/location_ref"
-        )
+        add(_ref_id(event.get("location_ref")), event_id, "occurs_at", "/location_ref")
         for index, ref in enumerate(event.get("participant_refs", [])):
             add(
                 str(ref["object_id"]),
                 event_id,
                 "participates_in",
-                "contextual",
                 f"/participant_refs/{index}",
             )
 
@@ -291,14 +274,12 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
             _required_ref_id(relationship["from_ref"]),
             relationship_id,
             "relationship_endpoint",
-            "contextual",
             "/from_ref",
         )
         add(
             _required_ref_id(relationship["to_ref"]),
             relationship_id,
             "relationship_endpoint",
-            "contextual",
             "/to_ref",
         )
 
@@ -309,7 +290,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                 _ref_id(state.get("as_of_event_ref")),
                 entity_id,
                 "knowledge_anchor",
-                "contextual",
                 f"/knowledge_states/{state_index}/as_of_event_ref",
             )
             for field in ("knows_refs", "believes_refs", "false_belief_refs"):
@@ -318,7 +298,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
                         str(ref["object_id"]),
                         entity_id,
                         "knowledge_state",
-                        "contextual",
                         f"/knowledge_states/{state_index}/{field}/{ref_index}",
                     )
 
@@ -327,7 +306,6 @@ def compile_logical_graph(document: Mapping[str, Any]) -> LogicalGraph:
             _required_ref_id(lock["object_ref"]),
             str(lock["id"]),
             "protected_by_lock",
-            "hard",
             "/object_ref",
         )
 
