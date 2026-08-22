@@ -51,15 +51,12 @@ from casefile.application.agent_collaboration import (
     pointer_top_field as _pointer_top_field,
 )
 from casefile.application.agent_collaboration import unique_strings as _unique_strings
-from casefile.application.casefile_v1 import build_casefile_document
+from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
 from casefile.application.errors import ApplicationError, not_found
-from casefile.application.v1_editing import EDITABLE_FIELDS, V1EditingService
+from casefile.application.v1_editing import COLLECTIONS, EDITABLE_FIELDS, V1EditingService
 from casefile.application.verification_engine import (
-    BatchSimulation,
+    MutationSimulation,
     VerificationEngine,
-)
-from casefile.application.verification_engine import (
-    PatchOperation as VerificationPatchOperation,
 )
 from casefile.application.verification_service import VerificationService
 from casefile.application.workbench_read_model import WorkbenchReadModel
@@ -93,6 +90,13 @@ from casefile.data_postgres.models import (
     VerificationFindingPatchOperation,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
+from casefile.domain.logical_mutation import (
+    CLOSURE_POLICY_VERSION,
+    CreateObject,
+    DeleteObject,
+    MutationSet,
+    UpdateField,
+)
 
 
 class AgentWorkflowMixin:
@@ -918,6 +922,10 @@ class AgentWorkflowMixin:
                     source_message_id=output_message.id,
                     task_run_id=task.id,
                     base_draft_revision=task.input_draft_revision,
+                    closure_policy_version=CLOSURE_POLICY_VERSION,
+                    mutation_mode="normal",
+                    baseline_hash=_json_hash(frozen_casefile),
+                    candidate_hash=None,
                     reason_summary=(
                         reasons[0]
                         if len(reasons) == 1
@@ -956,6 +964,8 @@ class AgentWorkflowMixin:
                         draft_id=task.draft_id,
                         patch_set_id=patch_set.id,
                         target_object_id=registry.id,
+                        target_object_key=registry.object_id,
+                        target_collection=COLLECTIONS[registry.object_type],
                         ordinal=ordinal,
                         operation_id=f"op_t{task.id}_{ordinal:02d}",
                         operation_type="replace",
@@ -1141,6 +1151,8 @@ class AgentWorkflowMixin:
         expected_revision: int,
         operation_ids: list[int] | None,
         target_finding_ids: list[int] | None = None,
+        accepted_debt_finding_keys: list[str] | None = None,
+        debt_acceptance_reason: str | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
@@ -1210,7 +1222,9 @@ class AgentWorkflowMixin:
                 for row in self.session.scalars(
                     select(CaseFileObject).where(
                         CaseFileObject.id.in_(
-                            operation.target_object_id for operation in operations
+                            operation.target_object_id
+                            for operation in operations
+                            if operation.target_object_id is not None
                         )
                     )
                 )
@@ -1220,14 +1234,18 @@ class AgentWorkflowMixin:
             for operation in operations:
                 if operation.id not in selected:
                     continue
-                registry = registries.get(operation.target_object_id)
-                if registry is None:
+                registry = (
+                    None
+                    if operation.target_object_id is None
+                    else registries.get(operation.target_object_id)
+                )
+                if registry is None and operation.operation_type != "create_object":
                     raise RuntimeError("Agent patch target object disappeared")
                 batch.append(
                     {
                         "operation_id": operation.operation_id,
                         "operation_type": operation.operation_type,
-                        "object_id": registry.object_id,
+                        "object_id": operation.target_object_key,
                         "field_path": operation.field_path,
                         "expected_object_revision": operation.expected_object_revision,
                         "old_value": operation.old_value_jsonb,
@@ -1246,6 +1264,8 @@ class AgentWorkflowMixin:
                 selected,
                 registries,
                 target_finding_keys=target_finding_keys,
+                accepted_debt_finding_keys=accepted_debt_finding_keys or [],
+                debt_acceptance_reason=debt_acceptance_reason,
             )
             if not simulation.can_apply:
                 if simulation.reason_code == "post_document_invalid":
@@ -1275,14 +1295,30 @@ class AgentWorkflowMixin:
             for operation in operations:
                 operation.decision = "accepted" if operation.id in selected else "rejected"
                 operation.reviewed_at = reviewed_at
-            revision, group_no, applied = V1EditingService(self.session).apply_operation_batch(
+            mutation_set = self._mutation_set_from_patch_operations(
                 owned,
-                operations=batch,
-                actor_user_id=actor_user_id,
-                operation_type="agent_patch_apply",
-                patch_set_id=patch_set.id,
+                patch_set,
+                operations,
+                selected,
+                registries,
             )
+            revision, group_no, applied_simulation = V1EditingService(
+                self.session
+            ).apply_mutation_set(
+                owned,
+                mutation_set=mutation_set,
+                actor_user_id=actor_user_id,
+                draft_operation_type="logical_mutation_apply",
+                expected_candidate_hash=patch_set.candidate_hash,
+                accepted_debt_finding_keys=tuple(accepted_debt_finding_keys or ()),
+                debt_acceptance_reason=debt_acceptance_reason,
+                target_finding_keys=tuple(target_finding_keys),
+                source_patch_set_id=patch_set.id,
+            )
+            applied = batch
             patch_set.status = "applied"
+            patch_set.baseline_hash = applied_simulation.baseline_hash
+            patch_set.candidate_hash = applied_simulation.candidate_hash
             patch_set.applied_operation_group_no = group_no
             patch_set.applied_from_revision = expected_revision
             patch_set.applied_to_revision = revision
@@ -1318,7 +1354,7 @@ class AgentWorkflowMixin:
                 "draft_revision": revision,
                 "pre_apply_verification_run_id": None if pre_run is None else pre_run.id,
                 "post_apply_verification_run_id": None if post_run is None else post_run.id,
-                "simulation": simulation.as_dict(),
+                "simulation": applied_simulation.as_dict(),
             }
 
     def simulate_agent_patch_set(
@@ -1331,6 +1367,8 @@ class AgentWorkflowMixin:
         base_revision: int,
         operation_ids: list[int] | None,
         target_finding_ids: list[int] | None = None,
+        accepted_debt_finding_keys: list[str] | None = None,
+        debt_acceptance_reason: str | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self._owned(actor_user_id, project_id, lock=True)
@@ -1381,7 +1419,9 @@ class AgentWorkflowMixin:
                 for row in self.session.scalars(
                     select(CaseFileObject).where(
                         CaseFileObject.id.in_(
-                            operation.target_object_id for operation in operations
+                            operation.target_object_id
+                            for operation in operations
+                            if operation.target_object_id is not None
                         )
                     )
                 )
@@ -1398,7 +1438,11 @@ class AgentWorkflowMixin:
                 selected,
                 registries,
                 target_finding_keys=target_finding_keys,
+                accepted_debt_finding_keys=accepted_debt_finding_keys or [],
+                debt_acceptance_reason=debt_acceptance_reason,
             )
+            patch_set.baseline_hash = simulation.baseline_hash
+            patch_set.candidate_hash = simulation.candidate_hash
             return {
                 "patch_set_id": patch_set.id,
                 "draft_id": owned.draft.id,
@@ -1451,39 +1495,43 @@ class AgentWorkflowMixin:
                     .order_by(AgentPatchOperation.ordinal.desc())
                 )
             )
+            current_document = build_casefile_document(self.session, owned)
+            if (
+                patch_set.candidate_hash is not None
+                and casefile_content_hash(current_document) != patch_set.candidate_hash
+            ):
+                raise ApplicationError(
+                    "agent_patch_undo_hash_conflict",
+                    "当前 Draft 与撤销栈顶不一致，请改用 Revert 审阅。",
+                    status_code=409,
+                )
             registries = {
                 row.id: row
                 for row in self.session.scalars(
                     select(CaseFileObject).where(
                         CaseFileObject.id.in_(
-                            operation.target_object_id for operation in operations
+                            operation.target_object_id
+                            for operation in operations
+                            if operation.target_object_id is not None
                         )
                     )
                 )
             }
-            inverse: list[dict[str, Any]] = []
-            for operation in operations:
-                registry = registries.get(operation.target_object_id)
-                if registry is None:
-                    raise RuntimeError("Agent patch target object disappeared")
-                inverse.append(
-                    {
-                        "operation_id": operation.operation_id,
-                        "operation_type": "replace",
-                        "object_id": registry.object_id,
-                        "field_path": operation.field_path,
-                        "expected_object_revision": registry.revision,
-                        "old_value": operation.new_value_jsonb,
-                        "new_value": operation.old_value_jsonb,
-                    }
-                )
-            current_document = build_casefile_document(self.session, owned)
-            simulation = self._simulate_patch_batch(
+            inverse_mutation = MutationSet(
+                mutation_set_id=f"agent_patch_undo_{patch_set.id}_{owned.draft.revision}",
+                base_draft_id=owned.draft.id,
+                base_revision=owned.draft.revision,
+                operations=tuple(
+                    self._inverse_logical_operations_from_patch(
+                        operations, registries, current_document
+                    )
+                ),
+                actor="author",
+                closure_policy_version=patch_set.closure_policy_version,
+            )
+            simulation = VerificationEngine(profile="fast").simulate_mutation_set(
                 current_document,
-                operations,
-                {operation.id for operation in operations},
-                registries,
-                inverse=True,
+                inverse_mutation,
             )
             if not simulation.can_apply:
                 if simulation.reason_code == "post_document_invalid":
@@ -1510,12 +1558,14 @@ class AgentWorkflowMixin:
                 if VerificationService.enabled_for_persistence()
                 else None
             )
-            revision, group_no, _ = V1EditingService(self.session).apply_operation_batch(
+            revision, group_no, simulation = V1EditingService(
+                self.session
+            ).apply_mutation_set(
                 owned,
-                operations=inverse,
+                mutation_set=inverse_mutation,
                 actor_user_id=actor_user_id,
-                operation_type="agent_patch_undo",
-                patch_set_id=patch_set.id,
+                draft_operation_type="logical_mutation_undo",
+                source_patch_set_id=patch_set.id,
             )
             now = datetime.now(UTC)
             patch_set.status = "undone"
@@ -1523,6 +1573,7 @@ class AgentWorkflowMixin:
             patch_set.undone_to_revision = revision
             patch_set.undone_at = now
             current_document = build_casefile_document(self.session, owned)
+            patch_set.baseline_hash = casefile_content_hash(current_document)
             post_result = VerificationEngine(
                 profile="fast",
                 draft_revision=revision,
@@ -1563,41 +1614,187 @@ class AgentWorkflowMixin:
         *,
         inverse: bool = False,
         target_finding_keys: list[str] | None = None,
-    ) -> BatchSimulation:
-        proposed: list[VerificationPatchOperation] = []
-        revisions: dict[str, int] = {}
+        accepted_debt_finding_keys: list[str] | None = None,
+        debt_acceptance_reason: str | None = None,
+    ) -> MutationSimulation:
+        if inverse:
+            logical: list[CreateObject | UpdateField | DeleteObject] = []
+            for operation in operations:
+                if operation.id not in selected:
+                    continue
+                registry = (
+                    None
+                    if operation.target_object_id is None
+                    else registries.get(operation.target_object_id)
+                )
+                if registry is None:
+                    raise RuntimeError("Agent patch target object disappeared")
+                logical.append(
+                    UpdateField(
+                        operation_id=f"undo_{operation.operation_id}",
+                        object_id=operation.target_object_key,
+                        field_path=operation.field_path,
+                        old_value=operation.new_value_jsonb,
+                        new_value=operation.old_value_jsonb,
+                        expected_object_revision=registry.revision,
+                    )
+                )
+            mutation = MutationSet(
+                mutation_set_id=f"agent_patch_undo_{operations[0].patch_set_id}",
+                base_draft_id=operations[0].draft_id,
+                base_revision=max(
+                    (registry.revision for registry in registries.values()), default=1
+                ),
+                operations=tuple(logical),
+                actor="author",
+            )
+        else:
+            patch_set = self.session.get(AgentPatchSet, operations[0].patch_set_id)
+            if patch_set is None:
+                raise RuntimeError("Agent patch set disappeared")
+            owned_stub_revision = patch_set.base_draft_revision
+            logical = self._logical_operations_from_patch(
+                operations, selected, registries
+            )
+            mutation = MutationSet(
+                mutation_set_id=f"agent_patch_{patch_set.id}_{owned_stub_revision}",
+                base_draft_id=patch_set.draft_id,
+                base_revision=owned_stub_revision,
+                operations=tuple(logical),
+                actor="agent",
+                mode=patch_set.mutation_mode,  # type: ignore[arg-type]
+                closure_policy_version=patch_set.closure_policy_version,
+            )
+        return VerificationEngine(profile="fast").simulate_mutation_set(
+            document,
+            mutation,
+            target_finding_keys=target_finding_keys or (),
+            accepted_debt_finding_keys=accepted_debt_finding_keys or (),
+            debt_acceptance_reason=debt_acceptance_reason,
+            allow_author_debt_acceptance=True,
+        )
+
+    @staticmethod
+    def _logical_operations_from_patch(
+        operations: list[AgentPatchOperation],
+        selected: set[int],
+        registries: dict[int, CaseFileObject],
+    ) -> list[CreateObject | UpdateField | DeleteObject]:
+        result: list[CreateObject | UpdateField | DeleteObject] = []
         for operation in operations:
             if operation.id not in selected:
                 continue
-            registry = registries.get(operation.target_object_id)
-            if registry is None:
-                raise RuntimeError("Agent patch target object disappeared")
-            revisions[registry.object_id] = registry.revision
-            proposed.append(
-                VerificationPatchOperation(
-                    operation_id=operation.operation_id,
-                    object_id=registry.object_id,
-                    field_path=operation.field_path,
-                    old_value=(operation.new_value_jsonb if inverse else operation.old_value_jsonb),
-                    new_value=(operation.old_value_jsonb if inverse else operation.new_value_jsonb),
-                    object_type=registry.object_type,
-                    operation_type="replace",
-                    expected_object_revision=registry.revision,
-                )
+            registry = (
+                None
+                if operation.target_object_id is None
+                else registries.get(operation.target_object_id)
             )
-        simulation = VerificationEngine(
-            profile="fast",
-            draft_revision=document.get("revision", 1)
-            if isinstance(document.get("revision"), int)
-            else 1,
-            editable_fields_by_type=EDITABLE_FIELDS,
-        ).simulate_patch_operation_batch(
-            document,
-            proposed,
-            object_revisions=revisions,
-            target_finding_keys=target_finding_keys or (),
+            if operation.operation_type == "create_object":
+                if not isinstance(operation.new_value_jsonb, dict):
+                    raise RuntimeError("Create operation requires a complete object")
+                result.append(
+                    CreateObject(
+                        operation.operation_id,
+                        operation.target_collection,
+                        operation.new_value_jsonb,
+                    )
+                )
+            elif operation.operation_type == "delete_object":
+                result.append(
+                    DeleteObject(
+                        operation.operation_id,
+                        operation.target_object_key,
+                        operation.old_value_jsonb,
+                    )
+                )
+            else:
+                if registry is None:
+                    raise RuntimeError("Agent patch target object disappeared")
+                result.append(
+                    UpdateField(
+                        operation.operation_id,
+                        operation.target_object_key,
+                        operation.field_path,
+                        operation.new_value_jsonb,
+                        operation.old_value_jsonb,
+                        registry.revision,
+                    )
+                )
+        return result
+
+    @staticmethod
+    def _inverse_logical_operations_from_patch(
+        operations: list[AgentPatchOperation],
+        registries: dict[int, CaseFileObject],
+        document: dict[str, Any],
+    ) -> list[CreateObject | UpdateField | DeleteObject]:
+        current_objects = {
+            str(item["id"]): item
+            for collection in COLLECTIONS.values()
+            for item in document[collection]
+        }
+        result: list[CreateObject | UpdateField | DeleteObject] = []
+        for operation in operations:
+            registry = (
+                None
+                if operation.target_object_id is None
+                else registries.get(operation.target_object_id)
+            )
+            if operation.operation_type == "create_object":
+                current = current_objects.get(operation.target_object_key)
+                if current is None:
+                    raise RuntimeError("Created patch object disappeared")
+                result.append(
+                    DeleteObject(
+                        f"undo_{operation.operation_id}",
+                        operation.target_object_key,
+                        current,
+                    )
+                )
+            elif operation.operation_type == "delete_object":
+                if not isinstance(operation.old_value_jsonb, dict):
+                    raise RuntimeError("Delete operation requires the complete old object")
+                result.append(
+                    CreateObject(
+                        f"undo_{operation.operation_id}",
+                        operation.target_collection,
+                        operation.old_value_jsonb,
+                    )
+                )
+            else:
+                if registry is None:
+                    raise RuntimeError("Agent patch target object disappeared")
+                result.append(
+                    UpdateField(
+                        f"undo_{operation.operation_id}",
+                        operation.target_object_key,
+                        operation.field_path,
+                        operation.old_value_jsonb,
+                        operation.new_value_jsonb,
+                        registry.revision,
+                    )
+                )
+        return result
+
+    def _mutation_set_from_patch_operations(
+        self,
+        owned: OwnedDraft,
+        patch_set: AgentPatchSet,
+        operations: list[AgentPatchOperation],
+        selected: set[int],
+        registries: dict[int, CaseFileObject],
+    ) -> MutationSet:
+        return MutationSet(
+            mutation_set_id=f"agent_patch_{patch_set.id}_{owned.draft.revision}",
+            base_draft_id=owned.draft.id,
+            base_revision=owned.draft.revision,
+            operations=tuple(
+                self._logical_operations_from_patch(operations, selected, registries)
+            ),
+            actor="agent",
+            mode=patch_set.mutation_mode,  # type: ignore[arg-type]
+            closure_policy_version=patch_set.closure_policy_version,
         )
-        return simulation
 
     def _target_finding_keys(
         self,
@@ -1686,7 +1883,11 @@ class AgentWorkflowMixin:
             row.id: row
             for row in self.session.scalars(
                 select(CaseFileObject).where(
-                    CaseFileObject.id.in_(operation.target_object_id for operation in operations)
+                    CaseFileObject.id.in_(
+                        operation.target_object_id
+                        for operation in operations
+                        if operation.target_object_id is not None
+                    )
                 )
             )
         }
@@ -1726,6 +1927,10 @@ class AgentWorkflowMixin:
             "source_message_id": patch_set.source_message_id,
             "task_run_id": patch_set.task_run_id,
             "base_draft_revision": patch_set.base_draft_revision,
+            "closure_policy_version": patch_set.closure_policy_version,
+            "mutation_mode": patch_set.mutation_mode,
+            "baseline_hash": patch_set.baseline_hash,
+            "candidate_hash": patch_set.candidate_hash,
             "reason_summary": patch_set.reason_summary,
             "status": patch_set.status,
             "is_stale": (
@@ -1745,10 +1950,18 @@ class AgentWorkflowMixin:
                     "ordinal": operation.ordinal,
                     "object_id": (
                         None
-                        if (registry := registries.get(operation.target_object_id)) is None
+                        if (
+                            registry := (
+                                None
+                                if operation.target_object_id is None
+                                else registries.get(operation.target_object_id)
+                            )
+                        )
+                        is None
                         else registry.object_id
                     ),
                     "object_type": (None if registry is None else registry.object_type),
+                    "target_collection": operation.target_collection,
                     "operation_type": operation.operation_type,
                     "field_path": operation.field_path,
                     "expected_object_revision": operation.expected_object_revision,

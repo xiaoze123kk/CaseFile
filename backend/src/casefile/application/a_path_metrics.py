@@ -22,7 +22,17 @@ from casefile.data_postgres.repositories import ProjectRepository
 
 A_PATH_METRICS_VERSION = "a-path-funnel-v1"
 _POST_ADOPTION_EDIT_TYPES = frozenset(
-    {"add", "remove", "replace", "agent_patch_apply", "agent_patch_undo"}
+    {
+        "add",
+        "remove",
+        "replace",
+        "agent_patch_apply",
+        "agent_patch_undo",
+        "logical_mutation_apply",
+        "logical_mutation_undo",
+        "logical_mutation_redo",
+        "logical_mutation_normalize",
+    }
 )
 _USAGE_KEYS = (
     "requests",

@@ -14,6 +14,7 @@ from casefile.api.dependencies import ActorDependency, SessionDependency
 from casefile.api.schemas import (
     AgentMessageCreateRequest,
     AgentPatchApplyRequest,
+    AgentPatchRedoRequest,
     AgentPatchSimulateRequest,
     AgentPatchUndoRequest,
     AgentRoutingFeedbackRequest,
@@ -263,6 +264,8 @@ def workflow_router() -> APIRouter:
             expected_revision=payload.expected_revision,
             operation_ids=payload.operation_ids,
             target_finding_ids=payload.target_finding_ids,
+            accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
+            debt_acceptance_reason=payload.debt_acceptance_reason,
         )
 
     @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate")
@@ -281,6 +284,8 @@ def workflow_router() -> APIRouter:
             base_revision=payload.base_revision,
             operation_ids=payload.operation_ids,
             target_finding_ids=payload.target_finding_ids,
+            accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
+            debt_acceptance_reason=payload.debt_acceptance_reason,
         )
 
     @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo")
@@ -292,6 +297,22 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
     ) -> dict[str, Any]:
         return WorkflowService(session).undo_agent_patch_set(
+            actor,
+            project_id,
+            patch_set_id,
+            expected_draft_id=payload.expected_draft_id,
+            expected_revision=payload.expected_revision,
+        )
+
+    @router.post("/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo")
+    def redo_agent_patch_set(
+        project_id: int,
+        patch_set_id: int,
+        payload: AgentPatchRedoRequest,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> dict[str, Any]:
+        return WorkflowService(session).redo_agent_patch_set(
             actor,
             project_id,
             patch_set_id,

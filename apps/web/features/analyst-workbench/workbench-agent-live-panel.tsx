@@ -13,6 +13,7 @@ import {
   sendAgentMessage,
   sendAgentRoutingFeedback,
   simulateAgentPatchSet,
+  redoAgentPatchSet,
   undoAgentPatchSet,
   updateAgentThread,
   type AgentChatFocus,
@@ -659,20 +660,18 @@ export function AgentLivePanel({
   async function applyPatchSet(
     patchSet: AgentPatchSetView,
     operationIds: number[] | null,
+    acceptedDebtFindingKeys: string[] = [],
+    debtAcceptanceReason?: string,
   ) {
     if (patchBusyId !== null) return;
     setPatchBusyId(patchSet.patch_set_id);
     setPatchError(null);
     setMessagesError(null);
     try {
-      const result = await applyAgentPatchSet(
-        LOCAL_ACTOR_ID,
-        projectId,
-        patchSet.patch_set_id,
-        draftId,
-        patchSet.base_draft_revision,
-        operationIds,
-      );
+      const baseArguments = [LOCAL_ACTOR_ID, projectId, patchSet.patch_set_id, draftId, patchSet.base_draft_revision, operationIds] as const;
+      const result = acceptedDebtFindingKeys.length || debtAcceptanceReason
+        ? await applyAgentPatchSet(...baseArguments, undefined, acceptedDebtFindingKeys, debtAcceptanceReason)
+        : await applyAgentPatchSet(...baseArguments);
       updatePatchSet(result);
       await onDraftChanged();
       await reloadMessages();
@@ -688,6 +687,8 @@ export function AgentLivePanel({
   async function simulatePatchSet(
     patchSet: AgentPatchSetView,
     operationIds: number[],
+    acceptedDebtFindingKeys: string[] = [],
+    debtAcceptanceReason?: string,
   ): Promise<AgentPatchSimulationView | null> {
     if (patchBusyId !== null) return null;
     setPatchBusyId(patchSet.patch_set_id);
@@ -697,15 +698,13 @@ export function AgentLivePanel({
       const targetFindingIds = patchSet.operations
         .filter((operation) => operationIds.includes(operation.operation_id))
         .flatMap((operation) => operation.finding_ids ?? []);
-      const result = await simulateAgentPatchSet(
-        LOCAL_ACTOR_ID,
-        projectId,
-        patchSet.patch_set_id,
-        draftId,
-        patchSet.base_draft_revision,
-        operationIds,
-        targetFindingIds.length > 0 ? targetFindingIds : undefined,
-      );
+      const targetIds = targetFindingIds.length > 0 ? targetFindingIds : undefined;
+      const baseArguments = [LOCAL_ACTOR_ID, projectId, patchSet.patch_set_id, draftId, patchSet.base_draft_revision, operationIds] as const;
+      const result = acceptedDebtFindingKeys.length || debtAcceptanceReason
+        ? await simulateAgentPatchSet(...baseArguments, targetIds, acceptedDebtFindingKeys, debtAcceptanceReason)
+        : targetIds
+          ? await simulateAgentPatchSet(...baseArguments, targetIds)
+          : await simulateAgentPatchSet(...baseArguments);
       return result.simulation;
     } catch (caught) {
       const message = errorMessage(caught);
@@ -742,6 +741,28 @@ export function AgentLivePanel({
       const message = errorMessage(caught);
       setPatchError(message);
       setMessagesError(message);
+    } finally {
+      setPatchBusyId(null);
+    }
+  }
+
+  async function redoPatchSet(patchSet: AgentPatchSetView) {
+    if (patchBusyId !== null || patchSet.undone_to_revision === null) return;
+    setPatchBusyId(patchSet.patch_set_id);
+    setPatchError(null);
+    try {
+      const result = await redoAgentPatchSet(
+        LOCAL_ACTOR_ID,
+        projectId,
+        patchSet.patch_set_id,
+        draftId,
+        patchSet.undone_to_revision,
+      );
+      updatePatchSet(result);
+      await onDraftChanged();
+      await reloadMessages();
+    } catch (caught) {
+      setPatchError(errorMessage(caught));
     } finally {
       setPatchBusyId(null);
     }
@@ -818,13 +839,14 @@ export function AgentLivePanel({
     focusPatchSetId: focusPatchSetId ?? localFocusPatchSetId,
     issueLabels: referenceLabels.issues,
     objectLabels: referenceLabels.objects,
-    onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null) => void applyPatchSet(patchSet, operationIds),
-    onSimulate: (patchSet: AgentPatchSetView, operationIds: number[]) => simulatePatchSet(patchSet, operationIds),
+    onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null, keys?: string[], reason?: string) => void applyPatchSet(patchSet, operationIds, keys, reason),
+    onSimulate: (patchSet: AgentPatchSetView, operationIds: number[], keys?: string[], reason?: string) => simulatePatchSet(patchSet, operationIds, keys, reason),
     onLocateEvent: onLocateEvent,
     onLocateIssue: onLocateIssue,
     onLocateObject: onLocateObject,
     onRetry: retryMessage,
     onUndo: (patchSet: AgentPatchSetView) => void undoPatchSet(patchSet),
+    onRedo: (patchSet: AgentPatchSetView) => void redoPatchSet(patchSet),
     patches: inspectorPatches,
   };
   const inspectorPortal = inspectorHost

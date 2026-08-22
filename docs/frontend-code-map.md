@@ -42,7 +42,7 @@
 | `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：统一展示确定性与持久化 Agent finding 的来源、severity、规则代码、JSON 路径、字段路径、状态和可定位证据，并可发起普通 CaseFile Chat TaskRun 的验证重跑；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
 | `apps/web/features/analyst-workbench/workbench-agent-surface.tsx`、`workbench-agent-composer.tsx`、`workbench-agent.module.css` | 卷宗统筹 Agent 的 `closed / quick / desk` 表面边界、基于真实 Workbench Focus 的上下文输入、中文 IME 安全的多行 Composer，以及独立于主工作台的 Agent 视觉布局。 |
 | `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread/Message/Task 控制器、SSE 跟随、消息发送与 Patch API 生命周期；把 Thread/Task/消息事实交给 Agent Presentation，并向 Workbench Inspector 暴露 Patch/Finding 审阅事实与服务端操作。 |
-| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的 Agent Patch/Finding 唯一审阅所有者：按 ordinal 只读预演、作者选择与确认、Apply/Undo/失效提示和证据定位；不拥有 Thread/Task 生命周期。 |
+| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的 Agent Mutation/Finding 唯一审阅所有者：分区展示原始操作、服务端机械补全、Impact Cone、policy/hash 与 hard/repair/warning 门禁，支持精确 finding 债务理由、Apply/Undo/Redo；不自行推导 impact 或 can_apply。 |
 | `apps/web/features/analyst-workbench/workbench-agent-desk.tsx` | Desk/Quick 的统一阅读列布局：Header、Conversation、Task Strip、预设指令和 Composer 组合，不拥有领域状态。 |
 | `apps/web/features/analyst-workbench/workbench-agent-thread-menu.tsx` | Agent Thread 搜索、Combobox/Listbox 键盘选择、新建、置顶、重命名、归档和归档筛选呈现；持久化由 live panel 回调完成。 |
 | `apps/web/features/analyst-workbench/workbench-agent-task-strip.tsx` | 真实 Task/SSE 阶段、上下文用量、取消按钮和终态摘要的 Sticky 展示；不估算进度。 |
@@ -65,7 +65,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、工作流与工作台读模型 DTO，以及统一错误消息。 |
+| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、Logical Mutation simulation/hash/debt/Undo/Redo DTO、工作流与工作台读模型，以及统一错误消息。 |
 | `apps/web/lib/prototype-model.ts` | 仅供本地原型使用的状态模型、样例数据和编译门禁纯函数；正式服务端契约继续来自 `@casefile/contracts`。 |
 | `apps/web/lib/reasoning-prototype.ts` | 推理实验室本地 Fixture、推理路径/节点/边/候选模型与纯查询函数；不承担 React UI。 |
 | `apps/web/lib/` | 其他无 UI 基础设施；不得放 React 业务状态。 |

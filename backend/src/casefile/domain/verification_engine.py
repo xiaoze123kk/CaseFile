@@ -22,6 +22,17 @@ from casefile.contracts import (
     validate_casefile,
     validate_casefile_semantics,
 )
+from casefile.domain.logical_mutation import (
+    CLOSURE_POLICY_VERSION,
+    ClosureIssue,
+    ImpactCone,
+    MutationNormalizationError,
+    MutationSet,
+    analyze_impact,
+    compile_logical_graph,
+    evaluate_closure_rules,
+    normalize_mutation,
+)
 
 FindingKind = Literal["deterministic", "llm"]
 FindingSeverity = Literal["info", "warning", "error", "blocker"]
@@ -194,6 +205,49 @@ class BatchSimulation:
 
 
 @dataclass(frozen=True)
+class MutationSimulation:
+    """One complete logical-mutation preview over an immutable Draft snapshot."""
+
+    valid: bool
+    can_apply: bool
+    reason_code: str | None
+    document: Mapping[str, Any]
+    normalized_mutation: Mapping[str, Any] | None
+    impact_cone: ImpactCone | None
+    baseline_findings: tuple[VerificationFinding, ...]
+    final_findings: tuple[VerificationFinding, ...]
+    fixed_finding_keys: tuple[str, ...]
+    introduced_finding_keys: tuple[str, ...]
+    worsened_finding_keys: tuple[str, ...]
+    residual_target_finding_keys: tuple[str, ...]
+    authorization_required_finding_keys: tuple[str, ...]
+    baseline_hash: str
+    candidate_hash: str
+    closure_policy_version: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "valid": self.valid,
+            "can_apply": self.can_apply,
+            "reason_code": self.reason_code,
+            "normalized_mutation": (
+                None if self.normalized_mutation is None else dict(self.normalized_mutation)
+            ),
+            "impact_cone": None if self.impact_cone is None else self.impact_cone.as_dict(),
+            "baseline_findings": [item.as_dict() for item in self.baseline_findings],
+            "final_findings": [item.as_dict() for item in self.final_findings],
+            "fixed_finding_keys": list(self.fixed_finding_keys),
+            "introduced_finding_keys": list(self.introduced_finding_keys),
+            "worsened_finding_keys": list(self.worsened_finding_keys),
+            "residual_target_finding_keys": list(self.residual_target_finding_keys),
+            "authorization_required_finding_keys": list(self.authorization_required_finding_keys),
+            "baseline_hash": self.baseline_hash,
+            "candidate_hash": self.candidate_hash,
+            "closure_policy_version": self.closure_policy_version,
+        }
+
+
+@dataclass(frozen=True)
 class VerificationResult:
     findings: tuple[VerificationFinding, ...]
     structural_valid: bool
@@ -317,6 +371,179 @@ class VerificationEngine:
                 )
             )
         return tuple(result)
+
+    def simulate_mutation_set(
+        self,
+        document: Mapping[str, Any],
+        mutation_set: MutationSet,
+        *,
+        accepted_debt_finding_keys: Sequence[str] = (),
+        debt_acceptance_reason: str | None = None,
+        target_finding_keys: Sequence[str] = (),
+        allow_author_debt_acceptance: bool = False,
+        allow_existing_hard_invariants: bool = False,
+    ) -> MutationSimulation:
+        """Normalize, simulate, and gate one CREATE/UPDATE/DELETE mutation set."""
+
+        baseline_hash = _document_hash(document)
+        baseline_result = self.verify(document)
+        baseline_graph = compile_logical_graph(document)
+        baseline_snapshot_mutation = MutationSet(
+            mutation_set_id="baseline_snapshot",
+            base_draft_id=mutation_set.base_draft_id,
+            base_revision=mutation_set.base_revision,
+            operations=(),
+            actor="system",
+        )
+        baseline_closure = tuple(
+            self._closure_finding(issue)
+            for issue in evaluate_closure_rules(
+                document,
+                document,
+                baseline_graph,
+                baseline_graph,
+                baseline_snapshot_mutation,
+            )
+        )
+        baseline_result = VerificationResult(
+            findings=tuple(
+                {
+                    item.finding_key: item
+                    for item in (*baseline_result.findings, *baseline_closure)
+                }.values()
+            ),
+            structural_valid=baseline_result.structural_valid,
+            engine_version=baseline_result.engine_version,
+        )
+        try:
+            normalized = normalize_mutation(document, mutation_set)
+        except MutationNormalizationError as error:
+            return MutationSimulation(
+                valid=False,
+                can_apply=False,
+                reason_code=error.reason_code,
+                document=deepcopy(dict(document)),
+                normalized_mutation=None,
+                impact_cone=None,
+                baseline_findings=baseline_result.findings,
+                final_findings=baseline_result.findings,
+                fixed_finding_keys=(),
+                introduced_finding_keys=(),
+                worsened_finding_keys=(),
+                residual_target_finding_keys=(),
+                authorization_required_finding_keys=(),
+                baseline_hash=baseline_hash,
+                candidate_hash=baseline_hash,
+                closure_policy_version=mutation_set.closure_policy_version,
+            )
+
+        candidate = dict(normalized.candidate_document)
+        candidate_result = self.verify(candidate)
+        candidate_graph = compile_logical_graph(candidate)
+        mutation_findings = tuple(
+            self._closure_finding(closure_issue)
+            for closure_issue in evaluate_closure_rules(
+                document,
+                candidate,
+                baseline_graph,
+                candidate_graph,
+                mutation_set,
+            )
+        )
+        merged_final = {item.finding_key: item for item in candidate_result.findings}
+        merged_final.update({item.finding_key: item for item in mutation_findings})
+        final_findings = tuple(merged_final.values())
+        baseline_by_key = {item.finding_key: item for item in baseline_result.findings}
+        final_by_key = {item.finding_key: item for item in final_findings}
+        fixed = tuple(sorted(set(baseline_by_key) - set(final_by_key)))
+        introduced = tuple(sorted(set(final_by_key) - set(baseline_by_key)))
+        worsened = tuple(
+            sorted(
+                key
+                for key in set(baseline_by_key) & set(final_by_key)
+                if SEVERITY_RANK[final_by_key[key].severity]
+                > SEVERITY_RANK[baseline_by_key[key].severity]
+            )
+        )
+        residual_targets = tuple(sorted(set(target_finding_keys) & set(final_by_key)))
+        hard = tuple(
+            sorted(
+                item.finding_key
+                for item in final_findings
+                if item.payload.get("closure_level") == "hard_invariant"
+                and (
+                    not allow_existing_hard_invariants
+                    or item.finding_key not in baseline_by_key
+                    or item.finding_key in worsened
+                )
+            )
+        )
+        repair_required = tuple(
+            sorted(
+                key
+                for key in introduced
+                if final_by_key[key].payload.get("closure_level") == "repair_required"
+            )
+        )
+        accepted = tuple(sorted(set(accepted_debt_finding_keys)))
+        acceptance_invalid = bool(accepted) and (
+            accepted != repair_required or not (debt_acceptance_reason or "").strip()
+        )
+        author_acceptance = (
+            (mutation_set.actor == "author" or allow_author_debt_acceptance)
+            and accepted == repair_required
+            and (not repair_required or bool((debt_acceptance_reason or "").strip()))
+        )
+        structural_valid = candidate_result.structural_valid
+        can_apply = bool(
+            structural_valid
+            and not hard
+            and not worsened
+            and not residual_targets
+            and not acceptance_invalid
+            and (not repair_required or author_acceptance)
+        )
+        reason_code = None
+        if not structural_valid:
+            reason_code = "post_document_invalid"
+        elif hard:
+            reason_code = "hard_invariant_failed"
+        elif worsened:
+            reason_code = "deterministic_finding_worsened"
+        elif residual_targets:
+            reason_code = "finding_not_resolved"
+        elif acceptance_invalid:
+            reason_code = "debt_acceptance_invalid"
+        elif repair_required:
+            reason_code = None if author_acceptance else "repair_required"
+
+        impact = analyze_impact(baseline_graph, candidate_graph, mutation_set)
+        return MutationSimulation(
+            valid=True,
+            can_apply=can_apply,
+            reason_code=reason_code,
+            document=candidate,
+            normalized_mutation={
+                "mutation_set_id": mutation_set.mutation_set_id,
+                "mode": mutation_set.mode,
+                "actor": mutation_set.actor,
+                "operation_ids": [item.operation_id for item in normalized.ordered_operations],
+                "mechanical_operations": [
+                    item.as_dict() for item in normalized.mechanical_operations
+                ],
+            },
+            impact_cone=impact,
+            baseline_findings=baseline_result.findings,
+            final_findings=final_findings,
+            fixed_finding_keys=fixed,
+            introduced_finding_keys=introduced,
+            worsened_finding_keys=worsened,
+            residual_target_finding_keys=residual_targets,
+            authorization_required_finding_keys=repair_required,
+            baseline_hash=baseline_hash,
+            candidate_hash=_document_hash(candidate),
+            closure_policy_version=mutation_set.closure_policy_version,
+        )
 
     def simulate_patch_operation_batch(
         self,
@@ -510,7 +737,56 @@ class VerificationEngine:
                     },
                 )
             )
+        if structural_valid and self.profile == "strict":
+            graph = compile_logical_graph(document)
+            empty_mutation = MutationSet(
+                mutation_set_id="verification_snapshot",
+                base_draft_id=1,
+                base_revision=self.draft_revision,
+                operations=(),
+                actor="system",
+            )
+            for closure_issue in evaluate_closure_rules(
+                document,
+                document,
+                graph,
+                graph,
+                empty_mutation,
+            ):
+                findings.append(self._closure_finding(closure_issue))
         return tuple(findings), structural_valid
+
+    def _closure_finding(self, issue: ClosureIssue) -> VerificationFinding:
+        severity_by_level: dict[str, FindingSeverity] = {
+            "hard_invariant": "blocker",
+            "repair_required": "error",
+            "warning": "warning",
+        }
+        refs = tuple(FindingRef("object", object_id, "impact") for object_id in issue.object_ids)
+        key = f"det:{issue.rule_code}:{_fingerprint({'objects': issue.object_ids})[:24]}"
+        return VerificationFinding(
+            finding_key=key,
+            kind="deterministic",
+            severity=severity_by_level[issue.level],
+            status="open",
+            title=issue.title,
+            message=issue.message,
+            rule_code=issue.rule_code,
+            draft_revision=self.draft_revision,
+            suggested_fix=(", ".join(issue.repair_kinds) or None),
+            refs=refs,
+            payload={
+                "closure_level": issue.level,
+                "closure_policy_version": CLOSURE_POLICY_VERSION,
+                "caused_by_operation_ids": list(issue.caused_by_operation_ids),
+                "dependency_path": list(issue.dependency_path),
+                "repair_kinds": list(issue.repair_kinds),
+                "impact_refs": [
+                    {"object_type": "object", "object_id": object_id}
+                    for object_id in issue.object_ids
+                ],
+            },
+        )
 
     def _structural_errors(self, document: Mapping[str, Any]) -> list[dict[str, Any]]:
         try:
@@ -804,12 +1080,17 @@ def _fingerprint(value: Any) -> str:
     return hashlib.sha256(rfc8785.dumps(value)).hexdigest()
 
 
+def _document_hash(document: Mapping[str, Any]) -> str:
+    return hashlib.sha256(rfc8785.dumps(dict(document))).hexdigest()
+
+
 __all__ = [
     "BatchSimulation",
     "FindingRef",
     "FindingSeverity",
     "ImpactPlanner",
     "ImpactSummary",
+    "MutationSimulation",
     "OperationDelta",
     "PatchOperation",
     "VerificationEngine",

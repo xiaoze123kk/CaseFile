@@ -446,7 +446,16 @@ def _create_registries(
 ) -> dict[str, CaseFileObject]:
     registries: dict[str, CaseFileObject] = {}
     for collection, object_type in COLLECTION_TYPES:
-        for ordinal, item in enumerate(candidate[collection], start=1):
+        ordinal_offset = int(
+            session.scalar(
+                select(func.coalesce(func.max(CaseFileObject.contract_ordinal), 0)).where(
+                    CaseFileObject.draft_id == owned.draft.id,
+                    CaseFileObject.object_type == object_type,
+                )
+            )
+            or 0
+        )
+        for ordinal, item in enumerate(candidate[collection], start=ordinal_offset + 1):
             created_by = item["created_by"]
             registry = CaseFileObject(
                 project_id=owned.project.id,
@@ -468,6 +477,31 @@ def _create_registries(
             session.add(registry)
             registries[item["id"]] = registry
     session.flush()
+    return registries
+
+
+def create_casefile_objects(
+    session: Session,
+    owned: OwnedDraft,
+    objects_by_collection: dict[str, list[dict[str, Any]]],
+) -> dict[str, CaseFileObject]:
+    """Materialize validated new objects without replacing the current Draft."""
+
+    unknown = set(objects_by_collection) - {name for name, _ in COLLECTION_TYPES}
+    if unknown:
+        raise ApplicationError(
+            "casefile_collection_invalid",
+            "创建对象包含不受支持的集合。",
+            status_code=422,
+            details={"collections": sorted(unknown)},
+        )
+    partial = {
+        collection: deepcopy(objects_by_collection.get(collection, []))
+        for collection, _ in COLLECTION_TYPES
+    }
+    registries = _create_registries(session, owned, partial)
+    _create_content_rows(session, owned, partial, registries)
+    _create_contract_refs(session, owned, partial, registries)
     return registries
 
 

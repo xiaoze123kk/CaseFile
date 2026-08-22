@@ -106,9 +106,10 @@ def run_chat_feedback_metrics(
                 )
             )
             for operation in operations:
-                target_ids_by_patch.setdefault(operation.patch_set_id, set()).add(
-                    operation.target_object_id
-                )
+                if operation.target_object_id is not None:
+                    target_ids_by_patch.setdefault(operation.patch_set_id, set()).add(
+                        operation.target_object_id
+                    )
 
         rewrite_count = 0
         for patch in applied_or_undone:

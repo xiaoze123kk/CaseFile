@@ -157,6 +157,16 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
             assert patch_set["status"] == "pending"
             assert len(patch_set["operations"]) == 2
             operation_ids = [operation["operation_id"] for operation in patch_set["operations"]]
+            preview = workflow.simulate_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                base_revision=2,
+                operation_ids=operation_ids,
+            )
+            debt_keys = preview["simulation"]["authorization_required_finding_keys"]
+            assert debt_keys
             applied = workflow.apply_agent_patch_set(
                 actor_id,
                 project_id,
@@ -164,6 +174,8 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                 expected_draft_id=draft_id,
                 expected_revision=2,
                 operation_ids=operation_ids,
+                accepted_debt_finding_keys=debt_keys,
+                debt_acceptance_reason="测试作者明确接受关键 Claim 暂时失去支撑的逻辑债务。",
             )
             assert applied["draft_revision"] == 3
             assert applied["status"] == "applied"
@@ -183,13 +195,13 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                     .where(
                         DraftOperation.project_id == project_id,
                         DraftOperation.operation_type.in_(
-                            ("agent_patch_apply", "agent_patch_undo")
+                            ("logical_mutation_apply", "logical_mutation_undo")
                         ),
                     )
                     .order_by(DraftOperation.sequence_no)
                 )
             )
-            assert operation_types == ["agent_patch_apply"]
+            assert operation_types == ["logical_mutation_apply"]
 
         with factory() as session:
             undone = WorkflowService(session).undo_agent_patch_set(
@@ -213,13 +225,33 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
                     .where(
                         DraftOperation.project_id == project_id,
                         DraftOperation.operation_type.in_(
-                            ("agent_patch_apply", "agent_patch_undo")
+                            ("logical_mutation_apply", "logical_mutation_undo")
                         ),
                     )
                     .order_by(DraftOperation.sequence_no)
                 )
             )
-            assert operation_types == ["agent_patch_apply", "agent_patch_undo"]
+            assert operation_types == ["logical_mutation_apply", "logical_mutation_undo"]
+
+        with factory() as session:
+            redone = WorkflowService(session).redo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=4,
+            )
+            assert redone["draft_revision"] == 5
+            assert redone["status"] == "applied"
+
+        with factory() as session:
+            redone_draft = CaseFileService(session).get_draft(actor_id, project_id)
+            assert redone_draft["revision"] == 5
+            assert (
+                redone_draft["content"]["entities"][0]["description"]
+                == "负责追查午夜重启原因的研究员。"
+            )
+            assert redone_draft["content"]["claims"][0]["support_refs"] == []
 
 
 def test_agent_chat_preset_hint_freezes_routes_and_suppresses_suggestions(
@@ -908,7 +940,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             apply_operations = list(
                 session.scalars(
                     select(DraftOperation).where(
-                        DraftOperation.operation_type == "agent_patch_apply"
+                        DraftOperation.operation_type == "logical_mutation_apply"
                     )
                 )
             )
@@ -953,7 +985,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
             undo_operations = list(
                 session.scalars(
                     select(DraftOperation).where(
-                        DraftOperation.operation_type == "agent_patch_undo"
+                        DraftOperation.operation_type == "logical_mutation_undo"
                     )
                 )
             )
