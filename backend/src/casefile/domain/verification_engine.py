@@ -744,6 +744,7 @@ class VerificationEngine:
             code = str(issue.get("code", "validation_failed"))
             path = str(issue.get("path", ""))
             refs = _refs_from_issue(issue, document)
+            closure_object_refs = _closure_object_refs_from_semantic_issue(issue)
             public_issues = public_validation_issues([issue])
             key_basis: dict[str, Any] = {
                 "path": path,
@@ -776,6 +777,8 @@ class VerificationEngine:
                             {
                                 "closure_level": closure_level,
                                 "closure_policy_version": self.closure_policy_version,
+                                "object_refs": closure_object_refs,
+                                "repair_kinds": [],
                             }
                             if closure_level is not None
                             else {}
@@ -812,6 +815,7 @@ class VerificationEngine:
                 "caused_by_operation_ids": list(issue.caused_by_operation_ids),
                 "dependency_path": list(issue.dependency_path),
                 "repair_kinds": list(issue.repair_kinds),
+                "object_refs": [ref.as_dict() for ref in issue.object_refs],
                 "impact_refs": [
                     {"object_type": "object", "object_id": object_id}
                     for object_id in issue.object_ids
@@ -1036,6 +1040,37 @@ def _refs_from_issue(
                 )
             )
     return tuple(_dedupe_refs(refs))
+
+
+def _closure_object_refs_from_semantic_issue(
+    issue: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    role_by_type = {
+        "entity": "entity",
+        "event": "event",
+        "information_unit": "evidence",
+        "location": "location",
+        "reasoning_path": "path",
+        "resolution_spec": "resolution",
+        "structure_lock": "lock",
+    }
+    for ref_field in ("evidence_refs", "impact_refs"):
+        for raw in issue.get(ref_field, []) or []:
+            if not isinstance(raw, Mapping):
+                continue
+            object_id = raw.get("object_id")
+            object_type = raw.get("object_type")
+            if not isinstance(object_id, str) or not object_id.strip():
+                continue
+            role = role_by_type.get(str(object_type), "related")
+            identity = (object_id, role)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            result.append({"object_id": object_id, "role": role})
+    return result
 
 
 def _target_from_path(document: Mapping[str, Any], path: str) -> tuple[str, str] | None:

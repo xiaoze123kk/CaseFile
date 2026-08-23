@@ -161,6 +161,7 @@ def evaluate_integration_rules(context: ClosureContext) -> list[ClosureIssue]:
                 "该对象声明的完成状态与当前 Evidence/Claim/Reasoning 关系不一致。",
                 (object_id,),
                 ("connect_object",),
+                object_roles=("subject",),
             )
         )
     return result

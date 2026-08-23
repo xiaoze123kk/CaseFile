@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from casefile.domain.logical_mutation.closure.context import build_closure_context
 from casefile.domain.logical_mutation.graph import LogicalGraph
 from casefile.domain.logical_mutation.models import (
     ClosureIssue,
+    ClosureLevel,
+    ClosureObjectRef,
+    ClosureObjectRole,
     CreateObject,
     DeleteObject,
     MutationSet,
@@ -131,6 +134,12 @@ def _cycle_issues(graph: LogicalGraph, policy_version: str) -> list[ClosureIssue
                     policy.cycle_title or "逻辑关系形成循环",
                     "该依赖无法得到确定的闭包顺序。",
                     cycle.object_ids,
+                    tuple(
+                        ClosureObjectRef(
+                            object_id, "subject" if index == 0 else "related"
+                        )
+                        for index, object_id in enumerate(cycle.object_ids)
+                    ),
                     dependency_path=cycle.object_ids,
                 )
             )
@@ -332,4 +341,31 @@ def _issue(
         for operation in mutation_set.operations
         if operation.object_id in targets
     )
-    return ClosureIssue(code, level, title, message, object_ids, caused, repair_kinds=repair_kinds)  # type: ignore[arg-type]
+    object_roles = _legacy_object_roles(code, object_ids)
+    return ClosureIssue(  # type: ignore[arg-type]
+        code,
+        cast(ClosureLevel, level),
+        title,
+        message,
+        object_ids,
+        tuple(
+            ClosureObjectRef(object_id, cast(ClosureObjectRole, role))
+            for object_id, role in zip(object_ids, object_roles, strict=True)
+        ),
+        caused,
+        repair_kinds=repair_kinds,
+    )
+
+
+def _legacy_object_roles(
+    code: str, object_ids: tuple[str, ...]
+) -> tuple[str, ...]:
+    if code.startswith("evidence_") and code.endswith("_reciprocity_violation"):
+        return ("evidence", "subject")
+    if code == "hypothesis_required_claim_incompatible":
+        return ("subject", *("prerequisite",) * (len(object_ids) - 1))
+    if code == "resolution_basis_weakened":
+        return ("resolution", *("related",) * (len(object_ids) - 1))
+    if code == "structure_lock_conflict":
+        return ("subject", "lock")
+    return ("subject", *("related",) * (len(object_ids) - 1))

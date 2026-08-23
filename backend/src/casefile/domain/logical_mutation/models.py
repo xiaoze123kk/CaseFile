@@ -12,6 +12,30 @@ CLOSURE_POLICY_VERSION = ACTIVE_APPLY_POLICY
 MutationMode = Literal["normal", "restructure"]
 MutationActor = Literal["author", "agent", "import", "system"]
 ClosureLevel = Literal["hard_invariant", "repair_required", "warning"]
+ClosureObjectRole = Literal[
+    "subject",
+    "prerequisite",
+    "evidence",
+    "path",
+    "resolution",
+    "event",
+    "entity",
+    "location",
+    "lock",
+    "related",
+]
+_CLOSURE_OBJECT_ROLES = {
+    "subject",
+    "prerequisite",
+    "evidence",
+    "path",
+    "resolution",
+    "event",
+    "entity",
+    "location",
+    "lock",
+    "related",
+}
 OLD_VALUE_UNSET = object()
 
 
@@ -139,12 +163,37 @@ class ImpactCone:
 
 
 @dataclass(frozen=True, slots=True)
+class ClosureObjectRef:
+    object_id: str
+    role: ClosureObjectRole
+
+    def __post_init__(self) -> None:
+        if not self.object_id.strip():
+            raise ValueError("closure_object_ref_id_missing")
+        if not self.role.strip():
+            raise ValueError("closure_object_ref_role_missing")
+        if self.role not in _CLOSURE_OBJECT_ROLES:
+            raise ValueError("closure_object_ref_role_invalid")
+
+    def as_dict(self) -> dict[str, str]:
+        return {"object_id": self.object_id, "role": self.role}
+
+
+@dataclass(frozen=True, slots=True)
 class ClosureIssue:
     rule_code: str
     level: ClosureLevel
     title: str
     message: str
     object_ids: tuple[str, ...]
+    object_refs: tuple[ClosureObjectRef, ...]
     caused_by_operation_ids: tuple[str, ...] = ()
     dependency_path: tuple[str, ...] = ()
     repair_kinds: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if tuple(ref.object_id for ref in self.object_refs) != self.object_ids:
+            raise ValueError("closure_object_refs_mismatch")
+        identities = tuple((ref.object_id, ref.role) for ref in self.object_refs)
+        if len(identities) != len(set(identities)):
+            raise ValueError("closure_object_ref_duplicate")

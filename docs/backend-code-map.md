@@ -63,6 +63,7 @@
 | `backend/src/casefile/application/verification_service.py` | VerificationEngine 的 SQLAlchemy application adapter：VerificationRun/finding 双写、refs/reviews/patch lineage 与 Workbench 查询读模型。 |
 | `backend/src/casefile/domain/verification_engine.py` | 脱离 API、数据库、Worker 和 Provider 的纯验证内核：Finding contract、确定性/LLM 合并、旧 batch simulation，以及统一 MutationSimulation 的增量 finding delta、作者债务授权与 can_apply policy。 |
 | `backend/src/casefile/domain/logical_mutation/` | 纯 Python Logical Mutation Kernel：discriminated operations、依赖拓扑排序、机械双向投影、NetworkX 封装图、关系传播策略单一来源、Impact Cone 与显式 v1/v2 policy registry；`closure/` 预计算不可变 ClosureContext/ClosureIndex，并实现 Claim、Hypothesis assessment、ReasoningPath/Resolution、typed integration 与 Shadow travel-time 确定性规则；公开接口不泄漏 NetworkX 类型。 |
+| `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复契约：版本化全量 RepairPolicy、角色化 ClosureObligation 与 MutationSimulation 资格评估；首版仅允许 Claim 结构 finding 进入 Agent repair，未知规则、hard、warning、混合 manual 和契约漂移全部失败关闭，不生成操作或执行 Apply。 |
 
 ## API 与 Worker
 

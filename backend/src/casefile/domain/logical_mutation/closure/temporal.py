@@ -77,6 +77,7 @@ def evaluate_travel_time_rules(context: ClosureContext) -> list[ClosureIssue]:
                         "事件间移动时间不足",
                         "同一参与者在相邻事件间的可用时间短于显式声明的单向移动时间。",
                         (participant_id, left_event_id, right_event_id),
+                        object_roles=("entity", "event", "event"),
                     )
                 )
     return result
