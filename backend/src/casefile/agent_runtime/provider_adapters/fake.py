@@ -9,6 +9,13 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Literal, cast
 
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import Status as ClaimStatus
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
@@ -20,9 +27,11 @@ from casefile.agent_runtime.chat_tools import (
     search_casefile_records,
 )
 from casefile.agent_runtime.closure_repair import (
-    CLOSURE_REPAIR_SCHEMA_ID,
+    ClaimDependenciesRepairOutputV2,
+    ClaimStatusRepairOutputV2,
     ClosureRepairOperationOutputV1,
     ClosureRepairOutputV1,
+    ClosureRepairOutputV2,
     ClosureRepairProviderResult,
     ClosureRepairRequest,
 )
@@ -89,12 +98,6 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _validate_generated_descriptions,
 )
 from casefile.contracts import validate_casefile
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 
 
 def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
@@ -391,6 +394,7 @@ class FakeProvider:
         request: ClosureRepairRequest,
     ) -> ClosureRepairProviderResult:
         rendered = render_closure_repair_prompt(request)
+        schema_id = rendered.output_schema_id
         request.emit(
             "model.started",
             "closure_repair",
@@ -399,7 +403,7 @@ class FakeProvider:
                 "attempt_no": 1,
                 "protocol": "fake_strict_schema",
                 "component_id": request.component_id,
-                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "schema_id": schema_id,
             },
         )
         request.emit(
@@ -407,7 +411,7 @@ class FakeProvider:
             "closure_repair",
             {
                 "component_id": request.component_id,
-                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "schema_id": schema_id,
                 "attempt_no": 1,
                 "protocol": "fake_strict_schema",
                 "model_id": request.model_id,
@@ -427,18 +431,44 @@ class FakeProvider:
             grouped.setdefault((subject_id, field_path), []).append(
                 str(obligation["obligation_key"])
             )
-        candidate = ClosureRepairOutputV1(
-            operations=[
-                ClosureRepairOperationOutputV1(
-                    obligation_keys=obligation_keys,
-                    object_id=object_id,
-                    field_path=field_path,
-                    value_json="\"unresolved\"" if field_path == "/status" else "[]",
-                    reason="将主张调整为与当前证据和依赖相容的最小状态。",
-                )
-                for (object_id, field_path), obligation_keys in grouped.items()
-            ]
-        )
+        if schema_id == "closure-repair-output-v1":
+            candidate: ClosureRepairOutputV1 | ClosureRepairOutputV2 = ClosureRepairOutputV1(
+                operations=[
+                    ClosureRepairOperationOutputV1(
+                        obligation_keys=obligation_keys,
+                        object_id=object_id,
+                        field_path=field_path,
+                        value_json=("\"unresolved\"" if field_path == "/status" else "[]"),
+                        reason="将主张调整为与当前证据和依赖相容的最小状态。",
+                    )
+                    for (object_id, field_path), obligation_keys in grouped.items()
+                ]
+            )
+        else:
+            candidate = ClosureRepairOutputV2(
+                operations=[
+                    (
+                        ClaimStatusRepairOutputV2(
+                            operation_type="claim_status",
+                            obligation_keys=obligation_keys,
+                            object_id=object_id,
+                            field_path="/status",
+                            value=ClaimStatus.unresolved,
+                            reason="将主张调整为与当前证据和依赖相容的最小状态。",
+                        )
+                        if field_path == "/status"
+                        else ClaimDependenciesRepairOutputV2(
+                            operation_type="claim_dependencies",
+                            obligation_keys=obligation_keys,
+                            object_id=object_id,
+                            field_path="/dependency_claim_refs",
+                            value=[],
+                            reason="将主张调整为与当前证据和依赖相容的最小状态。",
+                        )
+                    )
+                    for (object_id, field_path), obligation_keys in grouped.items()
+                ]
+            )
         usage = _zero_usage()
         raw_output = candidate.model_dump_json()
         request.emit("model.completed", "closure_repair", {"usage": usage})
@@ -447,7 +477,7 @@ class FakeProvider:
             "closure_repair",
             {
                 "component_id": request.component_id,
-                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "schema_id": schema_id,
                 "attempt_no": 1,
                 "protocol": "fake_strict_schema",
                 "output_hash": sha256(raw_output.encode("utf-8")).hexdigest(),

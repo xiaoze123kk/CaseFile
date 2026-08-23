@@ -102,10 +102,13 @@ def _load_suite(path: Path) -> tuple[GoldenScenario, ...]:
 
 
 def _base_document(repo_root: Path) -> dict[str, Any]:
-    return json.loads(
-        (repo_root / "fixtures/casefiles/restart_loop.casefile.json").read_text(
-            encoding="utf-8"
-        )
+    return cast(
+        dict[str, Any],
+        json.loads(
+            (repo_root / "fixtures/casefiles/restart_loop.casefile.json").read_text(
+                encoding="utf-8"
+            )
+        ),
     )
 
 
@@ -666,6 +669,7 @@ def main() -> None:
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--api-key")
     parser.add_argument("--report-path", type=Path)
+    parser.add_argument("--baseline-report", type=Path)
     args = parser.parse_args()
     if args.suite == "capability":
         _run_capability_cli(args)
@@ -694,6 +698,7 @@ def main() -> None:
 def _run_capability_cli(args: argparse.Namespace) -> None:
     from casefile.benchmark.closure_repair_capability import (
         CapabilityContractError,
+        compare_controlled_experiment_reports,
         run_capability_benchmark,
     )
 
@@ -710,7 +715,7 @@ def _run_capability_cli(args: argparse.Namespace) -> None:
         blocked_reason = "credential_missing"
     if blocked_reason is not None:
         report: dict[str, Any] = {
-            "schema_version": "casefile-closure-repair-benchmark-report-v2",
+            "schema_version": "casefile-closure-repair-benchmark-report-v3",
             "suite_kind": "capability",
             "evaluation_scope": "production_kernel",
             "release_gate_eligible": False,
@@ -735,6 +740,13 @@ def _run_capability_cli(args: argparse.Namespace) -> None:
                 suite_path=args.suite_path,
                 artifact_dir=artifact_dir,
             ).as_dict()
+            if args.baseline_report is not None:
+                baseline = json.loads(args.baseline_report.read_text(encoding="utf-8"))
+                if not isinstance(baseline, dict):
+                    raise CapabilityContractError("capability_baseline_report_invalid")
+                report["controlled_experiment_comparison"] = (
+                    compare_controlled_experiment_reports(baseline, report)
+                )
         except CapabilityContractError as error:
             raise SystemExit(str(error)) from error
     rendered = json.dumps(report, ensure_ascii=False, indent=2)

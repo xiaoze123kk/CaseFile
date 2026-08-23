@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "agent_id": "closure_repair",
+  "version": "closure-repair-v2",
+  "previous_version": "closure-repair-v1",
+  "change_summary": "将闭包修复动作升级为服务端声明的强类型 value 契约。",
+  "runtime": {
+    "agent_version": "closure-repair-agent-v2",
+    "toolset_version": "closure-repair-tools-v1"
+  },
+  "fragments": {
+    "repair": {
+      "file": "fragments/repair.md",
+      "sha256": "533a445ab54c53d31d864501799dadcd77bd35307a1d2571270c9b016c8d1b2f"
+    }
+  },
+  "components": {
+    "repair": {
+      "instruction_fragments": [
+        "repair"
+      ],
+      "input_contract_id": "closure-repair-input-v2",
+      "output_schema_id": "closure-repair-output-v2",
+      "tool_policy_id": "closure-repair-no-tools-v1"
+    }
+  }
+}

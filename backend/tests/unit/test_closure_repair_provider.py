@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
-
 from casefile.agent_runtime import (
     CLOSURE_REPAIR_PROMPT_VERSION,
-    ClosureRepairOutputV1,
+    ClosureRepairOutputV2,
     ClosureRepairRequest,
     DeepSeekAgentsProvider,
     FakeProvider,
@@ -19,22 +18,27 @@ from casefile.agent_runtime import (
 )
 from casefile.agent_runtime.closure_repair_prompt import render_closure_repair_prompt
 from casefile.agent_runtime.provider_adapters.protocols import ProviderProtocolError
-from casefile.agent_runtime.structured_output import validate_model_json
+from casefile.agent_runtime.structured_output import (
+    compile_deepseek_strict_schema,
+    validate_model_json,
+)
 from casefile.contracts import ContractValidationError
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V2, MutationSet, UpdateField
 from casefile.domain.logical_mutation.repair.engine import run_closure_repair
 from casefile.domain.logical_mutation.repair.models import (
-    ClosureRepairContextV1,
+    ClosureRepairContextV2,
+    RepairAllowedWrite,
     RepairContextObject,
     RepairObjectPaths,
     ScopedRepairObligation,
 )
 from casefile.domain.verification_engine import VerificationEngine
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _context() -> ClosureRepairContextV1:
+def _context() -> ClosureRepairContextV2:
     paths = RepairObjectPaths("claim_subject", ("/status",))
     obligation = ScopedRepairObligation(
         obligation_key="obligation-1",
@@ -44,8 +48,8 @@ def _context() -> ClosureRepairContextV1:
         effective_repair_kinds=("update_claim_status",),
         allowed_paths=(paths,),
     )
-    return ClosureRepairContextV1(
-        context_version="closure-repair-context-v1",
+    return ClosureRepairContextV2(
+        context_version="closure-repair-context-v2",
         scope_version="closure-repair-scope-v1",
         closure_policy_version="logical-mutation-v2",
         repair_policy_version="closure-repair-policy-v1",
@@ -73,6 +77,21 @@ def _context() -> ClosureRepairContextV1:
         max_context_objects=24,
         max_write_objects=6,
         context_hash="a" * 64,
+        allowed_writes=(
+            RepairAllowedWrite(
+                object_id="claim_subject",
+                field_path="/status",
+                obligation_keys=("obligation-1",),
+                current_value="supported",
+                value_schema={
+                    "type": "string",
+                    "enum": [
+                        "unsupported", "partially_supported", "supported",
+                        "refuted", "disputed", "unresolved",
+                    ],
+                },
+            ),
+        ),
     )
 
 
@@ -102,10 +121,11 @@ def _candidate() -> dict[str, Any]:
     return {
         "operations": [
             {
+                "operation_type": "claim_status",
                 "obligation_keys": ["obligation-1"],
                 "object_id": "claim_subject",
                 "field_path": "/status",
-                "value_json": '"unresolved"',
+                "value": "unresolved",
                 "reason": "解除不相容依赖造成的状态冲突。",
             }
         ]
@@ -115,23 +135,23 @@ def _candidate() -> dict[str, Any]:
 def test_closure_repair_prompt_package_binds_frozen_contracts() -> None:
     rendered = render_closure_repair_prompt(_request())
 
-    assert rendered.package_version == "closure-repair-v1"
+    assert rendered.package_version == "closure-repair-v2"
     assert rendered.component_id == "repair"
-    assert rendered.input_contract_id == "closure-repair-input-v1"
-    assert rendered.output_schema_id == "closure-repair-output-v1"
+    assert rendered.input_contract_id == "closure-repair-input-v2"
+    assert rendered.output_schema_id == "closure-repair-output-v2"
     assert rendered.tool_policy_id == "closure-repair-no-tools-v1"
     assert "不得声明闭包成功" in rendered.instructions
     assert '"round_no":1' in rendered.input_text
 
 
-def test_closure_repair_output_is_strict_and_value_json_is_reparsed() -> None:
+def test_closure_repair_output_is_strict_and_typed_value_is_adapted() -> None:
     with pytest.raises(ValidationError):
-        ClosureRepairOutputV1.model_validate(
+        ClosureRepairOutputV2.model_validate(
             {**_candidate(), "closure_succeeded": True}
         )
     with pytest.raises(ContractValidationError):
         validate_model_json(
-            ClosureRepairOutputV1,
+            ClosureRepairOutputV2,
             json.dumps({**_candidate(), "closure_succeeded": True}),
             discard_forbidden_fields=False,
         )
@@ -150,9 +170,47 @@ def test_closure_repair_output_is_strict_and_value_json_is_reparsed() -> None:
     assert proposer.results[0].usage["requests"] == 0
     completed = next(item for item in events if item[0] == "agent.model_call.completed")
     assert completed[1] == "closure_repair"
-    assert completed[2]["schema_id"] == "closure-repair-output-v1"
+    assert completed[2]["schema_id"] == "closure-repair-output-v2"
     assert completed[2]["_raw_output"]
     assert completed[2]["raw_output_truncated"] is False
+
+
+@pytest.mark.parametrize(
+    "operation",
+    (
+        {**_candidate()["operations"][0], "value": "unverified"},
+        {**_candidate()["operations"][0], "value": {"status": "unresolved"}},
+        {
+            "operation_type": "claim_status",
+            "obligation_keys": ["obligation-1"],
+            "object_id": "claim_subject",
+            "field_path": "/dependency_claim_refs",
+            "value": "unresolved",
+            "reason": "错误的操作与路径组合。",
+        },
+        {
+            "operation_type": "claim_dependencies",
+            "obligation_keys": ["obligation-1"],
+            "object_id": "claim_subject",
+            "field_path": "/dependency_claim_refs",
+            "value": [{"object_type": "entity", "object_id": "claim_other"}],
+            "reason": "错误的引用类型。",
+        },
+        {**_candidate()["operations"][0], "unexpected": True},
+    ),
+)
+def test_closure_repair_output_v2_rejects_invalid_typed_operations(
+    operation: dict[str, Any],
+) -> None:
+    with pytest.raises(ValidationError):
+        ClosureRepairOutputV2.model_validate({"operations": [operation]})
+
+
+def test_closure_repair_output_v2_compiles_for_deepseek_strict_transport() -> None:
+    schema = compile_deepseek_strict_schema(ClosureRepairOutputV2)
+
+    assert schema["type"] == "object"
+    assert "anyOf" in json.dumps(schema)
 
 
 def test_provider_repair_proposer_rejects_invalid_value_json() -> None:
@@ -169,10 +227,14 @@ def test_provider_repair_proposer_rejects_invalid_value_json() -> None:
         model_id="fake",
         api_key=None,
         emit=emit,
+        prompt_version="closure-repair-v1",
     )
 
     with pytest.raises(ValueError, match="repair_proposal_value_json_invalid"):
-        proposer.propose(_context(), round_no=1)
+        proposer.propose(
+            replace(_context(), context_version="closure-repair-context-v1"),
+            round_no=1,
+        )
 
 
 def _provider_repair_case(rule: str) -> tuple[dict[str, Any], MutationSet]:
@@ -332,9 +394,9 @@ def test_live_adapters_use_dedicated_strict_schema_and_normalized_usage(
 
     assert result.candidate.operations[0].field_path == "/status"
     assert result.usage["total_tokens"] == 30
-    assert captured["output_type"] is ClosureRepairOutputV1
+    assert captured["output_type"] is ClosureRepairOutputV2
     assert captured["component_id"] == "closure_repair_round_1"
-    assert captured["schema_id"] == "closure-repair-output-v1"
+    assert captured["schema_id"] == "closure-repair-output-v2"
     assert captured["strict_validation"] is True
     assert captured.get("deepseek_output_protocol") == expected_protocol
 

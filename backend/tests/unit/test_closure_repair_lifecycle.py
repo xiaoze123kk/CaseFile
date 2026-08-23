@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from casefile.application.closure_repair import (
     closure_repair_envelope,
     primary_mutation_from_suggestions,

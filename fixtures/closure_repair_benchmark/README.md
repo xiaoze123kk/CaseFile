@@ -35,4 +35,6 @@ uv run --project backend python -m casefile.benchmark closure-repair `
   --report-path var/benchmark/closure-repair-capability-deepseek.json
 ```
 
+当前 Repair Agent 使用 `closure-repair-context-v2` 与 `closure-repair-output-v2`：服务端冻结 `allowed_writes/value_schema`，模型直接输出强类型 `value`，领域层仍独立执行 Scope、Simulation 与 Rebase Proof。需要和历史 v1 基线做受控实验比较时增加 `--baseline-report <v1-report.json>`；严格 `comparison_fingerprint` 仍只用于完全相同 contract/harness 的重复运行。
+
 Suite Report 旁会生成逐 Trial artifact 目录。Capability 首版不设能力发布阈值；任何 SafetyGrader 违规仍使报告失败。报告明确标记为 `production_kernel`，不验证 API、Worker、PostgreSQL、lease、SSE 或 Apply/Undo/Redo，因此不能单独作为完整生产发布证据。

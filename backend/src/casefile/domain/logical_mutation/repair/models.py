@@ -224,6 +224,26 @@ class RepairContextObject:
 
 
 @dataclass(frozen=True, slots=True)
+class RepairAllowedWrite:
+    """One server-authored writable field and its JSON value affordance."""
+
+    object_id: str
+    field_path: str
+    obligation_keys: tuple[str, ...]
+    current_value: Any
+    value_schema: Mapping[str, Any]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "object_id": self.object_id,
+            "field_path": self.field_path,
+            "obligation_keys": list(self.obligation_keys),
+            "current_value": deepcopy(self.current_value),
+            "value_schema": deepcopy(dict(self.value_schema)),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ClosureRepairContextV1:
     context_version: str
     scope_version: str
@@ -273,6 +293,19 @@ class ClosureRepairContextV1:
 
     def as_dict(self) -> dict[str, object]:
         return {**self.hash_payload(), "context_hash": self.context_hash}
+
+
+@dataclass(frozen=True, slots=True)
+class ClosureRepairContextV2(ClosureRepairContextV1):
+    """V2 context adds exact server-owned write affordances."""
+
+    allowed_writes: tuple[RepairAllowedWrite, ...]
+
+    def hash_payload(self) -> dict[str, object]:
+        return {
+            **ClosureRepairContextV1.hash_payload(self),
+            "allowed_writes": [item.as_dict() for item in self.allowed_writes],
+        }
 
 
 @dataclass(frozen=True, slots=True)

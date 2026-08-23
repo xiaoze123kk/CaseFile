@@ -16,9 +16,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -46,6 +43,8 @@ from casefile.data_postgres.models import (
 )
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -172,7 +171,7 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             )
             assert [step.component_id for step in steps] == ["closure_repair_round_1"]
             assert steps[0].status == "succeeded"
-            assert steps[0].component_version == "closure-repair-v1"
+            assert steps[0].component_version == "closure-repair-v2"
             calls = list(
                 session.scalars(
                     select(AgentModelCall).where(AgentModelCall.agent_step_run_id == steps[0].id)
@@ -180,7 +179,7 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             )
             assert len(calls) == 1
             assert calls[0].status == "succeeded"
-            assert calls[0].prompt_version == "closure-repair-v1"
+            assert calls[0].prompt_version == "closure-repair-v2"
             patch_set = session.scalar(
                 select(AgentPatchSet).where(AgentPatchSet.task_run_id == chat_task_id)
             )

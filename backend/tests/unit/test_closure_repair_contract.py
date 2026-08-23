@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from casefile.domain.logical_mutation import (
     CLOSURE_POLICY_V1,
     CLOSURE_POLICY_V2,

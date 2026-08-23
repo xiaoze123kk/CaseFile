@@ -7,6 +7,12 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -15,12 +21,15 @@ from casefile.agent_runtime.chat_tools import (
     ChatToolLedger,
 )
 from casefile.agent_runtime.closure_repair import (
-    CLOSURE_REPAIR_SCHEMA_ID,
     ClosureRepairOutputV1,
+    ClosureRepairOutputV2,
     ClosureRepairProviderResult,
     ClosureRepairRequest,
 )
-from casefile.agent_runtime.closure_repair_prompt import render_closure_repair_prompt
+from casefile.agent_runtime.closure_repair_prompt import (
+    closure_repair_output_type,
+    render_closure_repair_prompt,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -101,12 +110,6 @@ from casefile.agent_runtime.provider_adapters.shared import (
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 
 
 class DeepSeekAgentsProvider:
@@ -121,21 +124,25 @@ class DeepSeekAgentsProvider:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
         rendered = render_closure_repair_prompt(request)
+        output_type = closure_repair_output_type(rendered)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
                 instructions=rendered.instructions,
                 input_text=rendered.input_text,
-                output_type=ClosureRepairOutputV1,
+                output_type=output_type,
                 stage="closure_repair",
                 component_id=request.component_id,
-                schema_id=CLOSURE_REPAIR_SCHEMA_ID,
+                schema_id=rendered.output_schema_id,
                 deepseek_output_protocol="strict_tool",
                 strict_validation=True,
             )
         )
         return ClosureRepairProviderResult(
-            candidate=ClosureRepairOutputV1.model_validate(candidate),
+            candidate=cast(
+                ClosureRepairOutputV1 | ClosureRepairOutputV2,
+                output_type.model_validate(candidate),
+            ),
             usage=usage,
         )
 

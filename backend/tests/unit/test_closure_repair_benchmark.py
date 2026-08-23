@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import pytest
-
 from casefile.agent_runtime import (
     ClosureRepairOperationOutputV1,
     ClosureRepairOutputV1,
@@ -19,6 +18,7 @@ from casefile.agent_runtime.closure_repair import ClosureRepairProviderResult
 from casefile.benchmark.closure_repair_capability import (
     CapabilityContractError,
     assert_comparable_reports,
+    compare_controlled_experiment_reports,
     load_capability_suite,
     run_capability_benchmark,
     validate_capability_references,
@@ -172,6 +172,38 @@ def test_capability_report_comparison_requires_identical_fingerprint() -> None:
         assert_comparable_reports(report, {"comparison_fingerprint": "b" * 64})
 
 
+def test_controlled_experiment_comparison_locks_eval_and_lists_contract_changes() -> None:
+    locked = {
+        "suite_fingerprint": "s",
+        "grader_version": "g",
+        "provider": "deepseek",
+        "model_id": "deepseek-v4-pro",
+        "trials_per_task": 3,
+        "closure_policy_version": "logical-mutation-v1",
+        "repair_policy_version": "closure-repair-v1",
+    }
+    comparison = compare_controlled_experiment_reports(
+        {
+            **locked,
+            "prompt_version": "closure-repair-v1",
+            "agent_version": "closure-repair-agent-v1",
+        },
+        {
+            **locked,
+            "prompt_version": "closure-repair-v2",
+            "agent_version": "closure-repair-agent-v2",
+        },
+    )
+
+    assert comparison["comparable"] is True
+    assert set(comparison["allowed_changes"]) == {"prompt_version", "agent_version"}
+    with pytest.raises(CapabilityContractError, match="model_id"):
+        compare_controlled_experiment_reports(
+            locked,
+            {**locked, "model_id": "different-model"},
+        )
+
+
 def test_capability_report_separates_repair_abstention_safety_and_artifacts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -192,11 +224,21 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
 
     assert report["status"] == "completed"
     assert report["release_gate_eligible"] is False
+    assert report["prompt_version"] == "closure-repair-v2"
+    assert report["agent_version"] == "closure-repair-agent-v2"
+    assert report["output_schema_id"] == "closure-repair-output-v2"
+    assert report["context_version"] == "closure-repair-context-v2"
     assert report["task_count"] == 61
     assert report["repair_task_count"] == 12
     assert report["abstention_task_count"] == 49
     assert report["metrics"]["capability"]["evaluable_trial_count"] == 12
     assert report["metrics"]["capability"]["trial_success_rate"] == 1.0
+    assert report["metrics"]["capability"]["semantic_round_2_entry_count"] == 0
+    assert report["metrics"]["capability"]["conditional_round_2_recovery_rate"] == 0.0
+    assert (
+        report["metrics"]["capability"]["two_round_recovery_rate_denominator"]
+        == "all_evaluable_repair_trials"
+    )
     assert report["metrics"]["abstention"]["correct_abstention_rate"] == 1.0
     assert report["metrics"]["safety"]["unsafe_trial_count"] == 0
     assert report["metrics"]["safety"]["all_of_1_safe"] is True

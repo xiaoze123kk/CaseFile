@@ -13,7 +13,14 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
-from casefile.agent_runtime import DeepSeekAgentsProvider, ProviderRepairProposer
+from casefile.agent_runtime import (
+    CLOSURE_REPAIR_AGENT_VERSION,
+    CLOSURE_REPAIR_PROMPT_VERSION,
+    CLOSURE_REPAIR_SCHEMA_ID,
+    CLOSURE_REPAIR_TOOLSET_VERSION,
+    DeepSeekAgentsProvider,
+    ProviderRepairProposer,
+)
 from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
     CLOSURE_POLICY_V2,
@@ -22,6 +29,7 @@ from casefile.domain.logical_mutation import (
     assess_closure_repair,
 )
 from casefile.domain.logical_mutation.repair import (
+    REPAIR_CONTEXT_V2,
     REPAIR_POLICY_V1,
     ClosureRepairContextV1,
     ClosureRepairResult,
@@ -47,9 +55,9 @@ from .eval_core import (
 )
 
 CAPABILITY_SCHEMA_VERSION = "casefile-closure-repair-capability-v1"
-CAPABILITY_REPORT_VERSION = "casefile-closure-repair-benchmark-report-v2"
+CAPABILITY_REPORT_VERSION = "casefile-closure-repair-benchmark-report-v3"
 GRADER_VERSION = "closure-repair-capability-grader-v1"
-HARNESS_VERSION = "closure-repair-production-kernel-v1"
+HARNESS_VERSION = "closure-repair-production-kernel-v2"
 DEFAULT_CAPABILITY_RELATIVE = Path(
     "fixtures/closure_repair_benchmark/capability/v1/suite.json"
 )
@@ -775,6 +783,10 @@ def _report(
     infra = [row for row in rows if row.infrastructure_failure is not None]
     agent_successes = sum(row.passed for row in evaluable_agent)
     capability_rate = _rate(agent_successes, len(evaluable_agent))
+    round_two_entries = sum(row.outcome.round_count == 2 for row in evaluable_agent)
+    round_two_successes = sum(
+        row.passed and row.outcome.round_count == 2 for row in evaluable_agent
+    )
     git = _git_identity(repo_root)
     module_path = Path(__file__).resolve()
     grader_fingerprint = _file_fingerprint((module_path,), GRADER_VERSION)
@@ -783,6 +795,12 @@ def _report(
             module_path,
             module_path.with_name("eval_core.py"),
             module_path.with_name("closure_repair_eval.py"),
+            repo_root / "backend/src/casefile/agent_runtime/closure_repair.py",
+            repo_root / "backend/src/casefile/domain/logical_mutation/repair/context.py",
+            repo_root
+            / "backend/src/casefile/agent_runtime/prompts/closure_repair/v2/manifest.json",
+            repo_root
+            / "backend/src/casefile/agent_runtime/prompts/closure_repair/v2/fragments/repair.md",
         ),
         HARNESS_VERSION,
     )
@@ -807,9 +825,11 @@ def _report(
         ],
         "provider": "deepseek",
         "model_id": model_id,
-        "prompt_version": "closure-repair-v1",
-        "agent_version": "closure-repair-agent-v1",
-        "toolset_version": "closure-repair-tools-v1",
+        "prompt_version": CLOSURE_REPAIR_PROMPT_VERSION,
+        "agent_version": CLOSURE_REPAIR_AGENT_VERSION,
+        "toolset_version": CLOSURE_REPAIR_TOOLSET_VERSION,
+        "output_schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+        "context_version": REPAIR_CONTEXT_V2,
         "closure_policy_version": ACTIVE_APPLY_POLICY,
         "repair_policy_version": REPAIR_POLICY_V1,
         "source": git,
@@ -844,8 +864,14 @@ def _report(
                     len(evaluable_agent),
                 ),
                 "two_round_recovery_rate": _rate(
-                    sum(row.passed and row.outcome.round_count == 2 for row in evaluable_agent),
+                    round_two_successes,
                     len(evaluable_agent),
+                ),
+                "two_round_recovery_rate_denominator": "all_evaluable_repair_trials",
+                "semantic_round_2_entry_count": round_two_entries,
+                "semantic_round_2_success_count": round_two_successes,
+                "conditional_round_2_recovery_rate": _rate(
+                    round_two_successes, round_two_entries
                 ),
             },
             "abstention": {
@@ -871,6 +897,11 @@ def _report(
                 "latency_ms_total": round(sum(row.latency_ms for row in rows), 3),
                 "companion_operations": sum(row.outcome.companion_operation_count for row in rows),
                 "changed_objects": sum(row.outcome.changed_object_count for row in rows),
+                "protocol_repair_count": sum(
+                    event.get("event_type") == "model.output_repair_started"
+                    for row in rows
+                    for event in row.transcript.events
+                ),
             },
             "infrastructure_failure_count": len(infra),
         },
@@ -881,8 +912,17 @@ def _report(
         _canonical_bytes(
             {key: report[key] for key in (
                 "suite_fingerprint", "grader_fingerprint", "harness_fingerprint",
-                "provider", "model_id", "prompt_version", "closure_policy_version",
-                "repair_policy_version",
+                "provider", "model_id", "prompt_version", "agent_version",
+                "toolset_version", "output_schema_id", "context_version",
+                "closure_policy_version", "repair_policy_version", "trials_per_task",
+            )}
+        )
+    ).hexdigest()
+    report["controlled_experiment_fingerprint"] = sha256(
+        _canonical_bytes(
+            {key: report[key] for key in (
+                "suite_fingerprint", "grader_version", "provider", "model_id",
+                "trials_per_task", "closure_policy_version", "repair_policy_version",
             )}
         )
     ).hexdigest()
@@ -956,10 +996,53 @@ def assert_comparable_reports(
         raise CapabilityContractError("capability_report_fingerprint_mismatch")
 
 
+def compare_controlled_experiment_reports(
+    baseline: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Compare v1/v2 runs while locking suite, grader, model, trials, and policies."""
+
+    locked_fields = (
+        "suite_fingerprint",
+        "grader_version",
+        "provider",
+        "model_id",
+        "trials_per_task",
+        "closure_policy_version",
+        "repair_policy_version",
+    )
+    mismatches = [
+        key for key in locked_fields if baseline.get(key) != candidate.get(key)
+    ]
+    if mismatches:
+        raise CapabilityContractError(
+            "capability_controlled_experiment_mismatch:" + ",".join(mismatches)
+        )
+    allowed_changes = (
+        "context_version",
+        "output_schema_id",
+        "prompt_version",
+        "agent_version",
+        "toolset_version",
+        "harness_version",
+        "harness_fingerprint",
+        "comparison_fingerprint",
+    )
+    return {
+        "comparable": True,
+        "locked_fields": {key: candidate.get(key) for key in locked_fields},
+        "allowed_changes": {
+            key: {"before": baseline.get(key), "after": candidate.get(key)}
+            for key in allowed_changes
+            if baseline.get(key) != candidate.get(key)
+        },
+    }
+
+
 __all__ = [
     "CAPABILITY_SCHEMA_VERSION",
     "CapabilityContractError",
     "assert_comparable_reports",
+    "compare_controlled_experiment_reports",
     "load_capability_suite",
     "run_capability_benchmark",
     "validate_capability_references",

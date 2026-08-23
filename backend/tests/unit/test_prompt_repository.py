@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -44,13 +43,16 @@ EXPECTED_CURRENT_VERSIONS = {
     "casefile_chat_context_compactor": "casefile-chat-context-compactor-v1",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
-    "closure_repair": "closure-repair-v1",
+    "closure_repair": "closure-repair-v2",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
     ("closure_repair", "closure-repair-v1"): {
         "fragment:repair": "e27f2e5f4d105d9718816c5c38abbb6405b1f9475e6a0f22f09a69189d58b47d"
+    },
+    ("closure_repair", "closure-repair-v2"): {
+        "fragment:repair": "533a445ab54c53d31d864501799dadcd77bd35307a1d2571270c9b016c8d1b2f"
     },
     ("brief_polish", "brief-polish-v2"): {
         "system": "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"

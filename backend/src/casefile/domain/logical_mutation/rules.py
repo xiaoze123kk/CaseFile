@@ -342,7 +342,7 @@ def _issue(
         if operation.object_id in targets
     )
     object_roles = _legacy_object_roles(code, object_ids)
-    return ClosureIssue(  # type: ignore[arg-type]
+    return ClosureIssue(
         code,
         cast(ClosureLevel, level),
         title,

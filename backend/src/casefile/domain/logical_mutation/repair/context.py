@@ -8,6 +8,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING, Any, cast
 
 import rfc8785
+from casefile_contracts import Status as ClaimStatus
 
 from casefile.domain.logical_mutation.graph import (
     COLLECTION_BY_TYPE,
@@ -21,7 +22,8 @@ from casefile.domain.logical_mutation.models import (
 )
 from casefile.domain.logical_mutation.repair.models import (
     ClosureRepairAssessment,
-    ClosureRepairContextV1,
+    ClosureRepairContextV2,
+    RepairAllowedWrite,
     RepairContextObject,
     RepairScopeV1,
 )
@@ -35,6 +37,7 @@ if TYPE_CHECKING:
     from casefile.domain.verification_engine import MutationSimulation
 
 REPAIR_CONTEXT_V1 = "closure-repair-context-v1"
+REPAIR_CONTEXT_V2 = "closure-repair-context-v2"
 
 
 class RepairContextError(ValueError):
@@ -50,7 +53,7 @@ def build_closure_repair_context(
     scope: RepairScopeV1,
     *,
     original_intent: str,
-) -> ClosureRepairContextV1:
+) -> ClosureRepairContextV2:
     intent = original_intent.strip()
     if not intent:
         raise RepairContextError("repair_context_intent_missing")
@@ -86,7 +89,7 @@ def build_closure_repair_context(
     )
     relevant_edges = _relevant_edges(simulation.document, set(ordered_ids))
     kwargs: dict[str, Any] = {
-        "context_version": REPAIR_CONTEXT_V1,
+        "context_version": REPAIR_CONTEXT_V2,
         "scope_version": scope.scope_version,
         "closure_policy_version": scope.closure_policy_version,
         "repair_policy_version": scope.repair_policy_version,
@@ -99,6 +102,7 @@ def build_closure_repair_context(
         "obligations": scope.obligations,
         "objects": objects,
         "allowed_paths": scope.allowed_paths,
+        "allowed_writes": _allowed_writes(scope, objects_by_id),
         "protected_paths": scope.protected_paths,
         "structure_lock_ids": scope.structure_lock_ids,
         "dependency_paths": dependency_paths,
@@ -107,11 +111,76 @@ def build_closure_repair_context(
         "max_context_objects": scope.max_context_objects,
         "max_write_objects": scope.max_write_objects,
     }
-    unhashed = ClosureRepairContextV1(**kwargs, context_hash="")
+    unhashed = ClosureRepairContextV2(**kwargs, context_hash="")
     context_hash = hashlib.sha256(
         rfc8785.dumps(cast(Any, unhashed.hash_payload()))
     ).hexdigest()
-    return ClosureRepairContextV1(**kwargs, context_hash=context_hash)
+    return ClosureRepairContextV2(**kwargs, context_hash=context_hash)
+
+
+def _allowed_writes(
+    scope: RepairScopeV1,
+    objects_by_id: Mapping[str, tuple[str, Mapping[str, Any]]],
+) -> tuple[RepairAllowedWrite, ...]:
+    claim_ids = tuple(
+        sorted(
+            object_id
+            for object_id in {*scope.read_write_object_ids, *scope.read_only_object_ids}
+            if objects_by_id.get(object_id, (None,))[0] == "claim"
+        )
+    )
+    writes: list[RepairAllowedWrite] = []
+    for paths in sorted(scope.allowed_paths, key=lambda item: item.object_id):
+        object_value = objects_by_id[paths.object_id][1]
+        for field_path in sorted(paths.field_paths):
+            obligation_keys = tuple(
+                item.obligation_key
+                for item in scope.obligations
+                if any(
+                    allowed.object_id == paths.object_id
+                    and field_path in allowed.field_paths
+                    for allowed in item.allowed_paths
+                )
+            )
+            if field_path == "/status":
+                current_value = deepcopy(object_value.get("status"))
+                value_schema: Mapping[str, Any] = {
+                    "type": "string",
+                    "enum": [item.value for item in ClaimStatus],
+                }
+            elif field_path == "/dependency_claim_refs":
+                current_value = deepcopy(object_value.get("dependency_claim_refs", []))
+                value_schema = {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["object_type", "object_id"],
+                        "properties": {
+                            "object_type": {"const": "claim"},
+                            "object_id": {
+                                "type": "string",
+                                "enum": [
+                                    object_id
+                                    for object_id in claim_ids
+                                    if object_id != paths.object_id
+                                ],
+                            },
+                        },
+                    },
+                }
+            else:
+                raise RepairContextError("repair_context_allowed_path_unknown")
+            writes.append(
+                RepairAllowedWrite(
+                    object_id=paths.object_id,
+                    field_path=field_path,
+                    obligation_keys=obligation_keys,
+                    current_value=current_value,
+                    value_schema=value_schema,
+                )
+            )
+    return tuple(writes)
 
 
 def _validate_inputs(

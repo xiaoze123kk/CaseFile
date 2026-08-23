@@ -58,7 +58,9 @@ from casefile.agent_runtime.closure_repair import (
     CLOSURE_REPAIR_AGENT_VERSION,
     CLOSURE_REPAIR_TOOLSET_VERSION,
     ClosureRepairOutputV1,
+    ClosureRepairOutputV2,
     ClosureRepairPromptInputV1,
+    ClosureRepairPromptInputV2,
 )
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionInputV1,
@@ -154,6 +156,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-finalizer-input-v2": ChatFinalizerInputV2,
         "casefile-chat-context-compactor-input-v1": ThreadCompactionInputV1,
         "closure-repair-input-v1": ClosureRepairPromptInputV1,
+        "closure-repair-input-v2": ClosureRepairPromptInputV2,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -175,6 +178,7 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "casefile-chat-evidence-v1": ChatEvidenceOutputV1,
         "casefile-chat-thread-memory-delta-v1": ThreadMemoryDelta,
         "closure-repair-output-v1": ClosureRepairOutputV1,
+        "closure-repair-output-v2": ClosureRepairOutputV2,
     }
 )
 TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
@@ -272,6 +276,7 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("casefile-single-agent-v2", CHAT_TOOLSET_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V3_VERSION),
         ("casefile-single-agent-v2", CHAT_TOOLSET_V4_VERSION),
+        ("closure-repair-agent-v1", CLOSURE_REPAIR_TOOLSET_VERSION),
         (CLOSURE_REPAIR_AGENT_VERSION, CLOSURE_REPAIR_TOOLSET_VERSION),
     }
 )

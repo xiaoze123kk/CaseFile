@@ -100,6 +100,7 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     ),
     "casefile-chat-context-compactor-v1": frozenset({"compact"}),
     "closure-repair-v1": frozenset({"repair"}),
+    "closure-repair-v2": frozenset({"repair"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

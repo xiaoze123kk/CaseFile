@@ -4,7 +4,6 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-
 from casefile.domain.logical_mutation import (
     CLOSURE_POLICY_V2,
     ClosureObjectRef,
@@ -363,6 +362,33 @@ def test_context_excludes_unscoped_impact_objects_and_edges() -> None:
     assert context.relevant_edges[0]["prerequisite_id"] == "claim_b"
     assert context.relevant_edges[0]["dependent_id"] == "claim_a"
     assert context.dependency_paths == (("claim_a", "claim_b"),)
+    assert [
+        (item.object_id, item.field_path) for item in context.allowed_writes
+    ] == [
+        ("claim_a", "/dependency_claim_refs"),
+        ("claim_a", "/status"),
+    ]
+    dependency_write = context.allowed_writes[0]
+    assert dependency_write.obligation_keys == (context.obligations[0].obligation_key,)
+    assert dependency_write.current_value == [
+        {"object_type": "claim", "object_id": "claim_b"},
+        {"object_type": "claim", "object_id": "claim_noise"},
+    ]
+    assert dependency_write.value_schema["items"]["properties"]["object_id"][
+        "enum"
+    ] == ["claim_b"]
+    status_write = context.allowed_writes[1]
+    assert status_write.value_schema == {
+        "type": "string",
+        "enum": [
+            "unsupported",
+            "partially_supported",
+            "supported",
+            "refuted",
+            "disputed",
+            "unresolved",
+        ],
+    }
 
 
 def test_context_hash_is_stable_and_binds_candidate_and_intent() -> None:
