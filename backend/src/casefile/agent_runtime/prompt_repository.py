@@ -33,6 +33,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "casefile_chat_context_compactor",
     "reverse_parse",
     "idea_generation",
+    "closure_repair",
 )
 
 _VERSION_DIRECTORY = re.compile(r"^v[1-9][0-9]*$")
@@ -98,6 +99,7 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
         {"router", "rewrite", "chat", "analysis", "issue", "edit", "gate", "clarify", "scope"}
     ),
     "casefile-chat-context-compactor-v1": frozenset({"compact"}),
+    "closure-repair-v1": frozenset({"repair"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

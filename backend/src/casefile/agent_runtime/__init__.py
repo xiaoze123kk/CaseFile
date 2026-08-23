@@ -12,6 +12,18 @@ from casefile.agent_runtime.chat_tools import (
     ChatToolMetrics,
     chat_tool_manifest,
 )
+from casefile.agent_runtime.closure_repair import (
+    CLOSURE_REPAIR_AGENT_VERSION,
+    CLOSURE_REPAIR_PROMPT_VERSION,
+    CLOSURE_REPAIR_SCHEMA_ID,
+    CLOSURE_REPAIR_TOOLSET_VERSION,
+    ClosureRepairOperationOutputV1,
+    ClosureRepairOutputV1,
+    ClosureRepairProvider,
+    ClosureRepairProviderResult,
+    ClosureRepairRequest,
+    ProviderRepairProposer,
+)
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_LABELS,
     CANDIDATE_STRATEGY_VERSION,
@@ -71,11 +83,20 @@ from casefile.agent_runtime.providers import (
 
 __all__ = [
     "AgentProvider",
+    "CLOSURE_REPAIR_AGENT_VERSION",
+    "CLOSURE_REPAIR_PROMPT_VERSION",
+    "CLOSURE_REPAIR_SCHEMA_ID",
+    "CLOSURE_REPAIR_TOOLSET_VERSION",
     "CHAT_TOOLSET_VERSION",
     "CHAT_TOOLSET_V3_VERSION",
     "CHAT_TOOLSET_V4_VERSION",
     "ChatToolContext",
     "ChatToolMetrics",
+    "ClosureRepairOperationOutputV1",
+    "ClosureRepairOutputV1",
+    "ClosureRepairProvider",
+    "ClosureRepairProviderResult",
+    "ClosureRepairRequest",
     "chat_tool_manifest",
     "BriefAnchorExtractCandidate",
     "BriefAnchorExtractRequest",
@@ -118,6 +139,7 @@ __all__ = [
     "LEGACY_CONTEXT_POLICY_VERSION",
     "OpenAIAgentsProvider",
     "PolishMode",
+    "ProviderRepairProposer",
     "QueryRewriteOutput",
     "QueryRewriteResult",
     "ReverseParseCandidate",

@@ -268,6 +268,7 @@ def validate_model_json(
     planned_object_types: dict[str, str] | None = None,
     normalized_ref_paths: list[str] | None = None,
     normalized_time_paths: list[str] | None = None,
+    discard_forbidden_fields: bool = True,
 ) -> BaseModel:
     """Validate JSON and apply only deterministic, precisely located normalization."""
 
@@ -286,7 +287,11 @@ def validate_model_json(
     try:
         return output_type.model_validate(payload)
     except ValidationError as error:
-        removed = _discard_forbidden_fields(payload, error)
+        removed = (
+            _discard_forbidden_fields(payload, error)
+            if discard_forbidden_fields
+            else []
+        )
         normalized = _normalize_planned_object_ref_types(
             payload,
             error,

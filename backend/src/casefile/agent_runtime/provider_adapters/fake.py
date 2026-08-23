@@ -9,12 +9,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Literal, cast
 
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
@@ -25,6 +19,15 @@ from casefile.agent_runtime.chat_tools import (
     freeze_chat_tool_ledger,
     search_casefile_records,
 )
+from casefile.agent_runtime.closure_repair import (
+    CLOSURE_REPAIR_COMPONENT_ID,
+    CLOSURE_REPAIR_SCHEMA_ID,
+    ClosureRepairOperationOutputV1,
+    ClosureRepairOutputV1,
+    ClosureRepairProviderResult,
+    ClosureRepairRequest,
+)
+from casefile.agent_runtime.closure_repair_prompt import render_closure_repair_prompt
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -87,6 +90,12 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _validate_generated_descriptions,
 )
 from casefile.contracts import validate_casefile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 
 
 def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
@@ -377,6 +386,88 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
 
 class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
+
+    def repair_closure(
+        self,
+        request: ClosureRepairRequest,
+    ) -> ClosureRepairProviderResult:
+        rendered = render_closure_repair_prompt(request)
+        request.emit(
+            "model.started",
+            "closure_repair",
+            {
+                "model_id": request.model_id,
+                "attempt_no": 1,
+                "protocol": "fake_strict_schema",
+                "component_id": CLOSURE_REPAIR_COMPONENT_ID,
+                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+            },
+        )
+        request.emit(
+            "agent.model_call.started",
+            "closure_repair",
+            {
+                "component_id": CLOSURE_REPAIR_COMPONENT_ID,
+                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "attempt_no": 1,
+                "protocol": "fake_strict_schema",
+                "model_id": request.model_id,
+                "prompt_sha256": rendered.prompt_sha256,
+            },
+        )
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for obligation in request.context["obligations"]:
+            subject_id = str(obligation["subject_object_ids"][0])
+            paths = {
+                path
+                for item in obligation["allowed_paths"]
+                if item["object_id"] == subject_id
+                for path in item["field_paths"]
+            }
+            field_path = "/status" if "/status" in paths else sorted(paths)[0]
+            grouped.setdefault((subject_id, field_path), []).append(
+                str(obligation["obligation_key"])
+            )
+        candidate = ClosureRepairOutputV1(
+            operations=[
+                ClosureRepairOperationOutputV1(
+                    obligation_keys=obligation_keys,
+                    object_id=object_id,
+                    field_path=field_path,
+                    value_json="\"unresolved\"" if field_path == "/status" else "[]",
+                    reason="将主张调整为与当前证据和依赖相容的最小状态。",
+                )
+                for (object_id, field_path), obligation_keys in grouped.items()
+            ]
+        )
+        usage = _zero_usage()
+        raw_output = candidate.model_dump_json()
+        request.emit("model.completed", "closure_repair", {"usage": usage})
+        request.emit(
+            "agent.model_call.completed",
+            "closure_repair",
+            {
+                "component_id": CLOSURE_REPAIR_COMPONENT_ID,
+                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "attempt_no": 1,
+                "protocol": "fake_strict_schema",
+                "output_hash": sha256(raw_output.encode("utf-8")).hexdigest(),
+                "output_size_bytes": len(raw_output.encode("utf-8")),
+                "usage": usage,
+                "_raw_output": raw_output,
+                "raw_output_truncated": False,
+            },
+        )
+        request.emit(
+            "model.output_validated",
+            "closure_repair",
+            {
+                "protocol": "fake_strict_schema",
+                "attempt_count": 1,
+                "repaired": False,
+            },
+        )
+        return ClosureRepairProviderResult(candidate=candidate, usage=usage)
 
     def polish(self, request: BriefPolishRequest) -> BriefPolishResult:
         system_prompt_for_task("brief_polish", request.prompt_version)

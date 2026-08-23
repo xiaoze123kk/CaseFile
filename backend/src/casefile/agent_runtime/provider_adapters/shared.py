@@ -11,9 +11,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -23,6 +20,7 @@ from casefile.agent_runtime.chat_tools import (
     chat_tool_manifest,
     freeze_chat_tool_ledger,
 )
+from casefile.agent_runtime.closure_repair import ClosureRepairRequest
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
 )
@@ -61,6 +59,9 @@ from casefile.agent_runtime.structured_output import (
 )
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile_contracts import (
+    CaseFile,
+)
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
 
@@ -226,6 +227,7 @@ async def _run_auxiliary_agent(
         | ReverseParseRequest
         | IdeaGenerationRequest
         | ThreadCompactionRequest
+        | ClosureRepairRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
@@ -243,6 +245,7 @@ async def _run_auxiliary_agent(
     tools: list[Tool] | None = None,
     context: ChatToolContext | None = None,
     max_turns: int | None = None,
+    strict_validation: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
         "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
@@ -346,6 +349,7 @@ async def _run_auxiliary_agent(
                     planned_object_types=planned_object_types,
                     normalized_ref_paths=normalized_ref_paths,
                     normalized_time_paths=normalized_time_paths,
+                    discard_forbidden_fields=not strict_validation,
                 )
             else:
                 resolved_instructions = instructions
@@ -405,6 +409,7 @@ async def _run_auxiliary_agent(
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
                         normalized_time_paths=normalized_time_paths,
+                        discard_forbidden_fields=not strict_validation,
                     )
             if discarded_paths:
                 request.emit(
@@ -452,6 +457,14 @@ async def _run_auxiliary_agent(
                         "output_hash": sha256(serialized_output).hexdigest(),
                         "output_size_bytes": len(serialized_output),
                         "usage": usage,
+                        **(
+                            _retained_raw_output(
+                                raw_output_text
+                                or serialized_output.decode("utf-8")
+                            )
+                            if isinstance(request, ClosureRepairRequest)
+                            else {}
+                        ),
                     },
                 )
             request.emit(

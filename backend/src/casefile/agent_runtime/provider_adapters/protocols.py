@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from casefile.agent_runtime.closure_repair import (
+    ClosureRepairProviderResult,
+    ClosureRepairRequest,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -38,6 +42,11 @@ class GenerationProvider(Protocol):
 
 
 class AgentProvider(GenerationProvider, Protocol):
+    def repair_closure(
+        self,
+        request: ClosureRepairRequest,
+    ) -> ClosureRepairProviderResult: ...
+
     def polish(self, request: BriefPolishRequest) -> BriefPolishResult: ...
 
     def extract_anchors(self, request: BriefAnchorExtractRequest) -> BriefAnchorExtractResult: ...
