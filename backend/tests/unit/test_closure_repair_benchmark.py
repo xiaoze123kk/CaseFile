@@ -94,6 +94,8 @@ def test_capability_suite_covers_every_policy_without_mixing_score_classes() -> 
     policies = repair_policies()
 
     assert len(suite.tasks) == 61
+    assert suite.suite_role == "capability_dev_v1"
+    assert suite.fingerprint == "e9595d883bfc2636bbc8ccc3c4115ce663f5251d60baa7e414a5f6fce8153163"
     assert len({task.task_id for task in suite.tasks}) == 61
     assert {task.policy_key for task in suite.tasks} == {
         (policy.rule_code, policy.closure_level) for policy in policies
@@ -234,7 +236,10 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
     assert report["metrics"]["capability"]["evaluable_trial_count"] == 12
     assert report["metrics"]["capability"]["trial_success_rate"] == 1.0
     assert report["metrics"]["capability"]["semantic_round_2_entry_count"] == 0
-    assert report["metrics"]["capability"]["conditional_round_2_recovery_rate"] == 0.0
+    assert report["metrics"]["capability"]["conditional_round_2_recovery_rate"] is None
+    assert report["metrics"]["capability"]["all_trials_success_task_rate"] == 1.0
+    assert report["schema_version"] == "casefile-closure-repair-benchmark-report-v4"
+    assert report["suite_role"] == "capability_dev_v1"
     assert (
         report["metrics"]["capability"]["two_round_recovery_rate_denominator"]
         == "all_evaluable_repair_trials"

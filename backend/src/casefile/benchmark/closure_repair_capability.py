@@ -24,6 +24,8 @@ from casefile.agent_runtime import (
 from casefile.domain.logical_mutation import (
     ACTIVE_APPLY_POLICY,
     CLOSURE_POLICY_V2,
+    CreateObject,
+    DeleteObject,
     MutationSet,
     UpdateField,
     assess_closure_repair,
@@ -55,19 +57,18 @@ from .eval_core import (
 )
 
 CAPABILITY_SCHEMA_VERSION = "casefile-closure-repair-capability-v1"
-CAPABILITY_REPORT_VERSION = "casefile-closure-repair-benchmark-report-v3"
+CAPABILITY_REPORT_VERSION = "casefile-closure-repair-benchmark-report-v4"
 GRADER_VERSION = "closure-repair-capability-grader-v1"
-HARNESS_VERSION = "closure-repair-production-kernel-v2"
-DEFAULT_CAPABILITY_RELATIVE = Path(
-    "fixtures/closure_repair_benchmark/capability/v1/suite.json"
-)
-_TASK_KEYS = {
-    "task_id", "policy_key", "automation", "input", "oracle", "reference", "tags"
-}
+HARNESS_VERSION = "closure-repair-production-kernel-v3"
+DEFAULT_CAPABILITY_RELATIVE = Path("fixtures/closure_repair_benchmark/capability/v1/suite.json")
+_TASK_KEYS = {"task_id", "policy_key", "automation", "input", "oracle", "reference", "tags"}
 _INPUT_KEYS = {"document", "setup", "variant", "original_intent", "primary_mutation"}
 _ORACLE_KEYS = {
-    "expected_assessment", "expected_trigger", "acceptable_outcomes",
-    "intent_assertions", "task_specific_assertions",
+    "expected_assessment",
+    "expected_trigger",
+    "acceptable_outcomes",
+    "intent_assertions",
+    "task_specific_assertions",
 }
 
 
@@ -90,6 +91,13 @@ class _ReferenceProposer:
 
     def propose(self, context: ClosureRepairContextV1, *, round_no: int) -> RepairProposal:
         self.calls += 1
+        raw_operations = self.reference.get("operations")
+        if raw_operations is None:
+            rounds = cast(Sequence[Mapping[str, Any]], self.reference["rounds"])
+            selected = next((item for item in rounds if item.get("round_no") == round_no), None)
+            if selected is None:
+                raise CapabilityContractError("capability_reference_round_missing")
+            raw_operations = selected["operations"]
         operations = tuple(
             RepairUpdateOperation(
                 obligation_keys=tuple(item.obligation_key for item in context.obligations),
@@ -98,15 +106,15 @@ class _ReferenceProposer:
                 new_value=deepcopy(raw["new_value"]),
                 reason=str(raw["reason"]),
             )
-            for raw in cast(Sequence[Mapping[str, Any]], self.reference["operations"])
+            for raw in cast(Sequence[Mapping[str, Any]], raw_operations)
         )
         return RepairProposal(context.context_hash, operations)
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def _read_object(path: Path) -> dict[str, Any]:
@@ -127,6 +135,10 @@ def _exact_keys(value: Mapping[str, Any], expected: set[str], code: str) -> None
 def load_capability_suite(repo_root: Path, suite_path: Path | None = None) -> EvalSuite:
     path = (suite_path or repo_root / DEFAULT_CAPABILITY_RELATIVE).resolve()
     payload = _read_object(path)
+    if payload.get("schema_version") == "casefile-closure-repair-holdout-v1":
+        from casefile.benchmark.closure_repair_holdout import load_holdout_suite
+
+        return load_holdout_suite(path)
     _exact_keys(payload, {"schema_version", "suite_id", "tasks"}, "capability_suite_keys_invalid")
     if payload["schema_version"] != CAPABILITY_SCHEMA_VERSION:
         raise CapabilityContractError("capability_suite_version_invalid")
@@ -164,9 +176,7 @@ def load_capability_suite(repo_root: Path, suite_path: Path | None = None) -> Ev
     )
 
 
-def _parse_task(
-    raw: Mapping[str, Any], *, task_path: Path, suite_root: Path
-) -> EvalTask:
+def _parse_task(raw: Mapping[str, Any], *, task_path: Path, suite_root: Path) -> EvalTask:
     policy_key = raw["policy_key"]
     if (
         not isinstance(policy_key, list)
@@ -190,8 +200,12 @@ def _parse_task(
         not isinstance(outcomes, list)
         or not outcomes
         or not all(
-            item in {
-                "repaired", "manual_required", "blocked", "not_applicable",
+            item
+            in {
+                "repaired",
+                "manual_required",
+                "blocked",
+                "not_applicable",
                 "intent_revision_required",
             }
             for item in outcomes
@@ -200,7 +214,9 @@ def _parse_task(
         raise CapabilityContractError("capability_acceptable_outcome_invalid")
     expected_assessment = oracle["expected_assessment"]
     expected_by_automation = {
-        "agent": "eligible", "manual": "manual_required", "ineligible": "blocked"
+        "agent": "eligible",
+        "manual": "manual_required",
+        "ineligible": "blocked",
     }
     if expected_assessment != expected_by_automation[automation]:
         raise CapabilityContractError("capability_expected_assessment_invalid")
@@ -217,7 +233,10 @@ def _parse_task(
     variant = input_value["variant"]
     if automation == "agent":
         if setup not in {"support", "refutation", "dependency"} or variant not in {
-            "basic", "decoy", "dense", "alternative",
+            "basic",
+            "decoy",
+            "dense",
+            "alternative",
         }:
             raise CapabilityContractError("capability_agent_fixture_invalid")
     elif setup != "policy_probe" or variant != "policy":
@@ -276,26 +295,48 @@ def _validate_policy_coverage(tasks: Sequence[EvalTask]) -> None:
 
 
 def _policy_probe(task: EvalTask) -> tuple[MutationSet, MutationSimulation]:
-    document_path = Path(str(task.input["document"]))
-    catalog = _read_object(document_path.parent.parent / "policy-catalog.json")
-    contracts = catalog.get("finding_contracts")
-    if not isinstance(contracts, dict):
-        raise CapabilityContractError("capability_policy_catalog_invalid")
-    contract = contracts.get("|".join(task.policy_key))
-    if not isinstance(contract, dict):
-        raise CapabilityContractError("capability_policy_contract_missing")
+    if task.difficulty:
+        policy = next(
+            (
+                item
+                for item in repair_policies(version=REPAIR_POLICY_V1)
+                if (item.rule_code, item.closure_level) == task.policy_key
+            ),
+            None,
+        )
+        if policy is None:
+            raise CapabilityContractError("capability_policy_contract_missing")
+        contract = {
+            "rule_code": policy.rule_code,
+            "closure_level": policy.closure_level,
+            "automation": policy.automation,
+            "repair_kinds": list(policy.allowed_repair_kinds),
+            "required_roles": list(policy.required_object_roles),
+        }
+    else:
+        document_path = Path(str(task.input["document"]))
+        catalog = _read_object(document_path.parent.parent / "policy-catalog.json")
+        contracts = catalog.get("finding_contracts")
+        if not isinstance(contracts, dict):
+            raise CapabilityContractError("capability_policy_catalog_invalid")
+        raw_contract = contracts.get("|".join(task.policy_key))
+        if not isinstance(raw_contract, dict):
+            raise CapabilityContractError("capability_policy_contract_missing")
+        contract = raw_contract
     _exact_keys(
         contract,
         {
-            "rule_code", "closure_level", "automation", "repair_kinds",
+            "rule_code",
+            "closure_level",
+            "automation",
+            "repair_kinds",
             "required_roles",
         },
         "capability_policy_contract_keys_invalid",
     )
-    if (
-        (contract["rule_code"], contract["closure_level"]) != task.policy_key
-        or contract["automation"] != task.automation
-    ):
+    if (contract["rule_code"], contract["closure_level"]) != task.policy_key or contract[
+        "automation"
+    ] != task.automation:
         raise CapabilityContractError("capability_policy_contract_mismatch")
     roles = contract["required_roles"]
     repair_kinds = contract["repair_kinds"]
@@ -354,11 +395,63 @@ def _policy_probe(task: EvalTask) -> tuple[MutationSet, MutationSimulation]:
 def _task_input(
     task: EvalTask, repo_root: Path
 ) -> tuple[dict[str, Any], MutationSet, MutationSimulation]:
+    frozen_document = _read_object(Path(str(task.input["document"])))
+    primary = task.input["primary_mutation"]
+    if isinstance(primary, dict) and primary.get("operation_type") in {
+        "create_object",
+        "update_field",
+        "delete_object",
+    }:
+        operation_type = str(primary["operation_type"])
+        expected_keys = {
+            "create_object": {"operation_type", "operation_id", "collection", "object_value"},
+            "update_field": {
+                "operation_type",
+                "operation_id",
+                "object_id",
+                "field_path",
+                "new_value",
+            },
+            "delete_object": {"operation_type", "operation_id", "object_id"},
+        }[operation_type]
+        if set(primary) != expected_keys:
+            raise CapabilityContractError("capability_direct_mutation_keys_invalid")
+        operation: CreateObject | UpdateField | DeleteObject
+        if operation_type == "create_object":
+            operation = CreateObject(
+                operation_id=str(primary["operation_id"]),
+                collection=str(primary["collection"]),
+                object_value=deepcopy(primary["object_value"]),
+            )
+        elif operation_type == "update_field":
+            operation = UpdateField(
+                operation_id=str(primary["operation_id"]),
+                object_id=str(primary["object_id"]),
+                field_path=str(primary["field_path"]),
+                new_value=deepcopy(primary["new_value"]),
+            )
+        else:
+            operation = DeleteObject(
+                operation_id=str(primary["operation_id"]),
+                object_id=str(primary["object_id"]),
+            )
+        mutation = MutationSet(
+            mutation_set_id=f"holdout_{task.task_id}",
+            base_draft_id=1,
+            base_revision=1,
+            operations=(operation,),
+            actor="agent",
+            closure_policy_version=CLOSURE_POLICY_V2,
+        )
+        return (
+            frozen_document,
+            mutation,
+            simulate_closure_repair_mutation(frozen_document, mutation),
+        )
     if task.automation != "agent":
         mutation, simulation = _policy_probe(task)
         return {}, mutation, simulation
     setup = str(task.input["setup"])
-    frozen_document = _read_object(Path(str(task.input["document"])))
     document, mutation, supplied = closure_repair_scenario_input(
         repo_root, setup, base_document=frozen_document
     )
@@ -377,9 +470,7 @@ def _task_input(
                 materiality="minor",
             )
             document["claims"].append(decoy)
-    return document, mutation, supplied or simulate_closure_repair_mutation(
-        document, mutation
-    )
+    return document, mutation, supplied or simulate_closure_repair_mutation(document, mutation)
 
 
 def _run_with(
@@ -423,8 +514,14 @@ def _run_with(
     latency_ms = round((time.perf_counter() - started) * 1000, 3)
     if result is None:
         outcome = Outcome(
-            "infrastructure_failed", "provider_or_runtime", bool(getattr(proposer, "calls", 0)),
-            False, False, 0, 0, 0,
+            "infrastructure_failed",
+            "provider_or_runtime",
+            bool(getattr(proposer, "calls", 0)),
+            False,
+            False,
+            0,
+            0,
+            0,
         )
         graders: tuple[GraderResult, ...] = ()
         rounds: tuple[Mapping[str, Any], ...] = ()
@@ -433,9 +530,7 @@ def _run_with(
         proof_complete = bool(
             result.final_mutation_set is not None and final is not None and final.can_apply
         )
-        provider_invoked = bool(
-            getattr(proposer, "calls", 0) or getattr(proposer, "results", ())
-        )
+        provider_invoked = bool(getattr(proposer, "calls", 0) or getattr(proposer, "results", ()))
         final_codes = tuple(
             sorted({item.rule_code for item in (() if final is None else final.final_findings)})
         )
@@ -512,44 +607,55 @@ def _grade(
         and outcome.provider_invoked == expected_provider
     )
     intent_pass = _intent_preserved(mutation, simulation, result)
-    safety_violations = _safety_violations(
-        task, result, outcome, intent_preserved=intent_pass
-    )
-    closure_pass = (
-        task.automation != "agent"
-        or (
-            outcome.status == "repaired"
-            and outcome.proof_complete
-            and result.final_simulation is not None
-            and not result.final_simulation.worsened_finding_keys
-        )
+    safety_violations = _safety_violations(task, result, outcome, intent_preserved=intent_pass)
+    closure_pass = task.automation != "agent" or (
+        outcome.status == "repaired"
+        and outcome.proof_complete
+        and result.final_simulation is not None
+        and not result.final_simulation.worsened_finding_keys
     )
     target_rule = task.policy_key[0]
-    task_specific = (
-        task.automation != "agent" or target_rule not in outcome.final_rule_codes
-    )
+    task_specific = task.automation != "agent" or target_rule not in outcome.final_rule_codes
     return (
         GraderResult(
-            "policy_decision", "hard", policy_pass, float(policy_pass),
+            "policy_decision",
+            "hard",
+            policy_pass,
+            float(policy_pass),
             {"expected": expected_assessment, "actual": actual_assessment},
         ),
         GraderResult(
-            "safety", "hard", not safety_violations, float(not safety_violations),
+            "safety",
+            "hard",
+            not safety_violations,
+            float(not safety_violations),
             {"violations": safety_violations},
         ),
         GraderResult(
-            "intent_preservation", "hard", intent_pass, float(intent_pass), {},
+            "intent_preservation",
+            "hard",
+            intent_pass,
+            float(intent_pass),
+            {},
         ),
         GraderResult(
-            "closure_outcome", "hard", closure_pass, float(closure_pass),
+            "closure_outcome",
+            "hard",
+            closure_pass,
+            float(closure_pass),
             {"proof_complete": outcome.proof_complete},
         ),
         GraderResult(
-            "task_specific", "hard", task_specific, float(task_specific),
+            "task_specific",
+            "hard",
+            task_specific,
+            float(task_specific),
             {"target_rule": target_rule, "final_rule_codes": list(outcome.final_rule_codes)},
         ),
         GraderResult(
-            "minimality", "soft", True,
+            "minimality",
+            "soft",
+            True,
             1.0 / max(1, outcome.companion_operation_count),
             {
                 "operations": outcome.companion_operation_count,
@@ -586,9 +692,7 @@ def _safety_violations(
     return violations
 
 
-def _intent_preserved(
-    mutation: MutationSet, simulation: MutationSimulation, result: Any
-) -> bool:
+def _intent_preserved(mutation: MutationSet, simulation: MutationSimulation, result: Any) -> bool:
     if result.status != "repaired":
         return True
     final = result.final_simulation
@@ -626,7 +730,11 @@ def validate_capability_references(
         reference = _read_object(Path(task.reference_path))
         expected_type = "repair" if task.automation == "agent" else "abstention"
         expected_keys = (
-            {"task_id", "type", "operations"}
+            (
+                {"task_id", "type", "operations"}
+                if "operations" in reference
+                else {"task_id", "type", "rounds"}
+            )
             if expected_type == "repair"
             else {"task_id", "type", "expected_status"}
         )
@@ -637,8 +745,7 @@ def validate_capability_references(
             or not _reference_values_valid(reference, expected_type)
             or (
                 expected_type == "abstention"
-                and reference.get("expected_status")
-                not in task.oracle["acceptable_outcomes"]
+                and reference.get("expected_status") not in task.oracle["acceptable_outcomes"]
             )
         ):
             failures.append({"task_id": task.task_id, "reason": "reference_contract_mismatch"})
@@ -665,10 +772,24 @@ def validate_capability_references(
 
 def _reference_values_valid(reference: Mapping[str, Any], expected_type: str) -> bool:
     if expected_type == "abstention":
-        return reference.get("expected_status") in {
-            "manual_required", "blocked", "not_applicable"
-        }
+        return reference.get("expected_status") in {"manual_required", "blocked", "not_applicable"}
     operations = reference.get("operations")
+    if operations is not None:
+        return _reference_operations_valid(operations)
+    rounds = reference.get("rounds")
+    return bool(
+        isinstance(rounds, list)
+        and [item.get("round_no") for item in rounds if isinstance(item, dict)] == [1, 2]
+        and all(
+            isinstance(item, dict)
+            and set(item) == {"round_no", "operations"}
+            and _reference_operations_valid(item["operations"])
+            for item in rounds
+        )
+    )
+
+
+def _reference_operations_valid(operations: Any) -> bool:
     return bool(
         isinstance(operations, list)
         and operations
@@ -708,11 +829,9 @@ def run_capability_benchmark(
     def emit_to(
         target: list[dict[str, Any]], event_type: str, stage: str, payload: dict[str, Any]
     ) -> None:
-        target.append(
-            {"event_type": event_type, "stage": stage, "payload": deepcopy(payload)}
-        )
+        target.append({"event_type": event_type, "stage": stage, "payload": deepcopy(payload)})
 
-    for task in suite.tasks:
+    for task in _ordered_tasks(suite):
         for trial_index in range(1, trials + 1):
             events: list[dict[str, Any]] = []
             if task.automation == "agent":
@@ -739,6 +858,40 @@ def run_capability_benchmark(
             if artifact_dir is not None:
                 _write_trial_artifact(artifact_dir, row)
     return SuiteReport(_report(repo_root, suite, rows, model_id=model_id, trials=trials))
+
+
+def _ordered_tasks(suite: EvalSuite) -> tuple[EvalTask, ...]:
+    if suite.suite_role != "holdout":
+        return suite.tasks
+    agent = [item for item in suite.tasks if item.automation == "agent"]
+    abstention = sorted(
+        (item for item in suite.tasks if item.automation != "agent"),
+        key=lambda item: sha256(f"{suite.fingerprint}:{item.task_id}".encode()).hexdigest(),
+    )
+    families = sorted({item.policy_key[0] for item in agent})
+    difficulties = ("basic", "alternative", "decoy", "dense")
+    ordered_agent: list[EvalTask] = []
+    for difficulty in difficulties:
+        buckets = {
+            family: sorted(
+                (
+                    item
+                    for item in agent
+                    if item.policy_key[0] == family and item.difficulty == difficulty
+                ),
+                key=lambda item: sha256(f"{suite.fingerprint}:{item.task_id}".encode()).hexdigest(),
+            )
+            for family in families
+        }
+        for index in range(2):
+            ordered_agent.extend(buckets[family][index] for family in families)
+    ordered: list[EvalTask] = []
+    for index, task in enumerate(ordered_agent):
+        ordered.append(task)
+        if index < len(abstention):
+            ordered.append(abstention[index])
+    ordered.extend(abstention[len(ordered_agent) :])
+    return tuple(ordered)
 
 
 def _write_trial_artifact(directory: Path, row: TrialRecord) -> None:
@@ -804,10 +957,11 @@ def _report(
         ),
         HARNESS_VERSION,
     )
-    report = {
+    report: dict[str, Any] = {
         "schema_version": CAPABILITY_REPORT_VERSION,
         "suite_kind": "capability",
         "suite_id": suite.suite_id,
+        "suite_role": suite.suite_role,
         "suite_fingerprint": suite.fingerprint,
         "grader_version": GRADER_VERSION,
         "grader_fingerprint": grader_fingerprint,
@@ -820,8 +974,11 @@ def _report(
         },
         "release_gate_eligible": False,
         "not_checked": [
-            "api_and_worker", "postgres_persistence", "task_lease_and_resume",
-            "sse_projection", "apply_undo_redo",
+            "api_and_worker",
+            "postgres_persistence",
+            "task_lease_and_resume",
+            "sse_projection",
+            "apply_undo_redo",
         ],
         "provider": "deepseek",
         "model_id": model_id,
@@ -852,13 +1009,11 @@ def _report(
                     )
                     / len(evaluable_task_rows),
                     6,
-                ) if evaluable_task_rows else 0.0,
-                f"observed_pass_at_{trials}": _rate(
-                    pass_at_k, len(complete_task_rows)
-                ),
-                f"observed_pass_power_{trials}": _rate(
-                    pass_power_k, len(complete_task_rows)
-                ),
+                )
+                if evaluable_task_rows
+                else 0.0,
+                f"observed_pass_at_{trials}": _rate(pass_at_k, len(complete_task_rows)),
+                f"observed_pass_power_{trials}": _rate(pass_power_k, len(complete_task_rows)),
                 "one_round_success_rate": _rate(
                     sum(row.passed and row.outcome.round_count == 1 for row in evaluable_agent),
                     len(evaluable_agent),
@@ -870,9 +1025,10 @@ def _report(
                 "two_round_recovery_rate_denominator": "all_evaluable_repair_trials",
                 "semantic_round_2_entry_count": round_two_entries,
                 "semantic_round_2_success_count": round_two_successes,
-                "conditional_round_2_recovery_rate": _rate(
-                    round_two_successes, round_two_entries
+                "conditional_round_2_recovery_rate": (
+                    _rate(round_two_successes, round_two_entries) if round_two_entries else None
                 ),
+                "all_trials_success_task_rate": _rate(pass_power_k, len(complete_task_rows)),
             },
             "abstention": {
                 "evaluable_trial_count": len(evaluable_abstention),
@@ -908,25 +1064,93 @@ def _report(
         "status": "failed" if safety_failures else ("blocked" if infra else "completed"),
         "rows": [row.as_dict() for row in rows],
     }
+    if suite.suite_role == "holdout":
+        report["private_package_fingerprint"] = suite.fingerprint
+        report["oracle_fingerprint"] = suite.metadata["oracle_fingerprint"]
+        report["review_fingerprint"] = suite.metadata["review_fingerprint"]
+        report["gate_policy_version"] = suite.metadata["gate_policy_version"]
+        report["release_cohort_fingerprint"] = suite.metadata["release_cohort_fingerprint"]
+        report["metrics"]["stratification"] = _stratified_metrics(rows, tasks_by_id)
     report["comparison_fingerprint"] = sha256(
         _canonical_bytes(
-            {key: report[key] for key in (
-                "suite_fingerprint", "grader_fingerprint", "harness_fingerprint",
-                "provider", "model_id", "prompt_version", "agent_version",
-                "toolset_version", "output_schema_id", "context_version",
-                "closure_policy_version", "repair_policy_version", "trials_per_task",
-            )}
+            {
+                key: report[key]
+                for key in (
+                    "suite_fingerprint",
+                    "grader_fingerprint",
+                    "harness_fingerprint",
+                    "provider",
+                    "model_id",
+                    "prompt_version",
+                    "agent_version",
+                    "toolset_version",
+                    "output_schema_id",
+                    "context_version",
+                    "closure_policy_version",
+                    "repair_policy_version",
+                    "trials_per_task",
+                )
+            }
         )
     ).hexdigest()
     report["controlled_experiment_fingerprint"] = sha256(
         _canonical_bytes(
-            {key: report[key] for key in (
-                "suite_fingerprint", "grader_version", "provider", "model_id",
-                "trials_per_task", "closure_policy_version", "repair_policy_version",
-            )}
+            {
+                key: report[key]
+                for key in (
+                    "suite_fingerprint",
+                    "grader_version",
+                    "provider",
+                    "model_id",
+                    "trials_per_task",
+                    "closure_policy_version",
+                    "repair_policy_version",
+                )
+            }
         )
     ).hexdigest()
     return report
+
+
+def _stratified_metrics(
+    rows: Sequence[TrialRecord], tasks: Mapping[str, EvalTask]
+) -> dict[str, Any]:
+    dimensions = ("family", "difficulty", "topology")
+    output: dict[str, dict[str, dict[str, Any]]] = {}
+    for dimension in dimensions:
+        grouped: dict[str, list[TrialRecord]] = defaultdict(list)
+        for row in rows:
+            task = tasks[row.task_id]
+            if task.automation == "agent" and row.infrastructure_failure is None:
+                key = {
+                    "family": task.policy_key[0],
+                    "difficulty": task.difficulty,
+                    "topology": task.topology,
+                }[dimension]
+                grouped[key].append(row)
+        output[dimension] = {
+            key: {
+                "evaluable_trial_count": len(values),
+                "trial_success_rate": _rate(sum(item.passed for item in values), len(values)),
+                "task_macro_pass_at_1": round(
+                    sum(
+                        sum(item.passed for item in task_rows) / len(task_rows)
+                        for task_rows in _rows_by_task(values).values()
+                    )
+                    / len(_rows_by_task(values)),
+                    6,
+                ),
+            }
+            for key, values in sorted(grouped.items())
+        }
+    return output
+
+
+def _rows_by_task(rows: Sequence[TrialRecord]) -> dict[str, list[TrialRecord]]:
+    output: dict[str, list[TrialRecord]] = defaultdict(list)
+    for row in rows:
+        output[row.task_id].append(row)
+    return output
 
 
 def _rate(numerator: int, denominator: int) -> float:
@@ -946,8 +1170,7 @@ def _bootstrap_ci(
         return [0.0, 0.0]
     rng = random.Random(20260823)
     samples = sorted(
-        sum(rng.choice(task_rates) for _ in task_rates) / len(task_rates)
-        for _ in range(2000)
+        sum(rng.choice(task_rates) for _ in task_rates) / len(task_rates) for _ in range(2000)
     )
     return [round(samples[49], 6), round(samples[1949], 6)]
 
@@ -983,9 +1206,7 @@ def _file_fingerprint(paths: Sequence[Path], version: str) -> str:
     return digest.hexdigest()
 
 
-def assert_comparable_reports(
-    left: Mapping[str, Any], right: Mapping[str, Any]
-) -> None:
+def assert_comparable_reports(left: Mapping[str, Any], right: Mapping[str, Any]) -> None:
     left_fingerprint = left.get("comparison_fingerprint")
     right_fingerprint = right.get("comparison_fingerprint")
     if (
@@ -1010,9 +1231,7 @@ def compare_controlled_experiment_reports(
         "closure_policy_version",
         "repair_policy_version",
     )
-    mismatches = [
-        key for key in locked_fields if baseline.get(key) != candidate.get(key)
-    ]
+    mismatches = [key for key in locked_fields if baseline.get(key) != candidate.get(key)]
     if mismatches:
         raise CapabilityContractError(
             "capability_controlled_experiment_mismatch:" + ",".join(mismatches)

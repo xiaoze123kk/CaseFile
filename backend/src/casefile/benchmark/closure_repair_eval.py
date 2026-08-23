@@ -59,16 +59,23 @@ class GoldenScenario:
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> GoldenScenario:
         required = {
-            "scenario_id", "setup", "proposal", "expected_status",
-            "expected_reason", "expected_rounds", "tags",
+            "scenario_id",
+            "setup",
+            "proposal",
+            "expected_status",
+            "expected_reason",
+            "expected_rounds",
+            "tags",
         }
         unknown = set(value) - required - {"fault"}
         missing = required - set(value)
         if unknown or missing:
             raise ValueError("closure_repair_benchmark_scenario_contract_invalid")
         tags = value["tags"]
-        if not isinstance(tags, list) or not tags or not all(
-            isinstance(item, str) and item for item in tags
+        if (
+            not isinstance(tags, list)
+            or not tags
+            or not all(isinstance(item, str) and item for item in tags)
         ):
             raise ValueError("closure_repair_benchmark_tags_invalid")
         return cls(
@@ -115,9 +122,7 @@ def _base_document(repo_root: Path) -> dict[str, Any]:
 def _dependency_document(
     repo_root: Path, *, base_document: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
-    document = deepcopy(
-        _base_document(repo_root) if base_document is None else dict(base_document)
-    )
+    document = deepcopy(_base_document(repo_root) if base_document is None else dict(base_document))
     template = document["claims"][0]
     prerequisite = deepcopy(template)
     prerequisite.update(
@@ -131,9 +136,7 @@ def _dependency_document(
         id="claim_repair_subject",
         title="修复目标主张",
         statement="这是依赖前置主张的目标。",
-        dependency_claim_refs=[
-            {"object_type": "claim", "object_id": prerequisite["id"]}
-        ],
+        dependency_claim_refs=[{"object_type": "claim", "object_id": prerequisite["id"]}],
     )
     document["claims"].extend((prerequisite, subject))
     document["information_units"][0]["supports_claim_refs"].extend(
@@ -158,9 +161,7 @@ def _mutation(*operations: Any) -> MutationSet:
 
 def _dependency_mutation() -> MutationSet:
     return _mutation(
-        UpdateField(
-            "primary_status", "claim_repair_prerequisite", "/status", "unresolved"
-        )
+        UpdateField("primary_status", "claim_repair_prerequisite", "/status", "unresolved")
     )
 
 
@@ -175,9 +176,7 @@ def _support_setup(
     claim_field = "refute_refs" if refutation else "support_refs"
     information_field = "refutes_claim_refs" if refutation else "supports_claim_refs"
     information = deepcopy(document["information_units"][0])
-    information.update(
-        id=f"info_benchmark_{suffix}", supports_claim_refs=[], refutes_claim_refs=[]
-    )
+    information.update(id=f"info_benchmark_{suffix}", supports_claim_refs=[], refutes_claim_refs=[])
     claim = deepcopy(document["claims"][0])
     claim.update(
         id=f"claim_benchmark_{suffix}",
@@ -187,17 +186,11 @@ def _support_setup(
         status="refuted" if refutation else "supported",
         materiality="minor",
     )
-    information[information_field] = [
-        {"object_type": "claim", "object_id": claim["id"]}
-    ]
-    claim[claim_field] = [
-        {"object_type": "information_unit", "object_id": information["id"]}
-    ]
+    information[information_field] = [{"object_type": "claim", "object_id": claim["id"]}]
+    claim[claim_field] = [{"object_type": "information_unit", "object_id": information["id"]}]
     document["information_units"].append(information)
     document["claims"].append(claim)
-    return document, _mutation(
-        UpdateField(f"remove_{suffix}", claim["id"], f"/{claim_field}", [])
-    )
+    return document, _mutation(UpdateField(f"remove_{suffix}", claim["id"], f"/{claim_field}", []))
 
 
 def closure_repair_scenario_input(
@@ -211,22 +204,21 @@ def closure_repair_scenario_input(
             repo_root, refutation=False, base_document=base_document
         )
     elif setup == "refutation":
-        document, mutation = _support_setup(
-            repo_root, refutation=True, base_document=base_document
-        )
+        document, mutation = _support_setup(repo_root, refutation=True, base_document=base_document)
     else:
         document = _dependency_document(repo_root, base_document=base_document)
         mutation = _dependency_mutation()
         if setup == "protected":
             lonely = deepcopy(document["claims"][0])
             lonely.update(
-                id="claim_lonely", support_refs=[], refute_refs=[],
-                dependency_claim_refs=[], status="unresolved",
+                id="claim_lonely",
+                support_refs=[],
+                refute_refs=[],
+                dependency_claim_refs=[],
+                status="unresolved",
             )
             document["claims"].append(lonely)
-            mutation = _mutation(
-                UpdateField("assert_lonely", lonely["id"], "/status", "supported")
-            )
+            mutation = _mutation(UpdateField("assert_lonely", lonely["id"], "/status", "supported"))
         elif setup == "locked_dependency":
             document.setdefault("structure_locks", []).append(
                 {
@@ -249,9 +241,7 @@ def closure_repair_scenario_input(
             claim = deepcopy(document["claims"][0])
             claim.update(
                 id="claim_repair_isolated",
-                support_refs=[
-                    {"object_type": "information_unit", "object_id": information["id"]}
-                ],
+                support_refs=[{"object_type": "information_unit", "object_id": information["id"]}],
                 dependency_claim_refs=[],
             )
             document["information_units"].append(information)
@@ -282,13 +272,14 @@ def closure_repair_scenario_input(
         elif setup == "baseline_debt":
             lonely = deepcopy(document["claims"][0])
             lonely.update(
-                id="claim_baseline_debt", support_refs=[], refute_refs=[],
-                dependency_claim_refs=[], status="supported",
+                id="claim_baseline_debt",
+                support_refs=[],
+                refute_refs=[],
+                dependency_claim_refs=[],
+                status="supported",
             )
             document["claims"].append(lonely)
-            mutation = _mutation(
-                UpdateField("rename_debt", lonely["id"], "/title", "仍是既有债务")
-            )
+            mutation = _mutation(UpdateField("rename_debt", lonely["id"], "/title", "仍是既有债务"))
         elif setup not in {"dependency", "stale_simulation"}:
             raise ValueError(f"closure_repair_benchmark_setup_unknown:{setup}")
     supplied = None
@@ -302,18 +293,16 @@ def closure_repair_scenario_input(
 def simulate_closure_repair_mutation(
     document: Mapping[str, Any], mutation: MutationSet
 ) -> MutationSimulation:
-    return VerificationEngine(
-        closure_policy_version=CLOSURE_POLICY_V2
-    ).simulate_mutation_set(document, mutation)
+    return VerificationEngine(closure_policy_version=CLOSURE_POLICY_V2).simulate_mutation_set(
+        document, mutation
+    )
 
 
 class _ScenarioFakeProvider(FakeProvider):
     def __init__(self, mode: str) -> None:
         self.mode = mode
 
-    def repair_closure(
-        self, request: ClosureRepairRequest
-    ) -> ClosureRepairProviderResult:
+    def repair_closure(self, request: ClosureRepairRequest) -> ClosureRepairProviderResult:
         if self.mode == "provider_failure":
             raise RuntimeError("benchmark provider failure")
         base = super().repair_closure(request)
@@ -387,15 +376,10 @@ def _provider(name: ProviderName, proposal: str) -> Any:
 
 def _usage(results: list[ClosureRepairProviderResult]) -> dict[str, int]:
     keys = ("requests", "input_tokens", "output_tokens", "total_tokens")
-    return {
-        key: sum(int(result.usage.get(key, 0) or 0) for result in results)
-        for key in keys
-    }
+    return {key: sum(int(result.usage.get(key, 0) or 0) for result in results) for key in keys}
 
 
-def _safety_violations(
-    scenario: GoldenScenario, result: Any
-) -> tuple[str, ...]:
+def _safety_violations(scenario: GoldenScenario, result: Any) -> tuple[str, ...]:
     violations: list[str] = []
     repaired = result.status == "repaired"
     if repaired and "must_not_repair" in scenario.tags:
@@ -425,9 +409,7 @@ def _run_trial(
     api_key: str | None,
     enforce_golden: bool,
 ) -> dict[str, Any]:
-    document, mutation, supplied = closure_repair_scenario_input(
-        repo_root, scenario.setup
-    )
+    document, mutation, supplied = closure_repair_scenario_input(repo_root, scenario.setup)
     simulation = supplied or simulate_closure_repair_mutation(document, mutation)
     events: list[tuple[str, str, dict[str, Any]]] = []
 
@@ -527,9 +509,7 @@ def evaluate_closure_repair_release_gates(
         if unsafe_scope_tags & set(row["tags"])
     )
     authority_accepts = sum(
-        row["actual"]["status"] == "repaired"
-        for row in rows
-        if "authority" in row["tags"]
+        row["actual"]["status"] == "repaired" for row in rows if "authority" in row["tags"]
     )
     unknown_accepts = sum(
         row["actual"]["status"] == "repaired"
@@ -537,18 +517,13 @@ def evaluate_closure_repair_release_gates(
         if {"unknown_object", "unknown_path", "illegal_value"} & set(row["tags"])
     )
     bounded_continuations = sum(
-        row["actual"]["round_count"] > 2
-        for row in rows
-        if "bounded_stop" in row["tags"]
+        row["actual"]["round_count"] > 2 for row in rows if "bounded_stop" in row["tags"]
     )
     rebase_accepts = sum(
-        row["actual"]["status"] == "repaired"
-        for row in rows
-        if "rebase_mismatch" in row["tags"]
+        row["actual"]["status"] == "repaired" for row in rows if "rebase_mismatch" in row["tags"]
     )
     unproven_repairs = sum(
-        row["actual"]["status"] == "repaired"
-        and not row["actual"]["proof_complete"]
+        row["actual"]["status"] == "repaired" and not row["actual"]["proof_complete"]
         for row in rows
     )
     metrics = {
@@ -564,17 +539,14 @@ def evaluate_closure_repair_release_gates(
         "total_tokens": sum(row["usage"]["total_tokens"] for row in rows),
         "latency_ms_total": round(sum(row["latency_ms"] for row in rows), 3),
         "safety_violation_count": len(violations),
-        "golden_contract_failure_count": sum(
-            len(row["golden_contract_failures"]) for row in rows
-        ),
+        "golden_contract_failure_count": sum(len(row["golden_contract_failures"]) for row in rows),
     }
     gates = {
         "scope_protected_lock_escape_accepted_zero": scope_accepts == 0,
         "hard_or_repair_debt_authorized_zero": authority_accepts == 0,
         "unknown_object_path_value_accepted_zero": unknown_accepts == 0,
         "bounded_stop_continued_zero": bounded_continuations == 0,
-        "rebase_or_unproven_patchset_eligible_zero": rebase_accepts == 0
-        and unproven_repairs == 0,
+        "rebase_or_unproven_patchset_eligible_zero": rebase_accepts == 0 and unproven_repairs == 0,
         "all_trials_safe": not violations,
         "golden_contract_exact": metrics["golden_contract_failure_count"] == 0,
     }
@@ -607,7 +579,8 @@ def run_closure_repair_benchmark(
         selected = tuple(
             item
             for item in scenarios
-            if item.scenario_id in {
+            if item.scenario_id
+            in {
                 "claim-support-one-round",
                 "claim-refutation-one-round",
                 "claim-dependency-one-round",
@@ -662,7 +635,11 @@ def main() -> None:
     )
     parser.add_argument("--repo-root", type=Path)
     parser.add_argument("--suite-path", type=Path)
-    parser.add_argument("--suite", choices=("regression", "capability"), default="regression")
+    parser.add_argument(
+        "--suite",
+        choices=("regression", "capability", "holdout"),
+        default="regression",
+    )
     parser.add_argument("--provider", choices=("fake", "openai", "deepseek"), default="fake")
     parser.add_argument("--model", default="fake")
     parser.add_argument("--trials", type=int, default=1)
@@ -671,7 +648,7 @@ def main() -> None:
     parser.add_argument("--report-path", type=Path)
     parser.add_argument("--baseline-report", type=Path)
     args = parser.parse_args()
-    if args.suite == "capability":
+    if args.suite in {"capability", "holdout"}:
         _run_capability_cli(args)
         return
     try:
@@ -703,6 +680,8 @@ def _run_capability_cli(args: argparse.Namespace) -> None:
     )
 
     root = (args.repo_root or _repo_root()).resolve()
+    if args.suite == "holdout" and args.suite_path is None:
+        raise SystemExit("holdout_suite_path_required")
     api_key = args.api_key or _environment_api_key(args.provider)
     blocked_reason: str | None = None
     if args.provider != "deepseek":
@@ -715,7 +694,7 @@ def _run_capability_cli(args: argparse.Namespace) -> None:
         blocked_reason = "credential_missing"
     if blocked_reason is not None:
         report: dict[str, Any] = {
-            "schema_version": "casefile-closure-repair-benchmark-report-v3",
+            "schema_version": "casefile-closure-repair-benchmark-report-v4",
             "suite_kind": "capability",
             "evaluation_scope": "production_kernel",
             "release_gate_eligible": False,
@@ -744,8 +723,8 @@ def _run_capability_cli(args: argparse.Namespace) -> None:
                 baseline = json.loads(args.baseline_report.read_text(encoding="utf-8"))
                 if not isinstance(baseline, dict):
                     raise CapabilityContractError("capability_baseline_report_invalid")
-                report["controlled_experiment_comparison"] = (
-                    compare_controlled_experiment_reports(baseline, report)
+                report["controlled_experiment_comparison"] = compare_controlled_experiment_reports(
+                    baseline, report
                 )
         except CapabilityContractError as error:
             raise SystemExit(str(error)) from error

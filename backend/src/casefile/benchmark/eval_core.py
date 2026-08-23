@@ -19,6 +19,9 @@ class EvalTask:
     oracle: Mapping[str, Any]
     reference_path: str
     tags: tuple[str, ...]
+    difficulty: str = "policy"
+    topology: str = "policy_probe"
+    staged: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,8 @@ class EvalSuite:
     schema_version: str
     tasks: tuple[EvalTask, ...]
     fingerprint: str
+    suite_role: str = "capability_dev_v1"
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,9 +125,7 @@ class TrialRecord:
             "usage": dict(self.usage),
             "latency_ms": self.latency_ms,
             "infrastructure_failure": (
-                None
-                if self.infrastructure_failure is None
-                else dict(self.infrastructure_failure)
+                None if self.infrastructure_failure is None else dict(self.infrastructure_failure)
             ),
         }
 
