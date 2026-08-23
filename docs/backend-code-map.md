@@ -63,7 +63,7 @@
 | `backend/src/casefile/application/verification_service.py` | VerificationEngine 的 SQLAlchemy application adapter：VerificationRun/finding 双写、refs/reviews/patch lineage 与 Workbench 查询读模型。 |
 | `backend/src/casefile/domain/verification_engine.py` | 脱离 API、数据库、Worker 和 Provider 的纯验证内核：Finding contract、确定性/LLM 合并、旧 batch simulation，以及统一 MutationSimulation 的增量 finding delta、作者债务授权与 can_apply policy。 |
 | `backend/src/casefile/domain/logical_mutation/` | 纯 Python Logical Mutation Kernel：discriminated operations、依赖拓扑排序、机械双向投影、NetworkX 封装图、关系传播策略单一来源、Impact Cone 与显式 v1/v2 policy registry；`closure/` 预计算不可变 ClosureContext/ClosureIndex，并实现 Claim、Hypothesis assessment、ReasoningPath/Resolution、typed integration 与 Shadow travel-time 确定性规则；公开接口不泄漏 NetworkX 类型。 |
-| `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复契约：版本化全量 RepairPolicy、角色化 ClosureObligation 与 MutationSimulation 资格评估；首版仅允许 Claim 结构 finding 进入 Agent repair，未知规则、hard、warning、混合 manual 和契约漂移全部失败关闭，不生成操作或执行 Apply。 |
+| `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复契约：版本化全量 RepairPolicy、角色化 ClosureObligation 与 MutationSimulation 资格评估，以及由合格 assessment 确定性生成的 RepairScopeV1/ClosureRepairContextV1。首版仅允许 Claim 结构 finding 进入 Agent repair；写范围只取 obligation subject 的显式路径，依赖、匹配 StructureLock 和其他角色保持只读，primary/mechanical/lock 重叠路径受保护，Context 只从 candidate document 收集 scoped object 与 scoped endpoint logical edge 并以 RFC 8785 哈希绑定。未知规则、hard、warning、混合 manual、空 scope、预算超限和 policy/hash/binding 漂移全部失败关闭；本模块不使用完整 ImpactCone 扩大写范围，不接 Provider/数据库/API/UI，不生成操作或执行 Apply。 |
 
 ## API 与 Worker
 
