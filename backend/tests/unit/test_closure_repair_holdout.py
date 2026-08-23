@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
+
+from casefile.benchmark import closure_repair_holdout
+from casefile.benchmark.closure_repair_capability import load_capability_suite
 from casefile.benchmark.closure_repair_holdout import (
     HOLDOUT_GATE_VERSION,
     HOLDOUT_SUITE_ID,
@@ -206,3 +209,28 @@ def test_holdout_loader_fails_closed_when_private_package_is_missing(tmp_path: P
     descriptor.write_text(json.dumps({}), encoding="utf-8")
     with pytest.raises(HoldoutContractError, match="json_invalid"):
         load_holdout_suite(tmp_path / "missing-suite.json", descriptor_path=descriptor)
+
+
+def test_capability_loader_routes_holdout_v2_to_private_loader(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    suite_path = tmp_path / "suite.json"
+    suite_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "casefile-closure-repair-holdout-v2",
+                "suite_id": "private-v2",
+                "suite_role": "holdout",
+            }
+        ),
+        encoding="utf-8",
+    )
+    expected = object()
+    monkeypatch.setattr(
+        closure_repair_holdout,
+        "load_holdout_suite",
+        lambda path: expected,
+    )
+
+    assert load_capability_suite(tmp_path, suite_path) is expected

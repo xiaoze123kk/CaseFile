@@ -156,7 +156,10 @@ def _exact_keys(value: Mapping[str, Any], expected: set[str], code: str) -> None
 def load_capability_suite(repo_root: Path, suite_path: Path | None = None) -> EvalSuite:
     path = (suite_path or repo_root / DEFAULT_CAPABILITY_RELATIVE).resolve()
     payload = _read_object(path)
-    if payload.get("schema_version") == "casefile-closure-repair-holdout-v1":
+    if payload.get("schema_version") in {
+        "casefile-closure-repair-holdout-v1",
+        "casefile-closure-repair-holdout-v2",
+    }:
         from casefile.benchmark.closure_repair_holdout import load_holdout_suite
 
         return load_holdout_suite(path)
