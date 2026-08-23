@@ -18,13 +18,17 @@ from casefile.agent_runtime import (
     CLOSURE_REPAIR_PROMPT_VERSION,
     CLOSURE_REPAIR_SCHEMA_ID,
 )
-from casefile.benchmark.closure_repair_gate import evaluate_backend_shadow_gate
+from casefile.benchmark.closure_repair_gate import (
+    CLOSURE_REPAIR_GATE_V2,
+    evaluate_backend_shadow_gate,
+)
+from casefile.benchmark.closure_repair_lineage import repair_runtime_fingerprint
 from casefile.benchmark.eval_core import EvalSuite, EvalTask
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
-from casefile.domain.logical_mutation.repair import REPAIR_CONTEXT_V2, REPAIR_POLICY_V1
+from casefile.domain.logical_mutation.repair import REPAIR_CONTEXT_V3, REPAIR_POLICY_V1
 
-BACKEND_RELEASE_VERSION = "closure-repair-backend-release-v1"
-BACKEND_RELEASE_REPORT_VERSION = "casefile-closure-repair-backend-release-report-v1"
+BACKEND_RELEASE_VERSION = "closure-repair-backend-release-v2"
+BACKEND_RELEASE_REPORT_VERSION = "casefile-closure-repair-backend-release-report-v2"
 PRIMARY_PROVIDER = "deterministic-fixture"
 REPAIR_PROVIDER = "deepseek"
 REPAIR_MODEL = "deepseek-v4-pro"
@@ -97,6 +101,7 @@ def run_backend_release_eval(
     executor: BackendReleaseExecutor,
     database_url: str,
     dev_gate_result: Mapping[str, Any],
+    holdout_gate_result: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Run the frozen 18-task cohort and deterministic production failure matrix."""
 
@@ -106,8 +111,20 @@ def run_backend_release_eval(
         cohort, supported=executor.supported_primary_operation_types
     )
     blockers: list[dict[str, Any]] = []
-    if dev_gate_result.get("status") != "passed":
-        blockers.append({"reason_code": "clean_dev_gate_not_passed"})
+    source = _git_identity(repo_root)
+    runtime_fingerprint = repair_runtime_fingerprint(repo_root)
+    for label, gate in (
+        ("clean_dev", dev_gate_result),
+        ("holdout", holdout_gate_result),
+    ):
+        if gate.get("status") != "passed" or gate.get("gate_version") != CLOSURE_REPAIR_GATE_V2:
+            blockers.append({"reason_code": f"{label}_gate_not_passed"})
+        if gate.get("source_revision") != source["revision"]:
+            blockers.append({"reason_code": f"{label}_source_revision_mismatch"})
+        if gate.get("repair_runtime_fingerprint") != runtime_fingerprint:
+            blockers.append({"reason_code": f"{label}_runtime_fingerprint_mismatch"})
+    if dev_gate_result.get("source_revision") != holdout_gate_result.get("source_revision"):
+        blockers.append({"reason_code": "qualification_source_revision_mismatch"})
     if unsupported:
         blockers.append(
             {
@@ -121,6 +138,8 @@ def run_backend_release_eval(
             suite,
             database_schema_fingerprint=executor.database_schema_fingerprint,
             dev_gate_result=dev_gate_result,
+            holdout_gate_result=holdout_gate_result,
+            repair_runtime_fingerprint=runtime_fingerprint,
             blockers=blockers,
         )
     rows = [
@@ -136,6 +155,8 @@ def run_backend_release_eval(
         faults,
         database_schema_fingerprint=executor.database_schema_fingerprint,
         dev_gate_result=dev_gate_result,
+        holdout_gate_result=holdout_gate_result,
+        repair_runtime_fingerprint=runtime_fingerprint,
     )
 
 
@@ -159,6 +180,8 @@ def _blocked_release_report(
     *,
     database_schema_fingerprint: str,
     dev_gate_result: Mapping[str, Any],
+    holdout_gate_result: Mapping[str, Any],
+    repair_runtime_fingerprint: str,
     blockers: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     source = _git_identity(repo_root)
@@ -167,6 +190,7 @@ def _blocked_release_report(
             source=source,
             suite=suite,
             database_schema_fingerprint=database_schema_fingerprint,
+            repair_runtime_fingerprint=repair_runtime_fingerprint,
         ),
         "task_count": 18,
         "trials_per_task": TRIALS_PER_TASK,
@@ -174,11 +198,13 @@ def _blocked_release_report(
         "metrics": None,
         "cohort_gate": None,
         "clean_dev_gate": dict(dev_gate_result),
+        "holdout_gate": dict(holdout_gate_result),
         "fault_matrix": {},
         "fault_matrix_failures": [],
         "rows": [],
         "release_gate_eligible": False,
         "status": "blocked",
+        "qualification_outcome": "blocked_preflight",
         "blocked_reason_code": str(blockers[0]["reason_code"]),
         "blocked_details": {
             "blockers": [dict(item) for item in blockers],
@@ -226,6 +252,8 @@ def _release_report(
     *,
     database_schema_fingerprint: str,
     dev_gate_result: Mapping[str, Any],
+    holdout_gate_result: Mapping[str, Any],
+    repair_runtime_fingerprint: str,
 ) -> dict[str, Any]:
     source = _git_identity(repo_root)
     lifecycle_fields = (
@@ -248,9 +276,7 @@ def _release_report(
         "redo_verified",
         "audit_continuous",
     )
-    complete = len(rows) == 54 and all(
-        1 <= row.trial_index <= TRIALS_PER_TASK for row in rows
-    )
+    complete = len(rows) == 54 and all(1 <= row.trial_index <= TRIALS_PER_TASK for row in rows)
     lifecycle_failures = {
         field: sum(not getattr(row, field) for row in rows) for field in lifecycle_fields
     }
@@ -264,6 +290,8 @@ def _release_report(
     capability_report = _capability_projection(rows, source=source)
     cohort_gate = evaluate_backend_shadow_gate(capability_report)
     dev_gate_passed = dev_gate_result.get("status") == "passed"
+    holdout_gate_passed = holdout_gate_result.get("status") == "passed"
+    infrastructure_failure_count = sum(row.infrastructure_failure is not None for row in rows)
     all_passed = bool(
         complete
         and not source["dirty"]
@@ -272,6 +300,7 @@ def _release_report(
         and not fault_failures
         and cohort_gate["status"] == "passed"
         and dev_gate_passed
+        and holdout_gate_passed
     )
     report = {
         "schema_version": BACKEND_RELEASE_REPORT_VERSION,
@@ -288,7 +317,8 @@ def _release_report(
         "prompt_version": CLOSURE_REPAIR_PROMPT_VERSION,
         "agent_version": CLOSURE_REPAIR_AGENT_VERSION,
         "output_schema_id": CLOSURE_REPAIR_SCHEMA_ID,
-        "context_version": REPAIR_CONTEXT_V2,
+        "context_version": REPAIR_CONTEXT_V3,
+        "repair_runtime_fingerprint": repair_runtime_fingerprint,
         "closure_policy_version": ACTIVE_APPLY_POLICY,
         "repair_policy_version": REPAIR_POLICY_V1,
         "primary_provider": PRIMARY_PROVIDER,
@@ -304,19 +334,29 @@ def _release_report(
             "provider_mistakenly_invoked_count": sum(
                 row.provider_invoked for row in rows if row.automation != "agent"
             ),
-            "infrastructure_failure_count": sum(
-                row.infrastructure_failure is not None for row in rows
-            ),
+            "infrastructure_failure_count": infrastructure_failure_count,
             "lifecycle_failure_counts": lifecycle_failures,
             "fault_matrix_failure_count": len(fault_failures),
         },
         "cohort_gate": cohort_gate,
         "clean_dev_gate": dict(dev_gate_result),
+        "holdout_gate": dict(holdout_gate_result),
         "fault_matrix": dict(faults),
         "fault_matrix_failures": fault_failures,
         "rows": [asdict(row) for row in rows],
         "release_gate_eligible": all_passed,
-        "status": "passed" if all_passed else "failed",
+        "status": "passed"
+        if all_passed
+        else ("blocked" if infrastructure_failure_count else "failed"),
+        "qualification_outcome": (
+            "passed"
+            if all_passed
+            else (
+                "inconclusive_infrastructure"
+                if infrastructure_failure_count
+                else "failed_capability"
+            )
+        ),
         "rollout_mode_changed": False,
         "frontend_suggest_enabled": False,
     }
@@ -325,7 +365,11 @@ def _release_report(
 
 
 def _report_provenance(
-    *, source: Mapping[str, Any], suite: EvalSuite, database_schema_fingerprint: str
+    *,
+    source: Mapping[str, Any],
+    suite: EvalSuite,
+    database_schema_fingerprint: str,
+    repair_runtime_fingerprint: str,
 ) -> dict[str, Any]:
     return {
         "schema_version": BACKEND_RELEASE_REPORT_VERSION,
@@ -342,7 +386,8 @@ def _report_provenance(
         "prompt_version": CLOSURE_REPAIR_PROMPT_VERSION,
         "agent_version": CLOSURE_REPAIR_AGENT_VERSION,
         "output_schema_id": CLOSURE_REPAIR_SCHEMA_ID,
-        "context_version": REPAIR_CONTEXT_V2,
+        "context_version": REPAIR_CONTEXT_V3,
+        "repair_runtime_fingerprint": repair_runtime_fingerprint,
         "closure_policy_version": ACTIVE_APPLY_POLICY,
         "repair_policy_version": REPAIR_POLICY_V1,
         "primary_provider": PRIMARY_PROVIDER,

@@ -24,6 +24,7 @@ from casefile.agent_runtime.chat_tools import (
 from casefile.agent_runtime.closure_repair import (
     ClosureRepairOutputV1,
     ClosureRepairOutputV2,
+    ClosureRepairOutputV3,
     ClosureRepairProviderResult,
     ClosureRepairRequest,
 )
@@ -135,7 +136,7 @@ class OpenAIAgentsProvider:
         )
         return ClosureRepairProviderResult(
             candidate=cast(
-                ClosureRepairOutputV1 | ClosureRepairOutputV2,
+                ClosureRepairOutputV1 | ClosureRepairOutputV2 | ClosureRepairOutputV3,
                 output_type.model_validate(candidate),
             ),
             usage=usage,

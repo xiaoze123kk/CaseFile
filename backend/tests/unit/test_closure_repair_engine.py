@@ -18,7 +18,10 @@ from casefile.domain.logical_mutation import (
     run_closure_repair,
 )
 from casefile.domain.logical_mutation.repair import engine as repair_engine
-from casefile.domain.logical_mutation.repair.models import ClosureRepairContextV1
+from casefile.domain.logical_mutation.repair.models import (
+    ClosureRepairContextV1,
+    ClosureRepairContextV3,
+)
 from casefile.domain.verification_engine import MutationSimulation, VerificationEngine
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -32,26 +35,20 @@ class _QueueProposer:
         self.factories = factories
         self.contexts: list[ClosureRepairContextV1] = []
 
-    def propose(
-        self, context: ClosureRepairContextV1, *, round_no: int
-    ) -> RepairProposal:
+    def propose(self, context: ClosureRepairContextV1, *, round_no: int) -> RepairProposal:
         self.contexts.append(context)
         return self.factories[round_no - 1](context)
 
 
 class _FailingProposer:
-    def propose(
-        self, context: ClosureRepairContextV1, *, round_no: int
-    ) -> RepairProposal:
+    def propose(self, context: ClosureRepairContextV1, *, round_no: int) -> RepairProposal:
         del context, round_no
         raise RuntimeError("provider unavailable")
 
 
 def _document() -> dict[str, Any]:
     document: dict[str, Any] = json.loads(
-        (ROOT / "fixtures/casefiles/restart_loop.casefile.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "fixtures/casefiles/restart_loop.casefile.json").read_text(encoding="utf-8")
     )
     template = document["claims"][0]
     prerequisite = deepcopy(template)
@@ -66,9 +63,7 @@ def _document() -> dict[str, Any]:
         id="claim_repair_subject",
         title="修复目标主张",
         statement="这是依赖前置主张的目标。",
-        dependency_claim_refs=[
-            {"object_type": "claim", "object_id": prerequisite["id"]}
-        ],
+        dependency_claim_refs=[{"object_type": "claim", "object_id": prerequisite["id"]}],
     )
     document["claims"].extend((prerequisite, subject))
     document["information_units"][0]["supports_claim_refs"].extend(
@@ -102,12 +97,10 @@ def _dependency_mutation() -> MutationSet:
     )
 
 
-def _simulate(
-    document: dict[str, Any], mutation: MutationSet
-) -> MutationSimulation:
-    return VerificationEngine(
-        closure_policy_version=CLOSURE_POLICY_V2
-    ).simulate_mutation_set(document, mutation)
+def _simulate(document: dict[str, Any], mutation: MutationSet) -> MutationSimulation:
+    return VerificationEngine(closure_policy_version=CLOSURE_POLICY_V2).simulate_mutation_set(
+        document, mutation
+    )
 
 
 def _status(value: str) -> Callable[[ClosureRepairContextV1], RepairProposal]:
@@ -164,7 +157,123 @@ def _run(
         original,
         proposer,
         original_intent="修改前置主张",
+        protocol_version="allowed_writes_v2",
     )
+
+
+class _AlternativeProposer:
+    def __init__(self, *, mode: str = "first") -> None:
+        self.mode = mode
+        self.contexts: list[ClosureRepairContextV3] = []
+
+    def propose(self, context: ClosureRepairContextV1, *, round_no: int) -> RepairProposal:
+        del round_no
+        assert isinstance(context, ClosureRepairContextV3)
+        self.contexts.append(context)
+        alternative = context.repair_alternatives[0]
+        if self.mode == "unknown":
+            return RepairProposal(
+                context.context_hash,
+                alternative.operations,
+                selected_alternative_id="alt_" + "f" * 24,
+            )
+        if self.mode == "tampered":
+            operation = replace(
+                alternative.operations[0],
+                new_value="unresolved",
+            )
+            return RepairProposal(
+                context.context_hash,
+                (operation,),
+                selected_alternative_id=alternative.alternative_id,
+            )
+        if self.mode == "missing":
+            return RepairProposal(context.context_hash, alternative.operations)
+        return RepairProposal(
+            context.context_hash,
+            alternative.operations,
+            selected_alternative_id=alternative.alternative_id,
+        )
+
+
+def _run_v3(document: dict[str, Any], mutation: MutationSet, proposer: Any):
+    simulation = _simulate(document, mutation)
+    return run_closure_repair(
+        document,
+        mutation,
+        simulation,
+        proposer,
+        original_intent="修改前置主张",
+    )
+
+
+def test_v3_alternatives_are_deterministic_and_exclude_no_progress_values() -> None:
+    proposer_a = _AlternativeProposer()
+    proposer_b = _AlternativeProposer()
+
+    _run_v3(_document(), _dependency_mutation(), proposer_a)
+    _run_v3(_document(), _dependency_mutation(), proposer_b)
+
+    alternatives_a = proposer_a.contexts[0].repair_alternatives
+    alternatives_b = proposer_b.contexts[0].repair_alternatives
+    assert alternatives_a == alternatives_b
+    assert proposer_a.contexts[0].context_hash == proposer_b.contexts[0].context_hash
+    status_values = {
+        item.operations[0].new_value
+        for item in alternatives_a
+        if item.operations[0].field_path == "/status"
+    }
+    assert "supported" not in status_values
+    assert "partially_supported" not in status_values
+
+
+def test_v3_dependency_alternative_preserves_healthy_prerequisite() -> None:
+    document = _document()
+    healthy = document["claims"][0]
+    subject = next(item for item in document["claims"] if item["id"] == "claim_repair_subject")
+    subject["dependency_claim_refs"].append({"object_type": "claim", "object_id": healthy["id"]})
+    proposer = _AlternativeProposer()
+
+    _run_v3(document, _dependency_mutation(), proposer)
+
+    dependency = next(
+        item
+        for item in proposer.contexts[0].repair_alternatives
+        if item.kind == "remove_incompatible_dependencies"
+    )
+    assert dependency.operations[0].new_value == [
+        {"object_type": "claim", "object_id": healthy["id"]}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("mode", "reason_code"),
+    (
+        ("missing", "repair_alternative_selection_missing"),
+        ("unknown", "repair_alternative_selection_unknown"),
+        ("tampered", "repair_alternative_selection_tampered"),
+    ),
+)
+def test_v3_selection_binding_fails_closed(mode: str, reason_code: str) -> None:
+    result = _run_v3(
+        _document(),
+        _dependency_mutation(),
+        _AlternativeProposer(mode=mode),
+    )
+
+    assert result.status == "proposal_rejected"
+    assert result.reason_code == reason_code
+
+
+def test_v3_without_proved_alternative_has_stable_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(repair_engine, "plan_repair_alternatives", lambda *_args, **_kwargs: ())
+
+    result = _run_v3(_document(), _dependency_mutation(), _AlternativeProposer())
+
+    assert result.status == "blocked"
+    assert result.reason_code == "repair_semantic_alternative_unavailable"
 
 
 def test_one_round_repair_is_rebased_and_fully_proven() -> None:
@@ -234,16 +343,12 @@ def test_support_and_refutation_findings_are_repaired_deterministically(
         )
     )
 
-    result = _run(
-        document, mutation, _QueueProposer(_status("unresolved"))
-    )
+    result = _run(document, mutation, _QueueProposer(_status("unresolved")))
 
     assert result.status == "repaired"
     assert result.final_simulation is not None
     repaired_claim = next(
-        item
-        for item in result.final_simulation.document["claims"]
-        if item["id"] == claim["id"]
+        item for item in result.final_simulation.document["claims"] if item["id"] == claim["id"]
     )
     assert repaired_claim[claim_field] == []
     assert repaired_claim["status"] == "unresolved"
@@ -261,9 +366,7 @@ def test_two_round_repair_collapses_same_path_to_final_value() -> None:
 
     assert result.status == "repaired"
     assert len(result.rounds) == 2
-    assert result.rounds[0].obligation_keys_before != (
-        result.rounds[0].obligation_keys_after
-    )
+    assert result.rounds[0].obligation_keys_before != (result.rounds[0].obligation_keys_after)
     assert len(result.companion_operations) == 1
     companion = result.companion_operations[0]
     assert companion.repair_round == 2
@@ -292,9 +395,7 @@ def test_candidate_cycle_stops_when_second_round_restores_first_candidate() -> N
     assert result.status == "cycle_detected"
     assert result.reason_code == "repair_cycle_detected"
     assert len(result.rounds) == 2
-    assert result.rounds[-1].candidate_hash_after == (
-        result.original_simulation.candidate_hash
-    )
+    assert result.rounds[-1].candidate_hash_after == (result.original_simulation.candidate_hash)
     assert result.companion_operations == ()
 
 
@@ -394,9 +495,7 @@ def test_proposal_contract_violations_reject_the_whole_round(
     factory: Callable[[ClosureRepairContextV1], RepairProposal],
     reason_code: str,
 ) -> None:
-    result = _run(
-        _document(), _dependency_mutation(), _QueueProposer(factory)
-    )
+    result = _run(_document(), _dependency_mutation(), _QueueProposer(factory))
 
     assert result.status == "proposal_rejected"
     assert result.reason_code == reason_code
@@ -408,11 +507,7 @@ def test_unknown_dependency_reference_is_rejected() -> None:
     result = _run(
         _document(),
         _dependency_mutation(),
-        _QueueProposer(
-            _dependency_refs(
-                [{"object_type": "claim", "object_id": "claim_unknown"}]
-            )
-        ),
+        _QueueProposer(_dependency_refs([{"object_type": "claim", "object_id": "claim_unknown"}])),
     )
 
     assert result.status == "proposal_rejected"
@@ -433,9 +528,7 @@ def test_round_and_operation_budgets_fail_closed() -> None:
         )
         return RepairProposal(context.context_hash, (operation,) * 9)
 
-    result = _run(
-        _document(), _dependency_mutation(), _QueueProposer(too_many)
-    )
+    result = _run(_document(), _dependency_mutation(), _QueueProposer(too_many))
 
     assert context_holder[0].max_operations == 4
     assert result.status == "proposal_rejected"
@@ -524,9 +617,7 @@ def test_protected_original_path_requires_intent_revision() -> None:
         status="unresolved",
     )
     document["claims"].append(lonely)
-    mutation = _mutation(
-        UpdateField("assert_lonely", "claim_lonely", "/status", "supported")
-    )
+    mutation = _mutation(UpdateField("assert_lonely", "claim_lonely", "/status", "supported"))
     proposer = _QueueProposer(_status("unresolved"))
 
     result = _run(document, mutation, proposer)
@@ -542,9 +633,7 @@ def test_delete_projection_is_regenerated_by_document_diff_rebase() -> None:
     information.update(
         id="info_repair_isolated",
         title="隔离支撑",
-        supports_claim_refs=[
-            {"object_type": "claim", "object_id": "claim_repair_isolated"}
-        ],
+        supports_claim_refs=[{"object_type": "claim", "object_id": "claim_repair_isolated"}],
     )
     claim = deepcopy(document["claims"][0])
     claim.update(
@@ -563,21 +652,16 @@ def test_delete_projection_is_regenerated_by_document_diff_rebase() -> None:
     document["claims"].append(claim)
     mutation = _mutation(DeleteObject("delete_support", information["id"]))
 
-    result = _run(
-        document, mutation, _QueueProposer(_status("unresolved"))
-    )
+    result = _run(document, mutation, _QueueProposer(_status("unresolved")))
 
     assert result.status == "repaired"
     assert result.final_mutation_set is not None
     assert any(
-        isinstance(operation, DeleteObject)
-        for operation in result.final_mutation_set.operations
+        isinstance(operation, DeleteObject) for operation in result.final_mutation_set.operations
     )
     assert result.final_simulation is not None
     repaired_claim = next(
-        item
-        for item in result.final_simulation.document["claims"]
-        if item["id"] == claim["id"]
+        item for item in result.final_simulation.document["claims"] if item["id"] == claim["id"]
     )
     assert repaired_claim["support_refs"] == []
     assert repaired_claim["status"] == "unresolved"
@@ -604,8 +688,6 @@ def test_original_simulation_and_final_rebase_mismatch_fail_closed(
         "build_mutation_from_document_diff",
         lambda *_args, **_kwargs: mutation,
     )
-    rebase = _run(
-        document, mutation, _QueueProposer(_status("unresolved"))
-    )
+    rebase = _run(document, mutation, _QueueProposer(_status("unresolved")))
     assert rebase.status == "rebase_mismatch"
     assert rebase.reason_code == "repair_rebase_mismatch"

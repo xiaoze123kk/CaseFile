@@ -8,7 +8,6 @@ from typing import Any
 
 import pytest
 from casefile.agent_runtime import (
-    CLOSURE_REPAIR_PROMPT_VERSION,
     ClosureRepairOutputV2,
     ClosureRepairRequest,
     DeepSeekAgentsProvider,
@@ -86,8 +85,12 @@ def _context() -> ClosureRepairContextV2:
                 value_schema={
                     "type": "string",
                     "enum": [
-                        "unsupported", "partially_supported", "supported",
-                        "refuted", "disputed", "unresolved",
+                        "unsupported",
+                        "partially_supported",
+                        "supported",
+                        "refuted",
+                        "disputed",
+                        "unresolved",
                     ],
                 },
             ),
@@ -107,7 +110,7 @@ def _events() -> tuple[list[tuple[str, str, dict[str, Any]]], Any]:
 def _request(*, api_key: str | None = "test-key") -> ClosureRepairRequest:
     _recorded, emit = _events()
     return ClosureRepairRequest(
-        prompt_version=CLOSURE_REPAIR_PROMPT_VERSION,
+        prompt_version="closure-repair-v2",
         context=_context().as_dict(),
         round_no=1,
         model_id="test-model",
@@ -146,9 +149,7 @@ def test_closure_repair_prompt_package_binds_frozen_contracts() -> None:
 
 def test_closure_repair_output_is_strict_and_typed_value_is_adapted() -> None:
     with pytest.raises(ValidationError):
-        ClosureRepairOutputV2.model_validate(
-            {**_candidate(), "closure_succeeded": True}
-        )
+        ClosureRepairOutputV2.model_validate({**_candidate(), "closure_succeeded": True})
     with pytest.raises(ContractValidationError):
         validate_model_json(
             ClosureRepairOutputV2,
@@ -162,6 +163,7 @@ def test_closure_repair_output_is_strict_and_typed_value_is_adapted() -> None:
         model_id="fake",
         api_key=None,
         emit=emit,
+        prompt_version="closure-repair-v2",
     )
     proposal = proposer.propose(_context(), round_no=1)
 
@@ -239,17 +241,13 @@ def test_provider_repair_proposer_rejects_invalid_value_json() -> None:
 
 def _provider_repair_case(rule: str) -> tuple[dict[str, Any], MutationSet]:
     document = json.loads(
-        (ROOT / "fixtures/casefiles/restart_loop.casefile.json").read_text(
-            encoding="utf-8"
-        )
+        (ROOT / "fixtures/casefiles/restart_loop.casefile.json").read_text(encoding="utf-8")
     )
     if rule != "claim_dependency_incompatible":
         supported = rule == "claim_supported_without_support"
         suffix = "support" if supported else "refutation"
         claim_field = "support_refs" if supported else "refute_refs"
-        information_field = (
-            "supports_claim_refs" if supported else "refutes_claim_refs"
-        )
+        information_field = "supports_claim_refs" if supported else "refutes_claim_refs"
         information = deepcopy(document["information_units"][0])
         information.update(
             id=f"info_provider_{suffix}",
@@ -265,12 +263,8 @@ def _provider_repair_case(rule: str) -> tuple[dict[str, Any], MutationSet]:
             status="supported" if supported else "refuted",
             materiality="minor",
         )
-        information[information_field] = [
-            {"object_type": "claim", "object_id": claim["id"]}
-        ]
-        claim[claim_field] = [
-            {"object_type": "information_unit", "object_id": information["id"]}
-        ]
+        information[information_field] = [{"object_type": "claim", "object_id": claim["id"]}]
+        claim[claim_field] = [{"object_type": "information_unit", "object_id": information["id"]}]
         document["information_units"].append(information)
         document["claims"].append(claim)
         return document, MutationSet(
@@ -298,9 +292,7 @@ def _provider_repair_case(rule: str) -> tuple[dict[str, Any], MutationSet]:
     subject = deepcopy(template)
     subject.update(
         id="claim_provider_subject",
-        dependency_claim_refs=[
-            {"object_type": "claim", "object_id": prerequisite["id"]}
-        ],
+        dependency_claim_refs=[{"object_type": "claim", "object_id": prerequisite["id"]}],
     )
     document["claims"].extend((prerequisite, subject))
     document["information_units"][0]["supports_claim_refs"].extend(
@@ -336,9 +328,9 @@ def _provider_repair_case(rule: str) -> tuple[dict[str, Any], MutationSet]:
 )
 def test_fake_provider_proposal_still_passes_full_engine_proof(rule: str) -> None:
     document, mutation = _provider_repair_case(rule)
-    simulation = VerificationEngine(
-        closure_policy_version=CLOSURE_POLICY_V2
-    ).simulate_mutation_set(document, mutation)
+    simulation = VerificationEngine(closure_policy_version=CLOSURE_POLICY_V2).simulate_mutation_set(
+        document, mutation
+    )
     _events_list, emit = _events()
 
     result = run_closure_repair(

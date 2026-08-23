@@ -433,6 +433,7 @@ def _run_trial(
         simulation,
         proposer,
         original_intent="运行闭包修复影子评测",
+        protocol_version="allowed_writes_v2",
     )
     if scenario.fault == "rebase_mismatch":
         if result.final_simulation is None:
@@ -694,7 +695,7 @@ def _run_capability_cli(args: argparse.Namespace) -> None:
         blocked_reason = "credential_missing"
     if blocked_reason is not None:
         report: dict[str, Any] = {
-            "schema_version": "casefile-closure-repair-benchmark-report-v4",
+            "schema_version": "casefile-closure-repair-benchmark-report-v5",
             "suite_kind": "capability",
             "evaluation_scope": "production_kernel",
             "release_gate_eligible": False,

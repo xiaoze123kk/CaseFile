@@ -47,9 +47,9 @@ def _suite() -> EvalSuite:
     )
     ids = tuple(task.task_id for task in tasks)
     return EvalSuite(
-        suite_id="closure-repair-capability-holdout-v1",
+        suite_id="closure-repair-capability-holdout-v2",
         suite_kind="capability",
-        schema_version="casefile-closure-repair-holdout-v1",
+        schema_version="casefile-closure-repair-holdout-v2",
         tasks=tasks,
         fingerprint="suite-fingerprint",
         suite_role="holdout",
@@ -58,7 +58,7 @@ def _suite() -> EvalSuite:
             "release_cohort_fingerprint": "cohort-fingerprint",
             "oracle_fingerprint": "oracle-fingerprint",
             "review_fingerprint": "review-fingerprint",
-            "gate_policy_version": "closure-repair-backend-shadow-gate-v1",
+            "gate_policy_version": "closure-repair-gate-v2",
         },
     )
 
@@ -95,9 +95,7 @@ def _evidence(task: EvalTask, trial_index: int) -> BackendTrialEvidence:
 
 class _Executor:
     database_schema_fingerprint = "schema-fingerprint"
-    supported_primary_operation_types = frozenset(
-        {"update_field", "create_object", "delete_object"}
-    )
+    supported_primary_operation_types = frozenset({"update_field"})
 
     def __init__(self) -> None:
         self.mutate: Any = None
@@ -120,6 +118,19 @@ def _clean_source(monkeypatch: pytest.MonkeyPatch) -> None:
         "casefile.benchmark.closure_repair_backend_release._git_identity",
         lambda _root: {"revision": "a" * 40, "branch": "codex/m3-3", "dirty": False},
     )
+    monkeypatch.setattr(
+        "casefile.benchmark.closure_repair_backend_release.repair_runtime_fingerprint",
+        lambda _root: "runtime-fingerprint",
+    )
+
+
+def _gate(*, status: str = "passed") -> dict[str, Any]:
+    return {
+        "status": status,
+        "gate_version": "closure-repair-gate-v2",
+        "source_revision": "a" * 40,
+        "repair_runtime_fingerprint": "runtime-fingerprint",
+    }
 
 
 def test_backend_release_report_passes_only_complete_production_evidence() -> None:
@@ -128,7 +139,8 @@ def test_backend_release_report_passes_only_complete_production_evidence() -> No
         suite=_suite(),
         executor=_Executor(),
         database_url="postgresql+psycopg://casefile:casefile@localhost/casefile_test",
-        dev_gate_result={"status": "passed"},
+        dev_gate_result=_gate(),
+        holdout_gate_result=_gate(),
     )
 
     assert report["evaluation_scope"] == "api_worker_postgres"
@@ -139,14 +151,24 @@ def test_backend_release_report_passes_only_complete_production_evidence() -> No
 
 
 @pytest.mark.parametrize(
-    "mutation",
+    ("mutation", "expected_status", "expected_outcome"),
     (
-        lambda value: replace(value, apply_verified=False),
-        lambda value: replace(value, safety_violations=("scope_escape",)),
-        lambda value: replace(value, infrastructure_failure="worker_crash", passed=False),
+        (lambda value: replace(value, apply_verified=False), "failed", "failed_capability"),
+        (
+            lambda value: replace(value, safety_violations=("scope_escape",)),
+            "failed",
+            "failed_capability",
+        ),
+        (
+            lambda value: replace(value, infrastructure_failure="worker_crash", passed=False),
+            "blocked",
+            "inconclusive_infrastructure",
+        ),
     ),
 )
-def test_backend_release_report_fails_closed_on_trial_evidence(mutation: Any) -> None:
+def test_backend_release_report_fails_closed_on_trial_evidence(
+    mutation: Any, expected_status: str, expected_outcome: str
+) -> None:
     executor = _Executor()
     executor.mutate = mutation
     report = run_backend_release_eval(
@@ -154,11 +176,13 @@ def test_backend_release_report_fails_closed_on_trial_evidence(mutation: Any) ->
         suite=_suite(),
         executor=executor,
         database_url="postgresql://casefile:casefile@localhost/casefile_test",
-        dev_gate_result={"status": "passed"},
+        dev_gate_result=_gate(),
+        holdout_gate_result=_gate(),
     )
 
     assert report["release_gate_eligible"] is False
-    assert report["status"] == "failed"
+    assert report["status"] == expected_status
+    assert report["qualification_outcome"] == expected_outcome
 
 
 def test_backend_release_requires_clean_dev_gate_and_complete_fault_matrix() -> None:
@@ -169,7 +193,8 @@ def test_backend_release_requires_clean_dev_gate_and_complete_fault_matrix() -> 
         suite=_suite(),
         executor=executor,
         database_url="postgresql://casefile:casefile@localhost/casefile_test",
-        dev_gate_result={"status": "passed"},
+        dev_gate_result=_gate(),
+        holdout_gate_result=_gate(),
     )
 
     assert report["release_gate_eligible"] is False
@@ -183,7 +208,8 @@ def test_backend_release_blocks_before_execution_when_clean_dev_gate_failed() ->
         suite=_suite(),
         executor=executor,
         database_url="postgresql://casefile:casefile@localhost/casefile_test",
-        dev_gate_result={"status": "failed"},
+        dev_gate_result=_gate(status="failed"),
+        holdout_gate_result=_gate(),
     )
 
     assert report["status"] == "blocked"
@@ -198,7 +224,8 @@ def test_backend_release_rejects_non_disposable_database() -> None:
             suite=_suite(),
             executor=_Executor(),
             database_url="postgresql://casefile:casefile@localhost/casefile",
-            dev_gate_result={"status": "passed"},
+            dev_gate_result=_gate(),
+            holdout_gate_result=_gate(),
         )
 
 
@@ -217,7 +244,8 @@ def test_backend_release_blocks_unsupported_primary_mutation_before_execution() 
         suite=suite,
         executor=executor,
         database_url="postgresql://casefile:casefile@localhost/casefile_test",
-        dev_gate_result={"status": "failed"},
+        dev_gate_result=_gate(status="failed"),
+        holdout_gate_result=_gate(),
     )
 
     assert report["status"] == "blocked"

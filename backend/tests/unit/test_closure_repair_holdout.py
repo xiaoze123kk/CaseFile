@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Literal
 
@@ -40,7 +41,7 @@ def _task(
         task_id=task_id,
         policy_key=(family, level),
         automation=automation,
-        input={},
+        input={"primary_mutation": {"operation_type": "update_field"}},
         oracle={},
         reference_path="reference.json",
         tags=(),
@@ -134,6 +135,28 @@ def test_holdout_release_cohort_rejects_unknown_and_duplicate_tasks() -> None:
         _validate_release_cohort(_cohort(tasks)[:-1] + ["missing"], tasks)
 
 
+def test_holdout_v2_release_cohort_rejects_unsupported_primary_mutation() -> None:
+    tasks = _tasks()
+    cohort = _cohort(tasks)
+    selected_id = cohort[9]
+    mutated = tuple(
+        replace(
+            task,
+            input={"primary_mutation": {"operation_type": "create_object"}},
+        )
+        if task.task_id == selected_id
+        else task
+        for task in tasks
+    )
+
+    with pytest.raises(HoldoutContractError, match="mutation_unsupported"):
+        _validate_release_cohort(
+            cohort,
+            mutated,
+            require_production_reachable=True,
+        )
+
+
 def test_holdout_attestation_hash_rejects_tampering() -> None:
     payload = {"role": "independent_reviewer", "decision": "accepted"}
     value = {**payload, "attestation_payload_hash": _canonical_hash(payload)}
@@ -172,6 +195,9 @@ def test_holdout_descriptor_rejects_fingerprint_mismatch() -> None:
             package_fingerprint="package",
             oracle_fingerprint="oracle",
             review_fingerprint="review",
+            schema_version="casefile-closure-repair-holdout-descriptor-v1",
+            suite_id=HOLDOUT_SUITE_ID,
+            gate_version=HOLDOUT_GATE_VERSION,
         )
 
 

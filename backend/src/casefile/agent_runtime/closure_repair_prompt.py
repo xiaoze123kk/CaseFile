@@ -8,6 +8,7 @@ from casefile.agent_runtime.closure_repair import (
     CLOSURE_REPAIR_COMPONENT_ID,
     ClosureRepairPromptInputV1,
     ClosureRepairPromptInputV2,
+    ClosureRepairPromptInputV3,
     ClosureRepairRequest,
 )
 from casefile.agent_runtime.prompt_package import (
@@ -22,11 +23,13 @@ def render_closure_repair_prompt(request: ClosureRepairRequest) -> RenderedPromp
     definition = load_prompt("closure_repair", request.prompt_version)
     if definition.package is None:
         raise ValueError("closure_repair_prompt_package_required")
-    input_type = (
-        ClosureRepairPromptInputV1
-        if request.prompt_version == "closure-repair-v1"
-        else ClosureRepairPromptInputV2
-    )
+    input_type = {
+        "closure-repair-v1": ClosureRepairPromptInputV1,
+        "closure-repair-v2": ClosureRepairPromptInputV2,
+        "closure-repair-v3": ClosureRepairPromptInputV3,
+    }.get(request.prompt_version)
+    if input_type is None:
+        raise ValueError("closure_repair_prompt_version_unsupported")
     return render_prompt_package(
         definition.package,
         CLOSURE_REPAIR_COMPONENT_ID,

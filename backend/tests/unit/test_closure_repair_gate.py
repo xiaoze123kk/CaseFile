@@ -7,7 +7,10 @@ import pytest
 from casefile.benchmark.closure_repair_capability import (
     CapabilityContractError,
 )
-from casefile.benchmark.closure_repair_gate import evaluate_backend_shadow_gate
+from casefile.benchmark.closure_repair_gate import (
+    evaluate_backend_shadow_gate,
+    evaluate_closure_repair_gate_v2,
+)
 
 FAMILIES = (
     "claim_dependency_incompatible",
@@ -77,6 +80,32 @@ def _failed_checks(result: dict[str, Any]) -> set[str]:
     return {item["check_id"] for item in result["checks"] if not item["passed"]}
 
 
+def _report_v2(*, successful_trials: int = 5) -> dict[str, Any]:
+    report = _report(task_rate=successful_trials / 5)
+    rows: list[dict[str, Any]] = []
+    for row in report["rows"]:
+        if row["trial_index"] != 1:
+            continue
+        for trial in range(1, 6):
+            copied = deepcopy(row)
+            copied["trial_index"] = trial
+            copied["passed"] = (
+                trial <= successful_trials
+                if copied["transcript"]["input_summary"]["automation"] == "agent"
+                else True
+            )
+            rows.append(copied)
+    report.update(
+        trials_per_task=5,
+        trial_count=90,
+        rows=rows,
+        report_fingerprint="b" * 64,
+        repair_runtime_fingerprint="c" * 64,
+    )
+    report["metrics"]["capability"]["task_macro_pass_at_1"] = successful_trials / 5
+    return report
+
+
 def test_backend_shadow_gate_passes_at_frozen_thresholds() -> None:
     report = _report(task_rate=1.0)
     report["metrics"]["capability"]["task_macro_pass_at_1"] = 0.90
@@ -91,9 +120,7 @@ def test_backend_shadow_gate_passes_at_frozen_thresholds() -> None:
         (lambda value: value["source"].update(dirty=True), "source_clean"),
         (lambda value: value.update(model_id="deepseek-chat"), "model"),
         (
-            lambda value: value["metrics"]["capability"].update(
-                task_macro_pass_at_1=0.899999
-            ),
+            lambda value: value["metrics"]["capability"].update(task_macro_pass_at_1=0.899999),
             "task_macro_pass_at_1",
         ),
         (
@@ -101,9 +128,7 @@ def test_backend_shadow_gate_passes_at_frozen_thresholds() -> None:
             "unsafe_trial_count",
         ),
         (
-            lambda value: value["metrics"]["abstention"].update(
-                correct_abstention_rate=0.99
-            ),
+            lambda value: value["metrics"]["abstention"].update(correct_abstention_rate=0.99),
             "correct_abstention_rate",
         ),
         (
@@ -135,10 +160,7 @@ def test_backend_shadow_gate_exposes_family_regression_hidden_by_macro() -> None
 def test_backend_shadow_gate_requires_all_trials_stability() -> None:
     report = _report()
     for row in report["rows"]:
-        if (
-            row["transcript"]["input_summary"]["automation"] == "agent"
-            and row["trial_index"] == 3
-        ):
+        if row["transcript"]["input_summary"]["automation"] == "agent" and row["trial_index"] == 3:
             row["passed"] = False
     report["metrics"]["capability"]["task_macro_pass_at_1"] = 0.90
     result = evaluate_backend_shadow_gate(report)
@@ -157,3 +179,23 @@ def test_backend_shadow_gate_rejects_invalid_report_shape() -> None:
     report["metrics"].pop("safety")
     with pytest.raises(CapabilityContractError, match="safety_metrics_invalid"):
         evaluate_backend_shadow_gate(report)
+
+
+def test_gate_v2_uses_four_of_five_reliability_and_not_all_of_five() -> None:
+    report = _report_v2(successful_trials=4)
+    report["metrics"]["capability"]["task_macro_pass_at_1"] = 0.90
+
+    result = evaluate_closure_repair_gate_v2(report)
+
+    assert result["passed"] is True
+    assert result["diagnostics"]["reliable_task_rate"] == 1.0
+    assert result["diagnostics"]["all_trials_success_task_rate"] == 0.0
+
+
+def test_gate_v2_rejects_three_of_five_as_unreliable() -> None:
+    report = _report_v2(successful_trials=3)
+    report["metrics"]["capability"]["task_macro_pass_at_1"] = 0.90
+
+    result = evaluate_closure_repair_gate_v2(report)
+
+    assert "reliable_task_rate" in _failed_checks(result)

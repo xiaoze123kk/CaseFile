@@ -32,6 +32,7 @@ from casefile.agent_runtime.closure_repair import (
     ClosureRepairOperationOutputV1,
     ClosureRepairOutputV1,
     ClosureRepairOutputV2,
+    ClosureRepairOutputV3,
     ClosureRepairProviderResult,
     ClosureRepairRequest,
 )
@@ -432,19 +433,21 @@ class FakeProvider:
                 str(obligation["obligation_key"])
             )
         if schema_id == "closure-repair-output-v1":
-            candidate: ClosureRepairOutputV1 | ClosureRepairOutputV2 = ClosureRepairOutputV1(
-                operations=[
-                    ClosureRepairOperationOutputV1(
-                        obligation_keys=obligation_keys,
-                        object_id=object_id,
-                        field_path=field_path,
-                        value_json=("\"unresolved\"" if field_path == "/status" else "[]"),
-                        reason="将主张调整为与当前证据和依赖相容的最小状态。",
-                    )
-                    for (object_id, field_path), obligation_keys in grouped.items()
-                ]
+            candidate: ClosureRepairOutputV1 | ClosureRepairOutputV2 | ClosureRepairOutputV3 = (
+                ClosureRepairOutputV1(
+                    operations=[
+                        ClosureRepairOperationOutputV1(
+                            obligation_keys=obligation_keys,
+                            object_id=object_id,
+                            field_path=field_path,
+                            value_json=('"unresolved"' if field_path == "/status" else "[]"),
+                            reason="将主张调整为与当前证据和依赖相容的最小状态。",
+                        )
+                        for (object_id, field_path), obligation_keys in grouped.items()
+                    ]
+                )
             )
-        else:
+        elif schema_id == "closure-repair-output-v2":
             candidate = ClosureRepairOutputV2(
                 operations=[
                     (
@@ -468,6 +471,22 @@ class FakeProvider:
                     )
                     for (object_id, field_path), obligation_keys in grouped.items()
                 ]
+            )
+        else:
+            alternatives = request.context.get("repair_alternatives", [])
+            if not alternatives:
+                raise ValueError("closure_repair_fake_alternatives_missing")
+            selected = min(
+                alternatives,
+                key=lambda item: (
+                    item.get("outcome") != "repaired",
+                    str(item.get("kind")),
+                    str(item.get("alternative_id")),
+                ),
+            )
+            candidate = ClosureRepairOutputV3(
+                selected_alternative_id=str(selected["alternative_id"]),
+                reason="选择服务器已经证明可进展的最小修复。",
             )
         usage = _zero_usage()
         raw_output = candidate.model_dump_json()

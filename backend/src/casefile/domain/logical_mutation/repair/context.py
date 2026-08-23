@@ -23,7 +23,9 @@ from casefile.domain.logical_mutation.models import (
 from casefile.domain.logical_mutation.repair.models import (
     ClosureRepairAssessment,
     ClosureRepairContextV2,
+    ClosureRepairContextV3,
     RepairAllowedWrite,
+    RepairAlternative,
     RepairContextObject,
     RepairScopeV1,
 )
@@ -38,6 +40,7 @@ if TYPE_CHECKING:
 
 REPAIR_CONTEXT_V1 = "closure-repair-context-v1"
 REPAIR_CONTEXT_V2 = "closure-repair-context-v2"
+REPAIR_CONTEXT_V3 = "closure-repair-context-v3"
 
 
 class RepairContextError(ValueError):
@@ -59,9 +62,7 @@ def build_closure_repair_context(
         raise RepairContextError("repair_context_intent_missing")
     _validate_inputs(mutation_set, simulation, assessment, scope)
     objects_by_id = _objects_by_id(simulation.document)
-    ordered_ids = tuple(
-        sorted({*scope.read_write_object_ids, *scope.read_only_object_ids})
-    )
+    ordered_ids = tuple(sorted({*scope.read_write_object_ids, *scope.read_only_object_ids}))
     missing = tuple(object_id for object_id in ordered_ids if object_id not in objects_by_id)
     if missing:
         raise RepairContextError("repair_context_object_missing")
@@ -69,11 +70,7 @@ def build_closure_repair_context(
         RepairContextObject(
             object_id=object_id,
             object_type=objects_by_id[object_id][0],
-            access=(
-                "read_write"
-                if object_id in scope.read_write_object_ids
-                else "read_only"
-            ),
+            access=("read_write" if object_id in scope.read_write_object_ids else "read_only"),
             object_value=deepcopy(dict(objects_by_id[object_id][1])),
         )
         for object_id in ordered_ids
@@ -112,10 +109,56 @@ def build_closure_repair_context(
         "max_write_objects": scope.max_write_objects,
     }
     unhashed = ClosureRepairContextV2(**kwargs, context_hash="")
-    context_hash = hashlib.sha256(
-        rfc8785.dumps(cast(Any, unhashed.hash_payload()))
-    ).hexdigest()
+    context_hash = hashlib.sha256(rfc8785.dumps(cast(Any, unhashed.hash_payload()))).hexdigest()
     return ClosureRepairContextV2(**kwargs, context_hash=context_hash)
+
+
+def build_closure_repair_context_v3(
+    mutation_set: MutationSet,
+    simulation: MutationSimulation,
+    assessment: ClosureRepairAssessment,
+    scope: RepairScopeV1,
+    *,
+    original_intent: str,
+    alternatives: tuple[RepairAlternative, ...],
+) -> ClosureRepairContextV3:
+    """Build the selection-only context while retaining V2 for historical replay."""
+
+    if not alternatives:
+        raise RepairContextError("repair_semantic_alternative_unavailable")
+    legacy = build_closure_repair_context(
+        mutation_set,
+        simulation,
+        assessment,
+        scope,
+        original_intent=original_intent,
+    )
+    kwargs: dict[str, Any] = {
+        "context_version": REPAIR_CONTEXT_V3,
+        "scope_version": legacy.scope_version,
+        "closure_policy_version": legacy.closure_policy_version,
+        "repair_policy_version": legacy.repair_policy_version,
+        "base_draft_id": legacy.base_draft_id,
+        "base_revision": legacy.base_revision,
+        "baseline_hash": legacy.baseline_hash,
+        "candidate_hash": legacy.candidate_hash,
+        "original_intent": legacy.original_intent,
+        "primary_operations": legacy.primary_operations,
+        "obligations": legacy.obligations,
+        "objects": legacy.objects,
+        "allowed_paths": legacy.allowed_paths,
+        "protected_paths": legacy.protected_paths,
+        "structure_lock_ids": legacy.structure_lock_ids,
+        "dependency_paths": legacy.dependency_paths,
+        "relevant_edges": legacy.relevant_edges,
+        "max_operations": legacy.max_operations,
+        "max_context_objects": legacy.max_context_objects,
+        "max_write_objects": legacy.max_write_objects,
+        "repair_alternatives": alternatives,
+    }
+    unhashed = ClosureRepairContextV3(**kwargs, context_hash="")
+    context_hash = hashlib.sha256(rfc8785.dumps(cast(Any, unhashed.hash_payload()))).hexdigest()
+    return ClosureRepairContextV3(**kwargs, context_hash=context_hash)
 
 
 def _allowed_writes(
@@ -137,8 +180,7 @@ def _allowed_writes(
                 item.obligation_key
                 for item in scope.obligations
                 if any(
-                    allowed.object_id == paths.object_id
-                    and field_path in allowed.field_paths
+                    allowed.object_id == paths.object_id and field_path in allowed.field_paths
                     for allowed in item.allowed_paths
                 )
             )
@@ -210,13 +252,14 @@ def _validate_inputs(
     assessment_keys = tuple(item.obligation_key for item in assessment.obligations)
     scope_keys = tuple(item.obligation_key for item in scope.obligations)
     if assessment_keys != scope_keys or any(
-        item.repair_policy_version != scope.repair_policy_version
-        for item in assessment.obligations
+        item.repair_policy_version != scope.repair_policy_version for item in assessment.obligations
     ):
         raise RepairContextError("repair_context_binding_mismatch")
-    if len(scope.read_write_object_ids) > scope.max_write_objects or len(
-        {*scope.read_write_object_ids, *scope.read_only_object_ids}
-    ) > scope.max_context_objects:
+    if (
+        len(scope.read_write_object_ids) > scope.max_write_objects
+        or len({*scope.read_write_object_ids, *scope.read_only_object_ids})
+        > scope.max_context_objects
+    ):
         raise RepairContextError("repair_context_scope_too_large")
     if scope.max_operations < len(scope.obligations):
         raise RepairContextError("repair_context_operation_budget_invalid")

@@ -14,9 +14,7 @@ if TYPE_CHECKING:
     from casefile.domain.verification_engine import MutationSimulation
 
 RepairAutomation = Literal["agent", "mechanical", "manual", "ineligible"]
-RepairAssessmentStatus = Literal[
-    "eligible", "manual_required", "blocked", "not_applicable"
-]
+RepairAssessmentStatus = Literal["eligible", "manual_required", "blocked", "not_applicable"]
 RepairPathProtectionSource = Literal["primary", "mechanical", "structure_lock"]
 RepairRunStatus = Literal[
     "repaired",
@@ -317,9 +315,7 @@ class RepairUpdateOperation:
     reason: str
 
     def __post_init__(self) -> None:
-        if not self.obligation_keys or any(
-            not value.strip() for value in self.obligation_keys
-        ):
+        if not self.obligation_keys or any(not value.strip() for value in self.obligation_keys):
             raise ValueError("repair_proposal_obligation_keys_missing")
         if len(self.obligation_keys) != len(set(self.obligation_keys)):
             raise ValueError("repair_proposal_obligation_keys_duplicate")
@@ -341,9 +337,55 @@ class RepairUpdateOperation:
 
 
 @dataclass(frozen=True, slots=True)
+class RepairAlternative:
+    """One deterministic, server-proved semantic repair choice."""
+
+    alternative_id: str
+    kind: str
+    obligation_keys_before: tuple[str, ...]
+    obligation_keys_after: tuple[str, ...]
+    operations: tuple[RepairUpdateOperation, ...]
+    candidate_hash_after: str
+    outcome: Literal["repaired", "repair_required"]
+
+    def __post_init__(self) -> None:
+        if not self.alternative_id.startswith("alt_") or len(self.alternative_id) != 28:
+            raise ValueError("repair_alternative_id_invalid")
+        if not self.kind.strip() or not self.obligation_keys_before or not self.operations:
+            raise ValueError("repair_alternative_contract_invalid")
+        if len(self.candidate_hash_after) != 64:
+            raise ValueError("repair_alternative_candidate_hash_invalid")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "alternative_id": self.alternative_id,
+            "kind": self.kind,
+            "obligation_keys_before": list(self.obligation_keys_before),
+            "obligation_keys_after": list(self.obligation_keys_after),
+            "operations": [item.as_dict() for item in self.operations],
+            "candidate_hash_after": self.candidate_hash_after,
+            "outcome": self.outcome,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ClosureRepairContextV3(ClosureRepairContextV1):
+    """V3 exposes only complete server-proved semantic alternatives."""
+
+    repair_alternatives: tuple[RepairAlternative, ...]
+
+    def hash_payload(self) -> dict[str, object]:
+        return {
+            **ClosureRepairContextV1.hash_payload(self),
+            "repair_alternatives": [item.as_dict() for item in self.repair_alternatives],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class RepairProposal:
     context_hash: str
     operations: tuple[RepairUpdateOperation, ...]
+    selected_alternative_id: str | None = None
 
     def __post_init__(self) -> None:
         if len(self.context_hash) != 64 or any(
@@ -352,12 +394,19 @@ class RepairProposal:
             raise ValueError("repair_proposal_context_hash_invalid")
         if not self.operations:
             raise ValueError("repair_proposal_operations_missing")
+        if self.selected_alternative_id is not None and not self.selected_alternative_id.startswith(
+            "alt_"
+        ):
+            raise ValueError("repair_proposal_alternative_id_invalid")
 
     def as_dict(self) -> dict[str, object]:
-        return {
+        value: dict[str, object] = {
             "context_hash": self.context_hash,
             "operations": [item.as_dict() for item in self.operations],
         }
+        if self.selected_alternative_id is not None:
+            value["selected_alternative_id"] = self.selected_alternative_id
+        return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -424,9 +473,7 @@ class ClosureRepairResult:
             "reason_code": self.reason_code,
             "repaired": self.repaired,
             "rounds": [item.as_dict() for item in self.rounds],
-            "companion_operations": [
-                item.as_dict() for item in self.companion_operations
-            ],
+            "companion_operations": [item.as_dict() for item in self.companion_operations],
             "final_mutation_set": (
                 None
                 if self.final_mutation_set is None
@@ -439,14 +486,10 @@ class ClosureRepairResult:
                     ],
                     "actor": self.final_mutation_set.actor,
                     "mode": self.final_mutation_set.mode,
-                    "closure_policy_version": (
-                        self.final_mutation_set.closure_policy_version
-                    ),
+                    "closure_policy_version": (self.final_mutation_set.closure_policy_version),
                 }
             ),
             "final_simulation": (
-                None
-                if self.final_simulation is None
-                else self.final_simulation.as_dict()
+                None if self.final_simulation is None else self.final_simulation.as_dict()
             ),
         }

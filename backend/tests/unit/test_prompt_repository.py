@@ -43,7 +43,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "casefile_chat_context_compactor": "casefile-chat-context-compactor-v1",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
-    "closure_repair": "closure-repair-v2",
+    "closure_repair": "closure-repair-v3",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
@@ -53,6 +53,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("closure_repair", "closure-repair-v2"): {
         "fragment:repair": "533a445ab54c53d31d864501799dadcd77bd35307a1d2571270c9b016c8d1b2f"
+    },
+    ("closure_repair", "closure-repair-v3"): {
+        "fragment:repair": "dcd08b04e2e5ec68034d7dcfef243dcf38e84a9c66da19ec8dd7f5add66c6b2f"
     },
     ("brief_polish", "brief-polish-v2"): {
         "system": "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"

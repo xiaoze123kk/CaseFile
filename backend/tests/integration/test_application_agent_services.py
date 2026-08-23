@@ -109,14 +109,10 @@ class ClosureRepairChatProvider(ChatSuggestionProvider):
         )
 
 
-@pytest.mark.parametrize(
-    ("mode", "expected_origins"),
-    (("shadow", ["primary"]), ("suggest", ["primary", "closure_repair"])),
-)
+@pytest.mark.parametrize("mode", ("shadow", "suggest"))
 def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
     workflow_database: tuple[Engine, int, str],
     mode: str,
-    expected_origins: list[str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
     with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
@@ -171,15 +167,17 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             )
             assert [step.component_id for step in steps] == ["closure_repair_round_1"]
             assert steps[0].status == "succeeded"
-            assert steps[0].component_version == "closure-repair-v2"
+            assert steps[0].component_version == "closure-repair-v3"
             calls = list(
                 session.scalars(
-                    select(AgentModelCall).where(AgentModelCall.agent_step_run_id == steps[0].id)
+                    select(AgentModelCall).where(
+                        AgentModelCall.agent_step_run_id == steps[0].id
+                    )
                 )
             )
             assert len(calls) == 1
             assert calls[0].status == "succeeded"
-            assert calls[0].prompt_version == "closure-repair-v2"
+            assert calls[0].prompt_version == "closure-repair-v3"
             patch_set = session.scalar(
                 select(AgentPatchSet).where(AgentPatchSet.task_run_id == chat_task_id)
             )
@@ -191,12 +189,20 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
                     .order_by(AgentPatchOperation.ordinal)
                 )
             )
-            assert [operation.origin for operation in operations] == expected_origins
+            assert operations[0].origin == "primary"
             if mode == "suggest":
-                assert operations[1].repair_round == 1
-                assert operations[1].repair_obligation_keys
+                assert len(operations) > 1
+                assert all(
+                    operation.origin == "closure_repair" for operation in operations[1:]
+                )
+                assert {operation.repair_round for operation in operations[1:]} == {1}
+                assert all(
+                    operation.repair_obligation_keys for operation in operations[1:]
+                )
                 patch_set_id = patch_set.id
                 operation_ids = [operation.id for operation in operations]
+            else:
+                assert len(operations) == 1
 
         if mode == "suggest":
             with factory() as session:

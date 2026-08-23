@@ -20,6 +20,7 @@ from casefile.domain.verification_engine import VerificationEngine
 
 ClosureRepairMode = Literal["off", "shadow", "suggest"]
 REPAIR_LIFECYCLE_ENVELOPE_V1 = "closure-repair-lifecycle-v1"
+REPAIR_LIFECYCLE_ENVELOPE_V2 = "closure-repair-lifecycle-v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,7 +152,9 @@ def closure_repair_envelope(
     result: ClosureRepairResult,
 ) -> dict[str, Any]:
     return {
-        "envelope_version": REPAIR_LIFECYCLE_ENVELOPE_V1,
+        "envelope_version": REPAIR_LIFECYCLE_ENVELOPE_V2,
+        "repair_protocol_version": "semantic_alternatives_v3",
+        "context_version": "closure-repair-context-v3",
         "mode": mode,
         "closure_policy_version": result.original_simulation.closure_policy_version,
         "repair_policy_version": REPAIR_POLICY_V1,
@@ -170,8 +173,24 @@ def validate_closure_repair_envelope(
 ) -> ValidatedClosureRepair:
     if envelope is None:
         return ValidatedClosureRepair("off", "not_run", "repair_mode_off")
-    if envelope.get("envelope_version") != REPAIR_LIFECYCLE_ENVELOPE_V1:
+    envelope_version = envelope.get("envelope_version")
+    if envelope_version not in {
+        REPAIR_LIFECYCLE_ENVELOPE_V1,
+        REPAIR_LIFECYCLE_ENVELOPE_V2,
+    }:
         raise ValueError("repair_envelope_version_invalid")
+    protocol_version = (
+        "allowed_writes_v2"
+        if envelope_version == REPAIR_LIFECYCLE_ENVELOPE_V1
+        else envelope.get("repair_protocol_version")
+    )
+    if protocol_version not in {"allowed_writes_v2", "semantic_alternatives_v3"}:
+        raise ValueError("repair_envelope_protocol_invalid")
+    if (
+        envelope_version == REPAIR_LIFECYCLE_ENVELOPE_V2
+        and envelope.get("context_version") != "closure-repair-context-v3"
+    ):
+        raise ValueError("repair_envelope_context_version_invalid")
     mode_value = envelope.get("mode")
     if mode_value not in {"off", "shadow", "suggest"}:
         raise ValueError("repair_envelope_mode_invalid")
@@ -197,6 +216,7 @@ def validate_closure_repair_envelope(
         original,
         _ReplayProposer(proposals),
         original_intent=original_intent,
+        protocol_version=cast(Any, protocol_version),
     )
     expected = _result_payload(replayed)
     supplied = {key: deepcopy(envelope.get(key)) for key in expected}
@@ -257,8 +277,15 @@ def _proposals(value: Any) -> tuple[RepairProposal, ...]:
                     _required_string(raw, "reason"),
                 )
             )
+        selected = raw_proposal.get("selected_alternative_id")
+        if selected is not None and not isinstance(selected, str):
+            raise ValueError("repair_envelope_alternative_id_invalid")
         result.append(
-            RepairProposal(_required_string(raw_proposal, "context_hash"), tuple(operations))
+            RepairProposal(
+                _required_string(raw_proposal, "context_hash"),
+                tuple(operations),
+                selected_alternative_id=selected,
+            )
         )
     return tuple(result)
 
@@ -304,6 +331,7 @@ def _required_string_value(value: Any) -> str:
 __all__ = [
     "ClosureRepairMode",
     "REPAIR_LIFECYCLE_ENVELOPE_V1",
+    "REPAIR_LIFECYCLE_ENVELOPE_V2",
     "ValidatedClosureRepair",
     "closure_repair_envelope",
     "prepare_chat_repair_suggestions",

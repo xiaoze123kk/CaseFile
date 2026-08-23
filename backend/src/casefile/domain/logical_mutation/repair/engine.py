@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from casefile.domain.logical_mutation.models import MutationSet, UpdateField
+from casefile.domain.logical_mutation.repair.alternatives import plan_repair_alternatives
 from casefile.domain.logical_mutation.repair.assessment import assess_closure_repair
 from casefile.domain.logical_mutation.repair.context import (
     build_closure_repair_context,
+    build_closure_repair_context_v3,
 )
 from casefile.domain.logical_mutation.repair.document_diff import (
     RepairDocumentDiffError,
@@ -17,9 +19,12 @@ from casefile.domain.logical_mutation.repair.document_diff import (
 )
 from casefile.domain.logical_mutation.repair.models import (
     ClosureRepairAssessment,
+    ClosureRepairContextV2,
+    ClosureRepairContextV3,
     ClosureRepairResult,
     ClosureRepairRound,
     CompanionRepairOperation,
+    RepairAlternative,
     RepairProposal,
     RepairRunStatus,
     RepairScopeV1,
@@ -39,6 +44,7 @@ if TYPE_CHECKING:
     )
 
 MAX_REPAIR_ROUNDS = 2
+RepairProtocolVersion = Literal["allowed_writes_v2", "semantic_alternatives_v3"]
 _CLAIM_STATUSES = frozenset(
     {
         "unsupported",
@@ -49,6 +55,8 @@ _CLAIM_STATUSES = frozenset(
         "unresolved",
     }
 )
+
+
 class RepairEngineError(ValueError):
     def __init__(self, reason_code: str) -> None:
         self.reason_code = reason_code
@@ -63,20 +71,21 @@ def run_closure_repair(
     *,
     original_intent: str,
     max_rounds: int = MAX_REPAIR_ROUNDS,
+    protocol_version: RepairProtocolVersion = "semantic_alternatives_v3",
 ) -> ClosureRepairResult:
     """Attempt at most two deterministic repair rounds, never applying data."""
 
     if max_rounds < 1 or max_rounds > MAX_REPAIR_ROUNDS:
         raise RepairEngineError("repair_round_budget_invalid")
+    if protocol_version not in {"allowed_writes_v2", "semantic_alternatives_v3"}:
+        raise RepairEngineError("repair_protocol_version_invalid")
     from casefile.domain.verification_engine import VerificationEngine
 
     verifier = VerificationEngine(
         profile="fast",
         closure_policy_version=original_mutation.closure_policy_version,
     )
-    replayed_original = verifier.simulate_mutation_set(
-        baseline_document, original_mutation
-    )
+    replayed_original = verifier.simulate_mutation_set(baseline_document, original_mutation)
     if not _simulations_match(original_simulation, replayed_original):
         return _result(
             "blocked",
@@ -110,13 +119,35 @@ def run_closure_repair(
                 final_simulation=current,
             )
         try:
-            context = build_closure_repair_context(
-                original_mutation,
-                current,
-                assessment,
-                scope,
-                original_intent=original_intent,
-            )
+            alternatives: tuple[RepairAlternative, ...] = ()
+            context: ClosureRepairContextV2 | ClosureRepairContextV3
+            if protocol_version == "semantic_alternatives_v3":
+                alternatives = plan_repair_alternatives(
+                    baseline_document,
+                    original_mutation,
+                    original_simulation,
+                    current,
+                    assessment,
+                    scope,
+                    repairs,
+                    verifier=verifier,
+                )
+                context = build_closure_repair_context_v3(
+                    original_mutation,
+                    current,
+                    assessment,
+                    scope,
+                    original_intent=original_intent,
+                    alternatives=alternatives,
+                )
+            else:
+                context = build_closure_repair_context(
+                    original_mutation,
+                    current,
+                    assessment,
+                    scope,
+                    original_intent=original_intent,
+                )
         except ValueError as error:
             return _result(
                 "blocked",
@@ -133,9 +164,8 @@ def run_closure_repair(
                 context_hash=context.context_hash,
                 scope=scope,
                 candidate_document=current.document,
-                accumulated_operation_count=sum(
-                    len(item.proposal.operations) for item in rounds
-                ),
+                alternatives=alternatives,
+                accumulated_operation_count=sum(len(item.proposal.operations) for item in rounds),
             )
         except (RepairEngineError, ValueError) as error:
             reason_code = (
@@ -181,9 +211,7 @@ def run_closure_repair(
                     reason=operation.reason.strip(),
                 )
         candidate_mutation = _combined_mutation(original_mutation, updated_repairs)
-        candidate = verifier.simulate_mutation_set(
-            baseline_document, candidate_mutation
-        )
+        candidate = verifier.simulate_mutation_set(baseline_document, candidate_mutation)
         next_assessment = assess_closure_repair(original_mutation, candidate)
         after_keys = (
             _obligation_keys(next_assessment)
@@ -297,9 +325,7 @@ def prove_repair_rebase(
         profile="fast",
         closure_policy_version=original_mutation.closure_policy_version,
     )
-    replayed = resolved_verifier.simulate_mutation_set(
-        baseline_document, final_mutation
-    )
+    replayed = resolved_verifier.simulate_mutation_set(baseline_document, final_mutation)
     if (
         not replayed.valid
         or not replayed.can_apply
@@ -317,18 +343,43 @@ def _validate_proposal(
     scope: RepairScopeV1,
     candidate_document: Mapping[str, Any],
     accumulated_operation_count: int,
+    alternatives: Sequence[RepairAlternative] = (),
 ) -> tuple[RepairUpdateOperation, ...]:
     if proposal.context_hash != context_hash:
         raise RepairEngineError("repair_proposal_context_stale")
     if len(proposal.operations) > scope.max_operations:
         raise RepairEngineError("repair_operation_budget_exceeded")
-    identities = tuple(
-        (item.object_id, item.field_path) for item in proposal.operations
-    )
+    identities = tuple((item.object_id, item.field_path) for item in proposal.operations)
     if len(identities) != len(set(identities)):
         raise RepairEngineError("repair_proposal_path_duplicate")
     if accumulated_operation_count + len(identities) > MAX_REPAIR_OPERATIONS:
         raise RepairEngineError("repair_operation_budget_exceeded")
+
+    if alternatives:
+        if proposal.selected_alternative_id is None:
+            raise RepairEngineError("repair_alternative_selection_missing")
+        selected = next(
+            (
+                item
+                for item in alternatives
+                if item.alternative_id == proposal.selected_alternative_id
+            ),
+            None,
+        )
+        if selected is None:
+            raise RepairEngineError("repair_alternative_selection_unknown")
+        supplied = tuple(
+            (item.obligation_keys, item.object_id, item.field_path, item.new_value)
+            for item in proposal.operations
+        )
+        expected = tuple(
+            (item.obligation_keys, item.object_id, item.field_path, item.new_value)
+            for item in selected.operations
+        )
+        if supplied != expected:
+            raise RepairEngineError("repair_alternative_selection_tampered")
+    elif proposal.selected_alternative_id is not None:
+        raise RepairEngineError("repair_alternative_selection_unexpected")
 
     obligations = {item.obligation_key: item for item in scope.obligations}
     scoped_objects = _objects_by_id(candidate_document)
@@ -354,9 +405,7 @@ def _validate_proposal(
             )
             if operation.field_path not in allowed:
                 raise RepairEngineError("repair_scope_violation")
-        current_value = _pointer_value(
-            scoped_objects[operation.object_id][1], operation.field_path
-        )
+        current_value = _pointer_value(scoped_objects[operation.object_id][1], operation.field_path)
         if current_value == operation.new_value:
             raise RepairEngineError("repair_proposal_noop")
         _validate_value(operation, obligations, scoped_objects, scope)
@@ -373,15 +422,9 @@ def _validate_value(
     if operation.field_path == "/status":
         if not isinstance(operation.new_value, str) or operation.new_value not in _CLAIM_STATUSES:
             raise RepairEngineError("repair_proposal_value_invalid")
-        if (
-            "claim_supported_without_support" in rules
-            and operation.new_value == "supported"
-        ):
+        if "claim_supported_without_support" in rules and operation.new_value == "supported":
             raise RepairEngineError("repair_proposal_value_invalid")
-        if (
-            "claim_refuted_without_refutation" in rules
-            and operation.new_value == "refuted"
-        ):
+        if "claim_refuted_without_refutation" in rules and operation.new_value == "refuted":
             raise RepairEngineError("repair_proposal_value_invalid")
         return
     if operation.field_path != "/dependency_claim_refs" or not isinstance(
@@ -421,9 +464,7 @@ def _combined_mutation(
 ) -> MutationSet:
     companion = tuple(
         UpdateField(
-            operation_id=(
-                f"repair_r{item.repair_round}_{index:02d}"
-            ),
+            operation_id=(f"repair_r{item.repair_round}_{index:02d}"),
             object_id=item.object_id,
             field_path=item.field_path,
             new_value=deepcopy(item.new_value),
@@ -447,9 +488,7 @@ def _combined_mutation(
     )
 
 
-def _round_outcome(
-    simulation: MutationSimulation, assessment: ClosureRepairAssessment
-) -> str:
+def _round_outcome(simulation: MutationSimulation, assessment: ClosureRepairAssessment) -> str:
     if simulation.can_apply:
         return "repaired"
     if assessment.status == "eligible":
@@ -484,9 +523,7 @@ def _mechanical_paths(
     return tuple(result)
 
 
-def _simulations_match(
-    supplied: MutationSimulation, replayed: MutationSimulation
-) -> bool:
+def _simulations_match(supplied: MutationSimulation, replayed: MutationSimulation) -> bool:
     return (
         supplied.valid == replayed.valid
         and supplied.can_apply == replayed.can_apply

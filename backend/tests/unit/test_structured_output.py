@@ -30,6 +30,7 @@ from casefile.agent_runtime.structured_output import (
     strict_fallback_reason,
     validate_model_json,
 )
+from casefile.agent_runtime.transport_diagnostics import classify_transport_error
 from casefile.contracts import ContractValidationError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -400,11 +401,12 @@ def test_deepseek_protocol_fallback_then_repair_is_bounded_to_three_attempts(
     repair_event = next(event for event in events if event[0] == "model.output_repair_started")
     assert repair_event[2]["attempt_no"] == 3
     validated = next(event for event in events if event[0] == "model.output_validated")
-    assert validated[2] == {
-        "protocol": "json_object",
-        "attempt_count": 3,
-        "repaired": True,
-    }
+    assert validated[2]["protocol"] == "json_object"
+    assert validated[2]["attempt_count"] == 3
+    assert validated[2]["repaired"] is True
+    assert validated[2]["transport_error_class"] == "protocol_unsupported"
+    assert validated[2]["fallback_attempted"] is True
+    assert validated[2]["fallback_succeeded"] is True
 
 
 def test_openai_native_structured_output_retries_only_model_validation_failure(
@@ -552,3 +554,49 @@ def test_unknown_strict_error_does_not_fallback(
         )
 
     assert not any(event[0] == "model.output_protocol_fallback" for event in events)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    (
+        (TimeoutError(), "timeout"),
+        (ConnectionError(), "connection"),
+        (StrictOutputProtocolError("strict_tool_missing", "missing"), "protocol_unsupported"),
+    ),
+)
+def test_transport_diagnostics_classifies_without_exception_text(
+    error: BaseException, expected: str
+) -> None:
+    diagnostics = classify_transport_error(
+        error,
+        protocol="strict_tool",
+        protocol_phase="provider_call",
+        network_retry_budget=2,
+        retry_exhausted=True,
+    ).as_dict()
+
+    assert diagnostics["transport_error_class"] == expected
+    assert diagnostics["network_retry_budget"] == 2
+    assert "message" not in diagnostics
+    assert "url" not in diagnostics
+
+
+def test_transport_diagnostics_classifies_http_and_retry_after() -> None:
+    error = RuntimeError()
+    error.status_code = 429  # type: ignore[attr-defined]
+    error.response = SimpleNamespace(  # type: ignore[attr-defined]
+        status_code=429,
+        headers={"Retry-After": "1"},
+    )
+
+    diagnostics = classify_transport_error(
+        error,
+        protocol="json_object",
+        protocol_phase="provider_call",
+        network_retry_budget=1,
+        retry_exhausted=True,
+    )
+
+    assert diagnostics.transport_error_class == "rate_limit"
+    assert diagnostics.http_status_class == "4xx"
+    assert diagnostics.retry_after_present is True

@@ -31,9 +31,10 @@ from casefile.domain.logical_mutation import (
     assess_closure_repair,
 )
 from casefile.domain.logical_mutation.repair import (
-    REPAIR_CONTEXT_V2,
+    REPAIR_CONTEXT_V3,
     REPAIR_POLICY_V1,
     ClosureRepairContextV1,
+    ClosureRepairContextV3,
     ClosureRepairResult,
     RepairProposal,
     RepairUpdateOperation,
@@ -46,6 +47,7 @@ from .closure_repair_eval import (
     closure_repair_scenario_input,
     simulate_closure_repair_mutation,
 )
+from .closure_repair_lineage import repair_runtime_fingerprint
 from .eval_core import (
     EvalSuite,
     EvalTask,
@@ -57,7 +59,7 @@ from .eval_core import (
 )
 
 CAPABILITY_SCHEMA_VERSION = "casefile-closure-repair-capability-v1"
-CAPABILITY_REPORT_VERSION = "casefile-closure-repair-benchmark-report-v4"
+CAPABILITY_REPORT_VERSION = "casefile-closure-repair-benchmark-report-v5"
 GRADER_VERSION = "closure-repair-capability-grader-v1"
 HARNESS_VERSION = "closure-repair-production-kernel-v3"
 DEFAULT_CAPABILITY_RELATIVE = Path("fixtures/closure_repair_benchmark/capability/v1/suite.json")
@@ -94,10 +96,12 @@ class _ReferenceProposer:
         raw_operations = self.reference.get("operations")
         if raw_operations is None:
             rounds = cast(Sequence[Mapping[str, Any]], self.reference["rounds"])
-            selected = next((item for item in rounds if item.get("round_no") == round_no), None)
-            if selected is None:
+            round_reference = next(
+                (item for item in rounds if item.get("round_no") == round_no), None
+            )
+            if round_reference is None:
                 raise CapabilityContractError("capability_reference_round_missing")
-            raw_operations = selected["operations"]
+            raw_operations = round_reference["operations"]
         operations = tuple(
             RepairUpdateOperation(
                 obligation_keys=tuple(item.obligation_key for item in context.obligations),
@@ -108,6 +112,23 @@ class _ReferenceProposer:
             )
             for raw in cast(Sequence[Mapping[str, Any]], raw_operations)
         )
+        if isinstance(context, ClosureRepairContextV3):
+            alternative = next(
+                (
+                    alternative
+                    for alternative in context.repair_alternatives
+                    if tuple((item.field_path, item.new_value) for item in alternative.operations)
+                    == tuple((item.field_path, item.new_value) for item in operations)
+                ),
+                None,
+            )
+            if alternative is None:
+                raise CapabilityContractError("capability_reference_alternative_missing")
+            return RepairProposal(
+                context.context_hash,
+                alternative.operations,
+                selected_alternative_id=alternative.alternative_id,
+            )
         return RepairProposal(context.context_hash, operations)
 
 
@@ -506,10 +527,7 @@ def _run_with(
                 original_intent=str(task.input["original_intent"]),
             )
         except Exception as error:  # provider/runtime failures remain distinct from capability
-            infrastructure_failure = {
-                "class": "provider_or_runtime",
-                "exception_type": type(error).__name__,
-            }
+            infrastructure_failure = _infrastructure_failure(events, error)
             result = None
     latency_ms = round((time.perf_counter() - started) * 1000, 3)
     if result is None:
@@ -951,9 +969,9 @@ def _report(
             repo_root / "backend/src/casefile/agent_runtime/closure_repair.py",
             repo_root / "backend/src/casefile/domain/logical_mutation/repair/context.py",
             repo_root
-            / "backend/src/casefile/agent_runtime/prompts/closure_repair/v2/manifest.json",
+            / "backend/src/casefile/agent_runtime/prompts/closure_repair/v3/manifest.json",
             repo_root
-            / "backend/src/casefile/agent_runtime/prompts/closure_repair/v2/fragments/repair.md",
+            / "backend/src/casefile/agent_runtime/prompts/closure_repair/v3/fragments/repair.md",
         ),
         HARNESS_VERSION,
     )
@@ -986,7 +1004,8 @@ def _report(
         "agent_version": CLOSURE_REPAIR_AGENT_VERSION,
         "toolset_version": CLOSURE_REPAIR_TOOLSET_VERSION,
         "output_schema_id": CLOSURE_REPAIR_SCHEMA_ID,
-        "context_version": REPAIR_CONTEXT_V2,
+        "context_version": REPAIR_CONTEXT_V3,
+        "repair_runtime_fingerprint": repair_runtime_fingerprint(repo_root),
         "closure_policy_version": ACTIVE_APPLY_POLICY,
         "repair_policy_version": REPAIR_POLICY_V1,
         "source": git,
@@ -1060,6 +1079,7 @@ def _report(
                 ),
             },
             "infrastructure_failure_count": len(infra),
+            "infrastructure_diagnostics": _transport_aggregates(rows),
         },
         "status": "failed" if safety_failures else ("blocked" if infra else "completed"),
         "rows": [row.as_dict() for row in rows],
@@ -1109,7 +1129,84 @@ def _report(
             }
         )
     ).hexdigest()
+    if infra:
+        report["qualification_outcome"] = "inconclusive_infrastructure"
+    elif trials == 5:
+        from .closure_repair_gate import evaluate_closure_repair_gate_v2
+
+        report["qualification_outcome"] = (
+            "passed" if evaluate_closure_repair_gate_v2(report)["passed"] else "failed_capability"
+        )
+    else:
+        report["qualification_outcome"] = "failed_capability"
+    report["report_fingerprint"] = sha256(_canonical_bytes(report)).hexdigest()
     return report
+
+
+def _infrastructure_failure(
+    events: Sequence[Mapping[str, Any]], error: BaseException
+) -> dict[str, Any]:
+    del error
+    for event in reversed(events):
+        payload = event.get("payload")
+        if (
+            event.get("event_type") == "agent.model_call.failed"
+            and isinstance(payload, dict)
+            and isinstance(payload.get("transport_error_class"), str)
+        ):
+            return {
+                key: deepcopy(payload.get(key))
+                for key in (
+                    "transport_error_class",
+                    "http_status_class",
+                    "protocol",
+                    "protocol_phase",
+                    "network_retry_budget",
+                    "network_retry_count",
+                    "retry_exhausted",
+                    "retry_after_present",
+                    "fallback_attempted",
+                    "fallback_succeeded",
+                )
+            }
+    return {
+        "transport_error_class": "unknown",
+        "http_status_class": None,
+        "protocol": "unknown",
+        "protocol_phase": "runtime",
+        "network_retry_budget": 0,
+        "network_retry_count": None,
+        "retry_exhausted": True,
+        "retry_after_present": False,
+        "fallback_attempted": False,
+        "fallback_succeeded": False,
+    }
+
+
+def _transport_aggregates(rows: Sequence[TrialRecord]) -> dict[str, Any]:
+    terminal_classes: Counter[str] = Counter()
+    terminal_protocols: Counter[str] = Counter()
+    recoverable_classes: Counter[str] = Counter()
+    recoverable_protocols: Counter[str] = Counter()
+    for row in rows:
+        if row.infrastructure_failure is not None:
+            terminal_classes[str(row.infrastructure_failure.get("transport_error_class"))] += 1
+            terminal_protocols[str(row.infrastructure_failure.get("protocol"))] += 1
+        for event in row.transcript.events:
+            payload = event.get("payload")
+            if (
+                event.get("event_type") == "model.output_validated"
+                and isinstance(payload, dict)
+                and payload.get("fallback_succeeded") is True
+            ):
+                recoverable_classes[str(payload.get("transport_error_class"))] += 1
+                recoverable_protocols[str(payload.get("protocol"))] += 1
+    return {
+        "terminal_by_transport_class": dict(sorted(terminal_classes.items())),
+        "terminal_by_protocol": dict(sorted(terminal_protocols.items())),
+        "recoverable_by_transport_class": dict(sorted(recoverable_classes.items())),
+        "recoverable_by_protocol": dict(sorted(recoverable_protocols.items())),
+    }
 
 
 def _stratified_metrics(

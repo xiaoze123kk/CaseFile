@@ -11,6 +11,7 @@ import pytest
 from casefile.agent_runtime import (
     ClosureRepairOperationOutputV1,
     ClosureRepairOutputV1,
+    ClosureRepairOutputV3,
     DeepSeekAgentsProvider,
     OpenAIAgentsProvider,
 )
@@ -226,10 +227,10 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
 
     assert report["status"] == "completed"
     assert report["release_gate_eligible"] is False
-    assert report["prompt_version"] == "closure-repair-v2"
-    assert report["agent_version"] == "closure-repair-agent-v2"
-    assert report["output_schema_id"] == "closure-repair-output-v2"
-    assert report["context_version"] == "closure-repair-context-v2"
+    assert report["prompt_version"] == "closure-repair-v3"
+    assert report["agent_version"] == "closure-repair-agent-v3"
+    assert report["output_schema_id"] == "closure-repair-output-v3"
+    assert report["context_version"] == "closure-repair-context-v3"
     assert report["task_count"] == 61
     assert report["repair_task_count"] == 12
     assert report["abstention_task_count"] == 49
@@ -238,7 +239,10 @@ def test_capability_report_separates_repair_abstention_safety_and_artifacts(
     assert report["metrics"]["capability"]["semantic_round_2_entry_count"] == 0
     assert report["metrics"]["capability"]["conditional_round_2_recovery_rate"] is None
     assert report["metrics"]["capability"]["all_trials_success_task_rate"] == 1.0
-    assert report["schema_version"] == "casefile-closure-repair-benchmark-report-v4"
+    assert report["schema_version"] == "casefile-closure-repair-benchmark-report-v5"
+    assert len(report["repair_runtime_fingerprint"]) == 64
+    assert len(report["report_fingerprint"]) == 64
+    assert report["qualification_outcome"] == "failed_capability"
     assert report["suite_role"] == "capability_dev_v1"
     assert (
         report["metrics"]["capability"]["two_round_recovery_rate_denominator"]
@@ -282,9 +286,7 @@ def test_one_unsafe_trial_fails_the_all_of_trials_release_gate() -> None:
     report = run_closure_repair_benchmark(repo_root=ROOT)
     rows = deepcopy(report["rows"])
     escaped = next(row for row in rows if "scope_escape" in row["tags"])
-    escaped["actual"].update(
-        status="repaired", proof_complete=True, patchset_eligible=True
-    )
+    escaped["actual"].update(status="repaired", proof_complete=True, patchset_eligible=True)
     escaped["safety_violations"] = ["unsafe_candidate_accepted"]
 
     metrics, gates = evaluate_closure_repair_release_gates(rows)
@@ -295,6 +297,24 @@ def test_one_unsafe_trial_fails_the_all_of_trials_release_gate() -> None:
 
 
 def _adapter_result(request: Any) -> ClosureRepairProviderResult:
+    if request.prompt_version == "closure-repair-v3":
+        alternatives = request.context["repair_alternatives"]
+        selected = next(
+            (item for item in alternatives if item["outcome"] == "repaired"),
+            alternatives[0],
+        )
+        return ClosureRepairProviderResult(
+            candidate=ClosureRepairOutputV3(
+                selected_alternative_id=selected["alternative_id"],
+                reason="选择服务器预证明的最小修复。",
+            ),
+            usage={
+                "requests": 1,
+                "input_tokens": 20,
+                "output_tokens": 8,
+                "total_tokens": 28,
+            },
+        )
     operations = []
     for obligation in request.context["obligations"]:
         subject_id = str(obligation["subject_object_ids"][0])
@@ -325,9 +345,7 @@ def _adapter_result(request: Any) -> ClosureRepairProviderResult:
     )
 
 
-@pytest.mark.parametrize(
-    "provider_type", (OpenAIAgentsProvider, DeepSeekAgentsProvider)
-)
+@pytest.mark.parametrize("provider_type", (OpenAIAgentsProvider, DeepSeekAgentsProvider))
 def test_live_shadow_is_opt_in_and_exercises_each_adapter_protocol(
     monkeypatch: pytest.MonkeyPatch,
     provider_type: type[OpenAIAgentsProvider] | type[DeepSeekAgentsProvider],
@@ -362,6 +380,4 @@ def test_live_shadow_fails_closed_without_explicit_live_contract_or_credential()
     with pytest.raises(ValueError, match="live_provider_mismatch"):
         run_closure_repair_benchmark(repo_root=ROOT, provider_name="openai")
     with pytest.raises(ValueError, match="live_credential_missing"):
-        run_closure_repair_benchmark(
-            repo_root=ROOT, provider_name="openai", live=True
-        )
+        run_closure_repair_benchmark(repo_root=ROOT, provider_name="openai", live=True)

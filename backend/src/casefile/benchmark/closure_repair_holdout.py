@@ -19,9 +19,30 @@ HOLDOUT_SCHEMA_VERSION = "casefile-closure-repair-holdout-v1"
 HOLDOUT_DESCRIPTOR_VERSION = "casefile-closure-repair-holdout-descriptor-v1"
 HOLDOUT_SUITE_ID = "closure-repair-capability-holdout-v1"
 HOLDOUT_GATE_VERSION = "closure-repair-backend-shadow-gate-v1"
+HOLDOUT_SCHEMA_VERSION_V2 = "casefile-closure-repair-holdout-v2"
+HOLDOUT_DESCRIPTOR_VERSION_V2 = "casefile-closure-repair-holdout-descriptor-v2"
+HOLDOUT_SUITE_ID_V2 = "closure-repair-capability-holdout-v2"
+HOLDOUT_GATE_VERSION_V2 = "closure-repair-gate-v2"
 DEFAULT_DESCRIPTOR_PATH = (
     Path(__file__).with_name("policies") / "closure-repair-holdout-v1-descriptor.json"
 )
+DEFAULT_DESCRIPTOR_PATH_V2 = (
+    Path(__file__).with_name("policies") / "closure-repair-holdout-v2-descriptor.json"
+)
+_SUITE_IDENTITIES = {
+    HOLDOUT_SCHEMA_VERSION: (
+        HOLDOUT_SUITE_ID,
+        HOLDOUT_GATE_VERSION,
+        HOLDOUT_DESCRIPTOR_VERSION,
+        DEFAULT_DESCRIPTOR_PATH,
+    ),
+    HOLDOUT_SCHEMA_VERSION_V2: (
+        HOLDOUT_SUITE_ID_V2,
+        HOLDOUT_GATE_VERSION_V2,
+        HOLDOUT_DESCRIPTOR_VERSION_V2,
+        DEFAULT_DESCRIPTOR_PATH_V2,
+    ),
+}
 
 _FAMILIES = {
     "claim_dependency_incompatible",
@@ -82,18 +103,19 @@ class HoldoutContractError(ValueError):
     """A stable fail-closed private Holdout contract error."""
 
 
-def load_holdout_suite(
-    suite_path: Path, *, descriptor_path: Path = DEFAULT_DESCRIPTOR_PATH
-) -> EvalSuite:
+def load_holdout_suite(suite_path: Path, *, descriptor_path: Path | None = None) -> EvalSuite:
     suite_file = suite_path.resolve()
     root = suite_file.parent
     raw_suite = _read_object(suite_file)
     _exact_keys(raw_suite, _SUITE_KEYS, "holdout_suite_keys_invalid")
+    identity = _SUITE_IDENTITIES.get(str(raw_suite["schema_version"]))
+    if identity is None:
+        raise HoldoutContractError("holdout_suite_identity_invalid")
+    suite_id, gate_version, descriptor_version, default_descriptor = identity
     if (
-        raw_suite["schema_version"] != HOLDOUT_SCHEMA_VERSION
-        or raw_suite["suite_id"] != HOLDOUT_SUITE_ID
+        raw_suite["suite_id"] != suite_id
         or raw_suite["suite_role"] != "holdout"
-        or raw_suite["gate_policy_version"] != HOLDOUT_GATE_VERSION
+        or raw_suite["gate_policy_version"] != gate_version
     ):
         raise HoldoutContractError("holdout_suite_identity_invalid")
     raw_task_paths = raw_suite["tasks"]
@@ -113,7 +135,11 @@ def load_holdout_suite(
         oracle_paths.add(resolved_paths[2])
         task_composites[task.task_id] = composite
     _validate_distribution(tasks)
-    release_cohort = _validate_release_cohort(raw_suite["release_cohort"], tasks)
+    release_cohort = _validate_release_cohort(
+        raw_suite["release_cohort"],
+        tasks,
+        require_production_reachable=(raw_suite["schema_version"] == HOLDOUT_SCHEMA_VERSION_V2),
+    )
     if len({item.task_id for item in tasks}) != len(tasks):
         raise HoldoutContractError("holdout_task_id_duplicate")
     if len({_canonical_hash(value) for value in task_composites.values()}) != len(tasks):
@@ -126,11 +152,12 @@ def load_holdout_suite(
         tasks,
         root=root,
         task_composites=task_composites,
+        suite_id=suite_id,
     )
     package_fingerprint = _paths_fingerprint(package_paths, root)
     oracle_fingerprint = _paths_fingerprint(oracle_paths, root)
     review_fingerprint = _paths_fingerprint({author_path, reviewer_path}, root)
-    descriptor = _read_object(descriptor_path.resolve())
+    descriptor = _read_object((descriptor_path or default_descriptor).resolve())
     _validate_descriptor(
         descriptor,
         tasks=tasks,
@@ -138,18 +165,21 @@ def load_holdout_suite(
         package_fingerprint=package_fingerprint,
         oracle_fingerprint=oracle_fingerprint,
         review_fingerprint=review_fingerprint,
+        schema_version=descriptor_version,
+        suite_id=suite_id,
+        gate_version=gate_version,
     )
     return EvalSuite(
-        suite_id=HOLDOUT_SUITE_ID,
+        suite_id=suite_id,
         suite_kind="capability",
-        schema_version=HOLDOUT_SCHEMA_VERSION,
+        schema_version=str(raw_suite["schema_version"]),
         tasks=tuple(tasks),
         fingerprint=package_fingerprint,
         suite_role="holdout",
         metadata={
             "oracle_fingerprint": oracle_fingerprint,
             "review_fingerprint": review_fingerprint,
-            "gate_policy_version": HOLDOUT_GATE_VERSION,
+            "gate_policy_version": gate_version,
             "release_cohort": release_cohort,
             "release_cohort_fingerprint": descriptor["release_cohort_fingerprint"],
         },
@@ -318,7 +348,12 @@ def _validate_distribution(tasks: Sequence[EvalTask]) -> None:
         raise HoldoutContractError("holdout_staged_distribution_invalid")
 
 
-def _validate_release_cohort(value: Any, tasks: Sequence[EvalTask]) -> tuple[str, ...]:
+def _validate_release_cohort(
+    value: Any,
+    tasks: Sequence[EvalTask],
+    *,
+    require_production_reachable: bool = False,
+) -> tuple[str, ...]:
     if not isinstance(value, list) or len(value) != 18 or len(set(value)) != 18:
         raise HoldoutContractError("holdout_release_cohort_invalid")
     by_id = {item.task_id: item for item in tasks}
@@ -335,6 +370,10 @@ def _validate_release_cohort(value: Any, tasks: Sequence[EvalTask]) -> tuple[str
         raise HoldoutContractError("holdout_release_cohort_abstention_invalid")
     if set(item.difficulty for item in agent) != _DIFFICULTIES:
         raise HoldoutContractError("holdout_release_cohort_difficulty_invalid")
+    if require_production_reachable and any(
+        item.input["primary_mutation"].get("operation_type") != "update_field" for item in cohort
+    ):
+        raise HoldoutContractError("holdout_release_cohort_mutation_unsupported")
     return tuple(cast(list[str], value))
 
 
@@ -345,6 +384,7 @@ def _validate_attestations(
     *,
     root: Path,
     task_composites: Mapping[str, Any],
+    suite_id: str,
 ) -> None:
     ids = sorted(item.task_id for item in tasks)
     author = _read_object(author_path)
@@ -352,7 +392,7 @@ def _validate_attestations(
     for value, role in ((author, "author"), (reviewer, "independent_reviewer")):
         if value.get("role") != role or value.get("accepted_task_ids") != ids:
             raise HoldoutContractError("holdout_review_attestation_invalid")
-        if value.get("suite_id") != HOLDOUT_SUITE_ID or value.get("decision") != "accepted":
+        if value.get("suite_id") != suite_id or value.get("decision") != "accepted":
             raise HoldoutContractError("holdout_review_decision_invalid")
     if author.get("reviewer_id") == reviewer.get("reviewer_id"):
         raise HoldoutContractError("holdout_review_independence_invalid")
@@ -388,16 +428,19 @@ def _validate_descriptor(
     package_fingerprint: str,
     oracle_fingerprint: str,
     review_fingerprint: str,
+    schema_version: str,
+    suite_id: str,
+    gate_version: str,
 ) -> None:
     _exact_keys(descriptor, _DESCRIPTOR_KEYS, "holdout_descriptor_keys_invalid")
     automation = Counter(item.automation for item in tasks)
     family = Counter(item.policy_key[0] for item in tasks if item.automation == "agent")
     difficulty = Counter(item.difficulty for item in tasks if item.automation == "agent")
     expected = {
-        "schema_version": HOLDOUT_DESCRIPTOR_VERSION,
-        "suite_id": HOLDOUT_SUITE_ID,
+        "schema_version": schema_version,
+        "suite_id": suite_id,
         "suite_role": "holdout",
-        "gate_policy_version": HOLDOUT_GATE_VERSION,
+        "gate_policy_version": gate_version,
         "private_package_fingerprint": package_fingerprint,
         "oracle_fingerprint": oracle_fingerprint,
         "review_fingerprint": review_fingerprint,
@@ -420,6 +463,10 @@ def holdout_descriptor_payload(suite_path: Path) -> dict[str, Any]:
     suite_file = suite_path.resolve()
     root = suite_file.parent
     raw = _read_object(suite_file)
+    identity = _SUITE_IDENTITIES.get(str(raw.get("schema_version")))
+    if identity is None:
+        raise HoldoutContractError("holdout_suite_identity_invalid")
+    suite_id, gate_version, descriptor_version, _descriptor_path = identity
     paths = {suite_file}
     oracles: set[Path] = set()
     tasks: list[EvalTask] = []
@@ -432,7 +479,11 @@ def holdout_descriptor_payload(suite_path: Path) -> dict[str, Any]:
         paths.update(resolved)
         oracles.add(resolved[2])
     _validate_distribution(tasks)
-    cohort = _validate_release_cohort(raw.get("release_cohort"), tasks)
+    cohort = _validate_release_cohort(
+        raw.get("release_cohort"),
+        tasks,
+        require_production_reachable=(raw.get("schema_version") == HOLDOUT_SCHEMA_VERSION_V2),
+    )
     author = root / "author-attestation.json"
     reviewer = root / "reviewer-attestation.json"
     _validate_attestations(
@@ -441,15 +492,16 @@ def holdout_descriptor_payload(suite_path: Path) -> dict[str, Any]:
         tasks,
         root=root,
         task_composites=task_composites,
+        suite_id=suite_id,
     )
     automation = Counter(item.automation for item in tasks)
     family = Counter(item.policy_key[0] for item in tasks if item.automation == "agent")
     difficulty = Counter(item.difficulty for item in tasks if item.automation == "agent")
     return {
-        "schema_version": HOLDOUT_DESCRIPTOR_VERSION,
-        "suite_id": HOLDOUT_SUITE_ID,
+        "schema_version": descriptor_version,
+        "suite_id": suite_id,
         "suite_role": "holdout",
-        "gate_policy_version": HOLDOUT_GATE_VERSION,
+        "gate_policy_version": gate_version,
         "private_package_fingerprint": _paths_fingerprint(paths, root),
         "oracle_fingerprint": _paths_fingerprint(oracles, root),
         "review_fingerprint": _paths_fingerprint({author, reviewer}, root),
@@ -511,7 +563,10 @@ def _paths_fingerprint(paths: set[Path], root: Path) -> str:
 
 __all__ = [
     "DEFAULT_DESCRIPTOR_PATH",
+    "DEFAULT_DESCRIPTOR_PATH_V2",
     "HOLDOUT_SCHEMA_VERSION",
+    "HOLDOUT_SCHEMA_VERSION_V2",
+    "HOLDOUT_SUITE_ID_V2",
     "HoldoutContractError",
     "holdout_descriptor_payload",
     "load_holdout_suite",
