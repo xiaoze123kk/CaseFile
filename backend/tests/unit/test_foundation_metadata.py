@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
 from casefile.data_postgres import models
 from casefile.data_postgres.base import Base
-from sqlalchemy.dialects import postgresql
 
 EXPECTED_TABLES = {
     "agent_model_calls",
@@ -105,6 +106,7 @@ JSONB_ALLOWLIST = {
     ("agent_model_calls", "usage_jsonb"),
     ("agent_patch_operations", "new_value_jsonb"),
     ("agent_patch_operations", "old_value_jsonb"),
+    ("agent_patch_operations", "repair_obligation_keys"),
     ("agent_step_runs", "diagnostic_jsonb"),
     ("agent_step_runs", "output_jsonb"),
     ("agent_step_runs", "upstream_hashes_jsonb"),

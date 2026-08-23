@@ -350,6 +350,30 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ),
         CheckConstraint("length(btrim(reason)) > 0", name="reason_not_blank"),
         CheckConstraint(
+            "origin IN ('primary', 'closure_repair')",
+            name="origin_allowed",
+        ),
+        CheckConstraint(
+            "repair_round IS NULL OR repair_round BETWEEN 1 AND 2",
+            name="repair_round_allowed",
+        ),
+        CheckConstraint(
+            "jsonb_typeof(repair_obligation_keys) = 'array'",
+            name="repair_obligation_keys_array",
+        ),
+        CheckConstraint(
+            "NOT jsonb_path_exists(repair_obligation_keys, "
+            '\'$[*] ? (@.type() != "string" || @ like_regex "^\\\\s*$")\')',
+            name="repair_obligation_keys_valid",
+        ),
+        CheckConstraint(
+            "(origin = 'primary' AND repair_round IS NULL "
+            "AND repair_obligation_keys = '[]'::jsonb) OR "
+            "(origin = 'closure_repair' AND repair_round IS NOT NULL "
+            "AND jsonb_array_length(repair_obligation_keys) > 0)",
+            name="repair_provenance_shape",
+        ),
+        CheckConstraint(
             "(decision = 'pending' AND reviewed_at IS NULL) OR "
             "(decision IN ('accepted', 'rejected') AND reviewed_at IS NOT NULL)",
             name="review_shape",
@@ -380,6 +404,13 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
     old_value_jsonb: Mapped[Any | None] = mapped_column(JSONB)
     new_value_jsonb: Mapped[Any | None] = mapped_column(JSONB)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    origin: Mapped[str] = mapped_column(
+        String(24), nullable=False, server_default=text("'primary'")
+    )
+    repair_round: Mapped[int | None] = mapped_column(Integer)
+    repair_obligation_keys: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
     decision: Mapped[str] = mapped_column(
         String(16),
         nullable=False,

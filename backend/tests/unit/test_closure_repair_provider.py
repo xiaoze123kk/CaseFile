@@ -333,7 +333,7 @@ def test_live_adapters_use_dedicated_strict_schema_and_normalized_usage(
     assert result.candidate.operations[0].field_path == "/status"
     assert result.usage["total_tokens"] == 30
     assert captured["output_type"] is ClosureRepairOutputV1
-    assert captured["component_id"] == "repair"
+    assert captured["component_id"] == "closure_repair_round_1"
     assert captured["schema_id"] == "closure-repair-output-v1"
     assert captured["strict_validation"] is True
     assert captured.get("deepseek_output_protocol") == expected_protocol

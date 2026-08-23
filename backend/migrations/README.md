@@ -255,6 +255,12 @@ drafts ── exposure_plans（独立 revision 指针）
 - `draft_operations` 增加 logical apply/undo/redo/normalize 追加式事件；每次动作只推进一次 Draft revision，完整 before/after 文档和 hash 用于严格 LIFO、Revert 判定及投影证明。
 - 删除仍只设置 `casefile_objects.deleted_at`；业务引用清理来自 Normalizer 的显式机械 operations，数据库 cascade 不承担业务删除语义。
 
+## V20260823133155 闭包修复补丁来源
+
+- `agent_patch_operations` 增加 `origin`、`repair_round` 与 `repair_obligation_keys`；既有数据和普通 Chat 建议统一回填为 `primary`。
+- `closure_repair` operation 必须绑定 1–2 轮次和至少一个 obligation key；`primary` operation 不得伪造 Repair provenance，数据库约束失败关闭。
+- Repair 仍使用原 `AgentPatchSet` 和 Apply/Undo/Redo 证明链，不创建平行 PatchSet，也不自动应用。Worker 的 `shadow` 模式只留 Task/Step/ModelCall 审计，`suggest` 才把已由 Application 独立重放证明的 companion UPDATE 合入同一可审阅 PatchSet。
+
 ## 关系与数据库门禁
 
 - Project : CaseFile = 1:1；CaseFile : Draft = 1:N；CaseFile : Current Draft = 1:1；Project : Brief = 1:1；Project : SourceRecord = 1:N；Brief : BriefVersion = 1:N。

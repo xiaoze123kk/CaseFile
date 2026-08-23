@@ -94,6 +94,7 @@ from casefile.data_postgres.models import (
 )
 from casefile.worker.support import (
     _json_hash,
+    _merge_numeric_usage,
     _network_retries,
     _required_object,
     _required_string,
@@ -1078,6 +1079,8 @@ class ChatTaskExecutorMixin:
         result: CaseFileChatResult,
         *,
         route: RouteDecision | None = None,
+        repair_envelope: dict[str, Any] | None = None,
+        repair_usage: dict[str, Any] | None = None,
     ) -> None:
         suggestions: list[dict[str, Any]] = []
         for suggestion in result.candidate.suggestions:
@@ -1126,9 +1129,10 @@ class ChatTaskExecutorMixin:
                 suggested_view=result.candidate.suggested_view,
                 suggestions=suggestions,
                 audit_findings=audit_findings,
-                usage=result.usage,
+                usage=_merge_numeric_usage(result.usage, repair_usage or {}),
                 route=route_payload,
                 tools=result.tools.as_dict(),
+                repair_envelope=repair_envelope,
             )
 
 

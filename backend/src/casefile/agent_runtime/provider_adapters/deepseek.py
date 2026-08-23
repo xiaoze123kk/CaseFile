@@ -15,7 +15,6 @@ from casefile.agent_runtime.chat_tools import (
     ChatToolLedger,
 )
 from casefile.agent_runtime.closure_repair import (
-    CLOSURE_REPAIR_COMPONENT_ID,
     CLOSURE_REPAIR_SCHEMA_ID,
     ClosureRepairOutputV1,
     ClosureRepairProviderResult,
@@ -129,7 +128,7 @@ class DeepSeekAgentsProvider:
                 input_text=rendered.input_text,
                 output_type=ClosureRepairOutputV1,
                 stage="closure_repair",
-                component_id=CLOSURE_REPAIR_COMPONENT_ID,
+                component_id=request.component_id,
                 schema_id=CLOSURE_REPAIR_SCHEMA_ID,
                 deepseek_output_protocol="strict_tool",
                 strict_validation=True,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Any, Protocol
 
 from pydantic import Field, model_validator
@@ -39,9 +40,7 @@ class ClosureRepairPromptInputV1(StrictAgentOutput):
             or any(value not in "0123456789abcdef" for value in context_hash)
         ):
             raise ValueError("closure repair context hash is invalid")
-        if not isinstance(self.context.get("obligations"), list) or not self.context[
-            "obligations"
-        ]:
+        if not isinstance(self.context.get("obligations"), list) or not self.context["obligations"]:
             raise ValueError("closure repair obligations are missing")
         return self
 
@@ -77,6 +76,10 @@ class ClosureRepairRequest:
     emit: EventSink
     network_retries: int = 2
 
+    @property
+    def component_id(self) -> str:
+        return f"closure_repair_round_{self.round_no}"
+
 
 @dataclass(frozen=True, slots=True)
 class ClosureRepairProviderResult:
@@ -110,35 +113,93 @@ class ProviderRepairProposer:
         *,
         round_no: int,
     ) -> RepairProposal:
-        result = self.provider.repair_closure(
-            ClosureRepairRequest(
-                prompt_version=self.prompt_version,
-                context=context.as_dict(),
-                round_no=round_no,
-                model_id=self.model_id,
-                api_key=self.api_key,
-                max_turns=self.max_turns,
-                emit=self.emit,
-                network_retries=self.network_retries,
-            )
+        request = ClosureRepairRequest(
+            prompt_version=self.prompt_version,
+            context=context.as_dict(),
+            round_no=round_no,
+            model_id=self.model_id,
+            api_key=self.api_key,
+            max_turns=self.max_turns,
+            emit=self.emit,
+            network_retries=self.network_retries,
         )
-        self.results.append(result)
-        operations: list[RepairUpdateOperation] = []
-        for item in result.candidate.operations:
-            try:
-                new_value = json.loads(item.value_json)
-            except json.JSONDecodeError as error:
-                raise ValueError("repair_proposal_value_json_invalid") from error
-            operations.append(
-                RepairUpdateOperation(
-                    obligation_keys=tuple(item.obligation_keys),
-                    object_id=item.object_id,
-                    field_path=item.field_path,
-                    new_value=new_value,
-                    reason=item.reason,
-                )
+        request.emit(
+            "agent.step.started",
+            "closure_repair",
+            {
+                "component_id": request.component_id,
+                "component_version": request.prompt_version,
+                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "input_hash": context.context_hash,
+                "upstream_hashes": {"candidate_hash": context.candidate_hash},
+            },
+        )
+        try:
+            result = self.provider.repair_closure(request)
+        except Exception:
+            request.emit(
+                "agent.step.failed",
+                "closure_repair",
+                {
+                    "component_id": request.component_id,
+                    "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                    "input_hash": context.context_hash,
+                    "error_code": "closure_repair_provider_failed",
+                    "failure_layer": "provider",
+                },
             )
-        return RepairProposal(context.context_hash, tuple(operations))
+            raise
+        try:
+            operations: list[RepairUpdateOperation] = []
+            for item in result.candidate.operations:
+                new_value = json.loads(item.value_json)
+                operations.append(
+                    RepairUpdateOperation(
+                        obligation_keys=tuple(item.obligation_keys),
+                        object_id=item.object_id,
+                        field_path=item.field_path,
+                        new_value=new_value,
+                        reason=item.reason,
+                    )
+                )
+            proposal = RepairProposal(context.context_hash, tuple(operations))
+        except (json.JSONDecodeError, ValueError) as error:
+            request.emit(
+                "agent.step.failed",
+                "closure_repair",
+                {
+                    "component_id": request.component_id,
+                    "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                    "input_hash": context.context_hash,
+                    "error_code": "repair_proposal_invalid",
+                    "failure_layer": "domain_validation",
+                },
+            )
+            if isinstance(error, json.JSONDecodeError):
+                raise ValueError("repair_proposal_value_json_invalid") from error
+            raise
+        self.results.append(result)
+        output_hash = sha256(
+            json.dumps(
+                proposal.as_dict(),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        request.emit(
+            "agent.step.completed",
+            "closure_repair",
+            {
+                "component_id": request.component_id,
+                "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
+                "input_hash": context.context_hash,
+                "output_hash": output_hash,
+                "usage": result.usage,
+                "_artifact": proposal.as_dict(),
+            },
+        )
+        return proposal
 
 
 __all__ = [

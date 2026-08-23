@@ -20,7 +20,6 @@ from casefile.agent_runtime.chat_tools import (
     search_casefile_records,
 )
 from casefile.agent_runtime.closure_repair import (
-    CLOSURE_REPAIR_COMPONENT_ID,
     CLOSURE_REPAIR_SCHEMA_ID,
     ClosureRepairOperationOutputV1,
     ClosureRepairOutputV1,
@@ -399,7 +398,7 @@ class FakeProvider:
                 "model_id": request.model_id,
                 "attempt_no": 1,
                 "protocol": "fake_strict_schema",
-                "component_id": CLOSURE_REPAIR_COMPONENT_ID,
+                "component_id": request.component_id,
                 "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
             },
         )
@@ -407,7 +406,7 @@ class FakeProvider:
             "agent.model_call.started",
             "closure_repair",
             {
-                "component_id": CLOSURE_REPAIR_COMPONENT_ID,
+                "component_id": request.component_id,
                 "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
                 "attempt_no": 1,
                 "protocol": "fake_strict_schema",
@@ -447,7 +446,7 @@ class FakeProvider:
             "agent.model_call.completed",
             "closure_repair",
             {
-                "component_id": CLOSURE_REPAIR_COMPONENT_ID,
+                "component_id": request.component_id,
                 "schema_id": CLOSURE_REPAIR_SCHEMA_ID,
                 "attempt_no": 1,
                 "protocol": "fake_strict_schema",
