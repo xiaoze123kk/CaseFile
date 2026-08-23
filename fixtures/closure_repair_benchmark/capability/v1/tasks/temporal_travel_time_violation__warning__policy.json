@@ -1,0 +1,42 @@
+{
+  "task_id": "temporal_travel_time_violation__warning__policy",
+  "policy_key": [
+    "temporal_travel_time_violation",
+    "warning"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "temporal_travel_time_violation",
+        "warning"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "temporal_travel_time_violation"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "temporal_travel_time_violation_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/temporal_travel_time_violation__warning__policy.json",
+  "tags": [
+    "ineligible",
+    "warning",
+    "policy"
+  ]
+}

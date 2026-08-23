@@ -1,0 +1,5 @@
+{
+  "task_id": "reasoning_step_output_type_invalid__hard_invariant__policy",
+  "type": "abstention",
+  "expected_status": "blocked"
+}

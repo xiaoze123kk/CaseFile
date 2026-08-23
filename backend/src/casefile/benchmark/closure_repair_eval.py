@@ -11,7 +11,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from casefile.agent_runtime import (
     ClosureRepairOperationOutputV1,
@@ -109,8 +109,12 @@ def _base_document(repo_root: Path) -> dict[str, Any]:
     )
 
 
-def _dependency_document(repo_root: Path) -> dict[str, Any]:
-    document = _base_document(repo_root)
+def _dependency_document(
+    repo_root: Path, *, base_document: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
+    document = deepcopy(
+        _base_document(repo_root) if base_document is None else dict(base_document)
+    )
     template = document["claims"][0]
     prerequisite = deepcopy(template)
     prerequisite.update(
@@ -158,9 +162,12 @@ def _dependency_mutation() -> MutationSet:
 
 
 def _support_setup(
-    repo_root: Path, *, refutation: bool
+    repo_root: Path,
+    *,
+    refutation: bool,
+    base_document: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], MutationSet]:
-    document = _dependency_document(repo_root)
+    document = _dependency_document(repo_root, base_document=base_document)
     suffix = "refutation" if refutation else "support"
     claim_field = "refute_refs" if refutation else "support_refs"
     information_field = "refutes_claim_refs" if refutation else "supports_claim_refs"
@@ -190,15 +197,22 @@ def _support_setup(
     )
 
 
-def _scenario_input(
-    repo_root: Path, setup: str
+def closure_repair_scenario_input(
+    repo_root: Path,
+    setup: str,
+    *,
+    base_document: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], MutationSet, MutationSimulation | None]:
     if setup == "support":
-        document, mutation = _support_setup(repo_root, refutation=False)
+        document, mutation = _support_setup(
+            repo_root, refutation=False, base_document=base_document
+        )
     elif setup == "refutation":
-        document, mutation = _support_setup(repo_root, refutation=True)
+        document, mutation = _support_setup(
+            repo_root, refutation=True, base_document=base_document
+        )
     else:
-        document = _dependency_document(repo_root)
+        document = _dependency_document(repo_root, base_document=base_document)
         mutation = _dependency_mutation()
         if setup == "protected":
             lonely = deepcopy(document["claims"][0])
@@ -276,11 +290,15 @@ def _scenario_input(
             raise ValueError(f"closure_repair_benchmark_setup_unknown:{setup}")
     supplied = None
     if setup == "stale_simulation":
-        supplied = replace(_simulate(document, mutation), candidate_hash="f" * 64)
+        supplied = replace(
+            simulate_closure_repair_mutation(document, mutation), candidate_hash="f" * 64
+        )
     return document, mutation, supplied
 
 
-def _simulate(document: Mapping[str, Any], mutation: MutationSet) -> MutationSimulation:
+def simulate_closure_repair_mutation(
+    document: Mapping[str, Any], mutation: MutationSet
+) -> MutationSimulation:
     return VerificationEngine(
         closure_policy_version=CLOSURE_POLICY_V2
     ).simulate_mutation_set(document, mutation)
@@ -404,8 +422,10 @@ def _run_trial(
     api_key: str | None,
     enforce_golden: bool,
 ) -> dict[str, Any]:
-    document, mutation, supplied = _scenario_input(repo_root, scenario.setup)
-    simulation = supplied or _simulate(document, mutation)
+    document, mutation, supplied = closure_repair_scenario_input(
+        repo_root, scenario.setup
+    )
+    simulation = supplied or simulate_closure_repair_mutation(document, mutation)
     events: list[tuple[str, str, dict[str, Any]]] = []
 
     def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
@@ -607,6 +627,9 @@ def run_closure_repair_benchmark(
     status = "passed" if all(gates.values()) else "failed"
     return {
         "schema_version": REPORT_SCHEMA_VERSION,
+        "suite_kind": "regression_safety",
+        "evaluation_scope": "production_kernel",
+        "release_gate_eligible": True,
         "suite_version": SUITE_SCHEMA_VERSION,
         "suite_fingerprint": sha256(suite_bytes).hexdigest(),
         "status": status,
@@ -636,6 +659,7 @@ def main() -> None:
     )
     parser.add_argument("--repo-root", type=Path)
     parser.add_argument("--suite-path", type=Path)
+    parser.add_argument("--suite", choices=("regression", "capability"), default="regression")
     parser.add_argument("--provider", choices=("fake", "openai", "deepseek"), default="fake")
     parser.add_argument("--model", default="fake")
     parser.add_argument("--trials", type=int, default=1)
@@ -643,6 +667,9 @@ def main() -> None:
     parser.add_argument("--api-key")
     parser.add_argument("--report-path", type=Path)
     args = parser.parse_args()
+    if args.suite == "capability":
+        _run_capability_cli(args)
+        return
     try:
         report = run_closure_repair_benchmark(
             repo_root=args.repo_root,
@@ -661,6 +688,61 @@ def main() -> None:
         args.report_path.parent.mkdir(parents=True, exist_ok=True)
         args.report_path.write_text(rendered + "\n", encoding="utf-8")
     if report["status"] != "passed":
+        raise SystemExit(2)
+
+
+def _run_capability_cli(args: argparse.Namespace) -> None:
+    from casefile.benchmark.closure_repair_capability import (
+        CapabilityContractError,
+        run_capability_benchmark,
+    )
+
+    root = (args.repo_root or _repo_root()).resolve()
+    api_key = args.api_key or _environment_api_key(args.provider)
+    blocked_reason: str | None = None
+    if args.provider != "deepseek":
+        blocked_reason = "capability_provider_must_be_deepseek"
+    elif not args.live:
+        blocked_reason = "capability_live_required"
+    elif not args.model.strip() or args.model == "fake":
+        blocked_reason = "capability_model_missing"
+    elif not api_key:
+        blocked_reason = "credential_missing"
+    if blocked_reason is not None:
+        report: dict[str, Any] = {
+            "schema_version": "casefile-closure-repair-benchmark-report-v2",
+            "suite_kind": "capability",
+            "evaluation_scope": "production_kernel",
+            "release_gate_eligible": False,
+            "status": "blocked",
+            "blocked_reason": blocked_reason,
+            "provider": args.provider,
+            "model_id": args.model,
+            "trials_per_task": args.trials,
+        }
+    else:
+        artifact_dir = (
+            args.report_path.parent / f"{args.report_path.stem}-trials"
+            if args.report_path is not None
+            else root / "var/benchmark/closure-repair-capability-trials"
+        )
+        try:
+            report = run_capability_benchmark(
+                repo_root=root,
+                model_id=args.model,
+                api_key=cast(str, api_key),
+                trials=args.trials,
+                suite_path=args.suite_path,
+                artifact_dir=artifact_dir,
+            ).as_dict()
+        except CapabilityContractError as error:
+            raise SystemExit(str(error)) from error
+    rendered = json.dumps(report, ensure_ascii=False, indent=2)
+    print(rendered)
+    if args.report_path is not None:
+        args.report_path.parent.mkdir(parents=True, exist_ok=True)
+        args.report_path.write_text(rendered + "\n", encoding="utf-8")
+    if report["status"] not in {"completed"}:
         raise SystemExit(2)
 
 

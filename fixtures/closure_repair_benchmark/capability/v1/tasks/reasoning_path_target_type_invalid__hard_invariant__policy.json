@@ -1,0 +1,42 @@
+{
+  "task_id": "reasoning_path_target_type_invalid__hard_invariant__policy",
+  "policy_key": [
+    "reasoning_path_target_type_invalid",
+    "hard_invariant"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "reasoning_path_target_type_invalid",
+        "hard_invariant"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "reasoning_path_target_type_invalid"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "reasoning_path_target_type_invalid_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/reasoning_path_target_type_invalid__hard_invariant__policy.json",
+  "tags": [
+    "ineligible",
+    "hard_invariant",
+    "policy"
+  ]
+}

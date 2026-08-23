@@ -1,0 +1,5 @@
+{
+  "task_id": "root_structure_delete_requires_explicit_restructure__hard_invariant__policy",
+  "type": "abstention",
+  "expected_status": "blocked"
+}
