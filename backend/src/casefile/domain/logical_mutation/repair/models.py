@@ -5,15 +5,31 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from casefile.domain.logical_mutation.models import ClosureLevel, ClosureObjectRef
+
+if TYPE_CHECKING:
+    from casefile.domain.logical_mutation.models import MutationSet
+    from casefile.domain.verification_engine import MutationSimulation
 
 RepairAutomation = Literal["agent", "mechanical", "manual", "ineligible"]
 RepairAssessmentStatus = Literal[
     "eligible", "manual_required", "blocked", "not_applicable"
 ]
 RepairPathProtectionSource = Literal["primary", "mechanical", "structure_lock"]
+RepairRunStatus = Literal[
+    "repaired",
+    "not_applicable",
+    "manual_required",
+    "intent_revision_required",
+    "blocked",
+    "proposal_rejected",
+    "no_progress",
+    "cycle_detected",
+    "exhausted",
+    "rebase_mismatch",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,3 +273,147 @@ class ClosureRepairContextV1:
 
     def as_dict(self) -> dict[str, object]:
         return {**self.hash_payload(), "context_hash": self.context_hash}
+
+
+@dataclass(frozen=True, slots=True)
+class RepairUpdateOperation:
+    obligation_keys: tuple[str, ...]
+    object_id: str
+    field_path: str
+    new_value: Any
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.obligation_keys or any(
+            not value.strip() for value in self.obligation_keys
+        ):
+            raise ValueError("repair_proposal_obligation_keys_missing")
+        if len(self.obligation_keys) != len(set(self.obligation_keys)):
+            raise ValueError("repair_proposal_obligation_keys_duplicate")
+        if not self.object_id.strip():
+            raise ValueError("repair_proposal_object_id_missing")
+        if not self.field_path.startswith("/"):
+            raise ValueError("repair_proposal_field_path_invalid")
+        if not self.reason.strip():
+            raise ValueError("repair_proposal_reason_missing")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "obligation_keys": list(self.obligation_keys),
+            "object_id": self.object_id,
+            "field_path": self.field_path,
+            "new_value": deepcopy(self.new_value),
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RepairProposal:
+    context_hash: str
+    operations: tuple[RepairUpdateOperation, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.context_hash) != 64 or any(
+            character not in "0123456789abcdef" for character in self.context_hash
+        ):
+            raise ValueError("repair_proposal_context_hash_invalid")
+        if not self.operations:
+            raise ValueError("repair_proposal_operations_missing")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "context_hash": self.context_hash,
+            "operations": [item.as_dict() for item in self.operations],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CompanionRepairOperation:
+    repair_round: int
+    obligation_keys: tuple[str, ...]
+    object_id: str
+    field_path: str
+    new_value: Any
+    reason: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "repair_round": self.repair_round,
+            "obligation_keys": list(self.obligation_keys),
+            "object_id": self.object_id,
+            "field_path": self.field_path,
+            "new_value": deepcopy(self.new_value),
+            "reason": self.reason,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ClosureRepairRound:
+    round_no: int
+    context_hash: str
+    proposal: RepairProposal
+    obligation_keys_before: tuple[str, ...]
+    obligation_keys_after: tuple[str, ...]
+    candidate_hash_before: str
+    candidate_hash_after: str
+    outcome: str
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "round_no": self.round_no,
+            "context_hash": self.context_hash,
+            "proposal": self.proposal.as_dict(),
+            "obligation_keys_before": list(self.obligation_keys_before),
+            "obligation_keys_after": list(self.obligation_keys_after),
+            "candidate_hash_before": self.candidate_hash_before,
+            "candidate_hash_after": self.candidate_hash_after,
+            "outcome": self.outcome,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ClosureRepairResult:
+    status: RepairRunStatus
+    reason_code: str
+    original_simulation: MutationSimulation
+    rounds: tuple[ClosureRepairRound, ...] = ()
+    companion_operations: tuple[CompanionRepairOperation, ...] = ()
+    final_mutation_set: MutationSet | None = None
+    final_simulation: MutationSimulation | None = None
+
+    @property
+    def repaired(self) -> bool:
+        return self.status == "repaired"
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "reason_code": self.reason_code,
+            "repaired": self.repaired,
+            "rounds": [item.as_dict() for item in self.rounds],
+            "companion_operations": [
+                item.as_dict() for item in self.companion_operations
+            ],
+            "final_mutation_set": (
+                None
+                if self.final_mutation_set is None
+                else {
+                    "mutation_set_id": self.final_mutation_set.mutation_set_id,
+                    "base_draft_id": self.final_mutation_set.base_draft_id,
+                    "base_revision": self.final_mutation_set.base_revision,
+                    "operation_ids": [
+                        item.operation_id for item in self.final_mutation_set.operations
+                    ],
+                    "actor": self.final_mutation_set.actor,
+                    "mode": self.final_mutation_set.mode,
+                    "closure_policy_version": (
+                        self.final_mutation_set.closure_policy_version
+                    ),
+                }
+            ),
+            "final_simulation": (
+                None
+                if self.final_simulation is None
+                else self.final_simulation.as_dict()
+            ),
+        }

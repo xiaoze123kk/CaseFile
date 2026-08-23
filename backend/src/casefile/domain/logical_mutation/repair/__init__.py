@@ -6,16 +6,32 @@ from casefile.domain.logical_mutation.repair.context import (
     RepairContextError,
     build_closure_repair_context,
 )
+from casefile.domain.logical_mutation.repair.document_diff import (
+    RepairDocumentDiffError,
+    build_mutation_from_document_diff,
+)
+from casefile.domain.logical_mutation.repair.engine import (
+    MAX_REPAIR_ROUNDS,
+    RepairEngineError,
+    prove_repair_rebase,
+    run_closure_repair,
+)
 from casefile.domain.logical_mutation.repair.models import (
     ClosureObligation,
     ClosureRepairAssessment,
     ClosureRepairContextV1,
+    ClosureRepairResult,
+    ClosureRepairRound,
+    CompanionRepairOperation,
     ProtectedRepairPath,
     RepairAutomation,
     RepairContextObject,
     RepairObjectPaths,
     RepairPolicy,
+    RepairProposal,
+    RepairRunStatus,
     RepairScopeV1,
+    RepairUpdateOperation,
     ScopedRepairObligation,
 )
 from casefile.domain.logical_mutation.repair.policy import (
@@ -25,6 +41,7 @@ from casefile.domain.logical_mutation.repair.policy import (
     repair_policy,
     validate_repair_policy_version,
 )
+from casefile.domain.logical_mutation.repair.proposal import RepairProposer
 from casefile.domain.logical_mutation.repair.scope import (
     REPAIR_SCOPE_V1,
     RepairScopeError,
@@ -32,6 +49,7 @@ from casefile.domain.logical_mutation.repair.scope import (
 )
 
 __all__ = [
+    "MAX_REPAIR_ROUNDS",
     "REPAIR_POLICY_V1",
     "REPAIR_CONTEXT_V1",
     "REPAIR_SCOPE_V1",
@@ -39,19 +57,31 @@ __all__ = [
     "ClosureObligation",
     "ClosureRepairAssessment",
     "ClosureRepairContextV1",
+    "ClosureRepairResult",
+    "ClosureRepairRound",
+    "CompanionRepairOperation",
     "ProtectedRepairPath",
     "RepairAutomation",
     "RepairContextError",
     "RepairContextObject",
+    "RepairDocumentDiffError",
+    "RepairEngineError",
     "RepairObjectPaths",
     "RepairPolicy",
+    "RepairProposal",
+    "RepairProposer",
+    "RepairRunStatus",
     "RepairScopeError",
     "RepairScopeV1",
+    "RepairUpdateOperation",
     "ScopedRepairObligation",
     "assess_closure_repair",
     "build_closure_repair_context",
+    "build_mutation_from_document_diff",
     "build_repair_scope",
+    "prove_repair_rebase",
     "repair_policies",
     "repair_policy",
+    "run_closure_repair",
     "validate_repair_policy_version",
 ]
