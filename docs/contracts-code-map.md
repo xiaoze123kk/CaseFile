@@ -28,4 +28,5 @@
 | `fixtures/imports/` | 导入来源与预期映射样例。 |
 | `fixtures/benchmark/` | 最小 `brief_to_draft` Benchmark 输入、预期与指标基线。 |
 | `fixtures/validator_benchmark/` | Validator V0 规则、V1 patch/safe-gate、V2 RepairPlan/authoritative-target/repair-state 确定性 release-gate fixtures，包含可拷贝示例和扩展约定。 |
+| `fixtures/closure_repair_benchmark/` | M3.3 Closure Repair v1 冻结 Golden 场景与扩展说明；覆盖三类 Claim 修复、双轮闭合和全部失败关闭安全门禁，不把 pass@k 当成发布证据。 |
 | `fixtures/compiler/` | Compiler 输入、IR、Source Map 和期望产物的预留落位。 |

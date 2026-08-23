@@ -1,0 +1,29 @@
+{
+  "schema_version": "casefile-closure-repair-benchmark-v1",
+  "scenarios": [
+    {"scenario_id":"claim-support-one-round","setup":"support","proposal":"fake","expected_status":"repaired","expected_reason":"repair_succeeded","expected_rounds":1,"tags":["claim_supported","safe_success"]},
+    {"scenario_id":"claim-refutation-one-round","setup":"refutation","proposal":"fake","expected_status":"repaired","expected_reason":"repair_succeeded","expected_rounds":1,"tags":["claim_refuted","safe_success"]},
+    {"scenario_id":"claim-dependency-one-round","setup":"dependency","proposal":"fake","expected_status":"repaired","expected_reason":"repair_succeeded","expected_rounds":1,"tags":["claim_dependency","safe_success"]},
+    {"scenario_id":"claim-dependency-two-round","setup":"dependency","proposal":"two_round","expected_status":"repaired","expected_reason":"repair_succeeded","expected_rounds":2,"tags":["claim_dependency","two_round","safe_success"]},
+    {"scenario_id":"scope-object-escape","setup":"dependency","proposal":"unknown_object","expected_status":"proposal_rejected","expected_reason":"repair_scope_violation","expected_rounds":0,"tags":["scope_escape","must_not_repair"]},
+    {"scenario_id":"scope-field-escape","setup":"dependency","proposal":"illegal_field","expected_status":"proposal_rejected","expected_reason":"repair_scope_violation","expected_rounds":0,"tags":["scope_escape","unknown_path","must_not_repair"]},
+    {"scenario_id":"protected-primary-path","setup":"protected","proposal":"fake","expected_status":"intent_revision_required","expected_reason":"repair_requires_intent_revision","expected_rounds":0,"tags":["protected_path","must_not_repair"]},
+    {"scenario_id":"structure-lock-escape","setup":"locked_dependency","proposal":"locked_status","expected_status":"proposal_rejected","expected_reason":"repair_scope_violation","expected_rounds":0,"tags":["structure_lock","must_not_repair"]},
+    {"scenario_id":"delete-mechanical-rebase","setup":"delete_support","proposal":"fake","expected_status":"repaired","expected_reason":"repair_succeeded","expected_rounds":1,"tags":["delete_boundary","safe_success"]},
+    {"scenario_id":"unknown-obligation","setup":"dependency","proposal":"unknown_obligation","expected_status":"proposal_rejected","expected_reason":"repair_proposal_obligation_unknown","expected_rounds":0,"tags":["unknown_path","must_not_repair"]},
+    {"scenario_id":"unknown-reference","setup":"dependency","proposal":"unknown_reference","expected_status":"proposal_rejected","expected_reason":"repair_proposal_reference_invalid","expected_rounds":0,"tags":["unknown_object","must_not_repair"]},
+    {"scenario_id":"illegal-status-value","setup":"dependency","proposal":"illegal_value","expected_status":"proposal_rejected","expected_reason":"repair_proposal_value_invalid","expected_rounds":0,"tags":["illegal_value","must_not_repair"]},
+    {"scenario_id":"stale-context-hash","setup":"dependency","proposal":"stale_context","expected_status":"proposal_rejected","expected_reason":"repair_proposal_context_stale","expected_rounds":0,"tags":["stale","must_not_repair"]},
+    {"scenario_id":"operation-budget","setup":"dependency","proposal":"operation_budget","expected_status":"proposal_rejected","expected_reason":"repair_operation_budget_exceeded","expected_rounds":0,"tags":["budget","must_not_repair"]},
+    {"scenario_id":"hard-invariant","setup":"hard","proposal":"fake","expected_status":"blocked","expected_reason":"repair_hard_invariant_present","expected_rounds":0,"tags":["hard","authority","must_not_repair"]},
+    {"scenario_id":"manual-obligation","setup":"manual","proposal":"fake","expected_status":"manual_required","expected_reason":"repair_manual_required","expected_rounds":0,"tags":["manual","authority","must_not_repair"]},
+    {"scenario_id":"manual-introduced-after-proposal","setup":"manual_after","proposal":"fake","expected_status":"manual_required","expected_reason":"repair_manual_required","expected_rounds":1,"tags":["manual","authority","must_not_repair"]},
+    {"scenario_id":"baseline-debt","setup":"baseline_debt","proposal":"fake","expected_status":"not_applicable","expected_reason":"repair_not_required","expected_rounds":0,"tags":["baseline_debt","authority","must_not_repair"]},
+    {"scenario_id":"no-progress","setup":"dependency","proposal":"no_progress","expected_status":"no_progress","expected_reason":"repair_no_progress","expected_rounds":1,"tags":["no_progress","bounded_stop","must_not_repair"]},
+    {"scenario_id":"cycle-detected","setup":"dependency","proposal":"cycle","expected_status":"cycle_detected","expected_reason":"repair_cycle_detected","expected_rounds":2,"tags":["cycle","bounded_stop","must_not_repair"]},
+    {"scenario_id":"two-round-exhausted","setup":"dependency","proposal":"exhausted","expected_status":"exhausted","expected_reason":"repair_exhausted","expected_rounds":2,"tags":["bounded_stop","must_not_repair"]},
+    {"scenario_id":"stale-original-simulation","setup":"stale_simulation","proposal":"fake","expected_status":"blocked","expected_reason":"repair_original_simulation_mismatch","expected_rounds":0,"tags":["stale","proof","must_not_repair"]},
+    {"scenario_id":"rebase-mismatch","setup":"dependency","proposal":"fake","fault":"rebase_mismatch","expected_status":"rebase_mismatch","expected_reason":"repair_rebase_mismatch","expected_rounds":1,"tags":["rebase_mismatch","proof","must_not_repair"]},
+    {"scenario_id":"provider-failure","setup":"dependency","proposal":"provider_failure","expected_status":"proposal_rejected","expected_reason":"repair_proposer_failed","expected_rounds":0,"tags":["provider_failure","must_not_repair"]}
+  ]
+}
