@@ -427,3 +427,37 @@ class ExposurePlanPutRequest(StrictRequest):
         if len(keys) != len(set(keys)):
             raise ValueError("entry_key must be unique within one revision")
         return self
+
+
+class CompilerProfileCreateRequest(StrictRequest):
+    profile_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+    )
+    name: str = Field(min_length=1, max_length=160)
+    schema_id: str = Field(min_length=3, max_length=160)
+    payload: dict[str, Any]
+
+
+class CompilerProfileVersionCreateRequest(StrictRequest):
+    expected_current_version_id: int = Field(ge=1)
+    schema_id: str = Field(min_length=3, max_length=160)
+    payload: dict[str, Any]
+
+
+class CompileRunCreateRequest(StrictRequest):
+    mode: Literal["preview", "canonical"]
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+    canon_version_id: int | None = Field(default=None, ge=1)
+    exposure_plan_revision_id: int | None = Field(default=None, ge=1)
+    compiler_profile_version_id: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def canon_matches_mode(self) -> Self:
+        if self.mode == "preview" and self.canon_version_id is not None:
+            raise ValueError("preview compile cannot bind canon_version_id")
+        if self.mode == "canonical" and self.canon_version_id is None:
+            raise ValueError("canonical compile requires canon_version_id")
+        return self
