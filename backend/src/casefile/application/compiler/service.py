@@ -358,6 +358,36 @@ class CompilerService:
                 raise RuntimeError("CompileRun TaskRun is missing")
             return self._run_view(run, task)
 
+    def get_artifact(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        run_id: int,
+        artifact_id: int,
+    ) -> dict[str, Any]:
+        """Return one immutable artifact after complete ownership scoping."""
+
+        with self.session.begin():
+            if self.projects.get_owned(actor_user_id, project_id) is None:
+                raise not_found("Project")
+            run = self.compiler.get_run(project_id, run_id)
+            if run is None:
+                raise not_found("CompileRun")
+            artifact = self.compiler.get_artifact(project_id, run.id, artifact_id)
+            if artifact is None:
+                raise not_found("CompileArtifact")
+            return {
+                "artifact_id": artifact.id,
+                "compile_run_id": artifact.compile_run_id,
+                "artifact_kind": artifact.artifact_kind,
+                "artifact_key": artifact.artifact_key,
+                "schema_id": artifact.schema_id,
+                "content_hash": artifact.content_hash,
+                "agent_step_run_id": artifact.agent_step_run_id,
+                "content": artifact.content_jsonb,
+                "created_at": artifact.created_at.isoformat(),
+            }
+
     def _resolve_canon(
         self,
         *,

@@ -1,4 +1,4 @@
-"""Providerless N4.1 Compiler input-freeze executor."""
+"""Providerless deterministic Compiler component executor."""
 
 from __future__ import annotations
 
@@ -14,6 +14,10 @@ from casefile.application.compiler.constants import (
     INPUT_FREEZE_COMPONENT_VERSION,
     INPUT_MANIFEST_ARTIFACT_KEY,
     INPUT_MANIFEST_SCHEMA_ID,
+    NARRATIVE_IR_ARTIFACT_KEY,
+    NARRATIVE_IR_COMPONENT_ID,
+    NARRATIVE_IR_COMPONENT_VERSION,
+    NARRATIVE_IR_SCHEMA_ID,
 )
 from casefile.application.task_events import append_task_event
 from casefile.data_postgres.compiler_repository import CompilerRepository
@@ -29,6 +33,8 @@ from casefile.data_postgres.models import (
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
+    narrative_ir_component_fingerprint,
+    project_narrative_ir_json,
     validate_compile_input_manifest,
 )
 from casefile.worker.support import TaskCancellationRequested
@@ -48,40 +54,96 @@ class CompilerTaskExecutorMixin:
 
     def _execute_novel_compile(self, task_run_id: int, attempt_id: int) -> None:
         try:
-            manifest_json, run = self._validate_compile_inputs(task_run_id)
-            artifact_id, reused = self._materialize_input_manifest(
+            manifest_json, run, snapshot_json = self._validate_compile_inputs(task_run_id)
+            manifest_artifact_id, manifest_reused = self._materialize_input_manifest(
                 task_run_id, attempt_id, run, manifest_json
             )
-            with self.session_factory() as session, session.begin():
-                task, attempt = self._locked_completion_rows(  # type: ignore[attr-defined]
-                    session,
-                    task_run_id,
-                    attempt_id,
-                    expected_task_type="novel_compile",
-                )
-                result = {
-                    "compile_run_id": run.id,
-                    "input_manifest_artifact_id": artifact_id,
-                    "input_hash": run.input_hash,
-                    "reused": reused,
-                }
-                self._finish_auxiliary_success(  # type: ignore[attr-defined]
-                    session,
-                    task,
-                    attempt,
-                    candidate=result,
-                    usage={},
-                    message="编译输入已冻结并形成不可变构建产物。",
-                )
         except TaskCancellationRequested:
             raise
         except Exception as error:
-            self._record_compile_failure_step(task_run_id, attempt_id, error)
+            self._record_compile_failure_step(
+                task_run_id,
+                attempt_id,
+                error,
+                component_id=INPUT_FREEZE_COMPONENT_ID,
+                component_version=INPUT_FREEZE_COMPONENT_VERSION,
+                schema_id=INPUT_MANIFEST_SCHEMA_ID,
+                input_hash=None,
+                upstream_hashes={},
+                failure_layer="frozen_input",
+                event_prefix="compiler.input_freeze",
+            )
             raise
+
+        fingerprint = narrative_ir_component_fingerprint(snapshot_json)
+        component_input_hash = canonical_json_sha256(fingerprint)
+        try:
+            narrative_ir_json = project_narrative_ir_json(snapshot_json)
+            narrative_ir_hash = canonical_json_sha256(narrative_ir_json)
+            narrative_artifact_id, narrative_reused = self._materialize_json_artifact_component(
+                task_run_id=task_run_id,
+                attempt_id=attempt_id,
+                run=run,
+                component_id=NARRATIVE_IR_COMPONENT_ID,
+                component_version=NARRATIVE_IR_COMPONENT_VERSION,
+                component_input_hash=component_input_hash,
+                upstream_hashes={"source_snapshot": fingerprint["source_content_hash"]},
+                artifact_kind="narrative_ir",
+                artifact_key=NARRATIVE_IR_ARTIFACT_KEY,
+                schema_id=NARRATIVE_IR_SCHEMA_ID,
+                content_hash=narrative_ir_hash,
+                content_json=narrative_ir_json,
+                event_prefix="compiler.narrative_ir",
+                parent_component_id=INPUT_FREEZE_COMPONENT_ID,
+            )
+        except TaskCancellationRequested:
+            raise
+        except Exception as error:
+            self._record_compile_failure_step(
+                task_run_id,
+                attempt_id,
+                error,
+                component_id=NARRATIVE_IR_COMPONENT_ID,
+                component_version=NARRATIVE_IR_COMPONENT_VERSION,
+                schema_id=NARRATIVE_IR_SCHEMA_ID,
+                input_hash=component_input_hash,
+                upstream_hashes={"source_snapshot": fingerprint["source_content_hash"]},
+                failure_layer="narrative_ir",
+                event_prefix="compiler.narrative_ir",
+            )
+            raise
+
+        with self.session_factory() as session, session.begin():
+            task, attempt = self._locked_completion_rows(  # type: ignore[attr-defined]
+                session,
+                task_run_id,
+                attempt_id,
+                expected_task_type="novel_compile",
+            )
+            result = {
+                "compile_run_id": run.id,
+                "input_manifest_artifact_id": manifest_artifact_id,
+                "narrative_ir_artifact_id": narrative_artifact_id,
+                "narrative_ir_hash": narrative_ir_hash,
+                "input_hash": run.input_hash,
+                "reused": manifest_reused,
+                "component_reuse": {
+                    "input_manifest": manifest_reused,
+                    "narrative_ir": narrative_reused,
+                },
+            }
+            self._finish_auxiliary_success(  # type: ignore[attr-defined]
+                session,
+                task,
+                attempt,
+                candidate=result,
+                usage={},
+                message="编译输入与叙事语义投影已形成不可变构建产物。",
+            )
 
     def _validate_compile_inputs(
         self, task_run_id: int
-    ) -> tuple[dict[str, Any], CompileRun]:
+    ) -> tuple[dict[str, Any], CompileRun, dict[str, Any]]:
         with self.session_factory() as session, session.begin():
             task = session.scalar(select(TaskRun).where(TaskRun.id == task_run_id))
             if (
@@ -184,7 +246,7 @@ class CompilerTaskExecutorMixin:
                 ):
                     raise CompilerExecutionError("compiler_exposure_binding_mismatch")
             session.expunge(run)
-            return manifest_json, run
+            return manifest_json, run, dict(snapshot.snapshot_jsonb)
 
     def _materialize_input_manifest(
         self,
@@ -192,6 +254,41 @@ class CompilerTaskExecutorMixin:
         attempt_id: int,
         run: CompileRun,
         manifest_json: dict[str, Any],
+    ) -> tuple[int, bool]:
+        return self._materialize_json_artifact_component(
+            task_run_id=task_run_id,
+            attempt_id=attempt_id,
+            run=run,
+            component_id=INPUT_FREEZE_COMPONENT_ID,
+            component_version=INPUT_FREEZE_COMPONENT_VERSION,
+            component_input_hash=run.input_hash,
+            upstream_hashes={},
+            artifact_kind="input_manifest",
+            artifact_key=INPUT_MANIFEST_ARTIFACT_KEY,
+            schema_id=INPUT_MANIFEST_SCHEMA_ID,
+            content_hash=run.input_hash,
+            content_json=manifest_json,
+            event_prefix="compiler.input_freeze",
+            parent_component_id=None,
+        )
+
+    def _materialize_json_artifact_component(
+        self,
+        *,
+        task_run_id: int,
+        attempt_id: int,
+        run: CompileRun,
+        component_id: str,
+        component_version: str,
+        component_input_hash: str,
+        upstream_hashes: dict[str, str],
+        artifact_kind: str,
+        artifact_key: str,
+        schema_id: str,
+        content_hash: str,
+        content_json: dict[str, Any],
+        event_prefix: str,
+        parent_component_id: str | None,
     ) -> tuple[int, bool]:
         with self.session_factory() as session, session.begin():
             task = session.scalar(
@@ -214,38 +311,39 @@ class CompilerTaskExecutorMixin:
             append_task_event(
                 session,
                 task,
-                "compiler.input_freeze.started",
-                "compiler_input_freeze",
-                {"compile_run_id": run.id, "input_hash": run.input_hash},
+                f"{event_prefix}.started",
+                component_id,
+                {"compile_run_id": run.id, "input_hash": component_input_hash},
             )
             existing = session.scalar(
                 select(CompileArtifact).where(
                     CompileArtifact.compile_run_id == run.id,
-                    CompileArtifact.artifact_key == INPUT_MANIFEST_ARTIFACT_KEY,
+                    CompileArtifact.artifact_key == artifact_key,
                 )
             )
             now = datetime.now(UTC)
             if existing is not None:
                 if (
                     existing.task_run_id != task.id
-                    or existing.content_hash != task.input_hash
-                    or existing.schema_id != INPUT_MANIFEST_SCHEMA_ID
-                    or existing.content_jsonb != manifest_json
+                    or existing.artifact_kind != artifact_kind
+                    or existing.content_hash != content_hash
+                    or existing.schema_id != schema_id
+                    or existing.content_jsonb != content_json
                 ):
                     raise CompilerExecutionError("compiler_artifact_hash_conflict")
                 step = AgentStepRun(
                     project_id=task.project_id,
                     task_run_id=task.id,
                     task_attempt_id=attempt.id,
-                    component_id=INPUT_FREEZE_COMPONENT_ID,
-                    parent_component_id=None,
+                    component_id=component_id,
+                    parent_component_id=parent_component_id,
                     execution_no=1,
                     status="reused",
-                    input_hash=task.input_hash,
-                    upstream_hashes_jsonb={},
-                    output_hash=task.input_hash,
-                    ir_schema_id=INPUT_MANIFEST_SCHEMA_ID,
-                    component_version=INPUT_FREEZE_COMPONENT_VERSION,
+                    input_hash=component_input_hash,
+                    upstream_hashes_jsonb=upstream_hashes,
+                    output_hash=content_hash,
+                    ir_schema_id=schema_id,
+                    component_version=component_version,
                     output_jsonb=None,
                     diagnostic_jsonb={},
                     usage_jsonb={},
@@ -258,8 +356,8 @@ class CompilerTaskExecutorMixin:
                 append_task_event(
                     session,
                     task,
-                    "compiler.input_freeze.reused",
-                    "compiler_input_freeze",
+                    f"{event_prefix}.reused",
+                    component_id,
                     {"compile_run_id": run.id, "artifact_id": existing.id},
                 )
                 return existing.id, True
@@ -268,15 +366,15 @@ class CompilerTaskExecutorMixin:
                 project_id=task.project_id,
                 task_run_id=task.id,
                 task_attempt_id=attempt.id,
-                component_id=INPUT_FREEZE_COMPONENT_ID,
-                parent_component_id=None,
+                component_id=component_id,
+                parent_component_id=parent_component_id,
                 execution_no=1,
                 status="succeeded",
-                input_hash=task.input_hash,
-                upstream_hashes_jsonb={},
-                output_hash=task.input_hash,
-                ir_schema_id=INPUT_MANIFEST_SCHEMA_ID,
-                component_version=INPUT_FREEZE_COMPONENT_VERSION,
+                input_hash=component_input_hash,
+                upstream_hashes_jsonb=upstream_hashes,
+                output_hash=content_hash,
+                ir_schema_id=schema_id,
+                component_version=component_version,
                 output_jsonb=None,
                 diagnostic_jsonb={},
                 usage_jsonb={},
@@ -292,25 +390,36 @@ class CompilerTaskExecutorMixin:
                 compile_run_id=run.id,
                 task_run_id=task.id,
                 agent_step_run_id=step.id,
-                artifact_kind="input_manifest",
-                artifact_key=INPUT_MANIFEST_ARTIFACT_KEY,
-                schema_id=INPUT_MANIFEST_SCHEMA_ID,
-                content_hash=task.input_hash,
-                content_jsonb=manifest_json,
+                artifact_kind=artifact_kind,
+                artifact_key=artifact_key,
+                schema_id=schema_id,
+                content_hash=content_hash,
+                content_jsonb=content_json,
             )
             session.add(artifact)
             session.flush()
             append_task_event(
                 session,
                 task,
-                "compiler.input_freeze.completed",
-                "compiler_input_freeze",
+                f"{event_prefix}.completed",
+                component_id,
                 {"compile_run_id": run.id, "artifact_id": artifact.id},
             )
             return artifact.id, False
 
     def _record_compile_failure_step(
-        self, task_run_id: int, attempt_id: int, error: Exception
+        self,
+        task_run_id: int,
+        attempt_id: int,
+        error: Exception,
+        *,
+        component_id: str,
+        component_version: str,
+        schema_id: str,
+        input_hash: str | None,
+        upstream_hashes: dict[str, str],
+        failure_layer: str,
+        event_prefix: str,
     ) -> None:
         with self.session_factory() as session, session.begin():
             task = session.scalar(
@@ -330,7 +439,7 @@ class CompilerTaskExecutorMixin:
             existing = session.scalar(
                 select(AgentStepRun.id).where(
                     AgentStepRun.task_attempt_id == attempt.id,
-                    AgentStepRun.component_id == INPUT_FREEZE_COMPONENT_ID,
+                    AgentStepRun.component_id == component_id,
                 )
             )
             if existing is None:
@@ -341,18 +450,22 @@ class CompilerTaskExecutorMixin:
                         project_id=task.project_id,
                         task_run_id=task.id,
                         task_attempt_id=attempt.id,
-                        component_id=INPUT_FREEZE_COMPONENT_ID,
-                        parent_component_id=None,
+                        component_id=component_id,
+                        parent_component_id=(
+                            INPUT_FREEZE_COMPONENT_ID
+                            if component_id == NARRATIVE_IR_COMPONENT_ID
+                            else None
+                        ),
                         execution_no=1,
                         status="failed",
-                        input_hash=task.input_hash,
-                        upstream_hashes_jsonb={},
+                        input_hash=input_hash or task.input_hash,
+                        upstream_hashes_jsonb=upstream_hashes,
                         output_hash=None,
-                        ir_schema_id=INPUT_MANIFEST_SCHEMA_ID,
-                        component_version=INPUT_FREEZE_COMPONENT_VERSION,
+                        ir_schema_id=schema_id,
+                        component_version=component_version,
                         output_jsonb=None,
                         diagnostic_jsonb={
-                            "failure_layer": "frozen_input",
+                            "failure_layer": failure_layer,
                             "recoverable": False,
                             "issues": [{"code": code, "path": "", "message": code}],
                         },
@@ -365,8 +478,8 @@ class CompilerTaskExecutorMixin:
             append_task_event(
                 session,
                 task,
-                "compiler.input_freeze.failed",
-                "compiler_input_freeze",
+                f"{event_prefix}.failed",
+                component_id,
                 {"error_code": getattr(error, "error_code", "compiler_input_freeze_failed")},
             )
 

@@ -1,0 +1,25 @@
+{
+  "projection_version": "compiler.narrative-ir-projection.v1",
+  "cases": {
+    "fractured_alliance.casefile.json": {
+      "narrative_ir_hash": "4152a8527870359060369a4c9be5bb84d17848374883c5fb90153fc679087cc6",
+      "component_fingerprint_hash": "0e4eb2cb52ef6d3cfa7c46b4684180d87c0754926cbf30dafc85d74b0997d49c",
+      "reference_edge_count": 1
+    },
+    "m3_reasoning_closure.casefile.json": {
+      "narrative_ir_hash": "15c8cca935d9ffafb9c02d96b072a945214d50583271c70e61a5f56568865183",
+      "component_fingerprint_hash": "e5f4d4c54cc477ca6035ae86265978c637c48b673e89e9eba59cc9f20c1de0fb",
+      "reference_edge_count": 62
+    },
+    "restart_loop.casefile.json": {
+      "narrative_ir_hash": "fff394b05245e9c1a535c56df4073b2e707f04dc118f665a29b1d9e9755d5ad1",
+      "component_fingerprint_hash": "0032e5d35533ac82e0236df791d9373de8f690356c5c5822d729c4330a93f44e",
+      "reference_edge_count": 40
+    },
+    "vanishing_route.casefile.json": {
+      "narrative_ir_hash": "b1962e5ade014df0204096390fd99e65aa18cee909e658b8095d3a08f04e8a21",
+      "component_fingerprint_hash": "9a9469550e3afd75e513d99c15567f2a312f61f6cad323690020a7943c811016",
+      "reference_edge_count": 1
+    }
+  }
+}

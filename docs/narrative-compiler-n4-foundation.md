@@ -1,5 +1,7 @@
 # N4.0 Narrative Compiler Foundation
 
+N4.2 的确定性 NarrativeIR 契约、来源导航和执行边界见 [`narrative-compiler/narrative-ir.md`](narrative-compiler/narrative-ir.md)。
+
 ## 目的
 
 N4.0 为 CaseFile Narrative Compiler 建立稳定、可跨语言生成的基础契约与纯领域规则。它只冻结后续编译阶段共同依赖的身份、引用、哈希和诊断语义，不生成 Narrative IR 或小说正文。

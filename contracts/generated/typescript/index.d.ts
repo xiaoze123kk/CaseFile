@@ -327,21 +327,15 @@ export interface EditingContracts {
   compiler_diagnostic: CompilerDiagnostic;
   compiler_profile_binding: CompilerProfileBinding;
   compile_input_manifest: CompileInputManifest;
+  narrative_ir: NarrativeIR;
 }
 export interface CaseFile {
   schema_version: "2.0";
   casefile_id: string;
   title: string;
   status: "draft" | "canon" | "archived";
-  version: {
-    version_id: string;
-    version_no: number;
-    parent_version_id: string | null;
-  };
-  brief_ref: {
-    brief_id: string;
-    version: number;
-  };
+  version: Version;
+  brief_ref: BriefRef;
   resolution_specs: ResolutionSpec[];
   entities: Entity[];
   relationships: Relationship[];
@@ -354,13 +348,17 @@ export interface CaseFile {
   reasoning_paths: ReasoningPath[];
   constraints: Constraint[];
   structure_locks: StructureLock[];
-  content_notices: {
-    notice_id: string;
-    category: string;
-    severity: "low" | "medium" | "high";
-    description: string;
-  }[];
+  content_notices: Items[];
   extensions: Extensions;
+}
+export interface Version {
+  version_id: string;
+  version_no: number;
+  parent_version_id: string | null;
+}
+export interface BriefRef {
+  brief_id: string;
+  version: number;
 }
 export interface CoreMetadata {
   description?: string;
@@ -475,6 +473,12 @@ export interface RelativeTemporalPosition {
 }
 export interface UnknownTemporalPosition {
   kind: "unknown";
+}
+export interface Items {
+  notice_id: string;
+  category: string;
+  severity: "low" | "medium" | "high";
+  description: string;
 }
 export interface Extensions {
   [k: string]: unknown;
@@ -707,4 +711,148 @@ export interface CompilerProfileBinding {
     [k: string]: unknown;
   };
   content_hash: string;
+}
+export interface NarrativeIR {
+  schema_id: "compiler.narrative-ir.v1";
+  projection_version: "compiler.narrative-ir-projection.v1";
+  source: NarrativeIRSource;
+  case: NarrativeCase;
+  objects: NarrativeObjects;
+  spatial_scenes?: SpatialScene[];
+  content_notices: Items[];
+  extensions: Extensions;
+  indexes: NarrativeIndexes;
+}
+export interface NarrativeIRSource {
+  casefile_ref: ObjectRef;
+  source_schema_id: "casefile.v2";
+  content_hash: string;
+  /**
+   * @minItems 7
+   */
+  root_source_refs: [
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    ...CompilerSourceRef[]
+  ];
+}
+export interface NarrativeCase {
+  title: string;
+  status: "draft" | "canon" | "archived";
+  version: Version;
+  brief_ref: BriefRef;
+}
+export interface NarrativeObjects {
+  resolution_specs: (NarrativeObjectEnvelope & {
+    value?: ResolutionSpec;
+    [k: string]: unknown;
+  })[];
+  entities: (NarrativeObjectEnvelope & {
+    value?: Entity;
+    [k: string]: unknown;
+  })[];
+  relationships: (NarrativeObjectEnvelope & {
+    value?: Relationship;
+    [k: string]: unknown;
+  })[];
+  locations: (NarrativeObjectEnvelope & {
+    value?: Location;
+    [k: string]: unknown;
+  })[];
+  events: (NarrativeObjectEnvelope & {
+    value?: Event;
+    [k: string]: unknown;
+  })[];
+  information_units: (NarrativeObjectEnvelope & {
+    value?: InformationUnit;
+    [k: string]: unknown;
+  })[];
+  claims: (NarrativeObjectEnvelope & {
+    value?: Claim;
+    [k: string]: unknown;
+  })[];
+  hypotheses: (NarrativeObjectEnvelope & {
+    value?: Hypothesis;
+    [k: string]: unknown;
+  })[];
+  reasoning_paths: (NarrativeObjectEnvelope & {
+    value?: ReasoningPath;
+    [k: string]: unknown;
+  })[];
+  constraints: (NarrativeObjectEnvelope & {
+    value?: Constraint;
+    [k: string]: unknown;
+  })[];
+  structure_locks: (NarrativeObjectEnvelope & {
+    value?: StructureLock;
+    [k: string]: unknown;
+  })[];
+}
+export interface NarrativeObjectEnvelope {
+  object_ref: ObjectRef;
+  source_ref: CompilerSourceRef;
+  value: unknown;
+}
+export interface NarrativeIndexes {
+  reference_edges: ReferenceEdge[];
+}
+export interface ReferenceEdge {
+  relation:
+    | "object.source"
+    | "resolution.accepted_answer"
+    | "resolution.required_claim"
+    | "resolution.conclusion_value"
+    | "resolution.selected_hypothesis"
+    | "resolution.supporting_reasoning_path"
+    | "entity.knowledge_anchor"
+    | "entity.knows"
+    | "entity.believes"
+    | "entity.false_belief"
+    | "relationship.from"
+    | "relationship.to"
+    | "location.parent"
+    | "location.adjacent"
+    | "location.travel_to"
+    | "event.relative_anchor"
+    | "event.participant"
+    | "event.location"
+    | "event.cause"
+    | "event.effect"
+    | "event.observer"
+    | "information.source_event"
+    | "information.supports_claim"
+    | "information.refutes_claim"
+    | "information.perspective"
+    | "information.alternative_path"
+    | "claim.support"
+    | "claim.refute"
+    | "claim.dependency"
+    | "hypothesis.target_resolution"
+    | "hypothesis.required_claim"
+    | "hypothesis.falsifier"
+    | "hypothesis.competitor"
+    | "hypothesis.evidence"
+    | "reasoning.target"
+    | "reasoning.input"
+    | "reasoning.output"
+    | "reasoning.alternative_path"
+    | "constraint.scope"
+    | "constraint.conflict"
+    | "structure_lock.object";
+  from_ref: ObjectRef;
+  to_ref: ObjectRef;
+  ordinal: number;
+  source_ref: CompilerSourceRef;
+  context?: ReferenceEdgeContext;
+}
+export interface ReferenceEdgeContext {
+  container_path: string;
+  container_key?: string;
+  container_ordinal: number;
+  anchor_ref?: ObjectRef;
 }

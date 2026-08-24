@@ -160,5 +160,16 @@ class CompilerRepository:
             )
         )
 
+    def get_artifact(
+        self, project_id: int, run_id: int, artifact_id: int
+    ) -> CompileArtifact | None:
+        return self.session.scalar(
+            select(CompileArtifact).where(
+                CompileArtifact.project_id == project_id,
+                CompileArtifact.compile_run_id == run_id,
+                CompileArtifact.id == artifact_id,
+            )
+        )
+
 
 __all__ = ["CompilerRepository", "FrozenExposureEntry"]

@@ -230,12 +230,14 @@ class CompileArtifact(BigIntIdentityPrimaryKeyMixin, Base):
         UniqueConstraint(
             "compile_run_id", "artifact_key", name="uq_compile_artifacts_run_artifact_key"
         ),
-        CheckConstraint("artifact_kind = 'input_manifest'", name="artifact_kind_n4_1"),
         CheckConstraint(
-            "artifact_key = 'compiler.input_manifest'", name="artifact_key_n4_1"
-        ),
-        CheckConstraint(
-            "schema_id = 'compiler.input-manifest.v1'", name="schema_id_n4_1"
+            "(artifact_kind = 'input_manifest' AND "
+            "artifact_key = 'compiler.input_manifest' AND "
+            "schema_id = 'compiler.input-manifest.v1') OR "
+            "(artifact_kind = 'narrative_ir' AND "
+            "artifact_key = 'compiler.narrative_ir' AND "
+            "schema_id = 'compiler.narrative-ir.v1')",
+            name="identity_allowed",
         ),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),
         CheckConstraint("jsonb_typeof(content_jsonb) = 'object'", name="content_is_object"),

@@ -125,6 +125,7 @@ from ._internal import (
     TaskEvent,
     TaskRun,
 )
+from ._internal import Schema_2 as NarrativeIR
 from .brief import Schema as Brief
 from .brief_intake import Schema as BriefIntakeCandidate
 from .casefile import Schema as CaseFile
@@ -148,6 +149,7 @@ __all__ = [
     "CompilerProfileBinding",
     "CompilerSourceRef",
     "ExposureBinding",
+    "NarrativeIR",
     "PatchCandidate",
     "TaskEvent",
     "TaskRun",
@@ -165,6 +167,7 @@ from .public import (
     Brief,
     BriefIntakeCandidate,
     CaseFile,
+    NarrativeIR,
     PatchCandidate,
     ValidationIssue,
 )
@@ -173,6 +176,7 @@ __all__ += [
     "Brief",
     "BriefIntakeCandidate",
     "CaseFile",
+    "NarrativeIR",
     "PatchCandidate",
     "ValidationIssue",
 ]
