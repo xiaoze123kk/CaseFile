@@ -17,7 +17,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_PLAN_VERSION,
     GENERAL_MUTATION_POLICY_VERSION,
-    MutationPlanV1,
+    MutationPlanV2,
 )
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.agent_mutation import (
@@ -211,8 +211,7 @@ def build_suite() -> tuple[EvalSuite, dict[str, Any]]:
     )
     tasks = _tasks(document)
     payload = [
-        {"task_id": task.task_id, "input": task.input, "oracle": task.oracle}
-        for task in tasks
+        {"task_id": task.task_id, "input": task.input, "oracle": task.oracle} for task in tasks
     ]
     return (
         EvalSuite(
@@ -279,7 +278,7 @@ def _run_task(task: EvalTask, document: dict[str, Any]) -> TrialRecord:
     simulation = None
     exception = None
     try:
-        plan = MutationPlanV1.model_validate(task.input["plan"])
+        plan = MutationPlanV2.model_validate(task.input["plan"])
         bound = bind_general_mutation_plan(
             plan,
             deepcopy(document),

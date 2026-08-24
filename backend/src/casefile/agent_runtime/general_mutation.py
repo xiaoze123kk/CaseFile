@@ -7,13 +7,18 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-GENERAL_MUTATION_PLAN_VERSION: Literal["general-mutation-planner-v1"] = (
+GENERAL_MUTATION_PLAN_VERSION_V1: Literal["general-mutation-planner-v1"] = (
     "general-mutation-planner-v1"
 )
-GENERAL_MUTATION_SCHEMA_ID = "general-mutation-plan-v1"
+GENERAL_MUTATION_PLAN_VERSION: Literal["general-mutation-planner-v2"] = (
+    "general-mutation-planner-v2"
+)
+GENERAL_MUTATION_SCHEMA_ID_V1 = "general-mutation-plan-v1"
+GENERAL_MUTATION_SCHEMA_ID = "general-mutation-plan-v2"
 GENERAL_MUTATION_COMPONENT_ID = "general_mutation_planner"
 GENERAL_MUTATION_POLICY_VERSION = "general-mutation-policy-v1"
-GENERAL_MUTATION_BINDER_VERSION = "general-mutation-binder-v1"
+GENERAL_MUTATION_BINDER_VERSION_V1 = "general-mutation-binder-v1"
+GENERAL_MUTATION_BINDER_VERSION = "general-mutation-binder-v2"
 
 ALLOWED_COLLECTIONS = frozenset(
     {
@@ -27,12 +32,8 @@ ALLOWED_COLLECTIONS = frozenset(
         "reasoning_paths",
     }
 )
-PROTECTED_COLLECTIONS = frozenset(
-    {"resolution_specs", "constraints", "structure_locks"}
-)
-SYSTEM_FIELDS = frozenset(
-    {"id", "revision", "confirmation_status", "created_by", "updated_at"}
-)
+PROTECTED_COLLECTIONS = frozenset({"resolution_specs", "constraints", "structure_locks"})
+SYSTEM_FIELDS = frozenset({"id", "revision", "confirmation_status", "created_by", "updated_at"})
 MAX_OPERATIONS = 12
 MAX_CREATES = 4
 MAX_DELETES = 2
@@ -102,7 +103,7 @@ type MutationPlanOperation = Annotated[
 
 
 class MutationPlanV1(StrictMutationModel):
-    plan_version: Literal["general-mutation-planner-v1"] = GENERAL_MUTATION_PLAN_VERSION
+    plan_version: Literal["general-mutation-planner-v1"] = GENERAL_MUTATION_PLAN_VERSION_V1
     operations: list[MutationPlanOperation] = Field(min_length=1, max_length=MAX_OPERATIONS)
 
     @model_validator(mode="after")
@@ -111,9 +112,7 @@ class MutationPlanV1(StrictMutationModel):
         if len(keys) != len(set(keys)):
             raise ValueError("general_mutation_operation_key_duplicate")
         local_refs = [
-            item.local_ref
-            for item in self.operations
-            if isinstance(item, CreateMutationCandidate)
+            item.local_ref for item in self.operations if isinstance(item, CreateMutationCandidate)
         ]
         if len(local_refs) != len(set(local_refs)):
             raise ValueError("general_mutation_local_ref_duplicate")
@@ -128,6 +127,21 @@ class MutationPlanV1(StrictMutationModel):
             if not set(item.depends_on_operation_keys).issubset(known_keys):
                 raise ValueError("general_mutation_dependency_unknown")
         _assert_dependency_dag(self.operations)
+        return self
+
+
+class MutationPlanV2(StrictMutationModel):
+    plan_version: Literal["general-mutation-planner-v2"] = GENERAL_MUTATION_PLAN_VERSION
+    operations: list[MutationPlanOperation] = Field(min_length=1, max_length=MAX_OPERATIONS)
+
+    @model_validator(mode="after")
+    def plan_is_bounded_connected_and_identity_only(self) -> MutationPlanV2:
+        _validate_plan_operations(self.operations)
+        for operation in self.operations:
+            if isinstance(operation, CreateMutationCandidate):
+                _assert_v2_planned_refs(operation.fields)
+            elif isinstance(operation, UpdateMutationCandidate):
+                _assert_v2_planned_refs(operation.new_value)
         return self
 
 
@@ -154,14 +168,12 @@ class GeneralMutationPlannerRequest:
 
 @dataclass(frozen=True, slots=True)
 class GeneralMutationPlannerResult:
-    candidate: MutationPlanV1
+    candidate: MutationPlanV1 | MutationPlanV2
     usage: dict[str, Any]
 
 
 def _assert_dependency_dag(operations: list[MutationPlanOperation]) -> None:
-    dependencies = {
-        item.operation_key: set(item.depends_on_operation_keys) for item in operations
-    }
+    dependencies = {item.operation_key: set(item.depends_on_operation_keys) for item in operations}
     pending = set(dependencies)
     while pending:
         ready = {key for key in pending if not (dependencies[key] & pending)}
@@ -170,16 +182,60 @@ def _assert_dependency_dag(operations: list[MutationPlanOperation]) -> None:
         pending.difference_update(ready)
 
 
+def _validate_plan_operations(operations: list[MutationPlanOperation]) -> None:
+    keys = [item.operation_key for item in operations]
+    if len(keys) != len(set(keys)):
+        raise ValueError("general_mutation_operation_key_duplicate")
+    local_refs = [
+        item.local_ref for item in operations if isinstance(item, CreateMutationCandidate)
+    ]
+    if len(local_refs) != len(set(local_refs)):
+        raise ValueError("general_mutation_local_ref_duplicate")
+    if sum(isinstance(item, CreateMutationCandidate) for item in operations) > MAX_CREATES:
+        raise ValueError("general_mutation_create_budget_exceeded")
+    if sum(isinstance(item, DeleteMutationCandidate) for item in operations) > MAX_DELETES:
+        raise ValueError("general_mutation_delete_budget_exceeded")
+    known_keys = set(keys)
+    for item in operations:
+        if item.operation_key in item.depends_on_operation_keys:
+            raise ValueError("general_mutation_self_dependency")
+        if not set(item.depends_on_operation_keys).issubset(known_keys):
+            raise ValueError("general_mutation_dependency_unknown")
+    _assert_dependency_dag(operations)
+
+
+def _assert_v2_planned_refs(value: Any) -> None:
+    if isinstance(value, dict):
+        ref_kind = value.get("ref_kind")
+        if ref_kind in {"local", "existing"}:
+            if "object_type" in value:
+                raise ValueError("general_mutation_ref_object_type_forbidden")
+            expected = (
+                {"ref_kind", "local_ref"} if ref_kind == "local" else {"ref_kind", "object_id"}
+            )
+            if set(value) != expected:
+                raise ValueError("general_mutation_ref_shape_invalid")
+        for child in value.values():
+            _assert_v2_planned_refs(child)
+    elif isinstance(value, list):
+        for child in value:
+            _assert_v2_planned_refs(child)
+
+
 __all__ = [
     "ALLOWED_COLLECTIONS",
     "GENERAL_MUTATION_BINDER_VERSION",
+    "GENERAL_MUTATION_BINDER_VERSION_V1",
     "GENERAL_MUTATION_COMPONENT_ID",
     "GENERAL_MUTATION_PLAN_VERSION",
+    "GENERAL_MUTATION_PLAN_VERSION_V1",
     "GENERAL_MUTATION_POLICY_VERSION",
     "GENERAL_MUTATION_SCHEMA_ID",
+    "GENERAL_MUTATION_SCHEMA_ID_V1",
     "GeneralMutationPlannerRequest",
     "GeneralMutationPlannerResult",
     "GeneralMutationPromptInput",
     "MutationPlanV1",
+    "MutationPlanV2",
     "PROTECTED_COLLECTIONS",
 ]

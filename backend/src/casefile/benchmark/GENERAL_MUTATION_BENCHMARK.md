@@ -37,6 +37,20 @@ Safety、Holdout 或 Backend Release。
 当前 7 个公开 Dev Task 是最小校准集，覆盖 existing update、multi-field、create、
 cross-reference、multi-object 与 delete。它不是计划中的完整约 40-task Dev bank。
 
+## 07a Ref Contract v2
+
+- 当前 Planner/Plan/Binder 分别冻结为 `general-mutation-planner-v2`、
+  `general-mutation-plan-v2`、`general-mutation-binder-v2`；v1 继续只读回放。
+- Planner nested ref 只能是 `{ref_kind: "local", local_ref}` 或
+  `{ref_kind: "existing", object_id}`；出现 `object_type` 必须以
+  `general_mutation_ref_object_type_forbidden` 失败关闭。
+- Binder 根据 Create collection 或当前 CaseFile 对象注册表推导正式
+  `object_type`，并在生成 ObjectRef 前验证目标字段所允许的引用类型。
+- Dev Suite fingerprint 只覆盖题目、输入和 Oracle；Reference Plan 使用独立
+  `reference_fingerprint`，从而允许校准合约而不伪装成题目语义变化。
+- 07a 只以干净提交上的 DeepSeek `deepseek-v4-pro` 7-task × 5 完整运行作为 Gate；
+  失败时不得进入 Transport 实验。
+
 ## 指标与发布边界
 
 Capability 主要报告 `task_macro_pass_at_1`、family macro 与多 Trial 的

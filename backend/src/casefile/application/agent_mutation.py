@@ -14,12 +14,14 @@ import rfc8785
 
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
+    GENERAL_MUTATION_BINDER_VERSION_V1,
     GENERAL_MUTATION_POLICY_VERSION,
     CreateMutationCandidate,
     DeleteMutationCandidate,
     ExistingTarget,
     LocalTarget,
     MutationPlanV1,
+    MutationPlanV2,
     UpdateMutationCandidate,
 )
 from casefile.application.v1_editing import COLLECTIONS, EDITABLE_FIELDS
@@ -214,7 +216,7 @@ def append_repair_companions(
 
 
 def bind_general_mutation_plan(
-    plan: MutationPlanV1,
+    plan: MutationPlanV1 | MutationPlanV2,
     document: Mapping[str, Any],
     *,
     task_run_id: int,
@@ -227,6 +229,7 @@ def bind_general_mutation_plan(
     existing = _objects_by_id(document)
     order = _ordered_plan_operations(plan)
     local_ids: dict[str, str] = {}
+    local_collections: dict[str, str] = {}
     for ordinal, operation in enumerate(
         (item for item in order if isinstance(item, CreateMutationCandidate)), start=1
     ):
@@ -235,6 +238,7 @@ def bind_general_mutation_plan(
         if object_id in existing or object_id in local_ids.values():
             raise GeneralMutationBindingError("general_mutation_object_id_conflict")
         local_ids[operation.local_ref] = object_id
+        local_collections[operation.local_ref] = operation.collection
 
     logical: list[CreateObject | UpdateField | DeleteObject] = []
     bound: list[BoundMutationOperation] = []
@@ -244,7 +248,15 @@ def bind_general_mutation_plan(
         if isinstance(operation, CreateMutationCandidate):
             _assert_create_fields(operation.collection, operation.fields)
             object_id = local_ids[operation.local_ref]
-            fields = _resolve_refs(operation.fields, local_ids, existing)
+            fields = _resolve_refs(
+                operation.fields,
+                local_ids,
+                local_collections,
+                existing,
+                plan_version=plan.plan_version,
+                target_collection=operation.collection,
+                field_path="",
+            )
             value = {
                 **deepcopy(_COMMON_DEFAULTS),
                 **deepcopy(_COLLECTION_DEFAULTS[operation.collection]),
@@ -294,7 +306,15 @@ def bind_general_mutation_plan(
 
         _assert_editable(collection, operation.field_path)
         old_value = _pointer_value(current, operation.field_path)
-        new_value = _resolve_refs(operation.new_value, local_ids, existing)
+        new_value = _resolve_refs(
+            operation.new_value,
+            local_ids,
+            local_collections,
+            existing,
+            plan_version=plan.plan_version,
+            target_collection=collection,
+            field_path=operation.field_path,
+        )
         logical.append(
             UpdateField(
                 operation_id,
@@ -333,7 +353,11 @@ def bind_general_mutation_plan(
     return BoundMutationPlan(
         plan.plan_version,
         GENERAL_MUTATION_POLICY_VERSION,
-        GENERAL_MUTATION_BINDER_VERSION,
+        (
+            GENERAL_MUTATION_BINDER_VERSION_V1
+            if isinstance(plan, MutationPlanV1)
+            else GENERAL_MUTATION_BINDER_VERSION
+        ),
         plan_hash,
         mutation_set,
         tuple(bound),
@@ -360,16 +384,14 @@ def general_mutation_impact_hash(simulation: MutationSimulation) -> str:
             "fixed": list(simulation.fixed_finding_keys),
             "introduced": list(simulation.introduced_finding_keys),
             "worsened": list(simulation.worsened_finding_keys),
-            "authorization_required": list(
-                simulation.authorization_required_finding_keys
-            ),
+            "authorization_required": list(simulation.authorization_required_finding_keys),
         },
         "closure_policy_version": simulation.closure_policy_version,
     }
     return _canonical_hash(payload)
 
 
-def _ordered_plan_operations(plan: MutationPlanV1) -> tuple[Any, ...]:
+def _ordered_plan_operations(plan: MutationPlanV1 | MutationPlanV2) -> tuple[Any, ...]:
     by_key = {item.operation_key: item for item in plan.operations}
     graph: nx.DiGraph[str] = nx.DiGraph()
     graph.add_nodes_from(by_key)
@@ -422,37 +444,109 @@ def _collect_local_refs(value: Any, result: set[str]) -> None:
 def _resolve_refs(
     value: Any,
     local_ids: Mapping[str, str],
+    local_collections: Mapping[str, str],
     existing: Mapping[str, tuple[str, dict[str, Any]]],
+    *,
+    plan_version: str,
+    target_collection: str,
+    field_path: str,
 ) -> Any:
     if isinstance(value, Mapping):
         ref_kind = value.get("ref_kind")
         if ref_kind in {"local", "existing"}:
-            if set(value) != (
-                {"ref_kind", "local_ref", "object_type"}
-                if ref_kind == "local"
-                else {"ref_kind", "object_id", "object_type"}
-            ):
+            v1 = plan_version == "general-mutation-planner-v1"
+            identity_key = "local_ref" if ref_kind == "local" else "object_id"
+            expected_shape = {"ref_kind", identity_key}
+            if v1:
+                expected_shape.add("object_type")
+            if set(value) != expected_shape:
                 raise GeneralMutationBindingError("general_mutation_ref_shape_invalid")
-            object_type = value.get("object_type")
-            if not isinstance(object_type, str) or object_type not in COLLECTIONS:
-                raise GeneralMutationBindingError("general_mutation_ref_type_invalid")
             if ref_kind == "local":
                 local_ref = value.get("local_ref")
                 if not isinstance(local_ref, str) or local_ref not in local_ids:
                     raise GeneralMutationBindingError("general_mutation_local_ref_unknown")
                 object_id = local_ids[local_ref]
+                inferred_collection = local_collections[local_ref]
             else:
                 existing_object_id = value.get("object_id")
                 if not isinstance(existing_object_id, str) or existing_object_id not in existing:
                     raise GeneralMutationBindingError("general_mutation_object_unknown")
-                if existing[existing_object_id][0] != COLLECTIONS[object_type]:
-                    raise GeneralMutationBindingError("general_mutation_ref_type_mismatch")
+                inferred_collection = existing[existing_object_id][0]
                 object_id = existing_object_id
+            inferred_type = _OBJECT_TYPE_BY_COLLECTION[inferred_collection]
+            if v1:
+                object_type = value.get("object_type")
+                if not isinstance(object_type, str) or object_type not in COLLECTIONS:
+                    raise GeneralMutationBindingError("general_mutation_ref_type_invalid")
+                if inferred_collection != COLLECTIONS[object_type]:
+                    raise GeneralMutationBindingError("general_mutation_ref_type_mismatch")
+            else:
+                object_type = inferred_type
+            if not v1:
+                expected_type = _expected_reference_type(target_collection, field_path)
+                if expected_type is not None and object_type != expected_type:
+                    raise GeneralMutationBindingError("general_mutation_ref_type_mismatch")
             return {"object_type": object_type, "object_id": object_id}
-        return {key: _resolve_refs(child, local_ids, existing) for key, child in value.items()}
+        return {
+            key: _resolve_refs(
+                child,
+                local_ids,
+                local_collections,
+                existing,
+                plan_version=plan_version,
+                target_collection=target_collection,
+                field_path=f"{field_path}/{key}",
+            )
+            for key, child in value.items()
+        }
     if isinstance(value, list):
-        return [_resolve_refs(child, local_ids, existing) for child in value]
+        return [
+            _resolve_refs(
+                child,
+                local_ids,
+                local_collections,
+                existing,
+                plan_version=plan_version,
+                target_collection=target_collection,
+                field_path=f"{field_path}/{index}",
+            )
+            for index, child in enumerate(value)
+        ]
     return deepcopy(value)
+
+
+def _expected_reference_type(collection: str, field_path: str) -> str | None:
+    normalized = "/" + "/".join(
+        "*" if part.isdigit() else part for part in field_path.strip("/").split("/") if part
+    )
+    expected = {
+        ("entities", "/knowledge_states/*/as_of_event_ref"): "event",
+        ("entities", "/knowledge_states/*/knows_refs/*"): "information_unit",
+        ("entities", "/knowledge_states/*/believes_refs/*"): "claim",
+        ("entities", "/knowledge_states/*/false_belief_refs/*"): "claim",
+        ("locations", "/parent_ref"): "location",
+        ("locations", "/adjacency_refs/*"): "location",
+        ("locations", "/travel_times/*/to_ref"): "location",
+        ("events", "/participant_refs/*"): "entity",
+        ("events", "/observed_by_refs/*"): "entity",
+        ("events", "/location_ref"): "location",
+        ("events", "/cause_refs/*"): "event",
+        ("events", "/effect_refs/*"): "event",
+        ("information_units", "/source_event_ref"): "event",
+        ("information_units", "/supports_claim_refs/*"): "claim",
+        ("information_units", "/refutes_claim_refs/*"): "claim",
+        ("information_units", "/availability/perspective_refs/*"): "entity",
+        ("information_units", "/availability/alternative_path_refs/*"): "reasoning_path",
+        ("claims", "/support_refs/*"): "information_unit",
+        ("claims", "/refute_refs/*"): "information_unit",
+        ("claims", "/dependency_claim_refs/*"): "claim",
+        ("hypotheses", "/target_resolution_ref"): "resolution_spec",
+        ("hypotheses", "/required_claim_refs/*"): "claim",
+        ("hypotheses", "/competing_hypothesis_refs/*"): "hypothesis",
+        ("hypotheses", "/evidence_assessments/*/information_ref"): "information_unit",
+        ("reasoning_paths", "/alternative_path_refs/*"): "reasoning_path",
+    }
+    return expected.get((collection, normalized))
 
 
 def _objects_by_id(

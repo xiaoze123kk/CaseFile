@@ -7,12 +7,6 @@ from typing import Any, cast
 
 from agents import ModelSettings, Tool
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
@@ -39,12 +33,13 @@ from casefile.agent_runtime.context.thread_memory import (
 )
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
-    GENERAL_MUTATION_SCHEMA_ID,
     GeneralMutationPlannerRequest,
     GeneralMutationPlannerResult,
-    MutationPlanV1,
 )
-from casefile.agent_runtime.general_mutation_prompt import render_general_mutation_prompt
+from casefile.agent_runtime.general_mutation_prompt import (
+    general_mutation_output_type,
+    render_general_mutation_prompt,
+)
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -117,6 +112,12 @@ from casefile.agent_runtime.provider_adapters.shared import (
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
 
 
 class OpenAIAgentsProvider:
@@ -129,19 +130,20 @@ class OpenAIAgentsProvider:
         if not request.api_key:
             raise ProviderProtocolError("OpenAI API key is required")
         rendered = render_general_mutation_prompt(request)
+        output_type = general_mutation_output_type(rendered)
         candidate, usage = asyncio.run(
             self._run_auxiliary(
                 request,
                 instructions=rendered.instructions,
                 input_text=rendered.input_text,
-                output_type=MutationPlanV1,
+                output_type=output_type,
                 stage="general_mutation",
                 component_id=GENERAL_MUTATION_COMPONENT_ID,
-                schema_id=GENERAL_MUTATION_SCHEMA_ID,
+                schema_id=rendered.output_schema_id,
                 strict_validation=True,
             )
         )
-        return GeneralMutationPlannerResult(MutationPlanV1.model_validate(candidate), usage)
+        return GeneralMutationPlannerResult(output_type.model_validate(candidate), usage)
 
     def repair_closure(
         self,

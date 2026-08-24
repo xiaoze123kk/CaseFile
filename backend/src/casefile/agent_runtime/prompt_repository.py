@@ -103,6 +103,7 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "closure-repair-v1": frozenset({"repair"}),
     "closure-repair-v2": frozenset({"repair"}),
     "general-mutation-planner-v1": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v2": frozenset({"general_mutation_planner"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

@@ -16,8 +16,8 @@
         "collection": "relationships",
         "fields": {
           "title": "张敏协助林研究员",
-          "from_ref": {"ref_kind": "local", "local_ref": "zhang_min", "object_type": "entity"},
-          "to_ref": {"ref_kind": "existing", "object_id": "ent_researcher", "object_type": "entity"},
+          "from_ref": {"ref_kind": "local", "local_ref": "zhang_min"},
+          "to_ref": {"ref_kind": "existing", "object_id": "ent_researcher"},
           "relationship_type": "assists",
           "direction": "directed",
           "truth_status": "canon_true",

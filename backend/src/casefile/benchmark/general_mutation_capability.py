@@ -29,7 +29,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_PLAN_VERSION,
     GENERAL_MUTATION_POLICY_VERSION,
     GeneralMutationPlannerRequest,
-    MutationPlanV1,
+    MutationPlanV2,
 )
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.agent_mutation import (
@@ -75,9 +75,7 @@ def _read_object(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_capability_suite(
-    repo_root: Path = ROOT, suite_path: Path | None = None
-) -> EvalSuite:
+def load_capability_suite(repo_root: Path = ROOT, suite_path: Path | None = None) -> EvalSuite:
     path = (suite_path or repo_root / DEFAULT_SUITE).resolve()
     payload = _read_object(path)
     if set(payload) != {"schema_version", "suite_id", "tasks"}:
@@ -129,7 +127,9 @@ def load_capability_suite(
     ids = [task.task_id for task in tasks]
     if len(ids) != len(set(ids)):
         raise GeneralMutationCapabilityError("general_mutation_task_id_duplicate")
-    fingerprint_files = sorted(path.parent.rglob("*.json"))
+    fingerprint_files = sorted(
+        item for item in path.parent.rglob("*.json") if not item.name.endswith(".reference.json")
+    )
     fingerprint = _canonical_hash(
         [
             (str(item.relative_to(path.parent)).replace("\\", "/"), _read_object(item))
@@ -153,7 +153,7 @@ def validate_references(suite: EvalSuite, repo_root: Path = ROOT) -> None:
         document = _task_document(task, repo_root)
         reference = _read_object(Path(task.reference_path))
         try:
-            plan = MutationPlanV1.model_validate(reference["plan"])
+            plan = MutationPlanV2.model_validate(reference["plan"])
             bound = bind_general_mutation_plan(
                 plan,
                 document,
@@ -223,8 +223,10 @@ def run_capability_benchmark(
         "closure_policy_version": CLOSURE_POLICY_VERSION,
         "harness_version": HARNESS_VERSION,
         "grader_version": GRADER_VERSION,
+        "reference_fingerprint": _reference_fingerprint(suite),
     }
     metrics = _metrics(rows, suite.tasks, trials)
+    calibration_gate = _calibration_gate(rows, suite.tasks, trials, metrics)
     return {
         "schema_version": REPORT_VERSION,
         "suite": {
@@ -237,9 +239,7 @@ def run_capability_benchmark(
         "provider": provider_name,
         "model_id": model_id,
         "formal_capability": (
-            not injected_provider
-            and provider_name == "deepseek"
-            and model_id == "deepseek-v4-pro"
+            not injected_provider and provider_name == "deepseek" and model_id == "deepseek-v4-pro"
         ),
         "release_gate_eligible": False,
         "trials_per_task": trials,
@@ -247,6 +247,7 @@ def run_capability_benchmark(
         "lineage": lineage,
         "git": _git_identity(repo_root),
         "metrics": metrics,
+        "gates": {"m3_4_07a": calibration_gate},
         "rows": rows,
         "status": (
             "inconclusive_infrastructure"
@@ -313,7 +314,7 @@ def _run_trial(
         verification_valid = simulation.valid
     except (ValidationError, GeneralMutationBindingError) as error:
         protocol_failure = True
-        reason_code = getattr(error, "reason_code", type(error).__name__)
+        reason_code = _contract_reason_code(error)
     except Exception as error:  # Provider transport is reportable, never a capability miss.
         infrastructure = {"type": type(error).__name__, "provider": provider_name}
         reason_code = "provider_or_transport_failure"
@@ -413,6 +414,19 @@ def _grade(
             "evidence": {"changed_paths": changed},
         },
     ]
+
+
+def _contract_reason_code(
+    error: ValidationError | GeneralMutationBindingError,
+) -> str:
+    if isinstance(error, GeneralMutationBindingError):
+        return error.reason_code
+    for item in error.errors():
+        message = str(item.get("ctx", {}).get("error") or item.get("msg") or "")
+        marker = "general_mutation_"
+        if marker in message:
+            return marker + message.split(marker, 1)[1].split()[0].rstrip(".,')")
+    return "general_mutation_contract_invalid"
 
 
 def _assert_state(
@@ -521,14 +535,44 @@ def _metrics(
         "classification_counts": dict(sorted(classes.items())),
         "usage": {
             "requests": sum(
-                int(cast(Mapping[str, Any], row["usage"]).get("requests", 0))
-                for row in rows
+                int(cast(Mapping[str, Any], row["usage"]).get("requests", 0)) for row in rows
             ),
             "total_tokens": sum(
-                int(cast(Mapping[str, Any], row["usage"]).get("total_tokens", 0))
-                for row in rows
+                int(cast(Mapping[str, Any], row["usage"]).get("total_tokens", 0)) for row in rows
             ),
         },
+    }
+
+
+def _calibration_gate(
+    rows: Sequence[Mapping[str, Any]],
+    tasks: Sequence[EvalTask],
+    trials: int,
+    metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    cross_reference = [row for row in rows if row["task_id"] == "create-relationship"]
+    ref_shape_failures = sum(
+        cast(Mapping[str, Any], row["outcome"]).get("reason_code")
+        == "general_mutation_ref_shape_invalid"
+        for row in rows
+    )
+    checks = {
+        "exact_7_tasks_x_5": len(tasks) == 7 and trials == 5 and len(rows) == 35,
+        "all_trials_complete": len(rows) == len(tasks) * trials,
+        "cross_reference_5_of_5": len(cross_reference) == 5
+        and all(bool(row["passed"]) for row in cross_reference),
+        "ref_shape_invalid_zero": ref_shape_failures == 0,
+        "protocol_failure_zero": metrics["protocol_failure_count"] == 0,
+        "unsafe_escape_zero": metrics["unsafe_escape_count"] == 0,
+        "infrastructure_failure_zero": metrics["infrastructure_failure_count"] == 0,
+    }
+    return {
+        "eligible": len(tasks) == 7 and trials == 5,
+        "passed": all(checks.values()),
+        "checks": checks,
+        "cross_reference_passed": sum(bool(row["passed"]) for row in cross_reference),
+        "cross_reference_trials": len(cross_reference),
+        "general_mutation_ref_shape_invalid_count": ref_shape_failures,
     }
 
 
@@ -544,6 +588,15 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
         "branch": run("branch", "--show-current"),
         "dirty": bool(run("status", "--porcelain")),
     }
+
+
+def _reference_fingerprint(suite: EvalSuite) -> str:
+    return _canonical_hash(
+        [
+            (task.task_id, _read_object(Path(task.reference_path)))
+            for task in sorted(suite.tasks, key=lambda item: item.task_id)
+        ]
+    )
 
 
 def _saved_credential(
@@ -568,9 +621,7 @@ def _saved_credential(
                 )
             )
             if setting is None or setting.secret_ciphertext is None or setting.secret_nonce is None:
-                raise GeneralMutationCapabilityError(
-                    "general_mutation_saved_credential_missing"
-                )
+                raise GeneralMutationCapabilityError("general_mutation_saved_credential_missing")
             return (
                 decrypt_api_key(
                     setting.secret_ciphertext,
@@ -596,6 +647,7 @@ def main() -> None:
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--suite-path", type=Path)
     parser.add_argument("--report-path", type=Path)
+    parser.add_argument("--gate-07a", action="store_true")
     args = parser.parse_args()
     env_names = (
         ("CASEFILE_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY")
@@ -630,6 +682,8 @@ def main() -> None:
         args.report_path.write_text(rendered + "\n", encoding="utf-8")
     if report["status"] != "completed":
         raise SystemExit(2)
+    if args.gate_07a and not report["gates"]["m3_4_07a"]["passed"]:
+        raise SystemExit(3)
 
 
 if __name__ == "__main__":

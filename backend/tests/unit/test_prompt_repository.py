@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -44,11 +45,14 @@ EXPECTED_CURRENT_VERSIONS = {
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
-    "general_mutation_planner": "general-mutation-planner-v1",
+    "general_mutation_planner": "general-mutation-planner-v2",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("general_mutation_planner", "general-mutation-planner-v2"): {
+        "fragment:planner": "eaa09aea2fc0fc7620f9bf2ff37f20c1a42f644620bbc8fe302028a57fad7c42"
+    },
     ("general_mutation_planner", "general-mutation-planner-v1"): {
         "fragment:planner": "4b6fdd45886d63dca15e7401d85edbd033e760bd1a9b9d4a0c6440a78d7e554b"
     },
@@ -481,11 +485,16 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         assert "结构化" in prompt
 
     mutation_prompt = system_prompt_for_task(
-        "general_mutation_planner", "general-mutation-planner-v1"
+        "general_mutation_planner", "general-mutation-planner-v2"
     )
     assert "General Mutation Planner" in mutation_prompt
     assert "不得生成正式对象 ID" in mutation_prompt
     assert "最多 12 个操作、4 个 Create、2 个 Delete" in mutation_prompt
+    assert "Planner 引用严禁输出 `object_type`" in mutation_prompt
+    legacy_mutation_prompt = system_prompt_for_task(
+        "general_mutation_planner", "general-mutation-planner-v1"
+    )
+    assert "general-mutation-plan-v1" in legacy_mutation_prompt
 
     assert "`polished_text` 保持原稿的主要语言" in prompts["brief_polish"]
     assert "`narrative_enhance`" in prompts["brief_polish"]

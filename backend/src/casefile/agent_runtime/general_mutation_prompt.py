@@ -9,6 +9,7 @@ from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     GeneralMutationPromptInput,
     MutationPlanV1,
+    MutationPlanV2,
 )
 from casefile.agent_runtime.prompt_package import RenderedPrompt, render_prompt_package
 from casefile.agent_runtime.prompt_repository import load_prompt
@@ -46,8 +47,17 @@ def general_mutation_input(request: GeneralMutationPlannerRequest) -> str:
     )
 
 
-def general_mutation_output_type() -> type[MutationPlanV1]:
-    return MutationPlanV1
+def general_mutation_output_type(
+    rendered: RenderedPrompt,
+) -> type[MutationPlanV1] | type[MutationPlanV2]:
+    output_types: dict[str, type[MutationPlanV1] | type[MutationPlanV2]] = {
+        "general-mutation-plan-v1": MutationPlanV1,
+        "general-mutation-plan-v2": MutationPlanV2,
+    }
+    try:
+        return output_types[rendered.output_schema_id]
+    except KeyError as error:
+        raise ValueError("general_mutation_output_schema_unknown") from error
 
 
 __all__ = [

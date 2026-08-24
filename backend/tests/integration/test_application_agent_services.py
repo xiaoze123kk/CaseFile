@@ -16,6 +16,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -47,8 +50,6 @@ from casefile.data_postgres.models import (
 )
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -129,17 +130,13 @@ def test_general_mutation_create_atomic_apply_undo_redo(
             )
         with factory() as session:
             workflow = WorkflowService(session)
-            messages = workflow.list_agent_messages(
-                actor_id, project_id, thread["thread_id"]
-            )
+            messages = workflow.list_agent_messages(actor_id, project_id, thread["thread_id"])
             patch_set = messages[-1]["patch_set"]
             assert patch_set["review_mode"] == "atomic"
-            assert patch_set["plan_version"] == "general-mutation-planner-v1"
+            assert patch_set["plan_version"] == "general-mutation-planner-v2"
             assert patch_set["operations"][0]["operation_type"] == "create_object"
             assert patch_set["operations"][0]["object_id"] is None
-            assert patch_set["operations"][0]["target_object_key"].startswith(
-                "ent_agent_t"
-            )
+            assert patch_set["operations"][0]["target_object_key"].startswith("ent_agent_t")
             with pytest.raises(ApplicationError) as subset_error:
                 workflow.simulate_agent_patch_set(
                     actor_id,
@@ -288,10 +285,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                     expected_revision=2,
                     operation_ids=None,
                 )
-            assert (
-                error.value.code
-                == "agent_patch_delete_impact_confirmation_required"
-            )
+            assert error.value.code == "agent_patch_delete_impact_confirmation_required"
         with factory() as session:
             workflow = WorkflowService(session)
             with pytest.raises(ApplicationError) as error:
@@ -323,9 +317,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 operation_ids=None,
                 confirmed_impact_hash=patch_set["impact_hash"],
                 accepted_debt_finding_keys=debt_keys,
-                debt_acceptance_reason=(
-                    "测试确认删除产生的逻辑债务。" if debt_keys else None
-                ),
+                debt_acceptance_reason=("测试确认删除产生的逻辑债务。" if debt_keys else None),
             )
             assert applied["draft_revision"] == 3
         with factory() as session:
@@ -350,9 +342,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
             )
             assert {
                 key: value for key, value in restored_target.items() if key != "updated_at"
-            } == {
-                key: value for key, value in original_target.items() if key != "updated_at"
-            }
+            } == {key: value for key, value in original_target.items() if key != "updated_at"}
 
 
 class ClosureRepairChatProvider(ChatSuggestionProvider):
@@ -555,9 +545,7 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             assert steps[0].component_version == "closure-repair-v3"
             calls = list(
                 session.scalars(
-                    select(AgentModelCall).where(
-                        AgentModelCall.agent_step_run_id == steps[0].id
-                    )
+                    select(AgentModelCall).where(AgentModelCall.agent_step_run_id == steps[0].id)
                 )
             )
             assert len(calls) == 1
@@ -577,13 +565,9 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             assert operations[0].origin == "primary"
             if mode == "suggest":
                 assert len(operations) > 1
-                assert all(
-                    operation.origin == "closure_repair" for operation in operations[1:]
-                )
+                assert all(operation.origin == "closure_repair" for operation in operations[1:])
                 assert {operation.repair_round for operation in operations[1:]} == {1}
-                assert all(
-                    operation.repair_obligation_keys for operation in operations[1:]
-                )
+                assert all(operation.repair_obligation_keys for operation in operations[1:])
                 patch_set_id = patch_set.id
                 operation_ids = [operation.id for operation in operations]
             else:
