@@ -110,8 +110,18 @@ $publicModule = @'
 from ._internal import (
     AgentGenerateRequest,
     AgentGenerateResult,
+    ArtifactKind,
     BriefIntakeQuestion,
     BriefIntakeQuestionSet,
+    CanonBinding,
+    CompileInputManifest,
+    CompileMode,
+    CompilerArtifactRef,
+    CompilerDiagnostic,
+    CompilerProfileBinding,
+    CompilerSourceRef,
+    ExposureBinding,
+    SnapshotBinding,
     TaskEvent,
     TaskRun,
 )
@@ -124,14 +134,24 @@ from .validation_issue import Schema as ValidationIssue
 __all__ = [
     "AgentGenerateRequest",
     "AgentGenerateResult",
+    "ArtifactKind",
     "Brief",
     "BriefIntakeCandidate",
     "BriefIntakeQuestion",
     "BriefIntakeQuestionSet",
     "CaseFile",
+    "CanonBinding",
+    "CompileInputManifest",
+    "CompileMode",
+    "CompilerArtifactRef",
+    "CompilerDiagnostic",
+    "CompilerProfileBinding",
+    "CompilerSourceRef",
+    "ExposureBinding",
     "PatchCandidate",
     "TaskEvent",
     "TaskRun",
+    "SnapshotBinding",
     "ValidationIssue",
 ]
 '@
@@ -220,7 +240,9 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
         Remove-Item -LiteralPath $runtimeSchemaFullPath -Recurse -Force
     }
     New-Item -ItemType Directory -Path $runtimeSchemaFullPath -Force | Out-Null
-    foreach ($schemaDirectory in @("brief", "brief-intake", "casefile", "task", "validation")) {
+    foreach ($schemaDirectory in @(
+        "brief", "brief-intake", "casefile", "compiler", "task", "validation"
+    )) {
         Copy-Item -LiteralPath (Join-Path $schemaRoot $schemaDirectory) `
             -Destination $runtimeSchemaFullPath -Recurse
     }

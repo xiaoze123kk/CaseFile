@@ -1154,6 +1154,186 @@ class AgentGenerateResult(BaseModel):
     content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
+class Sha256Hex(RootModel[str]):
+    root: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class StableKey(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+
+
+class NamespacedKey(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+
+
+class ArtifactKind(StrEnum):
+    input_manifest = 'input_manifest'
+    narrative_ir = 'narrative_ir'
+    novel_plan = 'novel_plan'
+    exposure_schedule = 'exposure_schedule'
+    scene_plan = 'scene_plan'
+    scene_context = 'scene_context'
+    scene_render = 'scene_render'
+    scene_assertions = 'scene_assertions'
+    validation_report = 'validation_report'
+    source_map = 'source_map'
+    novel_candidate = 'novel_candidate'
+    compile_manifest = 'compile_manifest'
+
+
+class CompilerDiagnosticSeverity(StrEnum):
+    info = 'info'
+    warning = 'warning'
+    error = 'error'
+
+
+class CompileMode(StrEnum):
+    preview = 'preview'
+    canonical = 'canonical'
+
+
+class CompilerSourceRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    field_path: Annotated[str, Field(pattern='^(?:/(?:[^~/]|~[01])*)*$')]
+    source_fragment_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CompilerArtifactRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    artifact_kind: ArtifactKind
+    artifact_key: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+    schema_id: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CompilerDiagnostic(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    severity: CompilerDiagnosticSeverity
+    code: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+    message: Annotated[str, Field(max_length=2000, min_length=1)]
+    artifact_ref: CompilerArtifactRef | None = None
+    source_refs: list[CompilerSourceRef]
+
+
+class CompilerProfileBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    profile_key: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+    profile_schema_id: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+    profile_version: Annotated[int, Field(ge=1)]
+    frozen_payload: dict[str, Any]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class SnapshotBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    snapshot_id: Annotated[int, Field(ge=1)]
+    draft_id: Annotated[int, Field(ge=1)]
+    snapshot_revision: Annotated[int, Field(ge=1)]
+    schema_version: Annotated[str, Field(max_length=32, min_length=1)]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CanonBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    canon_version_id: Annotated[int, Field(ge=1)]
+    source_snapshot_id: Annotated[int, Field(ge=1)]
+    version_no: Annotated[int, Field(ge=1)]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class ExposureBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    draft_id: Annotated[int, Field(ge=1)]
+    plan_revision_id: Annotated[int, Field(ge=1)]
+    revision_no: Annotated[int, Field(ge=1)]
+    frozen_payload: dict[str, Any]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CompileInputManifest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target: Literal['novel']
+    mode: CompileMode
+    source_snapshot: SnapshotBinding
+    source_canon: CanonBinding | None
+    exposure: ExposureBinding | None
+    profile: CompilerProfileBinding
+    compiler_version: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -1185,6 +1365,11 @@ class EditingContracts(BaseModel):
     task_event: TaskEvent
     agent_generate_request: AgentGenerateRequest
     agent_generate_result: AgentGenerateResult
+    compiler_source_ref: CompilerSourceRef
+    compiler_artifact_ref: CompilerArtifactRef
+    compiler_diagnostic: CompilerDiagnostic
+    compiler_profile_binding: CompilerProfileBinding
+    compile_input_manifest: CompileInputManifest
 
 
 class CoreSellingPoint(RootModel[str]):

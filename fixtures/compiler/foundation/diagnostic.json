@@ -1,0 +1,21 @@
+{
+  "severity": "warning",
+  "code": "compiler.source_fragment_stale",
+  "message": "来源字段已发生变化，需要重新冻结编译输入。",
+  "artifact_ref": {
+    "artifact_kind": "input_manifest",
+    "artifact_key": "compiler.input_manifest",
+    "schema_id": "compiler.input-manifest.v1",
+    "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "source_refs": [
+    {
+      "object_ref": {
+        "object_type": "event",
+        "object_id": "evt_archive_arrival"
+      },
+      "field_path": "/time/start",
+      "source_fragment_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

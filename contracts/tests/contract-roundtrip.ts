@@ -9,6 +9,10 @@ import type {
   BriefIntakeCandidate,
   BriefIntakeQuestionSet,
   CaseFile,
+  CompileInputManifest,
+  CompilerArtifactRef,
+  CompilerDiagnostic,
+  CompilerSourceRef,
   PatchCandidate,
   ValidationIssue,
 } from "../generated/typescript/index.js";
@@ -125,13 +129,29 @@ const briefIntakeCandidateValidator = ajv.getSchema(
 const briefIntakeQuestionSetValidator = ajv.getSchema(
   "https://casefile.local/schemas/v2/brief-intake/brief-intake.schema.json#/$defs/BriefIntakeQuestionSet",
 );
+const compilerManifestValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/compiler.schema.json#/$defs/CompileInputManifest",
+);
+const compilerSourceRefValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/compiler.schema.json#/$defs/CompilerSourceRef",
+);
+const compilerArtifactRefValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/compiler.schema.json#/$defs/CompilerArtifactRef",
+);
+const compilerDiagnosticValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/compiler.schema.json#/$defs/CompilerDiagnostic",
+);
 
 if (
   !casefileValidator ||
   !issueValidator ||
   !patchValidator ||
   !briefIntakeCandidateValidator ||
-  !briefIntakeQuestionSetValidator
+  !briefIntakeQuestionSetValidator ||
+  !compilerManifestValidator ||
+  !compilerSourceRefValidator ||
+  !compilerArtifactRefValidator ||
+  !compilerDiagnosticValidator
 ) {
   throw new Error("Editing contract entry schemas were not registered");
 }
@@ -140,8 +160,8 @@ const casefilePaths = readdirSync(resolve(fixtureRoot, "casefiles"))
   .filter((name) => name.endsWith(".casefile.json"))
   .sort();
 
-if (casefilePaths.length !== 3) {
-  throw new Error(`Expected 3 valid CaseFile fixtures, found ${casefilePaths.length}`);
+if (casefilePaths.length !== 4) {
+  throw new Error(`Expected 4 valid CaseFile fixtures, found ${casefilePaths.length}`);
 }
 
 for (const name of casefilePaths) {
@@ -220,6 +240,68 @@ assertValid(
   "BriefIntakeQuestionSet",
 );
 
+const compilerFixtureRoot = resolve(fixtureRoot, "compiler", "foundation");
+for (const name of [
+  "preview_minimal.input_manifest.json",
+  "canonical.input_manifest.json",
+  "preview_with_exposure.input_manifest.json",
+]) {
+  const value = loadJson(resolve(compilerFixtureRoot, name));
+  assertValid(
+    compilerManifestValidator,
+    typedRoundTrip(value as unknown as CompileInputManifest),
+    name,
+  );
+}
+
+const compilerSourceRef = loadJson(resolve(compilerFixtureRoot, "source_ref.json"));
+const compilerArtifactRef = loadJson(resolve(compilerFixtureRoot, "artifact_ref.json"));
+const compilerDiagnostic = loadJson(resolve(compilerFixtureRoot, "diagnostic.json"));
+assertValid(
+  compilerSourceRefValidator,
+  typedRoundTrip(compilerSourceRef as unknown as CompilerSourceRef),
+  "CompilerSourceRef",
+);
+assertValid(
+  compilerArtifactRefValidator,
+  typedRoundTrip(compilerArtifactRef as unknown as CompilerArtifactRef),
+  "CompilerArtifactRef",
+);
+assertValid(
+  compilerDiagnosticValidator,
+  typedRoundTrip(compilerDiagnostic as unknown as CompilerDiagnostic),
+  "CompilerDiagnostic",
+);
+
+const duplicateDiagnostic = structuredClone(compilerDiagnostic);
+(duplicateDiagnostic.source_refs as unknown[]).push(
+  structuredClone(compilerSourceRef),
+);
+if (compilerDiagnosticValidator(duplicateDiagnostic)) {
+  throw new Error("CompilerDiagnostic accepted duplicate source refs");
+}
+
+const compilerInvalidCases = loadJson(
+  resolve(compilerFixtureRoot, "invalid_cases.json"),
+).cases as JsonObject[];
+for (const invalidCase of compilerInvalidCases.filter(
+  (value) => value.expected_layer === "schema",
+)) {
+  const baseName = invalidCase.base_fixture as string;
+  const invalidValue = applyManifest(
+    loadJson(resolve(compilerFixtureRoot, baseName)),
+    invalidCase,
+  );
+  const validator = baseName === "source_ref.json"
+    ? compilerSourceRefValidator
+    : baseName === "artifact_ref.json"
+      ? compilerArtifactRefValidator
+      : compilerManifestValidator;
+  if (validator(invalidValue)) {
+    throw new Error(`${String(invalidCase.name)} unexpectedly passed Compiler schema`);
+  }
+}
+
 if (
   briefIntakeQuestionSetValidator({
     questions: questionSet.questions.map((question) => ({
@@ -258,5 +340,5 @@ for (const name of invalidManifests) {
 }
 
 console.log(
-  `TypeScript contracts passed: ${casefilePaths.length} CaseFiles, ValidationIssue, PatchCandidate, BriefIntake candidate/questions, and ${invalidManifests.length} invalid fixtures.`,
+  `TypeScript contracts passed: ${casefilePaths.length} CaseFiles, Compiler foundation, ValidationIssue, PatchCandidate, BriefIntake candidate/questions, and ${invalidManifests.length} invalid fixtures.`,
 );

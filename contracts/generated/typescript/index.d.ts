@@ -304,6 +304,9 @@ export type BriefIntakeCandidate = {
   risk_notes: string[];
   field_sources: BriefIntakeFieldSources;
 };
+export type CompileInputManifest = {
+  [k: string]: unknown;
+};
 
 /**
  * Code-generation aggregate for the CaseFile editing loop.
@@ -319,6 +322,11 @@ export interface EditingContracts {
   task_event: TaskEvent;
   agent_generate_request: AgentGenerateRequest;
   agent_generate_result: AgentGenerateResult;
+  compiler_source_ref: CompilerSourceRef;
+  compiler_artifact_ref: CompilerArtifactRef;
+  compiler_diagnostic: CompilerDiagnostic;
+  compiler_profile_binding: CompilerProfileBinding;
+  compile_input_manifest: CompileInputManifest;
 }
 export interface CaseFile {
   schema_version: "2.0";
@@ -658,5 +666,44 @@ export interface AgentGenerateResult {
   status: "succeeded";
   snapshot_id: number;
   draft_revision: number;
+  content_hash: string;
+}
+export interface CompilerSourceRef {
+  object_ref: ObjectRef;
+  field_path: string;
+  source_fragment_hash: string;
+}
+export interface CompilerArtifactRef {
+  artifact_kind:
+    | "input_manifest"
+    | "narrative_ir"
+    | "novel_plan"
+    | "exposure_schedule"
+    | "scene_plan"
+    | "scene_context"
+    | "scene_render"
+    | "scene_assertions"
+    | "validation_report"
+    | "source_map"
+    | "novel_candidate"
+    | "compile_manifest";
+  artifact_key: string;
+  schema_id: string;
+  content_hash: string;
+}
+export interface CompilerDiagnostic {
+  severity: "info" | "warning" | "error";
+  code: string;
+  message: string;
+  artifact_ref?: CompilerArtifactRef | null;
+  source_refs: CompilerSourceRef[];
+}
+export interface CompilerProfileBinding {
+  profile_key: string;
+  profile_schema_id: string;
+  profile_version: number;
+  frozen_payload: {
+    [k: string]: unknown;
+  };
   content_hash: string;
 }

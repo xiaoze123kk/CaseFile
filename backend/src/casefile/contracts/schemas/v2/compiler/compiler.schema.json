@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/compiler.schema.json",
+  "title": "NarrativeCompilerContracts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_ref",
+    "artifact_ref",
+    "diagnostic",
+    "profile_binding",
+    "input_manifest"
+  ],
+  "properties": {
+    "source_ref": {"$ref": "#/$defs/CompilerSourceRef"},
+    "artifact_ref": {"$ref": "#/$defs/CompilerArtifactRef"},
+    "diagnostic": {"$ref": "#/$defs/CompilerDiagnostic"},
+    "profile_binding": {"$ref": "#/$defs/CompilerProfileBinding"},
+    "input_manifest": {"$ref": "#/$defs/CompileInputManifest"}
+  },
+  "$defs": {
+    "Sha256Hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "StableKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$"
+    },
+    "NamespacedKey": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160,
+      "pattern": "^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$"
+    },
+    "ArtifactKind": {
+      "type": "string",
+      "enum": [
+        "input_manifest",
+        "narrative_ir",
+        "novel_plan",
+        "exposure_schedule",
+        "scene_plan",
+        "scene_context",
+        "scene_render",
+        "scene_assertions",
+        "validation_report",
+        "source_map",
+        "novel_candidate",
+        "compile_manifest"
+      ]
+    },
+    "CompilerDiagnosticSeverity": {
+      "type": "string",
+      "enum": ["info", "warning", "error"]
+    },
+    "CompileMode": {
+      "type": "string",
+      "enum": ["preview", "canonical"]
+    },
+    "CompilerSourceRef": {
+      "title": "CompilerSourceRef",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_ref", "field_path", "source_fragment_hash"],
+      "properties": {
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "field_path": {"$ref": "../casefile/common.schema.json#/$defs/JsonPointer"},
+        "source_fragment_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "CompilerArtifactRef": {
+      "title": "CompilerArtifactRef",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_kind", "artifact_key", "schema_id", "content_hash"],
+      "properties": {
+        "artifact_kind": {"$ref": "#/$defs/ArtifactKind"},
+        "artifact_key": {"$ref": "#/$defs/NamespacedKey"},
+        "schema_id": {"$ref": "#/$defs/NamespacedKey"},
+        "content_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "CompilerDiagnostic": {
+      "title": "CompilerDiagnostic",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message", "source_refs"],
+      "properties": {
+        "severity": {"$ref": "#/$defs/CompilerDiagnosticSeverity"},
+        "code": {"$ref": "#/$defs/StableKey"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "artifact_ref": {
+          "oneOf": [
+            {"$ref": "#/$defs/CompilerArtifactRef"},
+            {"type": "null"}
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/CompilerSourceRef"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "CompilerProfileBinding": {
+      "title": "CompilerProfileBinding",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_key",
+        "profile_schema_id",
+        "profile_version",
+        "frozen_payload",
+        "content_hash"
+      ],
+      "properties": {
+        "profile_key": {"$ref": "#/$defs/StableKey"},
+        "profile_schema_id": {"$ref": "#/$defs/NamespacedKey"},
+        "profile_version": {"type": "integer", "minimum": 1},
+        "frozen_payload": {"type": "object"},
+        "content_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "SnapshotBinding": {
+      "title": "SnapshotBinding",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_id",
+        "draft_id",
+        "snapshot_revision",
+        "schema_version",
+        "content_hash"
+      ],
+      "properties": {
+        "snapshot_id": {"type": "integer", "minimum": 1},
+        "draft_id": {"type": "integer", "minimum": 1},
+        "snapshot_revision": {"type": "integer", "minimum": 1},
+        "schema_version": {"type": "string", "minLength": 1, "maxLength": 32},
+        "content_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "CanonBinding": {
+      "title": "CanonBinding",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canon_version_id", "source_snapshot_id", "version_no", "content_hash"],
+      "properties": {
+        "canon_version_id": {"type": "integer", "minimum": 1},
+        "source_snapshot_id": {"type": "integer", "minimum": 1},
+        "version_no": {"type": "integer", "minimum": 1},
+        "content_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "ExposureBinding": {
+      "title": "ExposureBinding",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "draft_id",
+        "plan_revision_id",
+        "revision_no",
+        "frozen_payload",
+        "content_hash"
+      ],
+      "properties": {
+        "draft_id": {"type": "integer", "minimum": 1},
+        "plan_revision_id": {"type": "integer", "minimum": 1},
+        "revision_no": {"type": "integer", "minimum": 1},
+        "frozen_payload": {"type": "object"},
+        "content_hash": {"$ref": "#/$defs/Sha256Hex"}
+      }
+    },
+    "CompileInputManifest": {
+      "title": "CompileInputManifest",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "mode",
+        "source_snapshot",
+        "source_canon",
+        "exposure",
+        "profile",
+        "compiler_version"
+      ],
+      "properties": {
+        "target": {"const": "novel"},
+        "mode": {"$ref": "#/$defs/CompileMode"},
+        "source_snapshot": {"$ref": "#/$defs/SnapshotBinding"},
+        "source_canon": {
+          "oneOf": [
+            {"$ref": "#/$defs/CanonBinding"},
+            {"type": "null"}
+          ]
+        },
+        "exposure": {
+          "oneOf": [
+            {"$ref": "#/$defs/ExposureBinding"},
+            {"type": "null"}
+          ]
+        },
+        "profile": {"$ref": "#/$defs/CompilerProfileBinding"},
+        "compiler_version": {"$ref": "#/$defs/StableKey"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"mode": {"const": "canonical"}}, "required": ["mode"]},
+          "then": {"properties": {"source_canon": {"$ref": "#/$defs/CanonBinding"}}},
+          "else": {"properties": {"source_canon": {"type": "null"}}}
+        }
+      ]
+    }
+  }
+}

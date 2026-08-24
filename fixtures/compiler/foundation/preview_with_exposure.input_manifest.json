@@ -1,0 +1,35 @@
+{
+  "target": "novel",
+  "mode": "preview",
+  "source_snapshot": {
+    "snapshot_id": 101,
+    "draft_id": 11,
+    "snapshot_revision": 7,
+    "schema_version": "2.0",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "source_canon": null,
+  "exposure": {
+    "draft_id": 11,
+    "plan_revision_id": 41,
+    "revision_no": 2,
+    "frozen_payload": {
+      "entries": []
+    },
+    "content_hash": "d801aa1fb7ddcc330a5e3173372ea6af4a3d08ec58074478e85aa5603e926658"
+  },
+  "profile": {
+    "profile_key": "novel.restrained",
+    "profile_schema_id": "compiler.profile.v1",
+    "profile_version": 2,
+    "frozen_payload": {
+      "language": "zh-CN",
+      "constraints": [
+        "restrained",
+        "concise"
+      ]
+    },
+    "content_hash": "f4a86b4bfeb0c568932dfbdedfdbd5cb466b31860fed82a935473aed957103ed"
+  },
+  "compiler_version": "narrative-compiler.v1"
+}

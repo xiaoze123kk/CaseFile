@@ -1,0 +1,82 @@
+{
+  "cases": [
+    {
+      "name": "canonical_without_canon",
+      "base_fixture": "preview_minimal.input_manifest.json",
+      "mutations": [
+        {"op": "replace", "path": "/mode", "value": "canonical"}
+      ],
+      "expected_layer": "semantic",
+      "expected_reason_code": "compiler_manifest_canon_required"
+    },
+    {
+      "name": "canon_snapshot_mismatch",
+      "base_fixture": "canonical.input_manifest.json",
+      "mutations": [
+        {"op": "replace", "path": "/source_canon/source_snapshot_id", "value": 999}
+      ],
+      "expected_layer": "semantic",
+      "expected_reason_code": "compiler_manifest_canon_snapshot_mismatch"
+    },
+    {
+      "name": "profile_hash_mismatch",
+      "base_fixture": "preview_minimal.input_manifest.json",
+      "mutations": [
+        {"op": "replace", "path": "/profile/frozen_payload/language", "value": "en-US"}
+      ],
+      "expected_layer": "semantic",
+      "expected_reason_code": "compiler_manifest_profile_hash_mismatch"
+    },
+    {
+      "name": "exposure_hash_mismatch",
+      "base_fixture": "preview_with_exposure.input_manifest.json",
+      "mutations": [
+        {"op": "add", "path": "/exposure/frozen_payload/entries/-", "value": {"title": "开场"}}
+      ],
+      "expected_layer": "semantic",
+      "expected_reason_code": "compiler_manifest_exposure_hash_mismatch"
+    },
+    {
+      "name": "exposure_cross_draft",
+      "base_fixture": "preview_with_exposure.input_manifest.json",
+      "mutations": [
+        {"op": "replace", "path": "/exposure/draft_id", "value": 12}
+      ],
+      "expected_layer": "semantic",
+      "expected_reason_code": "compiler_manifest_exposure_draft_mismatch"
+    },
+    {
+      "name": "numeric_source_path",
+      "base_fixture": "source_ref.json",
+      "mutations": [
+        {"op": "replace", "path": "/field_path", "value": "/participant_refs/0"}
+      ],
+      "expected_layer": "semantic",
+      "expected_reason_code": "compiler_source_ref_array_index_forbidden"
+    },
+    {
+      "name": "invalid_sha256",
+      "base_fixture": "source_ref.json",
+      "mutations": [
+        {"op": "replace", "path": "/source_fragment_hash", "value": "ABC"}
+      ],
+      "expected_layer": "schema"
+    },
+    {
+      "name": "unknown_field",
+      "base_fixture": "preview_minimal.input_manifest.json",
+      "mutations": [
+        {"op": "add", "path": "/unexpected", "value": true}
+      ],
+      "expected_layer": "schema"
+    },
+    {
+      "name": "invalid_artifact_kind",
+      "base_fixture": "artifact_ref.json",
+      "mutations": [
+        {"op": "replace", "path": "/artifact_kind", "value": "chapter_render"}
+      ],
+      "expected_layer": "schema"
+    }
+  ]
+}
