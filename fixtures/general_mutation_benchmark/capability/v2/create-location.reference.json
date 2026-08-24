@@ -1,0 +1,21 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_backup_room",
+        "operation_type": "create_object",
+        "local_ref": "backup_room",
+        "collection": "locations",
+        "fields": {
+          "name": "备用机房",
+          "access_rules": [
+            "维护员权限"
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create backup room"
+      }
+    ]
+  }
+}

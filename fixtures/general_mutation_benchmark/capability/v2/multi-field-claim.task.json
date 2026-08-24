@@ -1,0 +1,33 @@
+{
+  "task_id": "multi-field-claim",
+  "family": "multi_field",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把关键主张标题改为“安全规则触发重启”，陈述改为“失联与过热共同触发了备用系统重启”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "claims",
+        "where": {
+          "/id": "claim_backup_trigger",
+          "/title": "安全规则触发重启",
+          "/statement": "失联与过热共同触发了备用系统重启。"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-field-claim.reference.json",
+  "tags": [
+    "multi_field"
+  ]
+}

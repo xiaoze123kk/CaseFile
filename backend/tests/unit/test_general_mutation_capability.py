@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from casefile.agent_runtime.closure_repair import (
+    ClosureRepairOutputV3,
+    ClosureRepairProviderResult,
+)
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerResult,
     MutationPlanV2,
@@ -31,6 +35,28 @@ class OrderedReferenceProvider:
             {"requests": 1, "total_tokens": 1},
         )
 
+    def repair_closure(self, request):  # type: ignore[no-untyped-def]
+        alternatives = request.context["repair_alternatives"]
+        selected = next(
+            (
+                item
+                for item in alternatives
+                if any(
+                    operation["field_path"] == "/status"
+                    and operation["new_value"] == "unresolved"
+                    for operation in item["operations"]
+                )
+            ),
+            alternatives[0],
+        )
+        return ClosureRepairProviderResult(
+            ClosureRepairOutputV3(
+                selected_alternative_id=selected["alternative_id"],
+                reason="选择与作者目标一致的服务端修复方案",
+            ),
+            {"requests": 1, "total_tokens": 1},
+        )
+
 
 class FallbackReferenceProvider(OrderedReferenceProvider):
     def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
@@ -45,7 +71,7 @@ class FallbackReferenceProvider(OrderedReferenceProvider):
 def test_general_mutation_capability_references_prove_tasks() -> None:
     suite = load_capability_suite()
 
-    assert len(suite.tasks) == 7
+    assert len(suite.tasks) == 40
     assert len(suite.fingerprint) == 64
     validate_references(suite)
 
@@ -69,16 +95,19 @@ def test_general_mutation_capability_grades_final_state_not_plan_path() -> None:
     assert report["release_gate_eligible"] is False
     assert report["metrics"]["task_macro_pass_at_1"] == 1
     assert report["metrics"]["unsafe_escape_count"] == 0
-    assert report["metrics"]["classification_counts"] == {"success": 7}
+    assert report["metrics"]["classification_counts"] == {"success": 40}
 
 
 def test_general_mutation_07a_gate_requires_complete_7_by_5() -> None:
-    suite = load_capability_suite()
+    suite = load_capability_suite(
+        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+    )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
         trials=5,
         provider=OrderedReferenceProvider(suite, trials=5),
+        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json"),
     )
 
     gate = report["gates"]["m3_4_07a"]
@@ -88,12 +117,15 @@ def test_general_mutation_07a_gate_requires_complete_7_by_5() -> None:
 
 
 def test_general_mutation_07b_gate_requires_frozen_transport_metrics() -> None:
-    suite = load_capability_suite()
+    suite = load_capability_suite(
+        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+    )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
         trials=5,
         provider=OrderedReferenceProvider(suite, trials=5),
+        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json"),
     )
 
     gate = report["gates"]["m3_4_07b"]
@@ -104,14 +136,32 @@ def test_general_mutation_07b_gate_requires_frozen_transport_metrics() -> None:
 
 
 def test_general_mutation_07b_gate_counts_transcript_fallback_events() -> None:
-    suite = load_capability_suite()
+    suite = load_capability_suite(
+        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+    )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
         trials=5,
         provider=FallbackReferenceProvider(suite, trials=5),
+        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json"),
     )
 
     gate = report["gates"]["m3_4_07b"]
     assert gate["passed"] is False
     assert gate["output_protocol_fallback_event_count"] == 35
+
+
+def test_general_mutation_07c_gate_requires_complete_40_by_5() -> None:
+    suite = load_capability_suite()
+    report = run_capability_benchmark(
+        model_id="deepseek-v4-pro",
+        api_key="test-key-not-sent",
+        trials=5,
+        provider=OrderedReferenceProvider(suite, trials=5),
+    )
+
+    gate = report["gates"]["m3_4_07c"]
+    assert gate["passed"] is True
+    assert report["metrics"]["family_min_pass_at_1"] == 1
+    assert report["metrics"]["reliable_task_rate_at_5"] == 1

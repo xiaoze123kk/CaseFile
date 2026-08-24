@@ -1,0 +1,18 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "rename_backup",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_backup_system"
+        },
+        "field_path": "/name",
+        "new_value": "应急控制系统",
+        "reason": "rename backup"
+      }
+    ]
+  }
+}

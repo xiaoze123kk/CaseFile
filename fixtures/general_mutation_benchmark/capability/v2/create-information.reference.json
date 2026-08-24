@@ -1,0 +1,25 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_chen_xiao",
+        "operation_type": "create_object",
+        "local_ref": "chen_xiao",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "陈晓",
+          "traits": [
+            "细致"
+          ],
+          "goals": [
+            "核对全部日志"
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create chen xiao"
+      }
+    ]
+  }
+}

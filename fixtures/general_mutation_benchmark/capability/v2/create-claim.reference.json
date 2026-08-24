@@ -1,0 +1,21 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_archive",
+        "operation_type": "create_object",
+        "local_ref": "archive",
+        "collection": "locations",
+        "fields": {
+          "name": "档案室",
+          "access_rules": [
+            "档案员授权"
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create archive"
+      }
+    ]
+  }
+}

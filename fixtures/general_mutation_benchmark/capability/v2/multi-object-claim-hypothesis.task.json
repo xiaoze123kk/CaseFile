@@ -1,0 +1,40 @@
+{
+  "task_id": "multi-object-claim-hypothesis",
+  "family": "multi_object",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把关键主张陈述改为“备用系统执行安全重启”，并把自动安全重启假设命题同步为这句话。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "claims",
+        "where": {
+          "/id": "claim_backup_trigger",
+          "/statement": "备用系统执行安全重启"
+        },
+        "count": 1
+      },
+      {
+        "collection": "hypotheses",
+        "where": {
+          "/id": "hyp_automatic_restart",
+          "/proposition": "备用系统执行安全重启"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-object-claim-hypothesis.reference.json",
+  "tags": [
+    "multi_object"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "task_id": "existing-relationship-title",
+  "family": "existing_update",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把关系标题改成“林研究员负责维护备用系统”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "relationships",
+        "where": {
+          "/id": "rel_researcher_controls_backup",
+          "/title": "林研究员负责维护备用系统"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "existing-relationship-title.reference.json",
+  "tags": [
+    "update"
+  ]
+}

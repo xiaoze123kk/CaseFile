@@ -1,0 +1,39 @@
+{
+  "task_id": "cross-claim-event",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增主张“网络抖动触发告警”，并把它加入第七次重启的原因。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "claims",
+        "where": {
+          "/title": "网络抖动触发告警"
+        },
+        "count": 1
+      },
+      {
+        "collection": "events",
+        "where": {
+          "/id": "evt_restart_seven",
+          "/cause_refs/1/object_type": "claim"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-claim-event.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "rename_relationship",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "rel_researcher_controls_backup"
+        },
+        "field_path": "/title",
+        "new_value": "林研究员负责维护备用系统",
+        "reason": "rename relationship"
+      }
+    ]
+  }
+}

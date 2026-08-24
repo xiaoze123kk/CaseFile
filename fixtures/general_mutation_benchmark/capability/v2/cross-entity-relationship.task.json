@@ -1,0 +1,39 @@
+{
+  "task_id": "cross-entity-relationship",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增人物周岚，并建立“周岚协助林研究员”的有向关系。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "周岚"
+        },
+        "count": 1
+      },
+      {
+        "collection": "relationships",
+        "where": {
+          "/title": "周岚协助林研究员",
+          "/to_ref/object_id": "ent_researcher"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-entity-relationship.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}

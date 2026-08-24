@@ -24,6 +24,7 @@ import rfc8785
 from pydantic import ValidationError
 
 from casefile.agent_runtime import DeepSeekAgentsProvider, OpenAIAgentsProvider
+from casefile.agent_runtime.closure_repair import ProviderRepairProposer
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_PLAN_VERSION,
@@ -36,18 +37,24 @@ from casefile.agent_runtime.general_mutation import (
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.agent_mutation import (
     GeneralMutationBindingError,
+    append_repair_companions,
     bind_general_mutation_plan,
 )
 from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.benchmark.eval_core import EvalSuite, EvalTask
-from casefile.domain.logical_mutation import CLOSURE_POLICY_VERSION
+from casefile.domain.logical_mutation import (
+    CLOSURE_POLICY_VERSION,
+    RepairProposal,
+    run_closure_repair,
+)
+from casefile.domain.logical_mutation.repair.models import ClosureRepairContextV1
 from casefile.domain.verification_engine import VerificationEngine
 
 ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_SUITE = Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+DEFAULT_SUITE = Path("fixtures/general_mutation_benchmark/capability/v2/suite.json")
 SCHEMA_VERSION = "casefile-general-mutation-capability-v1"
 REPORT_VERSION = "casefile-general-mutation-capability-report-v1"
-HARNESS_VERSION = "general-mutation-production-kernel-v1"
+HARNESS_VERSION = "general-mutation-production-kernel-v2"
 GRADER_VERSION = "general-mutation-state-graders-v2"
 TrialClass = Literal[
     "success",
@@ -61,6 +68,33 @@ TrialClass = Literal[
 
 class GeneralMutationCapabilityError(ValueError):
     """Fail-closed suite or reference contract error."""
+
+
+class _ReferenceRepairProposer:
+    def propose(
+        self, context: ClosureRepairContextV1, *, round_no: int
+    ) -> RepairProposal:
+        del round_no
+        alternatives = getattr(context, "repair_alternatives", ())
+        if not alternatives:
+            raise GeneralMutationCapabilityError("general_mutation_reference_repair_missing")
+        selected = next(
+            (
+                item
+                for item in alternatives
+                if any(
+                    operation.field_path == "/status"
+                    and operation.new_value == "unresolved"
+                    for operation in item.operations
+                )
+            ),
+            alternatives[0],
+        )
+        return RepairProposal(
+            context.context_hash,
+            selected.operations,
+            selected_alternative_id=selected.alternative_id,
+        )
 
 
 def _canonical_hash(value: Any) -> str:
@@ -132,10 +166,24 @@ def load_capability_suite(repo_root: Path = ROOT, suite_path: Path | None = None
     fingerprint_files = sorted(
         item for item in path.parent.rglob("*.json") if not item.name.endswith(".reference.json")
     )
+    fixture_files = sorted(
+        {
+            (repo_root / str(task.input["fixture"])).resolve()
+            for task in tasks
+        }
+    )
     fingerprint = _canonical_hash(
         [
             (str(item.relative_to(path.parent)).replace("\\", "/"), _read_object(item))
             for item in fingerprint_files
+        ]
+        + [
+            (
+                "input_fixture:"
+                + str(item.relative_to(repo_root.resolve())).replace("\\", "/"),
+                _read_object(item),
+            )
+            for item in fixture_files
         ]
     )
     return EvalSuite(
@@ -164,9 +212,17 @@ def validate_references(suite: EvalSuite, repo_root: Path = ROOT) -> None:
                 base_revision=1,
                 updated_at="2042-06-01T00:00:00Z",
             )
-            simulation = VerificationEngine(profile="fast").simulate_mutation_set(
-                document, bound.mutation_set
-            )
+            if suite.suite_id == "general-mutation-capability-dev-v2":
+                simulation, _repair = _simulate_final_outcome(
+                    document,
+                    bound,
+                    proposer=_ReferenceRepairProposer(),
+                    original_intent=str(task.input["message"]),
+                )
+            else:
+                simulation = VerificationEngine(profile="fast").simulate_mutation_set(
+                    document, bound.mutation_set
+                )
         except (KeyError, ValidationError, GeneralMutationBindingError) as error:
             raise GeneralMutationCapabilityError(
                 f"general_mutation_reference_invalid:{task.task_id}"
@@ -212,6 +268,7 @@ def run_capability_benchmark(
             model_id=model_id,
             api_key=api_key,
             repo_root=repo_root,
+            use_closure_repair=suite.suite_id == "general-mutation-capability-dev-v2",
         )
         for task_index, task in enumerate(suite.tasks)
         for trial_index in range(1, trials + 1)
@@ -225,13 +282,18 @@ def run_capability_benchmark(
         "binder_version": GENERAL_MUTATION_BINDER_VERSION,
         "transport_version": GENERAL_MUTATION_TRANSPORT_VERSION,
         "closure_policy_version": CLOSURE_POLICY_VERSION,
-        "harness_version": HARNESS_VERSION,
+        "harness_version": (
+            HARNESS_VERSION
+            if suite.suite_id == "general-mutation-capability-dev-v2"
+            else "general-mutation-production-kernel-v1"
+        ),
         "grader_version": GRADER_VERSION,
         "reference_fingerprint": _reference_fingerprint(suite),
     }
     metrics = _metrics(rows, suite.tasks, trials)
     calibration_gate = _calibration_gate(rows, suite.tasks, trials, metrics)
     transport_gate = _transport_gate(rows, suite.tasks, trials, metrics)
+    dev_gate = _dev_gate(rows, suite.tasks, trials, metrics)
     return {
         "schema_version": REPORT_VERSION,
         "suite": {
@@ -252,7 +314,11 @@ def run_capability_benchmark(
         "lineage": lineage,
         "git": _git_identity(repo_root),
         "metrics": metrics,
-        "gates": {"m3_4_07a": calibration_gate, "m3_4_07b": transport_gate},
+        "gates": {
+            "m3_4_07a": calibration_gate,
+            "m3_4_07b": transport_gate,
+            "m3_4_07c": dev_gate,
+        },
         "rows": rows,
         "status": (
             "inconclusive_infrastructure"
@@ -272,6 +338,7 @@ def _run_trial(
     model_id: str,
     api_key: str,
     repo_root: Path,
+    use_closure_repair: bool,
 ) -> dict[str, Any]:
     document = _task_document(task, repo_root)
     before = deepcopy(document)
@@ -311,12 +378,45 @@ def _run_trial(
             base_revision=1,
             updated_at="2042-06-01T00:00:00Z",
         )
-        simulation = VerificationEngine(profile="fast").simulate_mutation_set(
-            document, bound.mutation_set
-        )
+        proposer = None
+        repair = None
+        if use_closure_repair:
+            proposer = ProviderRepairProposer(
+                provider=provider,
+                model_id=model_id,
+                api_key=api_key,
+                emit=emit,
+                max_turns=1,
+                network_retries=2,
+            )
+            simulation, repair = _simulate_final_outcome(
+                document,
+                bound,
+                proposer=proposer,
+                original_intent=str(task.input["message"]),
+            )
+        else:
+            simulation = VerificationEngine(profile="fast").simulate_mutation_set(
+                document, bound.mutation_set
+            )
         candidate = simulation.document
         reason_code = simulation.reason_code
         verification_valid = simulation.valid
+        if proposer is not None:
+            usage = _merge_usage(usage, *(item.usage for item in proposer.results))
+        if repair is not None:
+            events.append(
+                {
+                    "event_type": "closure_repair.completed",
+                    "stage": "closure_repair",
+                    "payload": {
+                        "status": repair.status,
+                        "reason_code": repair.reason_code,
+                        "round_count": len(repair.rounds),
+                        "companion_operation_count": len(repair.companion_operations),
+                    },
+                }
+            )
     except (ValidationError, GeneralMutationBindingError) as error:
         protocol_failure = True
         reason_code = _contract_reason_code(error)
@@ -367,6 +467,40 @@ def _run_trial(
         "latency_ms": round((time.perf_counter() - started) * 1000, 3),
         "infrastructure_failure": infrastructure,
     }
+
+
+def _simulate_final_outcome(
+    document: Mapping[str, Any],
+    bound: Any,
+    *,
+    proposer: Any,
+    original_intent: str,
+) -> tuple[Any, Any]:
+    verifier = VerificationEngine(
+        profile="fast",
+        closure_policy_version=bound.mutation_set.closure_policy_version,
+    )
+    original = verifier.simulate_mutation_set(document, bound.mutation_set)
+    repair = run_closure_repair(
+        document,
+        bound.mutation_set,
+        original,
+        proposer,
+        original_intent=original_intent,
+    )
+    if not repair.repaired:
+        return original, repair
+    repaired = append_repair_companions(
+        bound,
+        document,
+        [item.as_dict() for item in repair.companion_operations],
+    )
+    return verifier.simulate_mutation_set(document, repaired.mutation_set), repair
+
+
+def _merge_usage(*values: Mapping[str, Any]) -> dict[str, Any]:
+    keys = {key for value in values for key in value if isinstance(value.get(key), int)}
+    return {key: sum(int(value.get(key, 0)) for value in values) for key in keys}
 
 
 def _grade(
@@ -520,6 +654,7 @@ def _metrics(
         key: round(sum(row["passed"] for row in values) / len(values), 6)
         for key, values in sorted(by_family.items())
     }
+    family_min = min(family_rates.values(), default=0.0)
     classes = Counter(str(row["classification"]) for row in rows)
     fallback_event_count = sum(
         event.get("event_type") == "model.output_protocol_fallback"
@@ -534,6 +669,7 @@ def _metrics(
         "evaluable_trial_count": len(evaluable),
         "task_macro_pass_at_1": round(sum(task_rates) / len(task_rates), 6) if task_rates else 0.0,
         "family_macro_pass_at_1": family_rates,
+        "family_min_pass_at_1": family_min,
         f"reliable_task_rate_at_{trials}": round(
             sum(
                 len(values) == trials and all(row["passed"] for row in values)
@@ -623,6 +759,31 @@ def _transport_gate(
     }
 
 
+def _dev_gate(
+    rows: Sequence[Mapping[str, Any]],
+    tasks: Sequence[EvalTask],
+    trials: int,
+    metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    reliable_key = f"reliable_task_rate_at_{trials}"
+    checks = {
+        "exact_40_tasks_x_5": len(tasks) == 40 and trials == 5 and len(rows) == 200,
+        "all_trials_complete": len(rows) == len(tasks) * trials,
+        "task_macro_at_least_0_90": metrics["task_macro_pass_at_1"] >= 0.90,
+        "family_min_at_least_0_80": metrics["family_min_pass_at_1"] >= 0.80,
+        "reliable_task_rate_at_5_at_least_0_80": trials == 5
+        and metrics[reliable_key] >= 0.80,
+        "protocol_failure_zero": metrics["protocol_failure_count"] == 0,
+        "unsafe_escape_zero": metrics["unsafe_escape_count"] == 0,
+        "infrastructure_failure_zero": metrics["infrastructure_failure_count"] == 0,
+    }
+    return {
+        "eligible": len(tasks) == 40 and trials == 5,
+        "passed": all(checks.values()),
+        "checks": checks,
+    }
+
+
 def _git_identity(repo_root: Path) -> dict[str, Any]:
     def run(*args: str) -> str:
         result = subprocess.run(
@@ -696,6 +857,7 @@ def main() -> None:
     parser.add_argument("--report-path", type=Path)
     parser.add_argument("--gate-07a", action="store_true")
     parser.add_argument("--gate-07b", action="store_true")
+    parser.add_argument("--gate-07c", action="store_true")
     args = parser.parse_args()
     env_names = (
         ("CASEFILE_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY")
@@ -734,6 +896,8 @@ def main() -> None:
         raise SystemExit(3)
     if args.gate_07b and not report["gates"]["m3_4_07b"]["passed"]:
         raise SystemExit(4)
+    if args.gate_07c and not report["gates"]["m3_4_07c"]["passed"]:
+        raise SystemExit(5)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,22 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_zhao",
+        "operation_type": "create_object",
+        "local_ref": "zhao",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "赵队",
+          "capabilities": [
+            "现场指挥"
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create zhao"
+      }
+    ]
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "task_id": "create-event",
+  "family": "create",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增事件“系统第八次自检”：2042年6月2日9:00准时发生在主实验室，参与者是备用控制系统，林研究员观察到它。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "events",
+        "where": {
+          "/title": "系统第八次自检",
+          "/time/value": "2042-06-02T09:00"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "create-event.reference.json",
+  "tags": [
+    "create"
+  ]
+}

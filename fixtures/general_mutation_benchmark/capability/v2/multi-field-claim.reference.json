@@ -1,0 +1,29 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "title_claim",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "claim_backup_trigger"
+        },
+        "field_path": "/title",
+        "new_value": "安全规则触发重启",
+        "reason": "title claim"
+      },
+      {
+        "operation_key": "statement_claim",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "claim_backup_trigger"
+        },
+        "field_path": "/statement",
+        "new_value": "失联与过热共同触发了备用系统重启。",
+        "reason": "statement claim"
+      }
+    ]
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "task_id": "multi-field-information",
+  "family": "multi_field",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把日志标题改为“安全重启日志”，内容改为“备用系统在双重阈值满足后重启主控”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "information_units",
+        "where": {
+          "/id": "info_restart_log",
+          "/title": "安全重启日志",
+          "/content": "备用系统在双重阈值满足后重启主控"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-field-information.reference.json",
+  "tags": [
+    "multi_field"
+  ]
+}

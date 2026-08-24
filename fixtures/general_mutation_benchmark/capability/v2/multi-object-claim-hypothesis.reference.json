@@ -1,0 +1,29 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "statement_sync",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "claim_backup_trigger"
+        },
+        "field_path": "/statement",
+        "new_value": "备用系统执行安全重启",
+        "reason": "statement sync"
+      },
+      {
+        "operation_key": "proposition_sync",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "hyp_automatic_restart"
+        },
+        "field_path": "/proposition",
+        "new_value": "备用系统执行安全重启",
+        "reason": "proposition sync"
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "task_id": "delete-orphan-entity",
+  "family": "delete",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "删除未被引用的人物“档案员周岚”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/id": "ent_orphan_archivist"
+        },
+        "count": 0
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "delete-orphan-entity.reference.json",
+  "tags": [
+    "delete"
+  ]
+}

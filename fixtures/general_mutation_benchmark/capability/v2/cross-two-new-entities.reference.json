@@ -1,0 +1,57 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_chen",
+        "operation_type": "create_object",
+        "local_ref": "chen",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "陈工"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create chen"
+      },
+      {
+        "operation_key": "create_wang",
+        "operation_type": "create_object",
+        "local_ref": "wang",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "王警官"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create wang"
+      },
+      {
+        "operation_key": "create_reports",
+        "operation_type": "create_object",
+        "local_ref": "reports",
+        "collection": "relationships",
+        "fields": {
+          "title": "陈工向王警官汇报",
+          "from_ref": {
+            "ref_kind": "local",
+            "local_ref": "chen"
+          },
+          "to_ref": {
+            "ref_kind": "local",
+            "local_ref": "wang"
+          },
+          "relationship_type": "reports_to",
+          "direction": "directed",
+          "truth_status": "canon_true",
+          "visibility": "public"
+        },
+        "depends_on_operation_keys": [
+          "create_chen",
+          "create_wang"
+        ],
+        "reason": "create reports"
+      }
+    ]
+  }
+}

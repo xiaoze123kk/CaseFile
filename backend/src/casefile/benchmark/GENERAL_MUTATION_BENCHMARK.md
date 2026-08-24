@@ -54,6 +54,26 @@ cross-reference、multi-object 与 delete。它不是计划中的完整约 40-ta
 - Prompt v3 是独立单变量校准：补充通用 Create 业务必填字段、列表保留、字段语义
   映射与作者请求逐项覆盖；不得同时修改 Binder、Suite、Reference 或 Grader。
 
+## 07b Transport Contract Freeze
+
+- General Mutation 在 DeepSeek 上显式选择 `json_object` 为组件主协议，不再尝试
+  对开放 `fields`、`Any new_value` 和 unions 不适用的 Strict Tool。
+- 主协议选择只记录 `model.output_protocol_selected`；只有真实的协议切换才记录
+  `model.output_protocol_fallback`。Pydantic、Domain 与 Binder 验证保持失败关闭。
+- Transport lineage 冻结为 `general-mutation-json-object-v1`。
+
+## 07c Capability Dev v2
+
+- 公开 Dev Bank 冻结为 40 Task：Existing Update 6、Multi-field 5、Create 7、
+  Cross-reference 7、Multi-object 6、Delete 4、Closure-sensitive 5。
+- Harness v2 使用 `Planner -> Binder -> Simulation -> Closure Repair ->
+  Re-simulation -> Final Proposal Outcome`；Reference 也经过相同确定性管线。
+- Suite fingerprint 包含题目、Oracle 与输入 CaseFile fixture；Reference 使用独立
+  fingerprint，且永不进入 Provider 输入。
+- dirty 40x1 只用于修正无效 Golden。冻结后正式 Gate 必须在 clean revision 上
+  完成 40x5，并满足 macro 0.90、family minimum 0.80、reliable@5 0.80，且
+  protocol、unsafe、infra failure 为零。
+
 ## 指标与发布边界
 
 Capability 主要报告 `task_macro_pass_at_1`、family macro 与多 Trial 的

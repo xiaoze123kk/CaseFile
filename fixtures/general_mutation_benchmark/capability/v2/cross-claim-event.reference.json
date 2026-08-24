@@ -1,0 +1,50 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_network_claim",
+        "operation_type": "create_object",
+        "local_ref": "network_claim",
+        "collection": "claims",
+        "fields": {
+          "title": "网络抖动触发告警",
+          "statement": "网络抖动触发了安全告警。",
+          "claim_type": "fact",
+          "support_refs": [
+            {
+              "ref_kind": "existing",
+              "object_id": "info_restart_log"
+            }
+          ],
+          "refute_refs": [],
+          "dependency_claim_refs": [],
+          "status": "supported",
+          "materiality": "major"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create network claim"
+      },
+      {
+        "operation_key": "add_event_cause",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "evt_restart_seven"
+        },
+        "field_path": "/cause_refs",
+        "new_value": [
+          {
+            "ref_kind": "existing",
+            "object_id": "claim_backup_trigger"
+          },
+          {
+            "ref_kind": "local",
+            "local_ref": "network_claim"
+          }
+        ],
+        "reason": "add event cause"
+      }
+    ]
+  }
+}

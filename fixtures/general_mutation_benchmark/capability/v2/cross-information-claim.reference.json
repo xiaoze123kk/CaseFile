@@ -1,0 +1,44 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_sun",
+        "operation_type": "create_object",
+        "local_ref": "sun",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "孙警官"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create sun"
+      },
+      {
+        "operation_key": "create_questions",
+        "operation_type": "create_object",
+        "local_ref": "questions",
+        "collection": "relationships",
+        "fields": {
+          "title": "孙警官询问林研究员",
+          "from_ref": {
+            "ref_kind": "local",
+            "local_ref": "sun"
+          },
+          "to_ref": {
+            "ref_kind": "existing",
+            "object_id": "ent_researcher"
+          },
+          "relationship_type": "questions",
+          "direction": "directed",
+          "truth_status": "canon_true",
+          "visibility": "public"
+        },
+        "depends_on_operation_keys": [
+          "create_sun"
+        ],
+        "reason": "create questions"
+      }
+    ]
+  }
+}

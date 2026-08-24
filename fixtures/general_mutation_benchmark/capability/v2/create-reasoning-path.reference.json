@@ -1,0 +1,21 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_observation",
+        "operation_type": "create_object",
+        "local_ref": "observation",
+        "collection": "locations",
+        "fields": {
+          "name": "北侧观察台",
+          "visibility_rules": [
+            "仅调查组可见"
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create observation"
+      }
+    ]
+  }
+}

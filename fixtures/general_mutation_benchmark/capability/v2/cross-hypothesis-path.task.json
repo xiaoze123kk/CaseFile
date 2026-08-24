@@ -1,0 +1,38 @@
+{
+  "task_id": "cross-hypothesis-path",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增人物刘工，并建立“刘工检修备用控制系统”的有向关系。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "刘工"
+        },
+        "count": 1
+      },
+      {
+        "collection": "relationships",
+        "where": {
+          "/title": "刘工检修备用控制系统"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-hypothesis-path.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}
