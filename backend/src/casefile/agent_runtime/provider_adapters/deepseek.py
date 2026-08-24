@@ -36,6 +36,14 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.general_mutation import (
+    GENERAL_MUTATION_COMPONENT_ID,
+    GENERAL_MUTATION_SCHEMA_ID,
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+    MutationPlanV1,
+)
+from casefile.agent_runtime.general_mutation_prompt import render_general_mutation_prompt
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -117,6 +125,28 @@ class DeepSeekAgentsProvider:
     """DeepSeek OpenAI-compatible Chat Completions implementation."""
 
     base_url = "https://api.deepseek.com"
+
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        rendered = render_general_mutation_prompt(request)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=rendered.instructions,
+                input_text=rendered.input_text,
+                output_type=MutationPlanV1,
+                stage="general_mutation",
+                component_id=GENERAL_MUTATION_COMPONENT_ID,
+                schema_id=GENERAL_MUTATION_SCHEMA_ID,
+                deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
+                strict_validation=True,
+            )
+        )
+        return GeneralMutationPlannerResult(MutationPlanV1.model_validate(candidate), usage)
 
     def repair_closure(
         self,
@@ -598,7 +628,8 @@ class DeepSeekAgentsProvider:
             | ReverseParseRequest
             | IdeaGenerationRequest
             | ThreadCompactionRequest
-            | ClosureRepairRequest
+        | ClosureRepairRequest
+        | GeneralMutationPlannerRequest
         ),
         *,
         instructions: str,
@@ -656,6 +687,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | GeneralMutationPlannerRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(

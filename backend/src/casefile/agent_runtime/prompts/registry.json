@@ -33,6 +33,9 @@
     },
     "closure_repair": {
       "current_version": "closure-repair-v3"
+    },
+    "general_mutation_planner": {
+      "current_version": "general-mutation-planner-v1"
     }
   }
 }

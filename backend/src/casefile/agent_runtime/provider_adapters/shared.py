@@ -28,6 +28,7 @@ from casefile.agent_runtime.closure_repair import ClosureRepairRequest
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
 )
+from casefile.agent_runtime.general_mutation import GeneralMutationPlannerRequest
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeQuestionsRequest,
@@ -233,6 +234,7 @@ async def _run_auxiliary_agent(
         | IdeaGenerationRequest
         | ThreadCompactionRequest
         | ClosureRepairRequest
+        | GeneralMutationPlannerRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,

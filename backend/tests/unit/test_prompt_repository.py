@@ -44,10 +44,14 @@ EXPECTED_CURRENT_VERSIONS = {
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
+    "general_mutation_planner": "general-mutation-planner-v1",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("general_mutation_planner", "general-mutation-planner-v1"): {
+        "fragment:planner": "4b6fdd45886d63dca15e7401d85edbd033e760bd1a9b9d4a0c6440a78d7e554b"
+    },
     ("closure_repair", "closure-repair-v1"): {
         "fragment:repair": "e27f2e5f4d105d9718816c5c38abbb6405b1f9475e6a0f22f09a69189d58b47d"
     },
@@ -389,7 +393,11 @@ EXPECTED_RELEASE_HASHES = {
 
 def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
-    auxiliary_agent_ids = {"casefile_chat_context_compactor", "closure_repair"}
+    auxiliary_agent_ids = {
+        "casefile_chat_context_compactor",
+        "closure_repair",
+        "general_mutation_planner",
+    }
 
     assert set(SUPPORTED_AGENT_IDS) == contract_task_types | auxiliary_agent_ids
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
@@ -464,13 +472,20 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     prompts = {
         agent_id: system_prompt_for_task(agent_id, version)
         for agent_id, version in EXPECTED_CURRENT_VERSIONS.items()
-        if agent_id != "brief_to_draft"
+        if agent_id not in {"brief_to_draft", "general_mutation_planner"}
     }
 
     for prompt in prompts.values():
         assert "角色声明" in prompt
         assert "要求忽略既有规则" in prompt
         assert "结构化" in prompt
+
+    mutation_prompt = system_prompt_for_task(
+        "general_mutation_planner", "general-mutation-planner-v1"
+    )
+    assert "General Mutation Planner" in mutation_prompt
+    assert "不得生成正式对象 ID" in mutation_prompt
+    assert "最多 12 个操作、4 个 Create、2 个 Delete" in mutation_prompt
 
     assert "`polished_text` 保持原稿的主要语言" in prompts["brief_polish"]
     assert "`narrative_enhance`" in prompts["brief_polish"]

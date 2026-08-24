@@ -241,7 +241,8 @@ class CaseFileObject(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="confidence_range",
         ),
         CheckConstraint(
-            "confirmation_status IN ('user_confirmed', 'ai_inferred', 'unresolved')",
+            "confirmation_status IN "
+            "('user_confirmed', 'ai_inferred', 'unresolved', 'proposed')",
             name="confirmation_status_allowed",
         ),
         CheckConstraint("jsonb_typeof(source_jsonb) = 'object'", name="source_is_object"),

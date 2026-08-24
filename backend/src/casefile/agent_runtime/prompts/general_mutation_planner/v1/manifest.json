@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v1",
+  "previous_version": null,
+  "change_summary": "建立受服务端权限和绑定约束的通用修改规划协议。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v1",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "4b6fdd45886d63dca15e7401d85edbd033e760bd1a9b9d4a0c6440a78d7e554b"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": ["planner"],
+      "input_contract_id": "general-mutation-planner-input-v1",
+      "output_schema_id": "general-mutation-plan-v1",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}

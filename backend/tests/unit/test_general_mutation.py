@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from casefile.agent_runtime.general_mutation import MutationPlanV1
+from casefile.application.agent_mutation import (
+    GeneralMutationBindingError,
+    bind_general_mutation_plan,
+    general_mutation_impact_hash,
+)
+from casefile.domain.logical_mutation import CreateObject, UpdateField
+from casefile.domain.verification_engine import VerificationEngine
+from pydantic import ValidationError
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def _document() -> dict[str, object]:
+    return json.loads(
+        (ROOT / "fixtures/casefiles/restart_loop.casefile.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
+def test_plan_rejects_duplicate_local_refs_and_dependency_cycles() -> None:
+    base = {
+        "operation_type": "create_object",
+        "collection": "entities",
+        "fields": {"entity_type": "person", "name": "新角色"},
+        "reason": "需要新角色",
+    }
+    with pytest.raises(ValidationError, match="general_mutation_local_ref_duplicate"):
+        MutationPlanV1.model_validate(
+            {
+                "operations": [
+                    {**base, "operation_key": "a", "local_ref": "new_actor"},
+                    {**base, "operation_key": "b", "local_ref": "new_actor"},
+                ]
+            }
+        )
+    with pytest.raises(ValidationError, match="general_mutation_dependency_cycle"):
+        MutationPlanV1.model_validate(
+            {
+                "operations": [
+                    {
+                        **base,
+                        "operation_key": "a",
+                        "local_ref": "actor_a",
+                        "depends_on_operation_keys": ["b"],
+                    },
+                    {
+                        **base,
+                        "operation_key": "b",
+                        "local_ref": "actor_b",
+                        "depends_on_operation_keys": ["a"],
+                    },
+                ]
+            }
+        )
+
+
+def test_plan_rejects_protected_collection_and_model_system_fields() -> None:
+    with pytest.raises(ValidationError, match="general_mutation_collection_forbidden"):
+        MutationPlanV1.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "create_resolution",
+                        "operation_type": "create_object",
+                        "local_ref": "resolution",
+                        "collection": "resolution_specs",
+                        "fields": {"title": "禁止"},
+                        "reason": "越权",
+                    }
+                ]
+            }
+        )
+    with pytest.raises(
+        ValidationError, match="general_mutation_model_system_field_forbidden"
+    ):
+        MutationPlanV1.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "create_entity",
+                        "operation_type": "create_object",
+                        "local_ref": "actor",
+                        "collection": "entities",
+                        "fields": {"id": "ent_injected", "name": "禁止"},
+                        "reason": "注入 ID",
+                    }
+                ]
+            }
+        )
+
+
+def test_binder_is_deterministic_and_resolves_local_references() -> None:
+    plan = MutationPlanV1.model_validate(
+        {
+            "operations": [
+                {
+                    "operation_key": "rename_created",
+                    "operation_type": "update_field",
+                    "target": {"ref_kind": "local", "local_ref": "new_actor"},
+                    "field_path": "/name",
+                    "new_value": "新名字",
+                    "reason": "完善名称",
+                },
+                {
+                    "operation_key": "create_actor",
+                    "operation_type": "create_object",
+                    "local_ref": "new_actor",
+                    "collection": "entities",
+                    "fields": {"entity_type": "person", "name": "临时名字"},
+                    "reason": "新增角色",
+                },
+            ]
+        }
+    )
+    first = bind_general_mutation_plan(
+        plan,
+        _document(),
+        task_run_id=77,
+        draft_id=9,
+        base_revision=3,
+        updated_at="2042-06-01T13:00:00Z",
+    )
+    second = bind_general_mutation_plan(
+        plan,
+        _document(),
+        task_run_id=77,
+        draft_id=9,
+        base_revision=3,
+        updated_at="2042-06-01T13:00:00Z",
+    )
+    assert first == second
+    assert first.operations[0].target_object_key == "ent_agent_t77_01"
+    assert isinstance(first.mutation_set.operations[0], CreateObject)
+    assert isinstance(first.mutation_set.operations[1], UpdateField)
+    assert first.mutation_set.operations[1].object_id == "ent_agent_t77_01"
+
+
+def test_binder_rejects_unknown_local_ref_and_impact_hash_is_stable() -> None:
+    unknown = MutationPlanV1.model_validate(
+        {
+            "operations": [
+                {
+                    "operation_key": "rename_missing",
+                    "operation_type": "update_field",
+                    "target": {"ref_kind": "local", "local_ref": "missing"},
+                    "field_path": "/name",
+                    "new_value": "不存在",
+                    "reason": "非法引用",
+                }
+            ]
+        }
+    )
+    with pytest.raises(
+        GeneralMutationBindingError, match="general_mutation_local_ref_unknown"
+    ):
+        bind_general_mutation_plan(
+            unknown, _document(), task_run_id=1, draft_id=1, base_revision=1
+        )
+
+    update = MutationPlanV1.model_validate(
+        {
+            "operations": [
+                {
+                    "operation_key": "rename",
+                    "operation_type": "update_field",
+                    "target": {
+                        "ref_kind": "existing",
+                        "object_id": "ent_researcher",
+                    },
+                    "field_path": "/name",
+                    "new_value": "林博士",
+                    "reason": "统一称谓",
+                }
+            ]
+        }
+    )
+    bound = bind_general_mutation_plan(
+        update, _document(), task_run_id=2, draft_id=1, base_revision=1
+    )
+    simulation = VerificationEngine(profile="fast").simulate_mutation_set(
+        _document(), bound.mutation_set
+    )
+    assert general_mutation_impact_hash(simulation) == general_mutation_impact_hash(
+        simulation
+    )
+    assert len(general_mutation_impact_hash(simulation)) == 64
