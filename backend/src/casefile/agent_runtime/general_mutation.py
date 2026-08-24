@@ -19,7 +19,7 @@ GENERAL_MUTATION_PROMPT_VERSION: Literal["general-mutation-planner-v5"] = (
 GENERAL_MUTATION_SCHEMA_ID_V1 = "general-mutation-plan-v1"
 GENERAL_MUTATION_SCHEMA_ID = "general-mutation-plan-v2"
 GENERAL_MUTATION_COMPONENT_ID = "general_mutation_planner"
-GENERAL_MUTATION_POLICY_VERSION = "general-mutation-policy-v1"
+GENERAL_MUTATION_POLICY_VERSION = "general-mutation-policy-v2"
 GENERAL_MUTATION_BINDER_VERSION_V1 = "general-mutation-binder-v1"
 GENERAL_MUTATION_BINDER_VERSION = "general-mutation-binder-v3"
 GENERAL_MUTATION_TRANSPORT_VERSION = "general-mutation-json-object-v1"
@@ -210,10 +210,10 @@ def _validate_plan_operations(operations: list[MutationPlanOperation]) -> None:
 
 def _assert_v2_planned_refs(value: Any) -> None:
     if isinstance(value, dict):
+        if "object_type" in value:
+            raise ValueError("general_mutation_ref_object_type_forbidden")
         ref_kind = value.get("ref_kind")
         if ref_kind in {"local", "existing"}:
-            if "object_type" in value:
-                raise ValueError("general_mutation_ref_object_type_forbidden")
             expected = (
                 {"ref_kind", "local_ref"} if ref_kind == "local" else {"ref_kind", "object_id"}
             )

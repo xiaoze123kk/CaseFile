@@ -324,6 +324,30 @@ def test_v2_rejects_redundant_type_and_unknown_existing_reference() -> None:
             {"ref_kind": "existing", "object_id": "ent_researcher"},
         )
 
+    with pytest.raises(ValidationError, match="general_mutation_ref_object_type_forbidden"):
+        MutationPlanV2.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "inject_formal_ref",
+                        "operation_type": "update_field",
+                        "target": {
+                            "ref_kind": "existing",
+                            "object_id": "claim_backup_trigger",
+                        },
+                        "field_path": "/support_refs",
+                        "new_value": [
+                            {
+                                "object_type": "information_unit",
+                                "object_id": "info_external_secret",
+                            }
+                        ],
+                        "reason": "禁止绕过 v2 identity-only ref",
+                    }
+                ]
+            }
+        )
+
     unknown = _relationship_plan(
         MutationPlanV2,
         {"ref_kind": "local", "local_ref": "new_actor"},

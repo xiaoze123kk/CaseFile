@@ -528,8 +528,10 @@ class ChatTaskExecutorMixin:
         )
         if mode == "off" or intent != "edit_request":
             return None, {}
+
         def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
             self._emit(task.id, event_type, stage, payload)
+
         emit(
             "agent.step.started",
             "general_mutation",
@@ -608,20 +610,26 @@ class ChatTaskExecutorMixin:
                     "simulation": simulation,
                     "impact_hash": impact_hash,
                 }, planned.usage
-            if any(
-                isinstance(item, CreateMutationCandidate)
-                for item in planned.candidate.operations
-            ) and not self.config.general_mutation_create_enabled:
+            if (
+                any(
+                    isinstance(item, CreateMutationCandidate)
+                    for item in planned.candidate.operations
+                )
+                and not self.config.general_mutation_create_enabled
+            ):
                 emit(
                     "general_mutation.blocked",
                     "general_mutation",
                     {"reason_code": "general_mutation_create_not_enabled"},
                 )
                 return {"status": "blocked"}, planned.usage
-            if any(
-                isinstance(item, DeleteMutationCandidate)
-                for item in planned.candidate.operations
-            ) and not self.config.general_mutation_delete_enabled:
+            if (
+                any(
+                    isinstance(item, DeleteMutationCandidate)
+                    for item in planned.candidate.operations
+                )
+                and not self.config.general_mutation_delete_enabled
+            ):
                 emit(
                     "general_mutation.blocked",
                     "general_mutation",
@@ -634,7 +642,7 @@ class ChatTaskExecutorMixin:
                     "general_mutation",
                     {"reason_code": simulation.reason_code or "simulation_blocked"},
                 )
-                return None, planned.usage
+                return ({"status": "blocked"} if mode == "suggest" else None), planned.usage
             return {
                 "status": "ready",
                 "bound": bound,
