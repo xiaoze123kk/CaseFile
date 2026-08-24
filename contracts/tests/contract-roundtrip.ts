@@ -241,6 +241,45 @@ assertValid(
 );
 
 const compilerFixtureRoot = resolve(fixtureRoot, "compiler", "foundation");
+const typedCompilerSourceRef: CompilerSourceRef = {
+  object_ref: {
+    object_type: "event",
+    object_id: "evt_archive_arrival",
+  },
+  field_path: "/time/start",
+  source_fragment_hash: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+};
+const typedCompilerManifest: CompileInputManifest = {
+  target: "novel",
+  mode: "preview",
+  source_snapshot: {
+    snapshot_id: 101,
+    draft_id: 11,
+    snapshot_revision: 7,
+    schema_version: "2.0",
+    content_hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  },
+  source_canon: null,
+  exposure: null,
+  profile: {
+    profile_key: "novel.default",
+    profile_schema_id: "compiler.profile.v1",
+    profile_version: 1,
+    frozen_payload: { language: "zh-CN" },
+    content_hash: "62873f1487d2b4dcf8bd68e2014c0f1ffd708f0537d0579f4401883491a7f7c6",
+  },
+  compiler_version: "narrative-compiler.v1",
+};
+assertValid(
+  compilerSourceRefValidator,
+  typedRoundTrip(typedCompilerSourceRef),
+  "typed CompilerSourceRef",
+);
+assertValid(
+  compilerManifestValidator,
+  typedRoundTrip(typedCompilerManifest),
+  "typed CompileInputManifest",
+);
 for (const name of [
   "preview_minimal.input_manifest.json",
   "canonical.input_manifest.json",
@@ -285,7 +324,10 @@ const compilerInvalidCases = loadJson(
   resolve(compilerFixtureRoot, "invalid_cases.json"),
 ).cases as JsonObject[];
 for (const invalidCase of compilerInvalidCases.filter(
-  (value) => value.expected_layer === "schema",
+  (value) => {
+    const expectedLayers = value.expected_layers as string[] | undefined;
+    return value.expected_layer === "schema" || expectedLayers?.includes("schema") === true;
+  },
 )) {
   const baseName = invalidCase.base_fixture as string;
   const invalidValue = applyManifest(

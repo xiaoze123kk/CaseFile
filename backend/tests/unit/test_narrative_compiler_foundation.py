@@ -171,7 +171,7 @@ def test_artifact_ref_is_content_addressed_and_validated() -> None:
     assert captured.value.reason_code == "compiler_artifact_ref_invalid"
 
 
-def test_diagnostic_preserves_ref_order_and_rejects_duplicates() -> None:
+def test_diagnostic_preserves_ref_order_and_rejects_logical_duplicates() -> None:
     value = _load("diagnostic.json")
     diagnostic = CompilerDiagnostic.model_validate(value)
     assert validate_diagnostic(diagnostic) is diagnostic
@@ -181,4 +181,17 @@ def test_diagnostic_preserves_ref_order_and_rejects_duplicates() -> None:
     )
     with pytest.raises(CompilerContractError) as captured:
         validate_diagnostic(duplicate)
-    assert captured.value.reason_code == "compiler_diagnostic_source_ref_duplicate"
+    assert captured.value.reason_code == "compiler_source_ref_duplicate"
+
+
+def test_diagnostic_rejects_conflicting_hashes_for_one_logical_source() -> None:
+    value = _load("diagnostic.json")
+    conflict = deepcopy(value["source_refs"][0])
+    conflict["source_fragment_hash"] = "d" * 64
+    diagnostic = CompilerDiagnostic.model_validate(
+        {**value, "source_refs": [*value["source_refs"], conflict]}
+    )
+
+    with pytest.raises(CompilerContractError) as captured:
+        validate_diagnostic(diagnostic)
+    assert captured.value.reason_code == "compiler_source_ref_hash_conflict"

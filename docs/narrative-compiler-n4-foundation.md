@@ -28,6 +28,8 @@ N4.0 不包含：
 
 `CompilerSourceRef` 使用 CaseFile `ObjectRef` 确定稳定对象身份。`field_path` 是对象内部的 RFC 6901 JSON Pointer；空字符串表示整个对象。数字路径段不合法，数组依赖必须引用整个字段，不能引用 `/items/0`。`source_fragment_hash` 绑定被引用对象或字段的原始 JSON 值。
 
+一次冻结编译输入中，SourceRef 的逻辑键是 `(object_type, object_id, field_path)`。同一逻辑键和相同 hash 是重复引用，稳定错误码为 `compiler_source_ref_duplicate`；同一逻辑键出现不同 hash 是来源冲突，稳定错误码为 `compiler_source_ref_hash_conflict`。诊断中的 `source_refs` 保持作者顺序，不为哈希或去重自行排序。
+
 ### Artifact
 
 `CompilerArtifactRef` 只描述不可变产物的种类、稳定 key、schema 和内容哈希。它不携带 payload，也不承担执行审计。未来 `CompileArtifact` 是领域产物，`AgentStepRun` 只记录执行、失败或复用行为；二者可以关联但不能互相替代。

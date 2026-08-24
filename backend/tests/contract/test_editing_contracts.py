@@ -437,7 +437,10 @@ def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(
         ),
     }
     for invalid_case in invalid_cases:
-        if invalid_case["expected_layer"] != "schema":
+        expected_layers = invalid_case.get(
+            "expected_layers", [invalid_case.get("expected_layer")]
+        )
+        if "schema" not in expected_layers:
             continue
         base_name = invalid_case["base_fixture"]
         invalid_value = apply_manifest(load_json(compiler_root / base_name), invalid_case)

@@ -6,7 +6,7 @@
       "mutations": [
         {"op": "replace", "path": "/mode", "value": "canonical"}
       ],
-      "expected_layer": "semantic",
+      "expected_layers": ["schema", "semantic"],
       "expected_reason_code": "compiler_manifest_canon_required"
     },
     {

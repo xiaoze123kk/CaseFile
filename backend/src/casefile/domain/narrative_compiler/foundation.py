@@ -81,13 +81,21 @@ def validate_compile_input_manifest(
 def validate_diagnostic(diagnostic: CompilerDiagnostic) -> CompilerDiagnostic:
     """Validate ordered diagnostic refs without normalizing their authored order."""
 
-    identities: set[str] = set()
+    source_hashes_by_logical_key: dict[tuple[str, str, str], str] = {}
     for source_ref in diagnostic.source_refs:
         validate_source_ref(source_ref)
-        identity = canonical_json_sha256(source_ref.model_dump(mode="json"))
-        if identity in identities:
-            raise CompilerContractError("compiler_diagnostic_source_ref_duplicate")
-        identities.add(identity)
+        object_ref = source_ref.object_ref.model_dump(mode="json")
+        logical_key = (
+            str(object_ref["object_type"]),
+            str(object_ref["object_id"]),
+            source_ref.field_path,
+        )
+        existing_hash = source_hashes_by_logical_key.get(logical_key)
+        if existing_hash == source_ref.source_fragment_hash:
+            raise CompilerContractError("compiler_source_ref_duplicate")
+        if existing_hash is not None:
+            raise CompilerContractError("compiler_source_ref_hash_conflict")
+        source_hashes_by_logical_key[logical_key] = source_ref.source_fragment_hash
     return diagnostic
 
 
