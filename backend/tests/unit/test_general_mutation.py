@@ -398,6 +398,7 @@ def test_v2_rejects_inferred_type_incompatible_with_target_field() -> None:
         ("general-mutation-planner-v3", MutationPlanV2),
         ("general-mutation-planner-v4", MutationPlanV2),
         ("general-mutation-planner-v5", MutationPlanV2),
+        ("general-mutation-planner-v6", MutationPlanV2),
     ],
 )
 def test_prompt_version_routes_matching_output_contract(

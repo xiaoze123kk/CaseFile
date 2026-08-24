@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v6",
+  "previous_version": "general-mutation-planner-v5",
+  "change_summary": "冻结事件确定时间为 exact value precision 契约。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v6",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": ["planner"],
+      "input_contract_id": "general-mutation-planner-input-v1",
+      "output_schema_id": "general-mutation-plan-v2",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}

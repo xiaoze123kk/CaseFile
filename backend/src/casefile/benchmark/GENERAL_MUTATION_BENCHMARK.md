@@ -41,7 +41,7 @@ cross-reference、multi-object 与 delete。它不是计划中的完整约 40-ta
 
 - Plan/Binder 冻结为 `general-mutation-plan-v2`、`general-mutation-binder-v3`；
   v1 继续只读回放。首轮 7×5 暴露 Create 完整性问题后，只把 Prompt 升为
-  `general-mutation-planner-v5`，Plan Contract 仍为 v2。
+  `general-mutation-planner-v6`，Plan Contract 仍为 v2。
 - Planner nested ref 只能是 `{ref_kind: "local", local_ref}` 或
   `{ref_kind: "existing", object_id}`；出现 `object_type` 必须以
   `general_mutation_ref_object_type_forbidden` 失败关闭。

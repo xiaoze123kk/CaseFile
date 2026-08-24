@@ -45,11 +45,14 @@ EXPECTED_CURRENT_VERSIONS = {
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
-    "general_mutation_planner": "general-mutation-planner-v5",
+    "general_mutation_planner": "general-mutation-planner-v6",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("general_mutation_planner", "general-mutation-planner-v6"): {
+        "fragment:planner": "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
+    },
     ("general_mutation_planner", "general-mutation-planner-v5"): {
         "fragment:planner": "ab4365a58559fc706b162db8998dc5c588b9caf4bc1b15060fc26ad58899c138"
     },
@@ -494,7 +497,7 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
         assert "结构化" in prompt
 
     mutation_prompt = system_prompt_for_task(
-        "general_mutation_planner", "general-mutation-planner-v5"
+        "general_mutation_planner", "general-mutation-planner-v6"
     )
     assert "General Mutation Planner" in mutation_prompt
     assert "不得生成正式对象 ID" in mutation_prompt
@@ -504,6 +507,7 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     assert "`truth_status`、`visibility`" in mutation_prompt
     assert "`confidence`、`source_refs`" in mutation_prompt
     assert "严禁对本计划新建的 `local_ref` 再发 Update" in mutation_prompt
+    assert "字段名只能是 `value`" in mutation_prompt
     legacy_mutation_prompt = system_prompt_for_task(
         "general_mutation_planner", "general-mutation-planner-v1"
     )
