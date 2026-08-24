@@ -114,8 +114,9 @@ try {
     @'
 import os
 from sqlalchemy import create_engine, text
+from casefile.data_postgres.session import EXPECTED_DATABASE_REVISION
 
-expected_revision = "20260820151005"
+expected_revision = EXPECTED_DATABASE_REVISION
 expected_tables = {
     "agent_model_calls", "agent_step_runs",
     "agent_thread_context_states",
