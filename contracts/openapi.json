@@ -2315,6 +2315,485 @@
         }
       }
     },
+    "/api/v1/projects/{project_id}/compiler-profiles": {
+      "post": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Create Profile",
+        "operationId": "create_profile_api_v1_projects__project_id__compiler_profiles_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompilerProfileCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Profile Api V1 Projects  Project Id  Compiler Profiles Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "List Profiles",
+        "operationId": "list_profiles_api_v1_projects__project_id__compiler_profiles_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Profiles Api V1 Projects  Project Id  Compiler Profiles Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/compiler-profiles/{profile_id}/versions": {
+      "post": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Append Profile Version",
+        "operationId": "append_profile_version_api_v1_projects__project_id__compiler_profiles__profile_id__versions_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "profile_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Profile Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompilerProfileVersionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Append Profile Version Api V1 Projects  Project Id  Compiler Profiles  Profile Id  Versions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/compiler-profiles/{profile_id}": {
+      "get": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Get Profile",
+        "operationId": "get_profile_api_v1_projects__project_id__compiler_profiles__profile_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "profile_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Profile Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Profile Api V1 Projects  Project Id  Compiler Profiles  Profile Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/compile-runs": {
+      "post": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Create Run",
+        "operationId": "create_run_api_v1_projects__project_id__compile_runs_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompileRunCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Run Api V1 Projects  Project Id  Compile Runs Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "List Runs",
+        "operationId": "list_runs_api_v1_projects__project_id__compile_runs_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Runs Api V1 Projects  Project Id  Compile Runs Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/compile-runs/{compile_run_id}": {
+      "get": {
+        "tags": [
+          "narrative-compiler"
+        ],
+        "summary": "Get Run",
+        "operationId": "get_run_api_v1_projects__project_id__compile_runs__compile_run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "compile_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Compile Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Run Api V1 Projects  Project Id  Compile Runs  Compile Run Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{project_id}/ideas": {
       "get": {
         "tags": [
@@ -6746,6 +7225,131 @@
         ],
         "title": "BriefUpdateRequest"
       },
+      "CompileRunCreateRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "canonical"
+            ],
+            "title": "Mode"
+          },
+          "expected_draft_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Id"
+          },
+          "expected_draft_revision": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Draft Revision"
+          },
+          "canon_version_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canon Version Id"
+          },
+          "exposure_plan_revision_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposure Plan Revision Id"
+          },
+          "compiler_profile_version_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Compiler Profile Version Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "mode",
+          "expected_draft_id",
+          "expected_draft_revision",
+          "compiler_profile_version_id"
+        ],
+        "title": "CompileRunCreateRequest"
+      },
+      "CompilerProfileCreateRequest": {
+        "properties": {
+          "profile_key": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+            "title": "Profile Key"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Name"
+          },
+          "schema_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Schema Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "profile_key",
+          "name",
+          "schema_id",
+          "payload"
+        ],
+        "title": "CompilerProfileCreateRequest"
+      },
+      "CompilerProfileVersionCreateRequest": {
+        "properties": {
+          "expected_current_version_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Expected Current Version Id"
+          },
+          "schema_id": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Schema Id"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "expected_current_version_id",
+          "schema_id",
+          "payload"
+        ],
+        "title": "CompilerProfileVersionCreateRequest"
+      },
       "DraftActivateRequest": {
         "properties": {
           "expected_current_draft_id": {
@@ -7013,7 +7617,7 @@
             "type": "string",
             "maxLength": 64,
             "title": "Closure Policy Version",
-            "default": "logical-mutation-v1"
+            "default": "logical-mutation-v2"
           },
           "operations": {
             "items": {
@@ -7118,7 +7722,7 @@
             "type": "string",
             "maxLength": 64,
             "title": "Closure Policy Version",
-            "default": "logical-mutation-v1"
+            "default": "logical-mutation-v2"
           },
           "operations": {
             "items": {
