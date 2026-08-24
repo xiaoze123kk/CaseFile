@@ -139,7 +139,7 @@ drafts ── exposure_plans（独立 revision 指针）
 | `brief_versions` | 用户确认的 Brief 内容、连续版本号与 RFC 8785 哈希。 | Workflow Service。 | 只追加，不可更新/删除。 |
 | `casefiles` | Project 唯一 CaseFile，保存项目级 v1 稳定 ID、Schema、非空 Current Draft 复合指针和当前 Canon 指针。 | Project/CaseFile Service；Canon 触发器。 | 元数据可改/归档；Current Draft 原子切换并写 Audit；历史不覆盖。 |
 | `drafts` | CaseFile 下可有多份独立 Draft，分别保存文档标题/状态、v1 版本链字段、Brief 来源、revision 和基准 Canon。 | Draft/Generation Service。 | 独立持续编辑；已有正文后采用候选创建新行并设为当前；`locked` 时拒绝 Operation/激活。 |
-| `casefile_objects` | v1 对象注册表；稳定 ID、契约顺序、来源、标签、置信度和确认状态；M4 兼容 `proposed` 状态。 | Draft/Generation Service。 | 当前态可改；身份/类型不可变，软删除后 ID 不复用；`object_id` 在 Draft 内唯一。 |
+| `casefile_objects` | v1 对象注册表；稳定 ID、契约顺序、来源、标签、置信度和确认状态；M3.4 兼容 `proposed` 状态。 | Draft/Generation Service。 | 当前态可改；身份/类型不可变，软删除后 ID 不复用；`object_id` 在 Draft 内唯一。 |
 | `casefile_refs` | 兼容旧纵向切片的同 Draft 多值语义边。 | 旧版编辑服务。 | 当前态可重建；已知端点受触发器约束。 |
 | `casefile_contract_refs` | v1 ObjectRef 的来源对象、字段 JSON Pointer、目标类型/稳定 ID 与顺序。 | v1 Generation/Projection。 | 随当前 Draft 原子重建；目标由契约 Validator 校验。 |
 | `draft_operations` | 有序增量编辑日志和 revision 乐观锁输入；支持历史生成、候选显式采用、Agent 建议整批应用和整批撤销。 | Draft 编辑/Generation/Agent Patch 事务。 | 只追加，触发器推进 Draft revision。 |

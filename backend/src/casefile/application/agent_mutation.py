@@ -139,7 +139,7 @@ def append_repair_companions(
     document: Mapping[str, Any],
     companions: Sequence[Mapping[str, Any]],
 ) -> BoundMutationPlan:
-    """Append only replay-proved Closure Repair updates to a bound M4 plan."""
+    """Append only replay-proved Closure Repair updates to a bound M3.4 plan."""
 
     if not companions:
         return bound
@@ -163,7 +163,7 @@ def append_repair_companions(
         _assert_editable(collection, field_path)
         operation_id = f"op_repair_r{repair_round}_{companion_index:02d}"
         while operation_id in seen_ids:
-            operation_id = f"{operation_id}_m4"
+            operation_id = f"{operation_id}_m34"
         seen_ids.add(operation_id)
         revision = value.get("revision")
         if isinstance(revision, bool) or not isinstance(revision, int):

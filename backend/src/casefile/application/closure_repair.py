@@ -156,7 +156,7 @@ def primary_mutation_from_suggestions(
 
 
 def primary_mutation_from_mutation_set(mutation_set: MutationSet) -> MutationSet:
-    """Common Closure Repair primary seam for legacy suggestions and M4 plans."""
+    """Common Closure Repair primary seam for legacy suggestions and M3.4 plans."""
 
     if mutation_set.actor != "agent" or mutation_set.mode != "normal":
         raise ValueError("repair_primary_mutation_policy_invalid")

@@ -1,4 +1,4 @@
-"""M4 General Mutation deterministic regression and safety qualification."""
+"""M3.4 General Mutation deterministic regression and safety qualification."""
 
 from __future__ import annotations
 
@@ -350,7 +350,7 @@ def _reason_code(error: ValidationError | GeneralMutationBindingError) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run M4 General Mutation qualification")
+    parser = argparse.ArgumentParser(description="Run M3.4 General Mutation qualification")
     parser.add_argument("--report-path", type=Path)
     parser.add_argument("--gate", action="store_true")
     arguments = parser.parse_args()

@@ -90,7 +90,7 @@ def test_general_mutation_create_atomic_apply_undo_redo(
         project_id, generation_task_id = _prepare_task(engine, actor_id)
         Worker(
             factory,
-            config=WorkerConfig(worker_id="m4-fixture"),
+            config=WorkerConfig(worker_id="m34-fixture"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
         adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
@@ -115,7 +115,7 @@ def test_general_mutation_create_atomic_apply_undo_redo(
         Worker(
             factory,
             config=WorkerConfig(
-                worker_id="m4-chat",
+                worker_id="m34-chat",
                 general_mutation_mode="suggest",
                 general_mutation_create_enabled=True,
             ),
@@ -224,7 +224,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
         project_id, generation_task_id = _prepare_task(engine, actor_id)
         Worker(
             factory,
-            config=WorkerConfig(worker_id="m4-delete-fixture"),
+            config=WorkerConfig(worker_id="m34-delete-fixture"),
             provider_factory=lambda _task: RichFixtureProvider(),
         ).run_once()
         adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
@@ -249,7 +249,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
         Worker(
             factory,
             config=WorkerConfig(
-                worker_id="m4-delete-chat",
+                worker_id="m34-delete-chat",
                 general_mutation_mode="suggest",
                 general_mutation_delete_enabled=True,
             ),
@@ -420,7 +420,7 @@ def test_general_mutation_closure_repair_appends_proven_companions_atomically(
         project_id, generation_task_id = _prepare_task(engine, actor_id)
         assert Worker(
             factory,
-            config=WorkerConfig(worker_id="m4-repair-generation"),
+            config=WorkerConfig(worker_id="m34-repair-generation"),
             provider_factory=lambda _task: ClosureRepairFixtureProvider(),
         ).run_once()
         adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
@@ -445,7 +445,7 @@ def test_general_mutation_closure_repair_appends_proven_companions_atomically(
         assert Worker(
             factory,
             config=WorkerConfig(
-                worker_id="m4-repair-chat",
+                worker_id="m34-repair-chat",
                 general_mutation_mode="suggest",
                 closure_repair_mode="suggest",
             ),

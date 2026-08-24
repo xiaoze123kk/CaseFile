@@ -45,7 +45,7 @@
 | `backend/src/casefile/application/services.py` | Project、工作稿列表/原子激活、Current Draft 对象/引用编辑和 Snapshot 的事务边界、Draft ID + revision 并发控制及应用规则。 |
 | `backend/src/casefile/application/casefile_v1.py` | 在目标无关的 CaseFile v2 JSON（v1 仅历史读取兼容）与规范化当前态之间执行原子写入、增量对象创建、完整投影、契约引用映射和规范哈希。 |
 | `backend/src/casefile/application/v1_editing.py` | 唯一 Logical Mutation 物化边界：锁内复验、CREATE/UPDATE/DELETE、完整 projection/hash proof、一次 Draft revision 原子提交，并为旧字段 Patch 提供兼容适配。 |
-| `backend/src/casefile/application/agent_mutation.py` | M4 General Mutation 的确定性 Binder：校验 capability/字段边界，拓扑排序 Plan，解析 existing/local refs，分配稳定对象与 operation ID，冻结旧值/revision，并生成 MutationSet、plan hash 与 impact hash。 |
+| `backend/src/casefile/application/agent_mutation.py` | M3.4 General Mutation 的确定性 Binder：校验 capability/字段边界，拓扑排序 Plan，解析 existing/local refs，分配稳定对象与 operation ID，冻结旧值/revision，并生成 MutationSet、plan hash 与 impact hash。 |
 | `backend/src/casefile/application/agent_patch_mutation.py` | PatchSet 与 Logical Mutation 的转换、历史 before/after document 语义重建、Atomic 选择规则和 finding 目标解析；供 Apply/Undo/Redo 共用。 |
 | `backend/src/casefile/application/logical_mutation_service.py` | 所有产品写入口可复用的通用 Mutation Preview/Apply 事务门面；只转换 DTO、锁定 Current Draft 并调用领域 Simulation 与唯一物化边界。 |
 | `backend/src/casefile/application/logical_mutation_rollout.py` | 旧 Current Draft 的只读 shadow scanner 与显式 system mechanical normalization；只修复双向投影并保留 before/after hash，不自动改写语义状态。 |
@@ -67,9 +67,9 @@
 | `backend/src/casefile/domain/logical_mutation/` | 纯 Python Logical Mutation Kernel：discriminated operations、依赖拓扑排序、机械双向投影、NetworkX 封装图、关系传播策略单一来源、Impact Cone 与显式 v1/v2 policy registry；`closure/` 预计算不可变 ClosureContext/ClosureIndex，并实现 Claim、Hypothesis assessment、ReasoningPath/Resolution、typed integration 与 Shadow travel-time 确定性规则；公开接口不泄漏 NetworkX 类型。 |
 | `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复内核：版本化 RepairPolicy、角色化 ClosureObligation、MutationSimulation 资格评估，以及确定性 RepairScope。V1/V2 context 保留历史回放；V3 Alternative Planner 只枚举服务器完整模拟证明的 Claim status 或 incompatible dependency 移除候选，以规范 hash 绑定 operation、前后 obligation 与 candidate hash。Repair Engine 默认只接受 selected alternative ID，最多两轮从同一 baseline 重放并允许 obligation 不增的 staged progress；未知、过期、篡改、无候选、scope/protected/StructureLock 越界与 rebase mismatch 全部失败关闭。本模块不接 Provider/数据库/API/UI，不执行 Apply。 |
 | `backend/src/casefile/agent_runtime/transport_diagnostics.py` | 对 Provider 异常 cause chain 做 timeout/connection/rate-limit/4xx/5xx/protocol/unknown 脱敏分类，输出稳定 retry、protocol 与 fallback 诊断，不保留 URL、正文、凭据或异常文本。 |
-| `backend/src/casefile/agent_runtime/general_mutation.py`、`general_mutation_prompt.py` | M4 runtime-private General Mutation Planner 严格输出契约、预算/依赖 DAG/保护集合规则与不可变 Prompt Package 渲染；不访问数据库或应用服务。 |
+| `backend/src/casefile/agent_runtime/general_mutation.py`、`general_mutation_prompt.py` | M3.4 runtime-private General Mutation Planner 严格输出契约、预算/依赖 DAG/保护集合规则与不可变 Prompt Package 渲染；不访问数据库或应用服务。 |
 | `backend/src/casefile/benchmark/closure_repair_lineage.py` | 对 repair domain、Closure policy、VerificationEngine、V3 Prompt/Schema、Application/Worker 与 Provider contract 生成统一 repair runtime fingerprint。 |
-| `backend/src/casefile/benchmark/general_mutation_eval.py` | M4 General Mutation deterministic Regression/Safety 资格：按 Suite、Task、Trial、Transcript、Outcome、Grader、Report 冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；不冒充 Pro Capability。 |
+| `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Regression/Safety 资格：按 Suite、Task、Trial、Transcript、Outcome、Grader、Report 冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；不冒充 Pro Capability。 |
 | `backend/src/casefile/benchmark/closure_repair_evidence.py`、`closure_repair_qualification.py` | 组装 M3.3 Evidence Index v2，校验每份报告自哈希、同 revision/runtime lineage、Holdout 最多一次且仅由首轮 infra 触发的完整重跑，以及 Backend 54-trial 最终资格；正式编排在同一 clean revision 上冻结 suite/gate/grader/runtime fingerprint，并按 Clean Dev → Holdout → Backend Release 顺序失败关闭。 |
 
 ## API 与 Worker
