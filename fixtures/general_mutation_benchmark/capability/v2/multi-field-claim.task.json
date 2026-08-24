@@ -15,7 +15,7 @@
         "where": {
           "/id": "claim_backup_trigger",
           "/title": "安全规则触发重启",
-          "/statement": "失联与过热共同触发了备用系统重启。"
+          "/statement": "失联与过热共同触发了备用系统重启"
         },
         "count": 1
       }

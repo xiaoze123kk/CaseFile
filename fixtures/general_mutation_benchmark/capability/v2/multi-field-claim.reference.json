@@ -21,7 +21,7 @@
           "object_id": "claim_backup_trigger"
         },
         "field_path": "/statement",
-        "new_value": "失联与过热共同触发了备用系统重启。",
+        "new_value": "失联与过热共同触发了备用系统重启",
         "reason": "statement claim"
       }
     ]
