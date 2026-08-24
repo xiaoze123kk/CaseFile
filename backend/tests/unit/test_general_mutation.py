@@ -11,6 +11,7 @@ from casefile.agent_runtime.general_mutation import (
     MutationPlanV1,
     MutationPlanV2,
     explicit_batch_create_count,
+    general_mutation_explicit_unknown_object_ids,
     general_mutation_request_budget_reason,
 )
 from casefile.agent_runtime.general_mutation_prompt import (
@@ -445,3 +446,21 @@ def test_explicit_batch_create_over_budget_fails_before_planning() -> None:
         == "general_mutation_requested_create_budget_exceeded"
     )
     assert general_mutation_request_budget_reason("创建 4 个新人物。") is None
+
+
+def test_explicit_unknown_object_ids_exclude_contract_fields_and_known_ids() -> None:
+    unknown = general_mutation_explicit_unknown_object_ids(
+        (
+            "把主张 claim_backup_trigger 的 support_refs "
+            "改为只引用 info_external_secret。"
+        ),
+        _document(),
+        {"claims": ("support_refs", "status")},
+    )
+
+    assert unknown == ("info_external_secret",)
+    assert general_mutation_explicit_unknown_object_ids(
+        "把主张状态改为 partially_supported。",
+        _document(),
+        {"claims": ("status",)},
+    ) == ()

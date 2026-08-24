@@ -50,6 +50,7 @@ _EXPLICIT_BATCH_CREATE_PATTERN = re.compile(
     r"(?:新\s*)?"
     r"(?:人物|实体|对象|事件|地点|关系|主张|假设|信息(?:单元)?|记录)"
 )
+_EXPLICIT_STABLE_TOKEN_PATTERN = re.compile(r"\b[a-z][a-z0-9_]{2,59}\b")
 
 
 class StrictMutationModel(BaseModel):
@@ -208,6 +209,43 @@ def general_mutation_request_budget_reason(message: str) -> str | None:
     return None
 
 
+def general_mutation_explicit_unknown_object_ids(
+    message: str,
+    casefile: dict[str, Any],
+    editable_fields_by_collection: dict[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    """Find explicit stable-ID-shaped tokens that cannot name current objects.
+
+    Only underscore-bearing tokens are considered. Known collection/field
+    identifiers are excluded so ordinary contract vocabulary such as
+    ``support_refs`` cannot be mistaken for an object ID.
+    """
+
+    known_object_ids = {
+        str(item["id"])
+        for collection in ALLOWED_COLLECTIONS | PROTECTED_COLLECTIONS
+        for item in casefile.get(collection, [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    contract_tokens = set(editable_fields_by_collection) | set(SYSTEM_FIELDS)
+    contract_tokens.update(
+        field
+        for fields in editable_fields_by_collection.values()
+        for field in fields
+    )
+    known_object_prefixes = {
+        object_id.split("_", 1)[0] + "_"
+        for object_id in known_object_ids
+        if "_" in object_id
+    }
+    candidates = {
+        token
+        for token in _EXPLICIT_STABLE_TOKEN_PATTERN.findall(message)
+        if any(token.startswith(prefix) for prefix in known_object_prefixes)
+    }
+    return tuple(sorted(candidates - known_object_ids - contract_tokens))
+
+
 def _assert_dependency_dag(operations: list[MutationPlanOperation]) -> None:
     dependencies = {item.operation_key: set(item.depends_on_operation_keys) for item in operations}
     pending = set(dependencies)
@@ -274,6 +312,7 @@ __all__ = [
     "GeneralMutationPlannerResult",
     "GeneralMutationPromptInput",
     "explicit_batch_create_count",
+    "general_mutation_explicit_unknown_object_ids",
     "general_mutation_request_budget_reason",
     "MutationPlanV1",
     "MutationPlanV2",
