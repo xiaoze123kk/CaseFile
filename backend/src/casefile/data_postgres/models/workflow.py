@@ -239,13 +239,20 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ),
         UniqueConstraint("project_id", "id", name="uq_task_runs_project_id_id"),
         UniqueConstraint(
+            "project_id",
+            "casefile_id",
+            "draft_id",
+            "id",
+            name="uq_task_runs_lineage_id",
+        ),
+        UniqueConstraint(
             "project_id", "brief_intake_id", "id", name="uq_task_runs_intake_lineage_id"
         ),
         CheckConstraint(
             "task_type IN "
             "('brief_polish', 'brief_anchor_extract', 'brief_intake_questions', "
             "'brief_intake_synthesize', 'brief_strategy_options', "
-            "'brief_to_draft', 'casefile_chat', 'reverse_parse')",
+            "'brief_to_draft', 'casefile_chat', 'reverse_parse', 'novel_compile')",
             name="task_type_allowed",
         ),
         CheckConstraint(
@@ -262,7 +269,18 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="input_brief_intake_revision_positive",
         ),
         CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="input_hash_format"),
-        CheckConstraint("provider_config_version >= 1", name="provider_version_positive"),
+        CheckConstraint(
+            "provider_config_version IS NULL OR provider_config_version >= 1",
+            name="provider_version_positive",
+        ),
+        CheckConstraint(
+            "(task_type = 'novel_compile' AND provider_setting_id IS NULL "
+            "AND provider IS NULL AND model_id IS NULL AND provider_config_version IS NULL) OR "
+            "(task_type <> 'novel_compile' AND provider_setting_id IS NOT NULL "
+            "AND provider IS NOT NULL AND model_id IS NOT NULL "
+            "AND provider_config_version IS NOT NULL)",
+            name="provider_binding_matches_task_type",
+        ),
         CheckConstraint("attempt_count >= 0", name="attempt_count_nonnegative"),
         CheckConstraint("jsonb_typeof(input_jsonb) = 'object'", name="input_is_object"),
         CheckConstraint("jsonb_typeof(budget_jsonb) = 'object'", name="budget_is_object"),
@@ -362,6 +380,17 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             "AND agent_thread_id IS NULL "
             "AND input_message_id IS NULL "
             "AND output_message_id IS NULL"
+            ") OR ("
+            "task_type = 'novel_compile' "
+            "AND brief_version_id IS NULL "
+            "AND input_source_record_id IS NULL "
+            "AND input_brief_revision IS NULL "
+            "AND brief_intake_id IS NULL "
+            "AND input_brief_intake_revision IS NULL "
+            "AND base_brief_intake_candidate_id IS NULL "
+            "AND agent_thread_id IS NULL "
+            "AND input_message_id IS NULL "
+            "AND output_message_id IS NULL"
             ")",
             name="input_matches_task_type",
         ),
@@ -407,7 +436,7 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    provider_setting_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    provider_setting_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     task_type: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20),
@@ -420,9 +449,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'queued'"),
     )
     input_draft_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    provider: Mapped[str] = mapped_column(String(40), nullable=False)
-    model_id: Mapped[str] = mapped_column(String(160), nullable=False)
-    provider_config_version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    provider: Mapped[str] = mapped_column(String(40), nullable=True)
+    model_id: Mapped[str] = mapped_column(String(160), nullable=True)
+    provider_config_version: Mapped[int] = mapped_column(BigInteger, nullable=True)
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
     agent_version: Mapped[str] = mapped_column(String(64), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)

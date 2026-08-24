@@ -43,6 +43,13 @@ class DraftSnapshot(BigIntIdentityPrimaryKeyMixin, Base):
             "id",
             name="uq_draft_snapshots_project_id_casefile_id_id",
         ),
+        UniqueConstraint(
+            "project_id",
+            "casefile_id",
+            "draft_id",
+            "id",
+            name="uq_draft_snapshots_lineage_id",
+        ),
         CheckConstraint("snapshot_revision >= 1", name="revision_positive"),
         CheckConstraint("length(btrim(schema_version)) > 0", name="schema_version_not_blank"),
         CheckConstraint("jsonb_typeof(snapshot_jsonb) = 'object'", name="content_is_object"),
@@ -114,6 +121,13 @@ class CanonVersion(BigIntIdentityPrimaryKeyMixin, Base):
             "casefile_id",
             "id",
             name="uq_canon_versions_project_id_casefile_id_id",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "casefile_id",
+            "id",
+            "source_snapshot_id",
+            name="uq_canon_versions_snapshot_lineage_id",
         ),
         UniqueConstraint(
             "source_snapshot_id",

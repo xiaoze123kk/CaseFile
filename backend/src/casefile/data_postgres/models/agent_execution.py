@@ -51,6 +51,7 @@ class AgentStepRun(BigIntIdentityPrimaryKeyMixin, Base):
             "execution_no",
             name="uq_agent_step_runs_attempt_component_execution",
         ),
+        UniqueConstraint("id", "task_run_id", name="uq_agent_step_runs_id_task_run_id"),
         CheckConstraint("execution_no >= 1", name="execution_no_positive"),
         CheckConstraint(
             "status IN ('pending', 'running', 'succeeded', 'failed', 'reused', 'skipped')",

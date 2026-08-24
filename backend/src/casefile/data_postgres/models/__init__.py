@@ -20,6 +20,12 @@ from casefile.data_postgres.models.collaboration import (
     AgentPatchSet,
     AgentThread,
 )
+from casefile.data_postgres.models.compiler import (
+    CompileArtifact,
+    CompilerProfile,
+    CompilerProfileVersion,
+    CompileRun,
+)
 from casefile.data_postgres.models.content import (
     Claim,
     Entity,
@@ -86,6 +92,10 @@ __all__ = [
     "BriefIntakeQuestion",
     "BriefVersion",
     "CanonVersion",
+    "CompileArtifact",
+    "CompileRun",
+    "CompilerProfile",
+    "CompilerProfileVersion",
     "CaseFile",
     "CaseFileContractRef",
     "CaseFileObject",

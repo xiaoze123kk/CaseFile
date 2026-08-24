@@ -918,6 +918,7 @@ class TaskType(StrEnum):
     brief_to_draft = 'brief_to_draft'
     casefile_chat = 'casefile_chat'
     reverse_parse = 'reverse_parse'
+    novel_compile = 'novel_compile'
     idea_generation = 'idea_generation'
 
 
@@ -933,6 +934,10 @@ class Status2(StrEnum):
 class Provider(StrEnum):
     openai = 'openai'
     deepseek = 'deepseek'
+
+
+class ModelId(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
 
 
 class InputBriefRevision(RootModel[int]):
@@ -1092,8 +1097,8 @@ class TaskRun(BaseModel):
     task_type: TaskType
     status: Status2
     stage: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-    provider: Provider
-    model_id: Annotated[str, Field(min_length=1)]
+    provider: Provider | None
+    model_id: ModelId | None
     input_draft_revision: Annotated[int, Field(ge=1)]
     input_brief_revision: InputBriefRevision | None
     input_source_record_id: InputSourceRecordId | None

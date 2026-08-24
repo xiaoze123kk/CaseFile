@@ -579,11 +579,12 @@ export interface TaskRun {
     | "brief_to_draft"
     | "casefile_chat"
     | "reverse_parse"
+    | "novel_compile"
     | "idea_generation";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
-  provider: "openai" | "deepseek";
-  model_id: string;
+  provider: ("openai" | "deepseek") | null;
+  model_id: string | null;
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
