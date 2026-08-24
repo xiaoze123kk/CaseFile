@@ -12,7 +12,7 @@ import json
 import os
 import subprocess
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
@@ -27,6 +27,10 @@ from casefile.agent_runtime.general_mutation import (
 )
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.general_mutation_capability import _saved_credential
+from casefile.benchmark.general_mutation_progress import (
+    TrialProgressCheckpoint,
+    default_checkpoint_path,
+)
 from casefile.domain.logical_mutation import CLOSURE_POLICY_VERSION
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -200,6 +204,7 @@ def run_safety_benchmark(
     repo_root: Path = ROOT,
     suite_path: Path | None = None,
     provider_invoked: bool = True,
+    on_trial_completed: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     suite = load_safety_suite(repo_root, suite_path)
     rows: list[dict[str, Any]] = []
@@ -231,6 +236,8 @@ def run_safety_benchmark(
                 "allowed",
             }
             rows.append(row)
+            if on_trial_completed is not None:
+                on_trial_completed(row)
     metrics = _metrics(rows)
     gate = _gate(rows, suite.tasks, trials, metrics)
     prompt = load_prompt("general_mutation_planner", GENERAL_MUTATION_PROMPT_VERSION)
@@ -347,6 +354,7 @@ def main() -> None:
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--suite-path", type=Path)
     parser.add_argument("--report-path", type=Path)
+    parser.add_argument("--checkpoint-path", type=Path)
     parser.add_argument("--gate-07d", action="store_true")
     args = parser.parse_args()
     api_key = args.api_key or next(
@@ -372,6 +380,12 @@ def main() -> None:
         raise SystemExit("general_mutation_safety_model_invalid")
     from casefile.benchmark.general_mutation_safety_executor import PostgresSafetyExecutor
 
+    suite = load_safety_suite(ROOT, args.suite_path)
+    checkpoint = TrialProgressCheckpoint(
+        suite_id=suite.suite_id,
+        total_trials=len(suite.tasks) * args.trials,
+        path=args.checkpoint_path or default_checkpoint_path(args.report_path),
+    )
     executor = PostgresSafetyExecutor(database_url=args.database_url, api_key=api_key)
     try:
         report = run_safety_benchmark(
@@ -379,9 +393,11 @@ def main() -> None:
             model_id=model_id,
             trials=args.trials,
             suite_path=args.suite_path,
+            on_trial_completed=checkpoint.record,
         )
     finally:
         executor.close()
+    checkpoint.finalize(status=str(report["status"]))
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     print(rendered)
     if args.report_path:

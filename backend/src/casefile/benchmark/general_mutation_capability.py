@@ -15,7 +15,7 @@ import os
 import subprocess
 import time
 from collections import Counter, defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -42,6 +42,10 @@ from casefile.application.agent_mutation import (
 )
 from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.benchmark.eval_core import EvalSuite, EvalTask
+from casefile.benchmark.general_mutation_progress import (
+    TrialProgressCheckpoint,
+    default_checkpoint_path,
+)
 from casefile.domain.logical_mutation import (
     CLOSURE_POLICY_VERSION,
     RepairProposal,
@@ -249,6 +253,7 @@ def run_capability_benchmark(
     repo_root: Path = ROOT,
     suite_path: Path | None = None,
     provider: Any | None = None,
+    on_trial_completed: Callable[[Mapping[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     if trials < 1:
         raise GeneralMutationCapabilityError("general_mutation_trials_invalid")
@@ -258,21 +263,23 @@ def run_capability_benchmark(
     provider = provider or (
         DeepSeekAgentsProvider() if provider_name == "deepseek" else OpenAIAgentsProvider()
     )
-    rows = [
-        _run_trial(
-            task,
-            trial_index,
-            task_run_id=(task_index * trials) + trial_index,
-            provider=provider,
-            provider_name=provider_name,
-            model_id=model_id,
-            api_key=api_key,
-            repo_root=repo_root,
-            use_closure_repair=suite.suite_id == "general-mutation-capability-dev-v2",
-        )
-        for task_index, task in enumerate(suite.tasks)
-        for trial_index in range(1, trials + 1)
-    ]
+    rows: list[dict[str, Any]] = []
+    for task_index, task in enumerate(suite.tasks):
+        for trial_index in range(1, trials + 1):
+            row = _run_trial(
+                task,
+                trial_index,
+                task_run_id=(task_index * trials) + trial_index,
+                provider=provider,
+                provider_name=provider_name,
+                model_id=model_id,
+                api_key=api_key,
+                repo_root=repo_root,
+                use_closure_repair=suite.suite_id == "general-mutation-capability-dev-v2",
+            )
+            rows.append(row)
+            if on_trial_completed is not None:
+                on_trial_completed(row)
     prompt = load_prompt("general_mutation_planner", GENERAL_MUTATION_PROMPT_VERSION)
     lineage = {
         "prompt_version": GENERAL_MUTATION_PROMPT_VERSION,
@@ -855,6 +862,7 @@ def main() -> None:
     parser.add_argument("--trials", type=int, default=1)
     parser.add_argument("--suite-path", type=Path)
     parser.add_argument("--report-path", type=Path)
+    parser.add_argument("--checkpoint-path", type=Path)
     parser.add_argument("--gate-07a", action="store_true")
     parser.add_argument("--gate-07b", action="store_true")
     parser.add_argument("--gate-07c", action="store_true")
@@ -878,13 +886,21 @@ def main() -> None:
             model_id = saved_model
     if not api_key:
         raise SystemExit("general_mutation_capability_credential_missing")
+    suite = load_capability_suite(ROOT, args.suite_path)
+    checkpoint = TrialProgressCheckpoint(
+        suite_id=suite.suite_id,
+        total_trials=len(suite.tasks) * args.trials,
+        path=args.checkpoint_path or default_checkpoint_path(args.report_path),
+    )
     report = run_capability_benchmark(
         model_id=model_id,
         api_key=api_key,
         provider_name=args.provider,
         trials=args.trials,
         suite_path=args.suite_path,
+        on_trial_completed=checkpoint.record,
     )
+    checkpoint.finalize(status=str(report["status"]))
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     print(rendered)
     if args.report_path:
