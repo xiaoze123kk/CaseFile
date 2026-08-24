@@ -389,9 +389,14 @@ EXPECTED_RELEASE_HASHES = {
 
 def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
+    deterministic_task_types = {"novel_compile"}
     auxiliary_agent_ids = {"casefile_chat_context_compactor", "closure_repair"}
 
-    assert set(SUPPORTED_AGENT_IDS) == contract_task_types | auxiliary_agent_ids
+    assert deterministic_task_types <= contract_task_types
+    assert set(SUPPORTED_AGENT_IDS) == (
+        contract_task_types - deterministic_task_types
+    ) | auxiliary_agent_ids
+    assert deterministic_task_types.isdisjoint(SUPPORTED_AGENT_IDS)
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
     assert {
         agent_id: prompt_version_for_task(agent_id) for agent_id in SUPPORTED_AGENT_IDS
