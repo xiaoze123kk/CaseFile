@@ -14,7 +14,7 @@
         "collection": "claims",
         "where": {
           "/id": "claim_backup_trigger",
-          "/statement": "备用系统执行安全重启"
+          "/statement": {"$text_equivalent": "备用系统执行安全重启"}
         },
         "count": 1
       },
@@ -22,7 +22,7 @@
         "collection": "hypotheses",
         "where": {
           "/id": "hyp_automatic_restart",
-          "/proposition": "备用系统执行安全重启"
+          "/proposition": {"$text_equivalent": "备用系统执行安全重启"}
         },
         "count": 1
       }

@@ -81,6 +81,15 @@ def test_general_mutation_capability_missing_list_item_is_not_a_harness_failure(
     assert _matches(["读取日志", "检修备用系统"], {"$contains": "检修备用系统"})
 
 
+def test_text_equivalent_ignores_only_terminal_punctuation_when_oracle_opts_in() -> None:
+    expected = {"$text_equivalent": "备用系统执行安全重启"}
+
+    assert _matches("备用系统执行安全重启。", expected)
+    assert _matches("备用系统执行安全重启", expected)
+    assert not _matches("备用系统执行紧急重启。", expected)
+    assert not _matches("备用系统执行安全重启。", "备用系统执行安全重启")
+
+
 def test_general_mutation_capability_grades_final_state_not_plan_path() -> None:
     suite = load_capability_suite()
     report = run_capability_benchmark(

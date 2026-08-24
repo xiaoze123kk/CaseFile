@@ -59,7 +59,7 @@ DEFAULT_SUITE = Path("fixtures/general_mutation_benchmark/capability/v2/suite.js
 SCHEMA_VERSION = "casefile-general-mutation-capability-v1"
 REPORT_VERSION = "casefile-general-mutation-capability-report-v1"
 HARNESS_VERSION = "general-mutation-production-kernel-v2"
-GRADER_VERSION = "general-mutation-state-graders-v2"
+GRADER_VERSION = "general-mutation-state-graders-v3"
 TrialClass = Literal[
     "success",
     "capability_failure",
@@ -602,7 +602,16 @@ def _matches(actual: Any, expected: Any) -> bool:
             and not isinstance(actual, (str, bytes))
             and bool(expected["$contains"] in actual)
         )
+    if isinstance(expected, Mapping) and set(expected) == {"$text_equivalent"}:
+        target = expected["$text_equivalent"]
+        return isinstance(actual, str) and isinstance(target, str) and (
+            _without_terminal_punctuation(actual) == _without_terminal_punctuation(target)
+        )
     return bool(actual == expected)
+
+
+def _without_terminal_punctuation(value: str) -> str:
+    return value.strip().rstrip("。！？.!?").rstrip()
 
 
 def _pointer_get(value: Mapping[str, Any], path: str) -> Any:
