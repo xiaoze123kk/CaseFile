@@ -32,6 +32,16 @@ class OrderedReferenceProvider:
         )
 
 
+class FallbackReferenceProvider(OrderedReferenceProvider):
+    def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
+        request.emit(
+            "model.output_protocol_fallback",
+            "general_mutation",
+            {"from": "strict_tool", "to": "json_object"},
+        )
+        return super().plan_general_mutation(request)
+
+
 def test_general_mutation_capability_references_prove_tasks() -> None:
     suite = load_capability_suite()
 
@@ -75,3 +85,33 @@ def test_general_mutation_07a_gate_requires_complete_7_by_5() -> None:
     assert gate["passed"] is True
     assert gate["cross_reference_passed"] == 5
     assert gate["general_mutation_ref_shape_invalid_count"] == 0
+
+
+def test_general_mutation_07b_gate_requires_frozen_transport_metrics() -> None:
+    suite = load_capability_suite()
+    report = run_capability_benchmark(
+        model_id="deepseek-v4-pro",
+        api_key="test-key-not-sent",
+        trials=5,
+        provider=OrderedReferenceProvider(suite, trials=5),
+    )
+
+    gate = report["gates"]["m3_4_07b"]
+    assert gate["passed"] is True
+    assert gate["checks"]["fallback_event_zero"] is True
+    assert gate["output_protocol_fallback_event_count"] == 0
+    assert report["lineage"]["transport_version"] == "general-mutation-json-object-v1"
+
+
+def test_general_mutation_07b_gate_counts_transcript_fallback_events() -> None:
+    suite = load_capability_suite()
+    report = run_capability_benchmark(
+        model_id="deepseek-v4-pro",
+        api_key="test-key-not-sent",
+        trials=5,
+        provider=FallbackReferenceProvider(suite, trials=5),
+    )
+
+    gate = report["gates"]["m3_4_07b"]
+    assert gate["passed"] is False
+    assert gate["output_protocol_fallback_event_count"] == 35

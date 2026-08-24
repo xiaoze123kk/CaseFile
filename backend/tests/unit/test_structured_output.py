@@ -7,11 +7,13 @@ import json
 from types import SimpleNamespace
 from typing import Any, Literal
 
-import casefile.agent_runtime.provider_adapters.shared as provider_shared
-import casefile.agent_runtime.structured_output as structured_module
 import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+import casefile.agent_runtime.provider_adapters.shared as provider_shared
+import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
@@ -32,7 +34,6 @@ from casefile.agent_runtime.structured_output import (
 )
 from casefile.agent_runtime.transport_diagnostics import classify_transport_error
 from casefile.contracts import ContractValidationError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 class _StrictSchemaFixture(BaseModel):
@@ -84,6 +85,44 @@ def _usage() -> SimpleNamespace:
         input_tokens_details=SimpleNamespace(cached_tokens=2),
         output_tokens_details=SimpleNamespace(reasoning_tokens=0),
     )
+
+
+def test_primary_json_object_selects_protocol_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def fake_runner_run(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            final_output=_valid_polish_json(),
+            context_wrapper=SimpleNamespace(usage=_usage()),
+        )
+
+    monkeypatch.setattr(provider_shared.Runner, "run", fake_runner_run)
+    request = _request(events)
+    output, _usage_result = asyncio.run(
+        _run_auxiliary_agent(
+            request,
+            model=DeepSeekAgentsProvider().create_model(request),
+            model_settings=ModelSettings(),
+            instructions="Return JSON.",
+            input_text="input",
+            output_type=BriefPolishCandidate,
+            stage="polishing",
+            structured_output=False,
+            tracing_disabled=True,
+            deepseek_output_protocol="json_object",
+            deepseek_output_protocol_is_primary=True,
+        )
+    )
+
+    assert output["polished_text"] == "修订稿"
+    assert not any(event[0] == "model.output_protocol_fallback" for event in events)
+    selected = next(event for event in events if event[0] == "model.output_protocol_selected")
+    assert selected[2]["protocol"] == "json_object"
+    validated = next(event for event in events if event[0] == "model.output_validated")
+    assert validated[2]["fallback_attempted"] is False
+    assert validated[2]["fallback_succeeded"] is False
 
 
 def test_compile_strict_schema_closes_objects_and_preserves_nullable_shape() -> None:

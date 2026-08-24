@@ -12,9 +12,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -68,6 +65,9 @@ from casefile.agent_runtime.transport_diagnostics import (
     classify_transport_error,
 )
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile_contracts import (
+    CaseFile,
+)
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
 
@@ -249,6 +249,7 @@ async def _run_auxiliary_agent(
     component_id: str | None = None,
     schema_id: str | None = None,
     deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+    deepseek_output_protocol_is_primary: bool = False,
     tools: list[Tool] | None = None,
     context: ChatToolContext | None = None,
     max_turns: int | None = None,
@@ -264,7 +265,11 @@ async def _run_auxiliary_agent(
     selected_protocols: set[str] = set()
     current_input = input_text
 
-    if not structured_output and deepseek_output_protocol == "json_object":
+    if (
+        not structured_output
+        and deepseek_output_protocol == "json_object"
+        and not deepseek_output_protocol_is_primary
+    ):
         fallback_attempted = True
         fallback_error_class = "protocol_unsupported"
         request.emit(

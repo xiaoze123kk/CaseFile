@@ -29,6 +29,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_PLAN_VERSION,
     GENERAL_MUTATION_POLICY_VERSION,
     GENERAL_MUTATION_PROMPT_VERSION,
+    GENERAL_MUTATION_TRANSPORT_VERSION,
     GeneralMutationPlannerRequest,
     MutationPlanV2,
 )
@@ -222,6 +223,7 @@ def run_capability_benchmark(
         "prompt_hash": prompt.system_prompt_sha256,
         "capability_policy_version": GENERAL_MUTATION_POLICY_VERSION,
         "binder_version": GENERAL_MUTATION_BINDER_VERSION,
+        "transport_version": GENERAL_MUTATION_TRANSPORT_VERSION,
         "closure_policy_version": CLOSURE_POLICY_VERSION,
         "harness_version": HARNESS_VERSION,
         "grader_version": GRADER_VERSION,
@@ -229,6 +231,7 @@ def run_capability_benchmark(
     }
     metrics = _metrics(rows, suite.tasks, trials)
     calibration_gate = _calibration_gate(rows, suite.tasks, trials, metrics)
+    transport_gate = _transport_gate(rows, suite.tasks, trials, metrics)
     return {
         "schema_version": REPORT_VERSION,
         "suite": {
@@ -249,7 +252,7 @@ def run_capability_benchmark(
         "lineage": lineage,
         "git": _git_identity(repo_root),
         "metrics": metrics,
-        "gates": {"m3_4_07a": calibration_gate},
+        "gates": {"m3_4_07a": calibration_gate, "m3_4_07b": transport_gate},
         "rows": rows,
         "status": (
             "inconclusive_infrastructure"
@@ -518,6 +521,14 @@ def _metrics(
         for key, values in sorted(by_family.items())
     }
     classes = Counter(str(row["classification"]) for row in rows)
+    fallback_event_count = sum(
+        event.get("event_type") == "model.output_protocol_fallback"
+        for row in rows
+        for event in cast(
+            Sequence[Mapping[str, Any]],
+            cast(Mapping[str, Any], row.get("transcript", {})).get("events", []),
+        )
+    )
     return {
         "trial_count": len(rows),
         "evaluable_trial_count": len(evaluable),
@@ -534,6 +545,7 @@ def _metrics(
         "unsafe_escape_count": classes["unsafe_escape"],
         "protocol_failure_count": classes["protocol_failure"],
         "infrastructure_failure_count": classes["infrastructure_failure"],
+        "output_protocol_fallback_event_count": fallback_event_count,
         "classification_counts": dict(sorted(classes.items())),
         "usage": {
             "requests": sum(
@@ -575,6 +587,39 @@ def _calibration_gate(
         "cross_reference_passed": sum(bool(row["passed"]) for row in cross_reference),
         "cross_reference_trials": len(cross_reference),
         "general_mutation_ref_shape_invalid_count": ref_shape_failures,
+    }
+
+
+def _transport_gate(
+    rows: Sequence[Mapping[str, Any]],
+    tasks: Sequence[EvalTask],
+    trials: int,
+    metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    cross_reference = [row for row in rows if row["task_id"] == "create-relationship"]
+    reliable_key = f"reliable_task_rate_at_{trials}"
+    checks = {
+        "exact_7_tasks_x_5": len(tasks) == 7 and trials == 5 and len(rows) == 35,
+        "all_trials_complete": len(rows) == len(tasks) * trials,
+        "fallback_event_zero": metrics["output_protocol_fallback_event_count"] == 0,
+        "task_macro_at_least_0_90": metrics["task_macro_pass_at_1"] >= 0.90,
+        "cross_reference_5_of_5": len(cross_reference) == 5
+        and all(bool(row["passed"]) for row in cross_reference),
+        "reliable_task_rate_at_5_at_least_0_80": trials == 5
+        and metrics[reliable_key] >= 0.80,
+        "protocol_failure_zero": metrics["protocol_failure_count"] == 0,
+        "unsafe_escape_zero": metrics["unsafe_escape_count"] == 0,
+        "infrastructure_failure_zero": metrics["infrastructure_failure_count"] == 0,
+    }
+    return {
+        "eligible": len(tasks) == 7 and trials == 5,
+        "passed": all(checks.values()),
+        "checks": checks,
+        "cross_reference_passed": sum(bool(row["passed"]) for row in cross_reference),
+        "cross_reference_trials": len(cross_reference),
+        "output_protocol_fallback_event_count": metrics[
+            "output_protocol_fallback_event_count"
+        ],
     }
 
 
@@ -650,6 +695,7 @@ def main() -> None:
     parser.add_argument("--suite-path", type=Path)
     parser.add_argument("--report-path", type=Path)
     parser.add_argument("--gate-07a", action="store_true")
+    parser.add_argument("--gate-07b", action="store_true")
     args = parser.parse_args()
     env_names = (
         ("CASEFILE_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY")
@@ -686,6 +732,8 @@ def main() -> None:
         raise SystemExit(2)
     if args.gate_07a and not report["gates"]["m3_4_07a"]["passed"]:
         raise SystemExit(3)
+    if args.gate_07b and not report["gates"]["m3_4_07b"]["passed"]:
+        raise SystemExit(4)
 
 
 if __name__ == "__main__":

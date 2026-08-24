@@ -144,7 +144,8 @@ class DeepSeekAgentsProvider:
                 stage="general_mutation",
                 component_id=GENERAL_MUTATION_COMPONENT_ID,
                 schema_id=rendered.output_schema_id,
-                deepseek_output_protocol=_deepseek_v8_output_protocol(request.model_id),
+                deepseek_output_protocol="json_object",
+                deepseek_output_protocol_is_primary=True,
                 strict_validation=True,
             )
         )
@@ -644,6 +645,7 @@ class DeepSeekAgentsProvider:
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+        deepseek_output_protocol_is_primary: bool = False,
         temperature: float | None = None,
         strict_validation: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -665,6 +667,7 @@ class DeepSeekAgentsProvider:
                 deepseek_output_protocol=(
                     deepseek_output_protocol or _deepseek_v8_output_protocol(request.model_id)
                 ),
+                deepseek_output_protocol_is_primary=deepseek_output_protocol_is_primary,
                 strict_validation=strict_validation,
                 tools=tools,
                 context=context,
