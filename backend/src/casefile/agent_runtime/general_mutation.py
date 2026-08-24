@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
 
@@ -41,6 +42,14 @@ SYSTEM_FIELDS = frozenset({"id", "revision", "confirmation_status", "created_by"
 MAX_OPERATIONS = 12
 MAX_CREATES = 4
 MAX_DELETES = 2
+
+_EXPLICIT_BATCH_CREATE_PATTERN = re.compile(
+    r"(?:创建|新建)\s*"
+    r"(?P<count>[0-9]{1,4})\s*"
+    r"(?:个|名|位|条|处)\s*"
+    r"(?:新\s*)?"
+    r"(?:人物|实体|对象|事件|地点|关系|主张|假设|信息(?:单元)?|记录)"
+)
 
 
 class StrictMutationModel(BaseModel):
@@ -176,6 +185,29 @@ class GeneralMutationPlannerResult:
     usage: dict[str, Any]
 
 
+def explicit_batch_create_count(message: str) -> int | None:
+    """Return an explicitly requested object-create cardinality when unambiguous.
+
+    This deliberately recognizes only Arabic numerals attached to a concrete
+    CaseFile object noun. It must not reinterpret times, identifiers, tag
+    counts, or other numbers as mutation cardinality.
+    """
+
+    counts = {
+        int(match.group("count")) for match in _EXPLICIT_BATCH_CREATE_PATTERN.finditer(message)
+    }
+    if len(counts) != 1:
+        return None
+    return counts.pop()
+
+
+def general_mutation_request_budget_reason(message: str) -> str | None:
+    requested_creates = explicit_batch_create_count(message)
+    if requested_creates is not None and requested_creates > MAX_CREATES:
+        return "general_mutation_requested_create_budget_exceeded"
+    return None
+
+
 def _assert_dependency_dag(operations: list[MutationPlanOperation]) -> None:
     dependencies = {item.operation_key: set(item.depends_on_operation_keys) for item in operations}
     pending = set(dependencies)
@@ -241,6 +273,8 @@ __all__ = [
     "GeneralMutationPlannerRequest",
     "GeneralMutationPlannerResult",
     "GeneralMutationPromptInput",
+    "explicit_batch_create_count",
+    "general_mutation_request_budget_reason",
     "MutationPlanV1",
     "MutationPlanV2",
     "PROTECTED_COLLECTIONS",

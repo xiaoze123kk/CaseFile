@@ -10,6 +10,8 @@ from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     MutationPlanV1,
     MutationPlanV2,
+    explicit_batch_create_count,
+    general_mutation_request_budget_reason,
 )
 from casefile.agent_runtime.general_mutation_prompt import (
     general_mutation_output_type,
@@ -420,3 +422,26 @@ def test_prompt_version_routes_matching_output_contract(
     )
 
     assert general_mutation_output_type(rendered) is expected_type
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("一次创建 13 个新人物，分别加入当前卷宗。", 13),
+        ("新建2名人物并补充名称。", 2),
+        ("把事件时间改为 13:00。", None),
+        ("给实体新增 13 个标签。", None),
+    ],
+)
+def test_explicit_batch_create_count_is_narrow(
+    message: str, expected: int | None
+) -> None:
+    assert explicit_batch_create_count(message) == expected
+
+
+def test_explicit_batch_create_over_budget_fails_before_planning() -> None:
+    assert (
+        general_mutation_request_budget_reason("创建 13 个新人物。")
+        == "general_mutation_requested_create_budget_exceeded"
+    )
+    assert general_mutation_request_budget_reason("创建 4 个新人物。") is None

@@ -67,6 +67,7 @@ from casefile.agent_runtime.general_mutation import (
     CreateMutationCandidate,
     DeleteMutationCandidate,
     GeneralMutationPlannerRequest,
+    general_mutation_request_budget_reason,
 )
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
@@ -542,6 +543,26 @@ class ChatTaskExecutorMixin:
                 "input_hash": task.input_hash,
             },
         )
+        request_budget_reason = general_mutation_request_budget_reason(request.message)
+        if request_budget_reason is not None:
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": request_budget_reason,
+                    "failure_layer": "request_budget",
+                    "issues": [{"code": request_budget_reason}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.blocked",
+                "general_mutation",
+                {"reason_code": request_budget_reason},
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
         try:
             planned = provider.plan_general_mutation(
                 GeneralMutationPlannerRequest(
