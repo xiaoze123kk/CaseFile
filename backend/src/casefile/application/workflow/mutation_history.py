@@ -13,6 +13,7 @@ from casefile.application.errors import ApplicationError
 from casefile.application.v1_editing import V1EditingService
 from casefile.data_postgres.models import AgentPatchOperation, CaseFileObject, DraftOperation
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
+from casefile.domain.verification_engine import VerificationEngine
 
 
 class AgentMutationHistoryMixin:
@@ -85,13 +86,6 @@ class AgentMutationHistoryMixin:
                     )
                 )
             }
-            mutation = self._mutation_set_from_patch_operations(  # type: ignore[attr-defined]
-                owned,
-                patch_set,
-                operations,
-                {operation.id for operation in operations},
-                registries,
-            )
             original_apply = self.session.scalar(
                 select(DraftOperation).where(
                     DraftOperation.draft_id == owned.draft.id,
@@ -103,6 +97,36 @@ class AgentMutationHistoryMixin:
                 original_apply.new_value_jsonb if original_apply is not None else None
             )
             original_payload = stored_payload if isinstance(stored_payload, dict) else {}
+            if patch_set.review_mode == "atomic":
+                target_document = original_payload.get("document")
+                if not isinstance(target_document, dict):
+                    raise RuntimeError("Atomic patch history has no after document")
+                mutation = self._mutation_from_document_history(  # type: ignore[attr-defined]
+                    current_document,
+                    target_document,
+                    mutation_set_id=f"agent_patch_redo_{patch_set.id}",
+                    draft_id=owned.draft.id,
+                    base_revision=owned.draft.revision,
+                )
+            else:
+                mutation = self._mutation_set_from_patch_operations(  # type: ignore[attr-defined]
+                    owned,
+                    patch_set,
+                    operations,
+                    {operation.id for operation in operations},
+                    registries,
+                )
+            accepted_debt_keys = tuple(
+                original_payload.get("accepted_debt_finding_keys", [])
+            )
+            if accepted_debt_keys and patch_set.review_mode == "atomic":
+                preview = VerificationEngine(profile="fast").simulate_mutation_set(
+                    current_document,
+                    mutation,
+                )
+                accepted_debt_keys = tuple(
+                    preview.authorization_required_finding_keys
+                )
             revision, group_no, simulation = V1EditingService(
                 self.session
             ).apply_mutation_set(
@@ -111,9 +135,7 @@ class AgentMutationHistoryMixin:
                 actor_user_id=actor_user_id,
                 draft_operation_type="logical_mutation_redo",
                 source_patch_set_id=patch_set.id,
-                accepted_debt_finding_keys=tuple(
-                    original_payload.get("accepted_debt_finding_keys", [])
-                ),
+                accepted_debt_finding_keys=accepted_debt_keys,
                 debt_acceptance_reason=original_payload.get("debt_acceptance_reason"),
             )
             now = datetime.now(UTC)

@@ -218,10 +218,21 @@ def normalize_routing_hint(raw: dict[str, Any] | None) -> dict[str, Any]:
     return {"entrypoint": entrypoint, "preset_id": None}
 
 
-def resolve_rule_route(request: CaseFileChatRequest) -> RuleRoute | None:
+def resolve_rule_route(
+    request: CaseFileChatRequest,
+    *,
+    allow_general_mutation_delete: bool = False,
+) -> RuleRoute | None:
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
     if any(marker in request.message.casefold() for marker in _DESTRUCTIVE_ACTION_MARKERS):
+        if allow_general_mutation_delete:
+            return RuleRoute(
+                route_source="rule_capability",
+                primary_intent="edit_request",
+                profile="edit_request.edit",
+                reason_code="rule_capability:general_mutation_delete",
+            )
         return RuleRoute(
             route_source="rule_safety",
             primary_intent="unsupported_action",
@@ -312,6 +323,16 @@ def task_understanding_for_rule(rule: RuleRoute) -> ChatTaskUnderstanding:
             }
         )
         risk_level = "medium"
+    elif rule.primary_intent == "edit_request":
+        capabilities.update(
+            {
+                "needs_casefile_retrieval": True,
+                "needs_relations": True,
+                "needs_validation_snapshot": True,
+                "needs_suggestion_generation": True,
+            }
+        )
+        risk_level = "high"
     return ChatTaskUnderstanding(
         primary_intent=rule.primary_intent,
         sub_intents=(rule.profile.removeprefix(f"{rule.primary_intent}."),),

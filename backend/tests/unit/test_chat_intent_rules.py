@@ -115,6 +115,21 @@ def test_destructive_free_text_uses_the_deterministic_scope_route() -> None:
     assert rule.reason_code == "rule_safety:destructive_action"
 
 
+def test_delete_routes_to_edit_only_when_general_mutation_capability_is_enabled() -> None:
+    request = make_chat_request(
+        message="请把这个对象删除。",
+        hint={"entrypoint": "free_text"},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_delete=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+    assert rule.profile == "edit_request.edit"
+    assert rule.reason_code == "rule_capability:general_mutation_delete"
+
+
 @pytest.mark.parametrize(
     "message",
     (

@@ -60,6 +60,14 @@ from casefile.agent_runtime.context import (
     thread_memory_state_from_jsonable,
     thread_memory_state_to_jsonable,
 )
+from casefile.agent_runtime.general_mutation import (
+    GENERAL_MUTATION_COMPONENT_ID,
+    GENERAL_MUTATION_PLAN_VERSION,
+    GENERAL_MUTATION_SCHEMA_ID,
+    CreateMutationCandidate,
+    DeleteMutationCandidate,
+    GeneralMutationPlannerRequest,
+)
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
     ChatTaskUnderstanding,
@@ -80,6 +88,11 @@ from casefile.agent_runtime.query_rewrite import (
     preservation_lint,
     route_specific_rewrite_strategy,
 )
+from casefile.application.agent_mutation import (
+    GeneralMutationBindingError,
+    bind_general_mutation_plan,
+    general_mutation_impact_hash,
+)
 from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
@@ -92,6 +105,7 @@ from casefile.data_postgres.models import (
     TaskEvent,
     TaskRun,
 )
+from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.support import (
     _json_hash,
     _merge_numeric_usage,
@@ -213,6 +227,7 @@ def _resolve_chat_route(
     budget: dict[str, Any] | None = None,
     provider: AgentProvider | None = None,
     previous: ReusedChatRouting | None = None,
+    allow_general_mutation_delete: bool = False,
 ) -> CaseFileChatRequest:
     """R2 cascade: rule → LLM intent → confidence gate → rewrite."""
 
@@ -225,7 +240,10 @@ def _resolve_chat_route(
             route=previous.route,
             rewrite=previous.rewrite,
         )
-    rule = resolve_rule_route(request)
+    rule = resolve_rule_route(
+        request,
+        allow_general_mutation_delete=allow_general_mutation_delete,
+    )
     if rule is not None:
         understanding = task_understanding_for_rule(rule)
         route = routing_policy(
@@ -492,6 +510,178 @@ class ChatTaskExecutorMixin:
                 evidence_id,
             ),
         )
+
+    def _execute_general_mutation(
+        self,
+        task: TaskRun,
+        request: CaseFileChatRequest,
+        provider: AgentProvider,
+        api_key: str,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        """Plan and prove an edit request without changing the Draft."""
+
+        mode = self.config.general_mutation_mode
+        intent = (
+            None
+            if request.task_understanding is None
+            else request.task_understanding.primary_intent
+        )
+        if mode == "off" or intent != "edit_request":
+            return None, {}
+        def emit(event_type: str, stage: str, payload: dict[str, Any]) -> None:
+            self._emit(task.id, event_type, stage, payload)
+        emit(
+            "agent.step.started",
+            "general_mutation",
+            {
+                "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                "component_version": GENERAL_MUTATION_PLAN_VERSION,
+                "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                "input_hash": task.input_hash,
+            },
+        )
+        try:
+            planned = provider.plan_general_mutation(
+                GeneralMutationPlannerRequest(
+                    task_run_id=task.id,
+                    model_id=task.model_id,
+                    api_key=api_key,
+                    casefile=request.casefile,
+                    message=request.message,
+                    input_hash=task.input_hash,
+                    editable_fields_by_collection=request.editable_fields_by_collection,
+                    emit=emit,
+                    network_retries=_network_retries(task),
+                )
+            )
+            bound = bind_general_mutation_plan(
+                planned.candidate,
+                request.casefile,
+                task_run_id=task.id,
+                draft_id=task.draft_id,
+                base_revision=task.input_draft_revision,
+            )
+            simulation = VerificationEngine(profile="fast").simulate_mutation_set(
+                request.casefile,
+                bound.mutation_set,
+            )
+            impact_hash = general_mutation_impact_hash(simulation)
+            artifact = planned.candidate.model_dump(mode="json")
+            emit(
+                "agent.step.completed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "output_hash": bound.plan_hash,
+                    "usage": planned.usage,
+                    "_artifact": artifact,
+                },
+            )
+            emit(
+                "general_mutation.planned",
+                "general_mutation",
+                {
+                    "mode": mode,
+                    "plan_hash": bound.plan_hash,
+                    "operation_count": len(bound.operations),
+                    "operation_types": [item.operation_type for item in bound.operations],
+                    "collections": [item.target_collection for item in bound.operations],
+                },
+            )
+            emit(
+                "general_mutation.simulated",
+                "general_mutation",
+                {
+                    "mode": mode,
+                    "can_apply": simulation.can_apply,
+                    "reason_code": simulation.reason_code,
+                    "candidate_hash": simulation.candidate_hash,
+                    "impact_hash": impact_hash,
+                    "contains_delete": bound.contains_delete,
+                },
+            )
+            if mode == "shadow":
+                return {
+                    "status": "shadow",
+                    "bound": bound,
+                    "simulation": simulation,
+                    "impact_hash": impact_hash,
+                }, planned.usage
+            if any(
+                isinstance(item, CreateMutationCandidate)
+                for item in planned.candidate.operations
+            ) and not self.config.general_mutation_create_enabled:
+                emit(
+                    "general_mutation.blocked",
+                    "general_mutation",
+                    {"reason_code": "general_mutation_create_not_enabled"},
+                )
+                return {"status": "blocked"}, planned.usage
+            if any(
+                isinstance(item, DeleteMutationCandidate)
+                for item in planned.candidate.operations
+            ) and not self.config.general_mutation_delete_enabled:
+                emit(
+                    "general_mutation.blocked",
+                    "general_mutation",
+                    {"reason_code": "general_mutation_delete_not_enabled"},
+                )
+                return {"status": "blocked"}, planned.usage
+            if not simulation.can_apply and simulation.reason_code != "repair_required":
+                emit(
+                    "general_mutation.blocked",
+                    "general_mutation",
+                    {"reason_code": simulation.reason_code or "simulation_blocked"},
+                )
+                return None, planned.usage
+            return {
+                "status": "ready",
+                "bound": bound,
+                "simulation": simulation,
+                "impact_hash": impact_hash,
+            }, planned.usage
+        except GeneralMutationBindingError as error:
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": error.reason_code,
+                    "failure_layer": "binder",
+                    "issues": [{"code": error.reason_code}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.bind_failed",
+                "general_mutation",
+                {"reason_code": error.reason_code},
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
+        except Exception as error:  # Planner failures never fail the Chat answer.
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": "general_mutation_planner_failed",
+                    "failure_layer": "planner_or_binder",
+                    "issues": [{"code": type(error).__name__}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.blocked",
+                "general_mutation",
+                {
+                    "reason_code": "general_mutation_planner_failed",
+                    "error_type": type(error).__name__,
+                },
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
 
     def _load_previous_chat_routing(self, task_run_id: int) -> ReusedChatRouting | None:
         """Reuse the latest route decision on retry; never classify twice."""
@@ -1081,6 +1271,7 @@ class ChatTaskExecutorMixin:
         route: RouteDecision | None = None,
         repair_envelope: dict[str, Any] | None = None,
         repair_usage: dict[str, Any] | None = None,
+        general_mutation_envelope: dict[str, Any] | None = None,
     ) -> None:
         suggestions: list[dict[str, Any]] = []
         for suggestion in result.candidate.suggestions:
@@ -1133,6 +1324,7 @@ class ChatTaskExecutorMixin:
                 route=route_payload,
                 tools=result.tools.as_dict(),
                 repair_envelope=repair_envelope,
+                general_mutation_envelope=general_mutation_envelope,
             )
 
 

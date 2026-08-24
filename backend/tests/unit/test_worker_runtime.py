@@ -5,7 +5,18 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from casefile.worker.runtime import WorkerConfig
 from casefile.worker.support import previous_attempt_failed_steps
+
+
+def test_general_mutation_mode_defaults_off_and_rejects_invalid_value() -> None:
+    assert WorkerConfig(worker_id="test").general_mutation_mode == "off"
+    try:
+        WorkerConfig(worker_id="test", general_mutation_mode="invalid")  # type: ignore[arg-type]
+    except ValueError as error:
+        assert "CASEFILE_CHAT_GENERAL_MUTATION_MODE" in str(error)
+    else:
+        raise AssertionError("invalid General Mutation mode was accepted")
 
 
 def test_previous_attempt_failed_steps_uses_only_last_generation_run() -> None:

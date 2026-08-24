@@ -51,8 +51,18 @@ from casefile.application.agent_collaboration import (
     pointer_top_field as _pointer_top_field,
 )
 from casefile.application.agent_collaboration import unique_strings as _unique_strings
+from casefile.application.agent_mutation import general_mutation_impact_hash
+from casefile.application.agent_patch_mutation import (
+    AgentPatchMutationMixin,
+    general_mutation_patch_operation,
+    general_mutation_repair_validation,
+    mutation_reason_summary,
+    patch_operation_count,
+    repair_provenance_by_target,
+)
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
 from casefile.application.closure_repair import (
+    ValidatedClosureRepair,
     prepare_chat_repair_suggestions,
     repair_completion_payload,
 )
@@ -87,10 +97,10 @@ from casefile.data_postgres.models import (
     AgentPatchSet,
     AgentThread,
     CaseFileObject,
+    DraftOperation,
     TaskAttempt,
     TaskEvent,
     TaskRun,
-    VerificationFinding,
     VerificationFindingPatchOperation,
 )
 from casefile.data_postgres.repositories import OwnedDraft, ProjectRepository
@@ -103,7 +113,7 @@ from casefile.domain.logical_mutation import (
 )
 
 
-class AgentWorkflowMixin:
+class AgentWorkflowMixin(AgentPatchMutationMixin):
     session: Session
     projects: ProjectRepository
     _new_task: Any
@@ -646,6 +656,7 @@ class AgentWorkflowMixin:
         route: dict[str, Any] | None = None,
         tools: dict[str, Any] | None = None,
         repair_envelope: dict[str, Any] | None = None,
+        general_mutation_envelope: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist one structured chat result; intended as the Worker completion hook."""
 
@@ -696,7 +707,6 @@ class AgentWorkflowMixin:
             if not isinstance(frozen_casefile, dict):
                 raise RuntimeError("CaseFile chat TaskRun has no frozen CaseFile")
 
-            # Denied routes discard extra suggestions without failing the answer.
             suppressed_count = 0
             suggestion_policy = None if route is None else route_suggestion_policy(route)
             if route is not None and not route_allows_suggestions(route):
@@ -887,6 +897,10 @@ class AgentWorkflowMixin:
                     issue_ids=tuple(missing_issues),
                 )
 
+            # General Mutation is the sole PatchSet source in suggest mode.
+            if general_mutation_envelope is not None:
+                suggestions = []
+
             focused_target_ids = _focused_patch_target_ids(task.input_jsonb.get("focus"))
             if focused_target_ids is not None:
                 off_focus_targets = sorted(
@@ -907,13 +921,67 @@ class AgentWorkflowMixin:
             if resolved_view is not None and resolved_view not in SUPPORTED_CHAT_VIEWS:
                 raise RuntimeError(f"Chat result suggests an unsupported view: {resolved_view}")
             primary_suggestion_count = len(suggestions)
-            suggestions, repair_validation = prepare_chat_repair_suggestions(
-                frozen_casefile, task, suggestions, repair_envelope
-            )
+            repair_validation: ValidatedClosureRepair | None
+            if general_mutation_envelope is None:
+                suggestions, repair_validation = prepare_chat_repair_suggestions(
+                    frozen_casefile, task, suggestions, repair_envelope
+                )
+            else:
+                repair_validation, primary_suggestion_count = general_mutation_repair_validation(
+                    frozen_casefile,
+                    general_mutation_envelope,
+                    repair_envelope,
+                    original_intent=str(task.input_jsonb.get("message", "")),
+                )
             stale = owned.draft.revision != task.input_draft_revision
             patch_set: AgentPatchSet | None = None
             patch_operations: list[AgentPatchOperation] = []
-            if suggestions:
+            if (
+                general_mutation_envelope is not None
+                and general_mutation_envelope.get("status") == "ready"
+            ):
+                bound = general_mutation_envelope["bound"]
+                simulation = general_mutation_envelope["simulation"]
+                reasons = [item.reason for item in bound.operations]
+                patch_set = AgentPatchSet(
+                    project_id=task.project_id,
+                    casefile_id=task.casefile_id,
+                    draft_id=task.draft_id,
+                    thread_id=thread.id,
+                    source_message_id=output_message.id,
+                    task_run_id=task.id,
+                    base_draft_revision=task.input_draft_revision,
+                    closure_policy_version=bound.mutation_set.closure_policy_version,
+                    mutation_mode="normal",
+                    plan_version=bound.plan_version,
+                    capability_policy_version=bound.capability_policy_version,
+                    binder_version=bound.binder_version,
+                    review_mode="atomic",
+                    plan_hash=bound.plan_hash,
+                    impact_hash=general_mutation_envelope["impact_hash"],
+                    contains_delete=bound.contains_delete,
+                    baseline_hash=simulation.baseline_hash,
+                    candidate_hash=simulation.candidate_hash,
+                    reason_summary=mutation_reason_summary(reasons),
+                    status="stale" if stale else "pending",
+                )
+                self.session.add(patch_set)
+                self.session.flush()
+                companion_by_target = repair_provenance_by_target(repair_validation)
+                for ordinal, item in enumerate(bound.operations, start=1):
+                    registry = registries.get(item.target_object_key)
+                    companion = companion_by_target.get((item.target_object_key, item.field_path))
+                    patch_operation = general_mutation_patch_operation(
+                        task=task,
+                        patch_set=patch_set,
+                        item=item,
+                        registry=registry,
+                        ordinal=ordinal,
+                        companion=companion,
+                    )
+                    self.session.add(patch_operation)
+                    patch_operations.append(patch_operation)
+            elif suggestions:
                 reasons = [
                     str(item.get("reason", "")).strip()
                     for item in suggestions
@@ -1072,7 +1140,7 @@ class AgentWorkflowMixin:
                 "closure_repair": repair_completion_payload(
                     repair_validation,
                     primary_suggestion_count,
-                    len(suggestions),
+                    patch_operation_count(general_mutation_envelope, suggestions),
                     repair_envelope,
                 ),
             }
@@ -1088,7 +1156,8 @@ class AgentWorkflowMixin:
                         finding_refs_by_operation_id={
                             operation.id: (
                                 str(suggestions[index].get("finding_ref"))
-                                if suggestions[index].get("finding_ref") is not None
+                                if index < len(suggestions)
+                                and suggestions[index].get("finding_ref") is not None
                                 else None
                             )
                             for index, operation in enumerate(patch_operations)
@@ -1164,6 +1233,7 @@ class AgentWorkflowMixin:
         expected_draft_id: int,
         expected_revision: int,
         operation_ids: list[int] | None,
+        confirmed_impact_hash: str | None = None,
         target_finding_ids: list[int] | None = None,
         accepted_debt_finding_keys: list[str] | None = None,
         debt_acceptance_reason: str | None = None,
@@ -1206,6 +1276,7 @@ class AgentWorkflowMixin:
                 else set(operation_ids)
             )
             known = {operation.id for operation in operations}
+            self._validate_patch_selection(patch_set, operation_ids)
             if not selected.issubset(known):
                 raise ApplicationError(
                     "agent_patch_selection_invalid",
@@ -1272,14 +1343,51 @@ class AgentWorkflowMixin:
                 owned.draft.id,
                 target_finding_ids,
             )
-            simulation = self._simulate_patch_batch(
+            impact_simulation = self._simulate_patch_batch(
                 current_document,
                 operations,
                 selected,
                 registries,
                 target_finding_keys=target_finding_keys,
-                accepted_debt_finding_keys=accepted_debt_finding_keys or [],
-                debt_acceptance_reason=debt_acceptance_reason,
+            )
+            if patch_set.review_mode == "atomic":
+                current_impact_hash = general_mutation_impact_hash(impact_simulation)
+                if (
+                    patch_set.impact_hash is None
+                    or current_impact_hash != patch_set.impact_hash
+                    or (
+                        confirmed_impact_hash is not None
+                        and confirmed_impact_hash != patch_set.impact_hash
+                    )
+                ):
+                    raise ApplicationError(
+                        "agent_patch_impact_hash_mismatch",
+                        "影响范围已变化，请重新审阅整组修改。",
+                        status_code=409,
+                        details={
+                            "current_impact_hash": current_impact_hash,
+                            "patch_impact_hash": patch_set.impact_hash,
+                        },
+                    )
+                if patch_set.contains_delete and confirmed_impact_hash is None:
+                    raise ApplicationError(
+                        "agent_patch_delete_impact_confirmation_required",
+                        "删除操作需要确认当前影响范围。",
+                        status_code=422,
+                        details={"impact_hash": patch_set.impact_hash},
+                    )
+            simulation = (
+                self._simulate_patch_batch(
+                    current_document,
+                    operations,
+                    selected,
+                    registries,
+                    target_finding_keys=target_finding_keys,
+                    accepted_debt_finding_keys=accepted_debt_finding_keys or [],
+                    debt_acceptance_reason=debt_acceptance_reason,
+                )
+                if accepted_debt_finding_keys
+                else impact_simulation
             )
             if not simulation.can_apply:
                 if simulation.reason_code == "post_document_invalid":
@@ -1423,6 +1531,7 @@ class AgentWorkflowMixin:
                 else set(operation_ids)
             )
             known = {operation.id for operation in operations}
+            self._validate_patch_selection(patch_set, operation_ids)
             if not selected.issubset(known):
                 raise ApplicationError(
                     "agent_patch_selection_invalid",
@@ -1465,6 +1574,11 @@ class AgentWorkflowMixin:
                 "base_revision": base_revision,
                 "simulation": simulation.as_dict(),
                 "can_apply": simulation.can_apply,
+                "impact_hash": (
+                    general_mutation_impact_hash(simulation)
+                    if patch_set.review_mode == "atomic"
+                    else None
+                ),
             }
 
     def undo_agent_patch_set(
@@ -1533,18 +1647,42 @@ class AgentWorkflowMixin:
                     )
                 )
             }
-            inverse_mutation = MutationSet(
-                mutation_set_id=f"agent_patch_undo_{patch_set.id}_{owned.draft.revision}",
-                base_draft_id=owned.draft.id,
-                base_revision=owned.draft.revision,
-                operations=tuple(
-                    self._inverse_logical_operations_from_patch(
-                        operations, registries, current_document
+            if patch_set.review_mode == "atomic":
+                original_apply = self.session.scalar(
+                    select(DraftOperation).where(
+                        DraftOperation.draft_id == owned.draft.id,
+                        DraftOperation.operation_group_no == patch_set.applied_operation_group_no,
                     )
-                ),
-                actor="author",
-                closure_policy_version=CLOSURE_POLICY_VERSION,
-            )
+                )
+                before_payload = (
+                    original_apply.old_value_jsonb
+                    if original_apply is not None
+                    and isinstance(original_apply.old_value_jsonb, dict)
+                    else {}
+                )
+                target_document = before_payload.get("document")
+                if not isinstance(target_document, dict):
+                    raise RuntimeError("Atomic patch history has no before document")
+                inverse_mutation = self._mutation_from_document_history(
+                    current_document,
+                    target_document,
+                    mutation_set_id=f"agent_patch_undo_{patch_set.id}",
+                    draft_id=owned.draft.id,
+                    base_revision=owned.draft.revision,
+                )
+            else:
+                inverse_mutation = MutationSet(
+                    mutation_set_id=f"agent_patch_undo_{patch_set.id}_{owned.draft.revision}",
+                    base_draft_id=owned.draft.id,
+                    base_revision=owned.draft.revision,
+                    operations=tuple(
+                        self._inverse_logical_operations_from_patch(
+                            operations, registries, current_document
+                        )
+                    ),
+                    actor="author",
+                    closure_policy_version=CLOSURE_POLICY_VERSION,
+                )
             simulation = VerificationEngine(
                 profile="fast",
                 closure_policy_version=CLOSURE_POLICY_VERSION,
@@ -1692,154 +1830,6 @@ class AgentWorkflowMixin:
             allow_author_debt_acceptance=True,
         )
 
-    @staticmethod
-    def _logical_operations_from_patch(
-        operations: list[AgentPatchOperation],
-        selected: set[int],
-        registries: dict[int, CaseFileObject],
-    ) -> list[CreateObject | UpdateField | DeleteObject]:
-        result: list[CreateObject | UpdateField | DeleteObject] = []
-        for operation in operations:
-            if operation.id not in selected:
-                continue
-            registry = (
-                None
-                if operation.target_object_id is None
-                else registries.get(operation.target_object_id)
-            )
-            if operation.operation_type == "create_object":
-                if not isinstance(operation.new_value_jsonb, dict):
-                    raise RuntimeError("Create operation requires a complete object")
-                result.append(
-                    CreateObject(
-                        operation.operation_id,
-                        operation.target_collection,
-                        operation.new_value_jsonb,
-                    )
-                )
-            elif operation.operation_type == "delete_object":
-                result.append(
-                    DeleteObject(
-                        operation.operation_id,
-                        operation.target_object_key,
-                        operation.old_value_jsonb,
-                    )
-                )
-            else:
-                if registry is None:
-                    raise RuntimeError("Agent patch target object disappeared")
-                result.append(
-                    UpdateField(
-                        operation.operation_id,
-                        operation.target_object_key,
-                        operation.field_path,
-                        operation.new_value_jsonb,
-                        operation.old_value_jsonb,
-                        registry.revision,
-                    )
-                )
-        return result
-
-    @staticmethod
-    def _inverse_logical_operations_from_patch(
-        operations: list[AgentPatchOperation],
-        registries: dict[int, CaseFileObject],
-        document: dict[str, Any],
-    ) -> list[CreateObject | UpdateField | DeleteObject]:
-        current_objects = {
-            str(item["id"]): item
-            for collection in COLLECTIONS.values()
-            for item in document[collection]
-        }
-        result: list[CreateObject | UpdateField | DeleteObject] = []
-        for operation in operations:
-            registry = (
-                None
-                if operation.target_object_id is None
-                else registries.get(operation.target_object_id)
-            )
-            if operation.operation_type == "create_object":
-                current = current_objects.get(operation.target_object_key)
-                if current is None:
-                    raise RuntimeError("Created patch object disappeared")
-                result.append(
-                    DeleteObject(
-                        f"undo_{operation.operation_id}",
-                        operation.target_object_key,
-                        current,
-                    )
-                )
-            elif operation.operation_type == "delete_object":
-                if not isinstance(operation.old_value_jsonb, dict):
-                    raise RuntimeError("Delete operation requires the complete old object")
-                result.append(
-                    CreateObject(
-                        f"undo_{operation.operation_id}",
-                        operation.target_collection,
-                        operation.old_value_jsonb,
-                    )
-                )
-            else:
-                if registry is None:
-                    raise RuntimeError("Agent patch target object disappeared")
-                result.append(
-                    UpdateField(
-                        f"undo_{operation.operation_id}",
-                        operation.target_object_key,
-                        operation.field_path,
-                        operation.old_value_jsonb,
-                        operation.new_value_jsonb,
-                        registry.revision,
-                    )
-                )
-        return result
-
-    def _mutation_set_from_patch_operations(
-        self,
-        owned: OwnedDraft,
-        patch_set: AgentPatchSet,
-        operations: list[AgentPatchOperation],
-        selected: set[int],
-        registries: dict[int, CaseFileObject],
-    ) -> MutationSet:
-        return MutationSet(
-            mutation_set_id=f"agent_patch_{patch_set.id}_{owned.draft.revision}",
-            base_draft_id=owned.draft.id,
-            base_revision=owned.draft.revision,
-            operations=tuple(self._logical_operations_from_patch(operations, selected, registries)),
-            actor="agent",
-            mode=patch_set.mutation_mode,  # type: ignore[arg-type]
-            closure_policy_version=patch_set.closure_policy_version,
-        )
-
-    def _target_finding_keys(
-        self,
-        project_id: int,
-        draft_id: int,
-        finding_ids: list[int] | None,
-    ) -> list[str]:
-        if not finding_ids:
-            return []
-        rows = list(
-            self.session.scalars(
-                select(VerificationFinding).where(
-                    VerificationFinding.project_id == project_id,
-                    VerificationFinding.draft_id == draft_id,
-                    VerificationFinding.id.in_(finding_ids),
-                )
-            )
-        )
-        found = {row.id for row in rows}
-        unknown = sorted(set(finding_ids) - found)
-        if unknown:
-            raise ApplicationError(
-                "verification_finding_not_found",
-                "目标验证问题不属于当前工作稿。",
-                status_code=422,
-                details={"finding_ids": unknown},
-            )
-        return [row.finding_key for row in rows]
-
     def _agent_thread(
         self,
         owned: OwnedDraft,
@@ -1945,6 +1935,13 @@ class AgentWorkflowMixin:
             "base_draft_revision": patch_set.base_draft_revision,
             "closure_policy_version": patch_set.closure_policy_version,
             "mutation_mode": patch_set.mutation_mode,
+            "review_mode": patch_set.review_mode,
+            "plan_version": patch_set.plan_version,
+            "capability_policy_version": patch_set.capability_policy_version,
+            "binder_version": patch_set.binder_version,
+            "plan_hash": patch_set.plan_hash,
+            "impact_hash": patch_set.impact_hash,
+            "contains_delete": patch_set.contains_delete,
             "baseline_hash": patch_set.baseline_hash,
             "candidate_hash": patch_set.candidate_hash,
             "reason_summary": patch_set.reason_summary,
@@ -1978,6 +1975,7 @@ class AgentWorkflowMixin:
                     ),
                     "object_type": (None if registry is None else registry.object_type),
                     "target_collection": operation.target_collection,
+                    "target_object_key": operation.target_object_key,
                     "operation_type": operation.operation_type,
                     "field_path": operation.field_path,
                     "expected_object_revision": operation.expected_object_revision,
