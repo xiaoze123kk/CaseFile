@@ -1,0 +1,42 @@
+{
+  "task_id": "claim_dependency_incompatible__repair_required__dense",
+  "policy_key": [
+    "claim_dependency_incompatible",
+    "repair_required"
+  ],
+  "automation": "agent",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "dependency",
+    "variant": "dense",
+    "original_intent": "保持原始修改，并在授权范围内恢复闭包。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "claim_dependency_incompatible",
+        "repair_required"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "eligible",
+    "expected_trigger": [
+      "claim_dependency_incompatible"
+    ],
+    "acceptable_outcomes": [
+      "repaired"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "claim_dependency_incompatible_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/claim_dependency_incompatible__repair_required__dense.json",
+  "tags": [
+    "agent",
+    "repair_required",
+    "dense"
+  ]
+}

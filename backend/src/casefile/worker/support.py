@@ -89,7 +89,7 @@ def _persist_agent_execution_event(
                 input_hash=str(payload.get("input_hash") or task.input_hash),
                 upstream_hashes_jsonb=dict(payload.get("upstream_hashes") or {}),
                 ir_schema_id=str(payload.get("schema_id") or "unknown"),
-                component_version=task.prompt_version,
+                component_version=str(payload.get("component_version") or task.prompt_version),
             )
         )
         session.flush()
@@ -127,7 +127,7 @@ def _persist_agent_execution_event(
             input_hash=str(payload.get("input_hash") or task.input_hash),
             upstream_hashes_jsonb=dict(payload.get("upstream_hashes") or {}),
             ir_schema_id=str(payload.get("schema_id") or "unknown"),
-            component_version=task.prompt_version,
+            component_version=str(payload.get("component_version") or task.prompt_version),
         )
         session.add(step)
         session.flush()
@@ -169,7 +169,7 @@ def _persist_agent_execution_event(
                 provider=task.provider,
                 model_id=task.model_id,
                 output_protocol=str(payload.get("protocol") or "unknown"),
-                prompt_version=task.prompt_version,
+                prompt_version=step.component_version,
                 prompt_component_id=component_id,
                 prompt_sha256=_optional_hash(payload.get("prompt_sha256")),
                 target_schema_id=str(payload.get("schema_id") or step.ir_schema_id),

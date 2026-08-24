@@ -1,0 +1,27 @@
+{
+  "schema_version": "casefile-closure-repair-holdout-descriptor-v1",
+  "suite_id": "closure-repair-capability-holdout-v1",
+  "suite_role": "holdout",
+  "gate_policy_version": "closure-repair-backend-shadow-gate-v1",
+  "private_package_fingerprint": "b4127d1a21f0c041a9d396f22090ca48cc64176547e1d8d6256196d0ce730cb3",
+  "oracle_fingerprint": "5bf50aec88abc6c384be755e90b66fb147509fa49568f68cb19ea6a18eb34fdd",
+  "review_fingerprint": "25ff6146d611d638d3e6110bd47025d3a9b27ac4473c1061963c064fd8a29287",
+  "task_count": 42,
+  "agent_task_count": 24,
+  "manual_task_count": 9,
+  "ineligible_task_count": 9,
+  "family_distribution": {
+    "claim_dependency_incompatible": 8,
+    "claim_refuted_without_refutation": 8,
+    "claim_supported_without_support": 8
+  },
+  "difficulty_distribution": {
+    "alternative": 6,
+    "basic": 6,
+    "decoy": 6,
+    "dense": 6
+  },
+  "staged_agent_task_count": 6,
+  "release_cohort_task_count": 18,
+  "release_cohort_fingerprint": "f4fa8b5d72d566293cb7f225493b521c9df17804236f20764120fb975e1c863f"
+}

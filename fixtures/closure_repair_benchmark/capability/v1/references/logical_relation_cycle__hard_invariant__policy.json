@@ -1,0 +1,5 @@
+{
+  "task_id": "logical_relation_cycle__hard_invariant__policy",
+  "type": "abstention",
+  "expected_status": "blocked"
+}

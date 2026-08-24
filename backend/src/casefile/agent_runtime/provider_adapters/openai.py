@@ -21,6 +21,17 @@ from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
     ChatToolLedger,
 )
+from casefile.agent_runtime.closure_repair import (
+    ClosureRepairOutputV1,
+    ClosureRepairOutputV2,
+    ClosureRepairOutputV3,
+    ClosureRepairProviderResult,
+    ClosureRepairRequest,
+)
+from casefile.agent_runtime.closure_repair_prompt import (
+    closure_repair_output_type,
+    render_closure_repair_prompt,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -102,6 +113,34 @@ from casefile.agent_runtime.structured_output import (
 
 class OpenAIAgentsProvider:
     """OpenAI Responses implementation with structured outputs."""
+
+    def repair_closure(
+        self,
+        request: ClosureRepairRequest,
+    ) -> ClosureRepairProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        rendered = render_closure_repair_prompt(request)
+        output_type = closure_repair_output_type(rendered)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=rendered.instructions,
+                input_text=rendered.input_text,
+                output_type=output_type,
+                stage="closure_repair",
+                component_id=request.component_id,
+                schema_id=rendered.output_schema_id,
+                strict_validation=True,
+            )
+        )
+        return ClosureRepairProviderResult(
+            candidate=cast(
+                ClosureRepairOutputV1 | ClosureRepairOutputV2 | ClosureRepairOutputV3,
+                output_type.model_validate(candidate),
+            ),
+            usage=usage,
+        )
 
     def polish(self, request: BriefPolishRequest) -> BriefPolishResult:
         if not request.api_key:
@@ -572,6 +611,7 @@ class OpenAIAgentsProvider:
             | ReverseParseRequest
             | IdeaGenerationRequest
             | ThreadCompactionRequest
+            | ClosureRepairRequest
         ),
         *,
         instructions: str,
@@ -584,6 +624,7 @@ class OpenAIAgentsProvider:
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
         temperature: float | None = None,
+        strict_validation: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -612,6 +653,7 @@ class OpenAIAgentsProvider:
                 tools=tools,
                 context=context,
                 max_turns=max_turns,
+                strict_validation=strict_validation,
             )
         finally:
             await client.close()

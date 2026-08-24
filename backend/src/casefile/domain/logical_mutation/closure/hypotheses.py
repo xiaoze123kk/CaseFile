@@ -45,6 +45,7 @@ def evaluate_hypothesis_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "假设声明为 supported/accepted，但矩阵只有实质反证而没有实质支持。",
                     (hypothesis_id,),
                     ("review_assessments", "change_hypothesis_status"),
+                    object_roles=("subject",),
                 )
             )
 
@@ -65,6 +66,10 @@ def evaluate_hypothesis_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "竞争假设集合尚未闭合",
                     "该核心问题下的竞争假设引用尚未覆盖完整同组集合。",
                     (hypothesis_id, *tuple(sorted(expected_competitors ^ declared))),
+                    object_roles=(
+                        "subject",
+                        *("related",) * len(expected_competitors ^ declared),
+                    ),
                 )
             )
 
@@ -85,6 +90,7 @@ def evaluate_hypothesis_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "竞争矩阵存在未评估信息",
                     "该假设尚未评估同一核心问题推理路径使用的全部信息。",
                     (hypothesis_id, *missing),
+                    object_roles=("subject", *("evidence",) * len(missing)),
                 )
             )
         if unscoped:
@@ -96,6 +102,7 @@ def evaluate_hypothesis_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "证据评估不在当前矩阵范围",
                     "该评估引用的信息没有进入同组假设的推理路径范围。",
                     (hypothesis_id, *unscoped),
+                    object_roles=("subject", *("evidence",) * len(unscoped)),
                 )
             )
     return result

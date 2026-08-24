@@ -1,0 +1,42 @@
+{
+  "task_id": "unscoped_evidence_assessment__warning__policy",
+  "policy_key": [
+    "unscoped_evidence_assessment",
+    "warning"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "unscoped_evidence_assessment",
+        "warning"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "unscoped_evidence_assessment"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "unscoped_evidence_assessment_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/unscoped_evidence_assessment__warning__policy.json",
+  "tags": [
+    "ineligible",
+    "warning",
+    "policy"
+  ]
+}

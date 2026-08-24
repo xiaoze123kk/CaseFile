@@ -20,6 +20,17 @@ from casefile.agent_runtime.chat_tools import (
     ChatToolContext,
     ChatToolLedger,
 )
+from casefile.agent_runtime.closure_repair import (
+    ClosureRepairOutputV1,
+    ClosureRepairOutputV2,
+    ClosureRepairOutputV3,
+    ClosureRepairProviderResult,
+    ClosureRepairRequest,
+)
+from casefile.agent_runtime.closure_repair_prompt import (
+    closure_repair_output_type,
+    render_closure_repair_prompt,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -106,6 +117,35 @@ class DeepSeekAgentsProvider:
     """DeepSeek OpenAI-compatible Chat Completions implementation."""
 
     base_url = "https://api.deepseek.com"
+
+    def repair_closure(
+        self,
+        request: ClosureRepairRequest,
+    ) -> ClosureRepairProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        rendered = render_closure_repair_prompt(request)
+        output_type = closure_repair_output_type(rendered)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=rendered.instructions,
+                input_text=rendered.input_text,
+                output_type=output_type,
+                stage="closure_repair",
+                component_id=request.component_id,
+                schema_id=rendered.output_schema_id,
+                deepseek_output_protocol="strict_tool",
+                strict_validation=True,
+            )
+        )
+        return ClosureRepairProviderResult(
+            candidate=cast(
+                ClosureRepairOutputV1 | ClosureRepairOutputV2 | ClosureRepairOutputV3,
+                output_type.model_validate(candidate),
+            ),
+            usage=usage,
+        )
 
     def polish(self, request: BriefPolishRequest) -> BriefPolishResult:
         if not request.api_key:
@@ -558,6 +598,7 @@ class DeepSeekAgentsProvider:
             | ReverseParseRequest
             | IdeaGenerationRequest
             | ThreadCompactionRequest
+            | ClosureRepairRequest
         ),
         *,
         instructions: str,
@@ -571,6 +612,7 @@ class DeepSeekAgentsProvider:
         max_turns: int | None = None,
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
         temperature: float | None = None,
+        strict_validation: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
         client = _model_client(model)
@@ -590,6 +632,7 @@ class DeepSeekAgentsProvider:
                 deepseek_output_protocol=(
                     deepseek_output_protocol or _deepseek_v8_output_protocol(request.model_id)
                 ),
+                strict_validation=strict_validation,
                 tools=tools,
                 context=context,
                 max_turns=max_turns,
@@ -612,6 +655,7 @@ class DeepSeekAgentsProvider:
             | ReverseParseRequest
             | IdeaGenerationRequest
             | ThreadCompactionRequest
+            | ClosureRepairRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(

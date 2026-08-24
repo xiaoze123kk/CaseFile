@@ -27,6 +27,7 @@ def evaluate_claim_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "标记为 supported 的 Claim 至少需要一项支撑信息。",
                     (claim_id,),
                     ("attach_support", "downgrade_claim_status"),
+                    object_roles=("subject",),
                 )
             )
         if status == "refuted" and not refuters:
@@ -39,6 +40,7 @@ def evaluate_claim_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "标记为 refuted 的 Claim 至少需要一项反驳信息。",
                     (claim_id,),
                     ("attach_refutation", "change_claim_status"),
+                    object_roles=("subject",),
                 )
             )
         if status == "disputed" and (not supporters or not refuters):
@@ -50,6 +52,7 @@ def evaluate_claim_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "争议 Claim 的双侧证据不完整",
                     "标记为 disputed 的 Claim 尚未同时声明支撑和反驳信息。",
                     (claim_id,),
+                    object_roles=("subject",),
                 )
             )
         overlap = tuple(sorted(supporters & refuters))
@@ -62,6 +65,7 @@ def evaluate_claim_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "同一信息同时支撑并反驳 Claim",
                     "请确认该双向作用是创作意图，而不是引用录入错误。",
                     (claim_id, *overlap),
+                    object_roles=("subject", *("evidence",) * len(overlap)),
                 )
             )
         incompatible = tuple(
@@ -82,6 +86,10 @@ def evaluate_claim_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "已成立的 Claim 不能依赖当前未成立的必要 Claim。",
                     (claim_id, *incompatible),
                     ("repair_dependency_claim", "change_claim_status"),
+                    object_roles=(
+                        "subject",
+                        *("prerequisite",) * len(incompatible),
+                    ),
                 )
             )
     return result

@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "agent_id": "closure_repair",
+  "version": "closure-repair-v3",
+  "previous_version": "closure-repair-v2",
+  "change_summary": "将模型动作收敛为服务端预证明语义候选的单选协议。",
+  "runtime": {
+    "agent_version": "closure-repair-agent-v3",
+    "toolset_version": "closure-repair-tools-v1"
+  },
+  "fragments": {
+    "repair": {
+      "file": "fragments/repair.md",
+      "sha256": "dcd08b04e2e5ec68034d7dcfef243dcf38e84a9c66da19ec8dd7f5add66c6b2f"
+    }
+  },
+  "components": {
+    "repair": {
+      "instruction_fragments": [
+        "repair"
+      ],
+      "input_contract_id": "closure-repair-input-v3",
+      "output_schema_id": "closure-repair-output-v3",
+      "tool_policy_id": "closure-repair-no-tools-v1"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": 2,
+  "agent_id": "closure_repair",
+  "version": "closure-repair-v1",
+  "previous_version": null,
+  "change_summary": "建立闭包修复 Agent 的冻结上下文、严格输出与无工具边界。",
+  "runtime": {
+    "agent_version": "closure-repair-agent-v1",
+    "toolset_version": "closure-repair-tools-v1"
+  },
+  "fragments": {
+    "repair": {
+      "file": "fragments/repair.md",
+      "sha256": "e27f2e5f4d105d9718816c5c38abbb6405b1f9475e6a0f22f09a69189d58b47d"
+    }
+  },
+  "components": {
+    "repair": {
+      "instruction_fragments": [
+        "repair"
+      ],
+      "input_contract_id": "closure-repair-input-v1",
+      "output_schema_id": "closure-repair-output-v1",
+      "tool_policy_id": "closure-repair-no-tools-v1"
+    }
+  }
+}

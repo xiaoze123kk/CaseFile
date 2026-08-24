@@ -52,6 +52,10 @@ from casefile.application.agent_collaboration import (
 )
 from casefile.application.agent_collaboration import unique_strings as _unique_strings
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
+from casefile.application.closure_repair import (
+    prepare_chat_repair_suggestions,
+    repair_completion_payload,
+)
 from casefile.application.errors import ApplicationError, not_found
 from casefile.application.v1_editing import COLLECTIONS, EDITABLE_FIELDS, V1EditingService
 from casefile.application.verification_engine import (
@@ -641,6 +645,7 @@ class AgentWorkflowMixin:
         usage: dict[str, Any],
         route: dict[str, Any] | None = None,
         tools: dict[str, Any] | None = None,
+        repair_envelope: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Persist one structured chat result; intended as the Worker completion hook."""
 
@@ -691,8 +696,7 @@ class AgentWorkflowMixin:
             if not isinstance(frozen_casefile, dict):
                 raise RuntimeError("CaseFile chat TaskRun has no frozen CaseFile")
 
-            # Route permission enforcement runs before reference/whitelist checks:
-            # a denied route must not let a model's extra suggestions fail the task.
+            # Denied routes discard extra suggestions without failing the answer.
             suppressed_count = 0
             suggestion_policy = None if route is None else route_suggestion_policy(route)
             if route is not None and not route_allows_suggestions(route):
@@ -725,9 +729,8 @@ class AgentWorkflowMixin:
                             suppression_event.payload_jsonb.get("suppressed_count", 0)
                         )
 
-            # Structured logic-audit findings belong to the audit executor only:
-            # other routes (question, gate, issue, ...) drop the optional slot
-            # without failing the otherwise valid answer.
+            # Only the audit executor owns structured logic-audit findings;
+            # other routes drop the optional slot without failing the answer.
             audit_findings = list(audit_findings or [])
             suppressed_findings_count = 0
             if audit_findings_suppressed_for(route):
@@ -900,11 +903,13 @@ class AgentWorkflowMixin:
                         "Chat suggestions must target objects bound to the "
                         f"focused validation issue: {off_focus_targets}"
                     )
-
             resolved_view = None if suggested_view is None else str(suggested_view).strip() or None
             if resolved_view is not None and resolved_view not in SUPPORTED_CHAT_VIEWS:
                 raise RuntimeError(f"Chat result suggests an unsupported view: {resolved_view}")
-
+            primary_suggestion_count = len(suggestions)
+            suggestions, repair_validation = prepare_chat_repair_suggestions(
+                frozen_casefile, task, suggestions, repair_envelope
+            )
             stale = owned.draft.revision != task.input_draft_revision
             patch_set: AgentPatchSet | None = None
             patch_operations: list[AgentPatchOperation] = []
@@ -974,6 +979,9 @@ class AgentWorkflowMixin:
                         old_value_jsonb=old_value,
                         new_value_jsonb=deepcopy(suggestion.get("value")),
                         reason=reason,
+                        origin=str(suggestion.get("origin", "primary")),
+                        repair_round=suggestion.get("repair_round"),
+                        repair_obligation_keys=list(suggestion.get("repair_obligation_keys", [])),
                         decision="pending",
                         reviewed_at=None,
                     )
@@ -1061,6 +1069,12 @@ class AgentWorkflowMixin:
                 "stale": stale,
                 "audit_findings": audit_findings,
                 "tool_metrics": tool_metrics,
+                "closure_repair": repair_completion_payload(
+                    repair_validation,
+                    primary_suggestion_count,
+                    len(suggestions),
+                    repair_envelope,
+                ),
             }
             if verification_observation is not None:
                 verification_run, _ = verification_observation
@@ -1561,9 +1575,7 @@ class AgentWorkflowMixin:
                 if VerificationService.enabled_for_persistence()
                 else None
             )
-            revision, group_no, simulation = V1EditingService(
-                self.session
-            ).apply_mutation_set(
+            revision, group_no, simulation = V1EditingService(self.session).apply_mutation_set(
                 owned,
                 mutation_set=inverse_mutation,
                 actor_user_id=actor_user_id,
@@ -1658,9 +1670,7 @@ class AgentWorkflowMixin:
             if patch_set is None:
                 raise RuntimeError("Agent patch set disappeared")
             owned_stub_revision = patch_set.base_draft_revision
-            logical = self._logical_operations_from_patch(
-                operations, selected, registries
-            )
+            logical = self._logical_operations_from_patch(operations, selected, registries)
             mutation = MutationSet(
                 mutation_set_id=f"agent_patch_{patch_set.id}_{owned_stub_revision}",
                 base_draft_id=patch_set.draft_id,
@@ -1796,9 +1806,7 @@ class AgentWorkflowMixin:
             mutation_set_id=f"agent_patch_{patch_set.id}_{owned.draft.revision}",
             base_draft_id=owned.draft.id,
             base_revision=owned.draft.revision,
-            operations=tuple(
-                self._logical_operations_from_patch(operations, selected, registries)
-            ),
+            operations=tuple(self._logical_operations_from_patch(operations, selected, registries)),
             actor="agent",
             mode=patch_set.mutation_mode,  # type: ignore[arg-type]
             closure_policy_version=patch_set.closure_policy_version,

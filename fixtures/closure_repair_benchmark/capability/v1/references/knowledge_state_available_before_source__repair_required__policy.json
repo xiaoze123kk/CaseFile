@@ -1,0 +1,5 @@
+{
+  "task_id": "knowledge_state_available_before_source__repair_required__policy",
+  "type": "abstention",
+  "expected_status": "manual_required"
+}

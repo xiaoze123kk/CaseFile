@@ -1,0 +1,42 @@
+{
+  "task_id": "claim_support_refute_overlap__warning__policy",
+  "policy_key": [
+    "claim_support_refute_overlap",
+    "warning"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "claim_support_refute_overlap",
+        "warning"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "claim_support_refute_overlap"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "claim_support_refute_overlap_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/claim_support_refute_overlap__warning__policy.json",
+  "tags": [
+    "ineligible",
+    "warning",
+    "policy"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "task_id": "claim_refuted_without_refutation__repair_required__dense",
+  "type": "repair",
+  "operations": [
+    {
+      "field_path": "/status",
+      "new_value": "unresolved",
+      "reason": "Reference：保留原始修改并关闭当前主张义务。"
+    }
+  ]
+}

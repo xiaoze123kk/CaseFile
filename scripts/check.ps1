@@ -54,6 +54,11 @@ try {
 
     Push-Location $backendRoot
     try {
+        & $python -m casefile.benchmark closure-repair --provider fake
+        if ($LASTEXITCODE -ne 0) {
+            throw "Closure Repair deterministic safety gate failed."
+        }
+
         & $python -m casefile.benchmark chat-outcome --mode calibrate
         if ($LASTEXITCODE -ne 0) {
             throw "CaseFile chat outcome M0 calibration failed."

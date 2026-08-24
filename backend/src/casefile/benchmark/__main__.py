@@ -12,6 +12,12 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "closure-repair":
+        from casefile.benchmark.closure_repair_eval import main as repair_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        repair_main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "validator":
         from casefile.benchmark.validator_eval import main as validator_main
 

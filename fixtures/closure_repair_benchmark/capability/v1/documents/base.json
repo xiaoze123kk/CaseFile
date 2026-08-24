@@ -1,0 +1,329 @@
+{
+  "schema_version": "2.0",
+  "casefile_id": "case_restart_loop",
+  "title": "第七次重启",
+  "status": "draft",
+  "version": {
+    "version_id": "draft_restart_loop_1",
+    "version_no": 1,
+    "parent_version_id": null
+  },
+  "brief_ref": {
+    "brief_id": "brief_restart_loop",
+    "version": 1
+  },
+  "resolution_specs": [
+    {
+      "id": "res_root_cause",
+      "title": "重启根因",
+      "question_type": "causal_explanation",
+      "reasoning_question": "实验系统为什么不断重启？",
+      "conclusion_mode": "unique",
+      "required_slots": [
+        {"slot_id": "slot_root_cause", "value_type": "entity_or_claim_ref", "required": true}
+      ],
+      "accepted_answers": [
+        {"object_type": "claim", "object_id": "claim_backup_trigger"}
+      ],
+      "required_claim_refs": [
+        {"object_type": "claim", "object_id": "claim_backup_trigger"}
+      ],
+      "tags": ["main_resolution"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    },
+    {
+      "id": "res_shutdown_rule",
+      "title": "安全规则组合",
+      "question_type": "rule_discovery",
+      "reasoning_question": "哪些安全规则共同触发了备用系统？",
+      "conclusion_mode": "finite_multiple",
+      "required_slots": [
+        {"slot_id": "slot_trigger_rules", "value_type": "text_or_claim_ref", "required": true}
+      ],
+      "accepted_answers": ["失联与过热同时持续三分钟"],
+      "required_claim_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
+      "tags": ["secondary_resolution"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 0.82,
+      "confirmation_status": "ai_inferred",
+      "created_by": {"actor_type": "agent", "actor_id": "agent_brief_parser"},
+      "updated_at": "2042-06-01T12:02:00Z",
+      "revision": 1
+    }
+  ],
+  "entities": [
+    {
+      "id": "ent_researcher",
+      "entity_type": "person",
+      "name": "林研究员",
+      "aliases": [],
+      "traits": ["谨慎"],
+      "goals": ["恢复实验"],
+      "secrets": [],
+      "capabilities": ["读取系统日志"],
+      "knowledge_states": [
+        {
+          "as_of_event_ref": {"object_type": "event", "object_id": "evt_restart_seven"},
+          "knows_refs": [{"object_type": "information_unit", "object_id": "info_restart_log"}],
+          "believes_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
+          "false_belief_refs": []
+        }
+      ],
+      "tags": ["investigator"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    },
+    {
+      "id": "ent_backup_system",
+      "entity_type": "system",
+      "name": "备用控制系统",
+      "aliases": ["B 系统"],
+      "traits": ["自动接管"],
+      "goals": ["防止实验舱失控"],
+      "secrets": [],
+      "capabilities": ["强制重启主系统"],
+      "knowledge_states": [],
+      "tags": ["system"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
+      "confidence": 0.88,
+      "confirmation_status": "ai_inferred",
+      "created_by": {"actor_type": "agent", "actor_id": "agent_brief_parser"},
+      "updated_at": "2042-06-01T12:02:00Z",
+      "revision": 1
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel_researcher_controls_backup",
+      "title": "研究员维护备用系统",
+      "from_ref": {"object_type": "entity", "object_id": "ent_researcher"},
+      "to_ref": {"object_type": "entity", "object_id": "ent_backup_system"},
+      "relationship_type": "maintains",
+      "direction": "directed",
+      "truth_status": "canon_true",
+      "visibility": "public",
+      "tags": [],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    }
+  ],
+  "locations": [
+    {
+      "id": "loc_lab",
+      "name": "主实验室",
+      "spatial_position": {
+        "coordinate_system": "schematic",
+        "x": 28,
+        "y": 42
+      },
+      "parent_ref": null,
+      "adjacency_refs": [{"object_type": "location", "object_id": "loc_corridor"}],
+      "access_rules": ["研究员身份卡"],
+      "travel_times": [{"to_ref": {"object_type": "location", "object_id": "loc_corridor"}, "minutes": 2}],
+      "visibility_rules": [],
+      "tags": ["primary"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    },
+    {
+      "id": "loc_corridor",
+      "name": "实验区走廊",
+      "spatial_position": {
+        "coordinate_system": "wgs84",
+        "latitude": 31.2304,
+        "longitude": 121.4737
+      },
+      "parent_ref": null,
+      "adjacency_refs": [{"object_type": "location", "object_id": "loc_lab"}],
+      "access_rules": [],
+      "travel_times": [{"to_ref": {"object_type": "location", "object_id": "loc_lab"}, "minutes": 2}],
+      "visibility_rules": [],
+      "tags": [],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    }
+  ],
+  "events": [
+    {
+      "id": "evt_restart_seven",
+      "title": "系统第七次重启",
+      "truth_status": "canon_true",
+      "time": {
+        "kind": "range",
+        "start": "2042-06-01T20:00",
+        "end": "2042-06-01T20:03",
+        "precision": "minute"
+      },
+      "participant_refs": [{"object_type": "entity", "object_id": "ent_backup_system"}],
+      "location_ref": {"object_type": "location", "object_id": "loc_lab"},
+      "cause_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
+      "effect_refs": [],
+      "observed_by_refs": [{"object_type": "entity", "object_id": "ent_researcher"}],
+      "tags": ["timeline"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    }
+  ],
+  "information_units": [
+    {
+      "id": "info_restart_log",
+      "information_type": "system_log",
+      "title": "第七次重启日志",
+      "content": "主控失联且温度超限三分钟后，备用系统执行强制重启。",
+      "source_event_ref": {"object_type": "event", "object_id": "evt_restart_seven"},
+      "reliability": "high",
+      "truth_status": "canon_true",
+      "supports_claim_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
+      "refutes_claim_refs": [],
+      "availability": {
+        "perspective_refs": [{"object_type": "entity", "object_id": "ent_researcher"}],
+        "acquisition_conditions": ["读取实验室终端"],
+        "alternative_path_refs": []
+      },
+      "classification": "key",
+      "tags": ["log", "key"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim_backup_trigger",
+      "title": "备用系统触发重启",
+      "statement": "第七次重启由备用系统依据安全规则主动触发。",
+      "claim_type": "causal",
+      "support_refs": [{"object_type": "information_unit", "object_id": "info_restart_log"}],
+      "refute_refs": [],
+      "dependency_claim_refs": [],
+      "status": "supported",
+      "materiality": "critical",
+      "tags": ["answer"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
+      "confidence": 0.96,
+      "confirmation_status": "ai_inferred",
+      "created_by": {"actor_type": "agent", "actor_id": "agent_brief_parser"},
+      "updated_at": "2042-06-01T12:02:00Z",
+      "revision": 1
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "hyp_automatic_restart",
+      "title": "自动安全重启",
+      "proposition": "备用系统按既定安全规则重启了主系统。",
+      "target_resolution_ref": {"object_type": "resolution_spec", "object_id": "res_root_cause"},
+      "required_claim_refs": [{"object_type": "claim", "object_id": "claim_backup_trigger"}],
+      "falsifier_refs": [],
+      "competing_hypothesis_refs": [],
+      "status": "supported",
+      "score": 0.92,
+      "tags": ["primary"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
+      "confidence": 0.92,
+      "confirmation_status": "ai_inferred",
+      "created_by": {"actor_type": "agent", "actor_id": "agent_brief_parser"},
+      "updated_at": "2042-06-01T12:02:00Z",
+      "revision": 1
+    }
+  ],
+  "reasoning_paths": [
+    {
+      "id": "path_causal_restart",
+      "title": "日志到根因",
+      "path_type": "causal",
+      "target_ref": {"object_type": "hypothesis", "object_id": "hyp_automatic_restart"},
+      "steps": [
+        {
+          "step_id": "step_read_log",
+          "input_refs": [{"object_type": "information_unit", "object_id": "info_restart_log"}],
+          "operation": "infer",
+          "output_ref": {"object_type": "claim", "object_id": "claim_backup_trigger"}
+        }
+      ],
+      "required_for_resolution": true,
+      "alternative_path_refs": [],
+      "tags": ["causal"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_log"}],
+      "confidence": 0.94,
+      "confirmation_status": "ai_inferred",
+      "created_by": {"actor_type": "agent", "actor_id": "agent_brief_parser"},
+      "updated_at": "2042-06-01T12:02:00Z",
+      "revision": 1
+    }
+  ],
+  "constraints": [
+    {
+      "id": "con_no_supernatural",
+      "title": "无超自然解释",
+      "level": "hard",
+      "scope_refs": [{"object_type": "casefile", "object_id": "case_restart_loop"}],
+      "statement": "所有重启原因必须能由实验系统规则解释。",
+      "rule_expression": null,
+      "conflict_refs": [],
+      "tags": ["world_rule"],
+      "source_refs": [{"object_type": "source_fragment", "object_id": "src_restart_brief"}],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    }
+  ],
+  "structure_locks": [
+    {
+      "id": "lock_root_answer",
+      "title": "锁定根因答案",
+      "lock_type": "hard",
+      "object_ref": {"object_type": "resolution_spec", "object_id": "res_root_cause"},
+      "field_paths": ["/accepted_answers"],
+      "reason": "核心答案已经由作者确认。",
+      "tags": ["author_lock"],
+      "source_refs": [],
+      "confidence": 1.0,
+      "confirmation_status": "user_confirmed",
+      "created_by": {"actor_type": "user", "actor_id": "user_local_owner"},
+      "updated_at": "2042-06-01T12:00:00Z",
+      "revision": 1
+    }
+  ],
+  "content_notices": [
+    {
+      "notice_id": "notice_system_failure",
+      "category": "system_failure",
+      "severity": "low",
+      "description": "包含实验事故和设备失控情节。"
+    }
+  ],
+  "extensions": {
+    "casefile.fixture": {"purpose": "editing_contract_foundation"}
+  }
+}

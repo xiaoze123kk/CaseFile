@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from hashlib import sha256
 from typing import Any, Literal, cast
 
@@ -23,6 +24,7 @@ from casefile.agent_runtime.chat_tools import (
     chat_tool_manifest,
     freeze_chat_tool_ledger,
 )
+from casefile.agent_runtime.closure_repair import ClosureRepairRequest
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
 )
@@ -60,6 +62,10 @@ from casefile.agent_runtime.structured_output import (
     validate_model_json as _validate_auxiliary_output,
 )
 from casefile.agent_runtime.tools import GENERATION_TOOLS, GenerationToolContext
+from casefile.agent_runtime.transport_diagnostics import (
+    TransportDiagnostics,
+    classify_transport_error,
+)
 from casefile.contracts import ContractValidationError, validate_casefile
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
@@ -226,6 +232,7 @@ async def _run_auxiliary_agent(
         | ReverseParseRequest
         | IdeaGenerationRequest
         | ThreadCompactionRequest
+        | ClosureRepairRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
@@ -243,16 +250,21 @@ async def _run_auxiliary_agent(
     tools: list[Tool] | None = None,
     context: ChatToolContext | None = None,
     max_turns: int | None = None,
+    strict_validation: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
         "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
     )
     usage_records: list[dict[str, Any]] = []
     repaired = False
+    fallback_attempted = False
+    fallback_error_class: str | None = None
     selected_protocols: set[str] = set()
     current_input = input_text
 
     if not structured_output and deepseek_output_protocol == "json_object":
+        fallback_attempted = True
+        fallback_error_class = "protocol_unsupported"
         request.emit(
             "model.output_protocol_fallback",
             stage,
@@ -260,6 +272,10 @@ async def _run_auxiliary_agent(
                 "from": "strict_tool",
                 "to": "json_object",
                 "reason_code": "strict_tool_disabled_by_capability_policy",
+                **_protocol_fallback_diagnostics(
+                    protocol="strict_tool",
+                    network_retry_budget=request.network_retries,
+                ),
             },
         )
 
@@ -271,13 +287,25 @@ async def _run_auxiliary_agent(
             if reason is None:
                 raise
             protocol = "json_object"
+            fallback_attempted = True
+            fallback_error_class = "protocol_unsupported"
             request.emit(
                 "model.output_protocol_fallback",
                 stage,
-                {"from": "strict_tool", "to": protocol, "reason_code": reason},
+                {
+                    "from": "strict_tool",
+                    "to": protocol,
+                    "reason_code": reason,
+                    **_protocol_fallback_diagnostics(
+                        protocol="strict_tool",
+                        network_retry_budget=request.network_retries,
+                    ),
+                },
             )
     if protocol == "strict_tool" and tools:
         protocol = "json_object"
+        fallback_attempted = True
+        fallback_error_class = "protocol_unsupported"
         request.emit(
             "model.output_protocol_fallback",
             stage,
@@ -285,6 +313,10 @@ async def _run_auxiliary_agent(
                 "from": "strict_tool",
                 "to": protocol,
                 "reason_code": "chat_tools_require_json_object_loop",
+                **_protocol_fallback_diagnostics(
+                    protocol="strict_tool",
+                    network_retry_budget=request.network_retries,
+                ),
             },
         )
 
@@ -346,6 +378,7 @@ async def _run_auxiliary_agent(
                     planned_object_types=planned_object_types,
                     normalized_ref_paths=normalized_ref_paths,
                     normalized_time_paths=normalized_time_paths,
+                    discard_forbidden_fields=not strict_validation,
                 )
             else:
                 resolved_instructions = instructions
@@ -405,6 +438,7 @@ async def _run_auxiliary_agent(
                         planned_object_types=planned_object_types,
                         normalized_ref_paths=normalized_ref_paths,
                         normalized_time_paths=normalized_time_paths,
+                        discard_forbidden_fields=not strict_validation,
                     )
             if discarded_paths:
                 request.emit(
@@ -452,6 +486,13 @@ async def _run_auxiliary_agent(
                         "output_hash": sha256(serialized_output).hexdigest(),
                         "output_size_bytes": len(serialized_output),
                         "usage": usage,
+                        **(
+                            _retained_raw_output(
+                                raw_output_text or serialized_output.decode("utf-8")
+                            )
+                            if isinstance(request, ClosureRepairRequest)
+                            else {}
+                        ),
                     },
                 )
             request.emit(
@@ -461,6 +502,23 @@ async def _run_auxiliary_agent(
                     "protocol": protocol,
                     "attempt_count": attempt_no,
                     "repaired": repaired,
+                    "recoverable_transport_error_class": fallback_error_class,
+                    **(
+                        {
+                            **_protocol_fallback_diagnostics(
+                                protocol="strict_tool",
+                                network_retry_budget=request.network_retries,
+                            ),
+                            "protocol": protocol,
+                            "protocol_phase": "validated",
+                            "fallback_succeeded": True,
+                        }
+                        if fallback_attempted
+                        else {
+                            "fallback_attempted": False,
+                            "fallback_succeeded": False,
+                        }
+                    ),
                 },
             )
             return output.model_dump(mode="json"), usage
@@ -489,9 +547,15 @@ async def _run_auxiliary_agent(
                         "from": protocol,
                         "to": "json_object",
                         "reason_code": "strict_schema_violation",
+                        **_protocol_fallback_diagnostics(
+                            protocol=protocol,
+                            network_retry_budget=request.network_retries,
+                        ),
                     },
                 )
                 protocol = "json_object"
+                fallback_attempted = True
+                fallback_error_class = "protocol_unsupported"
                 current_input = repair_input(input_text, issues)
                 continue
             if repaired or attempt_no == 3:
@@ -553,6 +617,22 @@ async def _run_auxiliary_agent(
             )
             current_input = repair_input(input_text, issues)
         except Exception as error:
+            reason = strict_fallback_reason(error) if protocol == "strict_tool" else None
+            will_fallback = reason is not None and attempt_no < 3
+            diagnostics = classify_transport_error(
+                error,
+                protocol=protocol,
+                protocol_phase="provider_call",
+                network_retry_budget=request.network_retries,
+                retry_exhausted=not will_fallback,
+                fallback_attempted=will_fallback,
+                fallback_succeeded=False,
+            )
+            if reason is not None:
+                diagnostics = replace(
+                    diagnostics,
+                    transport_error_class="protocol_unsupported",
+                )
             if component_id:
                 request.emit(
                     "agent.model_call.failed",
@@ -565,19 +645,41 @@ async def _run_auxiliary_agent(
                         "failure_layer": "transport",
                         "error_code": "provider_call_failed",
                         "issues": [],
+                        **diagnostics.as_dict(),
                         **_retained_raw_output(raw_output_text),
                     },
                 )
-            reason = strict_fallback_reason(error) if protocol == "strict_tool" else None
             if reason is None or attempt_no == 3:
                 raise
             request.emit(
                 "model.output_protocol_fallback",
                 stage,
-                {"from": protocol, "to": "json_object", "reason_code": reason},
+                {
+                    "from": protocol,
+                    "to": "json_object",
+                    "reason_code": reason,
+                    **diagnostics.as_dict(),
+                },
             )
             protocol = "json_object"
+            fallback_attempted = True
+            fallback_error_class = "protocol_unsupported"
     raise ProviderProtocolError("Structured output attempts were exhausted")
+
+
+def _protocol_fallback_diagnostics(*, protocol: str, network_retry_budget: int) -> dict[str, Any]:
+    return TransportDiagnostics(
+        transport_error_class="protocol_unsupported",
+        http_status_class=None,
+        protocol=protocol,
+        protocol_phase="protocol_negotiation",
+        network_retry_budget=max(network_retry_budget, 0),
+        network_retry_count=None,
+        retry_exhausted=False,
+        retry_after_present=False,
+        fallback_attempted=True,
+        fallback_succeeded=False,
+    ).as_dict()
 
 
 def _deepseek_json_object_text(raw_output: str) -> str:

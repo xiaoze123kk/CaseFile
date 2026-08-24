@@ -1,0 +1,42 @@
+{
+  "task_id": "logical_relation_cycle__hard_invariant__policy",
+  "policy_key": [
+    "logical_relation_cycle",
+    "hard_invariant"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "logical_relation_cycle",
+        "hard_invariant"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "logical_relation_cycle"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "logical_relation_cycle_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/logical_relation_cycle__hard_invariant__policy.json",
+  "tags": [
+    "ineligible",
+    "hard_invariant",
+    "policy"
+  ]
+}

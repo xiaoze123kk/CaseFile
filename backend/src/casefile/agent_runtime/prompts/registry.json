@@ -30,6 +30,9 @@
     },
     "idea_generation": {
       "current_version": "idea-generation-v4"
+    },
+    "closure_repair": {
+      "current_version": "closure-repair-v3"
     }
   }
 }

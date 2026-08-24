@@ -1,0 +1,5 @@
+{
+  "task_id": "reasoning_required_path_incompatible_claim_input__repair_required__policy",
+  "type": "abstention",
+  "expected_status": "manual_required"
+}

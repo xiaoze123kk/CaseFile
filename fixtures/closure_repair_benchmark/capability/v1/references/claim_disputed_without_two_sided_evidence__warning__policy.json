@@ -1,0 +1,5 @@
+{
+  "task_id": "claim_disputed_without_two_sided_evidence__warning__policy",
+  "type": "abstention",
+  "expected_status": "blocked"
+}

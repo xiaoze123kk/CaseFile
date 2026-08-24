@@ -42,6 +42,7 @@ from casefile.agent_runtime.chat_intent import (
     route_public_payload,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.application.closure_repair import ClosureRepairMode
 from casefile.contracts import (
     ContractValidationError,
     public_validation_issues,
@@ -54,6 +55,7 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import ProjectRepository
+from casefile.worker.closure_repair import execute_chat_closure_repair
 from casefile.worker.executors.chat import (
     ChatTaskExecutorMixin,
     resolve_chat_route,
@@ -94,6 +96,11 @@ class WorkerConfig:
     worker_id: str
     poll_seconds: float = 1.0
     lease_seconds: int = 600
+    closure_repair_mode: ClosureRepairMode = "shadow"
+
+    def __post_init__(self) -> None:
+        if self.closure_repair_mode not in {"off", "shadow", "suggest"}:
+            raise ValueError("CLOSURE_REPAIR_MODE must be one of: off, shadow, suggest")
 
     @classmethod
     def from_environment(cls) -> WorkerConfig:
@@ -102,6 +109,10 @@ class WorkerConfig:
             worker_id=os.environ.get("CASEFILE_WORKER_ID", default_id),
             poll_seconds=float(os.environ.get("CASEFILE_WORKER_POLL_SECONDS", "1")),
             lease_seconds=int(os.environ.get("CASEFILE_WORKER_LEASE_SECONDS", "600")),
+            closure_repair_mode=cast(
+                ClosureRepairMode,
+                os.environ.get("CLOSURE_REPAIR_MODE", "shadow").strip().lower(),
+            ),
         )
 
 
@@ -354,15 +365,28 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                 chat_request = self._emit_chat_context_events(
                     task_run_id, task_snapshot, chat_request
                 )
-                execution = ChatExecutionRunner(provider).run(
-                    chat_request,
-                    complete=lambda result: self._complete_chat(
+
+                def complete_chat(result: Any) -> None:
+                    repair_envelope, repair_usage = execute_chat_closure_repair(
+                        task_snapshot,
+                        result,
+                        provider=provider,
+                        api_key=api_key,
+                        mode=self.config.closure_repair_mode,
+                        emit=lambda event_type, stage, payload: self._emit(
+                            task_run_id, event_type, stage, payload
+                        ),
+                    )
+                    self._complete_chat(
                         task_run_id,
                         attempt_id,
                         result,
                         route=chat_request.route,
-                    ),
-                )
+                        repair_envelope=repair_envelope,
+                        repair_usage=repair_usage,
+                    )
+
+                execution = ChatExecutionRunner(provider).run(chat_request, complete=complete_chat)
                 chat_result = execution.result
                 candidate = chat_result.candidate.model_dump(mode="json")
                 usage = execution.usage

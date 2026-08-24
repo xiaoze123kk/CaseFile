@@ -1,0 +1,42 @@
+{
+  "task_id": "competing_hypothesis_group_incomplete__warning__policy",
+  "policy_key": [
+    "competing_hypothesis_group_incomplete",
+    "warning"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "competing_hypothesis_group_incomplete",
+        "warning"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "competing_hypothesis_group_incomplete"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "competing_hypothesis_group_incomplete_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/competing_hypothesis_group_incomplete__warning__policy.json",
+  "tags": [
+    "ineligible",
+    "warning",
+    "policy"
+  ]
+}

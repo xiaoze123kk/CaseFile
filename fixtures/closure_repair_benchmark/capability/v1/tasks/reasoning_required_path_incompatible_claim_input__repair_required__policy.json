@@ -1,0 +1,42 @@
+{
+  "task_id": "reasoning_required_path_incompatible_claim_input__repair_required__policy",
+  "policy_key": [
+    "reasoning_required_path_incompatible_claim_input",
+    "repair_required"
+  ],
+  "automation": "manual",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "reasoning_required_path_incompatible_claim_input",
+        "repair_required"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "manual_required",
+    "expected_trigger": [
+      "reasoning_required_path_incompatible_claim_input"
+    ],
+    "acceptable_outcomes": [
+      "manual_required"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "reasoning_required_path_incompatible_claim_input_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/reasoning_required_path_incompatible_claim_input__repair_required__policy.json",
+  "tags": [
+    "manual",
+    "repair_required",
+    "policy"
+  ]
+}

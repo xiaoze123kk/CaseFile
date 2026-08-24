@@ -1,0 +1,42 @@
+{
+  "task_id": "root_structure_delete_requires_explicit_restructure__hard_invariant__policy",
+  "policy_key": [
+    "root_structure_delete_requires_explicit_restructure",
+    "hard_invariant"
+  ],
+  "automation": "ineligible",
+  "input": {
+    "document": "../documents/base.json",
+    "setup": "policy_probe",
+    "variant": "policy",
+    "original_intent": "判断当前变更是否允许自动闭包修复。",
+    "primary_mutation": {
+      "operation_type": "policy_fixture",
+      "policy_key": [
+        "root_structure_delete_requires_explicit_restructure",
+        "hard_invariant"
+      ]
+    }
+  },
+  "oracle": {
+    "expected_assessment": "blocked",
+    "expected_trigger": [
+      "root_structure_delete_requires_explicit_restructure"
+    ],
+    "acceptable_outcomes": [
+      "blocked"
+    ],
+    "intent_assertions": [
+      "primary_mutation_preserved"
+    ],
+    "task_specific_assertions": [
+      "root_structure_delete_requires_explicit_restructure_resolved_or_correctly_rejected"
+    ]
+  },
+  "reference": "../references/root_structure_delete_requires_explicit_restructure__hard_invariant__policy.json",
+  "tags": [
+    "ineligible",
+    "hard_invariant",
+    "policy"
+  ]
+}

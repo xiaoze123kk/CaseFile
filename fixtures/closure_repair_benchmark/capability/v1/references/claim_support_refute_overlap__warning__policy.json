@@ -1,0 +1,5 @@
+{
+  "task_id": "claim_support_refute_overlap__warning__policy",
+  "type": "abstention",
+  "expected_status": "blocked"
+}

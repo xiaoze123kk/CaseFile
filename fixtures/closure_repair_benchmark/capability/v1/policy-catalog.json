@@ -1,0 +1,508 @@
+{
+  "finding_contracts": {
+    "claim_dependency_cycle|hard_invariant": {
+      "rule_code": "claim_dependency_cycle",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "claim_dependency_incompatible|repair_required": {
+      "rule_code": "claim_dependency_incompatible",
+      "closure_level": "repair_required",
+      "automation": "agent",
+      "repair_kinds": [
+        "repair_dependency_claim",
+        "change_claim_status"
+      ],
+      "required_roles": [
+        "subject",
+        "prerequisite"
+      ]
+    },
+    "claim_disputed_without_two_sided_evidence|warning": {
+      "rule_code": "claim_disputed_without_two_sided_evidence",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "claim_refuted_without_refutation|repair_required": {
+      "rule_code": "claim_refuted_without_refutation",
+      "closure_level": "repair_required",
+      "automation": "agent",
+      "repair_kinds": [
+        "attach_refutation",
+        "change_claim_status"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "claim_support_refute_overlap|warning": {
+      "rule_code": "claim_support_refute_overlap",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "claim_supported_without_support|repair_required": {
+      "rule_code": "claim_supported_without_support",
+      "closure_level": "repair_required",
+      "automation": "agent",
+      "repair_kinds": [
+        "attach_support",
+        "downgrade_claim_status"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "competing_hypothesis_group_incomplete|warning": {
+      "rule_code": "competing_hypothesis_group_incomplete",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "critical_claim_support_lost|repair_required": {
+      "rule_code": "critical_claim_support_lost",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "attach_alternative_evidence",
+        "downgrade_claim_status"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "evidence_refute_reciprocity_violation|hard_invariant": {
+      "rule_code": "evidence_refute_reciprocity_violation",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "evidence_support_reciprocity_violation|hard_invariant": {
+      "rule_code": "evidence_support_reciprocity_violation",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "hypothesis_assessment_status_conflict|repair_required": {
+      "rule_code": "hypothesis_assessment_status_conflict",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "review_assessments",
+        "change_hypothesis_status"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "hypothesis_required_claim_incompatible|repair_required": {
+      "rule_code": "hypothesis_required_claim_incompatible",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "repair_required_claim",
+        "change_hypothesis_status"
+      ],
+      "required_roles": [
+        "subject",
+        "prerequisite"
+      ]
+    },
+    "knowledge_state_available_before_source|repair_required": {
+      "rule_code": "knowledge_state_available_before_source",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [],
+      "required_roles": [
+        "evidence",
+        "entity",
+        "event"
+      ]
+    },
+    "logical_relation_cycle|hard_invariant": {
+      "rule_code": "logical_relation_cycle",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "missing_evidence_assessment|warning": {
+      "rule_code": "missing_evidence_assessment",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "new_claim_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_claim_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_claim_not_reasoning_integrated|warning": {
+      "rule_code": "new_claim_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_constraint_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_constraint_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_constraint_not_reasoning_integrated|warning": {
+      "rule_code": "new_constraint_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_entity_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_entity_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_entity_not_reasoning_integrated|warning": {
+      "rule_code": "new_entity_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_event_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_event_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_event_not_reasoning_integrated|warning": {
+      "rule_code": "new_event_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_hypothesis_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_hypothesis_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_hypothesis_not_reasoning_integrated|warning": {
+      "rule_code": "new_hypothesis_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_information_unit_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_information_unit_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_information_unit_not_reasoning_integrated|warning": {
+      "rule_code": "new_information_unit_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_location_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_location_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_location_not_reasoning_integrated|warning": {
+      "rule_code": "new_location_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_object_not_integrated|repair_required": {
+      "rule_code": "new_object_not_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_object_not_integrated|warning": {
+      "rule_code": "new_object_not_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_reasoning_path_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_reasoning_path_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_reasoning_path_not_reasoning_integrated|warning": {
+      "rule_code": "new_reasoning_path_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_relationship_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_relationship_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_relationship_not_reasoning_integrated|warning": {
+      "rule_code": "new_relationship_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_resolution_spec_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_resolution_spec_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_resolution_spec_not_reasoning_integrated|warning": {
+      "rule_code": "new_resolution_spec_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "new_structure_lock_not_reasoning_integrated|repair_required": {
+      "rule_code": "new_structure_lock_not_reasoning_integrated",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": [
+        "subject"
+      ]
+    },
+    "new_structure_lock_not_reasoning_integrated|warning": {
+      "rule_code": "new_structure_lock_not_reasoning_integrated",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [
+        "connect_object"
+      ],
+      "required_roles": []
+    },
+    "reasoning_path_target_type_invalid|hard_invariant": {
+      "rule_code": "reasoning_path_target_type_invalid",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "reasoning_required_path_incompatible_claim_input|repair_required": {
+      "rule_code": "reasoning_required_path_incompatible_claim_input",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "repair_input_claim",
+        "make_path_optional"
+      ],
+      "required_roles": [
+        "path",
+        "prerequisite"
+      ]
+    },
+    "reasoning_required_path_without_information_input|repair_required": {
+      "rule_code": "reasoning_required_path_without_information_input",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "attach_information_input",
+        "make_path_optional"
+      ],
+      "required_roles": [
+        "path"
+      ]
+    },
+    "reasoning_step_output_type_invalid|hard_invariant": {
+      "rule_code": "reasoning_step_output_type_invalid",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "relative_time_cycle|hard_invariant": {
+      "rule_code": "relative_time_cycle",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "resolution_basis_path_unhealthy|repair_required": {
+      "rule_code": "resolution_basis_path_unhealthy",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "repair_reasoning_path",
+        "make_resolution_undetermined"
+      ],
+      "required_roles": [
+        "resolution",
+        "path"
+      ]
+    },
+    "resolution_basis_weakened|repair_required": {
+      "rule_code": "resolution_basis_weakened",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "repair_hypothesis",
+        "make_resolution_undetermined"
+      ],
+      "required_roles": [
+        "resolution",
+        "related"
+      ]
+    },
+    "resolution_required_claim_incompatible|repair_required": {
+      "rule_code": "resolution_required_claim_incompatible",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [
+        "repair_required_claim",
+        "make_resolution_undetermined"
+      ],
+      "required_roles": [
+        "resolution",
+        "prerequisite"
+      ]
+    },
+    "root_structure_delete_requires_explicit_restructure|hard_invariant": {
+      "rule_code": "root_structure_delete_requires_explicit_restructure",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "structure_lock_conflict|hard_invariant": {
+      "rule_code": "structure_lock_conflict",
+      "closure_level": "hard_invariant",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "temporal_exclusivity_violation|repair_required": {
+      "rule_code": "temporal_exclusivity_violation",
+      "closure_level": "repair_required",
+      "automation": "manual",
+      "repair_kinds": [],
+      "required_roles": [
+        "event",
+        "entity"
+      ]
+    },
+    "temporal_travel_time_violation|warning": {
+      "rule_code": "temporal_travel_time_violation",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    },
+    "unscoped_evidence_assessment|warning": {
+      "rule_code": "unscoped_evidence_assessment",
+      "closure_level": "warning",
+      "automation": "ineligible",
+      "repair_kinds": [],
+      "required_roles": []
+    }
+  }
+}

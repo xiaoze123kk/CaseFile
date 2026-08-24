@@ -31,6 +31,10 @@ def evaluate_reasoning_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "推理路径目标类型非法",
                     "推理路径只能指向 Claim、Hypothesis 或 ResolutionSpec。",
                     (path_id, *((target_id,) if target_id is not None else ())),
+                    object_roles=(
+                        "path",
+                        *(("related",) if target_id is not None else ()),
+                    ),
                 )
             )
         if health.invalid_output_ids:
@@ -42,6 +46,10 @@ def evaluate_reasoning_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "推理步骤输出类型非法",
                     "推理步骤只能输出 Claim 或 Hypothesis。",
                     (path_id, *health.invalid_output_ids),
+                    object_roles=(
+                        "path",
+                        *("related",) * len(health.invalid_output_ids),
+                    ),
                 )
             )
         if health.required_for_resolution and not health.information_grounded:
@@ -54,6 +62,7 @@ def evaluate_reasoning_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "标记为解答所需的推理路径必须至少使用一项 InformationUnit。",
                     (path_id,),
                     ("attach_information_input", "make_path_optional"),
+                    object_roles=("path",),
                 )
             )
         if health.required_for_resolution and health.incompatible_claim_input_ids:
@@ -66,6 +75,10 @@ def evaluate_reasoning_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "标记为解答所需的推理路径不能依赖当前未成立的 Claim 输入。",
                     (path_id, *health.incompatible_claim_input_ids),
                     ("repair_input_claim", "make_path_optional"),
+                    object_roles=(
+                        "path",
+                        *("prerequisite",) * len(health.incompatible_claim_input_ids),
+                    ),
                 )
             )
     return result
@@ -98,6 +111,10 @@ def evaluate_resolution_rules(context: ClosureContext) -> list[ClosureIssue]:
                     "答案结论不能依赖当前未成立的必要 Claim。",
                     (resolution_id, *incompatible),
                     ("repair_required_claim", "make_resolution_undetermined"),
+                    object_roles=(
+                        "resolution",
+                        *("prerequisite",) * len(incompatible),
+                    ),
                 )
             )
         unhealthy = tuple(
@@ -124,6 +141,10 @@ def evaluate_resolution_rules(context: ClosureContext) -> list[ClosureIssue]:
                     ),
                     (resolution_id, *unhealthy),
                     ("repair_reasoning_path", "make_resolution_undetermined"),
+                    object_roles=(
+                        "resolution",
+                        *("path",) * len(unhealthy),
+                    ),
                 )
             )
     return result

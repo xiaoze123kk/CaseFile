@@ -1,0 +1,5 @@
+{
+  "task_id": "structure_lock_conflict__hard_invariant__policy",
+  "type": "abstention",
+  "expected_status": "blocked"
+}

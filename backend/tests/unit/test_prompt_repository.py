@@ -43,10 +43,20 @@ EXPECTED_CURRENT_VERSIONS = {
     "casefile_chat_context_compactor": "casefile-chat-context-compactor-v1",
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
+    "closure_repair": "closure-repair-v3",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("closure_repair", "closure-repair-v1"): {
+        "fragment:repair": "e27f2e5f4d105d9718816c5c38abbb6405b1f9475e6a0f22f09a69189d58b47d"
+    },
+    ("closure_repair", "closure-repair-v2"): {
+        "fragment:repair": "533a445ab54c53d31d864501799dadcd77bd35307a1d2571270c9b016c8d1b2f"
+    },
+    ("closure_repair", "closure-repair-v3"): {
+        "fragment:repair": "dcd08b04e2e5ec68034d7dcfef243dcf38e84a9c66da19ec8dd7f5add66c6b2f"
+    },
     ("brief_polish", "brief-polish-v2"): {
         "system": "da881f138cd88adb495f92a2b55bcd348039c8983e142eba8f023419dccd8721"
     },
@@ -379,7 +389,7 @@ EXPECTED_RELEASE_HASHES = {
 
 def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
-    auxiliary_agent_ids = {"casefile_chat_context_compactor"}
+    auxiliary_agent_ids = {"casefile_chat_context_compactor", "closure_repair"}
 
     assert set(SUPPORTED_AGENT_IDS) == contract_task_types | auxiliary_agent_ids
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS

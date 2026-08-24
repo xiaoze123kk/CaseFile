@@ -20,6 +20,8 @@ from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
 from casefile.agent_runtime.models import (
+    CaseFileChatCandidate,
+    CaseFileChatResult,
     ChatTaskUnderstanding,
     agent_state_to_jsonable,
 )
@@ -32,6 +34,7 @@ from casefile.benchmark.feedback_export import export_feedback_fixtures
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import (
     AgentModelCall,
+    AgentPatchOperation,
     AgentPatchSet,
     AgentStepRun,
     AuditEvent,
@@ -44,6 +47,184 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
+
+
+class ClosureRepairFixtureProvider(RichFixtureProvider):
+    def generate(self, request):  # type: ignore[no-untyped-def]
+        result = super().generate(request)
+        template = result.candidate["claims"][0]
+        prerequisite = dict(template)
+        prerequisite.update(
+            id="claim_repair_prerequisite",
+            title="修复前置主张",
+            statement="隔离的前置主张。",
+            dependency_claim_refs=[],
+        )
+        subject = dict(template)
+        subject.update(
+            id="claim_repair_subject",
+            title="修复目标主张",
+            statement="依赖前置主张。",
+            dependency_claim_refs=[{"object_type": "claim", "object_id": prerequisite["id"]}],
+        )
+        result.candidate["claims"].extend((prerequisite, subject))
+        result.candidate["information_units"][0]["supports_claim_refs"].extend(
+            (
+                {"object_type": "claim", "object_id": prerequisite["id"]},
+                {"object_type": "claim", "object_id": subject["id"]},
+            )
+        )
+        return result
+
+
+class ClosureRepairChatProvider(ChatSuggestionProvider):
+    def chat(self, request):  # type: ignore[no-untyped-def]
+        self.requests.append(request)
+        candidate = CaseFileChatCandidate.model_validate(
+            {
+                "answer": "已生成需要闭包同步调整的建议。",
+                "referenced_object_ids": [
+                    "claim_repair_prerequisite",
+                    "claim_repair_subject",
+                ],
+                "referenced_event_ids": [],
+                "suggestions": [
+                    {
+                        "object_id": "claim_repair_prerequisite",
+                        "path": "/status",
+                        "value_json": '"unresolved"',
+                        "reason": "调整前置主张状态。",
+                    }
+                ],
+            }
+        )
+        return CaseFileChatResult(
+            candidate=candidate,
+            usage={
+                "requests": 1,
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15,
+            },
+        )
+
+
+@pytest.mark.parametrize("mode", ("shadow", "suggest"))
+def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
+    workflow_database: tuple[Engine, int, str],
+    mode: str,
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id=f"repair-{mode}-generation"),
+            provider_factory=lambda _task: ClosureRepairFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="将前置主张调整为未决，并保持依赖闭包。",
+            )
+            chat_task_id = int(queued["task"]["task_run_id"])
+
+        provider = ClosureRepairChatProvider()
+        assert Worker(
+            factory,
+            config=WorkerConfig(
+                worker_id=f"repair-{mode}-chat",
+                closure_repair_mode=mode,  # type: ignore[arg-type]
+            ),
+            provider_factory=lambda _task: provider,
+        ).run_once()
+
+        with factory() as session:
+            steps = list(
+                session.scalars(
+                    select(AgentStepRun)
+                    .where(
+                        AgentStepRun.task_run_id == chat_task_id,
+                        AgentStepRun.component_id.like("closure_repair_round_%"),
+                    )
+                    .order_by(AgentStepRun.component_id)
+                )
+            )
+            assert [step.component_id for step in steps] == ["closure_repair_round_1"]
+            assert steps[0].status == "succeeded"
+            assert steps[0].component_version == "closure-repair-v3"
+            calls = list(
+                session.scalars(
+                    select(AgentModelCall).where(
+                        AgentModelCall.agent_step_run_id == steps[0].id
+                    )
+                )
+            )
+            assert len(calls) == 1
+            assert calls[0].status == "succeeded"
+            assert calls[0].prompt_version == "closure-repair-v3"
+            patch_set = session.scalar(
+                select(AgentPatchSet).where(AgentPatchSet.task_run_id == chat_task_id)
+            )
+            assert patch_set is not None
+            operations = list(
+                session.scalars(
+                    select(AgentPatchOperation)
+                    .where(AgentPatchOperation.patch_set_id == patch_set.id)
+                    .order_by(AgentPatchOperation.ordinal)
+                )
+            )
+            assert operations[0].origin == "primary"
+            if mode == "suggest":
+                assert len(operations) > 1
+                assert all(
+                    operation.origin == "closure_repair" for operation in operations[1:]
+                )
+                assert {operation.repair_round for operation in operations[1:]} == {1}
+                assert all(
+                    operation.repair_obligation_keys for operation in operations[1:]
+                )
+                patch_set_id = patch_set.id
+                operation_ids = [operation.id for operation in operations]
+            else:
+                assert len(operations) == 1
+
+        if mode == "suggest":
+            with factory() as session:
+                workflow = WorkflowService(session)
+                partial = workflow.simulate_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=draft_id,
+                    base_revision=2,
+                    operation_ids=[operation_ids[0]],
+                )
+                assert partial["simulation"]["can_apply"] is False
+                full = workflow.simulate_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=draft_id,
+                    base_revision=2,
+                    operation_ids=operation_ids,
+                )
+                assert full["simulation"]["can_apply"] is True
 
 
 def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(

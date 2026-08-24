@@ -1,0 +1,11 @@
+{
+  "task_id": "claim_dependency_incompatible__repair_required__decoy",
+  "type": "repair",
+  "operations": [
+    {
+      "field_path": "/status",
+      "new_value": "unresolved",
+      "reason": "Reference：保留原始修改并关闭当前主张义务。"
+    }
+  ]
+}
