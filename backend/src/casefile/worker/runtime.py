@@ -60,6 +60,7 @@ from casefile.worker.executors.chat import (
     ChatTaskExecutorMixin,
     resolve_chat_route,
 )
+from casefile.worker.executors.compiler import CompilerTaskExecutorMixin
 from casefile.worker.executors.completion import CompletionExecutorMixin
 from casefile.worker.finalization import TaskFinalizationMixin
 from casefile.worker.queue import QueueMixin
@@ -116,7 +117,13 @@ class WorkerConfig:
         )
 
 
-class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, CompletionExecutorMixin):
+class Worker(
+    TaskFinalizationMixin,
+    QueueMixin,
+    ChatTaskExecutorMixin,
+    CompilerTaskExecutorMixin,
+    CompletionExecutorMixin,
+):
     """Consume TaskRuns with `FOR UPDATE SKIP LOCKED`; one instance executes serially."""
 
     def __init__(
@@ -151,6 +158,10 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
         validation_errors: list[dict[str, Any]] = []
         sensitive_values: tuple[str, ...] = ()
         try:
+            task_snapshot = self._load_task_snapshot(task_run_id)
+            if task_snapshot.task_type == "novel_compile":
+                self._execute_novel_compile(task_run_id, attempt_id)
+                return
             task_snapshot, api_key = self._load_task_context(task_run_id)
             sensitive_values = (api_key,)
             provider = self.provider_factory(task_snapshot)
@@ -415,6 +426,7 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                 if task_snapshot.prompt_version == "brief-to-draft-v7"
                 else int(task_snapshot.budget_jsonb.get("structural_repair_attempts", 5))
             )
+
             feedback = generation_request.repair_feedback
             feedback_history: list[dict[str, Any]] = list(feedback)
             for repair_no in range(repair_limit + 1):
@@ -489,6 +501,14 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                 validation_errors=validation_errors,
                 sensitive_values=sensitive_values,
             )
+
+    def _load_task_snapshot(self, task_run_id: int) -> TaskRun:
+        with self.session_factory() as session, session.begin():
+            task = session.scalar(select(TaskRun).where(TaskRun.id == task_run_id))
+            if task is None or task.status != "running" or task.leased_by != self.config.worker_id:
+                raise RuntimeError("TaskRun lease is no longer owned by this worker")
+            session.expunge(task)
+            return task
 
     def _load_task_context(self, task_run_id: int) -> tuple[TaskRun, str]:
         with self.session_factory() as session, session.begin():
