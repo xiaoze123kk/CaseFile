@@ -21,7 +21,7 @@ GENERAL_MUTATION_SCHEMA_ID = "general-mutation-plan-v2"
 GENERAL_MUTATION_COMPONENT_ID = "general_mutation_planner"
 GENERAL_MUTATION_POLICY_VERSION = "general-mutation-policy-v1"
 GENERAL_MUTATION_BINDER_VERSION_V1 = "general-mutation-binder-v1"
-GENERAL_MUTATION_BINDER_VERSION = "general-mutation-binder-v2"
+GENERAL_MUTATION_BINDER_VERSION = "general-mutation-binder-v3"
 GENERAL_MUTATION_TRANSPORT_VERSION = "general-mutation-json-object-v1"
 
 ALLOWED_COLLECTIONS = frozenset(

@@ -16,6 +16,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_BINDER_VERSION_V1,
     GENERAL_MUTATION_POLICY_VERSION,
+    PROTECTED_COLLECTIONS,
     CreateMutationCandidate,
     DeleteMutationCandidate,
     ExistingTarget,
@@ -162,6 +163,7 @@ def append_repair_companions(
         ):
             raise GeneralMutationBindingError("general_mutation_repair_companion_invalid")
         collection, value = existing[object_id]
+        _assert_mutable_collection(collection, bound.plan_version)
         _assert_editable(collection, field_path)
         operation_id = f"op_repair_r{repair_round}_{companion_index:02d}"
         while operation_id in seen_ids:
@@ -284,6 +286,7 @@ def bind_general_mutation_plan(
 
         object_id = _target_id(operation.target, local_ids)
         collection, current = _bound_object(object_id, existing, created_objects)
+        _assert_mutable_collection(collection, plan.plan_version)
         if isinstance(operation, DeleteMutationCandidate):
             if object_id in created_objects:
                 raise GeneralMutationBindingError("general_mutation_create_delete_same_object")
@@ -608,6 +611,13 @@ def _assert_editable(collection: str, path: str) -> None:
     top = path[1:].split("/", 1)[0].replace("~1", "/").replace("~0", "~")
     if object_type is None or top not in EDITABLE_FIELDS.get(object_type, set()):
         raise GeneralMutationBindingError("general_mutation_field_forbidden")
+
+
+def _assert_mutable_collection(collection: str, plan_version: str) -> None:
+    """Keep v1 replayable while v2 fails closed for server-protected collections."""
+
+    if plan_version == "general-mutation-planner-v2" and collection in PROTECTED_COLLECTIONS:
+        raise GeneralMutationBindingError("general_mutation_collection_forbidden")
 
 
 def _pointer_parts(path: str) -> list[str]:

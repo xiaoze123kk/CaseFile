@@ -102,6 +102,49 @@ def test_plan_rejects_protected_collection_and_model_system_fields() -> None:
         )
 
 
+@pytest.mark.parametrize("operation_type", ("update_field", "delete_object"))
+def test_v2_binder_rejects_protected_collection_targets(operation_type: str) -> None:
+    operation = {
+        "operation_key": "mutate_constraint",
+        "operation_type": operation_type,
+        "target": {"ref_kind": "existing", "object_id": "con_no_supernatural"},
+        "reason": "不得修改服务端保护集合",
+    }
+    if operation_type == "update_field":
+        operation.update({"field_path": "/statement", "new_value": "允许超自然解释"})
+    plan = MutationPlanV2.model_validate({"operations": [operation]})
+
+    with pytest.raises(GeneralMutationBindingError, match="general_mutation_collection_forbidden"):
+        bind_general_mutation_plan(plan, _document(), task_run_id=1, draft_id=1, base_revision=1)
+
+
+def test_v1_protected_update_remains_replayable() -> None:
+    plan = MutationPlanV1.model_validate(
+        {
+            "operations": [
+                {
+                    "operation_key": "historical_constraint_update",
+                    "operation_type": "update_field",
+                    "target": {
+                        "ref_kind": "existing",
+                        "object_id": "con_no_supernatural",
+                    },
+                    "field_path": "/statement",
+                    "new_value": "历史报告回放值",
+                    "reason": "验证 v1 历史计划仍可回放",
+                }
+            ]
+        }
+    )
+
+    bound = bind_general_mutation_plan(
+        plan, _document(), task_run_id=1, draft_id=1, base_revision=1
+    )
+
+    assert bound.binder_version == "general-mutation-binder-v1"
+    assert bound.operations[0].target_collection == "constraints"
+
+
 def test_binder_is_deterministic_and_resolves_local_references() -> None:
     plan = MutationPlanV1.model_validate(
         {
@@ -266,7 +309,7 @@ def test_v2_nested_references_infer_local_and_existing_types() -> None:
         "object_type": "entity",
         "object_id": "ent_researcher",
     }
-    assert bound.binder_version == "general-mutation-binder-v2"
+    assert bound.binder_version == "general-mutation-binder-v3"
 
 
 def test_v2_rejects_redundant_type_and_unknown_existing_reference() -> None:

@@ -39,7 +39,7 @@ cross-reference、multi-object 与 delete。它不是计划中的完整约 40-ta
 
 ## 07a Ref Contract v2
 
-- Plan/Binder 冻结为 `general-mutation-plan-v2`、`general-mutation-binder-v2`；
+- Plan/Binder 冻结为 `general-mutation-plan-v2`、`general-mutation-binder-v3`；
   v1 继续只读回放。首轮 7×5 暴露 Create 完整性问题后，只把 Prompt 升为
   `general-mutation-planner-v3`，Plan Contract 仍为 v2。
 - Planner nested ref 只能是 `{ref_kind: "local", local_ref}` 或

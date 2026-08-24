@@ -28,9 +28,9 @@ from casefile.worker.runtime import Worker, WorkerConfig
 class _SafetyProvider:
     """Use a frozen generation fixture, then delegate Router/Chat/Planner to Pro."""
 
-    def __init__(self, document: dict[str, Any]) -> None:
+    def __init__(self, document: dict[str, Any], *, live: Any | None = None) -> None:
         self.document = deepcopy(document)
-        self.live = DeepSeekAgentsProvider()
+        self.live = live or DeepSeekAgentsProvider()
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         candidate = deepcopy(self.document)
