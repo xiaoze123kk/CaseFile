@@ -55,14 +55,17 @@ Exposure/Profile 的冻结 payload 使用 RFC 8785 计算内容哈希。Manifest
 
 纯领域模块不得依赖 SQLAlchemy、FastAPI、Worker、Provider SDK 或文件系统。
 
-## N4.1 接口假设
+## N4.1 Durable CompileRun 落地
 
-N4.1 才决定以下持久化与执行问题：
+N4.1 已完成以下持久化与执行边界：
 
-- CompileRun 的数据库身份、状态和 Artifact 存储。
-- CompileRun 与 TaskRun 的边界，以及 deterministic job 是否允许 provider-less 执行。
-- Exposure revision 如何投影为冻结 payload。
-- Profile 的可变指针与不可变版本存储。
+- `CompilerProfile` 保存 Project 内唯一 key 与当前版本指针；`CompilerProfileVersion` 保存不可变 payload、schema、连续版本与 RFC 8785 hash。首版本在单事务内创建，deferred constraint trigger 在提交时验证 current pointer。
+- `CompileRun` 保存 Project/CaseFile/Draft、Snapshot、可选 Canon/Exposure、显式 Profile Version、TaskRun 与 `input_hash` 的精确关系绑定；它表达 Build 身份，不复制 TaskRun status、Attempt、lease、usage 或完整 Manifest。
+- 完整 `CompileInputManifest` 由 `TaskRun.input_jsonb` 保存并经数据库冻结；`novel_compile` TaskRun 严格 providerless，但继续使用既有队列、Attempt、取消、恢复和事件能力。
+- Worker 在 Provider 分派前执行 `compiler_input_freeze`，重新验证 Manifest hash 与所有关系绑定；成功物化唯一不可变 `compiler.input_manifest` Artifact，不创建 `AgentModelCall`。
+- 租约恢复对相同 Artifact 写 `reused` StepRun；内容或 lineage 冲突失败关闭。Artifact 写入与 Task completion 分属带 fencing 复验的事务，失去租约的 Worker 不得继续写入。
+
+N4.1 仍不包含 NarrativeIR、Planner、Prompt、LLM、正文、Benchmark 或前端。
 
 N4.0 的契约不预设这些表、外键或队列实现。
 
