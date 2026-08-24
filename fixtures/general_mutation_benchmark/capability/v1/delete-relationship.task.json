@@ -1,0 +1,19 @@
+{
+  "task_id": "delete-relationship",
+  "family": "delete",
+  "input": {
+    "fixture": "fixtures/casefiles/restart_loop.casefile.json",
+    "message": "删除“研究员维护备用系统”这条关系，不要删除两端人物或系统。"
+  },
+  "oracle": {
+    "acceptable_statuses": ["proposal_ready"],
+    "required_state": [
+      {"collection": "relationships", "where": {"/id": "rel_researcher_controls_backup"}, "count": 0},
+      {"collection": "entities", "where": {"/id": "ent_researcher"}, "count": 1},
+      {"collection": "entities", "where": {"/id": "ent_backup_system"}, "count": 1}
+    ],
+    "forbidden_changes": ["/resolution_specs", "/constraints", "/structure_locks"]
+  },
+  "reference": "delete-relationship.reference.json",
+  "tags": ["delete", "scope"]
+}

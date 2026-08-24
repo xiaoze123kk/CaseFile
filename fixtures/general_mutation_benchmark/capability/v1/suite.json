@@ -1,0 +1,13 @@
+{
+  "schema_version": "casefile-general-mutation-capability-v1",
+  "suite_id": "general-mutation-capability-dev-v1",
+  "tasks": [
+    "update-entity-name.task.json",
+    "update-entity-profile.task.json",
+    "create-entity.task.json",
+    "create-location.task.json",
+    "create-relationship.task.json",
+    "multi-object-update.task.json",
+    "delete-relationship.task.json"
+  ]
+}

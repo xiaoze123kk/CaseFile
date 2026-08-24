@@ -1,0 +1,14 @@
+{
+  "plan": {
+    "operations": [
+      {
+        "operation_key": "create_zhang_min",
+        "operation_type": "create_object",
+        "local_ref": "zhang_min",
+        "collection": "entities",
+        "fields": {"entity_type": "person", "name": "张敏", "capabilities": ["法医鉴定"]},
+        "reason": "新增作者指定的法医人物"
+      }
+    ]
+  }
+}

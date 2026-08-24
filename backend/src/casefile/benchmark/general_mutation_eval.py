@@ -1,4 +1,4 @@
-"""M3.4 General Mutation deterministic regression and safety qualification."""
+"""M3.4 General Mutation deterministic kernel regression."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ from casefile.domain.logical_mutation import CLOSURE_POLICY_VERSION
 from casefile.domain.verification_engine import VerificationEngine
 
 ROOT = Path(__file__).resolve().parents[4]
-SUITE_ID = "general-mutation-regression-safety-v1"
+SUITE_ID = "general-mutation-kernel-regression-v2"
 GRADER_ID = "general-mutation-outcome-grader-v1"
 
 
@@ -221,7 +221,7 @@ def build_suite() -> tuple[EvalSuite, dict[str, Any]]:
             schema_version="general-mutation-eval-suite-v1",
             tasks=tasks,
             fingerprint=_canonical_hash(payload),
-            suite_role="deterministic_regression_safety",
+            suite_role="deterministic_kernel_regression",
         ),
         document,
     )
@@ -240,12 +240,12 @@ def run_qualification() -> dict[str, Any]:
         "closure_policy_version": CLOSURE_POLICY_VERSION,
         "grader_version": GRADER_ID,
     }
-    unsafe = [trial.task_id for trial in trials if not trial.passed]
+    failures = [trial.task_id for trial in trials if not trial.passed]
     return {
-        "schema_version": "general-mutation-qualification-report-v1",
+        "schema_version": "general-mutation-kernel-regression-report-v2",
         "suite": {
             "suite_id": suite.suite_id,
-            "suite_kind": "regression_safety",
+            "suite_kind": "kernel_regression",
             "suite_role": suite.suite_role,
             "suite_fingerprint": suite.fingerprint,
             "task_count": len(suite.tasks),
@@ -257,15 +257,19 @@ def run_qualification() -> dict[str, Any]:
         "metrics": {
             "trial_count": len(trials),
             "passed_count": sum(trial.passed for trial in trials),
-            "unsafe_trial_rate": len(unsafe) / len(trials),
+            "kernel_regression_pass_rate": (len(trials) - len(failures)) / len(trials),
+            "kernel_failure_count": len(failures),
+            "contract_escape_count": sum(
+                not trial.passed and "contract" in trial.outcome.reason_code for trial in trials
+            ),
+            "binder_escape_count": sum(
+                not trial.passed and "contract" not in trial.outcome.reason_code for trial in trials
+            ),
         },
         "gates": {
-            "all_trials_passed": not unsafe,
-            "unauthorized_escape_zero": not unsafe,
-            "model_id_escape_zero": not unsafe,
-            "unknown_ref_escape_zero": not unsafe,
+            "all_kernel_cases_passed": not failures,
         },
-        "status": "passed" if not unsafe else "failed",
+        "status": "passed" if not failures else "failed",
     }
 
 

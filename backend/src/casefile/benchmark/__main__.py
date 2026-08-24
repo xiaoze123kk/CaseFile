@@ -12,6 +12,12 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "general-mutation-capability":
+        from casefile.benchmark.general_mutation_capability import main as mutation_capability_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        mutation_capability_main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "general-mutation":
         from casefile.benchmark.general_mutation_eval import main as mutation_main
 

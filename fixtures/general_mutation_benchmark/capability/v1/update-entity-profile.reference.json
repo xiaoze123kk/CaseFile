@@ -1,0 +1,22 @@
+{
+  "plan": {
+    "operations": [
+      {
+        "operation_key": "add_alias",
+        "operation_type": "update_field",
+        "target": {"ref_kind": "existing", "object_id": "ent_researcher"},
+        "field_path": "/aliases",
+        "new_value": ["老林"],
+        "reason": "记录新别名"
+      },
+      {
+        "operation_key": "update_capability",
+        "operation_type": "update_field",
+        "target": {"ref_kind": "existing", "object_id": "ent_researcher"},
+        "field_path": "/capabilities",
+        "new_value": ["检修备用系统"],
+        "reason": "记录新的能力"
+      }
+    ]
+  }
+}

@@ -69,7 +69,9 @@
 | `backend/src/casefile/agent_runtime/transport_diagnostics.py` | 对 Provider 异常 cause chain 做 timeout/connection/rate-limit/4xx/5xx/protocol/unknown 脱敏分类，输出稳定 retry、protocol 与 fallback 诊断，不保留 URL、正文、凭据或异常文本。 |
 | `backend/src/casefile/agent_runtime/general_mutation.py`、`general_mutation_prompt.py` | M3.4 runtime-private General Mutation Planner 严格输出契约、预算/依赖 DAG/保护集合规则与不可变 Prompt Package 渲染；不访问数据库或应用服务。 |
 | `backend/src/casefile/benchmark/closure_repair_lineage.py` | 对 repair domain、Closure policy、VerificationEngine、V3 Prompt/Schema、Application/Worker 与 Provider contract 生成统一 repair runtime fingerprint。 |
-| `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Regression/Safety 资格：按 Suite、Task、Trial、Transcript、Outcome、Grader、Report 冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；不冒充 Pro Capability。 |
+| `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Kernel Regression：给定 Plan 后冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；只报告 kernel failure/escape，不冒充 Safety 或 Pro Capability。 |
+| `backend/src/casefile/benchmark/general_mutation_capability.py` | General Mutation Outcome-first Provider Dev Capability：以自然语言作者任务驱动正式 Planner、Binder、Simulation，Reference Plan 仅证明题目可解，正交评分最终 CaseFile 状态、Safety 与 Scope，并区分能力、协议和基础设施失败。 |
+| `backend/src/casefile/benchmark/GENERAL_MUTATION_BENCHMARK.md` | General Mutation Benchmark v2 宪法、S0-S5 分层、Dev Task/Oracle/Reference 契约、指标与 Suggest Ready 发布证据边界。 |
 | `backend/src/casefile/benchmark/closure_repair_evidence.py`、`closure_repair_qualification.py` | 组装 M3.3 Evidence Index v2，校验每份报告自哈希、同 revision/runtime lineage、Holdout 最多一次且仅由首轮 infra 触发的完整重跑，以及 Backend 54-trial 最终资格；正式编排在同一 clean revision 上冻结 suite/gate/grader/runtime fingerprint，并按 Clean Dev → Holdout → Backend Release 顺序失败关闭。 |
 
 ## API 与 Worker

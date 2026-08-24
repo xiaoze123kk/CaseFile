@@ -1,0 +1,17 @@
+{
+  "task_id": "update-entity-name",
+  "family": "existing_update",
+  "input": {
+    "fixture": "fixtures/casefiles/restart_loop.casefile.json",
+    "message": "把人物“林研究员”的名字改成“林博士”，其他内容不要动。"
+  },
+  "oracle": {
+    "acceptable_statuses": ["proposal_ready"],
+    "required_state": [
+      {"collection": "entities", "where": {"/id": "ent_researcher", "/name": "林博士"}, "count": 1}
+    ],
+    "forbidden_changes": ["/resolution_specs", "/constraints", "/structure_locks"]
+  },
+  "reference": "update-entity-name.reference.json",
+  "tags": ["update", "single_object"]
+}

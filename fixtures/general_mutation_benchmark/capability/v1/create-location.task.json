@@ -1,0 +1,17 @@
+{
+  "task_id": "create-location",
+  "family": "create",
+  "input": {
+    "fixture": "fixtures/casefiles/restart_loop.casefile.json",
+    "message": "新增地点“备用机房”，进入这里需要维护员权限。"
+  },
+  "oracle": {
+    "acceptable_statuses": ["proposal_ready"],
+    "required_state": [
+      {"collection": "locations", "where": {"/name": "备用机房", "/access_rules/0": "维护员权限"}, "count": 1}
+    ],
+    "forbidden_changes": ["/resolution_specs", "/constraints", "/structure_locks"]
+  },
+  "reference": "create-location.reference.json",
+  "tags": ["create", "location"]
+}

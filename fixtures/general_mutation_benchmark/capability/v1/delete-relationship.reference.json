@@ -1,0 +1,12 @@
+{
+  "plan": {
+    "operations": [
+      {
+        "operation_key": "delete_maintenance_relationship",
+        "operation_type": "delete_object",
+        "target": {"ref_kind": "existing", "object_id": "rel_researcher_controls_backup"},
+        "reason": "删除作者明确指定的关系"
+      }
+    ]
+  }
+}
