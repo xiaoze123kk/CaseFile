@@ -46,6 +46,18 @@ class CompilerExecutionError(RuntimeError):
         super().__init__(error_code)
 
 
+def _normalize_compiler_error(
+    error: Exception, *, fallback_code: str
+) -> CompilerExecutionError:
+    """Preserve stable Compiler codes at the domain-to-Worker boundary."""
+
+    if isinstance(error, CompilerExecutionError):
+        return error
+    if isinstance(error, CompilerContractError):
+        return CompilerExecutionError(error.reason_code)
+    return CompilerExecutionError(fallback_code)
+
+
 class CompilerTaskExecutorMixin:
     """Execute deterministic Compiler foundation tasks without Provider context."""
 
@@ -61,10 +73,14 @@ class CompilerTaskExecutorMixin:
         except TaskCancellationRequested:
             raise
         except Exception as error:
+            normalized = _normalize_compiler_error(
+                error,
+                fallback_code="compiler_input_freeze_failed",
+            )
             self._record_compile_failure_step(
                 task_run_id,
                 attempt_id,
-                error,
+                normalized,
                 component_id=INPUT_FREEZE_COMPONENT_ID,
                 component_version=INPUT_FREEZE_COMPONENT_VERSION,
                 schema_id=INPUT_MANIFEST_SCHEMA_ID,
@@ -73,11 +89,16 @@ class CompilerTaskExecutorMixin:
                 failure_layer="frozen_input",
                 event_prefix="compiler.input_freeze",
             )
-            raise
+            if normalized is error:
+                raise
+            raise normalized from error
 
-        fingerprint = narrative_ir_component_fingerprint(snapshot_json)
-        component_input_hash = canonical_json_sha256(fingerprint)
+        component_input_hash: str | None = None
+        upstream_hashes: dict[str, str] = {}
         try:
+            fingerprint = narrative_ir_component_fingerprint(snapshot_json)
+            component_input_hash = canonical_json_sha256(fingerprint)
+            upstream_hashes = {"source_snapshot": fingerprint["source_content_hash"]}
             narrative_ir_json = project_narrative_ir_json(snapshot_json)
             narrative_ir_hash = canonical_json_sha256(narrative_ir_json)
             narrative_artifact_id, narrative_reused = self._materialize_json_artifact_component(
@@ -87,7 +108,7 @@ class CompilerTaskExecutorMixin:
                 component_id=NARRATIVE_IR_COMPONENT_ID,
                 component_version=NARRATIVE_IR_COMPONENT_VERSION,
                 component_input_hash=component_input_hash,
-                upstream_hashes={"source_snapshot": fingerprint["source_content_hash"]},
+                upstream_hashes=upstream_hashes,
                 artifact_kind="narrative_ir",
                 artifact_key=NARRATIVE_IR_ARTIFACT_KEY,
                 schema_id=NARRATIVE_IR_SCHEMA_ID,
@@ -99,19 +120,25 @@ class CompilerTaskExecutorMixin:
         except TaskCancellationRequested:
             raise
         except Exception as error:
+            normalized = _normalize_compiler_error(
+                error,
+                fallback_code="compiler_narrative_ir_projection_failed",
+            )
             self._record_compile_failure_step(
                 task_run_id,
                 attempt_id,
-                error,
+                normalized,
                 component_id=NARRATIVE_IR_COMPONENT_ID,
                 component_version=NARRATIVE_IR_COMPONENT_VERSION,
                 schema_id=NARRATIVE_IR_SCHEMA_ID,
                 input_hash=component_input_hash,
-                upstream_hashes={"source_snapshot": fingerprint["source_content_hash"]},
+                upstream_hashes=upstream_hashes,
                 failure_layer="narrative_ir",
                 event_prefix="compiler.narrative_ir",
             )
-            raise
+            if normalized is error:
+                raise
+            raise normalized from error
 
         with self.session_factory() as session, session.begin():
             task, attempt = self._locked_completion_rows(  # type: ignore[attr-defined]
@@ -411,7 +438,7 @@ class CompilerTaskExecutorMixin:
         self,
         task_run_id: int,
         attempt_id: int,
-        error: Exception,
+        error: CompilerExecutionError,
         *,
         component_id: str,
         component_version: str,
@@ -444,7 +471,7 @@ class CompilerTaskExecutorMixin:
             )
             if existing is None:
                 now = datetime.now(UTC)
-                code = getattr(error, "error_code", "compiler_input_freeze_failed")
+                code = error.error_code
                 session.add(
                     AgentStepRun(
                         project_id=task.project_id,
@@ -480,7 +507,7 @@ class CompilerTaskExecutorMixin:
                 task,
                 f"{event_prefix}.failed",
                 component_id,
-                {"error_code": getattr(error, "error_code", "compiler_input_freeze_failed")},
+                {"error_code": error.error_code},
             )
 
 

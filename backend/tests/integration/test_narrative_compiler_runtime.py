@@ -17,16 +17,18 @@ from casefile.application.compiler.constants import (
     NARRATIVE_IR_SCHEMA_ID,
 )
 from casefile.application.services import CaseFileService
-from casefile.application.workflow_views import task_failure_view
+from casefile.application.workflow_views import task_failure_from_row, task_failure_view
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentStepRun,
     CompileArtifact,
     CompileRun,
     TaskAttempt,
+    TaskEvent,
     TaskRun,
 )
 from casefile.domain.narrative_compiler import (
+    CompilerContractError,
     canonical_json_sha256,
     narrative_ir_component_fingerprint,
     project_narrative_ir_json,
@@ -369,6 +371,81 @@ def test_narrative_ir_write_is_rejected_after_cancellation(
             )
         )
     assert narrative_count == 0
+
+
+@pytest.mark.parametrize(
+    ("projection_error", "expected_code"),
+    [
+        (
+            CompilerContractError("compiler_narrative_ir_reference_unmapped"),
+            "compiler_narrative_ir_reference_unmapped",
+        ),
+        (
+            RuntimeError("unexpected projection failure"),
+            "compiler_narrative_ir_projection_failed",
+        ),
+    ],
+)
+def test_narrative_ir_failure_code_propagates_through_worker_records(
+    workflow_database: tuple[Engine, int, str],
+    projection_error: Exception,
+    expected_code: str,
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory, project_id, draft_id, profile_version_id = _prepare_compilable_project(
+        engine, actor_id, master_key
+    )
+    with factory() as session:
+        draft = CaseFileService(session).get_draft(actor_id, project_id)
+        run = CompilerService(session).create_run(
+            actor_id,
+            project_id,
+            mode="preview",
+            expected_draft_id=draft_id,
+            expected_draft_revision=int(draft["revision"]),
+            canon_version_id=None,
+            exposure_plan_revision_id=None,
+            compiler_profile_version_id=profile_version_id,
+        )
+
+    worker = Worker(factory, config=WorkerConfig(worker_id="compiler-failure-worker"))
+    with patch(
+        "casefile.worker.executors.compiler.project_narrative_ir_json",
+        side_effect=projection_error,
+    ):
+        assert worker.run_once()
+
+    with factory() as session:
+        task = session.get(TaskRun, int(run["task_run_id"]))
+        attempt = session.scalar(
+            select(TaskAttempt).where(TaskAttempt.task_run_id == run["task_run_id"])
+        )
+        failed_step = session.scalar(
+            select(AgentStepRun).where(
+                AgentStepRun.task_run_id == run["task_run_id"],
+                AgentStepRun.component_id == NARRATIVE_IR_COMPONENT_ID,
+                AgentStepRun.status == "failed",
+            )
+        )
+        failed_event = session.scalar(
+            select(TaskEvent).where(
+                TaskEvent.task_run_id == run["task_run_id"],
+                TaskEvent.event_type == "compiler.narrative_ir.failed",
+            )
+        )
+
+    assert task is not None and attempt is not None
+    assert failed_step is not None and failed_event is not None
+    assert failed_step.diagnostic_jsonb["issues"][0]["code"] == expected_code
+    assert failed_event.payload_jsonb["error_code"] == expected_code
+    assert attempt.error_code == expected_code
+    assert task.error_code == expected_code
+    assert task_failure_from_row(task) == {
+        "code": expected_code,
+        "message": "编译冻结输入校验失败，本次构建已安全停止。",
+        "retryable": False,
+        "issues": [],
+    }
 
 
 def test_task_run_frozen_inputs_reject_tampering(
