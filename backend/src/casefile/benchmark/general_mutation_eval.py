@@ -17,6 +17,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_PLAN_VERSION,
     GENERAL_MUTATION_POLICY_VERSION,
+    GENERAL_MUTATION_PROMPT_VERSION,
     MutationPlanV2,
 )
 from casefile.agent_runtime.prompt_repository import load_prompt
@@ -229,10 +230,11 @@ def build_suite() -> tuple[EvalSuite, dict[str, Any]]:
 def run_qualification() -> dict[str, Any]:
     suite, document = build_suite()
     trials = tuple(_run_task(task, document) for task in suite.tasks)
-    prompt = load_prompt("general_mutation_planner", GENERAL_MUTATION_PLAN_VERSION)
+    prompt = load_prompt("general_mutation_planner", GENERAL_MUTATION_PROMPT_VERSION)
     prompt_hash = prompt.system_prompt_sha256
     lineage = {
-        "prompt_version": GENERAL_MUTATION_PLAN_VERSION,
+        "prompt_version": GENERAL_MUTATION_PROMPT_VERSION,
+        "plan_contract_version": GENERAL_MUTATION_PLAN_VERSION,
         "prompt_hash": prompt_hash,
         "capability_policy_version": GENERAL_MUTATION_POLICY_VERSION,
         "binder_version": GENERAL_MUTATION_BINDER_VERSION,

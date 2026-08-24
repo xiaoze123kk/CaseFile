@@ -406,7 +406,6 @@ class FakeProvider:
         output_type = general_mutation_output_type(rendered)
         candidate = output_type.model_validate(
             {
-                "plan_version": rendered.package_version,
                 "operations": [
                     {
                         "operation_type": "create_object",

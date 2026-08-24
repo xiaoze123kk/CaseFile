@@ -62,7 +62,7 @@ from casefile.agent_runtime.context import (
 )
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_COMPONENT_ID,
-    GENERAL_MUTATION_PLAN_VERSION,
+    GENERAL_MUTATION_PROMPT_VERSION,
     GENERAL_MUTATION_SCHEMA_ID,
     CreateMutationCandidate,
     DeleteMutationCandidate,
@@ -535,7 +535,7 @@ class ChatTaskExecutorMixin:
             "general_mutation",
             {
                 "component_id": GENERAL_MUTATION_COMPONENT_ID,
-                "component_version": GENERAL_MUTATION_PLAN_VERSION,
+                "component_version": GENERAL_MUTATION_PROMPT_VERSION,
                 "schema_id": GENERAL_MUTATION_SCHEMA_ID,
                 "input_hash": task.input_hash,
             },

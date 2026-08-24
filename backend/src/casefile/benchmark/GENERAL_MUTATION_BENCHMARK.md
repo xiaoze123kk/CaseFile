@@ -39,8 +39,9 @@ cross-reference、multi-object 与 delete。它不是计划中的完整约 40-ta
 
 ## 07a Ref Contract v2
 
-- 当前 Planner/Plan/Binder 分别冻结为 `general-mutation-planner-v2`、
-  `general-mutation-plan-v2`、`general-mutation-binder-v2`；v1 继续只读回放。
+- Plan/Binder 冻结为 `general-mutation-plan-v2`、`general-mutation-binder-v2`；
+  v1 继续只读回放。首轮 7×5 暴露 Create 完整性问题后，只把 Prompt 升为
+  `general-mutation-planner-v3`，Plan Contract 仍为 v2。
 - Planner nested ref 只能是 `{ref_kind: "local", local_ref}` 或
   `{ref_kind: "existing", object_id}`；出现 `object_type` 必须以
   `general_mutation_ref_object_type_forbidden` 失败关闭。
@@ -50,6 +51,8 @@ cross-reference、multi-object 与 delete。它不是计划中的完整约 40-ta
   `reference_fingerprint`，从而允许校准合约而不伪装成题目语义变化。
 - 07a 只以干净提交上的 DeepSeek `deepseek-v4-pro` 7-task × 5 完整运行作为 Gate；
   失败时不得进入 Transport 实验。
+- Prompt v3 是独立单变量校准：补充通用 Create 业务必填字段、列表保留、字段语义
+  映射与作者请求逐项覆盖；不得同时修改 Binder、Suite、Reference 或 Grader。
 
 ## 指标与发布边界
 

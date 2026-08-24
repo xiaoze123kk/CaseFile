@@ -28,6 +28,7 @@ from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_PLAN_VERSION,
     GENERAL_MUTATION_POLICY_VERSION,
+    GENERAL_MUTATION_PROMPT_VERSION,
     GeneralMutationPlannerRequest,
     MutationPlanV2,
 )
@@ -214,9 +215,10 @@ def run_capability_benchmark(
         for task_index, task in enumerate(suite.tasks)
         for trial_index in range(1, trials + 1)
     ]
-    prompt = load_prompt("general_mutation_planner", GENERAL_MUTATION_PLAN_VERSION)
+    prompt = load_prompt("general_mutation_planner", GENERAL_MUTATION_PROMPT_VERSION)
     lineage = {
-        "prompt_version": GENERAL_MUTATION_PLAN_VERSION,
+        "prompt_version": GENERAL_MUTATION_PROMPT_VERSION,
+        "plan_contract_version": GENERAL_MUTATION_PLAN_VERSION,
         "prompt_hash": prompt.system_prompt_sha256,
         "capability_policy_version": GENERAL_MUTATION_POLICY_VERSION,
         "binder_version": GENERAL_MUTATION_BINDER_VERSION,
