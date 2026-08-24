@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import casefile.agent_runtime.provider_adapters.shared as provider_shared
 import casefile.agent_runtime.structured_output as structured_module
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
+from casefile.agent_runtime.general_mutation import MutationPlanV2
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
@@ -312,6 +313,36 @@ def test_plan_graph_validation_feedback_is_actionable_and_bounded() -> None:
             "message": "referenced_keys 只能引用同一计划中已声明的 local_key。",
         }
     ]
+
+
+def test_pydantic_validation_issues_preserve_general_mutation_reason_code() -> None:
+    with pytest.raises(ValidationError) as caught:
+        MutationPlanV2.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "legacy_ref",
+                        "operation_type": "update_field",
+                        "target": {
+                            "ref_kind": "existing",
+                            "object_id": "claim_backup_trigger",
+                        },
+                        "field_path": "/support_refs",
+                        "new_value": [
+                            {
+                                "object_id": "info_external_secret",
+                                "object_type": "information_unit",
+                            }
+                        ],
+                        "reason": "稳定错误码回归。",
+                    }
+                ]
+            }
+        )
+
+    issues = pydantic_validation_issues(caught.value)
+
+    assert issues[0]["code"] == "general_mutation_ref_object_type_forbidden"
 
 
 def test_strict_fallback_classifier_rejects_unknown_operational_errors() -> None:

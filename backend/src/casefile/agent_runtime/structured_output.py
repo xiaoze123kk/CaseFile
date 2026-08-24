@@ -374,7 +374,12 @@ def pydantic_validation_issues(error: ValidationError) -> list[dict[str, str]]:
                 message = f"字段值必须是以下枚举之一：{expected}。"
         elif issue_type == "value_error":
             raw_message = str(item.get("msg", ""))
-            if "local_key values must be unique" in raw_message:
+            stable_general_mutation_code = re.search(
+                r"\bgeneral_mutation_[a-z0-9_]+\b", raw_message
+            )
+            if stable_general_mutation_code is not None:
+                code = stable_general_mutation_code.group(0)
+            elif "local_key values must be unique" in raw_message:
                 message = "每个对象的 local_key 必须唯一。"
             elif "references unknown keys" in raw_message:
                 message = "referenced_keys 只能引用同一计划中已声明的 local_key。"

@@ -98,6 +98,7 @@ from casefile.application.v1_editing import (
     editable_fields_by_collection as chat_editable_fields_by_collection,
 )
 from casefile.application.workflow_service import WorkflowService
+from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import (
     AgentMessage,
     AgentPatchOperation,
@@ -670,6 +671,33 @@ class ChatTaskExecutorMixin:
                 "simulation": simulation,
                 "impact_hash": impact_hash,
             }, planned.usage
+        except ContractValidationError as error:
+            reason_code = next(
+                (
+                    str(item["code"])
+                    for item in error.errors
+                    if str(item.get("code", "")).startswith("general_mutation_")
+                ),
+                "general_mutation_planner_failed",
+            )
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": reason_code,
+                    "failure_layer": "planner_contract",
+                    "issues": [{"code": reason_code}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.blocked",
+                "general_mutation",
+                {"reason_code": reason_code},
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
         except GeneralMutationBindingError as error:
             emit(
                 "agent.step.failed",
