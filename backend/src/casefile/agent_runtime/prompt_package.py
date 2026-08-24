@@ -308,6 +308,10 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
             "general-mutation-planner-agent-v4",
             "general-mutation-planner-no-tools-v1",
         ),
+        (
+            "general-mutation-planner-agent-v5",
+            "general-mutation-planner-no-tools-v1",
+        ),
     }
 )
 

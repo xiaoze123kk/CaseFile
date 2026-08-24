@@ -106,6 +106,7 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "general-mutation-planner-v2": frozenset({"general_mutation_planner"}),
     "general-mutation-planner-v3": frozenset({"general_mutation_planner"}),
     "general-mutation-planner-v4": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v5": frozenset({"general_mutation_planner"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

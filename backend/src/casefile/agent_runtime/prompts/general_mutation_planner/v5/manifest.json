@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v5",
+  "previous_version": "general-mutation-planner-v4",
+  "change_summary": "禁止 Create 后回写 local_ref，并要求无完整坐标时省略 spatial_position。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v5",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "ab4365a58559fc706b162db8998dc5c588b9caf4bc1b15060fc26ad58899c138"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": ["planner"],
+      "input_contract_id": "general-mutation-planner-input-v1",
+      "output_schema_id": "general-mutation-plan-v2",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}
