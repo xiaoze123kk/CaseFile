@@ -73,6 +73,7 @@ from casefile.worker.support import (
     _previous_attempt_repair_feedback,
     _required_integer,
     _required_object,
+    _required_provider_binding,
     _required_string,
     _reusable_component_steps,
     _text_hash,
@@ -163,6 +164,7 @@ class Worker(
                 self._execute_novel_compile(task_run_id, attempt_id)
                 return
             task_snapshot, api_key = self._load_task_context(task_run_id)
+            _provider_name, model_id = _required_provider_binding(task_snapshot)
             sensitive_values = (api_key,)
             provider = self.provider_factory(task_snapshot)
             if task_snapshot.task_type == "brief_polish":
@@ -184,7 +186,7 @@ class Worker(
                     source_text=source_text,
                     polish_mode=cast(PolishMode, polish_mode),
                     input_hash=task_snapshot.input_hash,
-                    model_id=task_snapshot.model_id,
+                    model_id=model_id,
                     api_key=api_key,
                     max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
                     emit=lambda event_type, stage, payload: self._emit(
@@ -213,7 +215,7 @@ class Worker(
                     prompt_version=task_snapshot.prompt_version,
                     brief=frozen_brief,
                     input_hash=task_snapshot.input_hash,
-                    model_id=task_snapshot.model_id,
+                    model_id=model_id,
                     api_key=api_key,
                     max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
                     emit=lambda event_type, stage, payload: self._emit(
@@ -267,7 +269,7 @@ class Worker(
                     existing_questions=deepcopy(existing_questions),
                     mode=mode,
                     input_hash=task_snapshot.input_hash,
-                    model_id=task_snapshot.model_id,
+                    model_id=model_id,
                     api_key=api_key,
                     max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
                     emit=lambda event_type, stage, payload: self._emit(
@@ -294,7 +296,7 @@ class Worker(
                     prompt_version=task_snapshot.prompt_version,
                     input_data=task_snapshot.input_jsonb,
                     input_hash=task_snapshot.input_hash,
-                    model_id=task_snapshot.model_id,
+                    model_id=model_id,
                     api_key=api_key,
                     max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
                     emit=lambda event_type, stage, payload: self._emit(
@@ -322,7 +324,7 @@ class Worker(
                     prompt_version=task_snapshot.prompt_version,
                     blocks=deepcopy(blocks),
                     input_hash=task_snapshot.input_hash,
-                    model_id=task_snapshot.model_id,
+                    model_id=model_id,
                     api_key=api_key,
                     max_turns=int(task_snapshot.budget_jsonb.get("max_turns", 12)),
                     emit=lambda event_type, stage, payload: self._emit(
@@ -562,7 +564,7 @@ class Worker(
                 prompt_version=task.prompt_version,
                 brief=frozen_brief,
                 input_hash=task.input_hash,
-                model_id=task.model_id,
+                model_id=_required_provider_binding(task)[1],
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: self._emit(
@@ -625,7 +627,7 @@ class Worker(
                     frozen_version,
                     "parent_version_id",
                 ),
-                model_id=task.model_id,
+                model_id=_required_provider_binding(task)[1],
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: self._emit(

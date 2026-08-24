@@ -25,6 +25,7 @@ _FAILURE_MESSAGES = {
     "provider_authentication_failed": "模型服务认证失败，请检查 API 密钥与模型权限。",
     "generation_failed": "Agent 生成失败，草稿未被修改。",
 }
+_COMPILER_FAILURE_MESSAGE = "编译冻结输入校验失败，本次构建已安全停止。"
 _RETRYABLE_FAILURES = frozenset(
     {
         "candidate_validation_failed",
@@ -221,7 +222,11 @@ def task_failure_view(
 ) -> dict[str, Any] | None:
     if error_code is None:
         return None
-    message = _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])
+    message = (
+        _COMPILER_FAILURE_MESSAGE
+        if error_code.startswith("compiler_")
+        else _FAILURE_MESSAGES.get(error_code, _FAILURE_MESSAGES["generation_failed"])
+    )
     if network_retries is not None and error_code in {
         "provider_connection_failed",
         "provider_timeout",

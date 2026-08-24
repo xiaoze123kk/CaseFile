@@ -11,6 +11,7 @@ from casefile.agent_runtime import FakeProvider
 from casefile.api.app import create_app
 from casefile.application.compiler import CompilerService
 from casefile.application.services import CaseFileService
+from casefile.application.workflow_views import task_failure_view
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentStepRun,
@@ -26,6 +27,17 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
+
+
+def test_compiler_failure_uses_deterministic_public_message() -> None:
+    failure = task_failure_view("compiler_snapshot_binding_mismatch")
+
+    assert failure == {
+        "code": "compiler_snapshot_binding_mismatch",
+        "message": "编译冻结输入校验失败，本次构建已安全停止。",
+        "retryable": False,
+        "issues": [],
+    }
 
 
 def _prepare_compilable_project(

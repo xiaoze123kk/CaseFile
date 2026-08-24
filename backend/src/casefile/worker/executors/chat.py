@@ -97,6 +97,7 @@ from casefile.worker.support import (
     _merge_numeric_usage,
     _network_retries,
     _required_object,
+    _required_provider_binding,
     _required_string,
 )
 
@@ -475,7 +476,7 @@ class ChatTaskExecutorMixin:
             message=message,
             editable_fields_by_collection=chat_editable_fields_by_collection(),
             input_hash=task.input_hash,
-            model_id=task.model_id,
+            model_id=_required_provider_binding(task)[1],
             api_key=api_key,
             max_turns=int(task.budget_jsonb.get("max_turns", 12)),
             emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
@@ -684,8 +685,8 @@ class ChatTaskExecutorMixin:
                 routing=chat_routing_payload_as_dict(request),
                 prebuilt_input=executor_input,
                 extra_input=extra_input,
-                provider=task.provider,
-                model_id=task.model_id,
+                provider=_required_provider_binding(task)[0],
+                model_id=_required_provider_binding(task)[1],
                 hard_input_tokens=hard_input_tokens,
             )
         except ContextEngineError as error:
@@ -980,7 +981,7 @@ class ChatTaskExecutorMixin:
                     prompt_version=CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
                     input_hash=str(input_data["input_hash"]),
                     input_data=input_data,
-                    model_id=task.model_id,
+                    model_id=_required_provider_binding(task)[1],
                     api_key=api_key,
                     network_retries=_network_retries(task),
                     max_turns=1,

@@ -42,6 +42,7 @@ from casefile.data_postgres.models import (
 from casefile.data_postgres.repositories import ProjectRepository
 from casefile.worker.support import (
     TaskCancellationRequested,
+    _required_provider_binding,
     _required_string,
     _text_hash,
 )
@@ -311,10 +312,11 @@ class CompletionExecutorMixin:
                 brief_version.content_jsonb,
                 candidate,
             )
+            provider_name, model_id = _required_provider_binding(task)
             cost_usage = standardize_generation_cost_usage(
                 result.usage,
-                provider=task.provider,
-                model_id=task.model_id,
+                provider=provider_name,
+                model_id=model_id,
             )
             summary.update(
                 {

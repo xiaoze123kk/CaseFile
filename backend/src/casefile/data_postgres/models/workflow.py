@@ -436,7 +436,7 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    provider_setting_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    provider_setting_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     task_type: Mapped[str] = mapped_column(String(64), nullable=False)
     status: Mapped[str] = mapped_column(
         String(20),
@@ -449,9 +449,9 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         server_default=text("'queued'"),
     )
     input_draft_revision: Mapped[int] = mapped_column(Integer, nullable=False)
-    provider: Mapped[str] = mapped_column(String(40), nullable=True)
-    model_id: Mapped[str] = mapped_column(String(160), nullable=True)
-    provider_config_version: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    model_id: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    provider_config_version: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
     agent_version: Mapped[str] = mapped_column(String(64), nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
