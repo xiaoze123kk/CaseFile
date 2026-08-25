@@ -307,6 +307,13 @@ export type BriefIntakeCandidate = {
 export type CompileInputManifest = {
   [k: string]: unknown;
 };
+export type NovelPlanScene = CandidateScene & {
+  /**
+   * @minItems 1
+   */
+  source_refs: [CompilerSourceRef, ...CompilerSourceRef[]];
+  [k: string]: unknown;
+};
 
 /**
  * Code-generation aggregate for the CaseFile editing loop.
@@ -328,6 +335,10 @@ export interface EditingContracts {
   compiler_profile_binding: CompilerProfileBinding;
   compile_input_manifest: CompileInputManifest;
   narrative_ir: NarrativeIR;
+  novel_profile: NovelProfile;
+  planner_input: PlannerInputBundle;
+  novel_plan_candidate: NovelPlanCandidate;
+  novel_plan: NovelPlanIR;
 }
 export interface CaseFile {
   schema_version: "2.0";
@@ -855,4 +866,128 @@ export interface ReferenceEdgeContext {
   container_key?: string;
   container_ordinal: number;
   anchor_ref?: ObjectRef;
+}
+export interface NovelProfile {
+  schema_id: "compiler.novel-profile.v1";
+  structure: {
+    strategy: "three_act";
+    target_chapters: number;
+    target_scenes: number;
+  };
+  /**
+   * @minItems 1
+   */
+  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+  exposure_policy: "bound_plan" | "planner_default";
+}
+export interface PlannerInputBundle {
+  schema_id: "compiler.story-planner-input.v1";
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: NovelProfile;
+  planning_constraints: {
+    target_chapters: number;
+    target_scenes: number;
+    /**
+     * @minItems 1
+     */
+    allowed_presentation_modes: [
+      "linear" | "flashback" | "flashforward",
+      ...("linear" | "flashback" | "flashforward")[]
+    ];
+  };
+}
+export interface ExposureBinding {
+  draft_id: number;
+  plan_revision_id: number;
+  revision_no: number;
+  frozen_payload: {
+    [k: string]: unknown;
+  };
+  content_hash: string;
+}
+export interface NovelPlanCandidate {
+  schema_id: "compiler.novel-plan-candidate.v1";
+  /**
+   * @minItems 1
+   */
+  chapters: [CandidateChapter, ...CandidateChapter[]];
+  /**
+   * @minItems 1
+   */
+  scenes: [CandidateScene, ...CandidateScene[]];
+}
+export interface CandidateChapter {
+  chapter_id: string;
+  ordinal: number;
+  act_ordinal: number;
+  title: string;
+}
+export interface CandidateScene {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  intent: string;
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  event_refs: ObjectRef[];
+  story_time_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
+  prerequisite_scene_ids: string[];
+}
+export interface ExposurePlacement {
+  entry_key: string;
+  action: "introduce" | "reinforce" | "reinterpret";
+}
+export interface ResolutionPlacement {
+  resolution_ref: ObjectRef;
+  action: "advance" | "resolve" | "intentionally_unresolved";
+}
+export interface NovelPlanIR {
+  schema_id: "compiler.novel-plan.v1";
+  planner_version: string;
+  source: NovelPlanSource;
+  /**
+   * @minItems 1
+   */
+  chapters: [CandidateChapter, ...CandidateChapter[]];
+  /**
+   * @minItems 1
+   */
+  scenes: [NovelPlanScene, ...NovelPlanScene[]];
+  indexes: NovelPlanIndexes;
+}
+export interface NovelPlanSource {
+  planner_input_hash: string;
+  narrative_ir_hash: string;
+  profile_hash: string;
+  exposure_hash: string | null;
+  component_fingerprint: string;
+}
+export interface NovelPlanIndexes {
+  chapter_scene_ids: {
+    [k: string]: string[];
+  };
+  scene_dependencies: {
+    [k: string]: string[];
+  };
 }

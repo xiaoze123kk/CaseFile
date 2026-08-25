@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner",
+  "version": "story-planner-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "02e0243a4c05f60aa130698c6bda3c97017d507070a2eb1bf6df1a6a1f7f3539",
+  "previous_version": null,
+  "change_summary": "冻结 N4.3 Story Planner 候选契约、无工具策略与结构修复边界。"
+}

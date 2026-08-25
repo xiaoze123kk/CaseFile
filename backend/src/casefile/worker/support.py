@@ -41,7 +41,7 @@ class TaskCancellationRequested(RuntimeError):
 def _required_provider_binding(task: TaskRun) -> tuple[str, str]:
     """Narrow the DB-enforced provider shape for non-Compiler execution."""
 
-    if task.task_type == "novel_compile" or task.provider is None or task.model_id is None:
+    if task.provider is None or task.model_id is None:
         raise RuntimeError("Provider-backed TaskRun has an invalid frozen provider binding")
     return task.provider, task.model_id
 

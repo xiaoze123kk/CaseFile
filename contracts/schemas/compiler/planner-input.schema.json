@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/planner-input.schema.json",
+  "title": "PlannerInputBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "narrative_ir", "exposure_plan", "profile", "planning_constraints"],
+  "properties": {
+    "schema_id": {"const": "compiler.story-planner-input.v1"},
+    "narrative_ir": {"$ref": "narrative-ir.schema.json"},
+    "exposure_plan": {
+      "oneOf": [
+        {"$ref": "compiler.schema.json#/$defs/ExposureBinding"},
+        {"type": "null"}
+      ]
+    },
+    "profile": {"$ref": "novel-profile.schema.json"},
+    "planning_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_chapters", "target_scenes", "allowed_presentation_modes"],
+      "properties": {
+        "target_chapters": {"type": "integer", "minimum": 1, "maximum": 100},
+        "target_scenes": {"type": "integer", "minimum": 1, "maximum": 500},
+        "allowed_presentation_modes": {
+          "type": "array",
+          "items": {"enum": ["linear", "flashback", "flashforward"]},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

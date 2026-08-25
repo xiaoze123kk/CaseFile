@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -44,10 +45,17 @@ EXPECTED_CURRENT_VERSIONS = {
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
+    "story_planner": "story-planner-v2",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("story_planner", "story-planner-v2"): {
+        "system": "469cc09273bb71943d7f890582fb3a8581bd2080adb1d7d2b82615d4df66e75d"
+    },
+    ("story_planner", "story-planner-v1"): {
+        "system": "02e0243a4c05f60aa130698c6bda3c97017d507070a2eb1bf6df1a6a1f7f3539"
+    },
     ("closure_repair", "closure-repair-v1"): {
         "fragment:repair": "e27f2e5f4d105d9718816c5c38abbb6405b1f9475e6a0f22f09a69189d58b47d"
     },
@@ -390,12 +398,17 @@ EXPECTED_RELEASE_HASHES = {
 def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
     deterministic_task_types = {"novel_compile"}
-    auxiliary_agent_ids = {"casefile_chat_context_compactor", "closure_repair"}
+    auxiliary_agent_ids = {
+        "casefile_chat_context_compactor",
+        "closure_repair",
+        "story_planner",
+    }
 
     assert deterministic_task_types <= contract_task_types
-    assert set(SUPPORTED_AGENT_IDS) == (
-        contract_task_types - deterministic_task_types
-    ) | auxiliary_agent_ids
+    assert (
+        set(SUPPORTED_AGENT_IDS)
+        == (contract_task_types - deterministic_task_types) | auxiliary_agent_ids
+    )
     assert deterministic_task_types.isdisjoint(SUPPORTED_AGENT_IDS)
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
     assert {

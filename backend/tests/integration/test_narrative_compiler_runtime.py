@@ -121,9 +121,7 @@ def test_providerless_compile_freezes_manifest_and_keeps_draft_unchanged(
     assert provider_called is False
 
     with factory() as session:
-        result = CompilerService(session).get_run(
-            actor_id, project_id, int(run["compile_run_id"])
-        )
+        result = CompilerService(session).get_run(actor_id, project_id, int(run["compile_run_id"]))
         after = CaseFileService(session).get_draft(actor_id, project_id)
         model_calls = session.scalar(
             select(func.count(AgentModelCall.id)).where(
@@ -156,6 +154,121 @@ def test_providerless_compile_freezes_manifest_and_keeps_draft_unchanged(
         "input_manifest": False,
         "narrative_ir": False,
     }
+
+
+def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory, project_id, draft_id, _profile_version_id = _prepare_compilable_project(
+        engine, actor_id, master_key
+    )
+    with factory() as session:
+        profile = CompilerService(session).create_profile(
+            actor_id,
+            project_id,
+            profile_key="novel.story-planner",
+            name="Story Planner",
+            schema_id="compiler.novel-profile.v1",
+            payload={
+                "schema_id": "compiler.novel-profile.v1",
+                "structure": {
+                    "strategy": "three_act",
+                    "target_chapters": 1,
+                    "target_scenes": 2,
+                },
+                "allowed_presentation_modes": ["linear"],
+                "exposure_policy": "planner_default",
+            },
+        )
+        draft = CaseFileService(session).get_draft(actor_id, project_id)
+        run = CompilerService(session).create_run(
+            actor_id,
+            project_id,
+            mode="preview",
+            expected_draft_id=draft_id,
+            expected_draft_revision=int(draft["revision"]),
+            canon_version_id=None,
+            exposure_plan_revision_id=None,
+            compiler_profile_version_id=int(profile["current_version_id"]),
+            planner_provider="openai",
+        )
+
+    provider_calls = 0
+
+    def provider_factory(_task: TaskRun) -> FakeProvider:
+        nonlocal provider_calls
+        provider_calls += 1
+        return FakeProvider()
+
+    with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="story-planner-worker"),
+            provider_factory=provider_factory,
+        )
+        assert worker.run_once() is True
+    assert provider_calls == 1
+
+    with factory() as session:
+        task = session.get(TaskRun, int(run["task_run_id"]))
+        artifacts = list(
+            session.scalars(
+                select(CompileArtifact)
+                .where(CompileArtifact.compile_run_id == run["compile_run_id"])
+                .order_by(CompileArtifact.id)
+            )
+        )
+        model_calls = list(
+            session.scalars(
+                select(AgentModelCall).where(AgentModelCall.task_run_id == run["task_run_id"])
+            )
+        )
+    assert task is not None and task.status == "succeeded", (
+        None if task is None else task.error_code,
+        None if task is None else task.error_details_jsonb,
+    )
+    assert [artifact.artifact_kind for artifact in artifacts] == [
+        "input_manifest",
+        "narrative_ir",
+        "novel_plan",
+    ]
+    assert len(model_calls) == 1
+    assert model_calls[0].raw_output_text
+
+    with factory() as session:
+        draft = CaseFileService(session).get_draft(actor_id, project_id)
+        reused = CompilerService(session).create_run(
+            actor_id,
+            project_id,
+            mode="preview",
+            expected_draft_id=draft_id,
+            expected_draft_revision=int(draft["revision"]),
+            canon_version_id=None,
+            exposure_plan_revision_id=None,
+            compiler_profile_version_id=int(profile["current_version_id"]),
+            planner_provider="openai",
+        )
+    with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
+        worker = Worker(
+            factory,
+            config=WorkerConfig(worker_id="story-planner-reuse-worker"),
+            provider_factory=provider_factory,
+        )
+        assert worker.run_once() is True
+    assert provider_calls == 1
+    with factory() as session:
+        reused_task = session.get(TaskRun, int(reused["task_run_id"]))
+        assert reused_task is not None
+        assert reused_task.result_jsonb["component_reuse"]["novel_plan"] is True
+        assert (
+            session.scalar(
+                select(func.count(AgentModelCall.id)).where(
+                    AgentModelCall.task_run_id == reused["task_run_id"]
+                )
+            )
+            == 0
+        )
 
 
 def test_compile_artifact_is_reused_after_expired_lease(
@@ -469,9 +582,7 @@ def test_task_run_frozen_inputs_reject_tampering(
         )
     with pytest.raises(DBAPIError), factory() as session, session.begin():
         session.execute(
-            update(TaskRun)
-            .where(TaskRun.id == run["task_run_id"])
-            .values(input_hash="0" * 64)
+            update(TaskRun).where(TaskRun.id == run["task_run_id"]).values(input_hash="0" * 64)
         )
 
     with factory() as session:
@@ -505,9 +616,7 @@ def test_compiler_profile_and_run_http_contracts(
         )
         assert profile_response.status_code == 201, profile_response.text
         profile = profile_response.json()
-        draft_response = client.get(
-            f"/api/v1/projects/{project_id}/draft", headers=headers
-        )
+        draft_response = client.get(f"/api/v1/projects/{project_id}/draft", headers=headers)
         assert draft_response.status_code == 200
         draft = draft_response.json()
         run_response = client.post(
@@ -552,9 +661,7 @@ def test_artifact_content_api_requires_exact_run_ownership(
             exposure_plan_revision_id=None,
             compiler_profile_version_id=profile_version_id,
         )
-    assert Worker(
-        factory, config=WorkerConfig(worker_id="compiler-artifact-api-worker")
-    ).run_once()
+    assert Worker(factory, config=WorkerConfig(worker_id="compiler-artifact-api-worker")).run_once()
     with factory() as session:
         artifact = session.scalar(
             select(CompileArtifact).where(
@@ -601,8 +708,7 @@ def test_artifact_content_api_requires_exact_run_ownership(
         )
         assert wrong_run.status_code == 404
         wrong_artifact = client.get(
-            f"/api/v1/projects/{project_id}/compile-runs/"
-            f"{run['compile_run_id']}/artifacts/999999",
+            f"/api/v1/projects/{project_id}/compile-runs/{run['compile_run_id']}/artifacts/999999",
             headers=headers,
         )
         assert wrong_artifact.status_code == 404

@@ -75,9 +75,7 @@ class CompilerProfileVersion(BigIntIdentityPrimaryKeyMixin, Base):
         UniqueConstraint(
             "compiler_profile_id", "version_no", name="uq_compiler_profile_versions_version"
         ),
-        UniqueConstraint(
-            "project_id", "id", name="uq_compiler_profile_versions_project_id_id"
-        ),
+        UniqueConstraint("project_id", "id", name="uq_compiler_profile_versions_project_id_id"),
         UniqueConstraint(
             "project_id",
             "compiler_profile_id",
@@ -236,7 +234,10 @@ class CompileArtifact(BigIntIdentityPrimaryKeyMixin, Base):
             "schema_id = 'compiler.input-manifest.v1') OR "
             "(artifact_kind = 'narrative_ir' AND "
             "artifact_key = 'compiler.narrative_ir' AND "
-            "schema_id = 'compiler.narrative-ir.v1')",
+            "schema_id = 'compiler.narrative-ir.v1') OR "
+            "(artifact_kind = 'novel_plan' AND "
+            "artifact_key = 'compiler.novel_plan' AND "
+            "schema_id = 'compiler.novel-plan.v1')",
             name="identity_allowed",
         ),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),

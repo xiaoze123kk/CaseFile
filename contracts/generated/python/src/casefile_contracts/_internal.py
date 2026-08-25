@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel, constr
 
 from . import brief as brief_1
+from . import novel_profile as novel_profile_1
 
 
 class QuestionType(StrEnum):
@@ -1568,6 +1569,145 @@ class StructureLockEnvelope(NarrativeObjectEnvelope):
     value: StructureLock | None = None
 
 
+class ScenePurpose(Enum):
+    hook = 'hook'
+    setup = 'setup'
+    investigation = 'investigation'
+    discovery = 'discovery'
+    reversal = 'reversal'
+    confrontation = 'confrontation'
+    reveal = 'reveal'
+    false_resolution = 'false_resolution'
+    climax = 'climax'
+    resolution = 'resolution'
+    transition = 'transition'
+
+
+class PresentationMode(Enum):
+    linear = 'linear'
+    flashback = 'flashback'
+    flashforward = 'flashforward'
+
+
+class ResolutionAction(Enum):
+    advance = 'advance'
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class CandidateChapter(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    act_ordinal: Annotated[int, Field(ge=1, le=10)]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+
+
+class Action(Enum):
+    introduce = 'introduce'
+    reinforce = 'reinforce'
+    reinterpret = 'reinterpret'
+
+
+class ExposurePlacement(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    action: Action
+
+
+class ResolutionPlacement(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_ref: ObjectRef
+    action: ResolutionAction
+
+
+class PrerequisiteSceneId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+
+
+class CandidateScene(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    intent: Annotated[str, Field(max_length=2000, min_length=1)]
+    presentation_mode: PresentationMode
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    event_refs: list[ObjectRef]
+    story_time_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+
+
+class NovelPlanCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.novel-plan-candidate.v1']
+    chapters: Annotated[list[CandidateChapter], Field(min_length=1)]
+    scenes: Annotated[list[CandidateScene], Field(min_length=1)]
+
+
+class NovelPlanSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    planner_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    profile_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    exposure_hash: Sha256Hex | None
+    component_fingerprint: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class NovelPlanScene(CandidateScene):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    source_refs: Annotated[list[CompilerSourceRef], Field(min_length=1)]
+
+
+class NovelPlanIndexes(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_scene_ids: dict[str, list[str]]
+    scene_dependencies: dict[str, list[str]]
+
+
+class NovelPlanIR(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.novel-plan.v1']
+    planner_version: Annotated[str, Field(max_length=80, min_length=1)]
+    source: NovelPlanSource
+    chapters: Annotated[list[CandidateChapter], Field(min_length=1)]
+    scenes: Annotated[list[NovelPlanScene], Field(min_length=1)]
+    indexes: NovelPlanIndexes
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -1630,7 +1770,7 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_4
+    validation_issue: Schema_5
     patch_candidate: Schema_3
     task_run: TaskRun
     task_event: TaskEvent
@@ -1642,6 +1782,10 @@ class EditingContracts(BaseModel):
     compiler_profile_binding: CompilerProfileBinding
     compile_input_manifest: CompileInputManifest
     narrative_ir: Schema_2
+    novel_profile: novel_profile_1.Schema
+    planner_input: Schema_4
+    novel_plan_candidate: NovelPlanCandidate
+    novel_plan: NovelPlanIR
 
 
 class CoreSellingPoint(RootModel[str]):
@@ -1831,6 +1975,36 @@ class Schema_3(BaseModel):
     ]
 
 
+class AllowedPresentationMode(Enum):
+    linear = 'linear'
+    flashback = 'flashback'
+    flashforward = 'flashforward'
+
+
+class PlanningConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode], Field(min_length=1)
+    ]
+
+
+class Schema_4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-input.v1']
+    narrative_ir: Schema_2
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints
+
+
 class Severity_2(StrEnum):
     s0 = 'S0'
     s1 = 'S1'
@@ -1851,7 +2025,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_4(BaseModel):
+class Schema_5(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

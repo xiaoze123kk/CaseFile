@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/novel-plan.schema.json",
+  "title": "NovelPlanContracts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["candidate", "novel_plan"],
+  "properties": {
+    "candidate": {"$ref": "#/$defs/NovelPlanCandidate"},
+    "novel_plan": {"$ref": "#/$defs/NovelPlanIR"}
+  },
+  "$defs": {
+    "ScenePurpose": {
+      "enum": ["hook", "setup", "investigation", "discovery", "reversal", "confrontation", "reveal", "false_resolution", "climax", "resolution", "transition"]
+    },
+    "PresentationMode": {"enum": ["linear", "flashback", "flashforward"]},
+    "ResolutionAction": {"enum": ["advance", "resolve", "intentionally_unresolved"]},
+    "CandidateChapter": {
+      "title": "CandidateChapter",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapter_id", "ordinal", "act_ordinal", "title"],
+      "properties": {
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "act_ordinal": {"type": "integer", "minimum": 1, "maximum": 10},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200}
+      }
+    },
+    "ExposurePlacement": {
+      "title": "ExposurePlacement",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_key", "action"],
+      "properties": {
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "action": {"enum": ["introduce", "reinforce", "reinterpret"]}
+      }
+    },
+    "ResolutionPlacement": {
+      "title": "ResolutionPlacement",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution_ref", "action"],
+      "properties": {
+        "resolution_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "action": {"$ref": "#/$defs/ResolutionAction"}
+      }
+    },
+    "CandidateScene": {
+      "title": "CandidateScene",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "chapter_id", "discourse_order", "purpose", "intent", "presentation_mode", "pov_ref", "participant_refs", "location_ref", "event_refs", "story_time_refs", "basis_refs", "exposure", "resolutions", "prerequisite_scene_ids"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "#/$defs/ScenePurpose"},
+        "intent": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "presentation_mode": {"$ref": "#/$defs/PresentationMode"},
+        "pov_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "participant_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "location_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "event_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "story_time_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "basis_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "exposure": {"type": "array", "items": {"$ref": "#/$defs/ExposurePlacement"}},
+        "resolutions": {"type": "array", "items": {"$ref": "#/$defs/ResolutionPlacement"}},
+        "prerequisite_scene_ids": {"type": "array", "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"}, "uniqueItems": true}
+      }
+    },
+    "NovelPlanCandidate": {
+      "title": "NovelPlanCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "chapters", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.novel-plan-candidate.v1"},
+        "chapters": {"type": "array", "items": {"$ref": "#/$defs/CandidateChapter"}, "minItems": 1},
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/CandidateScene"}, "minItems": 1}
+      }
+    },
+    "NovelPlanSource": {
+      "title": "NovelPlanSource",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planner_input_hash", "narrative_ir_hash", "profile_hash", "exposure_hash", "component_fingerprint"],
+      "properties": {
+        "planner_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "profile_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "exposure_hash": {"oneOf": [{"$ref": "compiler.schema.json#/$defs/Sha256Hex"}, {"type": "null"}]},
+        "component_fingerprint": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "NovelPlanScene": {
+      "title": "NovelPlanScene",
+      "allOf": [
+        {"$ref": "#/$defs/CandidateScene"},
+        {
+          "type": "object",
+          "required": ["source_refs"],
+          "properties": {
+            "source_refs": {"type": "array", "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"}, "minItems": 1, "uniqueItems": true}
+          }
+        }
+      ]
+    },
+    "NovelPlanIndexes": {
+      "title": "NovelPlanIndexes",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapter_scene_ids", "scene_dependencies"],
+      "properties": {
+        "chapter_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "scene_dependencies": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}
+      }
+    },
+    "NovelPlanIR": {
+      "title": "NovelPlanIR",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "planner_version", "source", "chapters", "scenes", "indexes"],
+      "properties": {
+        "schema_id": {"const": "compiler.novel-plan.v1"},
+        "planner_version": {"type": "string", "minLength": 1, "maxLength": 80},
+        "source": {"$ref": "#/$defs/NovelPlanSource"},
+        "chapters": {"type": "array", "items": {"$ref": "#/$defs/CandidateChapter"}, "minItems": 1},
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/NovelPlanScene"}, "minItems": 1},
+        "indexes": {"$ref": "#/$defs/NovelPlanIndexes"}
+      }
+    }
+  }
+}

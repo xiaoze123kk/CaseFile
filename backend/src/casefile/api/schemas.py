@@ -259,13 +259,9 @@ class AgentPatchApplyRequest(StrictRequest):
             self.operation_ids
         ):
             raise ValueError("operation_ids must be unique")
-        if len(set(self.accepted_debt_finding_keys)) != len(
-            self.accepted_debt_finding_keys
-        ):
+        if len(set(self.accepted_debt_finding_keys)) != len(self.accepted_debt_finding_keys):
             raise ValueError("accepted_debt_finding_keys must be unique")
-        if self.accepted_debt_finding_keys and not (
-            self.debt_acceptance_reason or ""
-        ).strip():
+        if self.accepted_debt_finding_keys and not (self.debt_acceptance_reason or "").strip():
             raise ValueError("debt_acceptance_reason is required")
         return self
 
@@ -293,9 +289,7 @@ class AgentPatchSimulateRequest(StrictRequest):
             self.operation_ids
         ):
             raise ValueError("operation_ids must be unique")
-        if len(set(self.accepted_debt_finding_keys)) != len(
-            self.accepted_debt_finding_keys
-        ):
+        if len(set(self.accepted_debt_finding_keys)) != len(self.accepted_debt_finding_keys):
             raise ValueError("accepted_debt_finding_keys must be unique")
         return self
 
@@ -453,6 +447,12 @@ class CompileRunCreateRequest(StrictRequest):
     canon_version_id: int | None = Field(default=None, ge=1)
     exposure_plan_revision_id: int | None = Field(default=None, ge=1)
     compiler_profile_version_id: int = Field(ge=1)
+    planner_provider: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=40,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
 
     @model_validator(mode="after")
     def canon_matches_mode(self) -> Self:

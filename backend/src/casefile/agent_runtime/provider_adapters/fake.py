@@ -98,6 +98,10 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _bind_safe_patch_registry,
     _validate_generated_descriptions,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
 from casefile.contracts import validate_casefile
 
 
@@ -389,6 +393,14 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
 
 class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
+
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
+        candidate = _fake_story_plan_candidate(request.planner_input)
+        return StoryPlannerProviderResult(
+            candidate=candidate,
+            usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            raw_output=None,
+        )
 
     def repair_closure(
         self,
@@ -1762,6 +1774,73 @@ def _brief_constraints(request: GenerationRequest) -> list[dict[str, str]]:
         for item in request.brief["creative_constraints"]
     )
     return result
+
+
+def _fake_story_plan_candidate(planner_input: dict[str, Any]) -> dict[str, Any]:
+    constraints = planner_input["planning_constraints"]
+    narrative = planner_input["narrative_ir"]
+    objects = narrative["objects"]
+    all_refs = [
+        envelope["object_ref"] for collection in objects.values() for envelope in collection
+    ]
+    basis = all_refs[:1] or [narrative["source"]["casefile_ref"]]
+    entities = [ref for ref in all_refs if ref["object_type"] == "entity"]
+    locations = [ref for ref in all_refs if ref["object_type"] == "location"]
+    events = [ref for ref in all_refs if ref["object_type"] == "event"]
+    resolutions = [ref for ref in all_refs if ref["object_type"] == "resolution_spec"]
+    exposure = planner_input.get("exposure_plan")
+    entries = [] if exposure is None else exposure["frozen_payload"].get("entries", [])
+    chapter_count = constraints["target_chapters"]
+    scene_count = constraints["target_scenes"]
+    chapters = [
+        {
+            "chapter_id": f"chapter_{index}",
+            "ordinal": index,
+            "act_ordinal": min(3, ((index - 1) * 3 // chapter_count) + 1),
+            "title": f"第{index}章",
+        }
+        for index in range(1, chapter_count + 1)
+    ]
+    scenes = []
+    for index in range(1, scene_count + 1):
+        chapter_index = min(
+            chapter_count,
+            ((index - 1) * chapter_count // scene_count) + 1,
+        )
+        scene_exposure = (
+            [{"entry_key": item["entry_key"], "action": "introduce"} for item in entries]
+            if index == 1
+            else []
+        )
+        scene_resolutions = (
+            [{"resolution_ref": ref, "action": "resolve"} for ref in resolutions]
+            if index == scene_count
+            else []
+        )
+        scenes.append(
+            {
+                "scene_id": f"scene_{index}",
+                "chapter_id": f"chapter_{chapter_index}",
+                "discourse_order": index,
+                "purpose": "resolution" if index == scene_count else "investigation",
+                "intent": f"推进冻结事实所支持的第 {index} 个叙事节点。",
+                "presentation_mode": constraints["allowed_presentation_modes"][0],
+                "pov_ref": entities[0] if entities else None,
+                "participant_refs": entities[:1],
+                "location_ref": locations[0] if locations else None,
+                "event_refs": events[:1],
+                "story_time_refs": events[:1],
+                "basis_refs": basis,
+                "exposure": scene_exposure,
+                "resolutions": scene_resolutions,
+                "prerequisite_scene_ids": [] if index == 1 else [f"scene_{index - 1}"],
+            }
+        )
+    return {
+        "schema_id": "compiler.novel-plan-candidate.v1",
+        "chapters": chapters,
+        "scenes": scenes,
+    }
 
 
 __all__ = ["FakeProvider"]

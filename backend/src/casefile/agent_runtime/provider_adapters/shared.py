@@ -49,6 +49,7 @@ from casefile.agent_runtime.prompt_repository import (
     system_prompt_for_task,
 )
 from casefile.agent_runtime.provider_adapters.protocols import ProviderProtocolError
+from casefile.agent_runtime.story_planner import StoryPlannerRequest
 from casefile.agent_runtime.structured_output import (
     call_deepseek_strict_tool,
     compile_deepseek_strict_schema,
@@ -233,6 +234,7 @@ async def _run_auxiliary_agent(
         | IdeaGenerationRequest
         | ThreadCompactionRequest
         | ClosureRepairRequest
+        | StoryPlannerRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
@@ -251,6 +253,7 @@ async def _run_auxiliary_agent(
     context: ChatToolContext | None = None,
     max_turns: int | None = None,
     strict_validation: bool = False,
+    max_protocol_attempts: int = 3,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     protocol = (
         "native_json_schema" if structured_output else deepseek_output_protocol or "strict_tool"
@@ -320,7 +323,9 @@ async def _run_auxiliary_agent(
             },
         )
 
-    for attempt_no in range(1, 4):
+    if max_protocol_attempts < 1 or max_protocol_attempts > 3:
+        raise ValueError("max_protocol_attempts must be between 1 and 3")
+    for attempt_no in range(1, max_protocol_attempts + 1):
         raw_output_text: str | None = None
         if protocol not in selected_protocols:
             request.emit(

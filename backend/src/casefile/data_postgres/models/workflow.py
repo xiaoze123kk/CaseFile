@@ -274,8 +274,10 @@ class TaskRun(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="provider_version_positive",
         ),
         CheckConstraint(
-            "(task_type = 'novel_compile' AND provider_setting_id IS NULL "
+            "(task_type = 'novel_compile' AND ((provider_setting_id IS NULL "
             "AND provider IS NULL AND model_id IS NULL AND provider_config_version IS NULL) OR "
+            "(provider_setting_id IS NOT NULL AND provider IS NOT NULL "
+            "AND model_id IS NOT NULL AND provider_config_version IS NOT NULL))) OR "
             "(task_type <> 'novel_compile' AND provider_setting_id IS NOT NULL "
             "AND provider IS NOT NULL AND model_id IS NOT NULL "
             "AND provider_config_version IS NOT NULL)",

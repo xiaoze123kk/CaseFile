@@ -3,7 +3,7 @@
 #   filename:  editing-contracts.schema.json
 
 from ._internal import DetectionType
-from ._internal import Schema_4 as Schema
+from ._internal import Schema_5 as Schema
 from ._internal import Severity_2 as Severity
 from ._internal import Status_2 as Status
 

@@ -35,6 +35,10 @@ from casefile.agent_runtime.models import (
     RouteSpecificRewriteRequest,
     RouteSpecificRewriteResult,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
 
 
 class GenerationProvider(Protocol):
@@ -42,6 +46,8 @@ class GenerationProvider(Protocol):
 
 
 class AgentProvider(GenerationProvider, Protocol):
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult: ...
+
     def repair_closure(
         self,
         request: ClosureRepairRequest,

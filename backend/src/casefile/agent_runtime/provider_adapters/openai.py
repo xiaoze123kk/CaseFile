@@ -13,6 +13,7 @@ from casefile_contracts import (
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
+from casefile_contracts import NovelPlanCandidate
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
@@ -106,6 +107,11 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _run_chat_tool_agent,
     _validate_polish_candidate,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
+from casefile.agent_runtime.story_planner_prompt import render_story_planner_prompt
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
@@ -113,6 +119,30 @@ from casefile.agent_runtime.structured_output import (
 
 class OpenAIAgentsProvider:
     """OpenAI Responses implementation with structured outputs."""
+
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_prompt(request)
+        try:
+            candidate, usage = asyncio.run(
+                self._run_auxiliary(
+                    request,
+                    instructions=instructions,
+                    input_text=input_text,
+                    output_type=NovelPlanCandidate,
+                    stage="story_planner",
+                    component_id="story_planner",
+                    schema_id="compiler.novel-plan-candidate.v1",
+                    max_turns=1,
+                    temperature=0,
+                    strict_validation=False,
+                    max_protocol_attempts=1,
+                )
+            )
+        except ProviderProtocolError:
+            candidate, usage = {}, {}
+        return StoryPlannerProviderResult(candidate=candidate, usage=usage)
 
     def repair_closure(
         self,
@@ -612,6 +642,7 @@ class OpenAIAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | StoryPlannerRequest
         ),
         *,
         instructions: str,
@@ -625,6 +656,7 @@ class OpenAIAgentsProvider:
         max_turns: int | None = None,
         temperature: float | None = None,
         strict_validation: bool = False,
+        max_protocol_attempts: int = 3,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -654,6 +686,7 @@ class OpenAIAgentsProvider:
                 context=context,
                 max_turns=max_turns,
                 strict_validation=strict_validation,
+                max_protocol_attempts=max_protocol_attempts,
             )
         finally:
             await client.close()

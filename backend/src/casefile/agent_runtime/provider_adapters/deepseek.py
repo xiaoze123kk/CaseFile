@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -108,15 +103,123 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _run_chat_tool_agent,
     _validate_polish_candidate,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
+from casefile.agent_runtime.story_planner_prompt import render_story_planner_prompt
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import NovelPlanCandidate
 
 
 class DeepSeekAgentsProvider:
     """DeepSeek OpenAI-compatible Chat Completions implementation."""
 
     base_url = "https://api.deepseek.com"
+
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_prompt(request)
+        return asyncio.run(
+            self._plan_story_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+            )
+        )
+
+    async def _plan_story_json_object(
+        self,
+        request: StoryPlannerRequest,
+        *,
+        instructions: str,
+        input_text: str,
+    ) -> StoryPlannerProviderResult:
+        """Return the raw candidate so the outer bounded repair loop owns validation."""
+
+        client = AsyncOpenAI(
+            api_key=request.api_key,
+            base_url=self.base_url,
+            max_retries=request.network_retries,
+        )
+        schema_text = json.dumps(
+            NovelPlanCandidate.model_json_schema(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        request.emit(
+            "agent.model_call.started",
+            "story_planner",
+            {
+                "component_id": "story_planner",
+                "schema_id": "compiler.novel-plan-candidate.v1",
+                "protocol": "json_object",
+                "model_id": request.model_id,
+            },
+        )
+        try:
+            response = await client.chat.completions.create(
+                model=request.model_id,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": instructions
+                        + "\n\n必须严格遵守以下 JSON Schema：\n"
+                        + schema_text,
+                    },
+                    {"role": "user", "content": input_text},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+        finally:
+            await client.close()
+        if len(response.choices) != 1:
+            raise ProviderProtocolError("DeepSeek Story Planner returned an invalid choice count")
+        raw_output = response.choices[0].message.content
+        if not raw_output:
+            raise ProviderProtocolError("DeepSeek Story Planner returned no content")
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError:
+            parsed = {}
+        candidate = parsed if isinstance(parsed, dict) else {}
+        response_usage = response.usage
+        usage = {
+            "requests": 1,
+            "input_tokens": int(getattr(response_usage, "prompt_tokens", 0) or 0),
+            "output_tokens": int(getattr(response_usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(response_usage, "total_tokens", 0) or 0),
+            "cached_tokens": int(getattr(response_usage, "prompt_cache_hit_tokens", 0) or 0),
+            "reasoning_tokens": 0,
+        }
+        request.emit(
+            "agent.model_call.completed",
+            "story_planner",
+            {
+                "component_id": "story_planner",
+                "schema_id": "compiler.novel-plan-candidate.v1",
+                "protocol": "json_object",
+                "model_id": request.model_id,
+                "usage": usage,
+            },
+        )
+        return StoryPlannerProviderResult(
+            candidate=candidate,
+            usage=usage,
+            raw_output=raw_output,
+        )
 
     def repair_closure(
         self,
@@ -599,6 +702,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | StoryPlannerRequest
         ),
         *,
         instructions: str,
@@ -613,6 +717,7 @@ class DeepSeekAgentsProvider:
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
         temperature: float | None = None,
         strict_validation: bool = False,
+        max_protocol_attempts: int = 3,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
         client = _model_client(model)
@@ -633,6 +738,7 @@ class DeepSeekAgentsProvider:
                     deepseek_output_protocol or _deepseek_v8_output_protocol(request.model_id)
                 ),
                 strict_validation=strict_validation,
+                max_protocol_attempts=max_protocol_attempts,
                 tools=tools,
                 context=context,
                 max_turns=max_turns,
@@ -656,6 +762,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | StoryPlannerRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(

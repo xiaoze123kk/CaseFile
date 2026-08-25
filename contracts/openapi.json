@@ -7351,6 +7351,20 @@
             "type": "integer",
             "minimum": 1.0,
             "title": "Compiler Profile Version Id"
+          },
+          "planner_provider": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Provider"
           }
         },
         "additionalProperties": false,

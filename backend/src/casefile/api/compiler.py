@@ -87,6 +87,7 @@ def compiler_router() -> APIRouter:
             canon_version_id=payload.canon_version_id,
             exposure_plan_revision_id=payload.exposure_plan_revision_id,
             compiler_profile_version_id=payload.compiler_profile_version_id,
+            planner_provider=payload.planner_provider,
         )
 
     @router.get("/projects/{project_id}/compile-runs")
@@ -106,9 +107,7 @@ def compiler_router() -> APIRouter:
     ) -> dict[str, Any]:
         return CompilerService(session).get_run(actor, project_id, compile_run_id)
 
-    @router.get(
-        "/projects/{project_id}/compile-runs/{compile_run_id}/artifacts/{artifact_id}"
-    )
+    @router.get("/projects/{project_id}/compile-runs/{compile_run_id}/artifacts/{artifact_id}")
     def get_artifact(
         project_id: int,
         compile_run_id: int,
@@ -116,9 +115,7 @@ def compiler_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return CompilerService(session).get_artifact(
-            actor, project_id, compile_run_id, artifact_id
-        )
+        return CompilerService(session).get_artifact(actor, project_id, compile_run_id, artifact_id)
 
     return router
 

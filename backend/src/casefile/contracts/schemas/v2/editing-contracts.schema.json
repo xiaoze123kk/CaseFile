@@ -10,7 +10,8 @@
     "validation_issue", "patch_candidate",
     "task_run", "task_event", "agent_generate_request", "agent_generate_result",
     "compiler_source_ref", "compiler_artifact_ref", "compiler_diagnostic",
-    "compiler_profile_binding", "compile_input_manifest", "narrative_ir"
+    "compiler_profile_binding", "compile_input_manifest", "narrative_ir",
+    "novel_profile", "planner_input", "novel_plan_candidate", "novel_plan"
   ],
   "properties": {
     "casefile": {"$ref": "casefile/casefile.schema.json"},
@@ -32,6 +33,10 @@
     "compiler_diagnostic": {"$ref": "compiler/compiler.schema.json#/$defs/CompilerDiagnostic"},
     "compiler_profile_binding": {"$ref": "compiler/compiler.schema.json#/$defs/CompilerProfileBinding"},
     "compile_input_manifest": {"$ref": "compiler/compiler.schema.json#/$defs/CompileInputManifest"},
-    "narrative_ir": {"$ref": "compiler/narrative-ir.schema.json"}
+    "narrative_ir": {"$ref": "compiler/narrative-ir.schema.json"},
+    "novel_profile": {"$ref": "compiler/novel-profile.schema.json"},
+    "planner_input": {"$ref": "compiler/planner-input.schema.json"},
+    "novel_plan_candidate": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanCandidate"},
+    "novel_plan": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanIR"}
   }
 }

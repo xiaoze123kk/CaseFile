@@ -10,11 +10,18 @@ from casefile_contracts import (
     CompileMode,
     CompilerProfileBinding,
     ExposureBinding,
+    NovelProfile,
     SnapshotBinding,
 )
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from casefile.agent_runtime.story_planner import (
+    STORY_PLANNER_AGENT_VERSION,
+    STORY_PLANNER_PROMPT_VERSION,
+    STORY_PLANNER_TOOLSET_VERSION,
+)
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
 from casefile.application.compiler.constants import (
     INPUT_MANIFEST_SCHEMA_ID,
@@ -34,6 +41,7 @@ from casefile.data_postgres.models import (
     CompileRun,
     DraftSnapshot,
     TaskRun,
+    UserProviderSetting,
 )
 from casefile.data_postgres.repositories import ProjectRepository, SnapshotRepository
 from casefile.domain.narrative_compiler import (
@@ -140,9 +148,7 @@ class CompilerService:
                 for profile in self.compiler.list_profiles(project_id)
             ]
 
-    def get_profile(
-        self, actor_user_id: int, project_id: int, profile_id: int
-    ) -> dict[str, Any]:
+    def get_profile(self, actor_user_id: int, project_id: int, profile_id: int) -> dict[str, Any]:
         with self.session.begin():
             if self.projects.get_owned(actor_user_id, project_id) is None:
                 raise not_found("Project")
@@ -162,6 +168,7 @@ class CompilerService:
         canon_version_id: int | None,
         exposure_plan_revision_id: int | None,
         compiler_profile_version_id: int,
+        planner_provider: str | None = None,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self.projects.get_owned(actor_user_id, project_id, lock=True)
@@ -208,17 +215,61 @@ class CompilerService:
                 mode=mode,
                 canon_version_id=canon_version_id,
             )
-            profile = self.compiler.get_profile_version(
-                project_id, compiler_profile_version_id
-            )
+            profile = self.compiler.get_profile_version(project_id, compiler_profile_version_id)
             if profile is None:
                 raise not_found("CompilerProfileVersion")
+            setting: UserProviderSetting | None = None
+            novel_profile: NovelProfile | None = None
+            if planner_provider is not None:
+                setting = self.session.scalar(
+                    select(UserProviderSetting)
+                    .where(
+                        UserProviderSetting.user_id == actor_user_id,
+                        UserProviderSetting.provider == planner_provider,
+                    )
+                    .with_for_update()
+                )
+                if setting is None or setting.credential_status == "deleted":
+                    raise ApplicationError(
+                        "provider_setting_required",
+                        f"开始 Story Planner 前请先配置 {planner_provider} API 密钥。",
+                        status_code=409,
+                        details={"provider": planner_provider},
+                    )
+                try:
+                    novel_profile = NovelProfile.model_validate(profile.payload_jsonb)
+                except ValidationError as error:
+                    raise ApplicationError(
+                        "compiler_novel_profile_invalid",
+                        "Story Planner 配置不满足 Novel Profile 契约。",
+                        status_code=422,
+                    ) from error
             exposure = self._exposure_binding(
                 project_id=project_id,
                 casefile_id=owned.casefile.id,
                 draft_id=owned.draft.id,
                 revision_id=exposure_plan_revision_id,
             )
+            if setting is not None and mode == "canonical" and exposure is None:
+                raise ApplicationError(
+                    "compiler_story_planner_exposure_required",
+                    "正式 Story Plan 必须绑定非空 Exposure revision。",
+                    status_code=422,
+                )
+            if setting is not None and novel_profile is not None:
+                exposure_policy = novel_profile.exposure_policy.value
+                if exposure is None and exposure_policy != "planner_default":
+                    raise ApplicationError(
+                        "compiler_story_planner_exposure_policy_invalid",
+                        "未绑定 Exposure 时必须显式使用 planner_default。",
+                        status_code=422,
+                    )
+                if exposure is not None and exposure_policy != "bound_plan":
+                    raise ApplicationError(
+                        "compiler_story_planner_bound_exposure_policy_invalid",
+                        "绑定 Exposure 时 Profile 必须使用 bound_plan。",
+                        status_code=422,
+                    )
             manifest = CompileInputManifest(
                 target="novel",
                 mode=CompileMode(mode),
@@ -275,19 +326,29 @@ class CompilerService:
                 input_hash=input_hash,
                 input_jsonb=manifest_json,
                 actor_user_id=actor_user_id,
-                provider_setting_id=None,
+                provider_setting_id=None if setting is None else setting.id,
                 task_type="novel_compile",
                 status="queued",
                 stage="queued",
                 input_draft_revision=owned.draft.revision,
-                provider=None,
-                model_id=None,
-                provider_config_version=None,
+                provider=None if setting is None else setting.provider,
+                model_id=None if setting is None else setting.model_id,
+                provider_config_version=None if setting is None else setting.config_version,
                 schema_version=INPUT_MANIFEST_SCHEMA_ID,
-                agent_version=NARRATIVE_COMPILER_VERSION,
-                prompt_version=NO_PROMPT_VERSION,
-                toolset_version=NO_TOOLSET_VERSION,
-                budget_jsonb={},
+                agent_version=(
+                    NARRATIVE_COMPILER_VERSION if setting is None else STORY_PLANNER_AGENT_VERSION
+                ),
+                prompt_version=(
+                    NO_PROMPT_VERSION if setting is None else STORY_PLANNER_PROMPT_VERSION
+                ),
+                toolset_version=(
+                    NO_TOOLSET_VERSION if setting is None else STORY_PLANNER_TOOLSET_VERSION
+                ),
+                budget_jsonb=(
+                    {}
+                    if setting is None
+                    else {**setting.default_budget_jsonb, "max_turns": 1, "max_repairs": 3}
+                ),
                 usage_jsonb={},
                 attempt_count=0,
                 error_details_jsonb={},
@@ -344,9 +405,7 @@ class CompilerService:
                 for run in self.compiler.list_runs(project_id)
             ]
 
-    def get_run(
-        self, actor_user_id: int, project_id: int, run_id: int
-    ) -> dict[str, Any]:
+    def get_run(self, actor_user_id: int, project_id: int, run_id: int) -> dict[str, Any]:
         with self.session.begin():
             if self.projects.get_owned(actor_user_id, project_id) is None:
                 raise not_found("Project")

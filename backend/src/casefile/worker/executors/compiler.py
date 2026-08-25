@@ -46,9 +46,7 @@ class CompilerExecutionError(RuntimeError):
         super().__init__(error_code)
 
 
-def _normalize_compiler_error(
-    error: Exception, *, fallback_code: str
-) -> CompilerExecutionError:
+def _normalize_compiler_error(error: Exception, *, fallback_code: str) -> CompilerExecutionError:
     """Preserve stable Compiler codes at the domain-to-Worker boundary."""
 
     if isinstance(error, CompilerExecutionError):
@@ -140,6 +138,43 @@ class CompilerTaskExecutorMixin:
                 raise
             raise normalized from error
 
+        novel_plan_artifact_id: int | None = None
+        novel_plan_hash: str | None = None
+        planner_reused = False
+        with self.session_factory() as session:
+            planner_enabled = (
+                session.scalar(select(TaskRun.provider).where(TaskRun.id == task_run_id))
+                is not None
+            )
+        if planner_enabled:
+            from casefile.worker.executors.story_planner import (
+                execute_story_planner_component,
+                fail_story_planner_component,
+            )
+
+            try:
+                novel_plan_artifact_id, novel_plan_hash, planner_reused = (
+                    execute_story_planner_component(
+                        self,
+                        task_run_id=task_run_id,
+                        attempt_id=attempt_id,
+                        run=run,
+                        manifest_json=manifest_json,
+                        narrative_ir_json=narrative_ir_json,
+                        narrative_ir_hash=narrative_ir_hash,
+                    )
+                )
+            except TaskCancellationRequested:
+                raise
+            except Exception as error:
+                normalized = _normalize_compiler_error(
+                    error, fallback_code="compiler_story_planner_failed"
+                )
+                fail_story_planner_component(self, task_run_id, attempt_id, normalized.error_code)
+                if normalized is error:
+                    raise
+                raise normalized from error
+
         with self.session_factory() as session, session.begin():
             task, attempt = self._locked_completion_rows(  # type: ignore[attr-defined]
                 session,
@@ -147,18 +182,23 @@ class CompilerTaskExecutorMixin:
                 attempt_id,
                 expected_task_type="novel_compile",
             )
-            result = {
+            component_reuse = {
+                "input_manifest": manifest_reused,
+                "narrative_ir": narrative_reused,
+            }
+            result: dict[str, Any] = {
                 "compile_run_id": run.id,
                 "input_manifest_artifact_id": manifest_artifact_id,
                 "narrative_ir_artifact_id": narrative_artifact_id,
                 "narrative_ir_hash": narrative_ir_hash,
                 "input_hash": run.input_hash,
                 "reused": manifest_reused,
-                "component_reuse": {
-                    "input_manifest": manifest_reused,
-                    "narrative_ir": narrative_reused,
-                },
+                "component_reuse": component_reuse,
             }
+            if novel_plan_artifact_id is not None:
+                result["novel_plan_artifact_id"] = novel_plan_artifact_id
+                result["novel_plan_hash"] = novel_plan_hash
+                component_reuse["novel_plan"] = planner_reused
             self._finish_auxiliary_success(  # type: ignore[attr-defined]
                 session,
                 task,
