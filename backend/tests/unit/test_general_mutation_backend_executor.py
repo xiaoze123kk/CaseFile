@@ -1,3 +1,4 @@
+from casefile.application.v1_editing import _casefile_semantically_equal
 from casefile.benchmark.general_mutation_backend_executor import (
     PostgresBackendReleaseExecutor,
     _semantic_delta,
@@ -30,6 +31,13 @@ def test_semantic_hash_preserves_real_object_changes() -> None:
 
     assert _semantic_hash(before) != _semantic_hash(changed)
     assert _semantic_delta(before, changed)["changed_top_level_fields"] == ["entities"]
+
+
+def test_persistence_projection_accepts_collection_reordering_only() -> None:
+    left = {"entities": [{"id": "ent_a", "name": "A"}, {"id": "ent_b", "name": "B"}]}
+    right = {"entities": [{"id": "ent_b", "name": "B"}, {"id": "ent_a", "name": "A"}]}
+
+    assert _casefile_semantically_equal(left, right)
 
 
 def _task(expectation: str = "apply") -> ReleaseTask:

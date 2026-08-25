@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -46,6 +46,29 @@ from casefile.domain.logical_mutation import (
     UpdateField,
 )
 from casefile.domain.verification_engine import MutationSimulation, VerificationEngine
+
+
+def _casefile_semantic_state(document: Mapping[str, Any]) -> dict[str, Any]:
+    def normalize(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: normalize(item) for key, item in value.items()}
+        if isinstance(value, list):
+            items = [normalize(item) for item in value]
+            if all(isinstance(item, dict) and isinstance(item.get("id"), str) for item in items):
+                return {
+                    str(item["id"]): item
+                    for item in sorted(items, key=lambda item: str(item["id"]))
+                }
+            return items
+        return value
+
+    normalized = normalize(dict(document))
+    assert isinstance(normalized, dict)
+    return normalized
+
+
+def _casefile_semantically_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    return _casefile_semantic_state(left) == _casefile_semantic_state(right)
 
 COMMON_EDITABLE_FIELDS = {"description", "tags"}
 CONCLUSION_INVALIDATING_RESOLUTION_FIELDS = {
@@ -776,7 +799,11 @@ class V1EditingService:
 
         projected = build_casefile_document(self.session, owned)
         projected_hash = casefile_content_hash(projected)
-        if projected != candidate or projected_hash != simulation.candidate_hash:
+        semantic_projection_match = _casefile_semantically_equal(projected, candidate)
+        if (
+            (projected != candidate or projected_hash != simulation.candidate_hash)
+            and not semantic_projection_match
+        ):
             raise ApplicationError(
                 "mutation_projection_hash_mismatch",
                 "数据库投影与预演候选不一致，修改已整体回滚。",
@@ -794,6 +821,9 @@ class V1EditingService:
             )
             or 1
         )
+        effective_candidate_hash = (
+            projected_hash if semantic_projection_match else simulation.candidate_hash
+        )
         payload = {
             "mutation_set": _mutation_set_payload(mutation_set),
             "mechanical_operations": (
@@ -802,7 +832,7 @@ class V1EditingService:
             "closure_policy_version": mutation_set.closure_policy_version,
             "mode": mutation_set.mode,
             "before_hash": simulation.baseline_hash,
-            "after_hash": simulation.candidate_hash,
+            "after_hash": effective_candidate_hash,
             "accepted_debt_finding_keys": list(accepted_debt_finding_keys),
             "debt_acceptance_reason": debt_acceptance_reason,
             "source_patch_set_id": source_patch_set_id,
@@ -822,7 +852,7 @@ class V1EditingService:
                 operation_type=draft_operation_type,
                 field_path="",
                 old_value_jsonb={**payload, "document": before},
-                new_value_jsonb={**payload, "document": candidate},
+                new_value_jsonb={**payload, "document": projected},
                 base_revision=owned.draft.revision,
                 result_revision=owned.draft.revision + 1,
                 actor_kind="user" if is_user_actor else mutation_set.actor,
@@ -856,7 +886,7 @@ class V1EditingService:
                     "base_revision": owned.draft.revision,
                     "result_revision": owned.draft.revision + 1,
                     "before_hash": simulation.baseline_hash,
-                    "after_hash": simulation.candidate_hash,
+                    "after_hash": effective_candidate_hash,
                     "source_patch_set_id": source_patch_set_id,
                 },
             )

@@ -7,12 +7,6 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -119,6 +113,12 @@ from casefile.agent_runtime.provider_adapters.shared import (
 )
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
 
 
@@ -354,6 +354,7 @@ class DeepSeekAgentsProvider:
                 context=context,
                 max_turns=max_turns,
                 deepseek_output_protocol=output_protocol,
+                deepseek_output_protocol_is_primary=bool(tools),
                 temperature=_chat_live_temperature(),
             )
         )
