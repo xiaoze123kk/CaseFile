@@ -1,0 +1,30 @@
+{
+  "schema_id": "benchmark.novel-plan-suite.v1",
+  "suite_id": "novel-plan-capability-v1",
+  "tasks": [
+    {"task_id":"linear_mystery__basic","primary_capability":"linear_mystery","variant":"basic","reference":"reference.json"},
+    {"task_id":"linear_mystery__decoy","primary_capability":"linear_mystery","variant":"decoy","reference":"reference.json"},
+    {"task_id":"linear_mystery__dense","primary_capability":"linear_mystery","variant":"dense","reference":"reference.json"},
+    {"task_id":"nonlinear_reveal__basic","primary_capability":"nonlinear_reveal","variant":"basic","reference":"reference.json"},
+    {"task_id":"nonlinear_reveal__decoy","primary_capability":"nonlinear_reveal","variant":"decoy","reference":"reference.json"},
+    {"task_id":"nonlinear_reveal__dense","primary_capability":"nonlinear_reveal","variant":"dense","reference":"reference.json"},
+    {"task_id":"multiple_suspects__basic","primary_capability":"multiple_suspects","variant":"basic","reference":"reference.json"},
+    {"task_id":"multiple_suspects__decoy","primary_capability":"multiple_suspects","variant":"decoy","reference":"reference.json"},
+    {"task_id":"multiple_suspects__dense","primary_capability":"multiple_suspects","variant":"dense","reference":"reference.json"},
+    {"task_id":"false_belief__basic","primary_capability":"false_belief","variant":"basic","reference":"reference.json"},
+    {"task_id":"false_belief__decoy","primary_capability":"false_belief","variant":"decoy","reference":"reference.json"},
+    {"task_id":"false_belief__dense","primary_capability":"false_belief","variant":"dense","reference":"reference.json"},
+    {"task_id":"competing_hypotheses__basic","primary_capability":"competing_hypotheses","variant":"basic","reference":"reference.json"},
+    {"task_id":"competing_hypotheses__decoy","primary_capability":"competing_hypotheses","variant":"decoy","reference":"reference.json"},
+    {"task_id":"competing_hypotheses__dense","primary_capability":"competing_hypotheses","variant":"dense","reference":"reference.json"},
+    {"task_id":"resolution_closure__basic","primary_capability":"resolution_closure","variant":"basic","reference":"reference.json"},
+    {"task_id":"resolution_closure__decoy","primary_capability":"resolution_closure","variant":"decoy","reference":"reference.json"},
+    {"task_id":"resolution_closure__dense","primary_capability":"resolution_closure","variant":"dense","reference":"reference.json"},
+    {"task_id":"flashback_chronology__basic","primary_capability":"flashback_chronology","variant":"basic","reference":"reference.json"},
+    {"task_id":"flashback_chronology__decoy","primary_capability":"flashback_chronology","variant":"decoy","reference":"reference.json"},
+    {"task_id":"flashback_chronology__dense","primary_capability":"flashback_chronology","variant":"dense","reference":"reference.json"},
+    {"task_id":"complex_mixed__basic","primary_capability":"complex_mixed","variant":"basic","reference":"reference.json"},
+    {"task_id":"complex_mixed__decoy","primary_capability":"complex_mixed","variant":"decoy","reference":"reference.json"},
+    {"task_id":"complex_mixed__dense","primary_capability":"complex_mixed","variant":"dense","reference":"reference.json"}
+  ]
+}

@@ -1,0 +1,633 @@
+{
+  "schema_id": "benchmark.novel-plan-suite.v2",
+  "suite_id": "novel-plan-capability-v2",
+  "tasks": [
+    {
+      "task_id": "linear_mystery__basic",
+      "primary_capability": "linear_mystery",
+      "variant": "basic",
+      "planner_input": "inputs/linear_mystery__basic.json",
+      "planner_input_hash": "ea3fa7dc9e20c4a7992ec4f891059b534943cf7244fa9678658ef549bdd988a7",
+      "reference": "references/linear_mystery__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "all_presentation_modes",
+          "allowed": [
+            "linear"
+          ]
+        },
+        {
+          "kind": "purpose_order",
+          "values": [
+            "hook",
+            "reveal",
+            "resolution"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "linear_mystery__decoy",
+      "primary_capability": "linear_mystery",
+      "variant": "decoy",
+      "planner_input": "inputs/linear_mystery__decoy.json",
+      "planner_input_hash": "4530677f71ba9a8688f0c999008d0aa5337a435a668988de8a4c110237eb5ad9",
+      "reference": "references/linear_mystery__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "all_presentation_modes",
+          "allowed": [
+            "linear"
+          ]
+        },
+        {
+          "kind": "purpose_order",
+          "values": [
+            "hook",
+            "reveal",
+            "resolution"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "linear_mystery__dense",
+      "primary_capability": "linear_mystery",
+      "variant": "dense",
+      "planner_input": "inputs/linear_mystery__dense.json",
+      "planner_input_hash": "0c5d5ac48d0273e22a1d8465281efa72ee2166fe6a892bf6b09a9a6228924b99",
+      "reference": "references/linear_mystery__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "all_presentation_modes",
+          "allowed": [
+            "linear"
+          ]
+        },
+        {
+          "kind": "purpose_order",
+          "values": [
+            "hook",
+            "reveal",
+            "resolution"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "nonlinear_reveal__basic",
+      "primary_capability": "nonlinear_reveal",
+      "variant": "basic",
+      "planner_input": "inputs/nonlinear_reveal__basic.json",
+      "planner_input_hash": "06ddd2af3d5edb06683726f81dcf83bebb1ca0bf6725f8fa29573e3278591a62",
+      "reference": "references/nonlinear_reveal__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        },
+        {
+          "kind": "dependency_chain_min_length",
+          "value": 3
+        }
+      ]
+    },
+    {
+      "task_id": "nonlinear_reveal__decoy",
+      "primary_capability": "nonlinear_reveal",
+      "variant": "decoy",
+      "planner_input": "inputs/nonlinear_reveal__decoy.json",
+      "planner_input_hash": "cd2be3ab2ba39c83312028592c6dfb3acfb51bce6b8aba5798e0184fc301afa9",
+      "reference": "references/nonlinear_reveal__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        },
+        {
+          "kind": "dependency_chain_min_length",
+          "value": 4
+        }
+      ]
+    },
+    {
+      "task_id": "nonlinear_reveal__dense",
+      "primary_capability": "nonlinear_reveal",
+      "variant": "dense",
+      "planner_input": "inputs/nonlinear_reveal__dense.json",
+      "planner_input_hash": "19c6b2f75e8abb5ce4b28ae40f83cf0d903a75e5d8b42747727b00770401f301",
+      "reference": "references/nonlinear_reveal__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        },
+        {
+          "kind": "dependency_chain_min_length",
+          "value": 5
+        }
+      ]
+    },
+    {
+      "task_id": "multiple_suspects__basic",
+      "primary_capability": "multiple_suspects",
+      "variant": "basic",
+      "planner_input": "inputs/multiple_suspects__basic.json",
+      "planner_input_hash": "46da48ddea842da442b679cd5950d1a0fea5312ac604f78c40895f7296a7a5b8",
+      "reference": "references/multiple_suspects__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 2
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "multiple_suspects__decoy",
+      "primary_capability": "multiple_suspects",
+      "variant": "decoy",
+      "planner_input": "inputs/multiple_suspects__decoy.json",
+      "planner_input_hash": "13a51d6ab78f160ce9b1b767c5b4778a5062e8d96094bb9ad4f133d9cd05f2cd",
+      "reference": "references/multiple_suspects__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "multiple_suspects__dense",
+      "primary_capability": "multiple_suspects",
+      "variant": "dense",
+      "planner_input": "inputs/multiple_suspects__dense.json",
+      "planner_input_hash": "bcbe8a3baa7e45f2cfd72a987391dc6268968f14b1bef0bf95709ac28a686a4f",
+      "reference": "references/multiple_suspects__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "false_belief__basic",
+      "primary_capability": "false_belief",
+      "variant": "basic",
+      "planner_input": "inputs/false_belief__basic.json",
+      "planner_input_hash": "7d4e8a3fa0d91b0432968d17a8167ca6af5c68e629d8e64c5cc01b69b16dac0d",
+      "reference": "references/false_belief__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret"
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "false_belief__decoy",
+      "primary_capability": "false_belief",
+      "variant": "decoy",
+      "planner_input": "inputs/false_belief__decoy.json",
+      "planner_input_hash": "4ecb6eb9a0c99283835d79c63a871b42c9587414c536c2af4faf0702655871a8",
+      "reference": "references/false_belief__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret"
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "false_belief__dense",
+      "primary_capability": "false_belief",
+      "variant": "dense",
+      "planner_input": "inputs/false_belief__dense.json",
+      "planner_input_hash": "b133ff739e7730ad2fe521270d41e16df9c980cfdb7927a608c29fccb4959d26",
+      "reference": "references/false_belief__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret"
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "competing_hypotheses__basic",
+      "primary_capability": "competing_hypotheses",
+      "variant": "basic",
+      "planner_input": "inputs/competing_hypotheses__basic.json",
+      "planner_input_hash": "34ee4e66ae484567971b497fd9a882982e70560a39b45df10c418026c369e203",
+      "reference": "references/competing_hypotheses__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ]
+        },
+        {
+          "kind": "purpose_present",
+          "value": "reveal"
+        }
+      ]
+    },
+    {
+      "task_id": "competing_hypotheses__decoy",
+      "primary_capability": "competing_hypotheses",
+      "variant": "decoy",
+      "planner_input": "inputs/competing_hypotheses__decoy.json",
+      "planner_input_hash": "2c6b19048eddb3e111cba34680255ecae8143c21753b4a025a63d8a2972a0ec7",
+      "reference": "references/competing_hypotheses__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ]
+        },
+        {
+          "kind": "purpose_present",
+          "value": "reveal"
+        }
+      ]
+    },
+    {
+      "task_id": "competing_hypotheses__dense",
+      "primary_capability": "competing_hypotheses",
+      "variant": "dense",
+      "planner_input": "inputs/competing_hypotheses__dense.json",
+      "planner_input_hash": "3367249f3050fca26dd9d12e436bdde479e282bd5929b4175f5e85f4eab2a68e",
+      "reference": "references/competing_hypotheses__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ]
+        },
+        {
+          "kind": "purpose_present",
+          "value": "reveal"
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_closure__basic",
+      "primary_capability": "resolution_closure",
+      "variant": "basic",
+      "planner_input": "inputs/resolution_closure__basic.json",
+      "planner_input_hash": "f1c06f20986f6476f49e07fb32713dd4949b73d0459029e9ccda2e605ed68d83",
+      "reference": "references/resolution_closure__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "resolution_actions",
+          "refs": [
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "allowed": [
+            "resolve"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene"
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_closure__decoy",
+      "primary_capability": "resolution_closure",
+      "variant": "decoy",
+      "planner_input": "inputs/resolution_closure__decoy.json",
+      "planner_input_hash": "fc7c2dea1a60439bcefcecd483470b05f442b0f1e66fba0cb2559d7eccbdcbc0",
+      "reference": "references/resolution_closure__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "resolution_actions",
+          "refs": [
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "allowed": [
+            "resolve"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene"
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_closure__dense",
+      "primary_capability": "resolution_closure",
+      "variant": "dense",
+      "planner_input": "inputs/resolution_closure__dense.json",
+      "planner_input_hash": "22027ee684a6fb323561f031dbbcedae913b2adca067ec8fa11ba396766a5aee",
+      "reference": "references/resolution_closure__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "resolution_actions",
+          "refs": [
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "allowed": [
+            "resolve"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene"
+        }
+      ]
+    },
+    {
+      "task_id": "flashback_chronology__basic",
+      "primary_capability": "flashback_chronology",
+      "variant": "basic",
+      "planner_input": "inputs/flashback_chronology__basic.json",
+      "planner_input_hash": "5c469cb1db485c484818a9511c22761fb47bbe8d9b825c9882d308e8b1b5fa1c",
+      "reference": "references/flashback_chronology__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "flashback_after_event",
+          "earlier_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "later_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        },
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        }
+      ]
+    },
+    {
+      "task_id": "flashback_chronology__decoy",
+      "primary_capability": "flashback_chronology",
+      "variant": "decoy",
+      "planner_input": "inputs/flashback_chronology__decoy.json",
+      "planner_input_hash": "38a4c036a0de5714bb0ffb66032f911a903110f1b9e72146136ba8842a55b416",
+      "reference": "references/flashback_chronology__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "flashback_after_event",
+          "earlier_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "later_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        },
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        }
+      ]
+    },
+    {
+      "task_id": "flashback_chronology__dense",
+      "primary_capability": "flashback_chronology",
+      "variant": "dense",
+      "planner_input": "inputs/flashback_chronology__dense.json",
+      "planner_input_hash": "80e126e9aa9c8da923dedcd7de659730e9dcd61dd62e3129e582f0e8dadaca1c",
+      "reference": "references/flashback_chronology__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "flashback_after_event",
+          "earlier_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "later_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        },
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        }
+      ]
+    },
+    {
+      "task_id": "complex_mixed__basic",
+      "primary_capability": "complex_mixed",
+      "variant": "basic",
+      "planner_input": "inputs/complex_mixed__basic.json",
+      "planner_input_hash": "3f6e32aef21b5fd3334d77b0d4481a26871ad925c423c663171c0c9c1185fd1e",
+      "reference": "references/complex_mixed__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        },
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 2
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ]
+        },
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret"
+        },
+        {
+          "kind": "resolution_in_final_scene"
+        }
+      ]
+    },
+    {
+      "task_id": "complex_mixed__decoy",
+      "primary_capability": "complex_mixed",
+      "variant": "decoy",
+      "planner_input": "inputs/complex_mixed__decoy.json",
+      "planner_input_hash": "570b9d41937ea9d542ad984b9f1b3f18524622ea40b5df54420cc6d8a290f409",
+      "reference": "references/complex_mixed__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        },
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ]
+        },
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret"
+        },
+        {
+          "kind": "resolution_in_final_scene"
+        }
+      ]
+    },
+    {
+      "task_id": "complex_mixed__dense",
+      "primary_capability": "complex_mixed",
+      "variant": "dense",
+      "planner_input": "inputs/complex_mixed__dense.json",
+      "planner_input_hash": "de265fe2cff3e6e0b86e1e3fa17b7ee4e21cec3894af1c9c39934723bb3542de",
+      "reference": "references/complex_mixed__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback"
+        },
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ]
+        },
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret"
+        },
+        {
+          "kind": "resolution_in_final_scene"
+        }
+      ]
+    }
+  ]
+}

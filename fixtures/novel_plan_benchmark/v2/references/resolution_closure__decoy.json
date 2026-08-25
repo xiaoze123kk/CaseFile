@@ -1,0 +1,294 @@
+{
+  "schema_id": "compiler.novel-plan-candidate.v1",
+  "chapters": [
+    {
+      "chapter_id": "chapter_1",
+      "ordinal": 1,
+      "act_ordinal": 1,
+      "title": "第1章"
+    },
+    {
+      "chapter_id": "chapter_2",
+      "ordinal": 2,
+      "act_ordinal": 2,
+      "title": "第2章"
+    }
+  ],
+  "scenes": [
+    {
+      "scene_id": "scene_1",
+      "chapter_id": "chapter_1",
+      "discourse_order": 1,
+      "purpose": "hook",
+      "intent": "推进 resolution_closure 的 decoy 场景 1。",
+      "presentation_mode": "linear",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        },
+        {
+          "object_type": "information_unit",
+          "object_id": "info_manual_trace"
+        },
+        {
+          "object_type": "claim",
+          "object_id": "claim_manual_trigger"
+        }
+      ],
+      "exposure": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "action": "introduce"
+        }
+      ],
+      "resolutions": [],
+      "prerequisite_scene_ids": []
+    },
+    {
+      "scene_id": "scene_2",
+      "chapter_id": "chapter_1",
+      "discourse_order": 2,
+      "purpose": "investigation",
+      "intent": "推进 resolution_closure 的 decoy 场景 2。",
+      "presentation_mode": "linear",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        },
+        {
+          "object_type": "information_unit",
+          "object_id": "info_restart_log"
+        },
+        {
+          "object_type": "claim",
+          "object_id": "claim_backup_trigger"
+        }
+      ],
+      "exposure": [
+        {
+          "entry_key": "exposure_restart_log",
+          "action": "introduce"
+        }
+      ],
+      "resolutions": [],
+      "prerequisite_scene_ids": [
+        "scene_1"
+      ]
+    },
+    {
+      "scene_id": "scene_3",
+      "chapter_id": "chapter_2",
+      "discourse_order": 3,
+      "purpose": "reveal",
+      "intent": "推进 resolution_closure 的 decoy 场景 3。",
+      "presentation_mode": "linear",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        },
+        {
+          "object_type": "hypothesis",
+          "object_id": "hyp_manual_restart"
+        },
+        {
+          "object_type": "hypothesis",
+          "object_id": "hyp_automatic_restart"
+        }
+      ],
+      "exposure": [],
+      "resolutions": [],
+      "prerequisite_scene_ids": [
+        "scene_2"
+      ]
+    },
+    {
+      "scene_id": "scene_4",
+      "chapter_id": "chapter_2",
+      "discourse_order": 4,
+      "purpose": "resolution",
+      "intent": "推进 resolution_closure 的 decoy 场景 4。",
+      "presentation_mode": "linear",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        },
+        {
+          "object_type": "hypothesis",
+          "object_id": "hyp_manual_restart"
+        },
+        {
+          "object_type": "hypothesis",
+          "object_id": "hyp_automatic_restart"
+        },
+        {
+          "object_type": "resolution_spec",
+          "object_id": "res_root_cause"
+        },
+        {
+          "object_type": "resolution_spec",
+          "object_id": "res_shutdown_rule"
+        }
+      ],
+      "exposure": [],
+      "resolutions": [
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "action": "resolve"
+        },
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "action": "resolve"
+        }
+      ],
+      "prerequisite_scene_ids": [
+        "scene_3"
+      ]
+    }
+  ]
+}

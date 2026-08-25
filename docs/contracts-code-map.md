@@ -9,6 +9,9 @@
 | `contracts/schemas/` | 面向跨语言消费者的 CaseFile、编辑、验证、任务、推理、Benchmark、Compiler 与 API Schema 集合。 |
 | `contracts/schemas/compiler/compiler.schema.json` | N4.0 Narrative Compiler 基础契约：稳定 SourceRef/ArtifactRef、Diagnostic、Profile binding、Snapshot/Canon/Exposure 冻结绑定与 CompileInputManifest；不定义具体 IR 或 Artifact payload。 |
 | `contracts/schemas/compiler/narrative-ir.schema.json` | N4.2 NarrativeIR：Snapshot 无损对象 envelope、根与对象来源证明、带嵌套上下文的完整引用导航边。 |
+| `contracts/schemas/compiler/novel-profile.schema.json` | N4.3 小说结构、章节/场景目标、叙述方式和 Exposure 策略契约。 |
+| `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入。 |
+| `contracts/schemas/compiler/novel-plan.schema.json` | 分离模型 NovelPlanCandidate 与服务器规范化 NovelPlanIR，定义 Scene 编排、事实依据、披露、Resolution、依赖及派生索引。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
@@ -33,3 +36,5 @@
 | `fixtures/closure_repair_benchmark/` | M3.3 Closure Repair Benchmark v2：保留 24 个 FakeProvider Regression/Safety Golden；`capability/v1/` 冻结 61 个 input/oracle 分离 Task、真实文档、Policy finding catalog 与逐 Task Reference，覆盖 `closure-repair-v1` 全部 52 个策略项。12 个 agent Task 与 49 个正确拒绝 Task 分开计分。 |
 | `fixtures/compiler/foundation/` | N4.0 Compiler 基础合法/非法样例：Preview/Canonical 冻结输入、Exposure/Profile hash、SourceRef、ArtifactRef、Diagnostic 与结构/语义失败场景。 |
 | `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
+| `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
+| `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |

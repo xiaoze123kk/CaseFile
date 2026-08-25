@@ -59,6 +59,16 @@ try {
             throw "Closure Repair deterministic safety gate failed."
         }
 
+        & $python -m casefile.benchmark novel-plan --suite-kind regression --mode fake
+        if ($LASTEXITCODE -ne 0) {
+            throw "Novel Plan deterministic regression gate failed."
+        }
+
+        & $python -m casefile.benchmark novel-plan --suite-kind safety --mode fake
+        if ($LASTEXITCODE -ne 0) {
+            throw "Novel Plan safety gate failed."
+        }
+
         & $python -m casefile.benchmark chat-outcome --mode calibrate
         if ($LASTEXITCODE -ne 0) {
             throw "CaseFile chat outcome M0 calibration failed."
