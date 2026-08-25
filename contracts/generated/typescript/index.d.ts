@@ -336,7 +336,7 @@ export interface EditingContracts {
   compile_input_manifest: CompileInputManifest;
   narrative_ir: NarrativeIR;
   novel_profile: NovelProfile;
-  planner_input: PlannerInputBundle;
+  planner_input: PlannerInputBundle | PlannerInputBundleV2;
   novel_plan_candidate: NovelPlanCandidate;
   novel_plan: NovelPlanIR;
 }
@@ -885,17 +885,7 @@ export interface PlannerInputBundle {
   narrative_ir: NarrativeIR;
   exposure_plan: ExposureBinding | null;
   profile: NovelProfile;
-  planning_constraints: {
-    target_chapters: number;
-    target_scenes: number;
-    /**
-     * @minItems 1
-     */
-    allowed_presentation_modes: [
-      "linear" | "flashback" | "flashforward",
-      ...("linear" | "flashback" | "flashforward")[]
-    ];
-  };
+  planning_constraints: PlanningConstraints;
 }
 export interface ExposureBinding {
   draft_id: number;
@@ -905,6 +895,80 @@ export interface ExposureBinding {
     [k: string]: unknown;
   };
   content_hash: string;
+}
+export interface PlanningConstraints {
+  target_chapters: number;
+  target_scenes: number;
+  /**
+   * @minItems 1
+   */
+  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+}
+export interface PlannerInputBundleV2 {
+  schema_id: "compiler.story-planner-input.v2";
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: NovelProfile;
+  planning_constraints: PlanningConstraints;
+  planner_view: PlannerView;
+}
+export interface PlannerView {
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure_obligations: ExposureObligation[];
+    resolution_obligations: ResolutionObligation[];
+    chronology_anchors: ChronologyAnchor[];
+  };
+  planning_context: {
+    causal_edges: CausalEdge[];
+    knowledge_snapshots: KnowledgeSnapshot[];
+    author_guidance: AuthorGuidance[];
+  };
+}
+export interface StructureConstraints {
+  target_chapters: number;
+  target_scenes: number;
+  /**
+   * @minItems 1
+   */
+  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+}
+export interface ExposureObligation {
+  entry_key: string;
+  sequence_no: number;
+  introduce_exactly_once: true;
+  subsequent_actions_require_introduction: true;
+}
+export interface ResolutionObligation {
+  resolution_ref: ObjectRef;
+  terminal_exactly_once: true;
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  allowed_terminal_actions: ["resolve" | "intentionally_unresolved", "resolve" | "intentionally_unresolved"];
+}
+export interface ChronologyAnchor {
+  event_ref: ObjectRef;
+  comparable_time: string;
+}
+export interface CausalEdge {
+  relation: "cause" | "effect";
+  event_ref: ObjectRef;
+  related_ref: ObjectRef;
+}
+export interface KnowledgeSnapshot {
+  subject_ref: ObjectRef;
+  as_of_event_ref: ObjectRef;
+  knows_refs: ObjectRef[];
+  believes_refs: ObjectRef[];
+  false_belief_refs: ObjectRef[];
+}
+export interface AuthorGuidance {
+  entry_key: string;
+  title: string;
+  note: string | null;
+  is_hard_constraint: false;
 }
 export interface NovelPlanCandidate {
   schema_id: "compiler.novel-plan-candidate.v1";

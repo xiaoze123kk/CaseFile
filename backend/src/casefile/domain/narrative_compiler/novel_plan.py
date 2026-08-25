@@ -7,13 +7,17 @@ from datetime import datetime
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
-from casefile_contracts import NovelPlanCandidate, NovelPlanIR
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
 )
+from casefile.domain.narrative_compiler.planner_input import (
+    PLANNER_INPUT_V2_SCHEMA_ID,
+    validate_planner_input_bundle,
+)
+from casefile_contracts import NovelPlanCandidate, NovelPlanIR
 
 NOVEL_PLAN_CANDIDATE_SCHEMA_ID = "compiler.novel-plan-candidate.v1"
 NOVEL_PLAN_SCHEMA_ID = "compiler.novel-plan.v1"
@@ -48,6 +52,7 @@ def validate_novel_plan_candidate(
 ) -> NovelPlanCandidate:
     """Validate model-owned arrangement without repairing semantic violations."""
 
+    planner_input = validate_planner_input_bundle(planner_input)
     try:
         parsed = NovelPlanCandidate.model_validate(candidate)
     except ValidationError as error:
@@ -172,11 +177,18 @@ def story_planner_component_fingerprint(
 
 
 def planner_input_fingerprint_json(planner_input: dict[str, Any]) -> dict[str, Any]:
+    planner_input = validate_planner_input_bundle(planner_input)
     exposure = planner_input.get("exposure_plan")
     return {
+        "planner_input_schema_id": planner_input["schema_id"],
         "narrative_ir_hash": canonical_json_sha256(planner_input["narrative_ir"]),
         "profile_hash": canonical_json_sha256(planner_input["profile"]),
         "exposure_hash": None if exposure is None else canonical_json_sha256(exposure),
+        "planner_view_hash": (
+            canonical_json_sha256(planner_input["planner_view"])
+            if planner_input["schema_id"] == PLANNER_INPUT_V2_SCHEMA_ID
+            else None
+        ),
     }
 
 

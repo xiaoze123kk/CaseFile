@@ -8,15 +8,18 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_planner_input_bundle,
+    build_planner_input_bundle_v2,
     canonical_json_sha256,
     canonicalize_novel_plan,
     planner_input_fingerprint,
     project_narrative_ir_json,
     story_planner_component_fingerprint,
     validate_novel_plan_candidate,
+    validate_planner_input_bundle,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -135,6 +138,63 @@ def test_planner_input_and_fingerprint_are_deterministic() -> None:
     assert first == second
     assert planner_input_fingerprint(first) == planner_input_fingerprint(second)
     assert canonical_json_sha256(first) == canonical_json_sha256(second)
+
+
+def test_planner_input_v2_projects_and_reproves_authoritative_constraints() -> None:
+    v1 = _planner_input()
+    v2 = build_planner_input_bundle_v2(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+    assert v2["schema_id"] == "compiler.story-planner-input.v2"
+    view = v2["planner_view"]
+    assert view["hard_constraints"]["structure"] == v1["planning_constraints"]
+    assert len(view["hard_constraints"]["resolution_obligations"]) == 2
+    assert view["planning_context"]["knowledge_snapshots"]
+    assert view["planning_context"]["author_guidance"][0]["is_hard_constraint"] is False
+    assert planner_input_fingerprint(v2)["planner_view_hash"]
+
+    v1_component = story_planner_component_fingerprint(
+        planner_input=v1,
+        prompt_version="story-planner-v3",
+        prompt_sha256="b" * 64,
+        provider="deepseek",
+        model_id="deepseek-v4-pro",
+        provider_config_version=1,
+    )
+    v2_component = story_planner_component_fingerprint(
+        planner_input=v2,
+        prompt_version="story-planner-v3",
+        prompt_sha256="b" * 64,
+        provider="deepseek",
+        model_id="deepseek-v4-pro",
+        provider_config_version=1,
+    )
+    assert v1_component["planner_input_schema_id"] == "compiler.story-planner-input.v1"
+    assert v2_component["planner_input_schema_id"] == "compiler.story-planner-input.v2"
+    assert canonical_json_sha256(v1_component) != canonical_json_sha256(v2_component)
+
+    tampered = copy.deepcopy(v2)
+    tampered["planner_view"]["hard_constraints"]["structure"]["target_scenes"] = 99
+    with pytest.raises(CompilerContractError) as captured:
+        validate_planner_input_bundle(tampered)
+    assert captured.value.reason_code == "compiler_story_planner_view_mismatch"
+
+
+def test_planner_input_v2_preserves_unknown_time_without_inventing_anchor() -> None:
+    v1 = _planner_input()
+    v1["narrative_ir"]["objects"]["events"][0]["value"]["time"] = {
+        "kind": "unknown",
+    }
+    v2 = build_planner_input_bundle_v2(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+    assert v2["planner_view"]["hard_constraints"]["chronology_anchors"] == []
 
 
 def test_preview_default_exposure_is_allowed_but_canonical_requires_binding() -> None:

@@ -1,0 +1,3050 @@
+{
+  "schema_id": "compiler.story-planner-input.v2",
+  "narrative_ir": {
+    "schema_id": "compiler.narrative-ir.v1",
+    "projection_version": "compiler.narrative-ir-projection.v1",
+    "source": {
+      "casefile_ref": {
+        "object_type": "casefile",
+        "object_id": "case_restart_loop"
+      },
+      "source_schema_id": "casefile.v2",
+      "content_hash": "9bdceb8e63bad9be0a758446ad4c1d69bd9cf432aac3b4162db9cdea43877419",
+      "root_source_refs": [
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "",
+          "source_fragment_hash": "9bdceb8e63bad9be0a758446ad4c1d69bd9cf432aac3b4162db9cdea43877419"
+        },
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "/title",
+          "source_fragment_hash": "c404c6fa73b2d19bbeeae253d7dcaf47291b88546bda87845f9e0d060dee4f5b"
+        },
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "/status",
+          "source_fragment_hash": "6ae048f08fcab44bfbc8463f074bfdb40f94c6bdf56d3aad9a7e1c05e5d5b5c1"
+        },
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "/version",
+          "source_fragment_hash": "2d0ac4f28349a2b48504480076766517f871213651b452a30880d89d3e56d732"
+        },
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "/brief_ref",
+          "source_fragment_hash": "0c41c7bf3b5a9111ecfa7774fe3036cedc4ac57b7483c4a6a04e4b6ad84e7351"
+        },
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "/content_notices",
+          "source_fragment_hash": "9d021eefc03a72fbf6ebf6188dcad17f21b68fc0b144b6a70563b16c255e157b"
+        },
+        {
+          "object_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "field_path": "/extensions",
+          "source_fragment_hash": "b6259aa9768659e5d24daee37c64f15ad6cec1af05014e312858ddee9b0fbc61"
+        }
+      ]
+    },
+    "case": {
+      "title": "���ߴ�����",
+      "status": "draft",
+      "version": {
+        "version_id": "draft_restart_loop_1",
+        "version_no": 1,
+        "parent_version_id": null
+      },
+      "brief_ref": {
+        "brief_id": "brief_restart_loop",
+        "version": 1
+      }
+    },
+    "objects": {
+      "resolution_specs": [
+        {
+          "object_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "",
+            "source_fragment_hash": "557ef621b39947efdf13d38ff8b0b1ec16dec3d665c7bd4d3f5b2d055113e69b"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "main_resolution"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "res_root_cause",
+            "title": "��������",
+            "question_type": "causal_explanation",
+            "reasoning_question": "ʵ��ϵͳΪʲô����������",
+            "conclusion_mode": "unique",
+            "required_slots": [
+              {
+                "slot_id": "slot_root_cause",
+                "value_type": "entity_or_claim_ref",
+                "required": true
+              }
+            ],
+            "conclusion": {
+              "outcome": "answer",
+              "review_status": "proposed",
+              "summary": "����ϵͳ�Զ�������������",
+              "values": [
+                {
+                  "slot_id": "slot_root_cause",
+                  "value": {
+                    "object_type": "claim",
+                    "object_id": "claim_backup_trigger"
+                  }
+                }
+              ],
+              "selected_hypothesis_refs": [
+                {
+                  "object_type": "hypothesis",
+                  "object_id": "hyp_automatic_restart"
+                }
+              ],
+              "supporting_reasoning_path_refs": [
+                {
+                  "object_type": "reasoning_path",
+                  "object_id": "path_causal_restart"
+                }
+              ],
+              "rationale": "��־��Claim ������·���γɱհ���",
+              "unresolved_gaps": []
+            },
+            "accepted_answers": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "required_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ]
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            },
+            "field_path": "",
+            "source_fragment_hash": "a3326fb1054e531e088b95da1afded90877ab2e5d62b99cedd3b2d004575bc29"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "secondary_resolution"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 0.82,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "res_shutdown_rule",
+            "title": "��ȫ�������",
+            "question_type": "rule_discovery",
+            "reasoning_question": "��Щ��ȫ����ͬ�����˱���ϵͳ��",
+            "conclusion_mode": "finite_multiple",
+            "required_slots": [
+              {
+                "slot_id": "slot_trigger_rules",
+                "value_type": "text_or_claim_ref",
+                "required": true
+              }
+            ],
+            "conclusion": null,
+            "accepted_answers": [
+              "ʧ�������ͬʱ����������"
+            ],
+            "required_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ]
+          }
+        }
+      ],
+      "entities": [
+        {
+          "object_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "",
+            "source_fragment_hash": "b4a946493aea213c8f3824c8c0481408e22ff12301825d7460d553dfb387bed3"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "investigator"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "ent_researcher",
+            "entity_type": "person",
+            "name": "���о�Ա",
+            "aliases": [],
+            "traits": [
+              "����"
+            ],
+            "goals": [
+              "�ָ�ʵ��"
+            ],
+            "secrets": [],
+            "capabilities": [
+              "��ȡϵͳ��־"
+            ],
+            "knowledge_states": [
+              {
+                "as_of_event_ref": {
+                  "object_type": "event",
+                  "object_id": "evt_restart_seven"
+                },
+                "knows_refs": [
+                  {
+                    "object_type": "information_unit",
+                    "object_id": "info_restart_log"
+                  }
+                ],
+                "believes_refs": [
+                  {
+                    "object_type": "claim",
+                    "object_id": "claim_backup_trigger"
+                  }
+                ],
+                "false_belief_refs": [
+                  {
+                    "object_type": "claim",
+                    "object_id": "claim_manual_trigger"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "field_path": "",
+            "source_fragment_hash": "c8025fc1697d497a1e66eb428aa3885a3a2711da61feb9e2263f95db1fdc8e1e"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "system"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.88,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "ent_backup_system",
+            "entity_type": "system",
+            "name": "���ÿ���ϵͳ",
+            "aliases": [
+              "B ϵͳ"
+            ],
+            "traits": [
+              "�Զ��ӹ�"
+            ],
+            "goals": [
+              "��ֹʵ���ʧ��"
+            ],
+            "secrets": [],
+            "capabilities": [
+              "ǿ��������ϵͳ"
+            ],
+            "knowledge_states": []
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "entity",
+            "object_id": "ent_safety_observer"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_safety_observer"
+            },
+            "field_path": "",
+            "source_fragment_hash": "c6f559b34dbbcc4dc39e463ee846ddba912252cbc94e4dc6f3871b3b0fc1fa1a"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "investigator"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "ent_safety_observer",
+            "entity_type": "person",
+            "name": "安全观察员",
+            "aliases": [],
+            "traits": [
+              "����"
+            ],
+            "goals": [
+              "�ָ�ʵ��"
+            ],
+            "secrets": [],
+            "capabilities": [
+              "��ȡϵͳ��־"
+            ],
+            "knowledge_states": []
+          }
+        }
+      ],
+      "relationships": [
+        {
+          "object_ref": {
+            "object_type": "relationship",
+            "object_id": "rel_researcher_controls_backup"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "relationship",
+              "object_id": "rel_researcher_controls_backup"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bf05857520d4cdea012567db2e08596a601f5119e109f76d0e94c912714553a0"
+          },
+          "value": {
+            "description": null,
+            "tags": [],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "rel_researcher_controls_backup",
+            "title": "�о�Աά������ϵͳ",
+            "from_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "to_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "relationship_type": "maintains",
+            "direction": "directed",
+            "truth_status": "canon_true",
+            "visibility": "public"
+          }
+        }
+      ],
+      "locations": [
+        {
+          "object_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "field_path": "",
+            "source_fragment_hash": "96b77880205a824f503c28c07f9142e8407a1fef27f7eb952f2a8e06f701aa7e"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "primary"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "loc_lab",
+            "name": "��ʵ����",
+            "spatial_position": {
+              "coordinate_system": "schematic",
+              "x": 28.0,
+              "y": 42.0,
+              "scene_id": null,
+              "floor_id": null
+            },
+            "parent_ref": null,
+            "adjacency_refs": [
+              {
+                "object_type": "location",
+                "object_id": "loc_corridor"
+              }
+            ],
+            "access_rules": [
+              "�о�Ա���ݿ�"
+            ],
+            "travel_times": [
+              {
+                "to_ref": {
+                  "object_type": "location",
+                  "object_id": "loc_corridor"
+                },
+                "minutes": 2.0,
+                "route_geometry": null
+              }
+            ],
+            "visibility_rules": []
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "location",
+            "object_id": "loc_corridor"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "field_path": "",
+            "source_fragment_hash": "ed38837869d8db88f2f21abf2d0f03829d27717fc443c614037052f5d0f83017"
+          },
+          "value": {
+            "description": null,
+            "tags": [],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "loc_corridor",
+            "name": "ʵ��������",
+            "spatial_position": {
+              "coordinate_system": "wgs84",
+              "latitude": 31.2304,
+              "longitude": 121.4737
+            },
+            "parent_ref": null,
+            "adjacency_refs": [
+              {
+                "object_type": "location",
+                "object_id": "loc_lab"
+              }
+            ],
+            "access_rules": [],
+            "travel_times": [
+              {
+                "to_ref": {
+                  "object_type": "location",
+                  "object_id": "loc_lab"
+                },
+                "minutes": 2.0,
+                "route_geometry": null
+              }
+            ],
+            "visibility_rules": []
+          }
+        }
+      ],
+      "events": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "",
+            "source_fragment_hash": "b84e3316b5791cf929a81196e415a172a6b5737d90c082a84c2376197393d4b2"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "timeline"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "evt_restart_six",
+            "title": "系统第六次重启",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T19:00",
+              "end": "2042-06-01T19:03",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_backup_system"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "cause_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ],
+            "effect_refs": [],
+            "observed_by_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_safety_observer"
+              }
+            ]
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "",
+            "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "timeline"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "evt_restart_seven",
+            "title": "ϵͳ���ߴ�����",
+            "truth_status": "canon_true",
+            "time": {
+              "kind": "range",
+              "start": "2042-06-01T20:00",
+              "end": "2042-06-01T20:03",
+              "precision": "minute"
+            },
+            "participant_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_backup_system"
+              }
+            ],
+            "location_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "cause_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "effect_refs": [],
+            "observed_by_refs": [
+              {
+                "object_type": "entity",
+                "object_id": "ent_researcher"
+              }
+            ]
+          }
+        }
+      ],
+      "information_units": [
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            "field_path": "",
+            "source_fragment_hash": "459f50c195487b3d63f92d7deb8043cc176c161e6202e57c424f9dbeb891b8b7"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "log",
+              "key"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "info_restart_log",
+            "information_type": "system_log",
+            "title": "���ߴ�������־",
+            "content": "����ʧ�����¶ȳ��������Ӻ󣬱���ϵͳִ��ǿ��������",
+            "source_event_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "reliability": "high",
+            "truth_status": "canon_true",
+            "supports_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "refutes_claim_refs": [],
+            "availability": {
+              "perspective_refs": [
+                {
+                  "object_type": "entity",
+                  "object_id": "ent_researcher"
+                }
+              ],
+              "acquisition_conditions": [
+                "��ȡʵ�����ն�"
+              ],
+              "alternative_path_refs": []
+            },
+            "classification": "key"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            },
+            "field_path": "",
+            "source_fragment_hash": "dca993063b5c935f909be90f7085854579f900b9160e697c56ae26e95daddb37"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "log",
+              "key"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "info_manual_trace",
+            "information_type": "system_log",
+            "title": "�˹������ۼ�",
+            "content": "����̨�����˹������ۼ���",
+            "source_event_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "reliability": "high",
+            "truth_status": "canon_true",
+            "supports_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ],
+            "refutes_claim_refs": [],
+            "availability": {
+              "perspective_refs": [
+                {
+                  "object_type": "entity",
+                  "object_id": "ent_researcher"
+                }
+              ],
+              "acquisition_conditions": [
+                "��ȡʵ�����ն�"
+              ],
+              "alternative_path_refs": []
+            },
+            "classification": "key"
+          }
+        }
+      ],
+      "claims": [
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            },
+            "field_path": "",
+            "source_fragment_hash": "91da5febae81c62038200b22ba254a4dc856d5127a57616db8c1612bcee767e7"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "answer"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.96,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "claim_backup_trigger",
+            "title": "����ϵͳ��������",
+            "statement": "���ߴ������ɱ���ϵͳ���ݰ�ȫ��������������",
+            "claim_type": "causal",
+            "support_refs": [
+              {
+                "object_type": "information_unit",
+                "object_id": "info_restart_log"
+              }
+            ],
+            "refute_refs": [],
+            "dependency_claim_refs": [],
+            "status": "supported",
+            "materiality": "critical"
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            "field_path": "",
+            "source_fragment_hash": "9adc1888f69651041a2ab6e6820065211a744d9948ea3dad1cf19cf79cbb8fd4"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "answer"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.96,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "claim_manual_trigger",
+            "title": "�˹���������",
+            "statement": "�������˹�����������",
+            "claim_type": "causal",
+            "support_refs": [
+              {
+                "object_type": "information_unit",
+                "object_id": "info_manual_trace"
+              }
+            ],
+            "refute_refs": [],
+            "dependency_claim_refs": [],
+            "status": "supported",
+            "materiality": "critical"
+          }
+        }
+      ],
+      "hypotheses": [
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "",
+            "source_fragment_hash": "27312587f803744595e0eb4db9d5f8059465669e75e34803371ededa0bf88cdd"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "primary"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.92,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "hyp_automatic_restart",
+            "title": "�Զ���ȫ����",
+            "proposition": "����ϵͳ���ȶ���ȫ������������ϵͳ��",
+            "target_resolution_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "required_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_backup_trigger"
+              }
+            ],
+            "falsifier_refs": [],
+            "competing_hypothesis_refs": [
+              {
+                "object_type": "hypothesis",
+                "object_id": "hyp_manual_restart"
+              }
+            ],
+            "evidence_assessments": [
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_restart_log"
+                },
+                "effect": "supports",
+                "strength": "strong",
+                "rationale": "ϵͳ��־ֱ�Ӽ�¼�Զ�������"
+              },
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_manual_trace"
+                },
+                "effect": "contradicts",
+                "strength": "moderate",
+                "rationale": "�˹��ۼ��ṩ�������͡�"
+              }
+            ],
+            "status": "supported",
+            "score": 0.92
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "",
+            "source_fragment_hash": "bc7fcad806a9aae3e34b1456080bcb166f100b03fbcee9b70051ec93fb1bf990"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "primary"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.92,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "hyp_manual_restart",
+            "title": "�˹�����",
+            "proposition": "���˴ӿ���̨������������",
+            "target_resolution_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "required_claim_refs": [
+              {
+                "object_type": "claim",
+                "object_id": "claim_manual_trigger"
+              }
+            ],
+            "falsifier_refs": [],
+            "competing_hypothesis_refs": [
+              {
+                "object_type": "hypothesis",
+                "object_id": "hyp_automatic_restart"
+              }
+            ],
+            "evidence_assessments": [
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_restart_log"
+                },
+                "effect": "contradicts",
+                "strength": "moderate",
+                "rationale": "�Զ���־���˹��������ͳ�ͻ��"
+              },
+              {
+                "information_ref": {
+                  "object_type": "information_unit",
+                  "object_id": "info_manual_trace"
+                },
+                "effect": "supports",
+                "strength": "strong",
+                "rationale": "����̨�ۼ�֧���˹�������"
+              }
+            ],
+            "status": "supported",
+            "score": 0.92
+          }
+        }
+      ],
+      "reasoning_paths": [
+        {
+          "object_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_causal_restart"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_causal_restart"
+            },
+            "field_path": "",
+            "source_fragment_hash": "00aa209bc931774e2d784a14d7d99ac8144c120495ff4fe97d73c5563556e420"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "causal"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.94,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "path_causal_restart",
+            "title": "��־������",
+            "path_type": "causal",
+            "target_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "steps": [
+              {
+                "step_id": "step_read_log",
+                "input_refs": [
+                  {
+                    "object_type": "information_unit",
+                    "object_id": "info_restart_log"
+                  }
+                ],
+                "operation": "infer",
+                "output_ref": {
+                  "object_type": "claim",
+                  "object_id": "claim_backup_trigger"
+                }
+              }
+            ],
+            "required_for_resolution": true,
+            "alternative_path_refs": []
+          }
+        },
+        {
+          "object_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_manual_restart"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_manual_restart"
+            },
+            "field_path": "",
+            "source_fragment_hash": "77b530a70022f369fcf6218c66c28e176cda5a6007b30cee85e8a5fd31cede0c"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "causal"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_log"
+              }
+            ],
+            "confidence": 0.94,
+            "confirmation_status": "ai_inferred",
+            "created_by": {
+              "actor_type": "agent",
+              "actor_id": "agent_brief_parser"
+            },
+            "updated_at": "2042-06-01T12:02:00Z",
+            "revision": 1,
+            "id": "path_manual_restart",
+            "title": "�ۼ����˹�����",
+            "path_type": "causal",
+            "target_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "steps": [
+              {
+                "step_id": "step_read_manual_trace",
+                "input_refs": [
+                  {
+                    "object_type": "information_unit",
+                    "object_id": "info_manual_trace"
+                  }
+                ],
+                "operation": "infer",
+                "output_ref": {
+                  "object_type": "claim",
+                  "object_id": "claim_manual_trigger"
+                }
+              }
+            ],
+            "required_for_resolution": true,
+            "alternative_path_refs": []
+          }
+        }
+      ],
+      "constraints": [
+        {
+          "object_ref": {
+            "object_type": "constraint",
+            "object_id": "con_no_supernatural"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "constraint",
+              "object_id": "con_no_supernatural"
+            },
+            "field_path": "",
+            "source_fragment_hash": "6518e21d05187e52217cead705db1c252e40e722752fd09aa4b44e4570c62109"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "world_rule"
+            ],
+            "source_refs": [
+              {
+                "object_type": "source_fragment",
+                "object_id": "src_restart_brief"
+              }
+            ],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "con_no_supernatural",
+            "title": "�޳���Ȼ����",
+            "level": "hard",
+            "scope_refs": [
+              {
+                "object_type": "casefile",
+                "object_id": "case_restart_loop"
+              }
+            ],
+            "statement": "��������ԭ���������ʵ��ϵͳ������͡�",
+            "rule_expression": null,
+            "conflict_refs": []
+          }
+        }
+      ],
+      "structure_locks": [
+        {
+          "object_ref": {
+            "object_type": "structure_lock",
+            "object_id": "lock_root_answer"
+          },
+          "source_ref": {
+            "object_ref": {
+              "object_type": "structure_lock",
+              "object_id": "lock_root_answer"
+            },
+            "field_path": "",
+            "source_fragment_hash": "feb990432f4a424385be23f6bc7da7991acbd1680b062319775fba1b45802719"
+          },
+          "value": {
+            "description": null,
+            "tags": [
+              "author_lock"
+            ],
+            "source_refs": [],
+            "confidence": 1.0,
+            "confirmation_status": "user_confirmed",
+            "created_by": {
+              "actor_type": "user",
+              "actor_id": "user_local_owner"
+            },
+            "updated_at": "2042-06-01T12:00:00Z",
+            "revision": 1,
+            "id": "lock_root_answer",
+            "title": "���������",
+            "lock_type": "hard",
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_paths": [
+              "/accepted_answers"
+            ],
+            "reason": "���Ĵ��Ѿ�������ȷ�ϡ�"
+          }
+        }
+      ]
+    },
+    "spatial_scenes": null,
+    "content_notices": [
+      {
+        "notice_id": "notice_system_failure",
+        "category": "system_failure",
+        "severity": "low",
+        "description": "����ʵ���¹ʺ��豸ʧ����ڡ�"
+      }
+    ],
+    "extensions": {
+      "casefile.fixture": {
+        "purpose": "editing_contract_foundation"
+      }
+    },
+    "indexes": {
+      "reference_edges": [
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "resolution.accepted_answer",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "/accepted_answers",
+            "source_fragment_hash": "309a5b2deb390cc3db801043348c23a848be56572ef4cf504d3c31386ff747bb"
+          },
+          "context": null
+        },
+        {
+          "relation": "resolution.required_claim",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "/required_claim_refs",
+            "source_fragment_hash": "309a5b2deb390cc3db801043348c23a848be56572ef4cf504d3c31386ff747bb"
+          },
+          "context": null
+        },
+        {
+          "relation": "resolution.conclusion_value",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "/conclusion",
+            "source_fragment_hash": "ebf8ce710ddb1e790b65fc403189a63cb725d27f078c06730a7b5dfd895f5ad4"
+          },
+          "context": {
+            "container_path": "/conclusion",
+            "container_key": "slot_root_cause",
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "resolution.selected_hypothesis",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "to_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "/conclusion",
+            "source_fragment_hash": "ebf8ce710ddb1e790b65fc403189a63cb725d27f078c06730a7b5dfd895f5ad4"
+          },
+          "context": null
+        },
+        {
+          "relation": "resolution.supporting_reasoning_path",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "to_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_causal_restart"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            "field_path": "/conclusion",
+            "source_fragment_hash": "ebf8ce710ddb1e790b65fc403189a63cb725d27f078c06730a7b5dfd895f5ad4"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "resolution.required_claim",
+          "from_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            },
+            "field_path": "/required_claim_refs",
+            "source_fragment_hash": "309a5b2deb390cc3db801043348c23a848be56572ef4cf504d3c31386ff747bb"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "entity.knowledge_anchor",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "to_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "/knowledge_states",
+            "source_fragment_hash": "044f6ef131f98ac4f3b6a4fc05fb3b6d43bf7966f43774d7005f43bddb9d3f5c"
+          },
+          "context": {
+            "container_path": "/knowledge_states",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          }
+        },
+        {
+          "relation": "entity.knows",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "/knowledge_states",
+            "source_fragment_hash": "044f6ef131f98ac4f3b6a4fc05fb3b6d43bf7966f43774d7005f43bddb9d3f5c"
+          },
+          "context": {
+            "container_path": "/knowledge_states",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          }
+        },
+        {
+          "relation": "entity.believes",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "/knowledge_states",
+            "source_fragment_hash": "044f6ef131f98ac4f3b6a4fc05fb3b6d43bf7966f43774d7005f43bddb9d3f5c"
+          },
+          "context": {
+            "container_path": "/knowledge_states",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          }
+        },
+        {
+          "relation": "entity.false_belief",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_researcher"
+            },
+            "field_path": "/knowledge_states",
+            "source_fragment_hash": "044f6ef131f98ac4f3b6a4fc05fb3b6d43bf7966f43774d7005f43bddb9d3f5c"
+          },
+          "context": {
+            "container_path": "/knowledge_states",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            }
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_backup_system"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "entity",
+            "object_id": "ent_safety_observer"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "entity",
+              "object_id": "ent_safety_observer"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "relationship",
+            "object_id": "rel_researcher_controls_backup"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "relationship",
+              "object_id": "rel_researcher_controls_backup"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "relationship.from",
+          "from_ref": {
+            "object_type": "relationship",
+            "object_id": "rel_researcher_controls_backup"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "relationship",
+              "object_id": "rel_researcher_controls_backup"
+            },
+            "field_path": "/from_ref",
+            "source_fragment_hash": "0c74531fc6e57a5fe583bc99f3b80dea3aabef7a24e07ee8f90b07dbc750285f"
+          },
+          "context": null
+        },
+        {
+          "relation": "relationship.to",
+          "from_ref": {
+            "object_type": "relationship",
+            "object_id": "rel_researcher_controls_backup"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "relationship",
+              "object_id": "rel_researcher_controls_backup"
+            },
+            "field_path": "/to_ref",
+            "source_fragment_hash": "81f2f93543fa5ff48b798a7e64697d525119248f157ba89ccfbc7bb19afb25e5"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "location.adjacent",
+          "from_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "to_ref": {
+            "object_type": "location",
+            "object_id": "loc_corridor"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "field_path": "/adjacency_refs",
+            "source_fragment_hash": "61c06d30ab5ec2e692df978c2493b9c8c24c37e5ed036ae43c21d930710e3f7b"
+          },
+          "context": null
+        },
+        {
+          "relation": "location.travel_to",
+          "from_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "to_ref": {
+            "object_type": "location",
+            "object_id": "loc_corridor"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_lab"
+            },
+            "field_path": "/travel_times",
+            "source_fragment_hash": "d17c3d1865f1394eafc5f5a1abb32ae8f81f50857ea0f89187b025e0299022b0"
+          },
+          "context": {
+            "container_path": "/travel_times",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "location",
+            "object_id": "loc_corridor"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "location.adjacent",
+          "from_ref": {
+            "object_type": "location",
+            "object_id": "loc_corridor"
+          },
+          "to_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "field_path": "/adjacency_refs",
+            "source_fragment_hash": "95921c82a5acafd0d4b88a00a39ca54ddbf91ff2157e24fed630a1849af7ca6a"
+          },
+          "context": null
+        },
+        {
+          "relation": "location.travel_to",
+          "from_ref": {
+            "object_type": "location",
+            "object_id": "loc_corridor"
+          },
+          "to_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "location",
+              "object_id": "loc_corridor"
+            },
+            "field_path": "/travel_times",
+            "source_fragment_hash": "1e095115b1ee6c74b7656d30c7a086fc85a02cd974fd6a856cc92139a0974216"
+          },
+          "context": {
+            "container_path": "/travel_times",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.participant",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "/participant_refs",
+            "source_fragment_hash": "d6cf97bf3bee5cab26cd89b6b818bb288fb9caaf7bfe25020050e703a87907e5"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.location",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "to_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "/location_ref",
+            "source_fragment_hash": "0a67550c6b041e26c0633fce17286c9648470997349676575143f32863c754dd"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.cause",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "/cause_refs",
+            "source_fragment_hash": "b2ea8d1c64a0e2fdf944c24bde29f6b1614e5cb53ea27eebe99ac0805da7c855"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.observer",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_safety_observer"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_six"
+            },
+            "field_path": "/observed_by_refs",
+            "source_fragment_hash": "2e00d44a39702a4ca3febd9dabebc1c897662becfabf1c80dc134e2577632411"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.participant",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_backup_system"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "/participant_refs",
+            "source_fragment_hash": "d6cf97bf3bee5cab26cd89b6b818bb288fb9caaf7bfe25020050e703a87907e5"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.location",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "to_ref": {
+            "object_type": "location",
+            "object_id": "loc_lab"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "/location_ref",
+            "source_fragment_hash": "0a67550c6b041e26c0633fce17286c9648470997349676575143f32863c754dd"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.cause",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "/cause_refs",
+            "source_fragment_hash": "309a5b2deb390cc3db801043348c23a848be56572ef4cf504d3c31386ff747bb"
+          },
+          "context": null
+        },
+        {
+          "relation": "event.observer",
+          "from_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "event",
+              "object_id": "evt_restart_seven"
+            },
+            "field_path": "/observed_by_refs",
+            "source_fragment_hash": "c35a2a6200da49b3e8169e924ca8de89e3eb15a02f01d50da563bc96b49c67e0"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "information.source_event",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "to_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            "field_path": "/source_event_ref",
+            "source_fragment_hash": "4d5b13646c780de47ed0e180acb3044994d57d1440b4ca254b34551029d81a5e"
+          },
+          "context": null
+        },
+        {
+          "relation": "information.supports_claim",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            "field_path": "/supports_claim_refs",
+            "source_fragment_hash": "309a5b2deb390cc3db801043348c23a848be56572ef4cf504d3c31386ff747bb"
+          },
+          "context": null
+        },
+        {
+          "relation": "information.perspective",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            },
+            "field_path": "/availability",
+            "source_fragment_hash": "92983c141aeab679ccf943662fb319428e940aeeb5aa865807b3aba3b8bc764d"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "information.source_event",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "to_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            },
+            "field_path": "/source_event_ref",
+            "source_fragment_hash": "4d5b13646c780de47ed0e180acb3044994d57d1440b4ca254b34551029d81a5e"
+          },
+          "context": null
+        },
+        {
+          "relation": "information.supports_claim",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            },
+            "field_path": "/supports_claim_refs",
+            "source_fragment_hash": "b2ea8d1c64a0e2fdf944c24bde29f6b1614e5cb53ea27eebe99ac0805da7c855"
+          },
+          "context": null
+        },
+        {
+          "relation": "information.perspective",
+          "from_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "to_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            },
+            "field_path": "/availability",
+            "source_fragment_hash": "92983c141aeab679ccf943662fb319428e940aeeb5aa865807b3aba3b8bc764d"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "claim.support",
+          "from_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            },
+            "field_path": "/support_refs",
+            "source_fragment_hash": "ad4b0c6da1214aaab9145af8985c48db905e63996c16218edc60652ac41e5c3c"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "claim.support",
+          "from_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            },
+            "field_path": "/support_refs",
+            "source_fragment_hash": "6ac53dff8e7f5754dbc24b8b8c1f11c4ea14373bf950a1f652db60aad5ed256d"
+          },
+          "context": null
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.target_resolution",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "to_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "/target_resolution_ref",
+            "source_fragment_hash": "fd145e9f7cc344e03e759f3e0281da2b3ec518008700eef3ad820910fa8cb5de"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.required_claim",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "/required_claim_refs",
+            "source_fragment_hash": "309a5b2deb390cc3db801043348c23a848be56572ef4cf504d3c31386ff747bb"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.competitor",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "to_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "/competing_hypothesis_refs",
+            "source_fragment_hash": "2f1f8fa2882410a39fe621c72b8493007e13b1c7a2ae3d352dc35e9511679503"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.evidence",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "/evidence_assessments",
+            "source_fragment_hash": "c33bab1fde726a69ce8d0802e58fef8568a4a5a46ec7ae7f3d9e546670ab4c81"
+          },
+          "context": {
+            "container_path": "/evidence_assessments",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "hypothesis.evidence",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            },
+            "field_path": "/evidence_assessments",
+            "source_fragment_hash": "c33bab1fde726a69ce8d0802e58fef8568a4a5a46ec7ae7f3d9e546670ab4c81"
+          },
+          "context": {
+            "container_path": "/evidence_assessments",
+            "container_key": null,
+            "container_ordinal": 2,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.target_resolution",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "/target_resolution_ref",
+            "source_fragment_hash": "fd145e9f7cc344e03e759f3e0281da2b3ec518008700eef3ad820910fa8cb5de"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.required_claim",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "/required_claim_refs",
+            "source_fragment_hash": "b2ea8d1c64a0e2fdf944c24bde29f6b1614e5cb53ea27eebe99ac0805da7c855"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.competitor",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "/competing_hypothesis_refs",
+            "source_fragment_hash": "8dcda6c88e562cd52160bbb5a37ee5961cb472f8dbebfa2abef3226f2a0f9fcc"
+          },
+          "context": null
+        },
+        {
+          "relation": "hypothesis.evidence",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "/evidence_assessments",
+            "source_fragment_hash": "7b9fc29ab59f766446183528c4ed15f2841acee56c03e1286d82fda634bf3b2b"
+          },
+          "context": {
+            "container_path": "/evidence_assessments",
+            "container_key": null,
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "hypothesis.evidence",
+          "from_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            "field_path": "/evidence_assessments",
+            "source_fragment_hash": "7b9fc29ab59f766446183528c4ed15f2841acee56c03e1286d82fda634bf3b2b"
+          },
+          "context": {
+            "container_path": "/evidence_assessments",
+            "container_key": null,
+            "container_ordinal": 2,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_causal_restart"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_causal_restart"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "reasoning.target",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_causal_restart"
+          },
+          "to_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_causal_restart"
+            },
+            "field_path": "/target_ref",
+            "source_fragment_hash": "516222b8f9851061879f37a4630f7427b7f5a82264590ce91b936c6d150d4575"
+          },
+          "context": null
+        },
+        {
+          "relation": "reasoning.input",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_causal_restart"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_causal_restart"
+            },
+            "field_path": "/steps",
+            "source_fragment_hash": "3e39d1981a48b701145cb4faf97eaf0c72bd1a06c8335c36936eb962057da5af"
+          },
+          "context": {
+            "container_path": "/steps",
+            "container_key": "step_read_log",
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "reasoning.output",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_causal_restart"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_causal_restart"
+            },
+            "field_path": "/steps",
+            "source_fragment_hash": "3e39d1981a48b701145cb4faf97eaf0c72bd1a06c8335c36936eb962057da5af"
+          },
+          "context": {
+            "container_path": "/steps",
+            "container_key": "step_read_log",
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_log"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_manual_restart"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "c948b426eca0574711f87464ded5b4e54117c0182db02788d9b90681682462cc"
+          },
+          "context": null
+        },
+        {
+          "relation": "reasoning.target",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_manual_restart"
+            },
+            "field_path": "/target_ref",
+            "source_fragment_hash": "43af964b46101a29e9d30f7cb89b024301202262cfe0e8bbc585f926f4cd0559"
+          },
+          "context": null
+        },
+        {
+          "relation": "reasoning.input",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_manual_restart"
+            },
+            "field_path": "/steps",
+            "source_fragment_hash": "a3dd83b652b95f74a781b2dff00313d5194e3db50b7af8725882fcdb14d2bba9"
+          },
+          "context": {
+            "container_path": "/steps",
+            "container_key": "step_read_manual_trace",
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "reasoning.output",
+          "from_ref": {
+            "object_type": "reasoning_path",
+            "object_id": "path_manual_restart"
+          },
+          "to_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "reasoning_path",
+              "object_id": "path_manual_restart"
+            },
+            "field_path": "/steps",
+            "source_fragment_hash": "a3dd83b652b95f74a781b2dff00313d5194e3db50b7af8725882fcdb14d2bba9"
+          },
+          "context": {
+            "container_path": "/steps",
+            "container_key": "step_read_manual_trace",
+            "container_ordinal": 1,
+            "anchor_ref": null
+          }
+        },
+        {
+          "relation": "object.source",
+          "from_ref": {
+            "object_type": "constraint",
+            "object_id": "con_no_supernatural"
+          },
+          "to_ref": {
+            "object_type": "source_fragment",
+            "object_id": "src_restart_brief"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "constraint",
+              "object_id": "con_no_supernatural"
+            },
+            "field_path": "/source_refs",
+            "source_fragment_hash": "74c529df367347cca2a6ee4c6364b3fe5ca8552afc8127ecf8bde32d33fbd852"
+          },
+          "context": null
+        },
+        {
+          "relation": "constraint.scope",
+          "from_ref": {
+            "object_type": "constraint",
+            "object_id": "con_no_supernatural"
+          },
+          "to_ref": {
+            "object_type": "casefile",
+            "object_id": "case_restart_loop"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "constraint",
+              "object_id": "con_no_supernatural"
+            },
+            "field_path": "/scope_refs",
+            "source_fragment_hash": "400ff8f9f6ca9a282c15d96ec57913d2cbdcbad185ab45274fbf408da2bdb06f"
+          },
+          "context": null
+        },
+        {
+          "relation": "structure_lock.object",
+          "from_ref": {
+            "object_type": "structure_lock",
+            "object_id": "lock_root_answer"
+          },
+          "to_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "ordinal": 1,
+          "source_ref": {
+            "object_ref": {
+              "object_type": "structure_lock",
+              "object_id": "lock_root_answer"
+            },
+            "field_path": "/object_ref",
+            "source_fragment_hash": "fd145e9f7cc344e03e759f3e0281da2b3ec518008700eef3ad820910fa8cb5de"
+          },
+          "context": null
+        }
+      ]
+    }
+  },
+  "exposure_plan": {
+    "draft_id": 1,
+    "plan_revision_id": 2,
+    "revision_no": 2,
+    "frozen_payload": {
+      "entries": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "sequence_no": 1,
+          "title": "人工重启痕迹",
+          "note": "先建立人工触发误信，再用证据重新解释。 变体：basic。先建立人工触发假说。 能力任务的明确要求：Exposure exposure_manual_trace 必须出现动作 reinterpret。 全计划 basis_refs 必须覆盖 ['claim:claim_manual_trigger']。",
+          "refs": [
+            {
+              "object_type": "information_unit",
+              "object_id": "info_manual_trace"
+            }
+          ]
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "sequence_no": 2,
+          "title": "备份系统日志",
+          "note": "先建立人工触发误信，再用证据重新解释。 变体：basic。后披露自动保护触发证据。",
+          "refs": [
+            {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            }
+          ]
+        }
+      ]
+    },
+    "content_hash": "a9974d625514f7c957cf81bb9455af21a6014ba7816937e24c4206fa1261f4d4"
+  },
+  "profile": {
+    "schema_id": "compiler.novel-profile.v1",
+    "structure": {
+      "strategy": "three_act",
+      "target_chapters": 1,
+      "target_scenes": 3
+    },
+    "allowed_presentation_modes": [
+      "linear"
+    ],
+    "exposure_policy": "bound_plan"
+  },
+  "planning_constraints": {
+    "target_chapters": 1,
+    "target_scenes": 3,
+    "allowed_presentation_modes": [
+      "linear"
+    ]
+  },
+  "planner_view": {
+    "hard_constraints": {
+      "structure": {
+        "target_chapters": 1,
+        "target_scenes": 3,
+        "allowed_presentation_modes": [
+          "linear"
+        ]
+      },
+      "exposure_obligations": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "sequence_no": 1,
+          "introduce_exactly_once": true,
+          "subsequent_actions_require_introduction": true
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "sequence_no": 2,
+          "introduce_exactly_once": true,
+          "subsequent_actions_require_introduction": true
+        }
+      ],
+      "resolution_obligations": [
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "terminal_exactly_once": true,
+          "allowed_terminal_actions": [
+            "resolve",
+            "intentionally_unresolved"
+          ]
+        },
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "terminal_exactly_once": true,
+          "allowed_terminal_actions": [
+            "resolve",
+            "intentionally_unresolved"
+          ]
+        }
+      ],
+      "chronology_anchors": [
+        {
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "comparable_time": "2042-06-01T19:00:00"
+        },
+        {
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "comparable_time": "2042-06-01T20:00:00"
+        }
+      ]
+    },
+    "planning_context": {
+      "causal_edges": [
+        {
+          "relation": "cause",
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "related_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          }
+        },
+        {
+          "relation": "cause",
+          "event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "related_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          }
+        }
+      ],
+      "knowledge_snapshots": [
+        {
+          "subject_ref": {
+            "object_type": "entity",
+            "object_id": "ent_researcher"
+          },
+          "as_of_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "knows_refs": [
+            {
+              "object_type": "information_unit",
+              "object_id": "info_restart_log"
+            }
+          ],
+          "believes_refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_backup_trigger"
+            }
+          ],
+          "false_belief_refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ]
+        }
+      ],
+      "author_guidance": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "title": "人工重启痕迹",
+          "note": "先建立人工触发误信，再用证据重新解释。 变体：basic。先建立人工触发假说。 能力任务的明确要求：Exposure exposure_manual_trace 必须出现动作 reinterpret。 全计划 basis_refs 必须覆盖 ['claim:claim_manual_trigger']。",
+          "is_hard_constraint": false
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "title": "备份系统日志",
+          "note": "先建立人工触发误信，再用证据重新解释。 变体：basic。后披露自动保护触发证据。",
+          "is_hard_constraint": false
+        }
+      ]
+    }
+  }
+}

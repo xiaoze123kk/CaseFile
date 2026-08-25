@@ -15,7 +15,28 @@ def test_capability_suite_is_exact_24_task_matrix_with_valid_references() -> Non
     validated = validate_suite()
     assert len(validated["suite"]["tasks"]) == 24
     assert len(set(validated["reference_hashes"].values())) >= 8
-    assert len({task["planner_input_hash"] for task in validated["suite"]["tasks"]}) >= 6
+    assert len(
+        {task["planner_inputs"]["v1"]["hash"] for task in validated["suite"]["tasks"]}
+    ) >= 6
+    assert all(
+        invariant["input_evidence_paths"]
+        for task in validated["suite"]["tasks"]
+        for invariant in task["outcome_invariants"]
+    )
+
+
+def test_v2_suite_inputs_are_valid_and_distinct_from_v1() -> None:
+    v1 = validate_suite(planner_input_version="v1")
+    v2 = validate_suite(planner_input_version="v2")
+    assert set(v1["planner_inputs"]) == set(v2["planner_inputs"])
+    assert all(
+        item["schema_id"] == "compiler.story-planner-input.v2"
+        for item in v2["planner_inputs"].values()
+    )
+    assert all(
+        v1["planner_inputs"][task_id] != v2["planner_inputs"][task_id]
+        for task_id in v1["planner_inputs"]
+    )
 
 
 def test_every_outcome_invariant_rejects_a_targeted_negative_mutation() -> None:
@@ -74,6 +95,55 @@ def test_fake_suites_pass_deterministic_gates(suite_kind: str, tmp_path: Path) -
     assert report["metrics"]["infrastructure_failure_rate"] == 0
 
 
+def test_v2_fake_capability_reports_audited_groups_and_promotion_state(
+    tmp_path: Path,
+) -> None:
+    report = run_suite(
+        suite_kind="capability",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "capability-v2.json",
+        resume=False,
+        planner_input_version="v2",
+    )
+    assert report["frozen"]["planner_input_version"] == "v2"
+    assert len(report["metrics"]["by_capability"]) == 8
+    assert len(report["metrics"]["by_variant"]) == 3
+    assert report["metrics"]["valid_but_g2_failed_trial_count"] == 0
+    assert report["promotion_gate"]["evaluated"] is True
+    assert report["promotion_gate"]["qualified"] is False
+
+
+def test_prompt_version_is_frozen_in_benchmark_fingerprint(tmp_path: Path) -> None:
+    baseline = run_suite(
+        suite_kind="regression",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "v3.json",
+        resume=False,
+        prompt_version="story-planner-v3",
+    )
+    candidate = run_suite(
+        suite_kind="regression",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "v5.json",
+        resume=False,
+        prompt_version="story-planner-v5",
+    )
+    assert baseline["fingerprint"] != candidate["fingerprint"]
+    assert candidate["frozen"]["prompt"] == "story-planner-v5"
+
+
 def test_resume_rejects_incompatible_fingerprint(tmp_path: Path) -> None:
     checkpoint = tmp_path / "partial.json"
     run_suite(
@@ -110,6 +180,38 @@ def test_live_capability_requires_pro_models_and_three_trials() -> None:
             repeats=1,
             checkpoint_path=None,
             resume=False,
+        )
+
+    with pytest.raises(ValueError, match="exact Pro model IDs"):
+        run_suite(
+            suite_kind="capability",
+            mode="live",
+            provider_name="deepseek",
+            model_id="deepseek-v4-pro-preview",
+            quality_grader_model="deepseek-v4-pro-preview",
+            repeats=3,
+            checkpoint_path=None,
+            resume=False,
+        )
+
+
+def test_audited_invariant_rejects_hidden_or_empty_evidence() -> None:
+    bundle = validate_suite()["planner_inputs"]["linear_mystery__basic"]
+    with pytest.raises(ValueError, match="hidden oracle"):
+        novel_plan_eval._validate_audited_invariant(
+            {"kind": "purpose_present", "expectation_class": "capability"},
+            bundle,
+            "hidden",
+        )
+    with pytest.raises(ValueError, match="does not resolve"):
+        novel_plan_eval._validate_audited_invariant(
+            {
+                "kind": "purpose_present",
+                "expectation_class": "capability",
+                "input_evidence_paths": ["/missing"],
+            },
+            bundle,
+            "missing",
         )
 
 
@@ -179,3 +281,28 @@ def test_report_usage_includes_rejected_rounds_and_g3_excludes_ungraded_trials()
     assert distribution["graded_trial_count"] == 1
     assert distribution["count"] == 6.0
     assert distribution["mean"] == 1.0
+
+
+def test_report_does_not_count_production_rejection_as_g2_failure() -> None:
+    report = novel_plan_eval._report(
+        {"suite": {"tasks": []}, "suite_kind": "regression"},
+        "a" * 64,
+        "regression",
+        [
+            {
+                "task_id": "rejected",
+                "trial_index": 1,
+                "passed": False,
+                "contract_valid": True,
+                "semantic_valid": False,
+                "reason_code": "compiler_story_plan_reference_invalid",
+                "outcome_failures": ["candidate_missing"],
+                "rounds": [],
+                "graders": {},
+            }
+        ],
+    )
+    assert report["metrics"]["production_rejections"] == {
+        "compiler_story_plan_reference_invalid": 1
+    }
+    assert report["metrics"]["g2_outcome_failures"] == {}

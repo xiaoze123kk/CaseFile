@@ -50,6 +50,12 @@ EXPECTED_CURRENT_VERSIONS = {
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("story_planner", "story-planner-v6"): {
+        "system": "7b63a9fefdb88427400f9aa81803a1a48dde45c358fdd7d2703d0ec0ac2f76ea"
+    },
+    ("story_planner", "story-planner-v5"): {
+        "system": "12fed75612c28647d21298e57cf65c4061602f48dc7afdd892767e6634d8bcba"
+    },
     ("story_planner", "story-planner-v3"): {
         "system": "e3176a472075dfe06055f5a29dd0941f649ca474639c45c23d9fc4a761a03476"
     },

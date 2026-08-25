@@ -27,8 +27,11 @@ from casefile.domain.narrative_compiler.novel_plan import (
 )
 from casefile.domain.narrative_compiler.planner_input import (
     PLANNER_INPUT_SCHEMA_ID,
+    PLANNER_INPUT_V2_SCHEMA_ID,
     build_planner_input_bundle,
+    build_planner_input_bundle_v2,
     planner_input_fingerprint,
+    validate_planner_input_bundle,
 )
 from casefile.domain.narrative_compiler.source_refs import (
     build_source_ref,
@@ -41,8 +44,10 @@ __all__ = [
     "NOVEL_PLAN_CANDIDATE_SCHEMA_ID",
     "NOVEL_PLAN_SCHEMA_ID",
     "PLANNER_INPUT_SCHEMA_ID",
+    "PLANNER_INPUT_V2_SCHEMA_ID",
     "STORY_PLANNER_COMPONENT_VERSION",
     "build_planner_input_bundle",
+    "build_planner_input_bundle_v2",
     "canonicalize_novel_plan",
     "build_artifact_ref",
     "canonical_json_sha256",
@@ -51,6 +56,7 @@ __all__ = [
     "NARRATIVE_IR_SCHEMA_ID",
     "narrative_ir_component_fingerprint",
     "planner_input_fingerprint",
+    "validate_planner_input_bundle",
     "project_narrative_ir",
     "project_narrative_ir_json",
     "REFERENCE_FIELD_SPECS",

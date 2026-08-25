@@ -1569,6 +1569,141 @@ class StructureLockEnvelope(NarrativeObjectEnvelope):
     value: StructureLock | None = None
 
 
+class AllowedPresentationMode(Enum):
+    linear = 'linear'
+    flashback = 'flashback'
+    flashforward = 'flashforward'
+
+
+class PlanningConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode], Field(min_length=1)
+    ]
+
+
+class StructureConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode], Field(min_length=1)
+    ]
+
+
+class ExposureObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    sequence_no: Annotated[int, Field(ge=1)]
+    introduce_exactly_once: Literal[True]
+    subsequent_actions_require_introduction: Literal[True]
+
+
+class AllowedTerminalAction(Enum):
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class ResolutionObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_ref: ObjectRef
+    terminal_exactly_once: Literal[True]
+    allowed_terminal_actions: Annotated[
+        list[AllowedTerminalAction], Field(max_length=2, min_length=2)
+    ]
+
+
+class ChronologyAnchor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
+
+
+class Relation1(Enum):
+    cause = 'cause'
+    effect = 'effect'
+
+
+class CausalEdge(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    relation: Relation1
+    event_ref: ObjectRef
+    related_ref: ObjectRef
+
+
+class KnowledgeSnapshot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    subject_ref: ObjectRef
+    as_of_event_ref: ObjectRef
+    knows_refs: list[ObjectRef]
+    believes_refs: list[ObjectRef]
+    false_belief_refs: list[ObjectRef]
+
+
+class AuthorGuidance(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    title: Annotated[str, Field(min_length=1)]
+    note: str | None
+    is_hard_constraint: Literal[False]
+
+
+class HardConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure_obligations: list[ExposureObligation]
+    resolution_obligations: list[ResolutionObligation]
+    chronology_anchors: list[ChronologyAnchor]
+
+
+class PlanningContext(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+
+
+class PlannerView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    hard_constraints: HardConstraints
+    planning_context: PlanningContext
+
+
 class ScenePurpose(Enum):
     hook = 'hook'
     setup = 'setup'
@@ -1770,7 +1905,7 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_5
+    validation_issue: Schema_6
     patch_candidate: Schema_3
     task_run: TaskRun
     task_event: TaskEvent
@@ -1783,7 +1918,7 @@ class EditingContracts(BaseModel):
     compile_input_manifest: CompileInputManifest
     narrative_ir: Schema_2
     novel_profile: novel_profile_1.Schema
-    planner_input: Schema_4
+    planner_input: Schema_4 | Schema_5
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
 
@@ -1975,13 +2110,13 @@ class Schema_3(BaseModel):
     ]
 
 
-class AllowedPresentationMode(Enum):
+class AllowedPresentationMode_1(Enum):
     linear = 'linear'
     flashback = 'flashback'
     flashforward = 'flashforward'
 
 
-class PlanningConstraints(BaseModel):
+class PlanningConstraints_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1989,7 +2124,7 @@ class PlanningConstraints(BaseModel):
     target_chapters: Annotated[int, Field(ge=1, le=100)]
     target_scenes: Annotated[int, Field(ge=1, le=500)]
     allowed_presentation_modes: Annotated[
-        list[AllowedPresentationMode], Field(min_length=1)
+        list[AllowedPresentationMode_1], Field(min_length=1)
     ]
 
 
@@ -2002,7 +2137,20 @@ class Schema_4(BaseModel):
     narrative_ir: Schema_2
     exposure_plan: ExposureBinding | None
     profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints_1
+
+
+class Schema_5(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-input.v2']
+    narrative_ir: Schema_2
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
     planning_constraints: PlanningConstraints
+    planner_view: PlannerView
 
 
 class Severity_2(StrEnum):
@@ -2025,7 +2173,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_5(BaseModel):
+class Schema_6(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

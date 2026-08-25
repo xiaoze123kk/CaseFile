@@ -11,6 +11,7 @@
 | `contracts/schemas/compiler/narrative-ir.schema.json` | N4.2 NarrativeIR：Snapshot 无损对象 envelope、根与对象来源证明、带嵌套上下文的完整引用导航边。 |
 | `contracts/schemas/compiler/novel-profile.schema.json` | N4.3 小说结构、章节/场景目标、叙述方式和 Exposure 策略契约。 |
 | `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入。 |
+| `contracts/schemas/compiler/planner-input-v2.schema.json` | 兼容新增的 Story Planner v2 输入：保留完整冻结输入，并加入可独立复验的 PlannerView；硬约束只投影现有权威规则，因果、知识与作者备注保持规划上下文。 |
 | `contracts/schemas/compiler/novel-plan.schema.json` | 分离模型 NovelPlanCandidate 与服务器规范化 NovelPlanIR，定义 Scene 编排、事实依据、披露、Resolution、依赖及派生索引。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
@@ -38,3 +39,4 @@
 | `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
 | `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
+| `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |

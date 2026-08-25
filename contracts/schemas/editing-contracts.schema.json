@@ -35,7 +35,12 @@
     "compile_input_manifest": {"$ref": "compiler/compiler.schema.json#/$defs/CompileInputManifest"},
     "narrative_ir": {"$ref": "compiler/narrative-ir.schema.json"},
     "novel_profile": {"$ref": "compiler/novel-profile.schema.json"},
-    "planner_input": {"$ref": "compiler/planner-input.schema.json"},
+    "planner_input": {
+      "oneOf": [
+        {"$ref": "compiler/planner-input.schema.json"},
+        {"$ref": "compiler/planner-input-v2.schema.json"}
+      ]
+    },
     "novel_plan_candidate": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanCandidate"},
     "novel_plan": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanIR"}
   }

@@ -27,6 +27,7 @@ from .casefile import Schema as CaseFile
 from .novel_profile import Schema as NovelProfile
 from .patch_candidate import Schema as PatchCandidate
 from .planner_input import Schema as PlannerInputBundle
+from .planner_input_v2 import Schema as PlannerInputBundleV2
 from .validation_issue import Schema as ValidationIssue
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "NovelPlanIR",
     "NovelProfile",
     "PlannerInputBundle",
+    "PlannerInputBundleV2",
     "NarrativeIR",
     "PatchCandidate",
     "TaskEvent",

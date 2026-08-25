@@ -15,7 +15,10 @@ from ._internal import (
     AgentGenerateResult,
     AgentThreadId,
     Alias,
+    AllowedPresentationMode,
+    AllowedTerminalAction,
     ArtifactKind,
+    AuthorGuidance,
     Availability,
     BaseBriefIntakeCandidateId,
     BriefIntakeConstraint,
@@ -33,6 +36,8 @@ from ._internal import (
     CanonBinding,
     Capability,
     Category,
+    CausalEdge,
+    ChronologyAnchor,
     Claim,
     ClaimEnvelope,
     ClaimType,
@@ -59,9 +64,11 @@ from ._internal import (
     EventEnvelope,
     EvidenceAssessment,
     ExposureBinding,
+    ExposureObligation,
     ExposurePlacement,
     Extensions,
     Goal,
+    HardConstraints,
     Hypothesis,
     HypothesisEnvelope,
     InformationEnvelope,
@@ -74,6 +81,7 @@ from ._internal import (
     InputSourceRecordId,
     Items,
     JsonPointer,
+    KnowledgeSnapshot,
     KnowledgeState,
     Level,
     Location,
@@ -102,6 +110,9 @@ from ._internal import (
     ParentVersionId,
     PatchOperation,
     PathType,
+    PlannerView,
+    PlanningConstraints,
+    PlanningContext,
     PrerequisiteSceneId,
     PresentationMode,
     Provider,
@@ -113,6 +124,7 @@ from ._internal import (
     ReferenceEdgeContext,
     ReferenceRelation,
     Relation,
+    Relation1,
     Relationship,
     RelationshipEnvelope,
     Reliability,
@@ -120,6 +132,7 @@ from ._internal import (
     ResolutionAction,
     ResolutionConclusion,
     ResolutionEnvelope,
+    ResolutionObligation,
     ResolutionPlacement,
     ResolutionSpec,
     ReviewStatus,
@@ -147,6 +160,7 @@ from ._internal import (
     Strength,
     Strength1,
     Strength2,
+    StructureConstraints,
     StructureLock,
     StructureLockEnvelope,
     Suggestion,
@@ -181,7 +195,7 @@ from ._internal import (
     Wgs84SpatialPosition,
 )
 
-__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "Action", "ActorRef", "ActorType", "AgentComponentStepView", "AgentDiagnosticIssue", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "ArtifactKind", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "BriefRef", "BriefStrategyOption", "BriefStrategyOptionsResult", "CandidateChapter", "CandidateScene", "CandidateStrategy", "CanonBinding", "Capability", "Category", "Claim", "ClaimEnvelope", "ClaimType", "Classification", "CompileInputManifest", "CompileMode", "CompilerArtifactRef", "CompilerDiagnostic", "CompilerDiagnosticSeverity", "CompilerProfileBinding", "CompilerSourceRef", "ConclusionMode", "ConfirmationStatus", "Constraint", "ConstraintEnvelope", "CoreMetadata", "Direction", "EditingContracts", "Effect", "Entity", "EntityEnvelope", "EntityType", "Event", "EventEnvelope", "EvidenceAssessment", "ExposureBinding", "ExposurePlacement", "Extensions", "Goal", "Hypothesis", "HypothesisEnvelope", "InformationEnvelope", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "Items", "JsonPointer", "KnowledgeState", "Level", "Location", "LocationEnvelope", "LockType", "Materiality", "ModelId", "NamespacedKey", "NarrativeCase", "NarrativeIRSource", "NarrativeIndexes", "NarrativeObjectEnvelope", "NarrativeObjects", "NovelPlanCandidate", "NovelPlanIR", "NovelPlanIndexes", "NovelPlanScene", "NovelPlanSource", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "Outcome", "OutputMessageId", "ParentVersionId", "PatchOperation", "PathType", "PrerequisiteSceneId", "PresentationMode", "Provider", "QuestionType", "ReasoningEnvelope", "ReasoningPath", "RecommendedStrategy", "ReferenceEdge", "ReferenceEdgeContext", "ReferenceRelation", "Relation", "Relationship", "RelationshipEnvelope", "Reliability", "RequiredSlot", "ResolutionAction", "ResolutionConclusion", "ResolutionEnvelope", "ResolutionPlacement", "ResolutionSpec", "ReviewStatus", "RouteGeometry", "RuleId", "ScenePoint", "ScenePurpose", "SchematicRouteGeometry", "SchematicSpatialPosition", "Secret", "Severity", "Sha256Hex", "SnapshotBinding", "SpatialScene", "SpatialSceneFloor", "SpatialSceneRegion", "StableKey", "Status", "Status1", "Status2", "Status3", "StatusModel", "Step", "Strategy", "Strength", "Strength1", "Strength2", "StructureLock", "StructureLockEnvelope", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "TemporalPosition", "TemporalPosition1", "TemporalPosition2", "TemporalPosition3", "TemporalPosition4", "TemporalPosition5", "TemporalPrecision", "Title", "Tradeoff", "Trait", "TravelTime", "TruthStatus", "UnresolvedGap", "Value", "Value1", "ValueType", "Version", "Visibility", "VisibilityRule", "WallClockTime", "Wgs84RouteGeometry", "Wgs84RoutePoint", "Wgs84SpatialPosition"]
+__all__ = ["AcceptedAnswers", "AccessRule", "AcquisitionCondition", "Action", "ActorRef", "ActorType", "AgentComponentStepView", "AgentDiagnosticIssue", "AgentGenerateRequest", "AgentGenerateResult", "AgentThreadId", "Alias", "AllowedPresentationMode", "AllowedTerminalAction", "ArtifactKind", "AuthorGuidance", "Availability", "BaseBriefIntakeCandidateId", "BriefIntakeConstraint", "BriefIntakeFieldSource", "BriefIntakeFieldSources", "BriefIntakePendingDecision", "BriefIntakeQuestion", "BriefIntakeQuestionSet", "BriefRef", "BriefStrategyOption", "BriefStrategyOptionsResult", "CandidateChapter", "CandidateScene", "CandidateStrategy", "CanonBinding", "Capability", "Category", "CausalEdge", "ChronologyAnchor", "Claim", "ClaimEnvelope", "ClaimType", "Classification", "CompileInputManifest", "CompileMode", "CompilerArtifactRef", "CompilerDiagnostic", "CompilerDiagnosticSeverity", "CompilerProfileBinding", "CompilerSourceRef", "ConclusionMode", "ConfirmationStatus", "Constraint", "ConstraintEnvelope", "CoreMetadata", "Direction", "EditingContracts", "Effect", "Entity", "EntityEnvelope", "EntityType", "Event", "EventEnvelope", "EvidenceAssessment", "ExposureBinding", "ExposureObligation", "ExposurePlacement", "Extensions", "Goal", "HardConstraints", "Hypothesis", "HypothesisEnvelope", "InformationEnvelope", "InformationType", "InformationUnit", "InputBriefIntakeId", "InputBriefIntakeRevision", "InputBriefRevision", "InputMessageId", "InputSourceRecordId", "Items", "JsonPointer", "KnowledgeSnapshot", "KnowledgeState", "Level", "Location", "LocationEnvelope", "LockType", "Materiality", "ModelId", "NamespacedKey", "NarrativeCase", "NarrativeIRSource", "NarrativeIndexes", "NarrativeObjectEnvelope", "NarrativeObjects", "NovelPlanCandidate", "NovelPlanIR", "NovelPlanIndexes", "NovelPlanScene", "NovelPlanSource", "ObjectRef", "ObjectRefList", "ObjectType", "Op", "Operation", "Outcome", "OutputMessageId", "ParentVersionId", "PatchOperation", "PathType", "PlannerView", "PlanningConstraints", "PlanningContext", "PrerequisiteSceneId", "PresentationMode", "Provider", "QuestionType", "ReasoningEnvelope", "ReasoningPath", "RecommendedStrategy", "ReferenceEdge", "ReferenceEdgeContext", "ReferenceRelation", "Relation", "Relation1", "Relationship", "RelationshipEnvelope", "Reliability", "RequiredSlot", "ResolutionAction", "ResolutionConclusion", "ResolutionEnvelope", "ResolutionObligation", "ResolutionPlacement", "ResolutionSpec", "ReviewStatus", "RouteGeometry", "RuleId", "ScenePoint", "ScenePurpose", "SchematicRouteGeometry", "SchematicSpatialPosition", "Secret", "Severity", "Sha256Hex", "SnapshotBinding", "SpatialScene", "SpatialSceneFloor", "SpatialSceneRegion", "StableKey", "Status", "Status1", "Status2", "Status3", "StatusModel", "Step", "Strategy", "Strength", "Strength1", "Strength2", "StructureConstraints", "StructureLock", "StructureLockEnvelope", "Suggestion", "Tag", "TaskEvent", "TaskFailure", "TaskFailureIssue", "TaskRun", "TaskType", "TemporalPosition", "TemporalPosition1", "TemporalPosition2", "TemporalPosition3", "TemporalPosition4", "TemporalPosition5", "TemporalPrecision", "Title", "Tradeoff", "Trait", "TravelTime", "TruthStatus", "UnresolvedGap", "Value", "Value1", "ValueType", "Version", "Visibility", "VisibilityRule", "WallClockTime", "Wgs84RouteGeometry", "Wgs84RoutePoint", "Wgs84SpatialPosition"]
 
 from .public import (
     Brief,
@@ -191,6 +205,7 @@ from .public import (
     NovelProfile,
     PatchCandidate,
     PlannerInputBundle,
+    PlannerInputBundleV2,
     ValidationIssue,
 )
 
@@ -202,5 +217,6 @@ __all__ += [
     "NovelProfile",
     "PatchCandidate",
     "PlannerInputBundle",
+    "PlannerInputBundleV2",
     "ValidationIssue",
 ]

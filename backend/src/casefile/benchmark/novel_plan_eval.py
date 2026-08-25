@@ -35,7 +35,7 @@ from casefile.domain.narrative_compiler import (
 )
 
 ROOT = Path(__file__).resolve().parents[4]
-SUITE_ROOT = ROOT / "fixtures" / "novel_plan_benchmark" / "v2"
+SUITE_ROOT = ROOT / "fixtures" / "novel_plan_benchmark" / "v3"
 CAPABILITIES = (
     "linear_mystery",
     "nonlinear_reveal",
@@ -47,8 +47,8 @@ CAPABILITIES = (
     "complex_mixed",
 )
 VARIANTS = ("basic", "decoy", "dense")
-RUNTIME_VERSION = "novel-plan-benchmark.v2"
-GRADER_VERSION = "novel-plan-g0-g3.v1"
+RUNTIME_VERSION = "novel-plan-benchmark.v3"
+GRADER_VERSION = "novel-plan-g0-g3.v2"
 QUALITY_GRADER_PROMPT = (
     "你是 NovelPlanIR 质量评审。只评估给定候选，不补写内容。"
     "对 opening、escalation、turn_setup、pov、climax、closure 六项分别给出 0 到 1 分，"
@@ -108,7 +108,9 @@ def planner_input() -> dict[str, Any]:
     )
 
 
-def validate_suite(*, formal_capability: bool = False) -> dict[str, Any]:
+def validate_suite(
+    *, formal_capability: bool = False, planner_input_version: str = "v1"
+) -> dict[str, Any]:
     suite = _read_json(SUITE_ROOT / "suite.json")
     tasks = suite.get("tasks")
     if not isinstance(tasks, list) or len(tasks) != 24:
@@ -117,7 +119,10 @@ def validate_suite(*, formal_capability: bool = False) -> dict[str, Any]:
     expected = {f"{capability}__{variant}" for capability in CAPABILITIES for variant in VARIANTS}
     if identities != expected:
         raise ValueError("Novel Plan capability matrix is incomplete")
-    del formal_capability  # every v2 suite load enforces the formal task contract
+    if suite.get("schema_id") != "benchmark.novel-plan-suite.v3":
+        raise ValueError("Novel Plan capability suite schema is invalid")
+    if planner_input_version not in {"v1", "v2"}:
+        raise ValueError("PlannerInput version must be v1 or v2")
     reference_hashes: dict[str, str] = {}
     planner_inputs: dict[str, dict[str, Any]] = {}
     references: dict[str, dict[str, Any]] = {}
@@ -125,17 +130,22 @@ def validate_suite(*, formal_capability: bool = False) -> dict[str, Any]:
         if task.get("primary_capability") not in CAPABILITIES:
             raise ValueError("Task primary_capability is invalid")
         task_id = str(task["task_id"])
-        input_name = task.get("planner_input")
+        frozen_input = task.get("planner_inputs", {}).get(planner_input_version)
         invariants = task.get("outcome_invariants")
-        if not isinstance(input_name, str) or not isinstance(invariants, list) or not invariants:
+        if not isinstance(frozen_input, dict) or not isinstance(invariants, list) or not invariants:
             raise ValueError(
                 "Formal Novel Plan task must freeze planner_input and "
                 f"outcome_invariants: {task_id}"
             )
+        input_name = frozen_input.get("path")
+        if not isinstance(input_name, str):
+            raise ValueError(f"PlannerInput path is missing: {task_id}")
         bundle = _read_json(SUITE_ROOT / input_name)
         input_hash = canonical_json_sha256(bundle)
-        if task.get("planner_input_hash") != input_hash:
+        if frozen_input.get("hash") != input_hash:
             raise ValueError(f"PlannerInput hash mismatch: {task_id}")
+        for invariant in invariants:
+            _validate_audited_invariant(invariant, bundle, task_id)
         reference = _read_json(SUITE_ROOT / str(task["reference"]))
         validate_novel_plan_candidate(reference, planner_input=bundle)
         if not _grade_outcome(reference, invariants):
@@ -143,12 +153,62 @@ def validate_suite(*, formal_capability: bool = False) -> dict[str, Any]:
         reference_hashes[task_id] = canonical_json_sha256(reference)
         planner_inputs[task_id] = bundle
         references[task_id] = reference
+    if formal_capability:
+        qualification = suite.get("formal_qualification")
+        if not isinstance(qualification, dict):
+            raise ValueError("Formal qualification descriptor is missing")
     return {
         "suite": suite,
         "reference_hashes": reference_hashes,
         "planner_inputs": planner_inputs,
         "references": references,
     }
+
+
+def _validate_audited_invariant(
+    invariant: Any, bundle: dict[str, Any], task_id: str
+) -> None:
+    if not isinstance(invariant, dict) or not isinstance(invariant.get("kind"), str):
+        raise ValueError(f"Outcome invariant is invalid: {task_id}")
+    expectation_class = invariant.get("expectation_class")
+    if expectation_class not in {"runtime_hard", "capability"}:
+        raise ValueError(f"Outcome invariant expectation_class is invalid: {task_id}")
+    evidence_paths = invariant.get("input_evidence_paths")
+    if not isinstance(evidence_paths, list) or not evidence_paths:
+        raise ValueError(f"Outcome invariant has hidden oracle: {task_id}")
+    for path in evidence_paths:
+        if not isinstance(path, str):
+            raise ValueError(f"Outcome invariant evidence path is invalid: {task_id}")
+        value = _resolve_json_pointer(bundle, path)
+        if value is None or value == "" or value == [] or value == {}:
+            raise ValueError(f"Outcome invariant evidence is empty: {task_id} {path}")
+    reason_codes = invariant.get("validator_reason_codes")
+    if expectation_class == "runtime_hard":
+        if not isinstance(reason_codes, list) or not reason_codes or not all(
+            isinstance(item, str) and item.startswith("compiler_") for item in reason_codes
+        ):
+            raise ValueError(f"Runtime hard invariant lacks validator reason codes: {task_id}")
+    elif reason_codes is not None:
+        raise ValueError(f"Capability invariant must not claim validator reason codes: {task_id}")
+
+
+def _resolve_json_pointer(document: Any, pointer: str) -> Any:
+    if pointer == "":
+        return document
+    if not pointer.startswith("/"):
+        raise ValueError(f"Invalid JSON Pointer: {pointer}")
+    current = document
+    for raw in pointer[1:].split("/"):
+        token = raw.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, list):
+            if not token.isdigit() or int(token) >= len(current):
+                raise ValueError(f"JSON Pointer does not resolve: {pointer}")
+            current = current[int(token)]
+        elif isinstance(current, dict) and token in current:
+            current = current[token]
+        else:
+            raise ValueError(f"JSON Pointer does not resolve: {pointer}")
+    return current
 
 
 def run_suite(
@@ -161,21 +221,32 @@ def run_suite(
     repeats: int,
     checkpoint_path: Path | None,
     resume: bool,
+    planner_input_version: str = "v1",
+    prompt_version: str = STORY_PLANNER_PROMPT_VERSION,
 ) -> dict[str, Any]:
-    if suite_kind == "capability" and mode == "live":
-        if repeats != 3:
-            raise ValueError("Formal Capability baseline requires exactly 3 trials per task")
-        if not _is_pro(model_id) or not _is_pro(quality_grader_model or ""):
-            raise ValueError("Formal Capability Planner and G3 grader must use exact Pro model IDs")
-    validated = validate_suite(formal_capability=suite_kind == "capability" and mode == "live")
+    validated = validate_suite(
+        formal_capability=suite_kind == "capability" and mode == "live",
+        planner_input_version=planner_input_version,
+    )
     suite = validated["suite"]
+    if suite_kind == "capability" and mode == "live":
+        qualification = suite["formal_qualification"]
+        if repeats != int(qualification["trials_per_task"]):
+            raise ValueError("Formal Capability baseline requires exactly 3 trials per task")
+        if (
+            provider_name != qualification["provider"]
+            or model_id != qualification["planner_model_id"]
+            or quality_grader_model != qualification["quality_grader_model_id"]
+        ):
+            raise ValueError("Formal Capability Planner and G3 grader must use exact Pro model IDs")
     first_task_id = str(suite["tasks"][0]["task_id"])
     fingerprint_payload = {
         "suite": suite,
         "suite_kind": suite_kind,
         "runtime": RUNTIME_VERSION,
         "grader": GRADER_VERSION,
-        "prompt": STORY_PLANNER_PROMPT_VERSION,
+        "prompt": prompt_version,
+        "planner_input_version": planner_input_version,
         "candidate_schema": "compiler.novel-plan-candidate.v1",
         "ir_schema": "compiler.novel-plan.v1",
         "provider": provider_name,
@@ -188,7 +259,7 @@ def run_suite(
                 "primary_capability": item["primary_capability"],
                 "variant": item["variant"],
                 "reference_hash": validated["reference_hashes"][item["task_id"]],
-                "planner_input_hash": item["planner_input_hash"],
+                "planner_input_hash": item["planner_inputs"][planner_input_version]["hash"],
                 "outcome_invariants_hash": canonical_json_sha256(
                     {"invariants": item["outcome_invariants"]}
                 ),
@@ -219,6 +290,7 @@ def run_suite(
                 outcome_invariants=(
                     task["outcome_invariants"] if suite_kind == "capability" else []
                 ),
+                prompt_version=prompt_version,
             )
             trials.append(trial)
             if checkpoint_path is not None:
@@ -244,6 +316,7 @@ def _run_trial(
     bundle: dict[str, Any],
     reference: dict[str, Any],
     outcome_invariants: list[dict[str, Any]],
+    prompt_version: str,
 ) -> dict[str, Any]:
     start = time.perf_counter()
     candidate = copy.deepcopy(reference)
@@ -263,7 +336,7 @@ def _run_trial(
             provider,
             StoryPlannerRequest(
                 task_run_id=0,
-                prompt_version=STORY_PLANNER_PROMPT_VERSION,
+                prompt_version=prompt_version,
                 planner_input=bundle,
                 input_hash=canonical_json_sha256(bundle),
                 model_id=model_id,
@@ -564,9 +637,34 @@ def _report(
     semantic = sum(bool(item.get("semantic_valid")) for item in trials)
     outcome_passed = sum(bool(item.get("passed")) for item in trials)
     rejection_counts: dict[str, int] = {}
+    outcome_failure_counts: dict[str, int] = {}
+    outcome_failure_cooccurrence: dict[str, int] = {}
     for item in trials:
         code = str(item.get("reason_code") or "ok")
         rejection_counts[code] = rejection_counts.get(code, 0) + 1
+        failures = (
+            sorted({str(value) for value in item.get("outcome_failures", [])})
+            if item.get("semantic_valid")
+            else []
+        )
+        for failure in failures:
+            outcome_failure_counts[failure] = outcome_failure_counts.get(failure, 0) + 1
+        if len(failures) > 1:
+            key = " + ".join(failures)
+            outcome_failure_cooccurrence[key] = outcome_failure_cooccurrence.get(key, 0) + 1
+    task_contracts = {
+        str(item["task_id"]): item for item in frozen.get("suite", {}).get("tasks", [])
+    }
+    family_results = _grouped_task_results(tasks, task_contracts, "primary_capability")
+    variant_results = _grouped_task_results(tasks, task_contracts, "variant")
+    cohort = {
+        f"{passed}/3": sorted(
+            task_id
+            for task_id, values in tasks.items()
+            if sum(bool(item.get("passed")) for item in values) == passed
+        )
+        for passed in range(4)
+    }
     gates = {
         "unsafe_trial_rate_zero": not safe_failures,
         "no_unsafe_acceptance": not safe_failures,
@@ -574,6 +672,50 @@ def _report(
     }
     if suite_kind != "capability":
         gates["all_deterministic_trials_pass"] = all(item.get("passed") for item in trials)
+    metrics = {
+        "trial_count": total,
+        "first_pass_contract_valid_rate": first_contract / total if total else 0,
+        "final_contract_valid_rate": final_contract / total if total else 0,
+        "semantic_valid_rate": semantic / total if total else 0,
+        "semantic_valid_trial_count": semantic,
+        "valid_but_g2_failed_trial_count": sum(
+            bool(item.get("semantic_valid")) and not bool(item.get("passed")) for item in trials
+        ),
+        "production_rejections": {
+            key: value for key, value in sorted(rejection_counts.items()) if key != "ok"
+        },
+        "g2_outcome_failures": dict(sorted(outcome_failure_counts.items())),
+        "g2_failure_cooccurrence": dict(sorted(outcome_failure_cooccurrence.items())),
+        "outcome_passed_trial_count": outcome_passed,
+        "outcome_pass_rate": outcome_passed / total if total else 0,
+        "repair_attempt_count": sum(int(item.get("repair_attempts", 0)) for item in trials),
+        "round_contract_valid_rates": _round_contract_rates(trials),
+        "round_latency_ms": _round_latency(trials),
+        "pass_at_3_task_count": pass_at_3,
+        "all_three_pass_task_count": all_three,
+        "unsafe_trial_rate": len(safe_failures) / total if total else 0,
+        "infrastructure_failure_rate": len(infra) / total if total else 0,
+        "failure_rates": rejection_counts,
+        "latency_ms_total": sum(float(item.get("latency_ms", 0)) for item in trials),
+        "usage_total": _usage_total(trials),
+        "g3_usage_total": _g3_usage_total(trials),
+        "g3_latency_ms_total": sum(
+            float(item.get("graders", {}).get("g3_latency_ms", 0)) for item in trials
+        ),
+        "g3_quality_distribution": _g3_distribution(trials),
+        "task_cohort": cohort,
+        "by_capability": family_results,
+        "by_variant": variant_results,
+        "task_results": {
+            task_id: {
+                "passed_trials": sum(bool(item.get("passed")) for item in values),
+                "pass_at_3": any(item.get("passed") for item in values),
+                "all_three_pass": len(values) == 3 and all(item.get("passed") for item in values),
+            }
+            for task_id, values in sorted(tasks.items())
+        },
+    }
+    promotion = _promotion_gate(frozen, metrics, trials, safe_failures, infra)
     return {
         "schema_id": "benchmark.novel-plan-report.v1",
         "status": "passed" if all(gates.values()) else "failed",
@@ -581,40 +723,72 @@ def _report(
         "fingerprint": fingerprint,
         "frozen": frozen,
         "trials": trials,
-        "metrics": {
-            "trial_count": total,
-            "first_pass_contract_valid_rate": first_contract / total if total else 0,
-            "final_contract_valid_rate": final_contract / total if total else 0,
-            "semantic_valid_rate": semantic / total if total else 0,
-            "outcome_passed_trial_count": outcome_passed,
-            "outcome_pass_rate": outcome_passed / total if total else 0,
-            "repair_attempt_count": sum(int(item.get("repair_attempts", 0)) for item in trials),
-            "round_contract_valid_rates": _round_contract_rates(trials),
-            "round_latency_ms": _round_latency(trials),
-            "pass_at_3_task_count": pass_at_3,
-            "all_three_pass_task_count": all_three,
-            "unsafe_trial_rate": len(safe_failures) / total if total else 0,
-            "infrastructure_failure_rate": len(infra) / total if total else 0,
-            "failure_rates": rejection_counts,
-            "latency_ms_total": sum(float(item.get("latency_ms", 0)) for item in trials),
-            "usage_total": _usage_total(trials),
-            "g3_usage_total": _g3_usage_total(trials),
-            "g3_latency_ms_total": sum(
-                float(item.get("graders", {}).get("g3_latency_ms", 0)) for item in trials
-            ),
-            "g3_quality_distribution": _g3_distribution(trials),
-            "task_results": {
-                task_id: {
-                    "passed_trials": sum(bool(item.get("passed")) for item in values),
-                    "pass_at_3": any(item.get("passed") for item in values),
-                    "all_three_pass": len(values) == 3
-                    and all(item.get("passed") for item in values),
-                }
-                for task_id, values in sorted(tasks.items())
-            },
-        },
+        "metrics": metrics,
         "gates": gates,
+        "promotion_gate": promotion,
     }
+
+
+def _grouped_task_results(
+    tasks: dict[str, list[dict[str, Any]]],
+    contracts: dict[str, dict[str, Any]],
+    field: str,
+) -> dict[str, dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for task_id, values in tasks.items():
+        key = str(contracts.get(task_id, {}).get(field, "unknown"))
+        grouped.setdefault(key, []).extend(values)
+    return {
+        key: {
+            "trial_count": len(values),
+            "passed_trials": sum(bool(item.get("passed")) for item in values),
+            "pass_rate": (
+                sum(bool(item.get("passed")) for item in values) / len(values) if values else 0
+            ),
+        }
+        for key, values in sorted(grouped.items())
+    }
+
+
+def _promotion_gate(
+    frozen: dict[str, Any],
+    metrics: dict[str, Any],
+    trials: list[dict[str, Any]],
+    safe_failures: list[dict[str, Any]],
+    infra: list[dict[str, Any]],
+) -> dict[str, Any]:
+    thresholds = frozen.get("suite", {}).get("promotion_gate")
+    if not isinstance(thresholds, dict) or frozen.get("suite_kind") != "capability":
+        return {"evaluated": False, "qualified": False, "checks": {}}
+    production = metrics["production_rejections"]
+    temporal = sum(
+        int(production.get(code, 0))
+        for code in (
+            "compiler_story_plan_temporal_order_invalid",
+            "compiler_story_plan_flashback_invalid",
+            "compiler_story_plan_flashforward_invalid",
+        )
+    )
+    checks = {
+        "g2_passed_trials": metrics["outcome_passed_trial_count"]
+        >= thresholds["g2_passed_trials_min"],
+        "pass_at_3_tasks": metrics["pass_at_3_task_count"]
+        >= thresholds["pass_at_3_tasks_min"],
+        "all_three_tasks": metrics["all_three_pass_task_count"]
+        >= thresholds["all_three_tasks_min"],
+        "semantic_valid_trials": metrics["semantic_valid_trial_count"]
+        >= thresholds["semantic_valid_trials_min"],
+        "temporal_rejections": temporal <= thresholds["temporal_rejections_max"],
+        "resolution_missing": int(
+            production.get("compiler_story_plan_resolution_uncovered", 0)
+        )
+        <= thresholds["resolution_missing_max"],
+        "unsafe_trials": len(safe_failures) <= thresholds["unsafe_trials_max"],
+        "infrastructure_failures": len(infra)
+        <= thresholds["infrastructure_failures_max"],
+        "complete_24x3": len(trials) == 72,
+    }
+    return {"evaluated": True, "qualified": all(checks.values()), "checks": checks}
 
 
 def _provider(mode: str, provider: str, candidate: dict[str, Any]) -> Any:
@@ -793,6 +967,8 @@ def main() -> None:
     parser.add_argument("--provider", choices=("openai", "deepseek"), default="openai")
     parser.add_argument("--model", default="fake-story-planner")
     parser.add_argument("--quality-grader-model")
+    parser.add_argument("--planner-input-version", choices=("v1", "v2"), default="v1")
+    parser.add_argument("--prompt-version", default=STORY_PLANNER_PROMPT_VERSION)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--checkpoint-path", type=Path)
     parser.add_argument("--resume", action="store_true")
@@ -807,6 +983,8 @@ def main() -> None:
         repeats=args.repeats,
         checkpoint_path=args.checkpoint_path,
         resume=args.resume,
+        planner_input_version=args.planner_input_version,
+        prompt_version=args.prompt_version,
     )
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     print(rendered)
