@@ -162,6 +162,40 @@ def test_create_routes_to_edit_only_when_general_mutation_capability_is_enabled(
     assert rule.reason_code == "rule_capability:general_mutation_create"
 
 
+def test_known_object_editable_field_routes_to_update_capability() -> None:
+    request = _manifest_request(
+        focus={},
+        message="把事件 evt_restart 的 title 改为午夜例行重启。",
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.primary_intent == "edit_request"
+    assert rule.reason_code == "rule_capability:general_mutation_update"
+
+
+def test_protected_object_target_is_blocked_before_mutation_capabilities() -> None:
+    request = replace(
+        make_chat_request(
+            message="把 res_root_cause 的结论改掉。",
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={"resolution_specs": [{"id": "res_root_cause", "title": "根因"}]},
+    )
+
+    rule = resolve_rule_route(
+        request,
+        allow_general_mutation_create=True,
+        allow_general_mutation_delete=True,
+        allow_general_mutation_update=True,
+    )
+
+    assert rule is not None
+    assert rule.primary_intent == "unsupported_action"
+    assert rule.reason_code == "rule_safety:protected_collection_target"
+
+
 @pytest.mark.parametrize(
     "message",
     (

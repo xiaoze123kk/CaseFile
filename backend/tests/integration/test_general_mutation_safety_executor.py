@@ -201,7 +201,7 @@ def test_safety_executor_blocks_protected_collection_update(
     assert evidence.pending_patch_set_count == 0
     assert evidence.any_patch_set_count == 0
     assert evidence.draft_revision_before == evidence.draft_revision_after == 2
-    assert "general_mutation_collection_forbidden" in evidence.reason_codes
+    assert "rule_safety:protected_collection_target" in evidence.reason_codes
 
 
 def test_simulation_block_cannot_fall_back_to_legacy_chat_patch(

@@ -57,6 +57,7 @@ _CLARIFICATION_REQUEST_MARKERS = (
     "请先确认目标",
     "clarify first",
 )
+_PROTECTED_COLLECTIONS = ("resolution_specs", "constraints", "structure_locks")
 
 _DRAFT_TARGET_MARKERS = ("draft", "工作稿")
 _REVIEW_BYPASS_MARKERS = (
@@ -106,6 +107,8 @@ def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManife
                 continue
             object_id = str(item["id"])
             collection_by_id[object_id] = collection
+            if object_id.casefold() in message:
+                matches.setdefault(object_id.casefold(), []).append(object_id)
             for field in ("name", "title"):
                 label = item.get(field)
                 if isinstance(label, str) and label.strip() and label.casefold() in message:
@@ -243,10 +246,24 @@ def resolve_rule_route(
     *,
     allow_general_mutation_create: bool = False,
     allow_general_mutation_delete: bool = False,
+    allow_general_mutation_update: bool = False,
 ) -> RuleRoute | None:
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
     normalized_message = request.message.casefold()
+    protected_ids = {
+        str(item["id"]).casefold()
+        for collection in _PROTECTED_COLLECTIONS
+        for item in request.casefile.get(collection, [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    if any(object_id in normalized_message for object_id in protected_ids):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="unsupported_action",
+            profile="unsupported_action.scope",
+            reason_code="rule_safety:protected_collection_target",
+        )
     destructive_requested = any(
         marker in normalized_message for marker in _DESTRUCTIVE_ACTION_MARKERS
     )
@@ -283,6 +300,15 @@ def resolve_rule_route(
             profile="edit_request.edit",
             reason_code="rule_capability:general_mutation_create",
         )
+    if allow_general_mutation_update:
+        manifest = build_edit_target_manifest(request)
+        if manifest.targets and not manifest.ambiguous:
+            return RuleRoute(
+                route_source="rule_capability",
+                primary_intent="edit_request",
+                profile="edit_request.edit",
+                reason_code="rule_capability:general_mutation_update",
+            )
     if any(marker in normalized_message for marker in _DRAFT_TARGET_MARKERS) and any(
         marker in normalized_message for marker in _REVIEW_BYPASS_MARKERS
     ):

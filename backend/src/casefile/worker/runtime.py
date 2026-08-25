@@ -374,6 +374,9 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                         self.config.general_mutation_mode != "off"
                         and self.config.general_mutation_delete_enabled
                     ),
+                    allow_general_mutation_update=(
+                        self.config.general_mutation_mode != "off"
+                    ),
                 )
                 chat_request = prepare_chat_request_artifacts(chat_request)
                 if chat_request.route is not None:
