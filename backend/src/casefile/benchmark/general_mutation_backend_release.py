@@ -169,13 +169,14 @@ def run_backend_release(
     executor: BackendReleaseExecutor,
     suite_path: Path | None = None,
     trials: int = TRIALS_PER_TASK,
+    canary: bool = False,
 ) -> dict[str, Any]:
     _require_test_database(database_url)
     source = _git_identity(repo_root)
     suite = load_release_suite(repo_root, suite_path)
-    if trials != TRIALS_PER_TASK:
+    if (not canary and trials != TRIALS_PER_TASK) or (canary and trials != 1):
         raise BackendReleaseContractError("backend_release_trials_must_equal_three")
-    if source["dirty"]:
+    if source["dirty"] and not canary:
         return _blocked_report(source, suite, executor.database_schema_fingerprint)
     rows = [
         executor.execute_trial(task, trial_index=trial, model_id=MODEL_ID)
@@ -183,7 +184,7 @@ def run_backend_release(
         for trial in range(1, trials + 1)
     ]
     faults = {fault_id: dict(executor.execute_fault(fault_id)) for fault_id in FAULT_MATRIX}
-    return build_backend_release_report(
+    report = build_backend_release_report(
         source=source,
         suite=suite,
         rows=rows,
@@ -191,6 +192,15 @@ def run_backend_release(
         database_schema_fingerprint=executor.database_schema_fingerprint,
         runtime_fingerprint=_runtime_fingerprint(repo_root),
     )
+    if canary:
+        report["qualification_mode"] = "canary"
+        report["qualification_outcome"] = "canary_only"
+        report["status"] = "canary"
+        report["release_gate_eligible"] = False
+        report["report_fingerprint"] = _canonical_hash(
+            {key: value for key, value in report.items() if key != "report_fingerprint"}
+        )
+    return report
 
 
 def build_backend_release_report(
@@ -309,6 +319,11 @@ def main() -> None:
     parser.add_argument("--suite-path", type=Path)
     parser.add_argument("--report-path", type=Path, required=True)
     parser.add_argument("--gate-07e", action="store_true")
+    parser.add_argument(
+        "--canary",
+        action="store_true",
+        help="Run one trial per task for diagnosis only; never eligible for the 07e gate.",
+    )
     args = parser.parse_args()
     if args.model != MODEL_ID:
         raise SystemExit("backend_release_model_invalid")
@@ -330,6 +345,7 @@ def main() -> None:
             executor=executor,
             suite_path=args.suite_path,
             trials=args.trials,
+            canary=args.canary,
         )
     finally:
         executor.close()
