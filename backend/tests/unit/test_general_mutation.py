@@ -11,6 +11,7 @@ from casefile.agent_runtime.general_mutation import (
     MutationPlanV1,
     MutationPlanV2,
     explicit_batch_create_count,
+    general_mutation_explicit_system_field_reason,
     general_mutation_explicit_unknown_object_ids,
     general_mutation_request_budget_reason,
 )
@@ -446,6 +447,25 @@ def test_explicit_batch_create_over_budget_fails_before_planning() -> None:
         == "general_mutation_requested_create_budget_exceeded"
     )
     assert general_mutation_request_budget_reason("创建 4 个新人物。") is None
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "把事件 evt_restart_seven 的 revision 改成 99。",
+        "把主张的 confirmation_status 改成 confirmed。",
+        "把 ent_researcher.id 改成 ent_intruder。",
+    ),
+)
+def test_explicit_system_field_is_blocked_before_planning(message: str) -> None:
+    assert (
+        general_mutation_explicit_system_field_reason(message)
+        == "general_mutation_requested_system_field_forbidden"
+    )
+
+
+def test_system_field_substrings_do_not_trigger_preflight() -> None:
+    assert general_mutation_explicit_system_field_reason("新增 identity 标签。") is None
 
 
 def test_explicit_unknown_object_ids_exclude_contract_fields_and_known_ids() -> None:

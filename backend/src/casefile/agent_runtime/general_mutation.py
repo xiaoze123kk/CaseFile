@@ -209,6 +209,18 @@ def general_mutation_request_budget_reason(message: str) -> str | None:
     return None
 
 
+def general_mutation_explicit_system_field_reason(message: str) -> str | None:
+    """Reject an explicitly named server-owned field before model planning."""
+
+    normalized = message.casefold()
+    if any(
+        re.search(rf"(?<![a-z0-9_]){re.escape(field)}(?![a-z0-9_])", normalized)
+        for field in SYSTEM_FIELDS
+    ):
+        return "general_mutation_requested_system_field_forbidden"
+    return None
+
+
 def general_mutation_explicit_unknown_object_ids(
     message: str,
     casefile: dict[str, Any],
@@ -312,6 +324,7 @@ __all__ = [
     "GeneralMutationPlannerResult",
     "GeneralMutationPromptInput",
     "explicit_batch_create_count",
+    "general_mutation_explicit_system_field_reason",
     "general_mutation_explicit_unknown_object_ids",
     "general_mutation_request_budget_reason",
     "MutationPlanV1",

@@ -67,6 +67,7 @@ from casefile.agent_runtime.general_mutation import (
     CreateMutationCandidate,
     DeleteMutationCandidate,
     GeneralMutationPlannerRequest,
+    general_mutation_explicit_system_field_reason,
     general_mutation_explicit_unknown_object_ids,
     general_mutation_request_budget_reason,
 )
@@ -565,6 +566,26 @@ class ChatTaskExecutorMixin:
                 "general_mutation.blocked",
                 "general_mutation",
                 {"reason_code": request_budget_reason},
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
+        system_field_reason = general_mutation_explicit_system_field_reason(request.message)
+        if system_field_reason is not None:
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": system_field_reason,
+                    "failure_layer": "request_field_authority",
+                    "issues": [{"code": system_field_reason}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.blocked",
+                "general_mutation",
+                {"reason_code": system_field_reason},
             )
             return ({"status": "blocked"} if mode == "suggest" else None), {}
         explicit_unknown_ids = general_mutation_explicit_unknown_object_ids(
