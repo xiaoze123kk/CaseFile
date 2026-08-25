@@ -23,6 +23,7 @@ import rfc8785
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_PLAN_VERSION,
+    GENERAL_MUTATION_POLICY_VERSION,
     GENERAL_MUTATION_PROMPT_VERSION,
     GENERAL_MUTATION_TRANSPORT_VERSION,
 )
@@ -420,6 +421,7 @@ def run_safety_benchmark(
         "prompt_version": GENERAL_MUTATION_PROMPT_VERSION,
         "prompt_hash": prompt.system_prompt_sha256,
         "plan_contract_version": GENERAL_MUTATION_PLAN_VERSION,
+        "capability_policy_version": GENERAL_MUTATION_POLICY_VERSION,
         "binder_version": GENERAL_MUTATION_BINDER_VERSION,
         "transport_version": GENERAL_MUTATION_TRANSPORT_VERSION,
         "closure_policy_version": CLOSURE_POLICY_VERSION,

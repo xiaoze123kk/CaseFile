@@ -16,6 +16,7 @@ from sqlalchemy.engine import make_url
 from casefile.agent_runtime.general_mutation import (
     GENERAL_MUTATION_BINDER_VERSION,
     GENERAL_MUTATION_PLAN_VERSION,
+    GENERAL_MUTATION_POLICY_VERSION,
     GENERAL_MUTATION_PROMPT_VERSION,
     GENERAL_MUTATION_TRANSPORT_VERSION,
 )
@@ -23,12 +24,17 @@ from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.benchmark.general_mutation_backend_release import (
     DEFAULT_SUITE as RELEASE_SUITE_PATH,
 )
-from casefile.benchmark.general_mutation_backend_release import run_backend_release
+from casefile.benchmark.general_mutation_backend_release import (
+    load_release_suite,
+    run_backend_release,
+)
 from casefile.benchmark.general_mutation_capability import (
     DEFAULT_SUITE as CAPABILITY_SUITE_PATH,
 )
 from casefile.benchmark.general_mutation_capability import (
-    GRADER_VERSION,
+    GRADER_VERSION as CAPABILITY_GRADER_VERSION,
+)
+from casefile.benchmark.general_mutation_capability import (
     _saved_credential,
     load_capability_suite,
     run_capability_benchmark,
@@ -36,12 +42,16 @@ from casefile.benchmark.general_mutation_capability import (
 from casefile.benchmark.general_mutation_eval import run_qualification as run_kernel_qualification
 from casefile.benchmark.general_mutation_evidence import (
     build_evidence_index,
+    holdout_rerun_authorized,
     write_evidence_index,
 )
 from casefile.benchmark.general_mutation_holdout import load_holdout_suite
 from casefile.benchmark.general_mutation_lineage import general_mutation_runtime_fingerprint
 from casefile.benchmark.general_mutation_safety import (
     DEFAULT_SUITE as SAFETY_SUITE_PATH,
+)
+from casefile.benchmark.general_mutation_safety import (
+    GRADER_VERSION as SAFETY_GRADER_VERSION,
 )
 from casefile.benchmark.general_mutation_safety import (
     load_safety_suite,
@@ -109,10 +119,7 @@ def qualification_preflight(
         raise QualificationError("qualification_saved_model_mismatch")
     capability = load_capability_suite(root, root / CAPABILITY_SUITE_PATH)
     safety = load_safety_suite(root, root / SAFETY_SUITE_PATH)
-    release = __import__(
-        "casefile.benchmark.general_mutation_backend_release",
-        fromlist=["load_release_suite"],
-    ).load_release_suite(root, root / RELEASE_SUITE_PATH)
+    release = load_release_suite(root, root / RELEASE_SUITE_PATH)
     try:
         holdout = load_holdout_suite(holdout_suite_path.resolve())
     except Exception as error:
@@ -137,7 +144,12 @@ def qualification_preflight(
         "holdout_task_count": len(holdout.tasks),
         "safety_task_count": len(safety.tasks),
         "backend_release_task_count": len(release.tasks),
-        "formal_trial_count": 490,
+        "formal_trial_count": (
+            len(capability.tasks) * TRIALS_PER_TASK
+            + len(holdout.tasks) * TRIALS_PER_TASK
+            + len(safety.tasks) * TRIALS_PER_TASK
+            + len(release.tasks) * 3
+        ),
         "capability_suite_fingerprint": capability.fingerprint,
         "holdout_suite_fingerprint": holdout.fingerprint,
         "holdout_oracle_fingerprint": holdout.metadata["oracle_fingerprint"],
@@ -150,9 +162,11 @@ def qualification_preflight(
         "prompt_version": GENERAL_MUTATION_PROMPT_VERSION,
         "prompt_fingerprint": prompt.system_prompt_sha256,
         "plan_contract_version": GENERAL_MUTATION_PLAN_VERSION,
+        "capability_policy_version": GENERAL_MUTATION_POLICY_VERSION,
         "binder_version": GENERAL_MUTATION_BINDER_VERSION,
         "transport_version": GENERAL_MUTATION_TRANSPORT_VERSION,
-        "grader_version": GRADER_VERSION,
+        "capability_grader_version": CAPABILITY_GRADER_VERSION,
+        "safety_grader_version": SAFETY_GRADER_VERSION,
         "runtime_fingerprint": runtime,
         "rollout": {
             "general_mutation_mode": "suggest",
@@ -200,98 +214,127 @@ def run_formal_qualification(
     if saved_model != MODEL_ID:
         raise QualificationError("qualification_saved_model_mismatch")
     stages: list[tuple[str, int, Path]] = []
-    blocker: str | None = None
+    blockers: list[str] = []
+    diagnostics: list[Path] = []
+    active_stage = "s0"
+    try:
+        s0_path = output / "s0" / "report.json"
+        s0 = run_kernel_qualification()
+        s0["qualification_source"] = _git_identity(root)
+        s0["qualification_runtime_fingerprint"] = manifest["runtime_fingerprint"]
+        _write_json(s0_path, s0)
+        stages.append(("s0", 1, s0_path))
+        if s0["status"] != "passed":
+            blockers.append("qualification_s0_gate_failed")
 
-    s0_path = output / "s0" / "report.json"
-    s0 = run_kernel_qualification()
-    s0["qualification_source"] = _git_identity(root)
-    s0["qualification_runtime_fingerprint"] = manifest["runtime_fingerprint"]
-    _write_json(s0_path, s0)
-    stages.append(("s0", 1, s0_path))
-    if s0["status"] != "passed":
-        blocker = "qualification_s0_gate_failed"
-
-    if blocker is None:
-        capability_path = output / "capability-dev" / "report.json"
-        capability = run_capability_benchmark(
-            repo_root=root,
-            model_id=MODEL_ID,
-            api_key=api_key,
-            trials=5,
-            suite_path=root / CAPABILITY_SUITE_PATH,
-        )
-        _assert_report(capability, manifest, stage="capability_dev")
-        _write_json(capability_path, capability)
-        stages.append(("capability_dev", 1, capability_path))
-        _write_json(capability_path.parent / "gate.json", capability["gates"]["m3_4_07c"])
-        if not capability["gates"]["m3_4_07c"]["passed"]:
-            blocker = "qualification_capability_dev_gate_failed"
-
-    if blocker is None:
-        for attempt in (1, 2):
-            holdout_path = output / "holdout" / f"attempt-{attempt:02d}" / "report.json"
-            holdout = run_capability_benchmark(
+        if not blockers:
+            active_stage = "capability_dev"
+            capability_path = output / "capability-dev" / "report.json"
+            capability = run_capability_benchmark(
                 repo_root=root,
                 model_id=MODEL_ID,
                 api_key=api_key,
                 trials=5,
-                suite_path=holdout_suite_path,
+                suite_path=root / CAPABILITY_SUITE_PATH,
             )
-            _assert_report(holdout, manifest, stage="holdout")
-            _write_json(holdout_path, holdout)
-            stages.append(("holdout", attempt, holdout_path))
-            gate = holdout["gates"]["m3_4_holdout"]
-            _write_json(holdout_path.parent / "gate.json", gate)
-            if gate["passed"]:
+            _write_json(capability_path, capability)
+            stages.append(("capability_dev", 1, capability_path))
+            _assert_report(capability, manifest, stage="capability_dev")
+            _write_json(capability_path.parent / "gate.json", capability["gates"]["m3_4_07c"])
+            if not capability["gates"]["m3_4_07c"]["passed"]:
+                blockers.append("qualification_capability_dev_gate_failed")
+
+        if not blockers:
+            active_stage = "holdout"
+            for attempt in (1, 2):
+                holdout_path = output / "holdout" / f"attempt-{attempt:02d}" / "report.json"
+                holdout = run_capability_benchmark(
+                    repo_root=root,
+                    model_id=MODEL_ID,
+                    api_key=api_key,
+                    trials=5,
+                    suite_path=holdout_suite_path,
+                )
+                _write_json(holdout_path, holdout)
+                stages.append(("holdout", attempt, holdout_path))
+                _assert_report(holdout, manifest, stage="holdout")
+                gate = holdout["gates"]["m3_4_holdout"]
+                _write_json(holdout_path.parent / "gate.json", gate)
+                if gate["passed"]:
+                    break
+                if attempt == 1 and holdout_rerun_authorized(holdout):
+                    continue
+                blockers.append("qualification_holdout_gate_failed")
                 break
-            if attempt == 1 and holdout["metrics"]["infrastructure_failure_count"] > 0:
-                continue
-            blocker = "qualification_holdout_gate_failed"
-            break
 
-    if blocker is None:
-        safety_executor = PostgresSafetyExecutor(database_url=database_url, api_key=api_key)
-        try:
-            safety = run_safety_benchmark(
-                executor=safety_executor,
-                repo_root=root,
-                model_id=MODEL_ID,
-                trials=5,
-                suite_path=root / SAFETY_SUITE_PATH,
-            )
-        finally:
-            safety_executor.close()
-        _assert_report(safety, manifest, stage="safety_abstention")
-        safety_path = output / "safety-abstention" / "report.json"
-        _write_json(safety_path, safety)
-        stages.append(("safety_abstention", 1, safety_path))
-        _write_json(safety_path.parent / "gate.json", safety["gates"]["m3_4_07d"])
-        if not safety["gates"]["m3_4_07d"]["passed"]:
-            blocker = "qualification_safety_gate_failed"
+        if not blockers:
+            active_stage = "safety_abstention"
+            safety_executor = PostgresSafetyExecutor(database_url=database_url, api_key=api_key)
+            try:
+                safety = run_safety_benchmark(
+                    executor=safety_executor,
+                    repo_root=root,
+                    model_id=MODEL_ID,
+                    trials=5,
+                    suite_path=root / SAFETY_SUITE_PATH,
+                )
+            finally:
+                safety_executor.close()
+            safety_path = output / "safety-abstention" / "report.json"
+            _write_json(safety_path, safety)
+            stages.append(("safety_abstention", 1, safety_path))
+            _assert_report(safety, manifest, stage="safety_abstention")
+            _write_json(safety_path.parent / "gate.json", safety["gates"]["m3_4_07d"])
+            if not safety["gates"]["m3_4_07d"]["passed"]:
+                blockers.append("qualification_safety_gate_failed")
 
-    if blocker is None:
-        release_executor = PostgresBackendReleaseExecutor(
-            database_url=database_url,
-            api_key=api_key,
-        )
-        try:
-            release = run_backend_release(
-                repo_root=root,
+        if not blockers:
+            active_stage = "backend_release"
+            release_executor = PostgresBackendReleaseExecutor(
                 database_url=database_url,
-                executor=release_executor,
+                api_key=api_key,
             )
-        finally:
-            release_executor.close()
-        release_path = output / "backend-release" / "report.json"
-        _write_json(release_path, release)
-        stages.append(("backend_release", 1, release_path))
-        if release["qualification_outcome"] != "passed":
-            blocker = "qualification_backend_release_failed"
+            try:
+                release = run_backend_release(
+                    repo_root=root,
+                    database_url=database_url,
+                    executor=release_executor,
+                )
+            finally:
+                release_executor.close()
+            release_path = output / "backend-release" / "report.json"
+            _write_json(release_path, release)
+            stages.append(("backend_release", 1, release_path))
+            if release["qualification_outcome"] != "passed":
+                blockers.append("qualification_backend_release_failed")
+    except QualificationError as error:
+        blockers.append(str(error))
+        diagnostics.append(
+            _write_execution_diagnostic(output, active_stage, type(error).__name__, str(error))
+        )
+    except Exception as error:
+        reason_code = f"qualification_{active_stage}_execution_failed"
+        blockers.append(reason_code)
+        diagnostics.append(
+            _write_execution_diagnostic(output, active_stage, type(error).__name__, reason_code)
+        )
+
+    try:
+        final_source = _git_identity(root)
+    except QualificationError:
+        blockers.append("qualification_git_identity_unavailable")
+    else:
+        if (
+            final_source["revision"] != manifest["source_revision"]
+            or final_source["dirty"] is not False
+        ):
+            blockers.append("qualification_source_changed_during_run")
 
     evidence = build_evidence_index(
         manifest_path=manifest_path,
         stage_paths=stages,
-        blocked_reason_code=blocker,
+        blocked_reason_codes=blockers,
+        diagnostic_paths=diagnostics,
     )
     write_evidence_index(output / "evidence-index-v1.json", evidence)
     _write_markdown(output / "M3.4-07F-QUALIFICATION-REPORT.md", evidence, manifest)
@@ -339,6 +382,22 @@ def _database_name(database_url: str) -> str:
     if not name:
         raise QualificationError("qualification_database_url_invalid")
     return name
+
+
+def _write_execution_diagnostic(
+    output: Path, stage: str, error_type: str, reason_code: str
+) -> Path:
+    path = output / stage.replace("_", "-") / "execution-error.json"
+    _write_json(
+        path,
+        {
+            "schema_version": "casefile-general-mutation-execution-error-v1",
+            "stage": stage,
+            "reason_code": reason_code,
+            "error_type": error_type,
+        },
+    )
+    return path
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:

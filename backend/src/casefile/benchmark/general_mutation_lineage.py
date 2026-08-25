@@ -10,7 +10,10 @@ RUNTIME_FINGERPRINT_VERSION = "general-mutation-runtime-v1"
 
 def general_mutation_runtime_fingerprint(repo_root: Path) -> str:
     relative_files = {
+        Path("backend/src/casefile/agent_runtime/chat_intent.py"),
+        Path("backend/src/casefile/agent_runtime/chat_routing.py"),
         Path("backend/src/casefile/application/agent_mutation.py"),
+        Path("backend/src/casefile/application/agent_patch_mutation.py"),
         Path("backend/src/casefile/application/v1_editing.py"),
         Path("backend/src/casefile/application/workflow/agent.py"),
         Path("backend/src/casefile/application/workflow/mutation_history.py"),
@@ -19,10 +22,18 @@ def general_mutation_runtime_fingerprint(repo_root: Path) -> str:
         Path("backend/src/casefile/worker/executors/chat.py"),
         Path("backend/src/casefile/agent_runtime/general_mutation.py"),
         Path("backend/src/casefile/agent_runtime/general_mutation_prompt.py"),
+        Path("backend/src/casefile/agent_runtime/provider_adapters/deepseek.py"),
         Path("backend/src/casefile/benchmark/general_mutation_capability.py"),
+        Path("backend/src/casefile/benchmark/general_mutation_evidence.py"),
+        Path("backend/src/casefile/benchmark/general_mutation_holdout.py"),
+        Path("backend/src/casefile/benchmark/general_mutation_lineage.py"),
+        Path("backend/src/casefile/benchmark/general_mutation_qualification.py"),
         Path("backend/src/casefile/benchmark/general_mutation_safety.py"),
+        Path("backend/src/casefile/benchmark/general_mutation_safety_executor.py"),
         Path("backend/src/casefile/benchmark/general_mutation_backend_release.py"),
         Path("backend/src/casefile/benchmark/general_mutation_backend_executor.py"),
+        Path("backend/src/casefile/benchmark/policies/general-mutation-gate-v1.json"),
+        Path("backend/src/casefile/benchmark/policies/general-mutation-holdout-v1-descriptor.json"),
     }
     for pattern in (
         "backend/src/casefile/domain/logical_mutation/**/*.py",

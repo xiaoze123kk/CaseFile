@@ -13,6 +13,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 
+import rfc8785
 from sqlalchemy.engine import make_url
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -477,8 +478,7 @@ def _git_identity(repo_root: Path) -> dict[str, Any]:
 
 
 def _canonical_hash(value: Any) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return sha256(payload.encode("utf-8")).hexdigest()
+    return sha256(rfc8785.dumps(value)).hexdigest()
 
 
 def _runtime_fingerprint(repo_root: Path) -> str:

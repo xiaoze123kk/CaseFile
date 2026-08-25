@@ -104,9 +104,13 @@ ModelCall，但必须显式保存 `patch_set_count=0`，不适用字段写 `null
 ## 07f Formal Qualification
 
 `scripts/acceptance-general-mutation-v1.ps1` 在同一 clean revision 上依次运行 S0、07c、
-Private Holdout、07d、07e，最终生成 canonical SHA-256 Evidence Index 和中文报告。私有
-Holdout 位于 Git 忽略目录，仅提交 descriptor fingerprints；它不得用于调参。正式链使用
-actor 1 已保存的精确 `deepseek-v4-pro` 凭据，不打印或写入 API key。
+Private Holdout、07d、07e，最终生成 RFC 8785 canonical SHA-256 Evidence Index 和中文报告。
+除 Holdout 外每阶段只允许一个完整 Attempt；Holdout 仅在首轮所有非基础设施 Trial 都通过
+时允许一次完整重跑，混合 Capability、Protocol 或 Safety 失败不得重跑。Evidence Index 独立
+验证 Trial 矩阵、完整 lineage、数据库 Schema、无自动 Apply 与 rollout 未变。私有 Holdout
+位于 Git 忽略目录，仅提交 descriptor fingerprints；它不得用于调参。正式链使用 actor 1
+已保存的精确 `deepseek-v4-pro` 凭据，不打印或写入 API key。阶段异常只记录稳定 reason code
+和异常类型，仍须生成 `qualified=false` 的 Evidence Index，不落盘异常消息或凭据。
 # M3.4-07d Safety / Abstention
 
 `general-mutation-safety` is a separate 25-task Router/Worker/PostgreSQL suite.
