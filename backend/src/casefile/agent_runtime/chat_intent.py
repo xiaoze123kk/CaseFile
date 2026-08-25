@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
+from itertools import combinations
 from typing import Any
 
 from casefile.agent_runtime.models import (
@@ -28,6 +29,7 @@ _EDIT_FIELD_ALIASES = {
     "/name": ("名称", "名字", "name"),
     "/title": ("标题", "title"),
     "/summary": ("摘要", "summary"),
+    "/status": ("状态", "status"),
 }
 
 _DESTRUCTIVE_ACTION_MARKERS = (
@@ -37,6 +39,31 @@ _DESTRUCTIVE_ACTION_MARKERS = (
     "delete",
     "remove",
 )
+
+_CREATE_ACTION_MARKERS = (
+    "创建",
+    "新建",
+    "新增",
+    "create",
+    "add a new",
+)
+_AMBIGUOUS_TARGET_MARKERS = (
+    "没有说明具体对象",
+    "没有说明目标",
+    "目标未说明",
+    "对象未说明",
+    "unspecified target",
+)
+_CLARIFICATION_REQUEST_MARKERS = (
+    "先澄清",
+    "先问清",
+    "请先确认目标",
+    "clarify first",
+)
+_UNBOUND_TARGET_MARKERS = ("它", "这个对象", "该对象", "this object", " it ")
+_ALTERNATIVE_TARGET_MARKERS = ("或", "或者", " or ")
+_VAGUE_VALUE_MARKERS = ("改一下", "修改一下", "调整一下", "改改", "change it")
+_PROTECTED_COLLECTIONS = ("resolution_specs", "constraints", "structure_locks")
 
 _DRAFT_TARGET_MARKERS = ("draft", "工作稿")
 _REVIEW_BYPASS_MARKERS = (
@@ -72,6 +99,92 @@ class EditTargetManifest:
         return [target.as_dict() for target in self.targets]
 
 
+def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | None:
+    """Return a deterministic reason when an edit request is not uniquely bound."""
+
+    message = f" {request.message.casefold()} "
+    manifest = build_edit_target_manifest(request)
+    explicit_object_ids = _explicit_object_ids(request, message)
+    destructive = any(marker in message for marker in _DESTRUCTIVE_ACTION_MARKERS)
+    if destructive and len(explicit_object_ids) != 1:
+        return "general_mutation_delete_target_ambiguous"
+    if destructive:
+        return None
+    if any(marker in message for marker in _ALTERNATIVE_TARGET_MARKERS) and len(
+        _alternative_candidate_ids(request, message)
+    ) > 1:
+        return "general_mutation_target_ambiguous"
+    if (
+        any(marker in message for marker in _UNBOUND_TARGET_MARKERS)
+        and not manifest.targets
+        and not explicit_object_ids
+        and not request.focus.get("object_ids")
+        and not request.focus.get("event_ids")
+    ):
+        return "general_mutation_target_ambiguous"
+
+    vague_value = any(marker in message for marker in _VAGUE_VALUE_MARKERS)
+    if explicit_object_ids and not manifest.targets and not destructive and vague_value:
+        return "general_mutation_field_ambiguous"
+    if manifest.ambiguous and len(explicit_object_ids) > 1:
+        return "general_mutation_target_ambiguous"
+    if manifest.targets and vague_value:
+        return "general_mutation_value_missing"
+    return None
+
+
+def _explicit_object_ids(request: CaseFileChatRequest, message: str) -> set[str]:
+    object_ids: set[str] = set()
+    for values in request.casefile.values():
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            labels = (item["id"], item.get("name"), item.get("title"))
+            if any(
+                isinstance(label, str) and label.strip() and label.casefold() in message
+                for label in labels
+            ):
+                object_ids.add(str(item["id"]))
+    return object_ids
+
+
+def _alternative_candidate_ids(
+    request: CaseFileChatRequest,
+    message: str,
+) -> set[str]:
+    """Resolve abbreviated labels only for an explicit either/or choice."""
+
+    object_ids: set[str] = set()
+    for values in request.casefile.values():
+        if not isinstance(values, list):
+            continue
+        for item in values:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str):
+                continue
+            labels = (item.get("name"), item.get("title"), *(item.get("aliases") or ()))
+            if any(
+                isinstance(label, str)
+                and len(label.strip()) >= 3
+                and _contains_ordered_label_fragment(message, label.casefold())
+                for label in labels
+            ):
+                object_ids.add(str(item["id"]))
+    return object_ids
+
+
+def _contains_ordered_label_fragment(message: str, label: str) -> bool:
+    candidate = "".join(character for character in message if character.isalnum())
+    label = "".join(character for character in label if character.isalnum())
+    fragments = {"".join(fragment) for fragment in combinations(label, 3)}
+    return any(
+        fragment in clause
+        for clause in candidate.replace("或者", "或").split("或")
+        for fragment in fragments
+    )
+
+
 def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManifest:
     """Freeze explicit object/field pairs that resolve uniquely."""
 
@@ -86,6 +199,8 @@ def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManife
                 continue
             object_id = str(item["id"])
             collection_by_id[object_id] = collection
+            if object_id.casefold() in message:
+                matches.setdefault(object_id.casefold(), []).append(object_id)
             for field in ("name", "title"):
                 label = item.get(field)
                 if isinstance(label, str) and label.strip() and label.casefold() in message:
@@ -119,7 +234,13 @@ def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManife
         if label in message
     ]
     paths_by_id: dict[str, set[str]] = {}
-    for path, aliases in _EDIT_FIELD_ALIASES.items():
+    field_aliases = dict(_EDIT_FIELD_ALIASES)
+    for editable_fields in request.editable_fields_by_collection.values():
+        for raw_path in editable_fields:
+            path = raw_path if raw_path.startswith("/") else f"/{raw_path}"
+            field_name = path.removeprefix("/")
+            field_aliases.setdefault(path, (field_name,))
+    for path, aliases in field_aliases.items():
         for alias in aliases:
             alias_folded = alias.casefold()
             start = 0
@@ -142,6 +263,10 @@ def build_edit_target_manifest(request: CaseFileChatRequest) -> EditTargetManife
                     resolved_object_id = resolved_labels.get(nearest_label)
                     if resolved_object_id is not None:
                         paths_by_id.setdefault(resolved_object_id, set()).add(path)
+                elif len(focused_ids) == 1:
+                    focused_object_id = next(iter(focused_ids))
+                    if focused_object_id in collection_by_id:
+                        paths_by_id.setdefault(focused_object_id, set()).add(path)
                 start = alias_position + len(alias_folded)
     targets: list[EditTarget] = []
     for object_id in sorted(paths_by_id):
@@ -218,17 +343,89 @@ def normalize_routing_hint(raw: dict[str, Any] | None) -> dict[str, Any]:
     return {"entrypoint": entrypoint, "preset_id": None}
 
 
-def resolve_rule_route(request: CaseFileChatRequest) -> RuleRoute | None:
+def resolve_rule_route(
+    request: CaseFileChatRequest,
+    *,
+    allow_general_mutation_create: bool = False,
+    allow_general_mutation_delete: bool = False,
+    allow_general_mutation_update: bool = False,
+) -> RuleRoute | None:
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
-    if any(marker in request.message.casefold() for marker in _DESTRUCTIVE_ACTION_MARKERS):
+    normalized_message = request.message.casefold()
+    protected_ids = {
+        str(item["id"]).casefold()
+        for collection in _PROTECTED_COLLECTIONS
+        for item in request.casefile.get(collection, [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    if any(object_id in normalized_message for object_id in protected_ids):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="unsupported_action",
+            profile="unsupported_action.scope",
+            reason_code="rule_safety:protected_collection_target",
+        )
+    destructive_requested = any(
+        marker in normalized_message for marker in _DESTRUCTIVE_ACTION_MARKERS
+    )
+    abstention_reason = general_mutation_abstention_reason(request)
+    if destructive_requested and allow_general_mutation_delete and abstention_reason is not None:
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="clarify",
+            profile="clarify.question",
+            reason_code=f"rule_safety:{abstention_reason}",
+        )
+    clarification_required = any(
+        marker in normalized_message for marker in _AMBIGUOUS_TARGET_MARKERS
+    ) and any(marker in normalized_message for marker in _CLARIFICATION_REQUEST_MARKERS)
+    if destructive_requested and clarification_required:
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="clarify",
+            profile="clarify.question",
+            reason_code="rule_safety:ambiguous_destructive_target",
+        )
+    if destructive_requested:
+        if allow_general_mutation_delete:
+            return RuleRoute(
+                route_source="rule_capability",
+                primary_intent="edit_request",
+                profile="edit_request.edit",
+                reason_code="rule_capability:general_mutation_delete",
+            )
         return RuleRoute(
             route_source="rule_safety",
             primary_intent="unsupported_action",
             profile="unsupported_action.scope",
             reason_code="rule_safety:destructive_action",
         )
-    normalized_message = request.message.casefold()
+    if allow_general_mutation_create and any(
+        marker in normalized_message for marker in _CREATE_ACTION_MARKERS
+    ):
+        return RuleRoute(
+            route_source="rule_capability",
+            primary_intent="edit_request",
+            profile="edit_request.edit",
+            reason_code="rule_capability:general_mutation_create",
+        )
+    if allow_general_mutation_update:
+        if abstention_reason is not None:
+            return RuleRoute(
+                route_source="rule_safety",
+                primary_intent="clarify",
+                profile="clarify.question",
+                reason_code=f"rule_safety:{abstention_reason}",
+            )
+        manifest = build_edit_target_manifest(request)
+        if manifest.targets and not manifest.ambiguous:
+            return RuleRoute(
+                route_source="rule_capability",
+                primary_intent="edit_request",
+                profile="edit_request.edit",
+                reason_code="rule_capability:general_mutation_update",
+            )
     if any(marker in normalized_message for marker in _DRAFT_TARGET_MARKERS) and any(
         marker in normalized_message for marker in _REVIEW_BYPASS_MARKERS
     ):
@@ -311,6 +508,18 @@ def task_understanding_for_rule(rule: RuleRoute) -> ChatTaskUnderstanding:
                 "needs_reasoning": True,
             }
         )
+        risk_level = "medium"
+    elif rule.primary_intent == "edit_request":
+        capabilities.update(
+            {
+                "needs_casefile_retrieval": True,
+                "needs_relations": True,
+                "needs_validation_snapshot": True,
+                "needs_suggestion_generation": True,
+            }
+        )
+        risk_level = "high"
+    elif rule.primary_intent == "clarify":
         risk_level = "medium"
     return ChatTaskUnderstanding(
         primary_intent=rule.primary_intent,
@@ -618,6 +827,7 @@ __all__ = [
     "RuleRoute",
     "confidence_gate_decision",
     "build_edit_target_manifest",
+    "general_mutation_abstention_reason",
     "normalize_routing_hint",
     "resolve_intent_mentions",
     "resolve_rule_route",

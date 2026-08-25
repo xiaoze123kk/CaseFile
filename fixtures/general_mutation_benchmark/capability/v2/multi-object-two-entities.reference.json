@@ -1,0 +1,29 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "rename_lin",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_researcher"
+        },
+        "field_path": "/name",
+        "new_value": "林博士",
+        "reason": "rename lin"
+      },
+      {
+        "operation_key": "rename_system",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_backup_system"
+        },
+        "field_path": "/name",
+        "new_value": "应急系统",
+        "reason": "rename system"
+      }
+    ]
+  }
+}

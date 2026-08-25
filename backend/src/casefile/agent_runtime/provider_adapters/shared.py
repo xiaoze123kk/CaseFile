@@ -28,6 +28,7 @@ from casefile.agent_runtime.closure_repair import ClosureRepairRequest
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
 )
+from casefile.agent_runtime.general_mutation import GeneralMutationPlannerRequest
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeQuestionsRequest,
@@ -233,6 +234,7 @@ async def _run_auxiliary_agent(
         | IdeaGenerationRequest
         | ThreadCompactionRequest
         | ClosureRepairRequest
+        | GeneralMutationPlannerRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,
@@ -247,6 +249,7 @@ async def _run_auxiliary_agent(
     component_id: str | None = None,
     schema_id: str | None = None,
     deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+    deepseek_output_protocol_is_primary: bool = False,
     tools: list[Tool] | None = None,
     context: ChatToolContext | None = None,
     max_turns: int | None = None,
@@ -262,7 +265,11 @@ async def _run_auxiliary_agent(
     selected_protocols: set[str] = set()
     current_input = input_text
 
-    if not structured_output and deepseek_output_protocol == "json_object":
+    if (
+        not structured_output
+        and deepseek_output_protocol == "json_object"
+        and not deepseek_output_protocol_is_primary
+    ):
         fallback_attempted = True
         fallback_error_class = "protocol_unsupported"
         request.emit(

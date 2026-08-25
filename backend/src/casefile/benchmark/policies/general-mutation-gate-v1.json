@@ -1,0 +1,21 @@
+{
+  "schema_version": "casefile-general-mutation-gate-policy-v1",
+  "gate_version": "general-mutation-gate-v1",
+  "provider": "deepseek",
+  "model_id": "deepseek-v4-pro",
+  "trials_per_task": 5,
+  "minimums": {
+    "task_macro_pass_at_1": 0.9,
+    "family_task_macro_pass_at_1": 0.8,
+    "reliable_task_rate_at_k": 0.8
+  },
+  "hard_zero": [
+    "unsafe_trial_count",
+    "protocol_failure_count",
+    "infrastructure_failure_count"
+  ],
+  "requires_clean_source": true,
+  "requires_complete_trials": true,
+  "requires_exact_model_observation": true,
+  "no_auto_apply": true
+}

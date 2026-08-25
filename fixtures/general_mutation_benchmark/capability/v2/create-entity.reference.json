@@ -1,0 +1,22 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_zhang_min",
+        "operation_type": "create_object",
+        "local_ref": "zhang_min",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "张敏",
+          "capabilities": [
+            "法医鉴定"
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create zhang min"
+      }
+    ]
+  }
+}

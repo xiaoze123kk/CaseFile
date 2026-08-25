@@ -42,6 +42,10 @@ from casefile.agent_runtime.chat_intent import (
     route_public_payload,
 )
 from casefile.agent_runtime.credentials import decrypt_api_key
+from casefile.application.agent_mutation import (
+    append_repair_companions,
+    general_mutation_impact_hash,
+)
 from casefile.application.closure_repair import ClosureRepairMode
 from casefile.contracts import (
     ContractValidationError,
@@ -55,7 +59,11 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.data_postgres.repositories import ProjectRepository
-from casefile.worker.closure_repair import execute_chat_closure_repair
+from casefile.domain.verification_engine import VerificationEngine
+from casefile.worker.closure_repair import (
+    execute_chat_closure_repair,
+    execute_mutation_closure_repair,
+)
 from casefile.worker.executors.chat import (
     ChatTaskExecutorMixin,
     resolve_chat_route,
@@ -78,6 +86,7 @@ from casefile.worker.support import (
 )
 
 ProviderFactory = Callable[[TaskRun], AgentProvider]
+GeneralMutationMode = Literal["off", "shadow", "suggest"]
 
 
 def provider_for_task(task: TaskRun) -> AgentProvider:
@@ -97,10 +106,17 @@ class WorkerConfig:
     poll_seconds: float = 1.0
     lease_seconds: int = 600
     closure_repair_mode: ClosureRepairMode = "shadow"
+    general_mutation_mode: GeneralMutationMode = "off"
+    general_mutation_create_enabled: bool = False
+    general_mutation_delete_enabled: bool = False
 
     def __post_init__(self) -> None:
         if self.closure_repair_mode not in {"off", "shadow", "suggest"}:
             raise ValueError("CLOSURE_REPAIR_MODE must be one of: off, shadow, suggest")
+        if self.general_mutation_mode not in {"off", "shadow", "suggest"}:
+            raise ValueError(
+                "CASEFILE_CHAT_GENERAL_MUTATION_MODE must be one of: off, shadow, suggest"
+            )
 
     @classmethod
     def from_environment(cls) -> WorkerConfig:
@@ -112,6 +128,22 @@ class WorkerConfig:
             closure_repair_mode=cast(
                 ClosureRepairMode,
                 os.environ.get("CLOSURE_REPAIR_MODE", "shadow").strip().lower(),
+            ),
+            general_mutation_mode=cast(
+                GeneralMutationMode,
+                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_MODE", "suggest").strip().lower(),
+            ),
+            general_mutation_create_enabled=(
+                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_CREATE_ENABLED", "true")
+                .strip()
+                .lower()
+                in {"1", "true", "yes", "on"}
+            ),
+            general_mutation_delete_enabled=(
+                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_DELETE_ENABLED", "true")
+                .strip()
+                .lower()
+                in {"1", "true", "yes", "on"}
             ),
         )
 
@@ -332,6 +364,15 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                     budget=task_snapshot.budget_jsonb,
                     provider=provider,
                     previous=previous_routing,
+                    allow_general_mutation_create=(
+                        self.config.general_mutation_mode != "off"
+                        and self.config.general_mutation_create_enabled
+                    ),
+                    allow_general_mutation_delete=(
+                        self.config.general_mutation_mode != "off"
+                        and self.config.general_mutation_delete_enabled
+                    ),
+                    allow_general_mutation_update=(self.config.general_mutation_mode != "off"),
                 )
                 chat_request = prepare_chat_request_artifacts(chat_request)
                 if chat_request.route is not None:
@@ -367,23 +408,76 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                 )
 
                 def complete_chat(result: Any) -> None:
-                    repair_envelope, repair_usage = execute_chat_closure_repair(
-                        task_snapshot,
-                        result,
-                        provider=provider,
-                        api_key=api_key,
-                        mode=self.config.closure_repair_mode,
-                        emit=lambda event_type, stage, payload: self._emit(
-                            task_run_id, event_type, stage, payload
-                        ),
+                    general_mutation_envelope, general_mutation_usage = (
+                        self._execute_general_mutation(
+                            task_snapshot,
+                            chat_request,
+                            provider,
+                            api_key,
+                        )
                     )
+                    if general_mutation_envelope is None:
+                        repair_envelope, repair_usage = execute_chat_closure_repair(
+                            task_snapshot,
+                            result,
+                            provider=provider,
+                            api_key=api_key,
+                            mode=self.config.closure_repair_mode,
+                            emit=lambda event_type, stage, payload: self._emit(
+                                task_run_id, event_type, stage, payload
+                            ),
+                        )
+                    elif "bound" in general_mutation_envelope:
+                        repair_envelope, repair_usage, repair_result = (
+                            execute_mutation_closure_repair(
+                                task_snapshot,
+                                general_mutation_envelope["bound"].mutation_set,
+                                provider=provider,
+                                api_key=api_key,
+                                mode=self.config.closure_repair_mode,
+                                emit=lambda event_type, stage, payload: self._emit(
+                                    task_run_id, event_type, stage, payload
+                                ),
+                            )
+                        )
+                        if (
+                            self.config.closure_repair_mode == "suggest"
+                            and repair_result is not None
+                            and repair_result.repaired
+                        ):
+                            repaired_bound = append_repair_companions(
+                                general_mutation_envelope["bound"],
+                                task_snapshot.input_jsonb["casefile"],
+                                [item.as_dict() for item in repair_result.companion_operations],
+                            )
+                            repaired_simulation = VerificationEngine(
+                                profile="fast",
+                                closure_policy_version=(
+                                    repaired_bound.mutation_set.closure_policy_version
+                                ),
+                            ).simulate_mutation_set(
+                                task_snapshot.input_jsonb["casefile"],
+                                repaired_bound.mutation_set,
+                            )
+                            if not repaired_simulation.can_apply:
+                                raise RuntimeError("Repaired General Mutation proof diverged")
+                            general_mutation_envelope = {
+                                **general_mutation_envelope,
+                                "primary_bound": general_mutation_envelope["bound"],
+                                "bound": repaired_bound,
+                                "simulation": repaired_simulation,
+                                "impact_hash": general_mutation_impact_hash(repaired_simulation),
+                            }
+                    else:
+                        repair_envelope, repair_usage = None, {}
                     self._complete_chat(
                         task_run_id,
                         attempt_id,
                         result,
                         route=chat_request.route,
                         repair_envelope=repair_envelope,
-                        repair_usage=repair_usage,
+                        repair_usage=_merge_numeric_usage(repair_usage, general_mutation_usage),
+                        general_mutation_envelope=general_mutation_envelope,
                     )
 
                 execution = ChatExecutionRunner(provider).run(chat_request, complete=complete_chat)

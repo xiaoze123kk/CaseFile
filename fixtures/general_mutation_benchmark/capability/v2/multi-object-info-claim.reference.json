@@ -1,0 +1,29 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "title_safe_log",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "info_restart_log"
+        },
+        "field_path": "/title",
+        "new_value": "安全日志",
+        "reason": "title safe log"
+      },
+      {
+        "operation_key": "title_safe_claim",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "claim_backup_trigger"
+        },
+        "field_path": "/title",
+        "new_value": "安全机制触发",
+        "reason": "title safe claim"
+      }
+    ]
+  }
+}

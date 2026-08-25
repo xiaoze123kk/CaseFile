@@ -1,0 +1,22 @@
+{
+  "plan": {
+    "operations": [
+      {
+        "operation_key": "rename_event",
+        "operation_type": "update_field",
+        "target": {"ref_kind": "existing", "object_id": "evt_restart_seven"},
+        "field_path": "/title",
+        "new_value": "系统夜间重启",
+        "reason": "修改事件标题"
+      },
+      {
+        "operation_key": "rename_log",
+        "operation_type": "update_field",
+        "target": {"ref_kind": "existing", "object_id": "info_restart_log"},
+        "field_path": "/title",
+        "new_value": "夜间重启日志",
+        "reason": "同步修改日志标题"
+      }
+    ]
+  }
+}

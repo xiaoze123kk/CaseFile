@@ -1,0 +1,35 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "alias_system",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_backup_system"
+        },
+        "field_path": "/aliases",
+        "new_value": [
+          "B 系统",
+          "B2"
+        ],
+        "reason": "alias system"
+      },
+      {
+        "operation_key": "trait_system",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_backup_system"
+        },
+        "field_path": "/traits",
+        "new_value": [
+          "自动接管",
+          "断电保护"
+        ],
+        "reason": "trait system"
+      }
+    ]
+  }
+}

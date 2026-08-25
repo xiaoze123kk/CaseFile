@@ -1,0 +1,37 @@
+{
+  "task_id": "multi-field-location",
+  "family": "multi_field",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "主实验室的门禁规则新增“访客陪同”，可见性规则新增“内部可见”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "locations",
+        "where": {
+          "/id": "loc_lab",
+          "/access_rules": {
+            "$contains": "访客陪同"
+          },
+          "/visibility_rules": {
+            "$contains": "内部可见"
+          }
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-field-location.reference.json",
+  "tags": [
+    "multi_field"
+  ]
+}

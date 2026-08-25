@@ -1,0 +1,29 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "title_core_event",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "evt_restart_seven"
+        },
+        "field_path": "/title",
+        "new_value": "核心区重启",
+        "reason": "title core event"
+      },
+      {
+        "operation_key": "name_core_location",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "loc_lab"
+        },
+        "field_path": "/name",
+        "new_value": "核心区",
+        "reason": "name core location"
+      }
+    ]
+  }
+}

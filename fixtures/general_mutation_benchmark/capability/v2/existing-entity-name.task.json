@@ -1,0 +1,32 @@
+{
+  "task_id": "existing-entity-name",
+  "family": "existing_update",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把人物“林研究员”改名为“林博士”，其他内容不动。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/id": "ent_researcher",
+          "/name": "林博士"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "existing-entity-name.reference.json",
+  "tags": [
+    "update"
+  ]
+}

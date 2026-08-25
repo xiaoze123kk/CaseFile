@@ -1,0 +1,31 @@
+{
+  "task_id": "delete-orphan-location",
+  "family": "delete",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "删除未被引用的地点“废弃储藏室”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "locations",
+        "where": {
+          "/id": "loc_orphan_storage"
+        },
+        "count": 0
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "delete-orphan-location.reference.json",
+  "tags": [
+    "delete"
+  ]
+}

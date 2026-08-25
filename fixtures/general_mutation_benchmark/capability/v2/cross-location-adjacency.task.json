@@ -1,0 +1,39 @@
+{
+  "task_id": "cross-location-adjacency",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增地点“设备间”，并把主实验室的相邻地点更新为走廊和设备间。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "locations",
+        "where": {
+          "/name": "设备间"
+        },
+        "count": 1
+      },
+      {
+        "collection": "locations",
+        "where": {
+          "/id": "loc_lab",
+          "/adjacency_refs/1/object_type": "location"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-location-adjacency.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}

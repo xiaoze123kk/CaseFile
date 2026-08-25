@@ -1,0 +1,37 @@
+{
+  "task_id": "multi-field-system",
+  "family": "multi_field",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "给备用控制系统增加别名“B2”，并补充特征“断电保护”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/id": "ent_backup_system",
+          "/aliases": {
+            "$contains": "B2"
+          },
+          "/traits": {
+            "$contains": "断电保护"
+          }
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-field-system.reference.json",
+  "tags": [
+    "multi_field"
+  ]
+}

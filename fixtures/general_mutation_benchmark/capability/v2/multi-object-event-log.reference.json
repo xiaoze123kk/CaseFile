@@ -1,0 +1,29 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "rename_event_night",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "evt_restart_seven"
+        },
+        "field_path": "/title",
+        "new_value": "系统夜间重启",
+        "reason": "rename event night"
+      },
+      {
+        "operation_key": "rename_log_night",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "info_restart_log"
+        },
+        "field_path": "/title",
+        "new_value": "夜间重启日志",
+        "reason": "rename log night"
+      }
+    ]
+  }
+}

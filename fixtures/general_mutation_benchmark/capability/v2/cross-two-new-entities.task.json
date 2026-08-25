@@ -1,0 +1,45 @@
+{
+  "task_id": "cross-two-new-entities",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增人物陈工和王警官，并建立“陈工向王警官汇报”的有向关系。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "陈工"
+        },
+        "count": 1
+      },
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "王警官"
+        },
+        "count": 1
+      },
+      {
+        "collection": "relationships",
+        "where": {
+          "/title": "陈工向王警官汇报"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-two-new-entities.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}

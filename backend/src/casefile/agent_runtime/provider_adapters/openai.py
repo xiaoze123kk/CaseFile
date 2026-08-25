@@ -37,6 +37,15 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.general_mutation import (
+    GENERAL_MUTATION_COMPONENT_ID,
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+)
+from casefile.agent_runtime.general_mutation_prompt import (
+    general_mutation_output_type,
+    render_general_mutation_prompt,
+)
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -113,6 +122,28 @@ from casefile.agent_runtime.structured_output import (
 
 class OpenAIAgentsProvider:
     """OpenAI Responses implementation with structured outputs."""
+
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        rendered = render_general_mutation_prompt(request)
+        output_type = general_mutation_output_type(rendered)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=rendered.instructions,
+                input_text=rendered.input_text,
+                output_type=output_type,
+                stage="general_mutation",
+                component_id=GENERAL_MUTATION_COMPONENT_ID,
+                schema_id=rendered.output_schema_id,
+                strict_validation=True,
+            )
+        )
+        return GeneralMutationPlannerResult(output_type.model_validate(candidate), usage)
 
     def repair_closure(
         self,
@@ -612,6 +643,7 @@ class OpenAIAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | GeneralMutationPlannerRequest
         ),
         *,
         instructions: str,

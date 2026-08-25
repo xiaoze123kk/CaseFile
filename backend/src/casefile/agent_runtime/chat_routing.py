@@ -121,7 +121,7 @@ EXECUTION_PROFILES: dict[str, dict[str, Any]] = {
             "retrieve_thread_evidence",
             "request_thread_compaction",
         ],
-        "max_turns": 6,
+        "max_turns": 8,
         "max_tool_calls": 12,
         "context_profile": "focus_first",
     },

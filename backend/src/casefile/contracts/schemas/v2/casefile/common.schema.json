@@ -135,7 +135,7 @@
         },
         "confirmation_status": {
           "type": "string",
-          "enum": ["user_confirmed", "ai_inferred", "unresolved"]
+          "enum": ["user_confirmed", "ai_inferred", "unresolved", "proposed"]
         },
         "created_by": {"$ref": "#/$defs/ActorRef"},
         "updated_at": {"type": "string", "format": "date-time"},

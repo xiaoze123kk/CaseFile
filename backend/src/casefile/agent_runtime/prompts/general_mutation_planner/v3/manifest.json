@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v3",
+  "previous_version": "general-mutation-planner-v2",
+  "change_summary": "强化作者意图完整覆盖、字段语义映射与 Create 业务必填字段。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v3",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "23c910ece63e6ef77b260a860d5ba007ea645d32b9a0a0b0d21539824414df7a"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": ["planner"],
+      "input_contract_id": "general-mutation-planner-input-v1",
+      "output_schema_id": "general-mutation-plan-v2",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}

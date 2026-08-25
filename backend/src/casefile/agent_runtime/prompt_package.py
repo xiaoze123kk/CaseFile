@@ -68,6 +68,11 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionInputV1,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.general_mutation import (
+    GeneralMutationPromptInput,
+    MutationPlanV1,
+    MutationPlanV2,
+)
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatCandidateV2,
@@ -160,6 +165,7 @@ INPUT_CONTRACTS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "closure-repair-input-v1": ClosureRepairPromptInputV1,
         "closure-repair-input-v2": ClosureRepairPromptInputV2,
         "closure-repair-input-v3": ClosureRepairPromptInputV3,
+        "general-mutation-planner-input-v1": GeneralMutationPromptInput,
     }
 )
 OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
@@ -183,11 +189,14 @@ OUTPUT_SCHEMAS: Mapping[str, type[BaseModel]] = MappingProxyType(
         "closure-repair-output-v1": ClosureRepairOutputV1,
         "closure-repair-output-v2": ClosureRepairOutputV2,
         "closure-repair-output-v3": ClosureRepairOutputV3,
+        "general-mutation-plan-v1": MutationPlanV1,
+        "general-mutation-plan-v2": MutationPlanV2,
     }
 )
 TOOL_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
     {
         "no-tools-v1": frozenset(),
+        "general-mutation-planner-no-tools-v1": frozenset(),
         "chat-read-v1": frozenset({"search_casefile", "get_casefile_object"}),
         "chat-issue-v1": frozenset(
             {"search_casefile", "get_casefile_object", "get_validation_issues"}
@@ -283,6 +292,30 @@ RUNTIME_COMPATIBILITY: frozenset[tuple[str, str]] = frozenset(
         ("closure-repair-agent-v1", CLOSURE_REPAIR_TOOLSET_VERSION),
         ("closure-repair-agent-v2", CLOSURE_REPAIR_TOOLSET_VERSION),
         (CLOSURE_REPAIR_AGENT_VERSION, CLOSURE_REPAIR_TOOLSET_VERSION),
+        (
+            "general-mutation-planner-agent-v1",
+            "general-mutation-planner-no-tools-v1",
+        ),
+        (
+            "general-mutation-planner-agent-v2",
+            "general-mutation-planner-no-tools-v1",
+        ),
+        (
+            "general-mutation-planner-agent-v3",
+            "general-mutation-planner-no-tools-v1",
+        ),
+        (
+            "general-mutation-planner-agent-v4",
+            "general-mutation-planner-no-tools-v1",
+        ),
+        (
+            "general-mutation-planner-agent-v5",
+            "general-mutation-planner-no-tools-v1",
+        ),
+        (
+            "general-mutation-planner-agent-v6",
+            "general-mutation-planner-no-tools-v1",
+        ),
     }
 )
 

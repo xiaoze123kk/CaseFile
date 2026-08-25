@@ -13,6 +13,7 @@ import pytest
 from agents import ModelSettings
 from agents.exceptions import ModelBehaviorError
 from casefile.agent_runtime.brief_to_draft_v12.contracts import TemporalPlanV1
+from casefile.agent_runtime.general_mutation import MutationPlanV2
 from casefile.agent_runtime.models import (
     BriefPolishCandidate,
     BriefPolishRequest,
@@ -84,6 +85,44 @@ def _usage() -> SimpleNamespace:
         input_tokens_details=SimpleNamespace(cached_tokens=2),
         output_tokens_details=SimpleNamespace(reasoning_tokens=0),
     )
+
+
+def test_primary_json_object_selects_protocol_without_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[tuple[str, str, dict[str, Any]]] = []
+
+    async def fake_runner_run(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        return SimpleNamespace(
+            final_output=_valid_polish_json(),
+            context_wrapper=SimpleNamespace(usage=_usage()),
+        )
+
+    monkeypatch.setattr(provider_shared.Runner, "run", fake_runner_run)
+    request = _request(events)
+    output, _usage_result = asyncio.run(
+        _run_auxiliary_agent(
+            request,
+            model=DeepSeekAgentsProvider().create_model(request),
+            model_settings=ModelSettings(),
+            instructions="Return JSON.",
+            input_text="input",
+            output_type=BriefPolishCandidate,
+            stage="polishing",
+            structured_output=False,
+            tracing_disabled=True,
+            deepseek_output_protocol="json_object",
+            deepseek_output_protocol_is_primary=True,
+        )
+    )
+
+    assert output["polished_text"] == "修订稿"
+    assert not any(event[0] == "model.output_protocol_fallback" for event in events)
+    selected = next(event for event in events if event[0] == "model.output_protocol_selected")
+    assert selected[2]["protocol"] == "json_object"
+    validated = next(event for event in events if event[0] == "model.output_validated")
+    assert validated[2]["fallback_attempted"] is False
+    assert validated[2]["fallback_succeeded"] is False
 
 
 def test_compile_strict_schema_closes_objects_and_preserves_nullable_shape() -> None:
@@ -273,6 +312,36 @@ def test_plan_graph_validation_feedback_is_actionable_and_bounded() -> None:
             "message": "referenced_keys 只能引用同一计划中已声明的 local_key。",
         }
     ]
+
+
+def test_pydantic_validation_issues_preserve_general_mutation_reason_code() -> None:
+    with pytest.raises(ValidationError) as caught:
+        MutationPlanV2.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "legacy_ref",
+                        "operation_type": "update_field",
+                        "target": {
+                            "ref_kind": "existing",
+                            "object_id": "claim_backup_trigger",
+                        },
+                        "field_path": "/support_refs",
+                        "new_value": [
+                            {
+                                "object_id": "info_external_secret",
+                                "object_type": "information_unit",
+                            }
+                        ],
+                        "reason": "稳定错误码回归。",
+                    }
+                ]
+            }
+        )
+
+    issues = pydantic_validation_issues(caught.value)
+
+    assert issues[0]["code"] == "general_mutation_ref_object_type_forbidden"
 
 
 def test_strict_fallback_classifier_rejects_unknown_operational_errors() -> None:

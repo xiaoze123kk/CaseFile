@@ -1,0 +1,32 @@
+{
+  "task_id": "existing-event-title",
+  "family": "existing_update",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把第七次重启事件标题改为“夜间系统重启”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "events",
+        "where": {
+          "/id": "evt_restart_seven",
+          "/title": "夜间系统重启"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "existing-event-title.reference.json",
+  "tags": [
+    "update"
+  ]
+}

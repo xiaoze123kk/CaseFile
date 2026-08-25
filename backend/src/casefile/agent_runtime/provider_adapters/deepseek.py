@@ -36,6 +36,15 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.general_mutation import (
+    GENERAL_MUTATION_COMPONENT_ID,
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+)
+from casefile.agent_runtime.general_mutation_prompt import (
+    general_mutation_output_type,
+    render_general_mutation_prompt,
+)
 from casefile.agent_runtime.models import (
     BriefAnchorExtractCandidate,
     BriefAnchorExtractRequest,
@@ -117,6 +126,30 @@ class DeepSeekAgentsProvider:
     """DeepSeek OpenAI-compatible Chat Completions implementation."""
 
     base_url = "https://api.deepseek.com"
+
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        rendered = render_general_mutation_prompt(request)
+        output_type = general_mutation_output_type(rendered)
+        candidate, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=rendered.instructions,
+                input_text=rendered.input_text,
+                output_type=output_type,
+                stage="general_mutation",
+                component_id=GENERAL_MUTATION_COMPONENT_ID,
+                schema_id=rendered.output_schema_id,
+                deepseek_output_protocol="json_object",
+                deepseek_output_protocol_is_primary=True,
+                strict_validation=True,
+            )
+        )
+        return GeneralMutationPlannerResult(output_type.model_validate(candidate), usage)
 
     def repair_closure(
         self,
@@ -321,6 +354,7 @@ class DeepSeekAgentsProvider:
                 context=context,
                 max_turns=max_turns,
                 deepseek_output_protocol=output_protocol,
+                deepseek_output_protocol_is_primary=bool(tools),
                 temperature=_chat_live_temperature(),
             )
         )
@@ -599,6 +633,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | GeneralMutationPlannerRequest
         ),
         *,
         instructions: str,
@@ -611,6 +646,7 @@ class DeepSeekAgentsProvider:
         context: ChatToolContext | None = None,
         max_turns: int | None = None,
         deepseek_output_protocol: Literal["strict_tool", "json_object"] | None = None,
+        deepseek_output_protocol_is_primary: bool = False,
         temperature: float | None = None,
         strict_validation: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -632,6 +668,7 @@ class DeepSeekAgentsProvider:
                 deepseek_output_protocol=(
                     deepseek_output_protocol or _deepseek_v8_output_protocol(request.model_id)
                 ),
+                deepseek_output_protocol_is_primary=deepseek_output_protocol_is_primary,
                 strict_validation=strict_validation,
                 tools=tools,
                 context=context,
@@ -656,6 +693,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | GeneralMutationPlannerRequest
         ),
     ) -> OpenAIChatCompletionsModel:
         client = AsyncOpenAI(

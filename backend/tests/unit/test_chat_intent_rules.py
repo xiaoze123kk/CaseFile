@@ -115,6 +115,212 @@ def test_destructive_free_text_uses_the_deterministic_scope_route() -> None:
     assert rule.reason_code == "rule_safety:destructive_action"
 
 
+def test_delete_routes_to_edit_only_when_general_mutation_capability_is_enabled() -> None:
+    request = replace(
+        make_chat_request(
+            message="请删除实体 ent_lucy。",
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={"entities": [{"id": "ent_lucy", "name": "Lucy"}]},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_delete=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+    assert rule.profile == "edit_request.edit"
+    assert rule.reason_code == "rule_capability:general_mutation_delete"
+
+
+@pytest.mark.parametrize("message", ("新增人物周岚。", "创建人物周岚。", "add a new person"))
+def test_create_markers_route_to_general_mutation_when_enabled(message: str) -> None:
+    rule = resolve_rule_route(
+        make_chat_request(message=message, hint={"entrypoint": "free_text"}),
+        allow_general_mutation_create=True,
+    )
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+    assert rule.reason_code == "rule_capability:general_mutation_create"
+
+
+@pytest.mark.parametrize("index", range(1, 5))
+def test_closure_sensitive_status_updates_route_to_edit_request(index: int) -> None:
+    request = replace(
+        make_chat_request(
+            message=(
+                f"把“第{index}条前置主张”状态改为 unresolved（未解决），"
+                "并保持依赖它的主张状态一致。"
+            ),
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={
+            "claims": [
+                {
+                    "id": f"claim_prerequisite_{index}",
+                    "title": f"第{index}条前置主张",
+                    "status": "supported",
+                }
+            ]
+        },
+        editable_fields_by_collection={"claims": ("status",)},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+
+
+def test_ambiguous_delete_routes_to_clarification_before_delete_capability() -> None:
+    request = make_chat_request(
+        message="我想移除一个对象，但没有说明具体对象；请先澄清，不要执行。",
+        hint={"entrypoint": "free_text"},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_delete=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_safety"
+    assert rule.primary_intent == "clarify"
+    assert rule.profile == "clarify.question"
+    assert rule.reason_code == (
+        "rule_safety:general_mutation_delete_target_ambiguous"
+    )
+
+
+@pytest.mark.parametrize(
+    ("message", "reason_code"),
+    (
+        (
+            "把它的描述改得更清楚。",
+            "rule_safety:general_mutation_target_ambiguous",
+        ),
+        (
+            "把林研究员那部分改一下。",
+            "rule_safety:general_mutation_field_ambiguous",
+        ),
+        (
+            "把研究员或备用系统的名称改成守夜人。",
+            "rule_safety:general_mutation_target_ambiguous",
+        ),
+    ),
+)
+def test_ambiguous_updates_route_to_clarification(
+    message: str,
+    reason_code: str,
+) -> None:
+    request = replace(
+        _manifest_request(focus={}, message=message),
+        casefile={
+            "entities": [
+                {"id": "ent_researcher", "name": "林研究员"},
+                {"id": "ent_backup", "name": "备用控制系统"},
+            ]
+        },
+        editable_fields_by_collection={
+            "entities": ("name", "description"),
+        },
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.primary_intent == "clarify"
+    assert rule.reason_code == reason_code
+
+
+def test_unspecified_delete_routes_to_clarification_without_prompt_marker() -> None:
+    rule = resolve_rule_route(
+        _manifest_request(focus={}, message="移除一个不重要的对象。"),
+        allow_general_mutation_delete=True,
+    )
+
+    assert rule is not None
+    assert rule.primary_intent == "clarify"
+    assert rule.reason_code == (
+        "rule_safety:general_mutation_delete_target_ambiguous"
+    )
+
+
+def test_create_routes_to_edit_only_when_general_mutation_capability_is_enabled() -> None:
+    request = make_chat_request(
+        message="创建一个人物实体，名称为夜班观察员。",
+        hint={"entrypoint": "free_text"},
+    )
+
+    assert resolve_rule_route(request) is None
+    rule = resolve_rule_route(request, allow_general_mutation_create=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+    assert rule.profile == "edit_request.edit"
+    assert rule.reason_code == "rule_capability:general_mutation_create"
+
+
+def test_known_object_editable_field_routes_to_update_capability() -> None:
+    request = _manifest_request(
+        focus={},
+        message="把事件 evt_restart 的 title 改为午夜例行重启。",
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.primary_intent == "edit_request"
+    assert rule.reason_code == "rule_capability:general_mutation_update"
+
+
+def test_explicit_multi_object_update_remains_allowed() -> None:
+    request = replace(
+        _manifest_request(
+            focus={},
+            message=(
+                "把林研究员的名称改为林博士，"
+                "并把备用控制系统的名称改为应急系统。"
+            ),
+        ),
+        casefile={
+            "entities": [
+                {"id": "ent_researcher", "name": "林研究员"},
+                {"id": "ent_backup", "name": "备用控制系统"},
+            ]
+        },
+        editable_fields_by_collection={"entities": ("name",)},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.primary_intent == "edit_request"
+    assert rule.reason_code == "rule_capability:general_mutation_update"
+
+
+def test_protected_object_target_is_blocked_before_mutation_capabilities() -> None:
+    request = replace(
+        make_chat_request(
+            message="把 res_root_cause 的结论改掉。",
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={"resolution_specs": [{"id": "res_root_cause", "title": "根因"}]},
+    )
+
+    rule = resolve_rule_route(
+        request,
+        allow_general_mutation_create=True,
+        allow_general_mutation_delete=True,
+        allow_general_mutation_update=True,
+    )
+
+    assert rule is not None
+    assert rule.primary_intent == "unsupported_action"
+    assert rule.reason_code == "rule_safety:protected_collection_target"
+
+
 @pytest.mark.parametrize(
     "message",
     (
@@ -207,6 +413,18 @@ def test_edit_manifest_assigns_each_field_to_its_nearest_object_mention() -> Non
         {"object_id": "ent_lucy", "path": "/description"},
         {"object_id": "evt_restart", "path": "/title"},
     ]
+    assert manifest.ambiguous is False
+
+
+def test_edit_manifest_binds_pronoun_field_to_one_focused_object() -> None:
+    manifest = build_edit_target_manifest(
+        _manifest_request(
+            focus={"object_ids": ["ent_lucy"]},
+            message="把它的描述改为更克制的版本。",
+        )
+    )
+
+    assert manifest.as_list() == [{"object_id": "ent_lucy", "path": "/description"}]
     assert manifest.ambiguous is False
 
 

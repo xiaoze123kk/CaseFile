@@ -1,0 +1,44 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_liu",
+        "operation_type": "create_object",
+        "local_ref": "liu",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "刘工"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create liu"
+      },
+      {
+        "operation_key": "create_repairs",
+        "operation_type": "create_object",
+        "local_ref": "repairs",
+        "collection": "relationships",
+        "fields": {
+          "title": "刘工检修备用控制系统",
+          "from_ref": {
+            "ref_kind": "local",
+            "local_ref": "liu"
+          },
+          "to_ref": {
+            "ref_kind": "existing",
+            "object_id": "ent_backup_system"
+          },
+          "relationship_type": "repairs",
+          "direction": "directed",
+          "truth_status": "canon_true",
+          "visibility": "public"
+        },
+        "depends_on_operation_keys": [
+          "create_liu"
+        ],
+        "reason": "create repairs"
+      }
+    ]
+  }
+}

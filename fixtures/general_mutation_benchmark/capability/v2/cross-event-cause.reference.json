@@ -1,0 +1,30 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_monitors",
+        "operation_type": "create_object",
+        "local_ref": "monitors",
+        "collection": "relationships",
+        "fields": {
+          "title": "林研究员监控备用控制系统",
+          "from_ref": {
+            "ref_kind": "existing",
+            "object_id": "ent_researcher"
+          },
+          "to_ref": {
+            "ref_kind": "existing",
+            "object_id": "ent_backup_system"
+          },
+          "relationship_type": "monitors",
+          "direction": "directed",
+          "truth_status": "canon_true",
+          "visibility": "public"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create monitors"
+      }
+    ]
+  }
+}

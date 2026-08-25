@@ -1,0 +1,18 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "unresolve_prerequisite_5",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "claim_dev_prerequisite_5"
+        },
+        "field_path": "/status",
+        "new_value": "unresolved",
+        "reason": "unresolve prerequisite 5"
+      }
+    ]
+  }
+}

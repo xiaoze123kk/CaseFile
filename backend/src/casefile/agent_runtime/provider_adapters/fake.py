@@ -42,6 +42,14 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionResult,
     ThreadMemoryDelta,
 )
+from casefile.agent_runtime.general_mutation import (
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+)
+from casefile.agent_runtime.general_mutation_prompt import (
+    general_mutation_output_type,
+    render_general_mutation_prompt,
+)
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
     BriefAnchorExtractCandidate,
@@ -389,6 +397,38 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
 
 class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
+
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult:
+        rendered = render_general_mutation_prompt(request)
+        output_type = general_mutation_output_type(rendered)
+        candidate = output_type.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_type": "create_object",
+                        "operation_key": "create_agent_entity",
+                        "local_ref": "new_entity",
+                        "collection": "entities",
+                        "fields": {"entity_type": "person", "name": "新人物"},
+                        "depends_on_operation_keys": [],
+                        "reason": "FakeProvider 通用修改候选。",
+                    }
+                ],
+            }
+        )
+        usage = _zero_usage()
+        request.emit(
+            "model.completed",
+            "general_mutation",
+            {
+                "usage": usage,
+                "schema_id": rendered.output_schema_id,
+            },
+        )
+        return GeneralMutationPlannerResult(candidate, usage)
 
     def repair_closure(
         self,

@@ -6073,6 +6073,18 @@
             ],
             "title": "Operation Ids"
           },
+          "confirmed_impact_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Impact Hash"
+          },
           "target_finding_ids": {
             "anyOf": [
               {
@@ -7013,7 +7025,7 @@
             "type": "string",
             "maxLength": 64,
             "title": "Closure Policy Version",
-            "default": "logical-mutation-v1"
+            "default": "logical-mutation-v2"
           },
           "operations": {
             "items": {
@@ -7118,7 +7130,7 @@
             "type": "string",
             "maxLength": 64,
             "title": "Closure Policy Version",
-            "default": "logical-mutation-v1"
+            "default": "logical-mutation-v2"
           },
           "operations": {
             "items": {

@@ -1,0 +1,42 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_event",
+        "operation_type": "create_object",
+        "local_ref": "event_eight",
+        "collection": "events",
+        "fields": {
+          "title": "系统第八次自检",
+          "truth_status": "canon_true",
+          "time": {
+            "kind": "exact",
+            "value": "2042-06-02T09:00",
+            "precision": "minute"
+          },
+          "participant_refs": [
+            {
+              "ref_kind": "existing",
+              "object_id": "ent_backup_system"
+            }
+          ],
+          "location_ref": {
+            "ref_kind": "existing",
+            "object_id": "loc_lab"
+          },
+          "cause_refs": [],
+          "effect_refs": [],
+          "observed_by_refs": [
+            {
+              "ref_kind": "existing",
+              "object_id": "ent_researcher"
+            }
+          ]
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create event"
+      }
+    ]
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "access_lab",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "loc_lab"
+        },
+        "field_path": "/access_rules",
+        "new_value": [
+          "研究员身份卡",
+          "访客陪同"
+        ],
+        "reason": "access lab"
+      },
+      {
+        "operation_key": "visibility_lab",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "loc_lab"
+        },
+        "field_path": "/visibility_rules",
+        "new_value": [
+          "内部可见"
+        ],
+        "reason": "visibility lab"
+      }
+    ]
+  }
+}

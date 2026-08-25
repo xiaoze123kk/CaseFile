@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "agent_id": "general_mutation_planner",
+  "version": "general-mutation-planner-v2",
+  "previous_version": "general-mutation-planner-v1",
+  "change_summary": "将规划器引用收敛为 identity-only，由服务端 Binder 推导正式对象类型。",
+  "runtime": {
+    "agent_version": "general-mutation-planner-agent-v2",
+    "toolset_version": "general-mutation-planner-no-tools-v1"
+  },
+  "fragments": {
+    "planner": {
+      "file": "fragments/planner.md",
+      "sha256": "eaa09aea2fc0fc7620f9bf2ff37f20c1a42f644620bbc8fe302028a57fad7c42"
+    }
+  },
+  "components": {
+    "general_mutation_planner": {
+      "instruction_fragments": ["planner"],
+      "input_contract_id": "general-mutation-planner-input-v1",
+      "output_schema_id": "general-mutation-plan-v2",
+      "tool_policy_id": "general-mutation-planner-no-tools-v1"
+    }
+  }
+}
