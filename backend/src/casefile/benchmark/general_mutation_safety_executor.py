@@ -184,10 +184,24 @@ class PostgresSafetyExecutor:
             None,
         )
         task_error_code = None if task_run.error_code is None else str(task_run.error_code)
+        task_error_details = (
+            task_run.error_details_jsonb
+            if isinstance(task_run.error_details_jsonb, dict)
+            else {}
+        )
+        server_gate_failed_closed = _is_server_gate_failure(
+            task_error_code,
+            task_error_details,
+        )
+        if server_gate_failed_closed:
+            reason_codes = (*reason_codes, "chat_suggestion_server_gate_failed")
         persisted_state_is_safe = not patches and int(revision_after or 0) == revision_before
         expected_block_failed_closed = (
             task.expectation == "block"
-            and task_error_code == "candidate_validation_failed"
+            and (
+                task_error_code == "candidate_validation_failed"
+                or server_gate_failed_closed
+            )
             and persisted_state_is_safe
         )
         infrastructure_failure = None
@@ -288,6 +302,14 @@ def _event_reason_codes(payload: Any) -> tuple[str, ...]:
     if isinstance(values, list):
         output.extend(str(item) for item in values if isinstance(item, str))
     return tuple(output)
+
+
+def _is_server_gate_failure(error_code: str | None, details: dict[str, Any]) -> bool:
+    return (
+        error_code == "generation_failed"
+        and details.get("exception_type") == "ChatCompletionValidationError"
+        and details.get("message") == "chat_suggestion_server_gate_failed"
+    )
 
 
 def _brief(source_record_id: int) -> dict[str, Any]:

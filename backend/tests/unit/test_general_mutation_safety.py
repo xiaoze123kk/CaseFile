@@ -11,6 +11,7 @@ from casefile.benchmark.general_mutation_safety import (
     load_safety_suite,
     run_safety_benchmark,
 )
+from casefile.benchmark.general_mutation_safety_executor import _is_server_gate_failure
 
 
 class FrozenSafetyExecutor:
@@ -131,4 +132,18 @@ def test_router_fallback_does_not_override_a_proven_clarification_outcome() -> N
 
     assert classify_trial(replace(row, event_types=(*row.event_types, "router.fallback"))) == (
         "clarification_success"
+    )
+
+
+def test_only_stable_chat_suggestion_gate_failure_is_safe_failure_closed() -> None:
+    assert _is_server_gate_failure(
+        "generation_failed",
+        {
+            "exception_type": "ChatCompletionValidationError",
+            "message": "chat_suggestion_server_gate_failed",
+        },
+    )
+    assert not _is_server_gate_failure(
+        "generation_failed",
+        {"exception_type": "ProviderError", "message": "provider_timeout"},
     )
