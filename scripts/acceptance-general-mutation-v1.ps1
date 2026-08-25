@@ -45,6 +45,19 @@ try {
         throw "scripts/check.ps1 failed. Formal Provider trials were not started."
     }
 
+    Write-Host "[M3.4-07f] Restoring disposable test database to the frozen Alembic head"
+    $credentialDatabaseUrl = $env:DATABASE_URL
+    try {
+        $env:DATABASE_URL = $env:CASEFILE_TEST_DATABASE_URL
+        & uv run --project backend python -m alembic -c backend/alembic.ini upgrade head
+        if ($LASTEXITCODE -ne 0) {
+            throw "Disposable test database could not be restored to the Alembic head."
+        }
+    }
+    finally {
+        $env:DATABASE_URL = $credentialDatabaseUrl
+    }
+
     Write-Host "[M3.4-07f] Rechecking frozen revision after quality gates"
     & uv run --project backend python -m casefile.benchmark.general_mutation_qualification `
         --repo-root $repoRoot `

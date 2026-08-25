@@ -34,6 +34,7 @@ def general_mutation_runtime_fingerprint(repo_root: Path) -> str:
         Path("backend/src/casefile/benchmark/general_mutation_backend_executor.py"),
         Path("backend/src/casefile/benchmark/policies/general-mutation-gate-v1.json"),
         Path("backend/src/casefile/benchmark/policies/general-mutation-holdout-v1-descriptor.json"),
+        Path("scripts/acceptance-general-mutation-v1.ps1"),
     }
     for pattern in (
         "backend/src/casefile/domain/logical_mutation/**/*.py",
