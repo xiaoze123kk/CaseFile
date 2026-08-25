@@ -14,6 +14,7 @@ from casefile.agent_runtime.general_mutation import (
     general_mutation_explicit_system_field_reason,
     general_mutation_explicit_unknown_object_ids,
     general_mutation_request_budget_reason,
+    general_mutation_request_dependency_reason,
 )
 from casefile.agent_runtime.general_mutation_prompt import (
     general_mutation_output_type,
@@ -466,6 +467,14 @@ def test_explicit_system_field_is_blocked_before_planning(message: str) -> None:
 
 def test_system_field_substrings_do_not_trigger_preflight() -> None:
     assert general_mutation_explicit_system_field_reason("新增 identity 标签。") is None
+
+
+def test_explicit_dependency_cycle_is_blocked_before_planning() -> None:
+    assert (
+        general_mutation_request_dependency_reason("甲依赖乙，乙依赖甲，必须保持循环依赖。")
+        == "general_mutation_requested_dependency_cycle"
+    )
+    assert general_mutation_request_dependency_reason("甲的创建依赖乙。") is None
 
 
 def test_explicit_unknown_object_ids_exclude_contract_fields_and_known_ids() -> None:

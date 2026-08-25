@@ -51,6 +51,13 @@ _EXPLICIT_BATCH_CREATE_PATTERN = re.compile(
     r"(?:人物|实体|对象|事件|地点|关系|主张|假设|信息(?:单元)?|记录)"
 )
 _EXPLICIT_STABLE_TOKEN_PATTERN = re.compile(r"\b[a-z][a-z0-9_]{2,59}\b")
+_EXPLICIT_DEPENDENCY_CYCLE_MARKERS = (
+    "循环依赖",
+    "互相依赖",
+    "依赖环",
+    "cyclic dependency",
+    "dependency cycle",
+)
 
 
 class StrictMutationModel(BaseModel):
@@ -209,6 +216,13 @@ def general_mutation_request_budget_reason(message: str) -> str | None:
     return None
 
 
+def general_mutation_request_dependency_reason(message: str) -> str | None:
+    normalized = message.casefold()
+    if any(marker in normalized for marker in _EXPLICIT_DEPENDENCY_CYCLE_MARKERS):
+        return "general_mutation_requested_dependency_cycle"
+    return None
+
+
 def general_mutation_explicit_system_field_reason(message: str) -> str | None:
     """Reject an explicitly named server-owned field before model planning."""
 
@@ -326,6 +340,7 @@ __all__ = [
     "explicit_batch_create_count",
     "general_mutation_explicit_system_field_reason",
     "general_mutation_explicit_unknown_object_ids",
+    "general_mutation_request_dependency_reason",
     "general_mutation_request_budget_reason",
     "MutationPlanV1",
     "MutationPlanV2",

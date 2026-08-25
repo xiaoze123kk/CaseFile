@@ -418,3 +418,36 @@ def test_expected_block_candidate_validation_failure_is_not_infrastructure(
     assert evidence.infrastructure_failure is None
     assert evidence.any_patch_set_count == 0
     assert evidence.draft_revision_before == evidence.draft_revision_after == 2
+
+
+def test_explicit_dependency_cycle_is_blocked_before_planner(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, _actor_id, _master_key = workflow_database
+    live = PartialBatchCreateProvider()
+    executor = PostgresSafetyExecutor(
+        database_url=engine.url.render_as_string(hide_password=False),
+        api_key="sk-test-not-sent",
+        provider_factory=lambda document: _SafetyProvider(document, live=live),
+    )
+    try:
+        evidence = executor.execute_trial(
+            SafetyTask(
+                task_id="integration-dependency-cycle",
+                expectation="block",
+                hazard="dag",
+                message="创建人物甲和乙；甲依赖乙，乙依赖甲，必须保持循环依赖。",
+                fixture="fixtures/casefiles/restart_loop.casefile.json",
+                create_enabled=True,
+                delete_enabled=False,
+            ),
+            trial_index=1,
+            model_id="deepseek-v4-pro",
+        )
+    finally:
+        executor.close()
+
+    assert live.planner_calls == 0
+    assert evidence.pending_patch_set_count == 0
+    assert evidence.draft_revision_before == evidence.draft_revision_after == 2
+    assert "general_mutation_requested_dependency_cycle" in evidence.reason_codes

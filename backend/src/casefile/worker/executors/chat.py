@@ -70,6 +70,7 @@ from casefile.agent_runtime.general_mutation import (
     general_mutation_explicit_system_field_reason,
     general_mutation_explicit_unknown_object_ids,
     general_mutation_request_budget_reason,
+    general_mutation_request_dependency_reason,
 )
 from casefile.agent_runtime.models import (
     LEGACY_CONTEXT_POLICY_VERSION,
@@ -566,6 +567,26 @@ class ChatTaskExecutorMixin:
                 "general_mutation.blocked",
                 "general_mutation",
                 {"reason_code": request_budget_reason},
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
+        dependency_reason = general_mutation_request_dependency_reason(request.message)
+        if dependency_reason is not None:
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": dependency_reason,
+                    "failure_layer": "request_dependency",
+                    "issues": [{"code": dependency_reason}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.blocked",
+                "general_mutation",
+                {"reason_code": dependency_reason},
             )
             return ({"status": "blocked"} if mode == "suggest" else None), {}
         system_field_reason = general_mutation_explicit_system_field_reason(request.message)
