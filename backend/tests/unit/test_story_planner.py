@@ -72,6 +72,24 @@ def test_structural_error_is_repaired_with_previous_errors() -> None:
     assert provider.requests[1].repair_errors
 
 
+def test_provider_input_survives_structural_repair_and_is_rendered_instead_of_audit_input() -> None:
+    provider = SequenceProvider([{}, _valid()])
+    request = replace(
+        _request(),
+        planner_input={"schema_id": "audit"},
+        provider_input={"schema_id": "compiler.story-planner-model-view.v3"},
+        provider_input_hash="b" * 64,
+    )
+
+    execute_story_planner(provider, request)
+    _, rendered, _ = render_story_planner_prompt(provider.requests[1])
+
+    assert provider.requests[1].provider_input == request.provider_input
+    assert provider.requests[1].provider_input_hash == "b" * 64
+    assert "compiler.story-planner-model-view.v3" in rendered
+    assert '"schema_id":"audit"' not in rendered
+
+
 def test_repairs_are_bounded_to_three() -> None:
     provider = SequenceProvider([{}, {}, {}, {}])
     with pytest.raises(CompilerContractError) as captured:

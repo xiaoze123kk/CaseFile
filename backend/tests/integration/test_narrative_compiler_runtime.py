@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from application_services_test_support import _adopt_candidate, _prepare_task
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.api.app import create_app
 from casefile.application.compiler import CompilerService
@@ -29,16 +35,15 @@ from casefile.data_postgres.models import (
 )
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
+    NovelPlanRepairResult,
+    NovelPlanValidationReport,
+    NovelPlanViolation,
     canonical_json_sha256,
     narrative_ir_component_fingerprint,
     project_narrative_ir_json,
 )
 from casefile.worker.runtime import Worker, WorkerConfig
 from casefile.worker.support import TaskCancellationRequested
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -201,7 +206,36 @@ def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
         provider_calls += 1
         return FakeProvider()
 
-    with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
+    def audited_repair(
+        candidate: dict[str, Any], *, planner_input: dict[str, Any]
+    ) -> NovelPlanRepairResult:
+        del planner_input
+        violation = NovelPlanViolation(
+            code="compiler_story_plan_temporal_order_invalid",
+            details={"scene_id": "scene_2"},
+        )
+        return NovelPlanRepairResult(
+            candidate=candidate,
+            applied=True,
+            changes=(
+                {
+                    "scene_id": "scene_2",
+                    "field": "presentation_mode",
+                    "before": "flashback",
+                    "after": "linear",
+                },
+            ),
+            before=NovelPlanValidationReport(valid=False, violations=(violation,)),
+            after=NovelPlanValidationReport(valid=True, violations=()),
+        )
+
+    with (
+        patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}),
+        patch(
+            "casefile.worker.executors.story_planner.repair_novel_plan_candidate",
+            side_effect=audited_repair,
+        ),
+    ):
         worker = Worker(
             factory,
             config=WorkerConfig(worker_id="story-planner-worker"),
@@ -224,6 +258,20 @@ def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
                 select(AgentModelCall).where(AgentModelCall.task_run_id == run["task_run_id"])
             )
         )
+        repair_events = list(
+            session.scalars(
+                select(TaskEvent).where(
+                    TaskEvent.task_run_id == run["task_run_id"],
+                    TaskEvent.event_type == "compiler.story_planner.repair_evaluated",
+                )
+            )
+        )
+        planner_step = session.scalar(
+            select(AgentStepRun).where(
+                AgentStepRun.task_run_id == run["task_run_id"],
+                AgentStepRun.component_id == "story_planner",
+            )
+        )
     assert task is not None and task.status == "succeeded", (
         None if task is None else task.error_code,
         None if task is None else task.error_details_jsonb,
@@ -235,6 +283,10 @@ def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
     ]
     assert len(model_calls) == 1
     assert model_calls[0].raw_output_text
+    assert len(repair_events) == 1
+    assert repair_events[0].payload_jsonb["applied"] is True
+    assert planner_step is not None
+    assert planner_step.diagnostic_jsonb["candidate_repair"]["applied"] is True
 
     with factory() as session:
         draft = CaseFileService(session).get_draft(actor_id, project_id)

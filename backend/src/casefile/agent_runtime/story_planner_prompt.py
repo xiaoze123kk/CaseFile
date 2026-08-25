@@ -10,7 +10,8 @@ from casefile.agent_runtime.story_planner import StoryPlannerRequest
 
 def render_story_planner_prompt(request: StoryPlannerRequest) -> tuple[str, str, str]:
     definition = load_prompt("story_planner", request.prompt_version)
-    payload: dict[str, object] = {"planner_input": request.planner_input}
+    provider_input = request.provider_input or request.planner_input
+    payload: dict[str, object] = {"planner_input": provider_input}
     if request.repair_errors:
         payload["structural_repair_errors"] = list(request.repair_errors)
     return (

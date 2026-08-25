@@ -26,6 +26,8 @@ class StoryPlannerRequest:
     input_hash: str
     model_id: str
     api_key: str
+    provider_input: dict[str, Any] | None = None
+    provider_input_hash: str | None = None
     repair_errors: tuple[dict[str, Any], ...] = ()
     max_turns: int = 1
     network_retries: int = 0
@@ -81,6 +83,8 @@ def execute_story_planner(
             input_hash=request.input_hash,
             model_id=request.model_id,
             api_key=request.api_key,
+            provider_input=request.provider_input,
+            provider_input_hash=request.provider_input_hash,
             repair_errors=repair_errors,
             max_turns=request.max_turns,
             network_retries=request.network_retries,

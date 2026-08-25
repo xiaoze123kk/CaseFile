@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime
 from graphlib import CycleError, TopologicalSorter
 from typing import Any
@@ -22,6 +24,7 @@ from casefile_contracts import NovelPlanCandidate, NovelPlanIR
 NOVEL_PLAN_CANDIDATE_SCHEMA_ID = "compiler.novel-plan-candidate.v1"
 NOVEL_PLAN_SCHEMA_ID = "compiler.novel-plan.v1"
 STORY_PLANNER_COMPONENT_VERSION = "compiler.story-planner.v1"
+STORY_PLANNER_REPAIR_VERSION = "compiler.story-plan-mode-repair.v1"
 
 _COLLECTION_TYPE = {
     "resolution_specs": "resolution_spec",
@@ -43,6 +46,40 @@ _RUNTIME_KEYS = {
     "user_id",
     "database_id",
 }
+_TEMPORAL_VIOLATION_CODES = {
+    "compiler_story_plan_temporal_order_invalid",
+    "compiler_story_plan_flashback_invalid",
+    "compiler_story_plan_flashforward_invalid",
+}
+_PRESERVED_NONLINEAR_MODES = ("flashback", "flashforward")
+
+
+@dataclass(frozen=True, slots=True)
+class NovelPlanViolation:
+    """One deterministic semantic counterexample without repair instructions."""
+
+    code: str
+    details: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class NovelPlanValidationReport:
+    """Ordered semantic violations for audit and future bounded experiments."""
+
+    valid: bool
+    violations: tuple[NovelPlanViolation, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NovelPlanRepairResult:
+    """One deterministic, candidate-preserving temporal repair result."""
+
+    candidate: dict[str, Any]
+    applied: bool
+    changes: tuple[dict[str, str], ...]
+    before: NovelPlanValidationReport
+    after: NovelPlanValidationReport
+    repair_version: str = STORY_PLANNER_REPAIR_VERSION
 
 
 def validate_novel_plan_candidate(
@@ -51,6 +88,140 @@ def validate_novel_plan_candidate(
     planner_input: dict[str, Any],
 ) -> NovelPlanCandidate:
     """Validate model-owned arrangement without repairing semantic violations."""
+
+    report, parsed = _inspect_novel_plan_candidate(candidate, planner_input=planner_input)
+    if not report.valid:
+        raise CompilerContractError(report.violations[0].code)
+    assert parsed is not None
+    return parsed
+
+
+def inspect_novel_plan_candidate(
+    candidate: dict[str, Any],
+    *,
+    planner_input: dict[str, Any],
+) -> NovelPlanValidationReport:
+    """Return deterministic counterexamples while preserving fail-closed callers."""
+
+    report, _ = _inspect_novel_plan_candidate(candidate, planner_input=planner_input)
+    return report
+
+
+def repair_novel_plan_candidate(
+    candidate: dict[str, Any],
+    *,
+    planner_input: dict[str, Any],
+) -> NovelPlanRepairResult:
+    """Repair only temporal presentation modes while preserving narrative intent."""
+
+    before = inspect_novel_plan_candidate(candidate, planner_input=planner_input)
+    original = copy.deepcopy(candidate)
+    if before.valid or not _only_temporal_violations(before):
+        return NovelPlanRepairResult(
+            candidate=original,
+            applied=False,
+            changes=(),
+            before=before,
+            after=before,
+        )
+    try:
+        current = NovelPlanCandidate.model_validate(candidate).model_dump(mode="json")
+    except ValidationError:
+        return NovelPlanRepairResult(
+            candidate=original,
+            applied=False,
+            changes=(),
+            before=before,
+            after=before,
+        )
+
+    parsed_input = validate_planner_input_bundle(planner_input)
+    allowed_modes = tuple(parsed_input["profile"]["allowed_presentation_modes"])
+    preserved_counts = _nonlinear_mode_counts(current)
+    max_steps = min(len(current["scenes"]), 16)
+    current_report = before
+    for _step in range(max_steps):
+        candidates = _temporal_mode_candidates(
+            current,
+            report=current_report,
+            allowed_modes=allowed_modes,
+        )
+        ranked: list[tuple[int, int, str, dict[str, Any], NovelPlanValidationReport]] = []
+        for proposed in candidates:
+            if not _preserves_candidate(original, proposed, preserved_counts=preserved_counts):
+                continue
+            proposed_report = inspect_novel_plan_candidate(proposed, planner_input=parsed_input)
+            if not proposed_report.valid and not _only_temporal_violations(proposed_report):
+                continue
+            ranked.append(
+                (
+                    len(proposed_report.violations),
+                    len(_presentation_mode_changes(original, proposed)),
+                    canonical_json_sha256(proposed),
+                    proposed,
+                    proposed_report,
+                )
+            )
+        if not ranked:
+            break
+        ranked.sort(key=lambda item: item[:3])
+        violation_count, _change_count, _hash, proposed, proposed_report = ranked[0]
+        if violation_count >= len(current_report.violations):
+            break
+        current = proposed
+        current_report = proposed_report
+        if current_report.valid:
+            changes = _presentation_mode_changes(original, current)
+            return NovelPlanRepairResult(
+                candidate=current,
+                applied=bool(changes),
+                changes=changes,
+                before=before,
+                after=current_report,
+            )
+
+    return NovelPlanRepairResult(
+        candidate=original,
+        applied=False,
+        changes=(),
+        before=before,
+        after=before,
+    )
+
+
+def _inspect_novel_plan_candidate(
+    candidate: dict[str, Any],
+    *,
+    planner_input: dict[str, Any],
+) -> tuple[NovelPlanValidationReport, NovelPlanCandidate | None]:
+    try:
+        parsed, value, catalog = _validate_candidate_foundation(
+            candidate,
+            planner_input=planner_input,
+        )
+    except CompilerContractError as error:
+        return (
+            NovelPlanValidationReport(
+                valid=False,
+                violations=(NovelPlanViolation(code=error.reason_code, details={}),),
+            ),
+            None,
+        )
+
+    scenes = value["scenes"]
+    violations = (
+        *_exposure_violations(scenes, planner_input.get("exposure_plan")),
+        *_resolution_violations(scenes, catalog),
+        *_story_time_violations(scenes, planner_input["narrative_ir"]),
+    )
+    return NovelPlanValidationReport(valid=not violations, violations=violations), parsed
+
+
+def _validate_candidate_foundation(
+    candidate: dict[str, Any],
+    *,
+    planner_input: dict[str, Any],
+) -> tuple[NovelPlanCandidate, dict[str, Any], set[tuple[str, str]]]:
 
     planner_input = validate_planner_input_bundle(planner_input)
     try:
@@ -101,10 +272,7 @@ def validate_novel_plan_candidate(
     if any(scene["presentation_mode"] not in allowed_modes for scene in scenes):
         raise CompilerContractError("compiler_story_plan_presentation_mode_invalid")
 
-    _validate_exposure(scenes, planner_input.get("exposure_plan"))
-    _validate_resolutions(scenes, catalog)
-    _validate_story_time_order(scenes, narrative_ir)
-    return parsed
+    return parsed, value, catalog
 
 
 def canonicalize_novel_plan(
@@ -161,10 +329,12 @@ def story_planner_component_fingerprint(
     provider: str,
     model_id: str,
     provider_config_version: int,
+    planner_model_view: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     input_fp = planner_input_fingerprint_json(planner_input)
-    return {
+    fingerprint = {
         "component_version": STORY_PLANNER_COMPONENT_VERSION,
+        "candidate_repair_version": STORY_PLANNER_REPAIR_VERSION,
         "candidate_schema_id": NOVEL_PLAN_CANDIDATE_SCHEMA_ID,
         "novel_plan_schema_id": NOVEL_PLAN_SCHEMA_ID,
         **input_fp,
@@ -174,6 +344,10 @@ def story_planner_component_fingerprint(
         "model_id": model_id,
         "provider_config_version": provider_config_version,
     }
+    if planner_model_view is not None:
+        fingerprint["planner_model_view_schema_id"] = planner_model_view.get("schema_id")
+        fingerprint["planner_model_view_hash"] = canonical_json_sha256(planner_model_view)
+    return fingerprint
 
 
 def planner_input_fingerprint_json(planner_input: dict[str, Any]) -> dict[str, Any]:
@@ -237,31 +411,76 @@ def _validate_scene_refs(scene: dict[str, Any], catalog: set[tuple[str, str]]) -
         raise CompilerContractError("compiler_story_plan_reference_type_invalid")
 
 
-def _validate_exposure(scenes: list[dict[str, Any]], exposure: dict[str, Any] | None) -> None:
+def _exposure_violations(
+    scenes: list[dict[str, Any]], exposure: dict[str, Any] | None
+) -> tuple[NovelPlanViolation, ...]:
     if exposure is None:
-        return
+        return ()
     entries = exposure["frozen_payload"].get("entries", [])
     expected = [item["entry_key"] for item in entries]
     introduced: list[str] = []
     seen: set[str] = set()
+    introduced_at: dict[str, str] = {}
     expected_set = set(expected)
     for scene in scenes:
         for placement in scene["exposure"]:
             key = placement["entry_key"]
             if key not in expected_set:
-                raise CompilerContractError("compiler_story_plan_exposure_reference_invalid")
+                return (
+                    NovelPlanViolation(
+                        code="compiler_story_plan_exposure_reference_invalid",
+                        details={"scene_id": scene["scene_id"], "entry_key": key},
+                    ),
+                )
             if placement["action"] == "introduce":
                 if key in seen:
-                    raise CompilerContractError("compiler_story_plan_exposure_duplicate")
+                    return (
+                        NovelPlanViolation(
+                            code="compiler_story_plan_exposure_duplicate",
+                            details={
+                                "scene_id": scene["scene_id"],
+                                "entry_key": key,
+                                "first_scene_id": introduced_at[key],
+                            },
+                        ),
+                    )
                 seen.add(key)
+                introduced_at[key] = scene["scene_id"]
                 introduced.append(key)
             elif key not in seen:
-                raise CompilerContractError("compiler_story_plan_exposure_before_introduction")
+                return (
+                    NovelPlanViolation(
+                        code="compiler_story_plan_exposure_before_introduction",
+                        details={"scene_id": scene["scene_id"], "entry_key": key},
+                    ),
+                )
     if introduced != expected:
-        raise CompilerContractError("compiler_story_plan_exposure_violation")
+        mismatch = next(
+            (
+                index
+                for index in range(max(len(expected), len(introduced)))
+                if index >= len(expected)
+                or index >= len(introduced)
+                or expected[index] != introduced[index]
+            ),
+            0,
+        )
+        return (
+            NovelPlanViolation(
+                code="compiler_story_plan_exposure_violation",
+                details={
+                    "expected_introduce_order": expected,
+                    "actual_introduce_order": introduced,
+                    "first_mismatch_index": mismatch,
+                },
+            ),
+        )
+    return ()
 
 
-def _validate_resolutions(scenes: list[dict[str, Any]], catalog: set[tuple[str, str]]) -> None:
+def _resolution_violations(
+    scenes: list[dict[str, Any]], catalog: set[tuple[str, str]]
+) -> tuple[NovelPlanViolation, ...]:
     required = {key for key in catalog if key[0] == "resolution_spec"}
     terminal: dict[tuple[str, str], str] = {}
     for scene in scenes:
@@ -270,13 +489,37 @@ def _validate_resolutions(scenes: list[dict[str, Any]], catalog: set[tuple[str, 
             key = _ref_key(placement["resolution_ref"])
             if action in {"resolve", "intentionally_unresolved"}:
                 if key in terminal:
-                    raise CompilerContractError("compiler_story_plan_resolution_duplicate")
+                    return (
+                        NovelPlanViolation(
+                            code="compiler_story_plan_resolution_duplicate",
+                            details={
+                                "scene_id": scene["scene_id"],
+                                "resolution_ref": {
+                                    "object_type": key[0],
+                                    "object_id": key[1],
+                                },
+                            },
+                        ),
+                    )
                 terminal[key] = action
     if set(terminal) != required:
-        raise CompilerContractError("compiler_story_plan_resolution_uncovered")
+        missing = sorted(required - set(terminal))
+        return (
+            NovelPlanViolation(
+                code="compiler_story_plan_resolution_uncovered",
+                details={
+                    "missing_resolution_refs": [
+                        {"object_type": item[0], "object_id": item[1]} for item in missing
+                    ]
+                },
+            ),
+        )
+    return ()
 
 
-def _validate_story_time_order(scenes: list[dict[str, Any]], narrative_ir: dict[str, Any]) -> None:
+def _story_time_violations(
+    scenes: list[dict[str, Any]], narrative_ir: dict[str, Any]
+) -> tuple[NovelPlanViolation, ...]:
     event_times: dict[str, datetime] = {}
     for envelope in narrative_ir["objects"]["events"]:
         time = envelope["value"].get("time") or {}
@@ -290,6 +533,8 @@ def _validate_story_time_order(scenes: list[dict[str, Any]], narrative_ir: dict[
                 continue
 
     previous: datetime | None = None
+    previous_scene_id: str | None = None
+    violations: list[NovelPlanViolation] = []
     for scene in sorted(scenes, key=lambda item: item["discourse_order"]):
         anchors = [
             event_times.get(ref["object_id"])
@@ -303,12 +548,111 @@ def _validate_story_time_order(scenes: list[dict[str, Any]], narrative_ir: dict[
         mode = scene["presentation_mode"]
         if previous is not None:
             if mode == "linear" and current < previous:
-                raise CompilerContractError("compiler_story_plan_temporal_order_invalid")
-            if mode == "flashback" and current > previous:
-                raise CompilerContractError("compiler_story_plan_flashback_invalid")
-            if mode == "flashforward" and current < previous:
-                raise CompilerContractError("compiler_story_plan_flashforward_invalid")
+                code = "compiler_story_plan_temporal_order_invalid"
+            elif mode == "flashback" and current > previous:
+                code = "compiler_story_plan_flashback_invalid"
+            elif mode == "flashforward" and current < previous:
+                code = "compiler_story_plan_flashforward_invalid"
+            else:
+                code = None
+            if code is not None:
+                violations.append(
+                    NovelPlanViolation(
+                        code=code,
+                        details={
+                            "scene_id": scene["scene_id"],
+                            "previous_scene_id": previous_scene_id,
+                            "previous_time": previous.isoformat(),
+                            "current_time": current.isoformat(),
+                            "presentation_mode": mode,
+                        },
+                    )
+                )
         previous = current
+        previous_scene_id = scene["scene_id"]
+    return tuple(violations)
+
+
+def _only_temporal_violations(report: NovelPlanValidationReport) -> bool:
+    return bool(report.violations) and all(
+        violation.code in _TEMPORAL_VIOLATION_CODES for violation in report.violations
+    )
+
+
+def _temporal_mode_candidates(
+    candidate: dict[str, Any],
+    *,
+    report: NovelPlanValidationReport,
+    allowed_modes: tuple[str, ...],
+) -> tuple[dict[str, Any], ...]:
+    scenes = candidate["scenes"]
+    scene_indexes = {scene["scene_id"]: index for index, scene in enumerate(scenes)}
+    proposed: dict[str, dict[str, Any]] = {}
+    for violation in report.violations:
+        scene_id = violation.details.get("scene_id")
+        if not isinstance(scene_id, str) or scene_id not in scene_indexes:
+            continue
+        index = scene_indexes[scene_id]
+        original_mode = scenes[index]["presentation_mode"]
+        for replacement in allowed_modes:
+            if replacement == original_mode:
+                continue
+            direct = copy.deepcopy(candidate)
+            direct["scenes"][index]["presentation_mode"] = replacement
+            proposed[canonical_json_sha256(direct)] = direct
+        for donor_index, donor in enumerate(scenes):
+            donor_mode = donor["presentation_mode"]
+            if donor_index == index or donor_mode == original_mode:
+                continue
+            swapped = copy.deepcopy(candidate)
+            swapped["scenes"][index]["presentation_mode"] = donor_mode
+            swapped["scenes"][donor_index]["presentation_mode"] = original_mode
+            proposed[canonical_json_sha256(swapped)] = swapped
+    return tuple(proposed[key] for key in sorted(proposed))
+
+
+def _nonlinear_mode_counts(candidate: dict[str, Any]) -> dict[str, int]:
+    return {
+        mode: sum(scene["presentation_mode"] == mode for scene in candidate["scenes"])
+        for mode in _PRESERVED_NONLINEAR_MODES
+    }
+
+
+def _preserves_candidate(
+    original: dict[str, Any],
+    proposed: dict[str, Any],
+    *,
+    preserved_counts: dict[str, int],
+) -> bool:
+    if _without_presentation_modes(original) != _without_presentation_modes(proposed):
+        return False
+    proposed_counts = _nonlinear_mode_counts(proposed)
+    return all(proposed_counts[mode] >= count for mode, count in preserved_counts.items())
+
+
+def _without_presentation_modes(candidate: dict[str, Any]) -> dict[str, Any]:
+    value = copy.deepcopy(candidate)
+    for scene in value.get("scenes", []):
+        scene.pop("presentation_mode", None)
+    return value
+
+
+def _presentation_mode_changes(
+    original: dict[str, Any], proposed: dict[str, Any]
+) -> tuple[dict[str, str], ...]:
+    original_modes = {
+        scene["scene_id"]: scene["presentation_mode"] for scene in original.get("scenes", [])
+    }
+    return tuple(
+        {
+            "scene_id": scene["scene_id"],
+            "field": "presentation_mode",
+            "before": original_modes[scene["scene_id"]],
+            "after": scene["presentation_mode"],
+        }
+        for scene in sorted(proposed.get("scenes", []), key=lambda item: item["discourse_order"])
+        if original_modes.get(scene["scene_id"]) != scene["presentation_mode"]
+    )
 
 
 def _unique_contiguous(
@@ -341,7 +685,13 @@ __all__ = [
     "NOVEL_PLAN_CANDIDATE_SCHEMA_ID",
     "NOVEL_PLAN_SCHEMA_ID",
     "STORY_PLANNER_COMPONENT_VERSION",
+    "STORY_PLANNER_REPAIR_VERSION",
+    "NovelPlanRepairResult",
+    "NovelPlanValidationReport",
+    "NovelPlanViolation",
     "canonicalize_novel_plan",
+    "inspect_novel_plan_candidate",
+    "repair_novel_plan_candidate",
     "story_planner_component_fingerprint",
     "validate_novel_plan_candidate",
 ]

@@ -33,9 +33,11 @@ from casefile.data_postgres.models import (
     UserProviderSetting,
 )
 from casefile.domain.narrative_compiler import (
+    NovelPlanRepairResult,
     build_planner_input_bundle,
     canonical_json_sha256,
     canonicalize_novel_plan,
+    repair_novel_plan_candidate,
     story_planner_component_fingerprint,
     validate_novel_plan_candidate,
 )
@@ -105,7 +107,17 @@ def execute_story_planner_component(
             resumed_from_step_id=recovered_step_id,
         )
 
-    # This is deliberately outside the repair loop: semantic violations fail closed.
+    repair = repair_novel_plan_candidate(candidate, planner_input=planner_input)
+    if not repair.before.valid:
+        _record_repair_evaluation(
+            worker,
+            task_run_id=task_run_id,
+            attempt_id=attempt_id,
+            step_id=step_id,
+            repair=repair,
+        )
+    candidate = repair.candidate
+    # Model output never bypasses the authoritative validator. Unrepairable candidates fail closed.
     validate_novel_plan_candidate(candidate, planner_input=planner_input)
     novel_plan = canonicalize_novel_plan(
         candidate,
@@ -272,6 +284,44 @@ def _start_call(
                 target_schema_id="compiler.novel-plan-candidate.v1",
                 input_hash=component_hash,
             )
+        )
+
+
+def _record_repair_evaluation(
+    worker: Any,
+    *,
+    task_run_id: int,
+    attempt_id: int,
+    step_id: int,
+    repair: NovelPlanRepairResult,
+) -> None:
+    diagnostic = {
+        "repair_version": repair.repair_version,
+        "applied": repair.applied,
+        "changes": list(repair.changes),
+        "before_violations": [
+            {"code": item.code, "details": item.details} for item in repair.before.violations
+        ],
+        "after_violations": [
+            {"code": item.code, "details": item.details} for item in repair.after.violations
+        ],
+    }
+    with worker.session_factory() as session, session.begin():
+        task, _attempt = _lock_active(session, worker, task_run_id, attempt_id)
+        step = session.scalar(
+            select(AgentStepRun)
+            .where(AgentStepRun.id == step_id)
+            .with_for_update(of=AgentStepRun)
+        )
+        if step is None or step.task_run_id != task.id:
+            raise CompilerExecutionError("compiler_story_planner_step_mismatch")
+        step.diagnostic_jsonb = {**(step.diagnostic_jsonb or {}), "candidate_repair": diagnostic}
+        append_task_event(
+            session,
+            task,
+            "compiler.story_planner.repair_evaluated",
+            STORY_PLANNER_COMPONENT_ID,
+            diagnostic,
         )
 
 

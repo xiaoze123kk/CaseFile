@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,9 +16,7 @@ def test_capability_suite_is_exact_24_task_matrix_with_valid_references() -> Non
     validated = validate_suite()
     assert len(validated["suite"]["tasks"]) == 24
     assert len(set(validated["reference_hashes"].values())) >= 8
-    assert len(
-        {task["planner_inputs"]["v1"]["hash"] for task in validated["suite"]["tasks"]}
-    ) >= 6
+    assert len({task["planner_inputs"]["v1"]["hash"] for task in validated["suite"]["tasks"]}) >= 6
     assert all(
         invariant["input_evidence_paths"]
         for task in validated["suite"]["tasks"]
@@ -115,6 +114,102 @@ def test_v2_fake_capability_reports_audited_groups_and_promotion_state(
     assert report["metrics"]["valid_but_g2_failed_trial_count"] == 0
     assert report["promotion_gate"]["evaluated"] is True
     assert report["promotion_gate"]["qualified"] is False
+
+
+def test_v3_fake_capability_uses_compact_provider_view_and_full_audit_bundle(
+    tmp_path: Path,
+) -> None:
+    report = run_suite(
+        suite_kind="capability",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "capability-v3.json",
+        resume=False,
+        planner_input_version="v3",
+        prompt_version="story-planner-v7",
+    )
+    assert report["frozen"]["planner_input_version"] == "v3"
+    assert report["frozen"]["prompt"] == "story-planner-v7"
+    assert report["metrics"]["infrastructure_failure_rate"] == 0
+    assert report["promotion_gate"]["checks"]["g2_stronger_than_v3"] is False
+    assert report["frozen"]["comparison_baseline"]["outcome_passed_trial_count"] == 64
+
+
+def test_candidate_preserving_repair_improves_same_trial_without_g2_regression() -> None:
+    validated = validate_suite(planner_input_version="v3")
+    task = next(
+        item for item in validated["suite"]["tasks"] if item["task_id"] == "complex_mixed__basic"
+    )
+    task_id = task["task_id"]
+    candidate = copy.deepcopy(validated["references"][task_id])
+    earlier_ref = {"object_type": "event", "object_id": "evt_restart_six"}
+    later_ref = {"object_type": "event", "object_id": "evt_restart_seven"}
+    candidate["scenes"][0]["event_refs"] = [earlier_ref]
+    candidate["scenes"][0]["story_time_refs"] = [earlier_ref]
+    candidate["scenes"][1]["event_refs"] = [later_ref]
+    candidate["scenes"][1]["story_time_refs"] = [later_ref]
+
+    trial = novel_plan_eval._run_trial(
+        task=task,
+        trial_index=1,
+        suite_kind="capability",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        bundle=validated["planner_inputs"][task_id],
+        provider_input=validated["planner_model_views"][task_id],
+        reference=candidate,
+        outcome_invariants=task["outcome_invariants"],
+        prompt_version="story-planner-v7",
+    )
+
+    assert trial["raw_semantic_valid"] is False
+    assert trial["candidate_repair_applied"] is True
+    assert trial["semantic_valid"] is True
+    assert trial["passed"] is True
+    assert trial["candidate_repair_g2_regression"] is False
+    assert len(trial["candidate_repair_changes"]) == 2
+
+
+def test_semantic_rejections_keep_provider_usage_in_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RejectingProvider:
+        def __init__(self, candidate: dict[str, Any]) -> None:
+            self.candidate = copy.deepcopy(candidate)
+
+        def plan_story(self, _request: object) -> novel_plan_eval.StoryPlannerProviderResult:
+            candidate = copy.deepcopy(self.candidate)
+            for scene in candidate["scenes"]:
+                scene["resolutions"] = []
+            return novel_plan_eval.StoryPlannerProviderResult(
+                candidate=candidate,
+                usage={"requests": 1, "total_tokens": 123},
+            )
+
+    monkeypatch.setattr(
+        novel_plan_eval,
+        "_provider",
+        lambda _mode, _provider_name, candidate: RejectingProvider(candidate),
+    )
+
+    report = run_suite(
+        suite_kind="regression",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=None,
+        resume=False,
+    )
+
+    assert report["metrics"]["semantic_valid_trial_count"] == 0
+    assert report["metrics"]["usage_total"] == {"requests": 2, "total_tokens": 246}
 
 
 def test_prompt_version_is_frozen_in_benchmark_fingerprint(tmp_path: Path) -> None:
@@ -306,3 +401,25 @@ def test_report_does_not_count_production_rejection_as_g2_failure() -> None:
         "compiler_story_plan_reference_invalid": 1
     }
     assert report["metrics"]["g2_outcome_failures"] == {}
+
+
+def test_report_does_not_classify_infrastructure_failure_as_ok_or_production_rejection() -> None:
+    report = novel_plan_eval._report(
+        {"suite": {"tasks": []}, "suite_kind": "capability"},
+        "a" * 64,
+        "capability",
+        [
+            {
+                "task_id": "provider_failure",
+                "trial_index": 1,
+                "passed": False,
+                "infrastructure_failure": {"type": "APIConnectionError"},
+                "rounds": [],
+                "graders": {},
+            }
+        ],
+    )
+
+    assert report["metrics"]["failure_rates"] == {"infrastructure_failure": 1}
+    assert report["metrics"]["infrastructure_failures_by_type"] == {"APIConnectionError": 1}
+    assert report["metrics"]["production_rejections"] == {}

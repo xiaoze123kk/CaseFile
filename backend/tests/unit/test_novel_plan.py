@@ -11,15 +11,23 @@ import pytest
 
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
+    build_planner_constraint_ir,
     build_planner_input_bundle,
     build_planner_input_bundle_v2,
+    build_planner_model_view_v3,
     canonical_json_sha256,
     canonicalize_novel_plan,
+    inspect_novel_plan_candidate,
+    planner_constraint_ir_fingerprint,
     planner_input_fingerprint,
+    planner_model_view_v3_fingerprint,
     project_narrative_ir_json,
+    repair_novel_plan_candidate,
     story_planner_component_fingerprint,
     validate_novel_plan_candidate,
+    validate_planner_constraint_ir,
     validate_planner_input_bundle,
+    validate_planner_model_view_v3,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -174,6 +182,7 @@ def test_planner_input_v2_projects_and_reproves_authoritative_constraints() -> N
     )
     assert v1_component["planner_input_schema_id"] == "compiler.story-planner-input.v1"
     assert v2_component["planner_input_schema_id"] == "compiler.story-planner-input.v2"
+    assert v2_component["candidate_repair_version"] == "compiler.story-plan-mode-repair.v1"
     assert canonical_json_sha256(v1_component) != canonical_json_sha256(v2_component)
 
     tampered = copy.deepcopy(v2)
@@ -195,6 +204,83 @@ def test_planner_input_v2_preserves_unknown_time_without_inventing_anchor() -> N
         compile_mode="preview",
     )
     assert v2["planner_view"]["hard_constraints"]["chronology_anchors"] == []
+
+
+def test_planner_constraint_ir_compiles_precedence_ranks_and_stable_identity() -> None:
+    bundle = _planner_input()
+    earlier = copy.deepcopy(bundle["narrative_ir"]["objects"]["events"][0])
+    earlier["object_ref"]["object_id"] = "evt_restart_six"
+    earlier["value"]["id"] = "evt_restart_six"
+    earlier["value"]["time"]["start"] = "2042-05-31T20:00"
+    earlier["value"]["time"]["end"] = "2042-05-31T20:03"
+    bundle["narrative_ir"]["objects"]["events"].append(earlier)
+    second_entry = copy.deepcopy(bundle["exposure_plan"]["frozen_payload"]["entries"][0])
+    second_entry["entry_key"] = "exposure_second"
+    second_entry["sequence_no"] = 2
+    bundle["exposure_plan"]["frozen_payload"]["entries"].append(second_entry)
+
+    constraint_ir = build_planner_constraint_ir(bundle)
+
+    assert constraint_ir["exposure"] == {
+        "introduce_order": ["exposure_restart_log", "exposure_second"],
+        "precedence_edges": [
+            {
+                "before_entry_key": "exposure_restart_log",
+                "after_entry_key": "exposure_second",
+            }
+        ],
+    }
+    assert [item["rank"] for item in constraint_ir["temporal"]["anchors"]] == [1, 2]
+    assert (
+        validate_planner_constraint_ir(
+            copy.deepcopy(constraint_ir), planner_input=copy.deepcopy(bundle)
+        )
+        == constraint_ir
+    )
+    assert planner_constraint_ir_fingerprint(constraint_ir)["content_hash"] == (
+        canonical_json_sha256(constraint_ir)
+    )
+
+    tampered = copy.deepcopy(constraint_ir)
+    tampered["temporal"]["anchors"][0]["rank"] = 99
+    with pytest.raises(CompilerContractError) as captured:
+        validate_planner_constraint_ir(tampered, planner_input=bundle)
+    assert captured.value.reason_code == "compiler_planner_constraint_ir_mismatch"
+
+
+def test_planner_model_view_v3_is_compact_reprovable_and_source_ref_free() -> None:
+    v1 = _planner_input()
+    bundle = build_planner_input_bundle_v2(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+
+    model_view = build_planner_model_view_v3(bundle)
+
+    assert model_view["schema_id"] == "compiler.story-planner-model-view.v3"
+    assert "narrative_ir" not in model_view
+    assert "exposure_plan" not in model_view
+    assert "source_ref" not in json.dumps(model_view, ensure_ascii=False)
+    assert len(json.dumps(model_view, ensure_ascii=False)) < len(
+        json.dumps(bundle, ensure_ascii=False)
+    )
+    assert (
+        validate_planner_model_view_v3(
+            copy.deepcopy(model_view), planner_input=copy.deepcopy(bundle)
+        )
+        == model_view
+    )
+    assert planner_model_view_v3_fingerprint(model_view)["content_hash"] == (
+        canonical_json_sha256(model_view)
+    )
+
+    tampered = copy.deepcopy(model_view)
+    tampered["hard_constraints"]["temporal"]["anchors"] = []
+    with pytest.raises(CompilerContractError) as captured:
+        validate_planner_model_view_v3(tampered, planner_input=bundle)
+    assert captured.value.reason_code == "compiler_planner_model_view_v3_mismatch"
 
 
 def test_preview_default_exposure_is_allowed_but_canonical_requires_binding() -> None:
@@ -250,12 +336,127 @@ def test_story_time_and_discourse_order_require_explicit_flashback() -> None:
     candidate["scenes"][1]["story_time_refs"] = [earlier_ref]
 
     candidate["scenes"][1]["presentation_mode"] = "linear"
+    report = inspect_novel_plan_candidate(candidate, planner_input=bundle)
+    assert report.valid is False
+    assert report.violations[0].code == "compiler_story_plan_temporal_order_invalid"
+    assert report.violations[0].details == {
+        "scene_id": "scene_resolution",
+        "previous_scene_id": "scene_discovery",
+        "previous_time": "2042-06-01T20:00:00",
+        "current_time": "2042-05-31T20:00:00",
+        "presentation_mode": "linear",
+    }
     with pytest.raises(CompilerContractError) as captured:
         validate_novel_plan_candidate(candidate, planner_input=bundle)
     assert captured.value.reason_code == "compiler_story_plan_temporal_order_invalid"
 
     candidate["scenes"][1]["presentation_mode"] = "flashback"
     validate_novel_plan_candidate(candidate, planner_input=bundle)
+
+
+def test_temporal_mode_repair_relocates_flashback_without_changing_other_fields() -> None:
+    bundle = _planner_input()
+    later = copy.deepcopy(bundle["narrative_ir"]["objects"]["events"][0])
+    later["object_ref"]["object_id"] = "evt_restart_eight"
+    later["value"]["id"] = "evt_restart_eight"
+    later["value"]["time"]["start"] = "2042-06-01T21:00"
+    later["value"]["time"]["end"] = "2042-06-01T21:03"
+    bundle["narrative_ir"]["objects"]["events"].append(later)
+    candidate = _candidate()
+    later_ref = {"object_type": "event", "object_id": "evt_restart_eight"}
+    candidate["scenes"][1]["event_refs"] = [later_ref]
+    candidate["scenes"][1]["story_time_refs"] = [later_ref]
+    original = copy.deepcopy(candidate)
+
+    repaired = repair_novel_plan_candidate(candidate, planner_input=bundle)
+
+    assert repaired.applied is True
+    assert repaired.after.valid is True
+    assert repaired.changes == (
+        {
+            "scene_id": "scene_discovery",
+            "field": "presentation_mode",
+            "before": "linear",
+            "after": "flashback",
+        },
+        {
+            "scene_id": "scene_resolution",
+            "field": "presentation_mode",
+            "before": "flashback",
+            "after": "linear",
+        },
+    )
+    assert sum(
+        scene["presentation_mode"] == "flashback" for scene in repaired.candidate["scenes"]
+    ) == 1
+    for before, after in zip(original["scenes"], repaired.candidate["scenes"], strict=True):
+        assert {key: value for key, value in before.items() if key != "presentation_mode"} == {
+            key: value for key, value in after.items() if key != "presentation_mode"
+        }
+    validate_novel_plan_candidate(repaired.candidate, planner_input=bundle)
+
+
+def test_temporal_mode_repair_adds_flashback_only_when_profile_allows_it() -> None:
+    bundle = _planner_input()
+    earlier = copy.deepcopy(bundle["narrative_ir"]["objects"]["events"][0])
+    earlier["object_ref"]["object_id"] = "evt_restart_six"
+    earlier["value"]["id"] = "evt_restart_six"
+    earlier["value"]["time"]["start"] = "2042-05-31T20:00"
+    earlier["value"]["time"]["end"] = "2042-05-31T20:03"
+    bundle["narrative_ir"]["objects"]["events"].append(earlier)
+    candidate = _candidate()
+    earlier_ref = {"object_type": "event", "object_id": "evt_restart_six"}
+    candidate["scenes"][1]["event_refs"] = [earlier_ref]
+    candidate["scenes"][1]["story_time_refs"] = [earlier_ref]
+    candidate["scenes"][1]["presentation_mode"] = "linear"
+
+    repaired = repair_novel_plan_candidate(candidate, planner_input=bundle)
+    assert repaired.applied is True
+    assert repaired.candidate["scenes"][1]["presentation_mode"] == "flashback"
+
+    linear_only = copy.deepcopy(bundle)
+    linear_only["profile"]["allowed_presentation_modes"] = ["linear"]
+    linear_only["planning_constraints"]["allowed_presentation_modes"] = ["linear"]
+    rejected = repair_novel_plan_candidate(candidate, planner_input=linear_only)
+    assert rejected.applied is False
+    assert rejected.candidate == candidate
+
+
+def test_temporal_mode_repair_does_not_touch_non_temporal_failure() -> None:
+    bundle = _planner_input()
+    candidate = _candidate()
+    candidate["scenes"][0]["exposure"] = []
+
+    repaired = repair_novel_plan_candidate(candidate, planner_input=bundle)
+
+    assert repaired.applied is False
+    assert repaired.candidate == candidate
+    assert repaired.before.violations[0].code == "compiler_story_plan_exposure_violation"
+
+
+def test_validation_report_explains_exposure_order_without_repairing_candidate() -> None:
+    bundle = _planner_input()
+    second_entry = copy.deepcopy(bundle["exposure_plan"]["frozen_payload"]["entries"][0])
+    second_entry["entry_key"] = "exposure_second"
+    second_entry["sequence_no"] = 2
+    bundle["exposure_plan"]["frozen_payload"]["entries"].append(second_entry)
+    candidate = _candidate()
+    candidate["scenes"][0]["exposure"] = [{"entry_key": "exposure_second", "action": "introduce"}]
+    candidate["scenes"][1]["exposure"] = [
+        {"entry_key": "exposure_restart_log", "action": "introduce"}
+    ]
+    original = copy.deepcopy(candidate)
+
+    report = inspect_novel_plan_candidate(candidate, planner_input=bundle)
+
+    assert report.valid is False
+    assert report.violations[0].code == "compiler_story_plan_exposure_violation"
+    assert report.violations[0].details == {
+        "expected_introduce_order": ["exposure_restart_log", "exposure_second"],
+        "actual_introduce_order": ["exposure_second", "exposure_restart_log"],
+        "first_mismatch_index": 0,
+    }
+    assert candidate == original
 
 
 @pytest.mark.parametrize(

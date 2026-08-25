@@ -23,14 +23,19 @@ from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_PROMPT_VERSION,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
+    StoryPlannerRound,
     execute_story_planner,
 )
 from casefile.domain.narrative_compiler import (
+    STORY_PLANNER_REPAIR_VERSION,
     CompilerContractError,
     build_planner_input_bundle,
+    build_planner_model_view_v3,
     canonical_json_sha256,
     canonicalize_novel_plan,
+    inspect_novel_plan_candidate,
     project_narrative_ir_json,
+    repair_novel_plan_candidate,
     validate_novel_plan_candidate,
 )
 
@@ -47,8 +52,15 @@ CAPABILITIES = (
     "complex_mixed",
 )
 VARIANTS = ("basic", "decoy", "dense")
-RUNTIME_VERSION = "novel-plan-benchmark.v3"
+RUNTIME_VERSION = "novel-plan-benchmark.v4"
 GRADER_VERSION = "novel-plan-g0-g3.v2"
+MODEL_VIEW_V3_BASELINE = {
+    "fingerprint": "51385f7a2248a3d791d1a1cc1cac0827dafa32f77e6e834ecc8ab14dc5eb5071",
+    "semantic_valid_trial_count": 64,
+    "outcome_passed_trial_count": 64,
+    "pass_at_3_task_count": 24,
+    "all_three_pass_task_count": 18,
+}
 QUALITY_GRADER_PROMPT = (
     "你是 NovelPlanIR 质量评审。只评估给定候选，不补写内容。"
     "对 opening、escalation、turn_setup、pov、climax、closure 六项分别给出 0 到 1 分，"
@@ -121,16 +133,18 @@ def validate_suite(
         raise ValueError("Novel Plan capability matrix is incomplete")
     if suite.get("schema_id") != "benchmark.novel-plan-suite.v3":
         raise ValueError("Novel Plan capability suite schema is invalid")
-    if planner_input_version not in {"v1", "v2"}:
-        raise ValueError("PlannerInput version must be v1 or v2")
+    if planner_input_version not in {"v1", "v2", "v3"}:
+        raise ValueError("PlannerInput version must be v1, v2, or v3")
     reference_hashes: dict[str, str] = {}
     planner_inputs: dict[str, dict[str, Any]] = {}
+    planner_model_views: dict[str, dict[str, Any] | None] = {}
     references: dict[str, dict[str, Any]] = {}
     for task in tasks:
         if task.get("primary_capability") not in CAPABILITIES:
             raise ValueError("Task primary_capability is invalid")
         task_id = str(task["task_id"])
-        frozen_input = task.get("planner_inputs", {}).get(planner_input_version)
+        frozen_version = "v2" if planner_input_version == "v3" else planner_input_version
+        frozen_input = task.get("planner_inputs", {}).get(frozen_version)
         invariants = task.get("outcome_invariants")
         if not isinstance(frozen_input, dict) or not isinstance(invariants, list) or not invariants:
             raise ValueError(
@@ -141,6 +155,7 @@ def validate_suite(
         if not isinstance(input_name, str):
             raise ValueError(f"PlannerInput path is missing: {task_id}")
         bundle = _read_json(SUITE_ROOT / input_name)
+        model_view = build_planner_model_view_v3(bundle) if planner_input_version == "v3" else None
         input_hash = canonical_json_sha256(bundle)
         if frozen_input.get("hash") != input_hash:
             raise ValueError(f"PlannerInput hash mismatch: {task_id}")
@@ -152,6 +167,7 @@ def validate_suite(
             raise ValueError(f"Reference Solution fails Outcome invariants: {task_id}")
         reference_hashes[task_id] = canonical_json_sha256(reference)
         planner_inputs[task_id] = bundle
+        planner_model_views[task_id] = model_view
         references[task_id] = reference
     if formal_capability:
         qualification = suite.get("formal_qualification")
@@ -161,13 +177,12 @@ def validate_suite(
         "suite": suite,
         "reference_hashes": reference_hashes,
         "planner_inputs": planner_inputs,
+        "planner_model_views": planner_model_views,
         "references": references,
     }
 
 
-def _validate_audited_invariant(
-    invariant: Any, bundle: dict[str, Any], task_id: str
-) -> None:
+def _validate_audited_invariant(invariant: Any, bundle: dict[str, Any], task_id: str) -> None:
     if not isinstance(invariant, dict) or not isinstance(invariant.get("kind"), str):
         raise ValueError(f"Outcome invariant is invalid: {task_id}")
     expectation_class = invariant.get("expectation_class")
@@ -184,8 +199,12 @@ def _validate_audited_invariant(
             raise ValueError(f"Outcome invariant evidence is empty: {task_id} {path}")
     reason_codes = invariant.get("validator_reason_codes")
     if expectation_class == "runtime_hard":
-        if not isinstance(reason_codes, list) or not reason_codes or not all(
-            isinstance(item, str) and item.startswith("compiler_") for item in reason_codes
+        if (
+            not isinstance(reason_codes, list)
+            or not reason_codes
+            or not all(
+                isinstance(item, str) and item.startswith("compiler_") for item in reason_codes
+            )
         ):
             raise ValueError(f"Runtime hard invariant lacks validator reason codes: {task_id}")
     elif reason_codes is not None:
@@ -246,6 +265,10 @@ def run_suite(
         "runtime": RUNTIME_VERSION,
         "grader": GRADER_VERSION,
         "prompt": prompt_version,
+        "candidate_repair_version": STORY_PLANNER_REPAIR_VERSION,
+        "comparison_baseline": (
+            MODEL_VIEW_V3_BASELINE if planner_input_version == "v3" else None
+        ),
         "planner_input_version": planner_input_version,
         "candidate_schema": "compiler.novel-plan-candidate.v1",
         "ir_schema": "compiler.novel-plan.v1",
@@ -259,7 +282,14 @@ def run_suite(
                 "primary_capability": item["primary_capability"],
                 "variant": item["variant"],
                 "reference_hash": validated["reference_hashes"][item["task_id"]],
-                "planner_input_hash": item["planner_inputs"][planner_input_version]["hash"],
+                "planner_input_hash": item["planner_inputs"][
+                    "v2" if planner_input_version == "v3" else planner_input_version
+                ]["hash"],
+                "planner_model_view_hash": (
+                    canonical_json_sha256(validated["planner_model_views"][item["task_id"]])
+                    if planner_input_version == "v3"
+                    else None
+                ),
                 "outcome_invariants_hash": canonical_json_sha256(
                     {"invariants": item["outcome_invariants"]}
                 ),
@@ -286,6 +316,7 @@ def run_suite(
                 model_id=model_id,
                 quality_grader_model=quality_grader_model,
                 bundle=validated["planner_inputs"][source_task_id],
+                provider_input=validated["planner_model_views"][source_task_id],
                 reference=validated["references"][source_task_id],
                 outcome_invariants=(
                     task["outcome_invariants"] if suite_kind == "capability" else []
@@ -314,6 +345,7 @@ def _run_trial(
     model_id: str,
     quality_grader_model: str | None,
     bundle: dict[str, Any],
+    provider_input: dict[str, Any] | None,
     reference: dict[str, Any],
     outcome_invariants: list[dict[str, Any]],
     prompt_version: str,
@@ -331,6 +363,11 @@ def _run_trial(
     reason_code = "ok"
     usage: dict[str, int] = {}
     evaluated_candidate: dict[str, Any] | None = None
+    semantic_violations: list[dict[str, Any]] = []
+    raw_semantic_valid = False
+    raw_outcome_failures: list[str] = []
+    candidate_repair_applied = False
+    candidate_repair_changes: list[dict[str, str]] = []
     try:
         execution = execute_story_planner(
             provider,
@@ -338,62 +375,49 @@ def _run_trial(
                 task_run_id=0,
                 prompt_version=prompt_version,
                 planner_input=bundle,
+                provider_input=provider_input,
                 input_hash=canonical_json_sha256(bundle),
+                provider_input_hash=(
+                    canonical_json_sha256(provider_input) if provider_input is not None else None
+                ),
                 model_id=model_id,
                 api_key=_api_key(provider_name) if mode == "live" else "fake",
                 max_turns=1,
             ),
         )
-        rounds = [
-            {
-                "call_no": item.call_no,
-                "contract_valid": not item.structural_errors,
-                "structural_errors": list(item.structural_errors),
-                "usage": item.usage,
-                "latency_ms": item.latency_ms,
-                "raw_output_hash": (
-                    sha256(item.raw_output.encode("utf-8")).hexdigest()
-                    if item.raw_output is not None
-                    else None
-                ),
-            }
-            for item in execution.rounds
-        ]
+        rounds = _round_records(execution.rounds)
         contract_valid = True
-        validate_novel_plan_candidate(execution.candidate, planner_input=bundle)
+        validation_report = inspect_novel_plan_candidate(
+            execution.candidate,
+            planner_input=bundle,
+        )
+        semantic_violations = [
+            {"code": violation.code, "details": violation.details}
+            for violation in validation_report.violations
+        ]
+        raw_semantic_valid = validation_report.valid
+        raw_outcome_failures = _outcome_failures(execution.candidate, outcome_invariants)
+        repair = repair_novel_plan_candidate(execution.candidate, planner_input=bundle)
+        candidate_repair_applied = repair.applied
+        candidate_repair_changes = list(repair.changes)
+        repaired_candidate = repair.candidate
+        validate_novel_plan_candidate(repaired_candidate, planner_input=bundle)
         semantic_valid = True
         canonicalize_novel_plan(
-            execution.candidate,
+            repaired_candidate,
             planner_input=bundle,
             planner_version="compiler.story-planner.v1",
             component_fingerprint="b" * 64,
         )
         accepted = True
-        evaluated_candidate = execution.candidate
-        for item in execution.rounds:
-            for name, value in item.usage.items():
-                if isinstance(value, int):
-                    usage[name] = usage.get(name, 0) + value
+        evaluated_candidate = repaired_candidate
     except CompilerContractError as error:
         reason_code = error.reason_code
         failed_rounds = getattr(error, "rounds", ())
         if failed_rounds:
-            rounds = [
-                {
-                    "call_no": item.call_no,
-                    "contract_valid": not item.structural_errors,
-                    "structural_errors": list(item.structural_errors),
-                    "usage": item.usage,
-                    "latency_ms": item.latency_ms,
-                    "raw_output_hash": (
-                        sha256(item.raw_output.encode("utf-8")).hexdigest()
-                        if item.raw_output is not None
-                        else None
-                    ),
-                }
-                for item in failed_rounds
-            ]
+            rounds.extend(_round_records(failed_rounds, call_offset=len(rounds)))
     except Exception as error:  # provider/network failures are G0, not model failures
+        usage = _round_usage(rounds)
         return {
             "task_id": task["task_id"],
             "trial_index": trial_index,
@@ -403,7 +427,9 @@ def _run_trial(
             "latency_ms": (time.perf_counter() - start) * 1000,
             "usage": usage,
             "provider_invoked": True,
+            "semantic_violations": [],
         }
+    usage = _round_usage(rounds)
     safety_pass = expected_rejection is None or (not accepted and reason_code == expected_rejection)
     outcome_failures = (
         _outcome_failures(evaluated_candidate, outcome_invariants)
@@ -411,6 +437,9 @@ def _run_trial(
         else []
     )
     outcome_pass = accepted and not outcome_failures if expected_rejection is None else safety_pass
+    candidate_repair_g2_regression = candidate_repair_applied and bool(
+        set(outcome_failures).difference(raw_outcome_failures)
+    )
     g3 = (
         _live_quality_scores(
             provider_name,
@@ -430,6 +459,13 @@ def _run_trial(
         "semantic_valid": semantic_valid,
         "accepted": accepted,
         "reason_code": reason_code,
+        "semantic_violations": semantic_violations,
+        "raw_semantic_valid": raw_semantic_valid,
+        "raw_outcome_failures": raw_outcome_failures,
+        "candidate_repair_attempted": not raw_semantic_valid,
+        "candidate_repair_applied": candidate_repair_applied,
+        "candidate_repair_changes": candidate_repair_changes,
+        "candidate_repair_g2_regression": candidate_repair_g2_regression,
         "expected_rejection": expected_rejection,
         "outcome_failures": outcome_failures,
         "rounds": rounds,
@@ -446,6 +482,37 @@ def _run_trial(
             "g3_latency_ms": g3["latency_ms"],
         },
     }
+
+
+def _round_records(
+    values: tuple[StoryPlannerRound, ...],
+    *,
+    call_offset: int = 0,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "call_no": call_offset + item.call_no,
+            "contract_valid": not item.structural_errors,
+            "structural_errors": list(item.structural_errors),
+            "usage": item.usage,
+            "latency_ms": item.latency_ms,
+            "raw_output_hash": (
+                sha256(item.raw_output.encode("utf-8")).hexdigest()
+                if item.raw_output is not None
+                else None
+            ),
+        }
+        for item in values
+    ]
+
+
+def _round_usage(rounds: list[dict[str, Any]]) -> dict[str, int]:
+    usage: dict[str, int] = {}
+    for round_item in rounds:
+        for name, value in round_item.get("usage", {}).items():
+            if isinstance(value, int):
+                usage[name] = usage.get(name, 0) + value
+    return usage
 
 
 def _synthetic_tasks(kind: str) -> list[dict[str, Any]]:
@@ -637,10 +704,23 @@ def _report(
     semantic = sum(bool(item.get("semantic_valid")) for item in trials)
     outcome_passed = sum(bool(item.get("passed")) for item in trials)
     rejection_counts: dict[str, int] = {}
+    infrastructure_failure_counts: dict[str, int] = {}
     outcome_failure_counts: dict[str, int] = {}
     outcome_failure_cooccurrence: dict[str, int] = {}
     for item in trials:
-        code = str(item.get("reason_code") or "ok")
+        infrastructure_failure = item.get("infrastructure_failure")
+        if infrastructure_failure:
+            code = "infrastructure_failure"
+            failure_type = str(
+                infrastructure_failure.get("type", "unknown")
+                if isinstance(infrastructure_failure, dict)
+                else "unknown"
+            )
+            infrastructure_failure_counts[failure_type] = (
+                infrastructure_failure_counts.get(failure_type, 0) + 1
+            )
+        else:
+            code = str(item.get("reason_code") or "ok")
         rejection_counts[code] = rejection_counts.get(code, 0) + 1
         failures = (
             sorted({str(value) for value in item.get("outcome_failures", [])})
@@ -682,11 +762,26 @@ def _report(
             bool(item.get("semantic_valid")) and not bool(item.get("passed")) for item in trials
         ),
         "production_rejections": {
-            key: value for key, value in sorted(rejection_counts.items()) if key != "ok"
+            key: value
+            for key, value in sorted(rejection_counts.items())
+            if key not in {"ok", "infrastructure_failure"}
         },
+        "infrastructure_failures_by_type": dict(sorted(infrastructure_failure_counts.items())),
         "g2_outcome_failures": dict(sorted(outcome_failure_counts.items())),
         "g2_failure_cooccurrence": dict(sorted(outcome_failure_cooccurrence.items())),
         "outcome_passed_trial_count": outcome_passed,
+        "raw_semantic_valid_trial_count": sum(
+            bool(item.get("raw_semantic_valid")) for item in trials
+        ),
+        "candidate_repair_attempt_count": sum(
+            bool(item.get("candidate_repair_attempted")) for item in trials
+        ),
+        "candidate_repair_applied_count": sum(
+            bool(item.get("candidate_repair_applied")) for item in trials
+        ),
+        "candidate_repair_g2_regression_count": sum(
+            bool(item.get("candidate_repair_g2_regression")) for item in trials
+        ),
         "outcome_pass_rate": outcome_passed / total if total else 0,
         "repair_attempt_count": sum(int(item.get("repair_attempts", 0)) for item in trials),
         "round_contract_valid_rates": _round_contract_rates(trials),
@@ -772,22 +867,36 @@ def _promotion_gate(
     checks = {
         "g2_passed_trials": metrics["outcome_passed_trial_count"]
         >= thresholds["g2_passed_trials_min"],
-        "pass_at_3_tasks": metrics["pass_at_3_task_count"]
-        >= thresholds["pass_at_3_tasks_min"],
+        "pass_at_3_tasks": metrics["pass_at_3_task_count"] >= thresholds["pass_at_3_tasks_min"],
         "all_three_tasks": metrics["all_three_pass_task_count"]
         >= thresholds["all_three_tasks_min"],
         "semantic_valid_trials": metrics["semantic_valid_trial_count"]
         >= thresholds["semantic_valid_trials_min"],
         "temporal_rejections": temporal <= thresholds["temporal_rejections_max"],
-        "resolution_missing": int(
-            production.get("compiler_story_plan_resolution_uncovered", 0)
-        )
+        "resolution_missing": int(production.get("compiler_story_plan_resolution_uncovered", 0))
         <= thresholds["resolution_missing_max"],
         "unsafe_trials": len(safe_failures) <= thresholds["unsafe_trials_max"],
-        "infrastructure_failures": len(infra)
-        <= thresholds["infrastructure_failures_max"],
+        "infrastructure_failures": len(infra) <= thresholds["infrastructure_failures_max"],
         "complete_24x3": len(trials) == 72,
+        "candidate_repair_g2_non_regression": metrics[
+            "candidate_repair_g2_regression_count"
+        ]
+        == 0,
     }
+    baseline = frozen.get("comparison_baseline")
+    if isinstance(baseline, dict):
+        checks.update(
+            {
+                "semantic_stronger_than_v3": metrics["semantic_valid_trial_count"]
+                > baseline["semantic_valid_trial_count"],
+                "g2_stronger_than_v3": metrics["outcome_passed_trial_count"]
+                > baseline["outcome_passed_trial_count"],
+                "pass_at_3_not_below_v3": metrics["pass_at_3_task_count"]
+                >= baseline["pass_at_3_task_count"],
+                "all_three_not_below_v3": metrics["all_three_pass_task_count"]
+                >= baseline["all_three_pass_task_count"],
+            }
+        )
     return {"evaluated": True, "qualified": all(checks.values()), "checks": checks}
 
 
@@ -967,7 +1076,7 @@ def main() -> None:
     parser.add_argument("--provider", choices=("openai", "deepseek"), default="openai")
     parser.add_argument("--model", default="fake-story-planner")
     parser.add_argument("--quality-grader-model")
-    parser.add_argument("--planner-input-version", choices=("v1", "v2"), default="v1")
+    parser.add_argument("--planner-input-version", choices=("v1", "v2", "v3"), default="v1")
     parser.add_argument("--prompt-version", default=STORY_PLANNER_PROMPT_VERSION)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--checkpoint-path", type=Path)

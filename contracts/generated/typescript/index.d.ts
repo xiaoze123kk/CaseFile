@@ -337,6 +337,7 @@ export interface EditingContracts {
   narrative_ir: NarrativeIR;
   novel_profile: NovelProfile;
   planner_input: PlannerInputBundle | PlannerInputBundleV2;
+  planner_model_view: PlannerModelViewV3;
   novel_plan_candidate: NovelPlanCandidate;
   novel_plan: NovelPlanIR;
 }
@@ -919,11 +920,7 @@ export interface PlannerView {
     resolution_obligations: ResolutionObligation[];
     chronology_anchors: ChronologyAnchor[];
   };
-  planning_context: {
-    causal_edges: CausalEdge[];
-    knowledge_snapshots: KnowledgeSnapshot[];
-    author_guidance: AuthorGuidance[];
-  };
+  planning_context: PlanningContext;
 }
 export interface StructureConstraints {
   target_chapters: number;
@@ -952,6 +949,11 @@ export interface ChronologyAnchor {
   event_ref: ObjectRef;
   comparable_time: string;
 }
+export interface PlanningContext {
+  causal_edges: CausalEdge[];
+  knowledge_snapshots: KnowledgeSnapshot[];
+  author_guidance: AuthorGuidance[];
+}
 export interface CausalEdge {
   relation: "cause" | "effect";
   event_ref: ObjectRef;
@@ -969,6 +971,58 @@ export interface AuthorGuidance {
   title: string;
   note: string | null;
   is_hard_constraint: false;
+}
+export interface PlannerModelViewV3 {
+  schema_id: "compiler.story-planner-model-view.v3";
+  source: {
+    projection_version: "compiler.story-planner-model-view-projection.v3";
+    planner_input_hash: string;
+    constraint_ir_hash: string;
+  };
+  case: NarrativeCase;
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure: {
+      introduce_order: string[];
+      precedence_edges: {
+        before_entry_key: string;
+        after_entry_key: string;
+      }[];
+    };
+    temporal: {
+      anchors: {
+        event_ref: ObjectRef;
+        rank: number;
+        comparable_time: string;
+      }[];
+    };
+    resolutions: {
+      terminal_exactly_once: ObjectRef[];
+      /**
+       * @minItems 2
+       * @maxItems 2
+       */
+      allowed_terminal_actions: ["resolve" | "intentionally_unresolved", "resolve" | "intentionally_unresolved"];
+    };
+  };
+  object_catalog: {
+    resolution_specs: ModelObject[];
+    entities: ModelObject[];
+    relationships: ModelObject[];
+    locations: ModelObject[];
+    events: ModelObject[];
+    information_units: ModelObject[];
+    claims: ModelObject[];
+    hypotheses: ModelObject[];
+    reasoning_paths: ModelObject[];
+    constraints: ModelObject[];
+    structure_locks: ModelObject[];
+  };
+  planning_context: PlanningContext;
+}
+export interface ModelObject {
+  object_ref: ObjectRef;
+  value: unknown;
 }
 export interface NovelPlanCandidate {
   schema_id: "compiler.novel-plan-candidate.v1";

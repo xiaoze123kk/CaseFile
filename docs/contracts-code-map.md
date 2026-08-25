@@ -12,6 +12,7 @@
 | `contracts/schemas/compiler/novel-profile.schema.json` | N4.3 小说结构、章节/场景目标、叙述方式和 Exposure 策略契约。 |
 | `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入。 |
 | `contracts/schemas/compiler/planner-input-v2.schema.json` | 兼容新增的 Story Planner v2 输入：保留完整冻结输入，并加入可独立复验的 PlannerView；硬约束只投影现有权威规则，因果、知识与作者备注保持规划上下文。 |
+| `contracts/schemas/compiler/planner-model-view-v3.schema.json` | 显式 Provider-facing 精简视图：从完整 PlannerInput v2 确定性投影结构、Exposure precedence、Temporal rank、Resolution obligations、对象目录和规划上下文；不替代完整审计输入。 |
 | `contracts/schemas/compiler/novel-plan.schema.json` | 分离模型 NovelPlanCandidate 与服务器规范化 NovelPlanIR，定义 Scene 编排、事实依据、披露、Resolution、依赖及派生索引。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |

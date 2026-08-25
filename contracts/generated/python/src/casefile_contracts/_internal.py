@@ -1704,6 +1704,15 @@ class PlannerView(BaseModel):
     planning_context: PlanningContext
 
 
+class ModelObject(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    value: Any
+
+
 class ScenePurpose(Enum):
     hook = 'hook'
     setup = 'setup'
@@ -1905,7 +1914,7 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_6
+    validation_issue: Schema_7
     patch_candidate: Schema_3
     task_run: TaskRun
     task_event: TaskEvent
@@ -1919,6 +1928,7 @@ class EditingContracts(BaseModel):
     narrative_ir: Schema_2
     novel_profile: novel_profile_1.Schema
     planner_input: Schema_4 | Schema_5
+    planner_model_view: Schema_6
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
 
@@ -2153,6 +2163,110 @@ class Schema_5(BaseModel):
     planner_view: PlannerView
 
 
+class Source(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    projection_version: Literal['compiler.story-planner-model-view-projection.v3']
+    planner_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class PrecedenceEdge(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    before_entry_key: str
+    after_entry_key: str
+
+
+class Exposure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    introduce_order: list[str]
+    precedence_edges: list[PrecedenceEdge]
+
+
+class Anchor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    rank: Annotated[int, Field(ge=1)]
+    comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
+
+
+class Temporal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    anchors: list[Anchor]
+
+
+class AllowedTerminalAction_1(Enum):
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class Resolutions(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    terminal_exactly_once: list[ObjectRef]
+    allowed_terminal_actions: Annotated[
+        list[AllowedTerminalAction_1], Field(max_length=2, min_length=2)
+    ]
+
+
+class HardConstraints_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure: Exposure
+    temporal: Temporal
+    resolutions: Resolutions
+
+
+class ObjectCatalog(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_specs: list[ModelObject]
+    entities: list[ModelObject]
+    relationships: list[ModelObject]
+    locations: list[ModelObject]
+    events: list[ModelObject]
+    information_units: list[ModelObject]
+    claims: list[ModelObject]
+    hypotheses: list[ModelObject]
+    reasoning_paths: list[ModelObject]
+    constraints: list[ModelObject]
+    structure_locks: list[ModelObject]
+
+
+class Schema_6(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-model-view.v3']
+    source: Source
+    case: NarrativeCase
+    hard_constraints: HardConstraints_1
+    object_catalog: ObjectCatalog
+    planning_context: PlanningContext
+
+
 class Severity_2(StrEnum):
     s0 = 'S0'
     s1 = 'S1'
@@ -2173,7 +2287,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_6(BaseModel):
+class Schema_7(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
