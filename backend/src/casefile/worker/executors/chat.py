@@ -230,6 +230,7 @@ def _resolve_chat_route(
     budget: dict[str, Any] | None = None,
     provider: AgentProvider | None = None,
     previous: ReusedChatRouting | None = None,
+    allow_general_mutation_create: bool = False,
     allow_general_mutation_delete: bool = False,
 ) -> CaseFileChatRequest:
     """R2 cascade: rule → LLM intent → confidence gate → rewrite."""
@@ -245,6 +246,7 @@ def _resolve_chat_route(
         )
     rule = resolve_rule_route(
         request,
+        allow_general_mutation_create=allow_general_mutation_create,
         allow_general_mutation_delete=allow_general_mutation_delete,
     )
     if rule is not None:

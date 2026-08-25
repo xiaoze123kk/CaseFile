@@ -38,6 +38,26 @@ _DESTRUCTIVE_ACTION_MARKERS = (
     "remove",
 )
 
+_CREATE_ACTION_MARKERS = (
+    "创建",
+    "新建",
+    "create",
+    "add a new",
+)
+_AMBIGUOUS_TARGET_MARKERS = (
+    "没有说明具体对象",
+    "没有说明目标",
+    "目标未说明",
+    "对象未说明",
+    "unspecified target",
+)
+_CLARIFICATION_REQUEST_MARKERS = (
+    "先澄清",
+    "先问清",
+    "请先确认目标",
+    "clarify first",
+)
+
 _DRAFT_TARGET_MARKERS = ("draft", "工作稿")
 _REVIEW_BYPASS_MARKERS = (
     "直接修改",
@@ -221,11 +241,26 @@ def normalize_routing_hint(raw: dict[str, Any] | None) -> dict[str, Any]:
 def resolve_rule_route(
     request: CaseFileChatRequest,
     *,
+    allow_general_mutation_create: bool = False,
     allow_general_mutation_delete: bool = False,
 ) -> RuleRoute | None:
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
-    if any(marker in request.message.casefold() for marker in _DESTRUCTIVE_ACTION_MARKERS):
+    normalized_message = request.message.casefold()
+    destructive_requested = any(
+        marker in normalized_message for marker in _DESTRUCTIVE_ACTION_MARKERS
+    )
+    clarification_required = any(
+        marker in normalized_message for marker in _AMBIGUOUS_TARGET_MARKERS
+    ) and any(marker in normalized_message for marker in _CLARIFICATION_REQUEST_MARKERS)
+    if destructive_requested and clarification_required:
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="clarify",
+            profile="clarify.question",
+            reason_code="rule_safety:ambiguous_destructive_target",
+        )
+    if destructive_requested:
         if allow_general_mutation_delete:
             return RuleRoute(
                 route_source="rule_capability",
@@ -239,7 +274,15 @@ def resolve_rule_route(
             profile="unsupported_action.scope",
             reason_code="rule_safety:destructive_action",
         )
-    normalized_message = request.message.casefold()
+    if allow_general_mutation_create and any(
+        marker in normalized_message for marker in _CREATE_ACTION_MARKERS
+    ):
+        return RuleRoute(
+            route_source="rule_capability",
+            primary_intent="edit_request",
+            profile="edit_request.edit",
+            reason_code="rule_capability:general_mutation_create",
+        )
     if any(marker in normalized_message for marker in _DRAFT_TARGET_MARKERS) and any(
         marker in normalized_message for marker in _REVIEW_BYPASS_MARKERS
     ):
@@ -333,6 +376,8 @@ def task_understanding_for_rule(rule: RuleRoute) -> ChatTaskUnderstanding:
             }
         )
         risk_level = "high"
+    elif rule.primary_intent == "clarify":
+        risk_level = "medium"
     return ChatTaskUnderstanding(
         primary_intent=rule.primary_intent,
         sub_intents=(rule.profile.removeprefix(f"{rule.primary_intent}."),),

@@ -156,6 +156,22 @@ def test_free_text_llm_edit_resolves_mentions_and_contextualizes() -> None:
     assert "别动时间线" in resolved.rewrite.canonical_query
 
 
+def test_create_capability_routes_without_calling_the_intent_model() -> None:
+    resolved = resolve_chat_route(
+        make_request(
+            hint={"entrypoint": "free_text"},
+            message="创建一个人物实体，名称为夜班观察员。",
+        ),
+        allow_general_mutation_create=True,
+    )
+
+    assert resolved.task_understanding is not None
+    assert resolved.task_understanding.primary_intent == "edit_request"
+    assert resolved.route is not None
+    assert resolved.route.route_source == "rule_capability"
+    assert resolved.route.execution_profile["suggestion_policy"] == "allow"
+
+
 def test_low_confidence_sensitive_edit_hits_the_gate_and_falls_back() -> None:
     resolved = resolve_chat_route(
         make_request(

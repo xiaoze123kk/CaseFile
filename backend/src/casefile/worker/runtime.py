@@ -366,6 +366,10 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                     budget=task_snapshot.budget_jsonb,
                     provider=provider,
                     previous=previous_routing,
+                    allow_general_mutation_create=(
+                        self.config.general_mutation_mode != "off"
+                        and self.config.general_mutation_create_enabled
+                    ),
                     allow_general_mutation_delete=(
                         self.config.general_mutation_mode != "off"
                         and self.config.general_mutation_delete_enabled

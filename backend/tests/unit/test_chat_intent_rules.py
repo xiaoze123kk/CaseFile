@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
@@ -15,7 +17,6 @@ from casefile.agent_runtime.chat_intent import (
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
-from pydantic import ValidationError
 
 
 def make_chat_request(
@@ -128,6 +129,37 @@ def test_delete_routes_to_edit_only_when_general_mutation_capability_is_enabled(
     assert rule.primary_intent == "edit_request"
     assert rule.profile == "edit_request.edit"
     assert rule.reason_code == "rule_capability:general_mutation_delete"
+
+
+def test_ambiguous_delete_routes_to_clarification_before_delete_capability() -> None:
+    request = make_chat_request(
+        message="我想移除一个对象，但没有说明具体对象；请先澄清，不要执行。",
+        hint={"entrypoint": "free_text"},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_delete=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_safety"
+    assert rule.primary_intent == "clarify"
+    assert rule.profile == "clarify.question"
+    assert rule.reason_code == "rule_safety:ambiguous_destructive_target"
+
+
+def test_create_routes_to_edit_only_when_general_mutation_capability_is_enabled() -> None:
+    request = make_chat_request(
+        message="创建一个人物实体，名称为夜班观察员。",
+        hint={"entrypoint": "free_text"},
+    )
+
+    assert resolve_rule_route(request) is None
+    rule = resolve_rule_route(request, allow_general_mutation_create=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+    assert rule.profile == "edit_request.edit"
+    assert rule.reason_code == "rule_capability:general_mutation_create"
 
 
 @pytest.mark.parametrize(
