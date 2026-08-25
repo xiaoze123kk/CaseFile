@@ -147,11 +147,12 @@ def test_create_markers_route_to_general_mutation_when_enabled(message: str) -> 
     assert rule.reason_code == "rule_capability:general_mutation_create"
 
 
-def test_closure_sensitive_status_update_is_not_mistaken_for_ambiguous_pronoun() -> None:
+@pytest.mark.parametrize("index", range(1, 5))
+def test_closure_sensitive_status_updates_route_to_edit_request(index: int) -> None:
     request = replace(
         make_chat_request(
             message=(
-                "把“第1条前置主张”状态改为 unresolved（未解决），"
+                f"把“第{index}条前置主张”状态改为 unresolved（未解决），"
                 "并保持依赖它的主张状态一致。"
             ),
             hint={"entrypoint": "free_text"},
@@ -159,8 +160,8 @@ def test_closure_sensitive_status_update_is_not_mistaken_for_ambiguous_pronoun()
         casefile={
             "claims": [
                 {
-                    "id": "claim_prerequisite_1",
-                    "title": "第1条前置主张",
+                    "id": f"claim_prerequisite_{index}",
+                    "title": f"第{index}条前置主张",
                     "status": "supported",
                 }
             ]

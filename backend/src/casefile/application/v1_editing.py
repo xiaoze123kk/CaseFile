@@ -48,7 +48,7 @@ from casefile.domain.logical_mutation import (
 from casefile.domain.verification_engine import MutationSimulation, VerificationEngine
 
 
-def _casefile_semantic_state(document: Mapping[str, Any]) -> dict[str, Any]:
+def casefile_semantic_state_by_object_id(document: Mapping[str, Any]) -> dict[str, Any]:
     def normalize(value: Any) -> Any:
         if isinstance(value, dict):
             return {key: normalize(item) for key, item in value.items()}
@@ -67,8 +67,12 @@ def _casefile_semantic_state(document: Mapping[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _casefile_semantically_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
-    return _casefile_semantic_state(left) == _casefile_semantic_state(right)
+def casefile_semantically_equal(left: Mapping[str, Any], right: Mapping[str, Any]) -> bool:
+    """Compare CaseFile documents while ignoring object-collection ordering only."""
+
+    return casefile_semantic_state_by_object_id(left) == casefile_semantic_state_by_object_id(
+        right
+    )
 
 COMMON_EDITABLE_FIELDS = {"description", "tags"}
 CONCLUSION_INVALIDATING_RESOLUTION_FIELDS = {
@@ -799,7 +803,7 @@ class V1EditingService:
 
         projected = build_casefile_document(self.session, owned)
         projected_hash = casefile_content_hash(projected)
-        semantic_projection_match = _casefile_semantically_equal(projected, candidate)
+        semantic_projection_match = casefile_semantically_equal(projected, candidate)
         if (
             (projected != candidate or projected_hash != simulation.candidate_hash)
             and not semantic_projection_match

@@ -54,6 +54,7 @@ from casefile.application.agent_collaboration import unique_strings as _unique_s
 from casefile.application.agent_mutation import general_mutation_impact_hash
 from casefile.application.agent_patch_mutation import (
     AgentPatchMutationMixin,
+    exact_history_restore_authorization,
     general_mutation_patch_operation,
     general_mutation_repair_validation,
     mutation_reason_summary,
@@ -1652,6 +1653,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 )
             )
             current_document = build_casefile_document(self.session, owned)
+            target_document: dict[str, Any] | None = None
             if (
                 patch_set.candidate_hash is not None
                 and casefile_content_hash(current_document) != patch_set.candidate_hash
@@ -1709,10 +1711,27 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     actor="author",
                     closure_policy_version=CLOSURE_POLICY_VERSION,
                 )
-            simulation = VerificationEngine(
+            engine = VerificationEngine(
                 profile="fast",
                 closure_policy_version=CLOSURE_POLICY_VERSION,
-            ).simulate_mutation_set(current_document, inverse_mutation)
+            )
+            simulation = engine.simulate_mutation_set(current_document, inverse_mutation)
+            history_debt_keys: tuple[str, ...] = ()
+            history_debt_reason: str | None = None
+            if patch_set.review_mode == "atomic":
+                assert target_document is not None
+                history_debt_keys, history_debt_reason = exact_history_restore_authorization(
+                    simulation,
+                    target_document,
+                )
+                if history_debt_keys:
+                    simulation = engine.simulate_mutation_set(
+                        current_document,
+                        inverse_mutation,
+                        accepted_debt_finding_keys=history_debt_keys,
+                        debt_acceptance_reason=history_debt_reason,
+                        allow_author_debt_acceptance=True,
+                    )
             if not simulation.can_apply:
                 if simulation.reason_code == "post_document_invalid":
                     validate_casefile(dict(simulation.document))
@@ -1746,6 +1765,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 draft_operation_type="logical_mutation_undo",
                 source_patch_set_id=patch_set.id,
                 source_closure_policy_version=patch_set.closure_policy_version,
+                accepted_debt_finding_keys=history_debt_keys,
+                debt_acceptance_reason=history_debt_reason,
             )
             now = datetime.now(UTC)
             patch_set.status = "undone"

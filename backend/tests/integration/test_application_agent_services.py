@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from copy import deepcopy
 from dataclasses import replace as dataclasses_replace
 from unittest.mock import patch
 
@@ -16,6 +17,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -36,10 +40,10 @@ from casefile.application.agent_mutation import (
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
-from casefile.application.v1_editing import V1EditingService
+from casefile.application.v1_editing import V1EditingService, casefile_semantically_equal
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.feedback_export import export_feedback_fixtures
-from casefile.contracts import ContractValidationError
+from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentPatchOperation,
@@ -52,8 +56,6 @@ from casefile.data_postgres.models import (
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -197,15 +199,32 @@ def test_general_mutation_create_atomic_apply_undo_redo(
 def test_general_mutation_delete_requires_confirmed_impact_hash(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
+    class OrphanInformationFixtureProvider(RichFixtureProvider):
+        def generate(self, request):  # type: ignore[no-untyped-def]
+            result = super().generate(request)
+            orphan = deepcopy(result.candidate["information_units"][0])
+            orphan.update(
+                id="info_atomic_undo_orphan",
+                title="原子撤销孤立信息",
+                content="用于验证 Delete Apply、Undo 与 Redo 的确定性信息。",
+                source_event_ref=None,
+                supports_claim_refs=[],
+                refutes_claim_refs=[],
+                classification="key",
+            )
+            result.candidate["information_units"].append(orphan)
+            validate_casefile(result.candidate)
+            return result
+
     class DeleteProvider(ChatSuggestionProvider):
         def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
-            object_id = request.casefile["relationships"][0]["id"]
+            object_id = "info_atomic_undo_orphan"
             return GeneralMutationPlannerResult(
                 MutationPlanV1.model_validate(
                     {
                         "operations": [
                             {
-                                "operation_key": "delete_entity",
+                                "operation_key": "delete_information",
                                 "operation_type": "delete_object",
                                 "target": {
                                     "ref_kind": "existing",
@@ -226,7 +245,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
         Worker(
             factory,
             config=WorkerConfig(worker_id="m34-delete-fixture"),
-            provider_factory=lambda _task: RichFixtureProvider(),
+            provider_factory=lambda _task: OrphanInformationFixtureProvider(),
         ).run_once()
         adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
         draft_id = int(adopted["draft_id"])
@@ -246,7 +265,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
                 content=(
-                    "请删除“研究员维护备用系统”这条关系，不要删除关系两端对象。"
+                    "请删除未被引用的信息“原子撤销孤立信息”。"
                 ),
             )
         Worker(
@@ -278,7 +297,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
             before = CaseFileService(session).get_draft(actor_id, project_id)
             original_target = next(
                 item
-                for item in before["content"]["relationships"]
+                for item in before["content"]["information_units"]
                 if item["id"] == target_object_key
             )
         with factory() as session:
@@ -329,7 +348,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
         with factory() as session:
             after = CaseFileService(session).get_draft(actor_id, project_id)
             assert target_object_key not in {
-                item["id"] for item in after["content"]["relationships"]
+                item["id"] for item in after["content"]["information_units"]
             }
             undone = WorkflowService(session).undo_agent_patch_set(
                 actor_id,
@@ -343,12 +362,27 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
             restored = CaseFileService(session).get_draft(actor_id, project_id)
             restored_target = next(
                 item
-                for item in restored["content"]["relationships"]
+                for item in restored["content"]["information_units"]
                 if item["id"] == target_object_key
             )
             assert {
                 key: value for key, value in restored_target.items() if key != "updated_at"
             } == {key: value for key, value in original_target.items() if key != "updated_at"}
+            assert casefile_semantically_equal(before["content"], restored["content"])
+            redone = WorkflowService(session).redo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=4,
+            )
+            assert redone["draft_revision"] == 5
+        with factory() as session:
+            redone_draft = CaseFileService(session).get_draft(actor_id, project_id)
+            assert target_object_key not in {
+                item["id"] for item in redone_draft["content"]["information_units"]
+            }
+            assert casefile_semantically_equal(after["content"], redone_draft["content"])
 
 
 class ClosureRepairChatProvider(ChatSuggestionProvider):

@@ -94,7 +94,11 @@ Capability 主要报告 `task_macro_pass_at_1`、family macro 与多 Trial 的
 `general-mutation-backend-release` 使用独立 `_test` PostgreSQL 数据库，经真实 HTTP、
 Worker、Pending PatchSet 和显式 Apply/Undo/Redo 执行 15×3 release cohort，并运行固定
 20 项 Fault Matrix。Delete 必须分别证明缺少、篡改、过期和当前 impact hash 的行为。
-任何 fault、生命周期、Safety 或基础设施失败都失败关闭；报告版本为
+每个 Trial 只进入 capability、routing、protocol、safety、lifecycle、infrastructure
+之一；`failure_stage` 保留 route、model protocol、patch persistence 或 Apply/Undo/Redo
+边界，`pending_patch_missing` 不单独推断为基础设施失败。确定性 Abstention 可以是 0 次
+ModelCall，但必须显式保存 `patch_set_count=0`，不适用字段写 `null`。任何 fault、路由、
+协议、生命周期、Safety 或基础设施失败都失败关闭；报告版本为
 `casefile-general-mutation-backend-release-report-v2`。
 
 ## 07f Formal Qualification

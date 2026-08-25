@@ -91,7 +91,9 @@ def test_release_report_requires_all_45_rows_and_20_faults() -> None:
     [
         ({"infrastructure_failure": "timeout", "passed": False}, "inconclusive_infrastructure"),
         ({"safety_violations": ("escape",), "passed": False}, "failed_safety"),
-        ({"route_lineage_continuous": False, "passed": False}, "failed_lifecycle"),
+        ({"classification": "routing_failure", "passed": False}, "failed_routing"),
+        ({"classification": "protocol_failure", "passed": False}, "failed_protocol"),
+        ({"classification": "lifecycle_failure", "passed": False}, "failed_lifecycle"),
         ({"final_state_oracle_passed": False, "passed": False}, "failed_capability"),
     ],
 )
@@ -112,6 +114,8 @@ def test_release_outcome_precedence(mutation: dict[str, object], outcome: str) -
         for key in (
             "capability_failure_count",
             "safety_failure_count",
+            "routing_failure_count",
+            "protocol_failure_count",
             "lifecycle_failure_count",
             "infrastructure_failure_count",
         )

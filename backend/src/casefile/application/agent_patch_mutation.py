@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
@@ -13,7 +14,7 @@ from casefile.application.closure_repair import (
     validate_closure_repair_envelope,
 )
 from casefile.application.errors import ApplicationError
-from casefile.application.v1_editing import COLLECTIONS
+from casefile.application.v1_editing import COLLECTIONS, casefile_semantically_equal
 from casefile.data_postgres.models import (
     AgentPatchOperation,
     AgentPatchSet,
@@ -29,6 +30,9 @@ from casefile.domain.logical_mutation import (
     UpdateField,
 )
 from casefile.domain.logical_mutation.repair import build_mutation_from_document_diff
+from casefile.domain.verification_engine import MutationSimulation
+
+EXACT_HISTORY_RESTORE_REASON = "撤销恢复已审核修改前的精确历史状态。"
 
 
 def general_mutation_repair_validation(
@@ -268,6 +272,23 @@ def mutation_from_document_history(
     )
 
 
+def exact_history_restore_authorization(
+    simulation: MutationSimulation,
+    target_document: Mapping[str, Any],
+) -> tuple[tuple[str, ...], str | None]:
+    """Authorize repair debt only for an exact atomic history restoration."""
+
+    finding_keys = tuple(simulation.authorization_required_finding_keys)
+    if (
+        simulation.can_apply
+        or simulation.reason_code != "repair_required"
+        or not finding_keys
+        or not casefile_semantically_equal(simulation.document, target_document)
+    ):
+        return (), None
+    return finding_keys, EXACT_HISTORY_RESTORE_REASON
+
+
 class AgentPatchMutationMixin:
     """Small shared seam used by Agent review and Redo workflows."""
 
@@ -325,6 +346,7 @@ __all__ = [
     "general_mutation_repair_validation",
     "general_mutation_patch_operation",
     "mutation_from_document_history",
+    "exact_history_restore_authorization",
     "mutation_set_from_patch_operations",
     "mutation_reason_summary",
     "patch_operation_count",

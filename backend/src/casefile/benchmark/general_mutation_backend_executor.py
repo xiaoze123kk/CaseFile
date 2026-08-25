@@ -1095,6 +1095,20 @@ class PostgresBackendReleaseExecutor:
         }
         transport_error = persisted.get("transport_error_class")
         is_infrastructure = is_setup_failure or isinstance(transport_error, str)
+        is_routing_failure = (
+            not is_infrastructure
+            and persisted["primary_intent"] in {"clarify", "unsupported_action"}
+        )
+        is_protocol_failure = not is_infrastructure and _protocol_failure_reason(reason)
+        classification = (
+            "infrastructure_failure"
+            if is_infrastructure
+            else "routing_failure"
+            if is_routing_failure
+            else "protocol_failure"
+            if is_protocol_failure
+            else "capability_failure"
+        )
         values.update(
             {
                 "task_id": task.task_id,
@@ -1102,9 +1116,7 @@ class PostgresBackendReleaseExecutor:
                 "expectation": task.expectation,
                 "trial_index": trial_index,
                 "passed": False,
-                "classification": (
-                    "infrastructure_failure" if is_infrastructure else "capability_failure"
-                ),
+                "classification": classification,
                 "infrastructure_failure": (
                     str(transport_error or reason) if is_infrastructure else None
                 ),
@@ -1135,7 +1147,9 @@ class PostgresBackendReleaseExecutor:
                     else "provider_transport"
                     if isinstance(transport_error, str)
                     else "route"
-                    if persisted["primary_intent"] in {"clarify", "unsupported_action"}
+                    if is_routing_failure
+                    else "model_protocol"
+                    if is_protocol_failure
                     else "patch_persistence"
                 ),
             }
@@ -1318,6 +1332,19 @@ def _transport_error_class(value: Any) -> str | None:
             if found is not None:
                 return found
     return None
+
+
+def _protocol_failure_reason(reason: str) -> bool:
+    return any(
+        marker in reason
+        for marker in (
+            "max_turns_exceeded",
+            "output_protocol",
+            "protocol_error",
+            "structured_output",
+            "model_output_invalid",
+        )
+    )
 
 
 __all__ = ["PostgresBackendReleaseExecutor"]

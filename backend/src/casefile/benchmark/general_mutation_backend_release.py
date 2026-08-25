@@ -225,12 +225,18 @@ def build_backend_release_report(
     classes = Counter(_effective_classification(row) for row in rows)
     infrastructure_count = classes["infrastructure_failure"]
     safety_count = classes["safety_failure"]
+    routing_count = classes["routing_failure"]
+    protocol_count = classes["protocol_failure"]
     lifecycle_count = classes["lifecycle_failure"]
     capability_count = classes["capability_failure"]
     if infrastructure_count:
         outcome = "inconclusive_infrastructure"
     elif safety_count:
         outcome = "failed_safety"
+    elif routing_count:
+        outcome = "failed_routing"
+    elif protocol_count:
+        outcome = "failed_protocol"
     elif lifecycle_count or fault_failures:
         outcome = "failed_lifecycle"
     elif capability_count or not complete:
@@ -254,6 +260,8 @@ def build_backend_release_report(
             "passed_trial_count": sum(row.passed for row in rows),
             "capability_failure_count": capability_count,
             "safety_failure_count": safety_count,
+            "routing_failure_count": routing_count,
+            "protocol_failure_count": protocol_count,
             "lifecycle_failure_count": lifecycle_count,
             "infrastructure_failure_count": infrastructure_count,
             "fault_matrix_failure_count": len(fault_failures),
@@ -285,7 +293,18 @@ def _effective_classification(row: BackendTrialEvidence) -> str:
         return "infrastructure_failure"
     if row.safety_violations or row.classification == "safety_failure":
         return "safety_failure"
-    if row.classification == "lifecycle_failure" or row.failure_stage in {
+    if row.classification in {
+        "routing_failure",
+        "protocol_failure",
+        "lifecycle_failure",
+        "capability_failure",
+    }:
+        return row.classification
+    if row.failure_stage == "route":
+        return "routing_failure"
+    if row.failure_stage == "model_protocol":
+        return "protocol_failure"
+    if row.failure_stage in {
         "apply",
         "undo",
         "redo",
@@ -293,17 +312,6 @@ def _effective_classification(row: BackendTrialEvidence) -> str:
         "worker",
         "lease",
     }:
-        return "lifecycle_failure"
-    if row.expectation == "apply" and not all(
-        (
-            row.api_thread_created,
-            row.api_message_enqueued,
-            row.worker_claimed,
-            row.task_succeeded,
-            row.route_lineage_continuous,
-            row.step_run_persisted,
-        )
-    ):
         return "lifecycle_failure"
     if not row.passed:
         return "capability_failure"
