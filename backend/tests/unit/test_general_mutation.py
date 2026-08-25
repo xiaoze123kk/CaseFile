@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     MutationPlanV1,
@@ -27,6 +25,7 @@ from casefile.application.agent_mutation import (
 )
 from casefile.domain.logical_mutation import CreateObject, UpdateField
 from casefile.domain.verification_engine import VerificationEngine
+from pydantic import ValidationError
 
 ROOT = Path(__file__).resolve().parents[3]
 
