@@ -91,7 +91,7 @@
 | `backend/src/casefile/api/verification.py` | 手动验证重跑、规范化 VerificationRun/finding 查询和作者审阅 HTTP 路由；只做协议转换，不承载验证规则。 |
 | `backend/src/casefile/api/reverse_parse.py` | 路径 C 反向解析 HTTP 路由：文档上传/读取、解析块与逐项查询、逐项确认、失败重试与形成 Brief 候选。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的 TaskRun 领取、lease/Attempt 恢复、任务执行、结果/事件原子持久化；只拥有运行与持久化编排，不拥有 Agent 领域规则。 |
-| `backend/src/casefile/worker/runtime.py`、`worker/closure_repair.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环。`CLOSURE_REPAIR_MODE=off|shadow|suggest` 默认 `shadow`；`CASEFILE_CHAT_GENERAL_MUTATION_MODE=off|shadow|suggest` 默认 `off`，Create/Delete 各有独立开关，非法值启动失败。Chat repair 把证明 envelope 交给 Application，不决定 Apply。 |
+| `backend/src/casefile/worker/runtime.py`、`worker/closure_repair.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环。`CLOSURE_REPAIR_MODE=off|shadow|suggest` 默认 `shadow`；环境启动的 `CASEFILE_CHAT_GENERAL_MUTATION_MODE=off|shadow|suggest` 默认 `suggest`，Create/Delete 独立开关默认启用且均可显式回退。直接构造 `WorkerConfig` 仍采用隔离安全默认值。Chat repair 与 General Mutation 只形成可审阅 PatchSet，不决定或绕过 Apply。 |
 | `backend/src/casefile/worker/queue.py` | TaskRun claim、lease 恢复、取消观察和 Attempt 初始化；不执行具体任务。 |
 | `backend/src/casefile/worker/finalization.py` | TaskRun 成功、失败、取消、可重试状态收敛与稳定错误/事件落库。 |
 | `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；General Mutation Planner 入口必须服从最终 Route deny/clarify 与 `agent_runtime` abstention 判定。`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |

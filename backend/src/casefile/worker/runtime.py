@@ -131,18 +131,16 @@ class WorkerConfig:
             ),
             general_mutation_mode=cast(
                 GeneralMutationMode,
-                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_MODE", "off")
-                .strip()
-                .lower(),
+                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_MODE", "suggest").strip().lower(),
             ),
             general_mutation_create_enabled=(
-                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_CREATE_ENABLED", "false")
+                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_CREATE_ENABLED", "true")
                 .strip()
                 .lower()
                 in {"1", "true", "yes", "on"}
             ),
             general_mutation_delete_enabled=(
-                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_DELETE_ENABLED", "false")
+                os.environ.get("CASEFILE_CHAT_GENERAL_MUTATION_DELETE_ENABLED", "true")
                 .strip()
                 .lower()
                 in {"1", "true", "yes", "on"}
@@ -374,9 +372,7 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                         self.config.general_mutation_mode != "off"
                         and self.config.general_mutation_delete_enabled
                     ),
-                    allow_general_mutation_update=(
-                        self.config.general_mutation_mode != "off"
-                    ),
+                    allow_general_mutation_update=(self.config.general_mutation_mode != "off"),
                 )
                 chat_request = prepare_chat_request_artifacts(chat_request)
                 if chat_request.route is not None:
@@ -452,10 +448,7 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                             repaired_bound = append_repair_companions(
                                 general_mutation_envelope["bound"],
                                 task_snapshot.input_jsonb["casefile"],
-                                [
-                                    item.as_dict()
-                                    for item in repair_result.companion_operations
-                                ],
+                                [item.as_dict() for item in repair_result.companion_operations],
                             )
                             repaired_simulation = VerificationEngine(
                                 profile="fast",
@@ -473,9 +466,7 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                                 "primary_bound": general_mutation_envelope["bound"],
                                 "bound": repaired_bound,
                                 "simulation": repaired_simulation,
-                                "impact_hash": general_mutation_impact_hash(
-                                    repaired_simulation
-                                ),
+                                "impact_hash": general_mutation_impact_hash(repaired_simulation),
                             }
                     else:
                         repair_envelope, repair_usage = None, {}
@@ -485,9 +476,7 @@ class Worker(TaskFinalizationMixin, QueueMixin, ChatTaskExecutorMixin, Completio
                         result,
                         route=chat_request.route,
                         repair_envelope=repair_envelope,
-                        repair_usage=_merge_numeric_usage(
-                            repair_usage, general_mutation_usage
-                        ),
+                        repair_usage=_merge_numeric_usage(repair_usage, general_mutation_usage),
                         general_mutation_envelope=general_mutation_envelope,
                     )
 
