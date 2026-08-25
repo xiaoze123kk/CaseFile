@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from pydantic import ValidationError
+
 from casefile.agent_runtime.chat_intent import (
     ALLOWED_PRESET_IDS,
     PRESET_ROUTE_TABLE,
@@ -15,7 +17,6 @@ from casefile.agent_runtime.chat_intent import (
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.api.schemas import AgentChatRoutingHint, AgentMessageCreateRequest
-from pydantic import ValidationError
 
 
 def make_chat_request(
@@ -131,6 +132,47 @@ def test_delete_routes_to_edit_only_when_general_mutation_capability_is_enabled(
     assert rule.primary_intent == "edit_request"
     assert rule.profile == "edit_request.edit"
     assert rule.reason_code == "rule_capability:general_mutation_delete"
+
+
+@pytest.mark.parametrize("message", ("新增人物周岚。", "创建人物周岚。", "add a new person"))
+def test_create_markers_route_to_general_mutation_when_enabled(message: str) -> None:
+    rule = resolve_rule_route(
+        make_chat_request(message=message, hint={"entrypoint": "free_text"}),
+        allow_general_mutation_create=True,
+    )
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
+    assert rule.reason_code == "rule_capability:general_mutation_create"
+
+
+def test_closure_sensitive_status_update_is_not_mistaken_for_ambiguous_pronoun() -> None:
+    request = replace(
+        make_chat_request(
+            message=(
+                "把“第1条前置主张”状态改为 unresolved（未解决），"
+                "并保持依赖它的主张状态一致。"
+            ),
+            hint={"entrypoint": "free_text"},
+        ),
+        casefile={
+            "claims": [
+                {
+                    "id": "claim_prerequisite_1",
+                    "title": "第1条前置主张",
+                    "status": "supported",
+                }
+            ]
+        },
+        editable_fields_by_collection={"claims": ("status",)},
+    )
+
+    rule = resolve_rule_route(request, allow_general_mutation_update=True)
+
+    assert rule is not None
+    assert rule.route_source == "rule_capability"
+    assert rule.primary_intent == "edit_request"
 
 
 def test_ambiguous_delete_routes_to_clarification_before_delete_capability() -> None:

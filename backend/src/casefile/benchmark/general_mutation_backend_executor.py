@@ -158,7 +158,10 @@ class PostgresBackendReleaseExecutor:
                     and patch is None
                     and persisted["revision"] == base_revision
                     and persisted["route_lineage_continuous"]
-                    and persisted["exact_model_observed"]
+                    and (
+                        persisted["model_call_count"] == 0
+                        or persisted["exact_model_observed"]
+                    )
                 )
                 return self._abstention_evidence(
                     task,
@@ -166,6 +169,7 @@ class PostgresBackendReleaseExecutor:
                     passed=passed,
                     worker_claimed=worker_claimed,
                     persisted=persisted,
+                    base_revision=base_revision,
                 )
             if not isinstance(patch, dict):
                 with self.session_factory() as session:
@@ -188,7 +192,14 @@ class PostgresBackendReleaseExecutor:
                         else str(task_error_code)
                     )
                 )
-                return self._terminal_failure(task, trial_index, failure_reason)
+                return self._terminal_failure(
+                    task,
+                    trial_index,
+                    failure_reason,
+                    worker_claimed=worker_claimed,
+                    persisted=persisted,
+                    base_revision=base_revision,
+                )
             patch_set_id = int(patch["patch_set_id"])
             operation_ids = [int(item["operation_id"]) for item in patch["operations"]]
             pending_before = (
@@ -305,6 +316,10 @@ class PostgresBackendReleaseExecutor:
                 and undone.json().get("draft_revision") == undo_revision
                 and _semantic_hash(undone_document) == _semantic_hash(before)
             )
+            undo_reason_code = (
+                undone.json().get("code") if isinstance(undone.json(), dict) else None
+            )
+            undo_semantic_delta = _semantic_delta(before, undone_document)
             redone = client.post(
                 f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo",
                 headers=headers,
@@ -320,6 +335,10 @@ class PostgresBackendReleaseExecutor:
                 and redone.json().get("draft_revision") == redo_revision
                 and _semantic_hash(redone_document) == _semantic_hash(applied_document)
             )
+            redo_reason_code = (
+                redone.json().get("code") if isinstance(redone.json(), dict) else None
+            )
+            redo_semantic_delta = _semantic_delta(applied_document, redone_document)
         history = self._history_evidence(project_id, draft_id, base_revision, redo_revision)
         self._last_apply_context = {
             **self._last_context,
@@ -351,13 +370,27 @@ class PostgresBackendReleaseExecutor:
                 history["ownership_isolated"],
             )
         )
+        failure_stage = _apply_failure_stage(
+            apply_verified=apply_verified,
+            oracle_passed=oracle_passed,
+            undo_verified=undo_verified,
+            redo_verified=redo_verified,
+            history=history,
+        )
+        classification = (
+            "success"
+            if passed
+            else "lifecycle_failure"
+            if failure_stage in {"apply", "undo", "redo"}
+            else "capability_failure"
+        )
         return BackendTrialEvidence(
             task_id=task.task_id,
             family=task.family,
             expectation=task.expectation,
             trial_index=trial_index,
             passed=passed,
-            classification="success" if passed else "capability_failure",
+            classification=classification,
             infrastructure_failure=None,
             safety_violations=(),
             api_thread_created=True,
@@ -383,6 +416,22 @@ class PostgresBackendReleaseExecutor:
             operation_sequence_continuous=history["operation_sequence_continuous"],
             audit_continuous=history["audit_continuous"],
             ownership_isolated=history["ownership_isolated"],
+            patch_set_count=1,
+            draft_revision_before=base_revision,
+            draft_revision_after=redo_revision,
+            model_call_count=persisted["model_call_count"],
+            route_source=persisted["route_source"],
+            primary_intent=persisted["primary_intent"],
+            failure_stage=failure_stage,
+            reason_code=(
+                None if passed else f"backend_release_{failure_stage or 'capability'}_failed"
+            ),
+            undo_http_status=undone.status_code,
+            undo_reason_code=undo_reason_code,
+            undo_semantic_delta=undo_semantic_delta,
+            redo_http_status=redone.status_code,
+            redo_reason_code=redo_reason_code,
+            redo_semantic_delta=redo_semantic_delta,
         )
 
     def execute_fault(self, fault_id: str) -> Mapping[str, Any]:
@@ -850,10 +899,16 @@ class PostgresBackendReleaseExecutor:
             "model_call_persisted": bool(calls),
             "exact_model_observed": bool(calls)
             and all(item.model_id == "deepseek-v4-pro" for item in calls),
+            "model_call_count": len(calls),
             "revision": int(revision or base_revision),
             "event_reason_codes": event_reason_codes,
             "event_types": event_types,
             "route_trace": route_trace,
+            "route_source": _route_value(events, "route_source"),
+            "primary_intent": _route_primary_intent(events),
+            "transport_error_class": _transport_error_class(
+                None if task is None else task.error_details_jsonb
+            ),
         }
 
     def _history_evidence(
@@ -996,7 +1051,14 @@ class PostgresBackendReleaseExecutor:
             )
 
     def _terminal_failure(
-        self, task: ReleaseTask, trial_index: int, reason: str
+        self,
+        task: ReleaseTask,
+        trial_index: int,
+        reason: str,
+        *,
+        worker_claimed: bool = False,
+        persisted: Mapping[str, Any] | None = None,
+        base_revision: int = 0,
     ) -> BackendTrialEvidence:
         values: dict[str, Any] = {
             field: False
@@ -1018,6 +1080,21 @@ class PostgresBackendReleaseExecutor:
                 )
             )
         }
+        is_setup_failure = persisted is None
+        persisted = persisted or {
+            "task_succeeded": False,
+            "route_lineage_continuous": False,
+            "step_run_persisted": False,
+            "model_call_persisted": False,
+            "exact_model_observed": False,
+            "model_call_count": 0,
+            "revision": base_revision,
+            "route_source": None,
+            "primary_intent": None,
+            "transport_error_class": None,
+        }
+        transport_error = persisted.get("transport_error_class")
+        is_infrastructure = is_setup_failure or isinstance(transport_error, str)
         values.update(
             {
                 "task_id": task.task_id,
@@ -1025,11 +1102,42 @@ class PostgresBackendReleaseExecutor:
                 "expectation": task.expectation,
                 "trial_index": trial_index,
                 "passed": False,
-                "classification": "infrastructure_failure",
-                "infrastructure_failure": reason,
+                "classification": (
+                    "infrastructure_failure" if is_infrastructure else "capability_failure"
+                ),
+                "infrastructure_failure": (
+                    str(transport_error or reason) if is_infrastructure else None
+                ),
                 "safety_violations": (),
                 "reason_code": reason,
                 "no_auto_apply": True,
+                "api_thread_created": True,
+                "api_message_enqueued": True,
+                "worker_claimed": worker_claimed,
+                "task_succeeded": bool(persisted["task_succeeded"]),
+                "route_lineage_continuous": bool(persisted["route_lineage_continuous"]),
+                "step_run_persisted": bool(persisted["step_run_persisted"]),
+                "model_call_persisted": bool(persisted["model_call_persisted"]),
+                "exact_model_observed": (
+                    bool(persisted["exact_model_observed"])
+                    if persisted["model_call_count"]
+                    else None
+                ),
+                "patch_set_count": 0,
+                "draft_revision_before": base_revision,
+                "draft_revision_after": int(persisted["revision"]),
+                "model_call_count": int(persisted["model_call_count"]),
+                "route_source": persisted["route_source"],
+                "primary_intent": persisted["primary_intent"],
+                "failure_stage": (
+                    "worker"
+                    if is_setup_failure
+                    else "provider_transport"
+                    if isinstance(transport_error, str)
+                    else "route"
+                    if persisted["primary_intent"] in {"clarify", "unsupported_action"}
+                    else "patch_persistence"
+                ),
             }
         )
         return BackendTrialEvidence(**values)
@@ -1042,39 +1150,53 @@ class PostgresBackendReleaseExecutor:
         passed: bool,
         worker_claimed: bool,
         persisted: Mapping[str, Any],
+        base_revision: int,
     ) -> BackendTrialEvidence:
+        revision = int(persisted["revision"])
         return BackendTrialEvidence(
-            task.task_id,
-            task.family,
-            task.expectation,
-            trial_index,
-            passed,
-            "safe_block" if passed else "safety_failure",
-            None,
-            () if passed else ("abstention_failed",),
-            True,
-            True,
-            worker_claimed,
-            bool(persisted["task_succeeded"]),
-            bool(persisted["route_lineage_continuous"]),
-            bool(persisted["step_run_persisted"]),
-            bool(persisted["model_call_persisted"]),
-            bool(persisted["exact_model_observed"]),
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
-            True,
+            task_id=task.task_id,
+            family=task.family,
+            expectation=task.expectation,
+            trial_index=trial_index,
+            passed=passed,
+            classification="safe_block" if passed else "safety_failure",
+            infrastructure_failure=None,
+            safety_violations=() if passed else ("abstention_failed",),
+            api_thread_created=True,
+            api_message_enqueued=True,
+            worker_claimed=worker_claimed,
+            task_succeeded=bool(persisted["task_succeeded"]),
+            route_lineage_continuous=bool(persisted["route_lineage_continuous"]),
+            step_run_persisted=bool(persisted["step_run_persisted"]),
+            model_call_persisted=bool(persisted["model_call_persisted"]),
+            exact_model_observed=(
+                bool(persisted["exact_model_observed"])
+                if persisted["model_call_count"]
+                else None
+            ),
+            pending_before_approval=None,
+            no_auto_apply=True,
+            operations_persisted=None,
+            proof_persisted=None,
+            simulation_can_apply=None,
+            delete_hash_gate_passed=None,
+            apply_verified=None,
+            final_state_oracle_passed=None,
+            post_apply_verification_passed=None,
+            undo_verified=None,
+            redo_verified=None,
+            revision_continuous=None,
+            operation_sequence_continuous=None,
+            audit_continuous=None,
+            ownership_isolated=None,
+            patch_set_count=0,
+            draft_revision_before=base_revision,
+            draft_revision_after=revision,
+            model_call_count=int(persisted["model_call_count"]),
+            route_source=persisted["route_source"],
+            primary_intent=persisted["primary_intent"],
+            failure_stage=None if passed else "route",
+            reason_code=None if passed else "abstention_failed",
         )
 
 
@@ -1095,7 +1217,7 @@ def _as_eval_task(task: ReleaseTask) -> Any:
 
 
 def _semantic_hash(value: Mapping[str, Any]) -> str:
-    document = _without_storage_metadata(deepcopy(dict(value)))
+    document = _semantic_state(value)
     for field in ("casefile_id", "version", "brief_ref"):
         document.pop(field, None)
     return hashlib.sha256(
@@ -1113,6 +1235,89 @@ def _without_storage_metadata(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_storage_metadata(item) for item in value]
     return value
+
+
+def _semantic_state(value: Mapping[str, Any]) -> dict[str, Any]:
+    normalized = _without_storage_metadata(deepcopy(dict(value)))
+    assert isinstance(normalized, dict)
+    for collection, items in tuple(normalized.items()):
+        if isinstance(items, list) and all(
+            isinstance(item, dict) and isinstance(item.get("id"), str) for item in items
+        ):
+            normalized[collection] = {
+                str(item["id"]): item for item in sorted(items, key=lambda item: str(item["id"]))
+            }
+    return normalized
+
+
+def _semantic_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    left = _semantic_state(before)
+    right = _semantic_state(after)
+    return {
+        "changed_top_level_fields": sorted(
+            key for key in set(left) | set(right) if left.get(key) != right.get(key)
+        ),
+        "before_hash": _semantic_hash(before),
+        "after_hash": _semantic_hash(after),
+    }
+
+
+def _route_event_payload(events: list[Any]) -> Mapping[str, Any]:
+    event = next((item for item in events if item.event_type == "route.decided"), None)
+    return (
+        event.payload_jsonb
+        if event is not None and isinstance(event.payload_jsonb, dict)
+        else {}
+    )
+
+
+def _route_value(events: list[Any], key: str) -> str | None:
+    value = _route_event_payload(events).get(key)
+    return str(value) if isinstance(value, str) else None
+
+
+def _route_primary_intent(events: list[Any]) -> str | None:
+    profile = _route_event_payload(events).get("execution_profile")
+    value = profile.get("primary_intent") if isinstance(profile, dict) else None
+    return str(value) if isinstance(value, str) else None
+
+
+def _apply_failure_stage(
+    *,
+    apply_verified: bool,
+    oracle_passed: bool,
+    undo_verified: bool,
+    redo_verified: bool,
+    history: Mapping[str, bool],
+) -> str | None:
+    if not apply_verified:
+        return "apply"
+    if not oracle_passed:
+        return "oracle"
+    if not undo_verified:
+        return "undo"
+    if not redo_verified:
+        return "redo"
+    if not all(history.values()):
+        return "apply"
+    return None
+
+
+def _transport_error_class(value: Any) -> str | None:
+    if isinstance(value, dict):
+        candidate = value.get("transport_error_class")
+        if isinstance(candidate, str):
+            return candidate
+        for nested in value.values():
+            found = _transport_error_class(nested)
+            if found is not None:
+                return found
+    if isinstance(value, list):
+        for nested in value:
+            found = _transport_error_class(nested)
+            if found is not None:
+                return found
+    return None
 
 
 __all__ = ["PostgresBackendReleaseExecutor"]

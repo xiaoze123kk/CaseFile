@@ -29,6 +29,7 @@ _EDIT_FIELD_ALIASES = {
     "/name": ("名称", "名字", "name"),
     "/title": ("标题", "title"),
     "/summary": ("摘要", "summary"),
+    "/status": ("状态", "status"),
 }
 
 _DESTRUCTIVE_ACTION_MARKERS = (
@@ -42,6 +43,7 @@ _DESTRUCTIVE_ACTION_MARKERS = (
 _CREATE_ACTION_MARKERS = (
     "创建",
     "新建",
+    "新增",
     "create",
     "add a new",
 )
@@ -112,7 +114,13 @@ def general_mutation_abstention_reason(request: CaseFileChatRequest) -> str | No
         _alternative_candidate_ids(request, message)
     ) > 1:
         return "general_mutation_target_ambiguous"
-    if any(marker in message for marker in _UNBOUND_TARGET_MARKERS) and not manifest.targets:
+    if (
+        any(marker in message for marker in _UNBOUND_TARGET_MARKERS)
+        and not manifest.targets
+        and not explicit_object_ids
+        and not request.focus.get("object_ids")
+        and not request.focus.get("event_ids")
+    ):
         return "general_mutation_target_ambiguous"
 
     vague_value = any(marker in message for marker in _VAGUE_VALUE_MARKERS)

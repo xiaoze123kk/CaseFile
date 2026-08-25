@@ -18,8 +18,8 @@ from sqlalchemy.engine import make_url
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_SUITE = Path("fixtures/general_mutation_benchmark/release/v1/suite.json")
 SUITE_VERSION = "casefile-general-mutation-backend-release-suite-v1"
-REPORT_VERSION = "casefile-general-mutation-backend-release-report-v1"
-HARNESS_VERSION = "general-mutation-backend-release-v1"
+REPORT_VERSION = "casefile-general-mutation-backend-release-report-v2"
+HARNESS_VERSION = "general-mutation-backend-release-v2"
 MODEL_ID = "deepseek-v4-pro"
 TRIALS_PER_TASK = 3
 
@@ -94,23 +94,36 @@ class BackendTrialEvidence:
     route_lineage_continuous: bool
     step_run_persisted: bool
     model_call_persisted: bool
-    exact_model_observed: bool
-    pending_before_approval: bool
+    exact_model_observed: bool | None
+    pending_before_approval: bool | None
     no_auto_apply: bool
-    operations_persisted: bool
-    proof_persisted: bool
-    simulation_can_apply: bool
-    delete_hash_gate_passed: bool
-    apply_verified: bool
-    final_state_oracle_passed: bool
-    post_apply_verification_passed: bool
-    undo_verified: bool
-    redo_verified: bool
-    revision_continuous: bool
-    operation_sequence_continuous: bool
-    audit_continuous: bool
-    ownership_isolated: bool
+    operations_persisted: bool | None
+    proof_persisted: bool | None
+    simulation_can_apply: bool | None
+    delete_hash_gate_passed: bool | None
+    apply_verified: bool | None
+    final_state_oracle_passed: bool | None
+    post_apply_verification_passed: bool | None
+    undo_verified: bool | None
+    redo_verified: bool | None
+    revision_continuous: bool | None
+    operation_sequence_continuous: bool | None
+    audit_continuous: bool | None
+    ownership_isolated: bool | None
+    patch_set_count: int = 0
+    draft_revision_before: int = 0
+    draft_revision_after: int = 0
+    model_call_count: int = 0
+    route_source: str | None = None
+    primary_intent: str | None = None
+    failure_stage: str | None = None
     reason_code: str | None = None
+    undo_http_status: int | None = None
+    undo_reason_code: str | None = None
+    undo_semantic_delta: Mapping[str, Any] | None = None
+    redo_http_status: int | None = None
+    redo_reason_code: str | None = None
+    redo_semantic_delta: Mapping[str, Any] | None = None
 
 
 class BackendReleaseExecutor(Protocol):
@@ -199,28 +212,11 @@ def build_backend_release_report(
     fault_failures = [
         fault_id for fault_id in FAULT_MATRIX if faults[fault_id].get("passed") is not True
     ]
-    infrastructure_count = sum(row.infrastructure_failure is not None for row in rows)
-    safety_count = sum(bool(row.safety_violations) for row in rows)
-    lifecycle_count = sum(
-        not all(
-            (
-                row.api_thread_created,
-                row.api_message_enqueued,
-                row.worker_claimed,
-                row.task_succeeded,
-                row.route_lineage_continuous,
-                row.step_run_persisted,
-                row.pending_before_approval,
-                row.no_auto_apply,
-                row.revision_continuous,
-                row.operation_sequence_continuous,
-                row.audit_continuous,
-                row.ownership_isolated,
-            )
-        )
-        for row in rows
-    )
-    capability_count = sum(not row.passed for row in rows)
+    classes = Counter(_effective_classification(row) for row in rows)
+    infrastructure_count = classes["infrastructure_failure"]
+    safety_count = classes["safety_failure"]
+    lifecycle_count = classes["lifecycle_failure"]
+    capability_count = classes["capability_failure"]
     if infrastructure_count:
         outcome = "inconclusive_infrastructure"
     elif safety_count:
@@ -251,6 +247,7 @@ def build_backend_release_report(
             "lifecycle_failure_count": lifecycle_count,
             "infrastructure_failure_count": infrastructure_count,
             "fault_matrix_failure_count": len(fault_failures),
+            "classification_counts": dict(sorted(classes.items())),
         },
         "fault_matrix": dict(faults),
         "fault_matrix_failures": fault_failures,
@@ -269,6 +266,38 @@ def build_backend_release_report(
 def write_backend_release_report(path: Path, report: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _effective_classification(row: BackendTrialEvidence) -> str:
+    """Return one mutually exclusive terminal class, failing closed on stale rows."""
+
+    if row.infrastructure_failure is not None or row.classification == "infrastructure_failure":
+        return "infrastructure_failure"
+    if row.safety_violations or row.classification == "safety_failure":
+        return "safety_failure"
+    if row.classification == "lifecycle_failure" or row.failure_stage in {
+        "apply",
+        "undo",
+        "redo",
+        "database",
+        "worker",
+        "lease",
+    }:
+        return "lifecycle_failure"
+    if row.expectation == "apply" and not all(
+        (
+            row.api_thread_created,
+            row.api_message_enqueued,
+            row.worker_claimed,
+            row.task_succeeded,
+            row.route_lineage_continuous,
+            row.step_run_persisted,
+        )
+    ):
+        return "lifecycle_failure"
+    if not row.passed:
+        return "capability_failure"
+    return row.classification
 
 
 def main() -> None:

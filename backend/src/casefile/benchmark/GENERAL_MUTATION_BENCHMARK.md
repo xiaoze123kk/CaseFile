@@ -95,7 +95,7 @@ Capability 主要报告 `task_macro_pass_at_1`、family macro 与多 Trial 的
 Worker、Pending PatchSet 和显式 Apply/Undo/Redo 执行 15×3 release cohort，并运行固定
 20 项 Fault Matrix。Delete 必须分别证明缺少、篡改、过期和当前 impact hash 的行为。
 任何 fault、生命周期、Safety 或基础设施失败都失败关闭；报告版本为
-`casefile-general-mutation-backend-release-report-v1`。
+`casefile-general-mutation-backend-release-report-v2`。
 
 ## 07f Formal Qualification
 

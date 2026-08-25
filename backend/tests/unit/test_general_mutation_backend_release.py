@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+
 from casefile.benchmark.general_mutation_backend_release import (
     FAULT_MATRIX,
     BackendReleaseContractError,
@@ -13,13 +14,14 @@ from casefile.benchmark.general_mutation_backend_release import (
 
 
 def _row(task_id: str, family: str, trial: int) -> BackendTrialEvidence:
+    abstention = family == "abstention_neighbor"
     return BackendTrialEvidence(
         task_id=task_id,
         family=family,
-        expectation="abstain" if family == "abstention_neighbor" else "apply",
+        expectation="abstain" if abstention else "apply",
         trial_index=trial,
         passed=True,
-        classification="success",
+        classification="safe_block" if abstention else "success",
         infrastructure_failure=None,
         safety_violations=(),
         api_thread_created=True,
@@ -28,23 +30,27 @@ def _row(task_id: str, family: str, trial: int) -> BackendTrialEvidence:
         task_succeeded=True,
         route_lineage_continuous=True,
         step_run_persisted=True,
-        model_call_persisted=True,
-        exact_model_observed=True,
-        pending_before_approval=True,
+        model_call_persisted=not abstention,
+        exact_model_observed=None if abstention else True,
+        pending_before_approval=None if abstention else True,
         no_auto_apply=True,
-        operations_persisted=True,
-        proof_persisted=True,
-        simulation_can_apply=True,
-        delete_hash_gate_passed=True,
-        apply_verified=True,
-        final_state_oracle_passed=True,
-        post_apply_verification_passed=True,
-        undo_verified=True,
-        redo_verified=True,
-        revision_continuous=True,
-        operation_sequence_continuous=True,
-        audit_continuous=True,
-        ownership_isolated=True,
+        operations_persisted=None if abstention else True,
+        proof_persisted=None if abstention else True,
+        simulation_can_apply=None if abstention else True,
+        delete_hash_gate_passed=None if abstention else True,
+        apply_verified=None if abstention else True,
+        final_state_oracle_passed=None if abstention else True,
+        post_apply_verification_passed=None if abstention else True,
+        undo_verified=None if abstention else True,
+        redo_verified=None if abstention else True,
+        revision_continuous=None if abstention else True,
+        operation_sequence_continuous=None if abstention else True,
+        audit_continuous=None if abstention else True,
+        ownership_isolated=None if abstention else True,
+        patch_set_count=0 if abstention else 1,
+        draft_revision_before=2,
+        draft_revision_after=2 if abstention else 5,
+        model_call_count=0 if abstention else 1,
     )
 
 
@@ -75,6 +81,9 @@ def test_release_report_requires_all_45_rows_and_20_faults() -> None:
     assert report["trial_count"] == 45
     assert report["metrics"]["fault_matrix_failure_count"] == 0
     assert report["no_auto_apply"] is True
+    abstention_rows = [row for row in report["rows"] if row["expectation"] == "abstain"]
+    assert all(row["patch_set_count"] == row["model_call_count"] == 0 for row in abstention_rows)
+    assert all(row["apply_verified"] is None for row in abstention_rows)
 
 
 @pytest.mark.parametrize(
@@ -98,6 +107,15 @@ def test_release_outcome_precedence(mutation: dict[str, object], outcome: str) -
         database_schema_fingerprint="b" * 64,
     )
     assert report["qualification_outcome"] == outcome
+    assert sum(
+        report["metrics"][key]
+        for key in (
+            "capability_failure_count",
+            "safety_failure_count",
+            "lifecycle_failure_count",
+            "infrastructure_failure_count",
+        )
+    ) == 1
 
 
 def test_release_report_rejects_fault_key_drift() -> None:

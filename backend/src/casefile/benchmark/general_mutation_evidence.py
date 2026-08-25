@@ -218,7 +218,12 @@ def _manifest_integrity_blockers(
             blockers.append("qualification_backend_release_runtime_fingerprint_mismatch")
         rows = report.get("rows")
         if isinstance(rows, list) and rows and not all(
-            isinstance(row, Mapping) and row.get("exact_model_observed") is True for row in rows
+            isinstance(row, Mapping)
+            and (
+                row.get("model_call_count") == 0
+                or row.get("exact_model_observed") is True
+            )
+            for row in rows
         ):
             blockers.append("qualification_backend_release_model_lineage_mismatch")
     return blockers
