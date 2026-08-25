@@ -211,7 +211,10 @@ def validate_references(suite: EvalSuite, repo_root: Path = ROOT) -> None:
                 base_revision=1,
                 updated_at="2042-06-01T00:00:00Z",
             )
-            if suite.suite_id == "general-mutation-capability-dev-v2":
+            if (
+                suite.suite_id == "general-mutation-capability-dev-v2"
+                or suite.suite_role == "holdout"
+            ):
                 simulation, _repair = _simulate_final_outcome(
                     document,
                     bound,

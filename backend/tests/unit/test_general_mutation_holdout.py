@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from casefile.benchmark.general_mutation_capability import validate_references
 from casefile.benchmark.general_mutation_holdout import (
     HoldoutContractError,
     load_holdout_suite,
@@ -28,6 +29,11 @@ def test_private_holdout_oracle_is_not_in_provider_input() -> None:
         assert "oracle" not in input_text
         assert "reference" not in input_text
         assert Path(task.reference_path).is_file()
+
+
+def test_private_holdout_references_use_formal_closure_pipeline() -> None:
+    suite = load_holdout_suite(PRIVATE_SUITE)
+    validate_references(suite, ROOT)
 
 
 def test_private_holdout_missing_package_fails_closed(tmp_path: Path) -> None:

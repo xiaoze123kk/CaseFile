@@ -113,6 +113,8 @@ Private Holdout、07d、07e，最终生成 RFC 8785 canonical SHA-256 Evidence I
 和异常类型，仍须生成 `qualified=false` 的 Evidence Index，不落盘异常消息或凭据。统一质量门禁
 中的 PostgreSQL fixture teardown 会把专用测试库恢复到 base；正式脚本只对已通过 `_test`
 校验的库重新执行 `alembic upgrade head`，然后才进行第二次冻结 preflight 和 Provider Trial。
+Private Holdout 的 Reference Plan 与正式 Trial 使用同一 Closure Repair 最终状态管线验证；不得以
+无修复的中间 Simulation 拒绝 closure-sensitive Reference，也不得因此改写私有 Reference 追绿。
 # M3.4-07d Safety / Abstention
 
 `general-mutation-safety` is a separate 25-task Router/Worker/PostgreSQL suite.
