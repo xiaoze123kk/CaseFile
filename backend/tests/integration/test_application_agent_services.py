@@ -32,6 +32,10 @@ from casefile.agent_runtime.models import (
     ChatTaskUnderstanding,
     agent_state_to_jsonable,
 )
+from casefile.application.agent_mutation import (
+    bind_general_mutation_plan,
+    general_mutation_impact_hash,
+)
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
@@ -49,6 +53,7 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
+from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
 
 pytestmark = pytest.mark.postgres
@@ -1161,6 +1166,121 @@ def test_agent_chat_issue_route_allows_suggestions_and_records_route_outcome(
             assert task["result"]["routing"]["intent"] == "explain_issue"
             assert task["result"]["routing"]["suggestion_policy"] == "allow"
             assert task["result"]["routing"]["suppressed_count"] == 0
+
+
+def test_general_mutation_ready_envelope_is_suppressed_by_deny_route(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="route-suppression-fixture"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            entity_id = draft["content"]["entities"][0]["id"]
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请澄清目标，不要生成修改。",
+            )
+        task_id = int(queued["task"]["task_run_id"])
+        claim = Worker(
+            factory,
+            config=WorkerConfig(worker_id="route-suppression-completion"),
+            provider_factory=lambda _task: FakeProvider(),
+        )._claim_next()
+        assert claim is not None and claim[0] == task_id
+
+        plan = MutationPlanV1.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "unsafe_ready_update",
+                        "operation_type": "update_field",
+                        "target": {"ref_kind": "existing", "object_id": entity_id},
+                        "field_path": "/description",
+                        "new_value": "不应被持久化。",
+                        "reason": "测试 finalization 防御门禁。",
+                    }
+                ]
+            }
+        )
+        bound = bind_general_mutation_plan(
+            plan,
+            draft["content"],
+            task_run_id=task_id,
+            draft_id=draft_id,
+            base_revision=2,
+        )
+        simulation = VerificationEngine(profile="fast").simulate_mutation_set(
+            draft["content"], bound.mutation_set
+        )
+        route = routing_policy(
+            ChatTaskUnderstanding(
+                primary_intent="clarify",
+                confidence=1.0,
+                reason_codes=("test:clarify",),
+            ),
+            budget={},
+            route_source="rule_safety",
+        )
+        envelope = {
+            "status": "ready",
+            "bound": bound,
+            "simulation": simulation,
+            "impact_hash": general_mutation_impact_hash(simulation),
+        }
+        with factory() as session:
+            completion = WorkflowService(session).complete_chat_task(
+                task_id,
+                claim[1],
+                answer="需要先澄清目标。",
+                referenced_object_ids=[],
+                referenced_event_ids=[],
+                referenced_validation_issue_ids=[],
+                suggestions=[],
+                usage={"requests": 1},
+                route=agent_state_to_jsonable(route),
+                general_mutation_envelope=envelope,
+            )
+        with factory() as session:
+            patch_sets = list(
+                session.scalars(select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_id))
+            )
+        with factory() as session:
+            current = CaseFileService(session).get_draft(actor_id, project_id)
+        with factory() as session:
+            events = WorkflowService(session).list_task_events(actor_id, project_id, task_id)
+
+        assert completion["message"]["patch_set"] is None
+        assert patch_sets == []
+        assert current["revision"] == 2
+        suppression = next(
+            event
+            for event in events
+            if event["event_type"] == "route.general_mutation_suppressed"
+        )
+        assert suppression["payload"]["route_intent"] == "clarify"
+        assert suppression["payload"]["suppressed_count"] == 1
 
 
 def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(

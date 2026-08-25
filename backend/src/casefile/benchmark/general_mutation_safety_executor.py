@@ -15,12 +15,20 @@ from sqlalchemy.engine import make_url
 
 from casefile.agent_runtime import DeepSeekAgentsProvider
 from casefile.agent_runtime.models import GenerationRequest, GenerationResult, ToolMetrics
+from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.general_mutation_safety import ROOT, SafetyTask, SafetyTrialEvidence
 from casefile.contracts import validate_casefile
-from casefile.data_postgres.models import AgentPatchSet, Draft, TaskEvent, TaskRun
+from casefile.data_postgres.models import (
+    AgentMessage,
+    AgentPatchOperation,
+    AgentPatchSet,
+    Draft,
+    TaskEvent,
+    TaskRun,
+)
 from casefile.data_postgres.session import create_database_engine, create_session_factory
 from casefile.worker.runtime import Worker, WorkerConfig
 
@@ -31,6 +39,7 @@ class _SafetyProvider:
     def __init__(self, document: dict[str, Any], *, live: Any | None = None) -> None:
         self.document = deepcopy(document)
         self.live = live or DeepSeekAgentsProvider()
+        self.observed_calls: list[dict[str, Any]] = []
 
     def generate(self, request: GenerationRequest) -> GenerationResult:
         candidate = deepcopy(self.document)
@@ -56,7 +65,43 @@ class _SafetyProvider:
         )
 
     def __getattr__(self, name: str) -> Any:
-        return getattr(self.live, name)
+        target = getattr(self.live, name)
+        if not callable(target):
+            return target
+
+        def observed(*args: Any, **kwargs: Any) -> Any:
+            request = args[0] if args else kwargs.get("request")
+            prompt_version = getattr(request, "prompt_version", None)
+            prompt_agent_id = (
+                "general_mutation_planner"
+                if name == "plan_general_mutation"
+                else "closure_repair"
+                if name == "repair_closure"
+                else "casefile_chat"
+            )
+            prompt_sha256 = None
+            if isinstance(prompt_version, str):
+                prompt_sha256 = load_prompt(prompt_agent_id, prompt_version).system_prompt_sha256
+            call = {
+                "provider": (
+                    "deepseek" if isinstance(self.live, DeepSeekAgentsProvider) else "injected"
+                ),
+                "model_id": getattr(request, "model_id", None),
+                "prompt_component_id": name,
+                "prompt_version": prompt_version,
+                "prompt_sha256": prompt_sha256,
+                "status": "running",
+            }
+            self.observed_calls.append(call)
+            try:
+                result = target(*args, **kwargs)
+            except Exception:
+                call["status"] = "failed"
+                raise
+            call["status"] = "succeeded"
+            return result
+
+        return observed
 
 
 class PostgresSafetyExecutor:
@@ -158,6 +203,23 @@ class PostgresSafetyExecutor:
                     select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_run_id)
                 )
             )
+            patch_ids = [item.id for item in patches]
+            patch_operations = (
+                []
+                if not patch_ids
+                else list(
+                    session.scalars(
+                        select(AgentPatchOperation)
+                        .where(AgentPatchOperation.patch_set_id.in_(patch_ids))
+                        .order_by(AgentPatchOperation.patch_set_id, AgentPatchOperation.ordinal)
+                    )
+                )
+            )
+            assistant_message = (
+                None
+                if task_run.output_message_id is None
+                else session.get(AgentMessage, task_run.output_message_id)
+            )
             revision_after = session.scalar(select(Draft.revision).where(Draft.id == draft_id))
         intent_event = next(
             (item for item in events if item.event_type == "intent.understood"), None
@@ -220,6 +282,21 @@ class PostgresSafetyExecutor:
             draft_revision_before=revision_before,
             draft_revision_after=int(revision_after or 0),
             event_types=tuple(item.event_type for item in events),
+            assistant_response=(
+                None if assistant_message is None else assistant_message.content_text
+            ),
+            patch_operations=tuple(
+                {
+                    "operation_type": item.operation_type,
+                    "target_object_key": item.target_object_key,
+                    "target_collection": item.target_collection,
+                    "field_path": item.field_path,
+                    "new_value": item.new_value_jsonb,
+                    "origin": item.origin,
+                }
+                for item in patch_operations
+            ),
+            model_calls=tuple(deepcopy(provider.observed_calls)),
             reason_codes=reason_codes,
             task_error_code=task_error_code,
             protocol_failure=protocol_failure,

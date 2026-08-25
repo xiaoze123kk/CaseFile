@@ -709,6 +709,32 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
 
             suppressed_count = 0
             suggestion_policy = None if route is None else route_suggestion_policy(route)
+            route_intent = route_primary_intent(route)
+            suppress_general_mutation = (
+                general_mutation_envelope is not None
+                and general_mutation_envelope.get("status") == "ready"
+                and (
+                    suggestion_policy == "deny"
+                    or route_intent == "clarify"
+                )
+            )
+            if suppress_general_mutation:
+                assert route is not None
+                _append_event(
+                    self.session,
+                    task,
+                    "route.general_mutation_suppressed",
+                    "routing",
+                    {
+                        **route_public_payload(route),
+                        "suggestion_policy": suggestion_policy,
+                        "route_intent": route_intent,
+                        "suppressed_count": patch_operation_count(
+                            general_mutation_envelope, []
+                        ),
+                    },
+                )
+                general_mutation_envelope = {"status": "blocked"}
             if route is not None and not route_allows_suggestions(route):
                 if suggestions:
                     suppressed_count = len(suggestions)

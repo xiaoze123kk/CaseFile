@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from types import SimpleNamespace
 
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
+    ChatTaskUnderstanding,
+    RouteDecision,
     RouteSpecificRewriteRequest,
 )
 from casefile.agent_runtime.prompt import (
@@ -17,10 +20,30 @@ from casefile.agent_runtime.prompt import (
 )
 from casefile.agent_runtime.providers import FakeProvider
 from casefile.worker.executors.chat import (
+    ChatTaskExecutorMixin,
     chat_intent_event_payload,
     chat_rewrite_event_payload,
     resolve_chat_route,
 )
+
+
+class _GeneralMutationGateExecutor(ChatTaskExecutorMixin):
+    def __init__(self) -> None:
+        self.config = SimpleNamespace(general_mutation_mode="suggest")
+        self.events: list[tuple[str, str, dict]] = []
+
+    def _emit(self, _task_run_id: int, event_type: str, stage: str, payload: dict) -> None:
+        self.events.append((event_type, stage, payload))
+
+
+class _CountingMutationProvider(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.general_mutation_calls = 0
+
+    def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
+        self.general_mutation_calls += 1
+        return super().plan_general_mutation(request)
 
 
 def make_request(
@@ -203,6 +226,40 @@ def test_low_confidence_sensitive_edit_hits_the_gate_and_falls_back() -> None:
     assert resolved.route.execution_profile["suggestion_policy"] == "deny"
     assert resolved.rewrite is not None
     assert resolved.rewrite.rewrite_decision == "KEEP"
+
+
+def test_general_mutation_planner_obeys_final_deny_route() -> None:
+    provider = _CountingMutationProvider()
+    executor = _GeneralMutationGateExecutor()
+    request = replace(
+        make_request(
+            hint={"entrypoint": "free_text"},
+            message="把 ent_1 的 description 改为夜班研究员。",
+        ),
+        task_understanding=ChatTaskUnderstanding(primary_intent="edit_request"),
+        route=RouteDecision(
+            execution_profile={
+                "primary_intent": "edit_request",
+                "suggestion_policy": "deny",
+            }
+        ),
+    )
+
+    envelope, usage = executor._execute_general_mutation(
+        SimpleNamespace(id=1, input_hash="a" * 64),
+        request,
+        provider,
+        "test-key",
+    )
+
+    assert provider.general_mutation_calls == 0
+    assert envelope == {"status": "blocked"}
+    assert usage == {}
+    blocked = next(event for event in executor.events if event[0] == "general_mutation.blocked")
+    assert blocked[2] == {
+        "reason_code": "general_mutation_route_denied",
+        "failure_layer": "routing",
+    }
 
 
 def test_analysis_route_selects_multi_query_and_calls_post_route_rewrite() -> None:

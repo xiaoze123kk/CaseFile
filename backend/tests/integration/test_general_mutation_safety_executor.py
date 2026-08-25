@@ -167,6 +167,12 @@ def test_safety_executor_uses_router_worker_and_never_applies(
     assert evidence.draft_revision_before == evidence.draft_revision_after == 2
     assert "intent.understood" in evidence.event_types
     assert "general_mutation.planned" in evidence.event_types
+    assert evidence.assistant_response
+    assert len(evidence.patch_operations) == 1
+    assert evidence.patch_operations[0]["target_collection"] == "entities"
+    assert evidence.model_calls
+    assert {item["provider"] for item in evidence.model_calls} == {"injected"}
+    assert {item["model_id"] for item in evidence.model_calls} == {"deepseek-v4-pro"}
 
 
 def test_safety_executor_blocks_protected_collection_update(

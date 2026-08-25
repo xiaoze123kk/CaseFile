@@ -67,10 +67,12 @@
 | `backend/src/casefile/domain/logical_mutation/` | 纯 Python Logical Mutation Kernel：discriminated operations、依赖拓扑排序、机械双向投影、NetworkX 封装图、关系传播策略单一来源、Impact Cone 与显式 v1/v2 policy registry；`closure/` 预计算不可变 ClosureContext/ClosureIndex，并实现 Claim、Hypothesis assessment、ReasoningPath/Resolution、typed integration 与 Shadow travel-time 确定性规则；公开接口不泄漏 NetworkX 类型。 |
 | `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复内核：版本化 RepairPolicy、角色化 ClosureObligation、MutationSimulation 资格评估，以及确定性 RepairScope。V1/V2 context 保留历史回放；V3 Alternative Planner 只枚举服务器完整模拟证明的 Claim status 或 incompatible dependency 移除候选，以规范 hash 绑定 operation、前后 obligation 与 candidate hash。Repair Engine 默认只接受 selected alternative ID，最多两轮从同一 baseline 重放并允许 obligation 不增的 staged progress；未知、过期、篡改、无候选、scope/protected/StructureLock 越界与 rebase mismatch 全部失败关闭。本模块不接 Provider/数据库/API/UI，不执行 Apply。 |
 | `backend/src/casefile/agent_runtime/transport_diagnostics.py` | 对 Provider 异常 cause chain 做 timeout/connection/rate-limit/4xx/5xx/protocol/unknown 脱敏分类，输出稳定 retry、protocol 与 fallback 诊断，不保留 URL、正文、凭据或异常文本。 |
+| `backend/src/casefile/agent_runtime/chat_intent.py` | CaseFile Chat 的确定性意图规则、Route 建议权限、显式编辑目标 Manifest 与 General Mutation abstention 判定；未绑定代词、未决二选一、字段/值缺失和非唯一删除均在 Provider 前要求澄清。 |
 | `backend/src/casefile/agent_runtime/general_mutation.py`、`general_mutation_prompt.py` | M3.4 runtime-private General Mutation Planner 严格输出契约、预算/依赖 DAG/保护集合规则与不可变 Prompt Package 渲染；不访问数据库或应用服务。 |
 | `backend/src/casefile/benchmark/closure_repair_lineage.py` | 对 repair domain、Closure policy、VerificationEngine、V3 Prompt/Schema、Application/Worker 与 Provider contract 生成统一 repair runtime fingerprint。 |
 | `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Kernel Regression：给定 Plan 后冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；只报告 kernel failure/escape，不冒充 Safety 或 Pro Capability。 |
 | `backend/src/casefile/benchmark/general_mutation_capability.py` | General Mutation Outcome-first Provider Dev Capability：以自然语言作者任务驱动正式 Planner、Binder、Simulation，Reference Plan 仅证明题目可解，正交评分最终 CaseFile 状态、Safety 与 Scope，并区分能力、协议和基础设施失败。 |
+| `backend/src/casefile/benchmark/general_mutation_safety.py`、`general_mutation_safety_executor.py` | M3.4-07d Safety / Abstention：在隔离 PostgreSQL 上运行真实 Router/Worker/Provider，按持久化拒绝、真实澄清问题、PatchOperation Oracle、Draft revision 与调用身份区分正确阻断、安全失败关闭、错误放行和基础设施失败；不执行 Apply。 |
 | `backend/src/casefile/benchmark/general_mutation_progress.py` | General Mutation Benchmark 逐 Trial 可观测性：输出机器可读进度并原子保存仅供诊断的完成序号/checkpoint；明确禁止从中选择性续跑能力失败。 |
 | `backend/src/casefile/benchmark/GENERAL_MUTATION_BENCHMARK.md` | General Mutation Benchmark v2 宪法、S0-S5 分层、Dev Task/Oracle/Reference 契约、指标与 Suggest Ready 发布证据边界。 |
 | `backend/src/casefile/benchmark/closure_repair_evidence.py`、`closure_repair_qualification.py` | 组装 M3.3 Evidence Index v2，校验每份报告自哈希、同 revision/runtime lineage、Holdout 最多一次且仅由首轮 infra 触发的完整重跑，以及 Backend 54-trial 最终资格；正式编排在同一 clean revision 上冻结 suite/gate/grader/runtime fingerprint，并按 Clean Dev → Holdout → Backend Release 顺序失败关闭。 |
@@ -90,7 +92,7 @@
 | `backend/src/casefile/worker/runtime.py`、`worker/closure_repair.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环。`CLOSURE_REPAIR_MODE=off|shadow|suggest` 默认 `shadow`；`CASEFILE_CHAT_GENERAL_MUTATION_MODE=off|shadow|suggest` 默认 `off`，Create/Delete 各有独立开关，非法值启动失败。Chat repair 把证明 envelope 交给 Application，不决定 Apply。 |
 | `backend/src/casefile/worker/queue.py` | TaskRun claim、lease 恢复、取消观察和 Attempt 初始化；不执行具体任务。 |
 | `backend/src/casefile/worker/finalization.py` | TaskRun 成功、失败、取消、可重试状态收敛与稳定错误/事件落库。 |
-| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
+| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；General Mutation Planner 入口必须服从最终 Route deny/clarify 与 `agent_runtime` abstention 判定。`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
 
 ## 领域模块
 

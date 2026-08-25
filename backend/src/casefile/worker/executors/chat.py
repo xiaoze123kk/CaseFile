@@ -22,10 +22,12 @@ from casefile.agent_runtime import (
 from casefile.agent_runtime.chat_intent import (
     INTENT_ROUTER_VERSION,
     RuleRoute,
+    general_mutation_abstention_reason,
     normalize_routing_hint,
     resolve_intent_mentions,
     resolve_rule_route,
     route_public_payload,
+    route_suggestion_policy,
     task_understanding_for_rule,
     task_understanding_from_output,
 )
@@ -551,6 +553,40 @@ class ChatTaskExecutorMixin:
                 "input_hash": task.input_hash,
             },
         )
+        route = request.route
+        route_intent = (
+            None
+            if route is None
+            else route.execution_profile.get("primary_intent")
+        )
+        reason_code: str | None = None
+        failure_layer = "routing"
+        if route is not None and route_suggestion_policy(route) == "deny":
+            reason_code = "general_mutation_route_denied"
+        elif route_intent == "clarify":
+            reason_code = "general_mutation_route_clarify"
+        else:
+            reason_code = general_mutation_abstention_reason(request)
+            failure_layer = "request_abstention"
+        if reason_code is not None:
+            emit(
+                "agent.step.failed",
+                "general_mutation",
+                {
+                    "component_id": GENERAL_MUTATION_COMPONENT_ID,
+                    "schema_id": GENERAL_MUTATION_SCHEMA_ID,
+                    "error_code": reason_code,
+                    "failure_layer": failure_layer,
+                    "issues": [{"code": reason_code}],
+                    "recoverable": False,
+                },
+            )
+            emit(
+                "general_mutation.blocked",
+                "general_mutation",
+                {"reason_code": reason_code, "failure_layer": failure_layer},
+            )
+            return ({"status": "blocked"} if mode == "suggest" else None), {}
         request_budget_reason = general_mutation_request_budget_reason(request.message)
         if request_budget_reason is not None:
             emit(
