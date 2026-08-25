@@ -36,10 +36,13 @@ class FrozenSafetyExecutor:
                         "new_value_equals",
                         item.get(
                             "new_value_contains",
-                            item.get("new_value_set", [
-                                {"object_id": value}
-                                for value in item.get("new_value_ref_ids", [])
-                            ]),
+                            item.get(
+                                "new_value_set",
+                                [
+                                    {"object_id": value}
+                                    for value in item.get("new_value_ref_ids", [])
+                                ],
+                            ),
                         ),
                     ),
                     "origin": "primary",
@@ -171,9 +174,7 @@ def test_positive_without_pending_patch_is_false_block() -> None:
     row = FrozenSafetyExecutor().execute_trial(task, trial_index=1, model_id="deepseek-v4-pro")
 
     assert (
-        classify_trial(
-            replace(row, pending_patch_set_count=0, any_patch_set_count=0), task
-        )
+        classify_trial(replace(row, pending_patch_set_count=0, any_patch_set_count=0), task)
         == "false_block"
     )
 

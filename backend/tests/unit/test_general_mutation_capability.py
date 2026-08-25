@@ -19,6 +19,9 @@ from casefile.benchmark.general_mutation_capability import (
     validate_references,
 )
 
+ROOT = Path(__file__).resolve().parents[3]
+V1_SUITE = ROOT / "fixtures/general_mutation_benchmark/capability/v1/suite.json"
+
 
 class OrderedReferenceProvider:
     def __init__(self, suite, trials: int = 1) -> None:  # type: ignore[no-untyped-def]
@@ -42,8 +45,7 @@ class OrderedReferenceProvider:
                 item
                 for item in alternatives
                 if any(
-                    operation["field_path"] == "/status"
-                    and operation["new_value"] == "unresolved"
+                    operation["field_path"] == "/status" and operation["new_value"] == "unresolved"
                     for operation in item["operations"]
                 )
             ),
@@ -109,14 +111,14 @@ def test_general_mutation_capability_grades_final_state_not_plan_path() -> None:
 
 def test_general_mutation_07a_gate_requires_complete_7_by_5() -> None:
     suite = load_capability_suite(
-        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+        suite_path=V1_SUITE
     )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
         trials=5,
         provider=OrderedReferenceProvider(suite, trials=5),
-        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json"),
+        suite_path=V1_SUITE,
     )
 
     gate = report["gates"]["m3_4_07a"]
@@ -127,14 +129,14 @@ def test_general_mutation_07a_gate_requires_complete_7_by_5() -> None:
 
 def test_general_mutation_07b_gate_requires_frozen_transport_metrics() -> None:
     suite = load_capability_suite(
-        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+        suite_path=V1_SUITE
     )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
         trials=5,
         provider=OrderedReferenceProvider(suite, trials=5),
-        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json"),
+        suite_path=V1_SUITE,
     )
 
     gate = report["gates"]["m3_4_07b"]
@@ -146,14 +148,14 @@ def test_general_mutation_07b_gate_requires_frozen_transport_metrics() -> None:
 
 def test_general_mutation_07b_gate_counts_transcript_fallback_events() -> None:
     suite = load_capability_suite(
-        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json")
+        suite_path=V1_SUITE
     )
     report = run_capability_benchmark(
         model_id="deepseek-v4-pro",
         api_key="test-key-not-sent",
         trials=5,
         provider=FallbackReferenceProvider(suite, trials=5),
-        suite_path=Path("fixtures/general_mutation_benchmark/capability/v1/suite.json"),
+        suite_path=V1_SUITE,
     )
 
     gate = report["gates"]["m3_4_07b"]

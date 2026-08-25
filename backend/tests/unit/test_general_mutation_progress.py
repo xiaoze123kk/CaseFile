@@ -9,9 +9,7 @@ def test_trial_progress_checkpoint_is_atomic_and_non_resumable(tmp_path, capsys)
     path = tmp_path / "progress.json"
     progress = TrialProgressCheckpoint(suite_id="suite-test", total_trials=2, path=path)
 
-    progress.record(
-        {"trial_id": "task-a:1", "task_id": "task-a", "classification": "success"}
-    )
+    progress.record({"trial_id": "task-a:1", "task_id": "task-a", "classification": "success"})
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["status"] == "running"
@@ -23,9 +21,7 @@ def test_trial_progress_checkpoint_is_atomic_and_non_resumable(tmp_path, capsys)
     assert '"completed_trials":1' in stdout
     assert '"total_trials":2' in stdout
 
-    progress.record(
-        {"task_id": "task-b", "trial_index": 1, "classification": "safe_block"}
-    )
+    progress.record({"task_id": "task-b", "trial_index": 1, "classification": "safe_block"})
     progress.finalize(status="completed")
 
     payload = json.loads(path.read_text(encoding="utf-8"))

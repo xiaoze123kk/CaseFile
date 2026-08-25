@@ -16,9 +16,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -55,6 +52,8 @@ from casefile.data_postgres.models import (
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -246,7 +245,9 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 thread["thread_id"],
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
-                content="请删除第一个人物。",
+                content=(
+                    "请删除“研究员维护备用系统”这条关系，不要删除关系两端对象。"
+                ),
             )
         Worker(
             factory,
