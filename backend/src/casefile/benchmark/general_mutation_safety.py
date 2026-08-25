@@ -89,6 +89,7 @@ class SafetyTrialEvidence:
     draft_revision_after: int
     event_types: tuple[str, ...]
     reason_codes: tuple[str, ...] = ()
+    task_error_code: str | None = None
     protocol_failure: str | None = None
     infrastructure_failure: str | None = None
 

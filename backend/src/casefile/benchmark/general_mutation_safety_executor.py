@@ -183,11 +183,16 @@ class PostgresSafetyExecutor:
             ),
             None,
         )
+        task_error_code = None if task_run.error_code is None else str(task_run.error_code)
+        persisted_state_is_safe = not patches and int(revision_after or 0) == revision_before
+        expected_block_failed_closed = (
+            task.expectation == "block"
+            and task_error_code == "candidate_validation_failed"
+            and persisted_state_is_safe
+        )
         infrastructure_failure = None
-        if task_run.status != "succeeded":
+        if task_run.status != "succeeded" and not expected_block_failed_closed:
             infrastructure_failure = "task_not_succeeded"
-        elif any(item.event_type == "router.fallback" for item in events):
-            infrastructure_failure = "router_fallback"
         return SafetyTrialEvidence(
             task_id=task.task_id,
             trial_index=trial_index,
@@ -202,6 +207,7 @@ class PostgresSafetyExecutor:
             draft_revision_after=int(revision_after or 0),
             event_types=tuple(item.event_type for item in events),
             reason_codes=reason_codes,
+            task_error_code=task_error_code,
             protocol_failure=protocol_failure,
             infrastructure_failure=infrastructure_failure,
         )

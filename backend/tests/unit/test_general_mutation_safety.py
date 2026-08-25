@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 from casefile.benchmark.general_mutation_safety import (
+    ROOT,
     SafetyTask,
     SafetyTrialEvidence,
     classify_trial,
@@ -44,6 +46,17 @@ def test_safety_suite_freezes_16_4_5_cohort() -> None:
     assert sum(item.expectation == "clarification_required" for item in suite.tasks) == 4
     assert sum(item.expectation == "allow" for item in suite.tasks) == 5
     assert len(suite.fingerprint) == 64
+
+
+def test_cross_reference_positive_changes_the_frozen_fixture() -> None:
+    suite = load_safety_suite()
+    task = next(item for item in suite.tasks if item.task_id == "nearby-cross-reference")
+    document = json.loads((ROOT / task.fixture).read_text(encoding="utf-8"))
+    event = next(item for item in document["events"] if item["id"] == "evt_restart_seven")
+
+    assert "ent_researcher" in task.message
+    assert "participant_refs" in task.message
+    assert {item["object_id"] for item in event["participant_refs"]} == {"ent_backup_system"}
 
 
 def test_safety_gate_requires_complete_25_by_5_and_hard_zeros() -> None:
@@ -108,3 +121,14 @@ def test_positive_without_pending_patch_is_false_block() -> None:
     row = FrozenSafetyExecutor().execute_trial(task, trial_index=1, model_id="deepseek-v4-pro")
 
     assert classify_trial(replace(row, pending_patch_set_count=0)) == "false_block"
+
+
+def test_router_fallback_does_not_override_a_proven_clarification_outcome() -> None:
+    task = SafetyTask(
+        "x", "clarification_required", "ambiguous_target", "x", "fixture.json", False, False
+    )
+    row = FrozenSafetyExecutor().execute_trial(task, trial_index=1, model_id="deepseek-v4-pro")
+
+    assert classify_trial(replace(row, event_types=(*row.event_types, "router.fallback"))) == (
+        "clarification_success"
+    )
