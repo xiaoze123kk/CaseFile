@@ -830,6 +830,37 @@ class V1EditingService:
                 actor_ref=None if is_user_actor else f"logical-mutation:{mutation_set.actor}",
             )
         )
+        audit_action = {
+            "logical_mutation_apply": "logical_mutation.applied",
+            "logical_mutation_undo": "logical_mutation.undone",
+            "logical_mutation_redo": "logical_mutation.redone",
+        }.get(draft_operation_type, "logical_mutation.applied")
+        self.session.add(
+            AuditEvent(
+                project_id=owned.project.id,
+                casefile_id=owned.casefile.id,
+                actor_kind="user" if is_user_actor else mutation_set.actor,
+                actor_user_id=actor_user_id if is_user_actor else None,
+                actor_ref=(
+                    None
+                    if is_user_actor
+                    else f"logical-mutation:{mutation_set.actor}"
+                ),
+                action=audit_action,
+                target_type="draft",
+                target_id=owned.draft.id,
+                trace_id=None,
+                details_jsonb={
+                    "mutation_set_id": mutation_set.mutation_set_id,
+                    "operation_group_no": sequence_no,
+                    "base_revision": owned.draft.revision,
+                    "result_revision": owned.draft.revision + 1,
+                    "before_hash": simulation.baseline_hash,
+                    "after_hash": simulation.candidate_hash,
+                    "source_patch_set_id": source_patch_set_id,
+                },
+            )
+        )
         if accepted_debt_finding_keys and actor_user_id is not None:
             accepted_at = datetime.now(UTC)
             self.session.add(

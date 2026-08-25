@@ -1,0 +1,20 @@
+{
+  "schema_version": "casefile-general-mutation-holdout-descriptor-v1",
+  "suite_id": "general-mutation-capability-holdout-v1",
+  "suite_role": "holdout",
+  "gate_policy_version": "general-mutation-gate-v1",
+  "task_count": 24,
+  "family_distribution": {
+    "existing_update": 4,
+    "multi_field": 3,
+    "create": 4,
+    "cross_reference": 4,
+    "multi_object": 3,
+    "delete": 3,
+    "closure_sensitive": 3
+  },
+  "private_package_fingerprint": "aff73e2d7fc825c6fec8de610806163202edd4fadf3aa6262d5169a55ed8ea20",
+  "oracle_fingerprint": "d17be2817ab15e637fad69db84c5406ba2594bf6fc88781c0459bb5a6d1cef30",
+  "reference_fingerprint": "cf24c722f668010d41a5fc55b2fb2f2bce2989616d39aeb7e8ebc136abd8e078",
+  "review_fingerprint": "a7825b04521b26d3ed633135f88d581a7c4c093d94dd9032bcfa1988af718ba4"
+}

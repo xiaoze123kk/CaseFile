@@ -75,9 +75,7 @@ class GeneralMutationCapabilityError(ValueError):
 
 
 class _ReferenceRepairProposer:
-    def propose(
-        self, context: ClosureRepairContextV1, *, round_no: int
-    ) -> RepairProposal:
+    def propose(self, context: ClosureRepairContextV1, *, round_no: int) -> RepairProposal:
         del round_no
         alternatives = getattr(context, "repair_alternatives", ())
         if not alternatives:
@@ -87,8 +85,7 @@ class _ReferenceRepairProposer:
                 item
                 for item in alternatives
                 if any(
-                    operation.field_path == "/status"
-                    and operation.new_value == "unresolved"
+                    operation.field_path == "/status" and operation.new_value == "unresolved"
                     for operation in item.operations
                 )
             ),
@@ -118,6 +115,10 @@ def _read_object(path: Path) -> dict[str, Any]:
 def load_capability_suite(repo_root: Path = ROOT, suite_path: Path | None = None) -> EvalSuite:
     path = (suite_path or repo_root / DEFAULT_SUITE).resolve()
     payload = _read_object(path)
+    if payload.get("schema_version") == "casefile-general-mutation-holdout-v1":
+        from casefile.benchmark.general_mutation_holdout import load_holdout_suite
+
+        return load_holdout_suite(path)
     if set(payload) != {"schema_version", "suite_id", "tasks"}:
         raise GeneralMutationCapabilityError("general_mutation_suite_keys_invalid")
     if payload["schema_version"] != SCHEMA_VERSION:
@@ -170,12 +171,7 @@ def load_capability_suite(repo_root: Path = ROOT, suite_path: Path | None = None
     fingerprint_files = sorted(
         item for item in path.parent.rglob("*.json") if not item.name.endswith(".reference.json")
     )
-    fixture_files = sorted(
-        {
-            (repo_root / str(task.input["fixture"])).resolve()
-            for task in tasks
-        }
-    )
+    fixture_files = sorted({(repo_root / str(task.input["fixture"])).resolve() for task in tasks})
     fingerprint = _canonical_hash(
         [
             (str(item.relative_to(path.parent)).replace("\\", "/"), _read_object(item))
@@ -183,8 +179,7 @@ def load_capability_suite(repo_root: Path = ROOT, suite_path: Path | None = None
         ]
         + [
             (
-                "input_fixture:"
-                + str(item.relative_to(repo_root.resolve())).replace("\\", "/"),
+                "input_fixture:" + str(item.relative_to(repo_root.resolve())).replace("\\", "/"),
                 _read_object(item),
             )
             for item in fixture_files
@@ -275,7 +270,10 @@ def run_capability_benchmark(
                 model_id=model_id,
                 api_key=api_key,
                 repo_root=repo_root,
-                use_closure_repair=suite.suite_id == "general-mutation-capability-dev-v2",
+                use_closure_repair=(
+                    suite.suite_id == "general-mutation-capability-dev-v2"
+                    or suite.suite_role == "holdout"
+                ),
             )
             rows.append(row)
             if on_trial_completed is not None:
@@ -301,6 +299,7 @@ def run_capability_benchmark(
     calibration_gate = _calibration_gate(rows, suite.tasks, trials, metrics)
     transport_gate = _transport_gate(rows, suite.tasks, trials, metrics)
     dev_gate = _dev_gate(rows, suite.tasks, trials, metrics)
+    holdout_gate = _holdout_gate(rows, suite, trials, metrics)
     return {
         "schema_version": REPORT_VERSION,
         "suite": {
@@ -325,6 +324,7 @@ def run_capability_benchmark(
             "m3_4_07a": calibration_gate,
             "m3_4_07b": transport_gate,
             "m3_4_07c": dev_gate,
+            "m3_4_holdout": holdout_gate,
         },
         "rows": rows,
         "status": (
@@ -604,8 +604,10 @@ def _matches(actual: Any, expected: Any) -> bool:
         )
     if isinstance(expected, Mapping) and set(expected) == {"$text_equivalent"}:
         target = expected["$text_equivalent"]
-        return isinstance(actual, str) and isinstance(target, str) and (
-            _without_terminal_punctuation(actual) == _without_terminal_punctuation(target)
+        return (
+            isinstance(actual, str)
+            and isinstance(target, str)
+            and (_without_terminal_punctuation(actual) == _without_terminal_punctuation(target))
         )
     return bool(actual == expected)
 
@@ -757,8 +759,7 @@ def _transport_gate(
         "task_macro_at_least_0_90": metrics["task_macro_pass_at_1"] >= 0.90,
         "cross_reference_5_of_5": len(cross_reference) == 5
         and all(bool(row["passed"]) for row in cross_reference),
-        "reliable_task_rate_at_5_at_least_0_80": trials == 5
-        and metrics[reliable_key] >= 0.80,
+        "reliable_task_rate_at_5_at_least_0_80": trials == 5 and metrics[reliable_key] >= 0.80,
         "protocol_failure_zero": metrics["protocol_failure_count"] == 0,
         "unsafe_escape_zero": metrics["unsafe_escape_count"] == 0,
         "infrastructure_failure_zero": metrics["infrastructure_failure_count"] == 0,
@@ -769,9 +770,7 @@ def _transport_gate(
         "checks": checks,
         "cross_reference_passed": sum(bool(row["passed"]) for row in cross_reference),
         "cross_reference_trials": len(cross_reference),
-        "output_protocol_fallback_event_count": metrics[
-            "output_protocol_fallback_event_count"
-        ],
+        "output_protocol_fallback_event_count": metrics["output_protocol_fallback_event_count"],
     }
 
 
@@ -787,14 +786,38 @@ def _dev_gate(
         "all_trials_complete": len(rows) == len(tasks) * trials,
         "task_macro_at_least_0_90": metrics["task_macro_pass_at_1"] >= 0.90,
         "family_min_at_least_0_80": metrics["family_min_pass_at_1"] >= 0.80,
-        "reliable_task_rate_at_5_at_least_0_80": trials == 5
-        and metrics[reliable_key] >= 0.80,
+        "reliable_task_rate_at_5_at_least_0_80": trials == 5 and metrics[reliable_key] >= 0.80,
         "protocol_failure_zero": metrics["protocol_failure_count"] == 0,
         "unsafe_escape_zero": metrics["unsafe_escape_count"] == 0,
         "infrastructure_failure_zero": metrics["infrastructure_failure_count"] == 0,
     }
     return {
         "eligible": len(tasks) == 40 and trials == 5,
+        "passed": all(checks.values()),
+        "checks": checks,
+    }
+
+
+def _holdout_gate(
+    rows: Sequence[Mapping[str, Any]],
+    suite: EvalSuite,
+    trials: int,
+    metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    reliable_key = f"reliable_task_rate_at_{trials}"
+    checks = {
+        "exact_24_tasks_x_5": len(suite.tasks) == 24 and trials == 5 and len(rows) == 120,
+        "private_suite_role": suite.suite_role == "holdout",
+        "all_trials_complete": len(rows) == len(suite.tasks) * trials,
+        "task_macro_at_least_0_90": metrics["task_macro_pass_at_1"] >= 0.90,
+        "family_min_at_least_0_80": metrics["family_min_pass_at_1"] >= 0.80,
+        "reliable_task_rate_at_5_at_least_0_80": trials == 5 and metrics[reliable_key] >= 0.80,
+        "protocol_failure_zero": metrics["protocol_failure_count"] == 0,
+        "unsafe_escape_zero": metrics["unsafe_escape_count"] == 0,
+        "infrastructure_failure_zero": metrics["infrastructure_failure_count"] == 0,
+    }
+    return {
+        "eligible": checks["exact_24_tasks_x_5"] and checks["private_suite_role"],
         "passed": all(checks.values()),
         "checks": checks,
     }

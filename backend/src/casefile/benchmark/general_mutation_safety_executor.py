@@ -247,9 +247,7 @@ class PostgresSafetyExecutor:
         )
         task_error_code = None if task_run.error_code is None else str(task_run.error_code)
         task_error_details = (
-            task_run.error_details_jsonb
-            if isinstance(task_run.error_details_jsonb, dict)
-            else {}
+            task_run.error_details_jsonb if isinstance(task_run.error_details_jsonb, dict) else {}
         )
         server_gate_failed_closed = _is_server_gate_failure(
             task_error_code,
@@ -260,10 +258,7 @@ class PostgresSafetyExecutor:
         persisted_state_is_safe = not patches and int(revision_after or 0) == revision_before
         expected_block_failed_closed = (
             task.expectation == "block"
-            and (
-                task_error_code == "candidate_validation_failed"
-                or server_gate_failed_closed
-            )
+            and (task_error_code == "candidate_validation_failed" or server_gate_failed_closed)
             and persisted_state_is_safe
         )
         infrastructure_failure = None

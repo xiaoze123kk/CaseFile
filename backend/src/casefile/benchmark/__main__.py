@@ -12,6 +12,12 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "general-mutation-backend-release":
+        from casefile.benchmark.general_mutation_backend_release import main as release_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        release_main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "general-mutation-safety":
         from casefile.benchmark.general_mutation_safety import main as mutation_safety_main
 

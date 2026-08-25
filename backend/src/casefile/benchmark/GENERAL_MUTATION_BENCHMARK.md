@@ -17,9 +17,9 @@ reason code 与 Transcript 是诊断证据，不是成功本身。
 | S0 Kernel Regression | 给定 Plan 后 Contract、Binder、Simulation 是否确定且失败关闭 | `general_mutation_eval.py` |
 | S1 Capability Dev | 自然语言能否经真实 Provider 形成正确最终状态 | `general_mutation_capability.py` |
 | S2 Safety / Abstention | 不该改时是否正确阻断且零逃逸 | `general_mutation_safety.py` |
-| S3 Private Holdout | 未见分布上是否可迁移并稳定 | 待建立私有包 |
-| S4 Backend Release | API、Queue、Worker、PostgreSQL、Apply 全链是否正确 | 待建立 release suite |
-| S5 Fault / Recovery | stale、tamper、retry、rollback 是否保持一致 | 复用现有集成测试后独立报告 |
+| S3 Private Holdout | 未见分布上是否可迁移并稳定 | 私有 v1：24 Task × 5 Trial |
+| S4 Backend Release | API、Queue、Worker、PostgreSQL、Apply 全链是否正确 | 07e：15 Task × 3 Trial |
+| S5 Fault / Recovery | stale、tamper、retry、rollback 是否保持一致 | 07e 固定 20 项 Fault Matrix |
 
 各层必须独立报告，S0 通过不能替代 S1，S1 单次 Dev baseline 也不能替代
 Safety、Holdout 或 Backend Release。
@@ -88,6 +88,21 @@ Capability 主要报告 `task_macro_pass_at_1`、family macro 与多 Trial 的
 - API / Worker / PostgreSQL / Apply release suite；
 - fault / concurrency / recovery 证据；
 - 相同 suite、grader、prompt、policy、binder、model lineage 下的可比报告。
+
+## 07e Backend Release
+
+`general-mutation-backend-release` 使用独立 `_test` PostgreSQL 数据库，经真实 HTTP、
+Worker、Pending PatchSet 和显式 Apply/Undo/Redo 执行 15×3 release cohort，并运行固定
+20 项 Fault Matrix。Delete 必须分别证明缺少、篡改、过期和当前 impact hash 的行为。
+任何 fault、生命周期、Safety 或基础设施失败都失败关闭；报告版本为
+`casefile-general-mutation-backend-release-report-v1`。
+
+## 07f Formal Qualification
+
+`scripts/acceptance-general-mutation-v1.ps1` 在同一 clean revision 上依次运行 S0、07c、
+Private Holdout、07d、07e，最终生成 canonical SHA-256 Evidence Index 和中文报告。私有
+Holdout 位于 Git 忽略目录，仅提交 descriptor fingerprints；它不得用于调参。正式链使用
+actor 1 已保存的精确 `deepseek-v4-pro` 凭据，不打印或写入 API key。
 # M3.4-07d Safety / Abstention
 
 `general-mutation-safety` is a separate 25-task Router/Worker/PostgreSQL suite.
