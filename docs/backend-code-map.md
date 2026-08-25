@@ -91,10 +91,12 @@
 | `backend/src/casefile/api/verification.py` | 手动验证重跑、规范化 VerificationRun/finding 查询和作者审阅 HTTP 路由；只做协议转换，不承载验证规则。 |
 | `backend/src/casefile/api/reverse_parse.py` | 路径 C 反向解析 HTTP 路由：文档上传/读取、解析块与逐项查询、逐项确认、失败重试与形成 Brief 候选。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的 TaskRun 领取、lease/Attempt 恢复、任务执行、结果/事件原子持久化；只拥有运行与持久化编排，不拥有 Agent 领域规则。 |
-| `backend/src/casefile/worker/runtime.py`、`worker/closure_repair.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环。`CLOSURE_REPAIR_MODE=off|shadow|suggest` 默认 `shadow`；环境启动的 `CASEFILE_CHAT_GENERAL_MUTATION_MODE=off|shadow|suggest` 默认 `suggest`，Create/Delete 独立开关默认启用且均可显式回退。直接构造 `WorkerConfig` 仍采用隔离安全默认值。Chat repair 与 General Mutation 只形成可审阅 PatchSet，不决定或绕过 Apply。 |
-| `backend/src/casefile/worker/queue.py` | TaskRun claim、lease 恢复、取消观察和 Attempt 初始化；不执行具体任务。 |
-| `backend/src/casefile/worker/finalization.py` | TaskRun 成功、失败、取消、可重试状态收敛与稳定错误/事件落库。 |
-| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；General Mutation Planner 入口必须服从最终 Route deny/clarify 与 `agent_runtime` abstention 判定。`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
+| `backend/src/casefile/worker/runtime.py`、`backend/src/casefile/worker/dispatch.py`、`backend/src/casefile/worker/execution.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；以组合组件保留 claim → resolve handler → execute → finalize 主循环。Dispatcher 对八类可执行 TaskRun 精确注册、重复/未知类型失败关闭；Execution Context 只携带冻结 TaskRun、Attempt、短事务工厂、事件端口和按需 Provider，不跨模型调用持有 Session。 |
+| `backend/src/casefile/worker/provider_resolution.py` | 在 Handler 解析后校验冻结 Provider provenance、短事务解密凭据并构造 Provider；支持显式 providerless Handler，禁止凭据进入 repr、事件或持久化。 |
+| `backend/src/casefile/worker/queue.py`、`backend/src/casefile/worker/finalization.py` | 组合式 TaskRun claim、lease 恢复、取消观察、Attempt 初始化，以及成功/失败/取消终态和稳定事件落库；保留既有 PostgreSQL 状态、显式恢复与租约语义。 |
+| `backend/src/casefile/worker/handlers/` | 按变化原因承载辅助 Brief、Brief Intake、Brief-to-Draft、Reverse Parse 与 Chat 五类同步 Handler；冻结输入、Provider 调用次数、完成事务和结果结构保持兼容。 |
+| `backend/src/casefile/worker/executors/`、`backend/src/casefile/worker/closure_repair.py` | `chat.py` 以独立 Request、Mutation、Context/Compaction、Completion 组件组合 Chat Worker 编排并保留 route 解析兼容入口；`completion.py` 统一非 Chat 终态物化。`CLOSURE_REPAIR_MODE` 与 General Mutation rollout 只形成可审阅 PatchSet，不决定或绕过 Apply；领域 routing/context/repair 仍由 `agent_runtime`/domain 所有。 |
+| `backend/src/casefile/worker/failures.py`、`backend/src/casefile/worker/observability.py`、`backend/src/casefile/worker/generation_reuse.py`、`backend/src/casefile/worker/input_contracts.py` | 分别拥有稳定失败分类与脱敏、TaskEvent 到 Step/ModelCall 投影及终态 usage、Brief-to-Draft Attempt 复用、冻结输入读取与规范哈希；禁止重新形成无明确职责的通用 support 模块。 |
 
 ## 领域模块
 
