@@ -45,11 +45,14 @@ EXPECTED_CURRENT_VERSIONS = {
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
-    "story_planner": "story-planner-v2",
+    "story_planner": "story-planner-v3",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("story_planner", "story-planner-v3"): {
+        "system": "e3176a472075dfe06055f5a29dd0941f649ca474639c45c23d9fc4a761a03476"
+    },
     ("story_planner", "story-planner-v2"): {
         "system": "469cc09273bb71943d7f890582fb3a8581bd2080adb1d7d2b82615d4df66e75d"
     },

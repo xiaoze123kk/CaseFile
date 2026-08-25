@@ -12,7 +12,7 @@ from pydantic import ValidationError
 from casefile.domain.narrative_compiler import CompilerContractError
 from casefile_contracts import NovelPlanCandidate
 
-STORY_PLANNER_PROMPT_VERSION = "story-planner-v2"
+STORY_PLANNER_PROMPT_VERSION = "story-planner-v3"
 STORY_PLANNER_AGENT_VERSION = "compiler.story-planner.v1"
 STORY_PLANNER_TOOLSET_VERSION = "compiler.no-tools.v1"
 STORY_PLANNER_MAX_REPAIRS = 3

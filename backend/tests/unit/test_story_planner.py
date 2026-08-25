@@ -6,11 +6,14 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.story_planner import (
+    STORY_PLANNER_PROMPT_VERSION,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
     execute_story_planner,
 )
+from casefile.agent_runtime.story_planner_prompt import render_story_planner_prompt
 from casefile.domain.narrative_compiler import CompilerContractError
 
 
@@ -85,3 +88,15 @@ def test_runtime_identity_fails_immediately_without_repair() -> None:
         execute_story_planner(provider, _request())
     assert captured.value.reason_code == "compiler_story_plan_runtime_identity_forbidden"
     assert len(provider.requests) == 1
+
+
+def test_current_prompt_makes_resolution_closure_algorithm_explicit() -> None:
+    system_prompt, _, _ = render_story_planner_prompt(
+        replace(_request(), prompt_version=STORY_PLANNER_PROMPT_VERSION)
+    )
+
+    assert STORY_PLANNER_PROMPT_VERSION == "story-planner-v3"
+    assert "narrative_ir.objects.resolution_specs" in system_prompt
+    assert "每个这样的 resolution_spec 恰好出现一次" in system_prompt
+    assert "resolve 或 intentionally_unresolved" in system_prompt
+    assert "Resolution ID 集合完全相等" in system_prompt
