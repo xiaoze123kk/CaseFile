@@ -57,8 +57,8 @@ from casefile.application.casefile_v1 import generation_candidate_summary
 from casefile.application.v1_editing import editable_fields_by_collection
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskRun
+from casefile.worker.failures import error_code, safe_error_message
 from casefile.worker.runtime import provider_for_task
-from casefile.worker.support import error_code, safe_error_message
 from casefile_contracts import CaseFile, ObjectRef
 from openai import (
     APIConnectionError,
