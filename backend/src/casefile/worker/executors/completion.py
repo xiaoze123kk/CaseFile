@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -40,19 +40,24 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.data_postgres.repositories import ProjectRepository
-from casefile.worker.support import (
-    TaskCancellationRequested,
-    _required_string,
-    _text_hash,
-)
+from casefile.worker.failures import TaskCancellationRequested
+from casefile.worker.input_contracts import required_string, text_hash
 
 
-class CompletionExecutorMixin:
-    session_factory: sessionmaker[Session]
-    config: Any
+class CompletionExecutor:
+    def __init__(self, runtime: Any) -> None:
+        self._runtime = runtime
+
+    @property
+    def session_factory(self) -> sessionmaker[Session]:
+        return cast(sessionmaker[Session], self._runtime.session_factory)
+
+    @property
+    def config(self) -> Any:
+        return self._runtime.config
 
     def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        raise NotImplementedError
+        self._runtime._emit(task_run_id, event_type, stage, payload)
 
     def _complete_polish(
         self,
@@ -77,7 +82,7 @@ class CompletionExecutorMixin:
             )
             if source is None:
                 raise RuntimeError("Polish input SourceRecord disappeared")
-            frozen_mode = _required_string(task.input_jsonb, "polish_mode")
+            frozen_mode = required_string(task.input_jsonb, "polish_mode")
             if frozen_mode != result.polish_mode:
                 raise RuntimeError("Polish result mode does not match its frozen task input")
             polished_text = result.candidate.polished_text
@@ -85,7 +90,7 @@ class CompletionExecutorMixin:
                 project_id=task.project_id,
                 source_kind="agent_polish_proposal",
                 content_text=polished_text,
-                content_hash=_text_hash(polished_text),
+                content_hash=text_hash(polished_text),
                 parent_source_record_id=source.id,
                 generated_by_task_run_id=task.id,
                 created_by_user_id=task.actor_user_id,
@@ -363,4 +368,4 @@ class CompletionExecutorMixin:
             )
 
 
-__all__ = ["CompletionExecutorMixin"]
+__all__ = ["CompletionExecutor"]

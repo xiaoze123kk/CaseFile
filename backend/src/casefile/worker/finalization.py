@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -21,29 +21,43 @@ from casefile.data_postgres.models import (
     TaskEvent,
     TaskRun,
 )
-from casefile.worker.executors.chat import _chat_intent_event_payload as _chat_intent_event_payload
-from casefile.worker.executors.chat import (
-    _chat_rewrite_event_payload as _chat_rewrite_event_payload,
-)
-from casefile.worker.executors.chat import _resolve_chat_route as _resolve_chat_route
-from casefile.worker.support import (
+from casefile.worker.failures import (
     TaskCancellationRequested,
-    _error_code,
-    _failure_validation_issues,
-    _network_retries,
-    _persist_agent_execution_event,
-    _record_component_coordinator_failure,
-    _safe_error_message,
-    _terminal_attempt_usage,
 )
-from casefile.worker.support import (
-    _previous_attempt_failed_steps as _previous_attempt_failed_steps,
+from casefile.worker.failures import (
+    error_code as _error_code,
+)
+from casefile.worker.failures import (
+    failure_validation_issues as _failure_validation_issues,
+)
+from casefile.worker.failures import (
+    network_retries as _network_retries,
+)
+from casefile.worker.failures import (
+    safe_error_message as _safe_error_message,
+)
+from casefile.worker.observability import (
+    persist_agent_execution_event as _persist_agent_execution_event,
+)
+from casefile.worker.observability import (
+    record_component_coordinator_failure as _record_component_coordinator_failure,
+)
+from casefile.worker.observability import (
+    terminal_attempt_usage as _terminal_attempt_usage,
 )
 
 
-class TaskFinalizationMixin:
-    session_factory: sessionmaker[Session]
-    config: Any
+class TaskFinalizer:
+    def __init__(self, runtime: Any) -> None:
+        self._runtime = runtime
+
+    @property
+    def session_factory(self) -> sessionmaker[Session]:
+        return cast(sessionmaker[Session], self._runtime.session_factory)
+
+    @property
+    def config(self) -> Any:
+        return self._runtime.config
 
     def _cancel(
         self,
@@ -281,4 +295,4 @@ class TaskFinalizationMixin:
             append_task_event(session, task, event_type, stage, public_payload)
 
 
-__all__ = ["TaskFinalizationMixin"]
+__all__ = ["TaskFinalizer"]
