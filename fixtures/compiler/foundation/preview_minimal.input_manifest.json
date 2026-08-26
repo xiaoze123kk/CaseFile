@@ -1,0 +1,23 @@
+{
+  "target": "novel",
+  "mode": "preview",
+  "source_snapshot": {
+    "snapshot_id": 101,
+    "draft_id": 11,
+    "snapshot_revision": 7,
+    "schema_version": "2.0",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "source_canon": null,
+  "exposure": null,
+  "profile": {
+    "profile_key": "novel.default",
+    "profile_schema_id": "compiler.profile.v1",
+    "profile_version": 1,
+    "frozen_payload": {
+      "language": "zh-CN"
+    },
+    "content_hash": "62873f1487d2b4dcf8bd68e2014c0f1ffd708f0537d0579f4401883491a7f7c6"
+  },
+  "compiler_version": "narrative-compiler.v1"
+}

@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner",
+  "version": "story-planner-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "e3176a472075dfe06055f5a29dd0941f649ca474639c45c23d9fc4a761a03476",
+  "previous_version": "story-planner-v2",
+  "change_summary": "明确 Resolution closure 的全量、唯一终态覆盖算法与输出前集合核对。"
+}

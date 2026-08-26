@@ -38,6 +38,14 @@ class TaskCancellationRequested(RuntimeError):
     """Raised when a running Worker observes an accepted cancellation."""
 
 
+def _required_provider_binding(task: TaskRun) -> tuple[str, str]:
+    """Narrow the DB-enforced provider shape for non-Compiler execution."""
+
+    if task.provider is None or task.model_id is None:
+        raise RuntimeError("Provider-backed TaskRun has an invalid frozen provider binding")
+    return task.provider, task.model_id
+
+
 def _persist_agent_execution_event(
     session: Session,
     task: TaskRun,

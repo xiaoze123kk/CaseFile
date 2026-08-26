@@ -20,6 +20,10 @@ sys.path.insert(0, str(GENERATED_PYTHON_SRC))
 from casefile_contracts import (  # noqa: E402
     Brief,
     CaseFile,
+    CompileInputManifest,
+    CompilerArtifactRef,
+    CompilerDiagnostic,
+    CompilerSourceRef,
     PatchCandidate,
     TaskRun,
     ValidationIssue,
@@ -113,6 +117,16 @@ def validators(
             registry=registry,
             format_checker=checker,
         ),
+        "compiler_manifest": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v2/compiler/compiler.schema.json"
+                    "#/$defs/CompileInputManifest"
+                )
+            },
+            registry=registry,
+            format_checker=checker,
+        ),
     }
 
 
@@ -181,7 +195,7 @@ def walk_object_refs(value: Any) -> list[dict[str, str]]:
 def test_all_schema_files_are_valid_draft_2020_12(
     schemas: dict[str, dict[str, Any]],
 ) -> None:
-    assert len(schemas) == 9
+    assert len(schemas) == 19
     for schema in schemas.values():
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         Draft202012Validator.check_schema(schema)
@@ -361,6 +375,77 @@ def test_casefile_chat_task_roundtrips_with_message_lineage(
     missing_lineage = copy.deepcopy(task)
     del missing_lineage["agent_thread_id"]
     assert list(validators["task"].iter_errors(missing_lineage))
+
+
+def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(
+    validators: dict[str, Draft202012Validator],
+    registry: Registry,
+) -> None:
+    compiler_root = FIXTURE_ROOT / "compiler" / "foundation"
+    for name in (
+        "preview_minimal.input_manifest.json",
+        "canonical.input_manifest.json",
+        "preview_with_exposure.input_manifest.json",
+    ):
+        value = load_json(compiler_root / name)
+        validators["compiler_manifest"].validate(value)
+        assert (
+            CompileInputManifest.model_validate(value).model_dump(mode="json")
+            == value
+        )
+
+    source_ref = load_json(compiler_root / "source_ref.json")
+    artifact_ref = load_json(compiler_root / "artifact_ref.json")
+    diagnostic = load_json(compiler_root / "diagnostic.json")
+    assert CompilerSourceRef.model_validate(source_ref).model_dump(mode="json") == source_ref
+    assert CompilerArtifactRef.model_validate(artifact_ref).model_dump(mode="json") == artifact_ref
+    assert CompilerDiagnostic.model_validate(diagnostic).model_dump(mode="json") == diagnostic
+
+    duplicate_sources = copy.deepcopy(diagnostic)
+    duplicate_sources["source_refs"].append(copy.deepcopy(source_ref))
+    diagnostic_validator = Draft202012Validator(
+        {
+            "$ref": (
+                "https://casefile.local/schemas/v2/compiler/compiler.schema.json"
+                "#/$defs/CompilerDiagnostic"
+            )
+        },
+        registry=registry,
+        format_checker=FormatChecker(),
+    )
+    assert list(diagnostic_validator.iter_errors(duplicate_sources))
+
+    invalid_cases = load_json(compiler_root / "invalid_cases.json")["cases"]
+    validators_by_fixture = {
+        "source_ref.json": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v2/compiler/compiler.schema.json"
+                    "#/$defs/CompilerSourceRef"
+                )
+            },
+            registry=registry,
+        ),
+        "artifact_ref.json": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v2/compiler/compiler.schema.json"
+                    "#/$defs/CompilerArtifactRef"
+                )
+            },
+            registry=registry,
+        ),
+    }
+    for invalid_case in invalid_cases:
+        expected_layers = invalid_case.get(
+            "expected_layers", [invalid_case.get("expected_layer")]
+        )
+        if "schema" not in expected_layers:
+            continue
+        base_name = invalid_case["base_fixture"]
+        invalid_value = apply_manifest(load_json(compiler_root / base_name), invalid_case)
+        validator = validators_by_fixture.get(base_name, validators["compiler_manifest"])
+        assert list(validator.iter_errors(invalid_value)), invalid_case["name"]
 
 
 def test_structural_invalid_fixtures_are_rejected_at_expected_paths(

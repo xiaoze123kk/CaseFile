@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-EvalSuiteKind = Literal["regression", "capability"]
+EvalSuiteKind = Literal["regression", "safety", "capability"]
 GraderSeverity = Literal["hard", "soft"]
 
 

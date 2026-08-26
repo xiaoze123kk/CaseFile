@@ -1,0 +1,32 @@
+{
+  "schema_id": "compiler.narrative-ir.v1",
+  "projection_version": "compiler.narrative-ir-projection.v1",
+  "source": {
+    "casefile_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"},
+    "source_schema_id": "casefile.v2",
+    "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "root_source_refs": [
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "", "source_fragment_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/title", "source_fragment_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/status", "source_fragment_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/version", "source_fragment_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/brief_ref", "source_fragment_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/content_notices", "source_fragment_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+      {"object_ref": {"object_type": "casefile", "object_id": "case_ir_minimal"}, "field_path": "/extensions", "source_fragment_hash": "0000000000000000000000000000000000000000000000000000000000000000"}
+    ]
+  },
+  "case": {
+    "title": "最小叙事投影",
+    "status": "draft",
+    "version": {"version_id": "draft_ir_minimal", "version_no": 1, "parent_version_id": null},
+    "brief_ref": {"brief_id": "brief_ir_minimal", "version": 1}
+  },
+  "objects": {
+    "resolution_specs": [], "entities": [], "relationships": [], "locations": [],
+    "events": [], "information_units": [], "claims": [], "hypotheses": [],
+    "reasoning_paths": [], "constraints": [], "structure_locks": []
+  },
+  "content_notices": [],
+  "extensions": {},
+  "indexes": {"reference_edges": []}
+}

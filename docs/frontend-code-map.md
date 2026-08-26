@@ -65,7 +65,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、Logical Mutation simulation/hash/debt/Undo/Redo DTO、工作流与工作台读模型，以及统一错误消息。 |
+| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、Logical Mutation simulation/hash/debt/Undo/Redo DTO、工作流/工作台读模型、Compiler Artifact 内容读取类型，以及统一错误消息。 |
 | `apps/web/lib/prototype-model.ts` | 仅供本地原型使用的状态模型、样例数据和编译门禁纯函数；正式服务端契约继续来自 `@casefile/contracts`。 |
 | `apps/web/lib/reasoning-prototype.ts` | 推理实验室本地 Fixture、推理路径/节点/边/候选模型与纯查询函数；不承担 React UI。 |
 | `apps/web/lib/` | 其他无 UI 基础设施；不得放 React 业务状态。 |

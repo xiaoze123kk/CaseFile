@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/narrative-ir.schema.json",
+  "title": "NarrativeIR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "projection_version", "source", "case", "objects",
+    "content_notices", "extensions", "indexes"
+  ],
+  "properties": {
+    "schema_id": {"const": "compiler.narrative-ir.v1"},
+    "projection_version": {"const": "compiler.narrative-ir-projection.v1"},
+    "source": {"$ref": "#/$defs/NarrativeIRSource"},
+    "case": {"$ref": "#/$defs/NarrativeCase"},
+    "objects": {"$ref": "#/$defs/NarrativeObjects"},
+    "spatial_scenes": {
+      "type": "array",
+      "items": {"$ref": "../casefile/objects.schema.json#/$defs/SpatialScene"}
+    },
+    "content_notices": {
+      "type": "array",
+      "items": {"$ref": "../casefile/casefile.schema.json#/properties/content_notices/items"}
+    },
+    "extensions": {"$ref": "../casefile/common.schema.json#/$defs/Extensions"},
+    "indexes": {"$ref": "#/$defs/NarrativeIndexes"}
+  },
+  "$defs": {
+    "NarrativeIRSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["casefile_ref", "source_schema_id", "content_hash", "root_source_refs"],
+      "properties": {
+        "casefile_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "source_schema_id": {"const": "casefile.v2"},
+        "content_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "root_source_refs": {
+          "type": "array",
+          "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"},
+          "minItems": 7,
+          "uniqueItems": true
+        }
+      }
+    },
+    "NarrativeCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "status", "version", "brief_ref"],
+      "properties": {
+        "title": {"$ref": "../casefile/casefile.schema.json#/properties/title"},
+        "status": {"$ref": "../casefile/casefile.schema.json#/properties/status"},
+        "version": {"$ref": "../casefile/casefile.schema.json#/properties/version"},
+        "brief_ref": {"$ref": "../casefile/casefile.schema.json#/properties/brief_ref"}
+      }
+    },
+    "ReferenceRelation": {
+      "type": "string",
+      "enum": [
+        "object.source",
+        "resolution.accepted_answer", "resolution.required_claim",
+        "resolution.conclusion_value", "resolution.selected_hypothesis",
+        "resolution.supporting_reasoning_path",
+        "entity.knowledge_anchor", "entity.knows", "entity.believes",
+        "entity.false_belief",
+        "relationship.from", "relationship.to",
+        "location.parent", "location.adjacent", "location.travel_to",
+        "event.relative_anchor", "event.participant", "event.location",
+        "event.cause", "event.effect", "event.observer",
+        "information.source_event", "information.supports_claim",
+        "information.refutes_claim", "information.perspective",
+        "information.alternative_path",
+        "claim.support", "claim.refute", "claim.dependency",
+        "hypothesis.target_resolution", "hypothesis.required_claim",
+        "hypothesis.falsifier", "hypothesis.competitor",
+        "hypothesis.evidence",
+        "reasoning.target", "reasoning.input", "reasoning.output",
+        "reasoning.alternative_path",
+        "constraint.scope", "constraint.conflict", "structure_lock.object"
+      ]
+    },
+    "ReferenceEdgeContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["container_path", "container_ordinal"],
+      "properties": {
+        "container_path": {"$ref": "../casefile/common.schema.json#/$defs/JsonPointer"},
+        "container_key": {"type": "string", "minLength": 1, "maxLength": 160},
+        "container_ordinal": {"type": "integer", "minimum": 1},
+        "anchor_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}
+      }
+    },
+    "ReferenceEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relation", "from_ref", "to_ref", "ordinal", "source_ref"],
+      "properties": {
+        "relation": {"$ref": "#/$defs/ReferenceRelation"},
+        "from_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "to_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "source_ref": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"},
+        "context": {"$ref": "#/$defs/ReferenceEdgeContext"}
+      }
+    },
+    "NarrativeIndexes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_edges"],
+      "properties": {
+        "reference_edges": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ReferenceEdge"}
+        }
+      }
+    },
+    "NarrativeObjectEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_ref", "source_ref", "value"],
+      "properties": {
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "source_ref": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"},
+        "value": {}
+      }
+    },
+    "ResolutionEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/ResolutionSpec"}}}
+      ]
+    },
+    "EntityEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Entity"}}}
+      ]
+    },
+    "RelationshipEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Relationship"}}}
+      ]
+    },
+    "LocationEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Location"}}}
+      ]
+    },
+    "EventEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Event"}}}
+      ]
+    },
+    "InformationEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/InformationUnit"}}}
+      ]
+    },
+    "ClaimEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Claim"}}}
+      ]
+    },
+    "HypothesisEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Hypothesis"}}}
+      ]
+    },
+    "ReasoningEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/ReasoningPath"}}}
+      ]
+    },
+    "ConstraintEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/Constraint"}}}
+      ]
+    },
+    "StructureLockEnvelope": {
+      "allOf": [
+        {"$ref": "#/$defs/NarrativeObjectEnvelope"},
+        {"type": "object", "properties": {"value": {"$ref": "../casefile/objects.schema.json#/$defs/StructureLock"}}}
+      ]
+    },
+    "NarrativeObjects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolution_specs", "entities", "relationships", "locations", "events",
+        "information_units", "claims", "hypotheses", "reasoning_paths",
+        "constraints", "structure_locks"
+      ],
+      "properties": {
+        "resolution_specs": {"type": "array", "items": {"$ref": "#/$defs/ResolutionEnvelope"}},
+        "entities": {"type": "array", "items": {"$ref": "#/$defs/EntityEnvelope"}},
+        "relationships": {"type": "array", "items": {"$ref": "#/$defs/RelationshipEnvelope"}},
+        "locations": {"type": "array", "items": {"$ref": "#/$defs/LocationEnvelope"}},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/EventEnvelope"}},
+        "information_units": {"type": "array", "items": {"$ref": "#/$defs/InformationEnvelope"}},
+        "claims": {"type": "array", "items": {"$ref": "#/$defs/ClaimEnvelope"}},
+        "hypotheses": {"type": "array", "items": {"$ref": "#/$defs/HypothesisEnvelope"}},
+        "reasoning_paths": {"type": "array", "items": {"$ref": "#/$defs/ReasoningEnvelope"}},
+        "constraints": {"type": "array", "items": {"$ref": "#/$defs/ConstraintEnvelope"}},
+        "structure_locks": {"type": "array", "items": {"$ref": "#/$defs/StructureLockEnvelope"}}
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type { CaseFile, CoreMetadata } from "@casefile/contracts";
+import type { CaseFile, CoreMetadata, NarrativeIR } from "@casefile/contracts";
 
 export interface LegacyTemporalPositionV1 {
   start: string;
@@ -33,6 +33,18 @@ export interface ApiErrorBody {
   code: string;
   message: string;
   details: Record<string, unknown>;
+}
+
+export interface CompileArtifactContentView {
+  artifact_id: number;
+  compile_run_id: number;
+  artifact_kind: "input_manifest" | "narrative_ir";
+  artifact_key: string;
+  schema_id: string;
+  content_hash: string;
+  agent_step_run_id: number;
+  content: Record<string, unknown> | NarrativeIR;
+  created_at: string;
 }
 
 export class ApiError extends Error {
@@ -1316,6 +1328,18 @@ export async function clearArchivedProjects(actorId: number) {
     actorId,
     method: "POST",
   });
+}
+
+export async function getCompileArtifactContent(
+  actorId: number,
+  projectId: number,
+  compileRunId: number,
+  artifactId: number,
+) {
+  return apiRequest<CompileArtifactContentView>(
+    `/projects/${projectId}/compile-runs/${compileRunId}/artifacts/${artifactId}`,
+    { actorId },
+  );
 }
 
 export function errorMessage(error: unknown) {

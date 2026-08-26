@@ -17,6 +17,7 @@ from casefile.data_postgres.models import TaskRun
 from casefile.domain.logical_mutation import MutationSet
 from casefile.domain.logical_mutation.repair import ClosureRepairResult, run_closure_repair
 from casefile.domain.verification_engine import VerificationEngine
+from casefile.worker.support import _required_provider_binding
 
 
 def execute_chat_closure_repair(
@@ -77,7 +78,7 @@ def execute_mutation_closure_repair(
     original = verifier.simulate_mutation_set(frozen, primary)
     proposer = ProviderRepairProposer(
         provider=provider,
-        model_id=task.model_id,
+        model_id=_required_provider_binding(task)[1],
         api_key=api_key,
         emit=emit,
         max_turns=1,

@@ -304,6 +304,16 @@ export type BriefIntakeCandidate = {
   risk_notes: string[];
   field_sources: BriefIntakeFieldSources;
 };
+export type CompileInputManifest = {
+  [k: string]: unknown;
+};
+export type NovelPlanScene = CandidateScene & {
+  /**
+   * @minItems 1
+   */
+  source_refs: [CompilerSourceRef, ...CompilerSourceRef[]];
+  [k: string]: unknown;
+};
 
 /**
  * Code-generation aggregate for the CaseFile editing loop.
@@ -319,21 +329,27 @@ export interface EditingContracts {
   task_event: TaskEvent;
   agent_generate_request: AgentGenerateRequest;
   agent_generate_result: AgentGenerateResult;
+  compiler_source_ref: CompilerSourceRef;
+  compiler_artifact_ref: CompilerArtifactRef;
+  compiler_diagnostic: CompilerDiagnostic;
+  compiler_profile_binding: CompilerProfileBinding;
+  compile_input_manifest: CompileInputManifest;
+  narrative_ir: NarrativeIR;
+  novel_profile: NovelProfile;
+  planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
+  planner_model_view: PlannerModelViewV3 | PlannerModelViewV4;
+  story_plan_structural_patch: StoryPlanStructuralPatch;
+  constraint_first_planner: ConstraintFirstPlannerContracts;
+  novel_plan_candidate: NovelPlanCandidate;
+  novel_plan: NovelPlanIR;
 }
 export interface CaseFile {
   schema_version: "2.0";
   casefile_id: string;
   title: string;
   status: "draft" | "canon" | "archived";
-  version: {
-    version_id: string;
-    version_no: number;
-    parent_version_id: string | null;
-  };
-  brief_ref: {
-    brief_id: string;
-    version: number;
-  };
+  version: Version;
+  brief_ref: BriefRef;
   resolution_specs: ResolutionSpec[];
   entities: Entity[];
   relationships: Relationship[];
@@ -346,13 +362,17 @@ export interface CaseFile {
   reasoning_paths: ReasoningPath[];
   constraints: Constraint[];
   structure_locks: StructureLock[];
-  content_notices: {
-    notice_id: string;
-    category: string;
-    severity: "low" | "medium" | "high";
-    description: string;
-  }[];
+  content_notices: Items[];
   extensions: Extensions;
+}
+export interface Version {
+  version_id: string;
+  version_no: number;
+  parent_version_id: string | null;
+}
+export interface BriefRef {
+  brief_id: string;
+  version: number;
 }
 export interface CoreMetadata {
   description?: string;
@@ -468,6 +488,12 @@ export interface RelativeTemporalPosition {
 export interface UnknownTemporalPosition {
   kind: "unknown";
 }
+export interface Items {
+  notice_id: string;
+  category: string;
+  severity: "low" | "medium" | "high";
+  description: string;
+}
 export interface Extensions {
   [k: string]: unknown;
 }
@@ -571,11 +597,12 @@ export interface TaskRun {
     | "brief_to_draft"
     | "casefile_chat"
     | "reverse_parse"
+    | "novel_compile"
     | "idea_generation";
   status: "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
   stage: string;
-  provider: "openai" | "deepseek";
-  model_id: string;
+  provider: ("openai" | "deepseek") | null;
+  model_id: string | null;
   input_draft_revision: number;
   input_brief_revision: number | null;
   input_source_record_id: number | null;
@@ -659,4 +686,654 @@ export interface AgentGenerateResult {
   snapshot_id: number;
   draft_revision: number;
   content_hash: string;
+}
+export interface CompilerSourceRef {
+  object_ref: ObjectRef;
+  field_path: string;
+  source_fragment_hash: string;
+}
+export interface CompilerArtifactRef {
+  artifact_kind:
+    | "input_manifest"
+    | "narrative_ir"
+    | "novel_plan"
+    | "exposure_schedule"
+    | "scene_plan"
+    | "scene_context"
+    | "scene_render"
+    | "scene_assertions"
+    | "validation_report"
+    | "source_map"
+    | "novel_candidate"
+    | "compile_manifest";
+  artifact_key: string;
+  schema_id: string;
+  content_hash: string;
+}
+export interface CompilerDiagnostic {
+  severity: "info" | "warning" | "error";
+  code: string;
+  message: string;
+  artifact_ref?: CompilerArtifactRef | null;
+  source_refs: CompilerSourceRef[];
+}
+export interface CompilerProfileBinding {
+  profile_key: string;
+  profile_schema_id: string;
+  profile_version: number;
+  frozen_payload: {
+    [k: string]: unknown;
+  };
+  content_hash: string;
+}
+export interface NarrativeIR {
+  schema_id: "compiler.narrative-ir.v1";
+  projection_version: "compiler.narrative-ir-projection.v1";
+  source: NarrativeIRSource;
+  case: NarrativeCase;
+  objects: NarrativeObjects;
+  spatial_scenes?: SpatialScene[];
+  content_notices: Items[];
+  extensions: Extensions;
+  indexes: NarrativeIndexes;
+}
+export interface NarrativeIRSource {
+  casefile_ref: ObjectRef;
+  source_schema_id: "casefile.v2";
+  content_hash: string;
+  /**
+   * @minItems 7
+   */
+  root_source_refs: [
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    CompilerSourceRef,
+    ...CompilerSourceRef[]
+  ];
+}
+export interface NarrativeCase {
+  title: string;
+  status: "draft" | "canon" | "archived";
+  version: Version;
+  brief_ref: BriefRef;
+}
+export interface NarrativeObjects {
+  resolution_specs: (NarrativeObjectEnvelope & {
+    value?: ResolutionSpec;
+    [k: string]: unknown;
+  })[];
+  entities: (NarrativeObjectEnvelope & {
+    value?: Entity;
+    [k: string]: unknown;
+  })[];
+  relationships: (NarrativeObjectEnvelope & {
+    value?: Relationship;
+    [k: string]: unknown;
+  })[];
+  locations: (NarrativeObjectEnvelope & {
+    value?: Location;
+    [k: string]: unknown;
+  })[];
+  events: (NarrativeObjectEnvelope & {
+    value?: Event;
+    [k: string]: unknown;
+  })[];
+  information_units: (NarrativeObjectEnvelope & {
+    value?: InformationUnit;
+    [k: string]: unknown;
+  })[];
+  claims: (NarrativeObjectEnvelope & {
+    value?: Claim;
+    [k: string]: unknown;
+  })[];
+  hypotheses: (NarrativeObjectEnvelope & {
+    value?: Hypothesis;
+    [k: string]: unknown;
+  })[];
+  reasoning_paths: (NarrativeObjectEnvelope & {
+    value?: ReasoningPath;
+    [k: string]: unknown;
+  })[];
+  constraints: (NarrativeObjectEnvelope & {
+    value?: Constraint;
+    [k: string]: unknown;
+  })[];
+  structure_locks: (NarrativeObjectEnvelope & {
+    value?: StructureLock;
+    [k: string]: unknown;
+  })[];
+}
+export interface NarrativeObjectEnvelope {
+  object_ref: ObjectRef;
+  source_ref: CompilerSourceRef;
+  value: unknown;
+}
+export interface NarrativeIndexes {
+  reference_edges: ReferenceEdge[];
+}
+export interface ReferenceEdge {
+  relation:
+    | "object.source"
+    | "resolution.accepted_answer"
+    | "resolution.required_claim"
+    | "resolution.conclusion_value"
+    | "resolution.selected_hypothesis"
+    | "resolution.supporting_reasoning_path"
+    | "entity.knowledge_anchor"
+    | "entity.knows"
+    | "entity.believes"
+    | "entity.false_belief"
+    | "relationship.from"
+    | "relationship.to"
+    | "location.parent"
+    | "location.adjacent"
+    | "location.travel_to"
+    | "event.relative_anchor"
+    | "event.participant"
+    | "event.location"
+    | "event.cause"
+    | "event.effect"
+    | "event.observer"
+    | "information.source_event"
+    | "information.supports_claim"
+    | "information.refutes_claim"
+    | "information.perspective"
+    | "information.alternative_path"
+    | "claim.support"
+    | "claim.refute"
+    | "claim.dependency"
+    | "hypothesis.target_resolution"
+    | "hypothesis.required_claim"
+    | "hypothesis.falsifier"
+    | "hypothesis.competitor"
+    | "hypothesis.evidence"
+    | "reasoning.target"
+    | "reasoning.input"
+    | "reasoning.output"
+    | "reasoning.alternative_path"
+    | "constraint.scope"
+    | "constraint.conflict"
+    | "structure_lock.object";
+  from_ref: ObjectRef;
+  to_ref: ObjectRef;
+  ordinal: number;
+  source_ref: CompilerSourceRef;
+  context?: ReferenceEdgeContext;
+}
+export interface ReferenceEdgeContext {
+  container_path: string;
+  container_key?: string;
+  container_ordinal: number;
+  anchor_ref?: ObjectRef;
+}
+export interface NovelProfile {
+  schema_id: "compiler.novel-profile.v1";
+  structure: {
+    strategy: "three_act";
+    target_chapters: number;
+    target_scenes: number;
+  };
+  /**
+   * @minItems 1
+   */
+  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+  exposure_policy: "bound_plan" | "planner_default";
+}
+export interface PlannerInputBundle {
+  schema_id: "compiler.story-planner-input.v1";
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: NovelProfile;
+  planning_constraints: PlanningConstraints;
+}
+export interface ExposureBinding {
+  draft_id: number;
+  plan_revision_id: number;
+  revision_no: number;
+  frozen_payload: {
+    [k: string]: unknown;
+  };
+  content_hash: string;
+}
+export interface PlanningConstraints {
+  target_chapters: number;
+  target_scenes: number;
+  /**
+   * @minItems 1
+   */
+  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+}
+export interface PlannerInputBundleV2 {
+  schema_id: "compiler.story-planner-input.v2";
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: NovelProfile;
+  planning_constraints: PlanningConstraints;
+  planner_view: PlannerView;
+}
+export interface PlannerView {
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure_obligations: ExposureObligation[];
+    resolution_obligations: ResolutionObligation[];
+    chronology_anchors: ChronologyAnchor[];
+  };
+  planning_context: PlanningContext;
+}
+export interface StructureConstraints {
+  target_chapters: number;
+  target_scenes: number;
+  /**
+   * @minItems 1
+   */
+  allowed_presentation_modes: ["linear" | "flashback" | "flashforward", ...("linear" | "flashback" | "flashforward")[]];
+}
+export interface ExposureObligation {
+  entry_key: string;
+  sequence_no: number;
+  introduce_exactly_once: true;
+  subsequent_actions_require_introduction: true;
+}
+export interface ResolutionObligation {
+  resolution_ref: ObjectRef;
+  terminal_exactly_once: true;
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  allowed_terminal_actions: ["resolve" | "intentionally_unresolved", "resolve" | "intentionally_unresolved"];
+}
+export interface ChronologyAnchor {
+  event_ref: ObjectRef;
+  comparable_time: string;
+}
+export interface PlanningContext {
+  causal_edges: CausalEdge[];
+  knowledge_snapshots: KnowledgeSnapshot[];
+  author_guidance: AuthorGuidance[];
+}
+export interface CausalEdge {
+  relation: "cause" | "effect";
+  event_ref: ObjectRef;
+  related_ref: ObjectRef;
+}
+export interface KnowledgeSnapshot {
+  subject_ref: ObjectRef;
+  as_of_event_ref: ObjectRef;
+  knows_refs: ObjectRef[];
+  believes_refs: ObjectRef[];
+  false_belief_refs: ObjectRef[];
+}
+export interface AuthorGuidance {
+  entry_key: string;
+  title: string;
+  note: string | null;
+  is_hard_constraint: false;
+}
+export interface PlannerInputBundleV3 {
+  schema_id: "compiler.story-planner-input.v3";
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: NovelProfile;
+  planning_constraints: PlanningConstraints;
+  planner_view: PlannerView1;
+}
+export interface PlannerView1 {
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure_obligations: ExposureObligation[];
+    resolution_obligations: ResolutionObligation[];
+    chronology_anchors: ChronologyAnchor[];
+    semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+  };
+  planning_context: PlanningContext1;
+}
+export interface ParticipantCoverageObligation {
+  kind: "participant_coverage";
+  obligation_key: string;
+  entry_key: string;
+  level: "hard" | "soft";
+  /**
+   * @minItems 1
+   */
+  eligible_refs: [ObjectRef, ...ObjectRef[]];
+  min_distinct: number;
+}
+export interface BasisRefCoverageObligation {
+  kind: "basis_ref_coverage";
+  obligation_key: string;
+  entry_key: string;
+  level: "hard" | "soft";
+  /**
+   * @minItems 1
+   */
+  required_refs: [ObjectRef, ...ObjectRef[]];
+}
+export interface HypothesisCoverageObligation {
+  kind: "hypothesis_coverage";
+  obligation_key: string;
+  entry_key: string;
+  level: "hard" | "soft";
+  /**
+   * @minItems 1
+   */
+  required_refs: [
+    ObjectRef & {
+      object_type?: "hypothesis";
+      [k: string]: unknown;
+    },
+    ...(ObjectRef & {
+      object_type?: "hypothesis";
+      [k: string]: unknown;
+    })[]
+  ];
+}
+export interface PlanningContext1 {
+  causal_edges: CausalEdge[];
+  knowledge_snapshots: KnowledgeSnapshot[];
+  author_guidance: AuthorGuidance[];
+  semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+}
+export interface PlannerModelViewV3 {
+  schema_id: "compiler.story-planner-model-view.v3";
+  source: {
+    projection_version: "compiler.story-planner-model-view-projection.v3";
+    planner_input_hash: string;
+    constraint_ir_hash: string;
+  };
+  case: NarrativeCase;
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure: Exposure;
+    temporal: Temporal;
+    resolutions: Resolutions;
+  };
+  object_catalog: ObjectCatalog;
+  planning_context: PlanningContext;
+}
+export interface Exposure {
+  introduce_order: string[];
+  precedence_edges: {
+    before_entry_key: string;
+    after_entry_key: string;
+  }[];
+}
+export interface Temporal {
+  anchors: {
+    event_ref: ObjectRef;
+    rank: number;
+    comparable_time: string;
+  }[];
+}
+export interface Resolutions {
+  terminal_exactly_once: ObjectRef[];
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  allowed_terminal_actions: ["resolve" | "intentionally_unresolved", "resolve" | "intentionally_unresolved"];
+}
+export interface ObjectCatalog {
+  resolution_specs: ModelObject[];
+  entities: ModelObject[];
+  relationships: ModelObject[];
+  locations: ModelObject[];
+  events: ModelObject[];
+  information_units: ModelObject[];
+  claims: ModelObject[];
+  hypotheses: ModelObject[];
+  reasoning_paths: ModelObject[];
+  constraints: ModelObject[];
+  structure_locks: ModelObject[];
+}
+export interface ModelObject {
+  object_ref: ObjectRef;
+  value: unknown;
+}
+export interface PlannerModelViewV4 {
+  schema_id: "compiler.story-planner-model-view.v4";
+  source: {
+    projection_version: "compiler.story-planner-model-view-projection.v4";
+    planner_input_hash: string;
+    constraint_ir_hash: string;
+  };
+  case: NarrativeCase;
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure: Exposure;
+    temporal: Temporal;
+    resolutions: Resolutions;
+    semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+  };
+  object_catalog: ObjectCatalog;
+  planning_context: PlanningContext1;
+}
+export interface StoryPlanStructuralPatch {
+  schema_id: "compiler.story-plan-structural-patch.v1";
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  patches: [ReplaceScenePurposePatch, ...ReplaceScenePurposePatch[]];
+}
+export interface ReplaceScenePurposePatch {
+  op: "replace_scene_purpose";
+  scene_id: string;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+}
+export interface ConstraintFirstPlannerContracts {
+  planning_problem: PlanningProblem;
+  skeleton_proposal: SkeletonProposal;
+  plan_skeleton: PlanSkeleton;
+  semantic_fill: SemanticFillProposal;
+}
+export interface PlanningProblem {
+  schema_id: "compiler.planning-problem.v1";
+  source: {
+    constraint_ir_schema_id: "compiler.planner-constraints.v2";
+    constraint_ir_hash: string;
+  };
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  chapter_slots: [ChapterSlot, ...ChapterSlot[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scene_slots: [SceneSlot, ...SceneSlot[]];
+  /**
+   * @minItems 1
+   */
+  object_refs: [ObjectRef, ...ObjectRef[]];
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure: Exposure;
+    temporal: Temporal;
+    resolutions: Resolutions;
+    semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+  };
+}
+export interface ChapterSlot {
+  chapter_id: string;
+  ordinal: number;
+  act_ordinal: number;
+}
+export interface SceneSlot {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+}
+export interface SkeletonProposal {
+  schema_id: "compiler.skeleton-proposal.v1";
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scenes: [SkeletonScene, ...SkeletonScene[]];
+}
+export interface SkeletonScene {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  story_time_refs: ObjectRef[];
+  participant_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
+  prerequisite_scene_ids: string[];
+}
+export interface ExposurePlacement {
+  entry_key: string;
+  action: "introduce" | "reinforce" | "reinterpret";
+}
+export interface ResolutionPlacement {
+  resolution_ref: ObjectRef;
+  action: "advance" | "resolve" | "intentionally_unresolved";
+}
+export interface PlanSkeleton {
+  schema_id: "compiler.plan-skeleton.v1";
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  chapter_slots: [ChapterSlot, ...ChapterSlot[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scenes: [SkeletonScene, ...SkeletonScene[]];
+}
+export interface SemanticFillProposal {
+  schema_id: "compiler.semantic-fill.v1";
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  chapters: [SemanticChapterFill, ...SemanticChapterFill[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scenes: [SemanticSceneFill, ...SemanticSceneFill[]];
+}
+export interface SemanticChapterFill {
+  chapter_id: string;
+  title: string;
+}
+export interface SemanticSceneFill {
+  scene_id: string;
+  intent: string;
+  pov_ref: ObjectRef | null;
+  location_ref: ObjectRef | null;
+  event_refs: ObjectRef[];
+}
+export interface NovelPlanCandidate {
+  schema_id: "compiler.novel-plan-candidate.v1";
+  /**
+   * @minItems 1
+   */
+  chapters: [CandidateChapter, ...CandidateChapter[]];
+  /**
+   * @minItems 1
+   */
+  scenes: [CandidateScene, ...CandidateScene[]];
+}
+export interface CandidateChapter {
+  chapter_id: string;
+  ordinal: number;
+  act_ordinal: number;
+  title: string;
+}
+export interface CandidateScene {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  intent: string;
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  event_refs: ObjectRef[];
+  story_time_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
+  prerequisite_scene_ids: string[];
+}
+export interface NovelPlanIR {
+  schema_id: "compiler.novel-plan.v1";
+  planner_version: string;
+  source: NovelPlanSource;
+  /**
+   * @minItems 1
+   */
+  chapters: [CandidateChapter, ...CandidateChapter[]];
+  /**
+   * @minItems 1
+   */
+  scenes: [NovelPlanScene, ...NovelPlanScene[]];
+  indexes: NovelPlanIndexes;
+}
+export interface NovelPlanSource {
+  planner_input_hash: string;
+  narrative_ir_hash: string;
+  profile_hash: string;
+  exposure_hash: string | null;
+  component_fingerprint: string;
+}
+export interface NovelPlanIndexes {
+  chapter_scene_ids: {
+    [k: string]: string[];
+  };
+  scene_dependencies: {
+    [k: string]: string[];
+  };
 }

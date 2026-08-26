@@ -1,0 +1,6 @@
+{
+  "artifact_kind": "input_manifest",
+  "artifact_key": "compiler.input_manifest",
+  "schema_id": "compiler.input-manifest.v1",
+  "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}

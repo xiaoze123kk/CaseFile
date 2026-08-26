@@ -44,11 +44,38 @@ EXPECTED_CURRENT_VERSIONS = {
     "reverse_parse": "reverse-parse-v1",
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
+    "story_planner": "story-planner-v3",
+    "story_planner_skeleton": "story-planner-skeleton-v1",
+    "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("story_planner_skeleton", "story-planner-skeleton-v1"): {
+        "system": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5"
+    },
+    ("story_planner_semantic_fill", "story-planner-semantic-fill-v1"): {
+        "system": "2106595dade90f5a79a54be34208c757f24adeab8b3c68c246efd5f6971fe73c"
+    },
+    ("story_planner", "story-planner-v7"): {
+        "system": "ef52318d8e1efa20f436c4ed0162b98dcf2802f17a6ffd8746d6d6e24a995656"
+    },
+    ("story_planner", "story-planner-v6"): {
+        "system": "7b63a9fefdb88427400f9aa81803a1a48dde45c358fdd7d2703d0ec0ac2f76ea"
+    },
+    ("story_planner", "story-planner-v5"): {
+        "system": "12fed75612c28647d21298e57cf65c4061602f48dc7afdd892767e6634d8bcba"
+    },
+    ("story_planner", "story-planner-v3"): {
+        "system": "e3176a472075dfe06055f5a29dd0941f649ca474639c45c23d9fc4a761a03476"
+    },
+    ("story_planner", "story-planner-v2"): {
+        "system": "469cc09273bb71943d7f890582fb3a8581bd2080adb1d7d2b82615d4df66e75d"
+    },
+    ("story_planner", "story-planner-v1"): {
+        "system": "02e0243a4c05f60aa130698c6bda3c97017d507070a2eb1bf6df1a6a1f7f3539"
+    },
     ("general_mutation_planner", "general-mutation-planner-v6"): {
         "fragment:planner": "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
     },
@@ -408,13 +435,22 @@ EXPECTED_RELEASE_HASHES = {
 
 def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
     contract_task_types = {task_type.value for task_type in TaskType}
+    deterministic_task_types = {"novel_compile"}
     auxiliary_agent_ids = {
         "casefile_chat_context_compactor",
         "closure_repair",
+        "story_planner",
+        "story_planner_skeleton",
+        "story_planner_semantic_fill",
         "general_mutation_planner",
     }
 
-    assert set(SUPPORTED_AGENT_IDS) == contract_task_types | auxiliary_agent_ids
+    assert deterministic_task_types <= contract_task_types
+    assert (
+        set(SUPPORTED_AGENT_IDS)
+        == (contract_task_types - deterministic_task_types) | auxiliary_agent_ids
+    )
+    assert deterministic_task_types.isdisjoint(SUPPORTED_AGENT_IDS)
     assert packaged_prompt_repository().expected_agent_ids == SUPPORTED_AGENT_IDS
     assert {
         agent_id: prompt_version_for_task(agent_id) for agent_id in SUPPORTED_AGENT_IDS

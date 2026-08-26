@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner",
+  "version": "story-planner-v6",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "7b63a9fefdb88427400f9aa81803a1a48dde45c358fdd7d2703d0ec0ac2f76ea",
+  "previous_version": "story-planner-v5",
+  "change_summary": "PlannerInput v2 单变量实验：使用结构、Exposure、时间与 Resolution 核对表模拟生产 Validator，再填充软规划目标。"
+}

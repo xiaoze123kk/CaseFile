@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from casefile.worker.runtime import WorkerConfig
 from casefile.worker.support import previous_attempt_failed_steps
 

@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner",
+  "version": "story-planner-v2",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "469cc09273bb71943d7f890582fb3a8581bd2080adb1d7d2b82615d4df66e75d",
+  "previous_version": "story-planner-v1",
+  "change_summary": "明确 Candidate 顶层与章节场景完整字段，结构修复必须重发完整候选。"
+}

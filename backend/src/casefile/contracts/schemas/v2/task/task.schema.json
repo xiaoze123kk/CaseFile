@@ -147,6 +147,7 @@
             "brief_to_draft",
             "casefile_chat",
             "reverse_parse",
+            "novel_compile",
             "idea_generation"
           ]
         },
@@ -155,8 +156,18 @@
           "enum": ["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
         },
         "stage": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
-        "provider": {"type": "string", "enum": ["openai", "deepseek"]},
-        "model_id": {"type": "string", "minLength": 1},
+        "provider": {
+          "oneOf": [
+            {"type": "string", "enum": ["openai", "deepseek"]},
+            {"type": "null"}
+          ]
+        },
+        "model_id": {
+          "oneOf": [
+            {"type": "string", "minLength": 1},
+            {"type": "null"}
+          ]
+        },
         "input_draft_revision": {"type": "integer", "minimum": 1},
         "input_brief_revision": {
           "oneOf": [
