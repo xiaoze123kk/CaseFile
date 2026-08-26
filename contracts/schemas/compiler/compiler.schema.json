@@ -98,6 +98,9 @@
             {"type": "null"}
           ]
         },
+        "artifact_type": {"type": ["string", "null"], "maxLength": 80},
+        "node_id": {"type": ["string", "null"], "maxLength": 160},
+        "details": {"type": ["object", "null"]},
         "source_refs": {
           "type": "array",
           "items": {"$ref": "#/$defs/CompilerSourceRef"},

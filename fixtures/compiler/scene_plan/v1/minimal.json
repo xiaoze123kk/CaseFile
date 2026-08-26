@@ -1,0 +1,96 @@
+{
+  "schema_id": "compiler.scene-plan.v1",
+  "compiler_version": "compiler.scene-execution.v1",
+  "source": {
+    "novel_plan_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "narrative_ir_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "component_fingerprint": "3333333333333333333333333333333333333333333333333333333333333333"
+  },
+  "chapters": [
+    {
+      "chapter_id": "chapter_1",
+      "ordinal": 1,
+      "act_ordinal": 1,
+      "title": "第一章",
+      "scene_ids": ["scene_1"]
+    }
+  ],
+  "scenes": [
+    {
+      "scene_id": "scene_1",
+      "chapter_id": "chapter_1",
+      "discourse_order": 1,
+      "purpose": "hook",
+      "presentation_mode": "linear",
+      "objective": "建立调查起点。",
+      "pov_ref": {"object_type": "entity", "object_id": "ent_investigator"},
+      "participant_refs": [{"object_type": "entity", "object_id": "ent_investigator"}],
+      "location_ref": {"object_type": "location", "object_id": "loc_archive"},
+      "story_time_refs": [{"object_type": "event", "object_id": "evt_archive_entry"}],
+      "audience_state_before": [],
+      "audience_state_after": [],
+      "allowed_reveals": [],
+      "forbidden_reveal_entry_keys": [],
+      "resolution_actions": [],
+      "prerequisite_scene_ids": [],
+      "beat_ids": ["beat_scene_1_001"],
+      "source_refs": [
+        {
+          "object_ref": {"object_type": "event", "object_id": "evt_archive_entry"},
+          "field_path": "",
+          "source_fragment_hash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "beat_id": "beat_scene_1_001",
+      "scene_id": "scene_1",
+      "ordinal": 1,
+      "kind": "event",
+      "directive": "execute:event:evt_archive_entry",
+      "basis_refs": [{"object_type": "event", "object_id": "evt_archive_entry"}],
+      "event_ref": {"object_type": "event", "object_id": "evt_archive_entry"},
+      "exposure": null,
+      "resolution": null,
+      "audience_delta": [],
+      "source_refs": [
+        {
+          "object_ref": {"object_type": "event", "object_id": "evt_archive_entry"},
+          "field_path": "",
+          "source_fragment_hash": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge_chapter_scene_1",
+      "relation": "chapter_contains_scene",
+      "from_node_id": "chapter_1",
+      "to_node_id": "scene_1"
+    },
+    {
+      "edge_id": "edge_scene_beat_1",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_1",
+      "to_node_id": "beat_scene_1_001"
+    }
+  ],
+  "indexes": {
+    "chapter_scene_ids": {"chapter_1": ["scene_1"]},
+    "scene_beat_ids": {"scene_1": ["beat_scene_1_001"]},
+    "scene_dependencies": {"scene_1": []},
+    "exposure_scene_ids": {},
+    "resolution_scene_ids": {}
+  },
+  "diagnostics": [],
+  "metrics": {
+    "chapter_count": 1,
+    "scene_count": 1,
+    "beat_count": 1,
+    "exposure_count": 0,
+    "resolution_action_count": 0
+  }
+}

@@ -297,7 +297,11 @@ def test_legacy_story_planner_replays_model_call_and_reuses_full_fingerprint(
         "input_manifest",
         "narrative_ir",
         "novel_plan",
+        "scene_plan",
     ]
+    assert artifacts[-1].schema_id == "compiler.scene-plan.v1"
+    assert artifacts[-1].content_jsonb["source"]["novel_plan_hash"] == artifacts[-2].content_hash
+    assert task.result_jsonb["scene_plan_artifact_id"] == artifacts[-1].id
     assert len(model_calls) == 1
     assert model_calls[0].raw_output_text
     assert len(repair_events) == 1
@@ -340,6 +344,7 @@ def test_legacy_story_planner_replays_model_call_and_reuses_full_fingerprint(
         reused_task = session.get(TaskRun, int(reused["task_run_id"]))
         assert reused_task is not None
         assert reused_task.result_jsonb["component_reuse"]["novel_plan"] is True
+        assert reused_task.result_jsonb["component_reuse"]["scene_plan"] is False
         assert (
             session.scalar(
                 select(func.count(AgentModelCall.id)).where(
@@ -478,6 +483,13 @@ def test_constraint_first_worker_is_default_and_records_exact_stage_hashes(
 
     with factory() as session:
         task = session.get(TaskRun, int(run["task_run_id"]))
+        artifacts = list(
+            session.scalars(
+                select(CompileArtifact)
+                .where(CompileArtifact.compile_run_id == run["compile_run_id"])
+                .order_by(CompileArtifact.id)
+            )
+        )
         calls = list(
             session.scalars(
                 select(AgentModelCall)
@@ -508,6 +520,12 @@ def test_constraint_first_worker_is_default_and_records_exact_stage_hashes(
     assert all(call.status == "succeeded" and call.raw_output_text for call in calls)
     assert calls[0].input_hash != calls[1].input_hash
     assert step is not None and step.component_version == CONSTRAINT_FIRST_PIPELINE_VERSION
+    assert [artifact.artifact_kind for artifact in artifacts] == [
+        "input_manifest",
+        "narrative_ir",
+        "novel_plan",
+        "scene_plan",
+    ]
 
 
 def test_both_compiler_artifacts_are_reused_after_completion_crash(

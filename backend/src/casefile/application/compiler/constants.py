@@ -14,6 +14,10 @@ NARRATIVE_IR_COMPONENT_VERSION = "compiler.narrative-ir-projection.v1"
 NOVEL_PLAN_SCHEMA_ID = "compiler.novel-plan.v1"
 NOVEL_PLAN_ARTIFACT_KEY = "compiler.novel_plan"
 STORY_PLANNER_COMPONENT_ID = "story_planner"
+SCENE_PLAN_SCHEMA_ID = "compiler.scene-plan.v1"
+SCENE_PLAN_ARTIFACT_KEY = "compiler.scene_plan"
+SCENE_PLAN_COMPONENT_ID = "scene_execution_compiler"
+SCENE_PLAN_COMPONENT_VERSION = "compiler.scene-execution.v1"
 
 __all__ = [
     "INPUT_FREEZE_COMPONENT_ID",
@@ -28,6 +32,10 @@ __all__ = [
     "NOVEL_PLAN_ARTIFACT_KEY",
     "NOVEL_PLAN_SCHEMA_ID",
     "STORY_PLANNER_COMPONENT_ID",
+    "SCENE_PLAN_ARTIFACT_KEY",
+    "SCENE_PLAN_COMPONENT_ID",
+    "SCENE_PLAN_COMPONENT_VERSION",
+    "SCENE_PLAN_SCHEMA_ID",
     "NO_PROMPT_VERSION",
     "NO_TOOLSET_VERSION",
 ]

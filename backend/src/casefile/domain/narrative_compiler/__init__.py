@@ -83,6 +83,18 @@ from casefile.domain.narrative_compiler.planning_solver import (
     planning_component_fingerprint,
     planning_problem_conflicts,
 )
+from casefile.domain.narrative_compiler.scene_plan import (
+    SCENE_EXECUTION_COMPILER_VERSION,
+    SCENE_PLAN_SCHEMA_ID,
+    NarrativeExecutionGraph,
+    ScenePlanValidationReport,
+    ScenePlanViolation,
+    compile_scene_plan,
+    compile_scene_plan_json,
+    inspect_scene_plan,
+    scene_plan_component_fingerprint,
+    validate_scene_plan,
+)
 from casefile.domain.narrative_compiler.source_refs import (
     build_source_ref,
     resolve_source_fragment,
@@ -164,4 +176,14 @@ __all__ = [
     "validate_narrative_ir",
     "story_planner_component_fingerprint",
     "validate_novel_plan_candidate",
+    "NarrativeExecutionGraph",
+    "SCENE_EXECUTION_COMPILER_VERSION",
+    "SCENE_PLAN_SCHEMA_ID",
+    "ScenePlanValidationReport",
+    "ScenePlanViolation",
+    "compile_scene_plan",
+    "compile_scene_plan_json",
+    "inspect_scene_plan",
+    "scene_plan_component_fingerprint",
+    "validate_scene_plan",
 ]

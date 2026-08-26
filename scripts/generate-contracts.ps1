@@ -143,7 +143,10 @@ from .planner_input_v2 import Schema as PlannerInputBundleV2
 from .planner_input_v3 import Schema as PlannerInputBundleV3
 from .planner_model_view_v3 import Schema as PlannerModelViewV3
 from .planner_model_view_v4 import Schema as PlannerModelViewV4
+from .scene_plan import Schema as ScenePlanIR
 from .validation_issue import Schema as ValidationIssue
+
+ScenePlan = ScenePlanIR
 
 __all__ = [
     "AgentGenerateRequest",
@@ -168,6 +171,8 @@ __all__ = [
     "NovelPlanIR",
     "StoryPlanStructuralPatch",
     "SemanticFillProposal",
+    "ScenePlan",
+    "ScenePlanIR",
     "SkeletonProposal",
     "NovelProfile",
     "PlannerInputBundle",
@@ -201,6 +206,8 @@ from .public import (
     PlannerInputBundleV3,
     PlannerModelViewV3,
     PlannerModelViewV4,
+    ScenePlan,
+    ScenePlanIR,
     ValidationIssue,
 )
 
@@ -216,6 +223,8 @@ __all__ += [
     "PlannerInputBundleV3",
     "PlannerModelViewV3",
     "PlannerModelViewV4",
+    "ScenePlan",
+    "ScenePlanIR",
     "ValidationIssue",
 ]
 '@

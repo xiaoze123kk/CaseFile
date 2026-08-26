@@ -237,7 +237,10 @@ class CompileArtifact(BigIntIdentityPrimaryKeyMixin, Base):
             "schema_id = 'compiler.narrative-ir.v1') OR "
             "(artifact_kind = 'novel_plan' AND "
             "artifact_key = 'compiler.novel_plan' AND "
-            "schema_id = 'compiler.novel-plan.v1')",
+            "schema_id = 'compiler.novel-plan.v1') OR "
+            "(artifact_kind = 'scene_plan' AND "
+            "artifact_key = 'compiler.scene_plan' AND "
+            "schema_id = 'compiler.scene-plan.v1')",
             name="identity_allowed",
         ),
         CheckConstraint("content_hash ~ '^[0-9a-f]{64}$'", name="content_hash_format"),

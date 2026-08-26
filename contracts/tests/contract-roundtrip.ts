@@ -15,6 +15,7 @@ import type {
   CompilerSourceRef,
   NarrativeIR,
   PatchCandidate,
+  ScenePlanIR,
   ValidationIssue,
 } from "../generated/typescript/index.js";
 
@@ -145,6 +146,9 @@ const compilerDiagnosticValidator = ajv.getSchema(
 const narrativeIrValidator = ajv.getSchema(
   "https://casefile.local/schemas/v2/compiler/narrative-ir.schema.json",
 );
+const scenePlanValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/scene-plan.schema.json",
+);
 
 if (
   !casefileValidator ||
@@ -156,7 +160,8 @@ if (
   !compilerSourceRefValidator ||
   !compilerArtifactRefValidator ||
   !compilerDiagnosticValidator ||
-  !narrativeIrValidator
+  !narrativeIrValidator ||
+  !scenePlanValidator
 ) {
   throw new Error("Editing contract entry schemas were not registered");
 }
@@ -323,6 +328,14 @@ assertValid(
   narrativeIrValidator,
   typedRoundTrip(narrativeIr as unknown as NarrativeIR),
   "NarrativeIR",
+);
+const scenePlan = loadJson(
+  resolve(fixtureRoot, "compiler", "scene_plan", "v1", "minimal.json"),
+);
+assertValid(
+  scenePlanValidator,
+  typedRoundTrip(scenePlan as unknown as ScenePlanIR),
+  "ScenePlanIR",
 );
 
 const duplicateDiagnostic = structuredClone(compilerDiagnostic);

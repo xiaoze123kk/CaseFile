@@ -8,6 +8,9 @@
     "schema_id": "compiler.input-manifest.v1",
     "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
   },
+  "artifact_type": null,
+  "node_id": null,
+  "details": null,
   "source_refs": [
     {
       "object_ref": {

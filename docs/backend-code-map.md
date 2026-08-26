@@ -67,9 +67,10 @@
 | `backend/src/casefile/application/verification_engine.py` | VerificationEngine 的兼容导入门面；稳定 re-export 既有公开类型，纯规则实现在 domain 层。 |
 | `backend/src/casefile/application/verification_service.py` | VerificationEngine 的 SQLAlchemy application adapter：VerificationRun/finding 双写、refs/reviews/patch lineage 与 Workbench 查询读模型。 |
 | `backend/src/casefile/domain/verification_engine.py` | 脱离 API、数据库、Worker 和 Provider 的纯验证内核：Finding contract、确定性/LLM 合并、旧 batch simulation，以及统一 MutationSimulation 的增量 finding delta、作者债务授权与 can_apply policy。 |
-| `backend/src/casefile/domain/narrative_compiler/` | Narrative Compiler 纯领域内核：N4.0 hash/SourceRef/Manifest 门禁与 N4.2 CaseFile→NarrativeIR 无损投影、声明式引用导航、provenance 和语义复验；不依赖数据库、Worker、API 或 Provider。 |
+| `backend/src/casefile/domain/narrative_compiler/` | Narrative Compiler 纯领域内核：N4.0 hash/SourceRef/Manifest 门禁、N4.2 CaseFile→NarrativeIR 无损投影、N4.3 Story Planner 权威门禁，以及 N4.4 NovelPlanIR→ScenePlanIR 确定性执行编译；不依赖数据库、Worker、API 或 Provider。 |
 | `backend/src/casefile/domain/narrative_compiler/planner_input.py`、`planner_constraints.py`、`planning_solver.py`、`novel_plan.py` | PlannerInput v1–v3、ModelView v3/v4、ConstraintIR v1/v2、PlanningProblem/slots、纯 PlanningSolver 接口与确定性参考后端，以及 NovelPlan 权威语义门禁；Constraint-First 先锁定 skeleton，再只合并模型所有 fill 字段，现有 mode-repair 仅保留为最终安全网。 |
-| `backend/src/casefile/agent_runtime/constraint_first_story_planner.py`、`constraint_first_story_planner_prompt.py` | 未激活的 Constraint-First 双模型实验编排：静态 UNSAT 先于 Provider、skeleton/fill 独立 Prompt/Schema/hash、exact-hash stage 恢复、服务端组装与复验。 |
+| `backend/src/casefile/domain/narrative_compiler/scene_plan.py` | N4.4 纯 Scene Execution Compiler：仅消费规范 NovelPlanIR，稳定派生 Beat/Edge ID、Chapter/Scene/Beat 索引、读者揭露状态与禁区；NarrativeExecutionGraph 内部封装 NetworkX，确定性 linter 从输入重建期望产物并失败关闭，不生成正文或引入 Z3。 |
+| `backend/src/casefile/agent_runtime/constraint_first_story_planner.py`、`constraint_first_story_planner_prompt.py` | 已晋级的 Constraint-First 双模型编排：静态 UNSAT 先于 Provider、skeleton/fill 独立 Prompt/Schema/hash、exact-hash stage 恢复、服务端组装与复验。 |
 | `backend/src/casefile/agent_runtime/story_planner.py`、`story_planner_prompt.py` | Story Planner Provider-neutral 请求、最多三次结构修复和版本化无工具 Prompt 渲染；ScenePurpose 错误只允许强类型最小补丁，其他结构错误保留完整候选修复，语义错误不进入 repair。 |
 | `backend/src/casefile/worker/executors/story_planner.py` | 默认 v1 Story Planner 与显式未激活 Constraint-First 版本的执行器；后者按 `skeleton_proposal`/`semantic_fill` 独立 input hash 持久化 ModelCall，崩溃后只恢复 exact-match 成功输出。 |
 | `backend/src/casefile/benchmark/novel_plan_eval.py` | Novel Plan Regression/Safety/24 Task Capability Benchmark、v1/v2 输入与定向 Task 选择、部分运行禁晋级、G2 oracle evidence 审计、生产/G2 失败分层、动态 cohort、严格 fingerprint checkpoint/resume、G0–G3 分层与精确 Pro baseline/候选晋级门禁。 |
@@ -104,7 +105,7 @@
 | `backend/src/casefile/worker/runtime.py`、`worker/closure_repair.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环。`CLOSURE_REPAIR_MODE=off|shadow|suggest` 默认 `shadow`；环境启动的 `CASEFILE_CHAT_GENERAL_MUTATION_MODE=off|shadow|suggest` 默认 `suggest`，Create/Delete 独立开关默认启用且均可显式回退。直接构造 `WorkerConfig` 仍采用隔离安全默认值。Chat repair 与 General Mutation 只形成可审阅 PatchSet，不决定或绕过 Apply。 |
 | `backend/src/casefile/worker/queue.py` | TaskRun claim、lease 恢复、取消观察和 Attempt 初始化；不执行具体任务。 |
 | `backend/src/casefile/worker/finalization.py` | TaskRun 成功、失败、取消、可重试状态收敛与稳定错误/事件落库。 |
-| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；General Mutation Planner 入口必须服从最终 Route deny/clarify 与 `agent_runtime` abstention 判定。`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务；`compiler.py` 在加载 Provider 前执行 providerless 输入冻结与 NarrativeIR 投影、逐组件失败归因、Artifact 幂等写入、取消和租约 fencing。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
+| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；General Mutation Planner 入口必须服从最终 Route deny/clarify 与 `agent_runtime` abstention 判定。`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务；`compiler.py` 在加载 Provider 前执行输入冻结与 NarrativeIR 投影，在规范 NovelPlanIR 后执行 providerless ScenePlanIR 编译，并统一逐组件失败归因、Artifact 幂等写入、取消和租约 fencing。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
 
 ## 领域模块
 
@@ -163,6 +164,7 @@
 | `backend/tests/unit/test_workbench_read_model.py` | 验证工作台确定性错误的稳定中文输出和真实 `source_fragment` 标识/JSON Pointer 追溯。 |
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
+| `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 ScenePlanIR 的确定性派生 ID、跨语言可序列化、读者揭露状态与未来禁区、NetworkX 包装查询、provenance 完整性和篡改失败关闭。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证完整升降级、66 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon/Exposure Plan 门禁和不可变触发器。 |
 | `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 66 表清单，避免主迁移测试文件继续膨胀。 |
