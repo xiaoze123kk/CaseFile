@@ -112,6 +112,22 @@ from ._internal import (
     AgentGenerateResult,
     BriefIntakeQuestion,
     BriefIntakeQuestionSet,
+    PublicAgentEvent,
+    PublicAgentFailure,
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicDisplayValue,
+    PublicFinding,
+    PublicPatchActions,
+    PublicPatchChange,
+    PublicPatchImpact,
+    PublicPatchResponse,
+    PublicPatchReviewResult,
+    PublicPatchSet,
+    PublicPatchTarget,
+    PublicReference,
+    PublicReviewNotice,
     TaskEvent,
     TaskRun,
 )
@@ -130,6 +146,22 @@ __all__ = [
     "BriefIntakeQuestionSet",
     "CaseFile",
     "PatchCandidate",
+    "PublicAgentEvent",
+    "PublicAgentFailure",
+    "PublicAgentMessage",
+    "PublicAgentMessageReceipt",
+    "PublicAgentRun",
+    "PublicDisplayValue",
+    "PublicFinding",
+    "PublicPatchActions",
+    "PublicPatchChange",
+    "PublicPatchImpact",
+    "PublicPatchResponse",
+    "PublicPatchReviewResult",
+    "PublicPatchSet",
+    "PublicPatchTarget",
+    "PublicReference",
+    "PublicReviewNotice",
     "TaskEvent",
     "TaskRun",
     "ValidationIssue",
@@ -204,6 +236,16 @@ $typescriptOutput = Join-Path $typescriptRoot "index.d.ts"
 if ($LASTEXITCODE -ne 0) {
     throw "TypeScript contract generation failed."
 }
+$typescriptContent = [System.IO.File]::ReadAllText($typescriptOutput)
+$typescriptContent += @'
+
+/** Strict public event union discriminated by `event`. */
+export type PublicAgentEvent = ChatPublicContracts["event"];
+
+/** Strict public Patch change union discriminated by `kind`. */
+export type PublicPatchChange = PublicPatchSet["changes"][number];
+'@
+Write-GeneratedFile -Path $typescriptOutput -Content $typescriptContent
 
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $runtimeSchemaFullPath = [System.IO.Path]::GetFullPath($runtimeSchemaRoot)
@@ -220,7 +262,7 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
         Remove-Item -LiteralPath $runtimeSchemaFullPath -Recurse -Force
     }
     New-Item -ItemType Directory -Path $runtimeSchemaFullPath -Force | Out-Null
-    foreach ($schemaDirectory in @("brief", "brief-intake", "casefile", "task", "validation")) {
+    foreach ($schemaDirectory in @("brief", "brief-intake", "casefile", "chat", "task", "validation")) {
         Copy-Item -LiteralPath (Join-Path $schemaRoot $schemaDirectory) `
             -Destination $runtimeSchemaFullPath -Recurse
     }

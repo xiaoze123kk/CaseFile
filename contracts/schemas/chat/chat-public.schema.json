@@ -1,0 +1,461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/chat/chat-public.schema.json",
+  "title": "ChatPublicContracts",
+  "description": "Public, author-facing contracts for CaseFile Chat.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "message",
+    "message_receipt",
+    "run",
+    "event",
+    "patch_set",
+    "patch_review",
+    "patch_response"
+  ],
+  "properties": {
+    "message": {"$ref": "#/$defs/PublicAgentMessage"},
+    "message_receipt": {"$ref": "#/$defs/PublicAgentMessageReceipt"},
+    "run": {"$ref": "#/$defs/PublicAgentRun"},
+    "event": {"$ref": "#/$defs/PublicAgentEvent"},
+    "patch_set": {"$ref": "#/$defs/PublicPatchSet"},
+    "patch_review": {"$ref": "#/$defs/PublicPatchReviewResult"},
+    "patch_response": {"$ref": "#/$defs/PublicPatchResponse"}
+  },
+  "$defs": {
+    "PublicAgentFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "message", "retryable"],
+      "properties": {
+        "category": {
+          "title": "PublicFailureCategory",
+          "type": "string",
+          "enum": ["temporarily_unavailable", "request_failed", "output_rejected"]
+        },
+        "message": {"type": "string", "minLength": 1, "maxLength": 500},
+        "retryable": {"type": "boolean"}
+      }
+    },
+    "PublicAgentRun": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "status", "activity", "cancellable", "failure"],
+      "properties": {
+        "run_id": {"type": "integer", "minimum": 1},
+        "status": {
+          "title": "PublicRunStatus",
+          "type": "string",
+          "enum": ["queued", "running", "cancelling", "succeeded", "failed", "cancelled"]
+        },
+        "activity": {
+          "title": "PublicAgentActivity",
+          "type": ["string", "null"],
+          "enum": [
+            "understanding",
+            "reading",
+            "checking",
+            "preparing_changes",
+            "finalizing",
+            null
+          ]
+        },
+        "cancellable": {"type": "boolean"},
+        "failure": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicAgentFailure"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "PublicReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target_id", "label"],
+      "properties": {
+        "kind": {
+          "title": "PublicReferenceKind",
+          "type": "string",
+          "enum": ["story_item", "event", "finding"]
+        },
+        "target_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "label": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    },
+    "PublicFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finding_id", "severity", "title", "statement"],
+      "properties": {
+        "finding_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "severity": {
+          "title": "PublicFindingSeverity",
+          "type": "string",
+          "enum": ["blocker", "warning", "note"]
+        },
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "statement": {"type": "string", "minLength": 1, "maxLength": 2000}
+      }
+    },
+    "PublicPatchTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_id", "type_label", "name"],
+      "properties": {
+        "target_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 160},
+        "type_label": {"type": "string", "minLength": 1, "maxLength": 80},
+        "name": {"type": "string", "minLength": 1, "maxLength": 240}
+      }
+    },
+    "PublicDisplayValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "text"],
+      "properties": {
+        "kind": {
+          "title": "PublicDisplayKind",
+          "type": "string",
+          "enum": ["empty", "text", "number", "boolean", "time_range", "reference", "list"]
+        },
+        "text": {"type": "string", "maxLength": 4000}
+      }
+    },
+    "PublicPatchChange": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["change_id", "kind", "relationship", "target", "after", "explanation"],
+          "properties": {
+            "change_id": {"type": "integer", "minimum": 1},
+            "kind": {"const": "create"},
+            "relationship": {
+              "title": "PublicChangeRelationship",
+              "type": "string",
+              "enum": ["requested", "consistency_support"]
+            },
+            "target": {"$ref": "#/$defs/PublicPatchTarget"},
+            "after": {"$ref": "#/$defs/PublicDisplayValue"},
+            "explanation": {"type": "string", "minLength": 1, "maxLength": 1000}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "change_id",
+            "kind",
+            "relationship",
+            "target",
+            "field_label",
+            "before",
+            "after",
+            "explanation"
+          ],
+          "properties": {
+            "change_id": {"type": "integer", "minimum": 1},
+            "kind": {"const": "update"},
+            "relationship": {
+              "title": "PublicChangeRelationship",
+              "type": "string",
+              "enum": ["requested", "consistency_support"]
+            },
+            "target": {"$ref": "#/$defs/PublicPatchTarget"},
+            "field_label": {"type": "string", "minLength": 1, "maxLength": 120},
+            "before": {"$ref": "#/$defs/PublicDisplayValue"},
+            "after": {"$ref": "#/$defs/PublicDisplayValue"},
+            "explanation": {"type": "string", "minLength": 1, "maxLength": 1000}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["change_id", "kind", "relationship", "target", "before", "explanation"],
+          "properties": {
+            "change_id": {"type": "integer", "minimum": 1},
+            "kind": {"const": "delete"},
+            "relationship": {
+              "title": "PublicChangeRelationship",
+              "type": "string",
+              "enum": ["requested", "consistency_support"]
+            },
+            "target": {"$ref": "#/$defs/PublicPatchTarget"},
+            "before": {"$ref": "#/$defs/PublicDisplayValue"},
+            "explanation": {"type": "string", "minLength": 1, "maxLength": 1000}
+          }
+        }
+      ]
+    },
+    "PublicPatchImpact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "affected_change_count", "has_deletions"],
+      "properties": {
+        "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "affected_change_count": {"type": "integer", "minimum": 0},
+        "has_deletions": {"type": "boolean"}
+      }
+    },
+    "PublicPatchActions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["can_simulate", "can_undo", "can_redo"],
+      "properties": {
+        "can_simulate": {"type": "boolean"},
+        "can_undo": {"type": "boolean"},
+        "can_redo": {"type": "boolean"}
+      }
+    },
+    "PublicPatchSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patch_id",
+        "title",
+        "summary",
+        "status",
+        "review_rule",
+        "base_revision",
+        "impact",
+        "changes",
+        "actions"
+      ],
+      "properties": {
+        "patch_id": {"type": "integer", "minimum": 1},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 1200},
+        "status": {
+          "title": "PublicPatchStatus",
+          "type": "string",
+          "enum": ["pending", "applied", "undone", "stale", "rejected"]
+        },
+        "review_rule": {
+          "title": "PublicPatchReviewRule",
+          "type": "string",
+          "enum": ["atomic", "selective"]
+        },
+        "base_revision": {"type": "integer", "minimum": 0},
+        "impact": {"$ref": "#/$defs/PublicPatchImpact"},
+        "changes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PublicPatchChange"},
+          "maxItems": 200
+        },
+        "actions": {"$ref": "#/$defs/PublicPatchActions"}
+      }
+    },
+    "PublicReviewNotice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notice_id", "message"],
+      "properties": {
+        "notice_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "message": {"type": "string", "minLength": 1, "maxLength": 1000}
+      }
+    },
+    "PublicPatchReviewResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "patch_id",
+        "can_apply",
+        "blockers",
+        "warnings",
+        "requires_author_confirmation",
+        "confirmation_token"
+      ],
+      "properties": {
+        "patch_id": {"type": "integer", "minimum": 1},
+        "can_apply": {"type": "boolean"},
+        "blockers": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PublicReviewNotice"},
+          "maxItems": 200
+        },
+        "warnings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PublicReviewNotice"},
+          "maxItems": 200
+        },
+        "requires_author_confirmation": {"type": "boolean"},
+        "confirmation_token": {"type": ["string", "null"], "minLength": 1, "maxLength": 256}
+      }
+    },
+    "PublicPatchResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["patch", "review", "revision"],
+      "properties": {
+        "patch": {"$ref": "#/$defs/PublicPatchSet"},
+        "review": {"$ref": "#/$defs/PublicPatchReviewResult"},
+        "revision": {"type": "integer", "minimum": 0}
+      }
+    },
+    "PublicAgentMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "message_id",
+        "sequence",
+        "role",
+        "status",
+        "response_kind",
+        "body",
+        "interpretation",
+        "references",
+        "findings",
+        "patch",
+        "run",
+        "created_at",
+        "updated_at"
+      ],
+      "properties": {
+        "message_id": {"type": "integer", "minimum": 1},
+        "sequence": {"type": "integer", "minimum": 1},
+        "role": {
+          "title": "PublicMessageRole",
+          "type": "string",
+          "enum": ["user", "assistant"]
+        },
+        "status": {
+          "title": "PublicMessageStatus",
+          "type": "string",
+          "enum": ["pending", "completed", "failed"]
+        },
+        "response_kind": {
+          "title": "PublicResponseKind",
+          "type": "string",
+          "enum": ["message", "answer", "analysis", "clarification", "findings", "patch_proposal", "failure"]
+        },
+        "body": {"type": ["string", "null"], "maxLength": 20000},
+        "interpretation": {
+          "title": "PublicInterpretation",
+          "type": ["string", "null"],
+          "enum": ["conversation", "analysis", "logic_review", "change_request", "clarification", null]
+        },
+        "references": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PublicReference"},
+          "maxItems": 200
+        },
+        "findings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/PublicFinding"},
+          "maxItems": 200
+        },
+        "patch": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicPatchSet"},
+            {"type": "null"}
+          ]
+        },
+        "run": {
+          "oneOf": [
+            {"$ref": "#/$defs/PublicAgentRun"},
+            {"type": "null"}
+          ]
+        },
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "PublicAgentMessageReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["user_message", "assistant_message"],
+      "properties": {
+        "user_message": {"$ref": "#/$defs/PublicAgentMessage"},
+        "assistant_message": {"$ref": "#/$defs/PublicAgentMessage"}
+      }
+    },
+    "PublicAgentEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "run"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.accepted"},
+            "run": {"$ref": "#/$defs/PublicAgentRun"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "activity"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.activity"},
+            "activity": {
+              "title": "PublicEventActivity",
+              "type": "string",
+              "enum": ["understanding", "reading", "checking", "preparing_changes", "finalizing"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "context_state"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.context"},
+            "context_state": {
+              "title": "PublicContextState",
+              "type": "string",
+              "enum": ["normal", "near_limit", "compacted"]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "verification_status", "summary"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.verification"},
+            "verification_status": {
+              "title": "PublicVerificationStatus",
+              "type": "string",
+              "enum": ["started", "passed", "blocked"]
+            },
+            "summary": {"type": "string", "minLength": 1, "maxLength": 1000}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "run"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.completed"},
+            "run": {"$ref": "#/$defs/PublicAgentRun"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "failure"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.failed"},
+            "failure": {"$ref": "#/$defs/PublicAgentFailure"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sequence", "event", "message"],
+          "properties": {
+            "sequence": {"type": "integer", "minimum": 1},
+            "event": {"const": "run.cancelled"},
+            "message": {"type": "string", "minLength": 1, "maxLength": 500}
+          }
+        }
+      ]
+    }
+  }
+}

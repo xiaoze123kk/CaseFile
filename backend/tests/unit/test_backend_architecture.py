@@ -57,3 +57,23 @@ def test_architecture_check_rejects_nonliteral_supported_task_types() -> None:
         and "must be a literal string collection" in violation.message
         for violation in violations
     )
+
+
+def test_agent_route_internal_view_detection_is_fail_closed() -> None:
+    module = _architecture_check_module()
+    tree = ast.parse(
+        """
+@router.get('/projects/{project_id}/agent/runs/{run_id}')
+def leaked_agent_run():
+    return task_view(TaskRun.result_jsonb)
+"""
+    )
+    function = tree.body[0]
+    assert isinstance(function, ast.FunctionDef)
+
+    assert module._http_route_path(function) == ("/projects/{project_id}/agent/runs/{run_id}")
+    assert module._agent_route_internal_names(function) == {
+        "TaskRun",
+        "result_jsonb",
+        "task_view",
+    }

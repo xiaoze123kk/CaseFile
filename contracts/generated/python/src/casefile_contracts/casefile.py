@@ -4,7 +4,7 @@
 
 from ._internal import BriefRef, ContentNotice, ParentVersionId
 from ._internal import Schema_1 as Schema
-from ._internal import Severity
+from ._internal import Severity_1 as Severity
 from ._internal import Status_1 as Status
 from ._internal import Version
 

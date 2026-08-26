@@ -65,6 +65,7 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/agent_runtime/provider_adapters/",
     "backend/src/casefile/agent_runtime/brief_to_draft_v8/validation.py",
     "backend/src/casefile/application/workflow/",
+    "backend/src/casefile/application/chat_public_contracts.py",
     "backend/src/casefile/application/workflow_common.py",
     "backend/src/casefile/domain/verification_engine.py",
     "backend/src/casefile/worker/queue.py",
@@ -135,6 +136,45 @@ def _is_pure_validation_or_context(relative: Path) -> bool:
     return "context" in parts or "validation" in relative.stem
 
 
+def _http_route_path(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
+    for decorator in function.decorator_list:
+        if not isinstance(decorator, ast.Call) or not decorator.args:
+            continue
+        target = decorator.func
+        if not isinstance(target, ast.Attribute) or target.attr not in {
+            "get",
+            "post",
+            "put",
+            "patch",
+            "delete",
+        }:
+            continue
+        route = decorator.args[0]
+        if isinstance(route, ast.Constant) and isinstance(route.value, str):
+            return route.value
+    return None
+
+
+def _agent_route_internal_names(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> set[str]:
+    forbidden = {
+        "TaskEvent",
+        "TaskRun",
+        "event_view",
+        "payload_jsonb",
+        "result_jsonb",
+        "task_view",
+    }
+    names: set[str] = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Name) and node.id in forbidden:
+            names.add(node.id)
+        if isinstance(node, ast.Attribute) and node.attr in forbidden:
+            names.add(node.attr)
+    return names
+
+
 def collect_violations(repo_root: Path) -> list[Violation]:
     source_root = repo_root / "backend" / "src" / "casefile"
     violations: list[Violation] = []
@@ -193,6 +233,27 @@ def collect_violations(repo_root: Path) -> list[Violation]:
                         "Worker must use component composition without mixin bases",
                     )
                 )
+        if display.startswith("backend/src/casefile/api/"):
+            for function in (
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ):
+                route = _http_route_path(function)
+                if route is None or "/agent" not in route:
+                    continue
+                internal_names = _agent_route_internal_names(function)
+                if internal_names:
+                    violations.append(
+                        Violation(
+                            display,
+                            function.lineno,
+                            (
+                                "public /agent route references internal workflow views: "
+                                f"{sorted(internal_names)}"
+                            ),
+                        )
+                    )
         for node in ast.walk(tree):
             for module in _module_names(node):
                 if (

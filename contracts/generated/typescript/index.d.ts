@@ -304,6 +304,26 @@ export type BriefIntakeCandidate = {
   risk_notes: string[];
   field_sources: BriefIntakeFieldSources;
 };
+export type PublicMessageRole = "user" | "assistant";
+export type PublicMessageStatus = "pending" | "completed" | "failed";
+export type PublicResponseKind =
+  "message" | "answer" | "analysis" | "clarification" | "findings" | "patch_proposal" | "failure";
+export type PublicInterpretation =
+  "conversation" | "analysis" | "logic_review" | "change_request" | "clarification" | null;
+export type PublicReferenceKind = "story_item" | "event" | "finding";
+export type PublicFindingSeverity = "blocker" | "warning" | "note";
+export type PublicPatchStatus = "pending" | "applied" | "undone" | "stale" | "rejected";
+export type PublicPatchReviewRule = "atomic" | "selective";
+export type PublicChangeRelationship = "requested" | "consistency_support";
+export type PublicDisplayKind = "empty" | "text" | "number" | "boolean" | "time_range" | "reference" | "list";
+export type PublicChangeRelationship1 = "requested" | "consistency_support";
+export type PublicChangeRelationship2 = "requested" | "consistency_support";
+export type PublicRunStatus = "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled";
+export type PublicAgentActivity = "understanding" | "reading" | "checking" | "preparing_changes" | "finalizing" | null;
+export type PublicFailureCategory = "temporarily_unavailable" | "request_failed" | "output_rejected";
+export type PublicEventActivity = "understanding" | "reading" | "checking" | "preparing_changes" | "finalizing";
+export type PublicContextState = "normal" | "near_limit" | "compacted";
+export type PublicVerificationStatus = "started" | "passed" | "blocked";
 
 /**
  * Code-generation aggregate for the CaseFile editing loop.
@@ -315,6 +335,7 @@ export interface EditingContracts {
   brief_intake_question_set: BriefIntakeQuestionSet;
   validation_issue: ValidationIssue;
   patch_candidate: PatchCandidate;
+  chat_public: ChatPublicContracts;
   task_run: TaskRun;
   task_event: TaskEvent;
   agent_generate_request: AgentGenerateRequest;
@@ -559,6 +580,185 @@ export interface PatchOperation {
   old_value: unknown;
   new_value: unknown;
 }
+/**
+ * Public, author-facing contracts for CaseFile Chat.
+ */
+export interface ChatPublicContracts {
+  message: PublicAgentMessage;
+  message_receipt: PublicAgentMessageReceipt;
+  run: PublicAgentRun;
+  event:
+    | {
+        sequence: number;
+        event: "run.accepted";
+        run: PublicAgentRun;
+      }
+    | {
+        sequence: number;
+        event: "run.activity";
+        activity: PublicEventActivity;
+      }
+    | {
+        sequence: number;
+        event: "run.context";
+        context_state: PublicContextState;
+      }
+    | {
+        sequence: number;
+        event: "run.verification";
+        verification_status: PublicVerificationStatus;
+        summary: string;
+      }
+    | {
+        sequence: number;
+        event: "run.completed";
+        run: PublicAgentRun;
+      }
+    | {
+        sequence: number;
+        event: "run.failed";
+        failure: PublicAgentFailure;
+      }
+    | {
+        sequence: number;
+        event: "run.cancelled";
+        message: string;
+      };
+  patch_set: PublicPatchSet;
+  patch_review: PublicPatchReviewResult;
+  patch_response: PublicPatchResponse;
+}
+export interface PublicAgentMessage {
+  message_id: number;
+  sequence: number;
+  role: PublicMessageRole;
+  status: PublicMessageStatus;
+  response_kind: PublicResponseKind;
+  body: string | null;
+  interpretation: PublicInterpretation;
+  /**
+   * @maxItems 200
+   */
+  references: PublicReference[];
+  /**
+   * @maxItems 200
+   */
+  findings: PublicFinding[];
+  patch: PublicPatchSet | null;
+  run: PublicAgentRun | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface PublicReference {
+  kind: PublicReferenceKind;
+  target_id: string;
+  label: string;
+}
+export interface PublicFinding {
+  finding_id: string;
+  severity: PublicFindingSeverity;
+  title: string;
+  statement: string;
+}
+export interface PublicPatchSet {
+  patch_id: number;
+  title: string;
+  summary: string;
+  status: PublicPatchStatus;
+  review_rule: PublicPatchReviewRule;
+  base_revision: number;
+  impact: PublicPatchImpact;
+  /**
+   * @maxItems 200
+   */
+  changes: (
+    | {
+        change_id: number;
+        kind: "create";
+        relationship: PublicChangeRelationship;
+        target: PublicPatchTarget;
+        after: PublicDisplayValue;
+        explanation: string;
+      }
+    | {
+        change_id: number;
+        kind: "update";
+        relationship: PublicChangeRelationship1;
+        target: PublicPatchTarget;
+        field_label: string;
+        before: PublicDisplayValue;
+        after: PublicDisplayValue;
+        explanation: string;
+      }
+    | {
+        change_id: number;
+        kind: "delete";
+        relationship: PublicChangeRelationship2;
+        target: PublicPatchTarget;
+        before: PublicDisplayValue;
+        explanation: string;
+      }
+  )[];
+  actions: PublicPatchActions;
+}
+export interface PublicPatchImpact {
+  summary: string;
+  affected_change_count: number;
+  has_deletions: boolean;
+}
+export interface PublicPatchTarget {
+  target_id: string | null;
+  type_label: string;
+  name: string;
+}
+export interface PublicDisplayValue {
+  kind: PublicDisplayKind;
+  text: string;
+}
+export interface PublicPatchActions {
+  can_simulate: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+}
+export interface PublicAgentRun {
+  run_id: number;
+  status: PublicRunStatus;
+  activity: PublicAgentActivity;
+  cancellable: boolean;
+  failure: PublicAgentFailure | null;
+}
+export interface PublicAgentFailure {
+  category: PublicFailureCategory;
+  message: string;
+  retryable: boolean;
+}
+export interface PublicAgentMessageReceipt {
+  user_message: PublicAgentMessage;
+  assistant_message: PublicAgentMessage;
+}
+export interface PublicPatchReviewResult {
+  patch_id: number;
+  can_apply: boolean;
+  /**
+   * @maxItems 200
+   */
+  blockers: PublicReviewNotice[];
+  /**
+   * @maxItems 200
+   */
+  warnings: PublicReviewNotice[];
+  requires_author_confirmation: boolean;
+  confirmation_token: string | null;
+}
+export interface PublicReviewNotice {
+  notice_id: string;
+  message: string;
+}
+export interface PublicPatchResponse {
+  patch: PublicPatchSet;
+  review: PublicPatchReviewResult;
+  revision: number;
+}
 export interface TaskRun {
   task_run_id: number;
   project_id: number;
@@ -660,3 +860,9 @@ export interface AgentGenerateResult {
   draft_revision: number;
   content_hash: string;
 }
+
+/** Strict public event union discriminated by `event`. */
+export type PublicAgentEvent = ChatPublicContracts["event"];
+
+/** Strict public Patch change union discriminated by `kind`. */
+export type PublicPatchChange = PublicPatchSet["changes"][number];
