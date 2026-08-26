@@ -9,6 +9,13 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Literal, cast
 
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import Status as ClaimStatus
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
@@ -40,6 +47,14 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
     ThreadMemoryDelta,
+)
+from casefile.agent_runtime.general_mutation import (
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+)
+from casefile.agent_runtime.general_mutation_prompt import (
+    general_mutation_output_type,
+    render_general_mutation_prompt,
 )
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
@@ -104,13 +119,6 @@ from casefile.agent_runtime.story_planner import (
     StoryPlannerRequest,
 )
 from casefile.contracts import validate_casefile
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import Status as ClaimStatus
 
 
 def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
@@ -495,6 +503,37 @@ class FakeProvider:
             usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
             raw_output=None,
         )
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult:
+        rendered = render_general_mutation_prompt(request)
+        output_type = general_mutation_output_type(rendered)
+        candidate = output_type.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_type": "create_object",
+                        "operation_key": "create_agent_entity",
+                        "local_ref": "new_entity",
+                        "collection": "entities",
+                        "fields": {"entity_type": "person", "name": "新人物"},
+                        "depends_on_operation_keys": [],
+                        "reason": "FakeProvider 通用修改候选。",
+                    }
+                ],
+            }
+        )
+        usage = _zero_usage()
+        request.emit(
+            "model.completed",
+            "general_mutation",
+            {
+                "usage": usage,
+                "schema_id": rendered.output_schema_id,
+            },
+        )
+        return GeneralMutationPlannerResult(candidate, usage)
 
     def repair_closure(
         self,

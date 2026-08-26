@@ -182,6 +182,16 @@ class AgentPatchSet(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="mutation_mode_allowed",
         ),
         CheckConstraint(
+            "review_mode IN ('selective', 'atomic')",
+            name="review_mode_allowed",
+        ),
+        CheckConstraint(
+            "review_mode = 'selective' OR (plan_version IS NOT NULL "
+            "AND capability_policy_version IS NOT NULL AND binder_version IS NOT NULL "
+            "AND plan_hash IS NOT NULL AND impact_hash IS NOT NULL)",
+            name="general_mutation_lineage_complete",
+        ),
+        CheckConstraint(
             "length(btrim(closure_policy_version)) > 0",
             name="closure_policy_version_not_blank",
         ),
@@ -192,6 +202,14 @@ class AgentPatchSet(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         CheckConstraint(
             "candidate_hash IS NULL OR candidate_hash ~ '^[0-9a-f]{64}$'",
             name="candidate_hash_format",
+        ),
+        CheckConstraint(
+            "plan_hash IS NULL OR plan_hash ~ '^[0-9a-f]{64}$'",
+            name="plan_hash_format",
+        ),
+        CheckConstraint(
+            "impact_hash IS NULL OR impact_hash ~ '^[0-9a-f]{64}$'",
+            name="impact_hash_format",
         ),
         CheckConstraint(
             "status IN ('pending', 'stale', 'applied', 'undone', 'rejected')",
@@ -254,6 +272,17 @@ class AgentPatchSet(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
         String(16),
         nullable=False,
         server_default=text("'normal'"),
+    )
+    plan_version: Mapped[str | None] = mapped_column(String(80))
+    capability_policy_version: Mapped[str | None] = mapped_column(String(80))
+    binder_version: Mapped[str | None] = mapped_column(String(80))
+    review_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'selective'")
+    )
+    plan_hash: Mapped[str | None] = mapped_column(String(64))
+    impact_hash: Mapped[str | None] = mapped_column(String(64))
+    contains_delete: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
     )
     baseline_hash: Mapped[str | None] = mapped_column(String(64))
     candidate_hash: Mapped[str | None] = mapped_column(String(64))
@@ -325,8 +354,10 @@ class AgentPatchOperation(BigIntIdentityPrimaryKeyMixin, TimestampMixin, Base):
             name="field_path_shape",
         ),
         CheckConstraint(
+            "operation_type = 'update_field' OR "
             "(operation_type = 'create_object' AND target_object_id IS NULL) OR "
-            "(operation_type <> 'create_object' AND target_object_id IS NOT NULL)",
+            "(operation_type NOT IN ('create_object', 'update_field') "
+            "AND target_object_id IS NOT NULL)",
             name="target_object_shape",
         ),
         CheckConstraint(

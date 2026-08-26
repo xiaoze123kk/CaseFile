@@ -1,0 +1,18 @@
+{
+  "task_id": "create-relationship",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/restart_loop.casefile.json",
+    "message": "新增人物张敏，并建立一条“张敏协助林研究员”的有向关系。"
+  },
+  "oracle": {
+    "acceptable_statuses": ["proposal_ready"],
+    "required_state": [
+      {"collection": "entities", "where": {"/name": "张敏", "/entity_type": "person"}, "count": 1},
+      {"collection": "relationships", "where": {"/title": "张敏协助林研究员", "/relationship_type": "assists", "/to_ref/object_id": "ent_researcher"}, "count": 1}
+    ],
+    "forbidden_changes": ["/resolution_specs", "/constraints", "/structure_locks"]
+  },
+  "reference": "create-relationship.reference.json",
+  "tags": ["create", "local_ref", "cross_reference"]
+}

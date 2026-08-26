@@ -116,8 +116,6 @@ from ._internal import (
     CanonBinding,
     CompileInputManifest,
     CompileMode,
-    PlanSkeleton,
-    PlanningProblem,
     CompilerArtifactRef,
     CompilerDiagnostic,
     CompilerProfileBinding,
@@ -125,17 +123,19 @@ from ._internal import (
     ExposureBinding,
     NovelPlanCandidate,
     NovelPlanIR,
-    StoryPlanStructuralPatch,
+    PlanningProblem,
+    PlanSkeleton,
     SemanticFillProposal,
     SkeletonProposal,
     SnapshotBinding,
+    StoryPlanStructuralPatch,
     TaskEvent,
     TaskRun,
 )
-from .narrative_ir import Schema as NarrativeIR
 from .brief import Schema as Brief
 from .brief_intake import Schema as BriefIntakeCandidate
 from .casefile import Schema as CaseFile
+from .narrative_ir import Schema as NarrativeIR
 from .novel_profile import Schema as NovelProfile
 from .patch_candidate import Schema as PatchCandidate
 from .planner_input import Schema as PlannerInputBundle

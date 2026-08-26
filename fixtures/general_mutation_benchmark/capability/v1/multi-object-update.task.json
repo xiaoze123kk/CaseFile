@@ -1,0 +1,18 @@
+{
+  "task_id": "multi-object-update",
+  "family": "multi_object",
+  "input": {
+    "fixture": "fixtures/casefiles/restart_loop.casefile.json",
+    "message": "把事件标题改成“系统夜间重启”，同时把对应日志标题改成“夜间重启日志”。"
+  },
+  "oracle": {
+    "acceptable_statuses": ["proposal_ready"],
+    "required_state": [
+      {"collection": "events", "where": {"/id": "evt_restart_seven", "/title": "系统夜间重启"}, "count": 1},
+      {"collection": "information_units", "where": {"/id": "info_restart_log", "/title": "夜间重启日志"}, "count": 1}
+    ],
+    "forbidden_changes": ["/resolution_specs", "/constraints", "/structure_locks"]
+  },
+  "reference": "multi-object-update.reference.json",
+  "tags": ["update", "multi_object", "atomic"]
+}

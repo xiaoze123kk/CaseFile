@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from copy import deepcopy
 from dataclasses import replace as dataclasses_replace
 from unittest.mock import patch
 
@@ -19,19 +20,27 @@ from application_services_test_support import (
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
+from casefile.agent_runtime.general_mutation import (
+    GeneralMutationPlannerResult,
+    MutationPlanV1,
+)
 from casefile.agent_runtime.models import (
     CaseFileChatCandidate,
     CaseFileChatResult,
     ChatTaskUnderstanding,
     agent_state_to_jsonable,
 )
+from casefile.application.agent_mutation import (
+    bind_general_mutation_plan,
+    general_mutation_impact_hash,
+)
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
-from casefile.application.v1_editing import V1EditingService
+from casefile.application.v1_editing import V1EditingService, casefile_semantically_equal
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.feedback_export import export_feedback_fixtures
-from casefile.contracts import ContractValidationError
+from casefile.contracts import ContractValidationError, validate_casefile
 from casefile.data_postgres.models import (
     AgentModelCall,
     AgentPatchOperation,
@@ -42,6 +51,7 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
+from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import sessionmaker
@@ -77,6 +87,303 @@ class ClosureRepairFixtureProvider(RichFixtureProvider):
         return result
 
 
+def test_general_mutation_create_atomic_apply_undo_redo(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="m34-fixture"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请新增一个人物并生成可审阅的修改。",
+            )
+        Worker(
+            factory,
+            config=WorkerConfig(
+                worker_id="m34-chat",
+                general_mutation_mode="suggest",
+                general_mutation_create_enabled=True,
+            ),
+            provider_factory=lambda _task: ChatSuggestionProvider(),
+        ).run_once()
+
+        with factory() as session:
+            task = session.get(TaskRun, int(queued["task"]["task_run_id"]))
+            assert task is not None and task.status == "succeeded", (
+                None if task is None else task.error_details_jsonb
+            )
+        with factory() as session:
+            workflow = WorkflowService(session)
+            messages = workflow.list_agent_messages(actor_id, project_id, thread["thread_id"])
+            patch_set = messages[-1]["patch_set"]
+            assert patch_set["review_mode"] == "atomic"
+            assert patch_set["plan_version"] == "general-mutation-planner-v2"
+            assert patch_set["operations"][0]["operation_type"] == "create_object"
+            assert patch_set["operations"][0]["object_id"] is None
+            assert patch_set["operations"][0]["target_object_key"].startswith("ent_agent_t")
+            with pytest.raises(ApplicationError) as subset_error:
+                workflow.simulate_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
+                    base_revision=2,
+                    operation_ids=[patch_set["operations"][0]["operation_id"]],
+                )
+            assert subset_error.value.code == "agent_patch_atomic_subset_forbidden"
+            preview = workflow.simulate_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                base_revision=2,
+                operation_ids=None,
+            )
+            debt_keys = preview["simulation"]["authorization_required_finding_keys"]
+            applied = workflow.apply_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=2,
+                operation_ids=None,
+                accepted_debt_finding_keys=debt_keys,
+                debt_acceptance_reason="测试确认新增对象尚待连接。",
+            )
+            assert applied["draft_revision"] == 3
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            undone = workflow.undo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=3,
+            )
+            assert undone["draft_revision"] == 4
+
+        with factory() as session:
+            redone = WorkflowService(session).redo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=4,
+            )
+            assert redone["draft_revision"] == 5
+
+
+def test_general_mutation_delete_requires_confirmed_impact_hash(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    class OrphanInformationFixtureProvider(RichFixtureProvider):
+        def generate(self, request):  # type: ignore[no-untyped-def]
+            result = super().generate(request)
+            orphan = deepcopy(result.candidate["information_units"][0])
+            orphan.update(
+                id="info_atomic_undo_orphan",
+                title="原子撤销孤立信息",
+                content="用于验证 Delete Apply、Undo 与 Redo 的确定性信息。",
+                source_event_ref=None,
+                supports_claim_refs=[],
+                refutes_claim_refs=[],
+                classification="key",
+            )
+            result.candidate["information_units"].append(orphan)
+            validate_casefile(result.candidate)
+            return result
+
+    class DeleteProvider(ChatSuggestionProvider):
+        def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
+            object_id = "info_atomic_undo_orphan"
+            return GeneralMutationPlannerResult(
+                MutationPlanV1.model_validate(
+                    {
+                        "operations": [
+                            {
+                                "operation_key": "delete_information",
+                                "operation_type": "delete_object",
+                                "target": {
+                                    "ref_kind": "existing",
+                                    "object_id": object_id,
+                                },
+                                "reason": "测试删除影响确认。",
+                            }
+                        ]
+                    }
+                ),
+                {},
+            )
+
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="m34-delete-fixture"),
+            provider_factory=lambda _task: OrphanInformationFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content=(
+                    "请删除未被引用的信息“原子撤销孤立信息”。"
+                ),
+            )
+        Worker(
+            factory,
+            config=WorkerConfig(
+                worker_id="m34-delete-chat",
+                general_mutation_mode="suggest",
+                general_mutation_delete_enabled=True,
+            ),
+            provider_factory=lambda _task: DeleteProvider(),
+        ).run_once()
+        with factory() as session:
+            events = WorkflowService(session).list_task_events(
+                actor_id, project_id, int(queued["task"]["task_run_id"])
+            )
+        with factory() as session:
+            task = session.get(TaskRun, int(queued["task"]["task_run_id"]))
+            assert task is not None and task.status == "succeeded", events
+        with factory() as session:
+            messages = WorkflowService(session).list_agent_messages(
+                actor_id, project_id, thread["thread_id"]
+            )
+            patch_set = messages[-1]["patch_set"]
+            assert patch_set is not None, [
+                (event["event_type"], event.get("payload")) for event in events
+            ]
+            assert patch_set["contains_delete"] is True
+            target_object_key = patch_set["operations"][0]["target_object_key"]
+            before = CaseFileService(session).get_draft(actor_id, project_id)
+            original_target = next(
+                item
+                for item in before["content"]["information_units"]
+                if item["id"] == target_object_key
+            )
+        with factory() as session:
+            with pytest.raises(ApplicationError) as error:
+                WorkflowService(session).apply_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
+                    expected_revision=2,
+                    operation_ids=None,
+                )
+            assert error.value.code == "agent_patch_delete_impact_confirmation_required"
+        with factory() as session:
+            workflow = WorkflowService(session)
+            with pytest.raises(ApplicationError) as error:
+                workflow.apply_agent_patch_set(
+                    actor_id,
+                    project_id,
+                    patch_set["patch_set_id"],
+                    expected_draft_id=draft_id,
+                    expected_revision=2,
+                    operation_ids=None,
+                    confirmed_impact_hash="0" * 64,
+                )
+            assert error.value.code == "agent_patch_impact_hash_mismatch"
+            preview = workflow.simulate_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                base_revision=2,
+                operation_ids=None,
+            )
+            debt_keys = preview["simulation"]["authorization_required_finding_keys"]
+            applied = workflow.apply_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=2,
+                operation_ids=None,
+                confirmed_impact_hash=patch_set["impact_hash"],
+                accepted_debt_finding_keys=debt_keys,
+                debt_acceptance_reason=("测试确认删除产生的逻辑债务。" if debt_keys else None),
+            )
+            assert applied["draft_revision"] == 3
+        with factory() as session:
+            after = CaseFileService(session).get_draft(actor_id, project_id)
+            assert target_object_key not in {
+                item["id"] for item in after["content"]["information_units"]
+            }
+            undone = WorkflowService(session).undo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=3,
+            )
+            assert undone["draft_revision"] == 4
+        with factory() as session:
+            restored = CaseFileService(session).get_draft(actor_id, project_id)
+            restored_target = next(
+                item
+                for item in restored["content"]["information_units"]
+                if item["id"] == target_object_key
+            )
+            assert {
+                key: value for key, value in restored_target.items() if key != "updated_at"
+            } == {key: value for key, value in original_target.items() if key != "updated_at"}
+            assert casefile_semantically_equal(before["content"], restored["content"])
+            redone = WorkflowService(session).redo_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set["patch_set_id"],
+                expected_draft_id=draft_id,
+                expected_revision=4,
+            )
+            assert redone["draft_revision"] == 5
+        with factory() as session:
+            redone_draft = CaseFileService(session).get_draft(actor_id, project_id)
+            assert target_object_key not in {
+                item["id"] for item in redone_draft["content"]["information_units"]
+            }
+            assert casefile_semantically_equal(after["content"], redone_draft["content"])
+
+
 class ClosureRepairChatProvider(ChatSuggestionProvider):
     def chat(self, request):  # type: ignore[no-untyped-def]
         self.requests.append(request)
@@ -107,6 +414,113 @@ class ClosureRepairChatProvider(ChatSuggestionProvider):
                 "total_tokens": 15,
             },
         )
+
+
+class GeneralMutationClosureRepairProvider(ClosureRepairChatProvider):
+    def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
+        return GeneralMutationPlannerResult(
+            MutationPlanV1.model_validate(
+                {
+                    "operations": [
+                        {
+                            "operation_key": "update_prerequisite",
+                            "operation_type": "update_field",
+                            "target": {
+                                "ref_kind": "existing",
+                                "object_id": "claim_repair_prerequisite",
+                            },
+                            "field_path": "/status",
+                            "new_value": "unresolved",
+                            "reason": "调整前置主张状态。",
+                        }
+                    ]
+                }
+            ),
+            {},
+        )
+
+
+def test_general_mutation_closure_repair_appends_proven_companions_atomically(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m34-repair-generation"),
+            provider_factory=lambda _task: ClosureRepairFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="将前置主张调整为未决，并保持依赖闭包。",
+            )
+        assert Worker(
+            factory,
+            config=WorkerConfig(
+                worker_id="m34-repair-chat",
+                general_mutation_mode="suggest",
+                closure_repair_mode="suggest",
+            ),
+            provider_factory=lambda _task: GeneralMutationClosureRepairProvider(),
+        ).run_once()
+        with factory() as session:
+            task_id = int(queued["task"]["task_run_id"])
+            task = session.get(TaskRun, task_id)
+            patch_set = session.scalar(
+                select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_id)
+            )
+            assert patch_set is not None, (
+                None if task is None else (task.status, task.error_details_jsonb)
+            )
+            assert patch_set.review_mode == "atomic"
+            operations = list(
+                session.scalars(
+                    select(AgentPatchOperation)
+                    .where(AgentPatchOperation.patch_set_id == patch_set.id)
+                    .order_by(AgentPatchOperation.ordinal)
+                )
+            )
+            assert len(operations) > 1
+            assert operations[0].origin == "primary"
+            assert all(item.origin == "closure_repair" for item in operations[1:])
+            assert all(item.repair_obligation_keys for item in operations[1:])
+            patch_set_id = patch_set.id
+        with factory() as session:
+            preview = WorkflowService(session).simulate_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set_id,
+                expected_draft_id=draft_id,
+                base_revision=2,
+                operation_ids=None,
+            )
+            assert preview["simulation"]["can_apply"] is True
+            applied = WorkflowService(session).apply_agent_patch_set(
+                actor_id,
+                project_id,
+                patch_set_id,
+                expected_draft_id=draft_id,
+                expected_revision=2,
+                operation_ids=None,
+            )
+            assert applied["draft_revision"] == 3
 
 
 @pytest.mark.parametrize("mode", ("shadow", "suggest"))
@@ -170,9 +584,7 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             assert steps[0].component_version == "closure-repair-v3"
             calls = list(
                 session.scalars(
-                    select(AgentModelCall).where(
-                        AgentModelCall.agent_step_run_id == steps[0].id
-                    )
+                    select(AgentModelCall).where(AgentModelCall.agent_step_run_id == steps[0].id)
                 )
             )
             assert len(calls) == 1
@@ -192,13 +604,9 @@ def test_closure_repair_mode_persists_round_audit_and_reviewable_provenance(
             assert operations[0].origin == "primary"
             if mode == "suggest":
                 assert len(operations) > 1
-                assert all(
-                    operation.origin == "closure_repair" for operation in operations[1:]
-                )
+                assert all(operation.origin == "closure_repair" for operation in operations[1:])
                 assert {operation.repair_round for operation in operations[1:]} == {1}
-                assert all(
-                    operation.repair_obligation_keys for operation in operations[1:]
-                )
+                assert all(operation.repair_obligation_keys for operation in operations[1:])
                 patch_set_id = patch_set.id
                 operation_ids = [operation.id for operation in operations]
             else:
@@ -792,6 +1200,121 @@ def test_agent_chat_issue_route_allows_suggestions_and_records_route_outcome(
             assert task["result"]["routing"]["intent"] == "explain_issue"
             assert task["result"]["routing"]["suggestion_policy"] == "allow"
             assert task["result"]["routing"]["suppressed_count"] == 0
+
+
+def test_general_mutation_ready_envelope_is_suppressed_by_deny_route(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    with patch.dict(os.environ, {"CASEFILE_MASTER_KEY": master_key}):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        Worker(
+            factory,
+            config=WorkerConfig(worker_id="route-suppression-fixture"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+
+        with factory() as session:
+            workflow = WorkflowService(session)
+            draft = CaseFileService(session).get_draft(actor_id, project_id)
+            entity_id = draft["content"]["entities"][0]["id"]
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title=None,
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                thread["thread_id"],
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请澄清目标，不要生成修改。",
+            )
+        task_id = int(queued["task"]["task_run_id"])
+        claim = Worker(
+            factory,
+            config=WorkerConfig(worker_id="route-suppression-completion"),
+            provider_factory=lambda _task: FakeProvider(),
+        )._claim_next()
+        assert claim is not None and claim[0] == task_id
+
+        plan = MutationPlanV1.model_validate(
+            {
+                "operations": [
+                    {
+                        "operation_key": "unsafe_ready_update",
+                        "operation_type": "update_field",
+                        "target": {"ref_kind": "existing", "object_id": entity_id},
+                        "field_path": "/description",
+                        "new_value": "不应被持久化。",
+                        "reason": "测试 finalization 防御门禁。",
+                    }
+                ]
+            }
+        )
+        bound = bind_general_mutation_plan(
+            plan,
+            draft["content"],
+            task_run_id=task_id,
+            draft_id=draft_id,
+            base_revision=2,
+        )
+        simulation = VerificationEngine(profile="fast").simulate_mutation_set(
+            draft["content"], bound.mutation_set
+        )
+        route = routing_policy(
+            ChatTaskUnderstanding(
+                primary_intent="clarify",
+                confidence=1.0,
+                reason_codes=("test:clarify",),
+            ),
+            budget={},
+            route_source="rule_safety",
+        )
+        envelope = {
+            "status": "ready",
+            "bound": bound,
+            "simulation": simulation,
+            "impact_hash": general_mutation_impact_hash(simulation),
+        }
+        with factory() as session:
+            completion = WorkflowService(session).complete_chat_task(
+                task_id,
+                claim[1],
+                answer="需要先澄清目标。",
+                referenced_object_ids=[],
+                referenced_event_ids=[],
+                referenced_validation_issue_ids=[],
+                suggestions=[],
+                usage={"requests": 1},
+                route=agent_state_to_jsonable(route),
+                general_mutation_envelope=envelope,
+            )
+        with factory() as session:
+            patch_sets = list(
+                session.scalars(select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_id))
+            )
+        with factory() as session:
+            current = CaseFileService(session).get_draft(actor_id, project_id)
+        with factory() as session:
+            events = WorkflowService(session).list_task_events(actor_id, project_id, task_id)
+
+        assert completion["message"]["patch_set"] is None
+        assert patch_sets == []
+        assert current["revision"] == 2
+        suppression = next(
+            event
+            for event in events
+            if event["event_type"] == "route.general_mutation_suppressed"
+        )
+        assert suppression["payload"]["route_intent"] == "clarify"
+        assert suppression["payload"]["suppressed_count"] == 1
 
 
 def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(

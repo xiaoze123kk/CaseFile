@@ -64,6 +64,7 @@ class ConfirmationStatus(StrEnum):
     user_confirmed = 'user_confirmed'
     ai_inferred = 'ai_inferred'
     unresolved = 'unresolved'
+    proposed = 'proposed'
 
 
 class ActorType(StrEnum):

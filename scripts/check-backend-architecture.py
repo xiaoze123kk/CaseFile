@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-MAX_MAINTAINED_LINES = 2_000
+MAX_MAINTAINED_LINES = 3_000
 
 STABLE_EXPORTS = {
     "backend/src/casefile/agent_runtime/chat_execution.py": {

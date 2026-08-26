@@ -249,6 +249,9 @@ class AgentPatchApplyRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
     operation_ids: list[int] | None = None
+    confirmed_impact_hash: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     target_finding_ids: list[int] | None = None
     accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
     debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)

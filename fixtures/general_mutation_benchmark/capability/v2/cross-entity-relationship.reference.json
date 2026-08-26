@@ -1,0 +1,44 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_zhou_lan",
+        "operation_type": "create_object",
+        "local_ref": "zhou_lan",
+        "collection": "entities",
+        "fields": {
+          "entity_type": "person",
+          "name": "周岚"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create zhou lan"
+      },
+      {
+        "operation_key": "create_assistance",
+        "operation_type": "create_object",
+        "local_ref": "assistance",
+        "collection": "relationships",
+        "fields": {
+          "title": "周岚协助林研究员",
+          "from_ref": {
+            "ref_kind": "local",
+            "local_ref": "zhou_lan"
+          },
+          "to_ref": {
+            "ref_kind": "existing",
+            "object_id": "ent_researcher"
+          },
+          "relationship_type": "assists",
+          "direction": "directed",
+          "truth_status": "canon_true",
+          "visibility": "public"
+        },
+        "depends_on_operation_keys": [
+          "create_zhou_lan"
+        ],
+        "reason": "create assistance"
+      }
+    ]
+  }
+}

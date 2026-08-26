@@ -1,0 +1,34 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "alias_researcher",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_researcher"
+        },
+        "field_path": "/aliases",
+        "new_value": [
+          "老林"
+        ],
+        "reason": "alias researcher"
+      },
+      {
+        "operation_key": "capability_researcher",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_researcher"
+        },
+        "field_path": "/capabilities",
+        "new_value": [
+          "读取系统日志",
+          "检修备用系统"
+        ],
+        "reason": "capability researcher"
+      }
+    ]
+  }
+}

@@ -379,7 +379,7 @@ export interface CoreMetadata {
   tags: string[];
   source_refs: ObjectRefList;
   confidence: number | null;
-  confirmation_status: "user_confirmed" | "ai_inferred" | "unresolved";
+  confirmation_status: "user_confirmed" | "ai_inferred" | "unresolved" | "proposed";
   created_by: ActorRef;
   updated_at: string;
   revision: number;

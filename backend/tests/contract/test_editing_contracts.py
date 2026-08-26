@@ -205,7 +205,7 @@ def test_casefiles_validate_and_cover_contract_foundation(
     validators: dict[str, Draft202012Validator],
 ) -> None:
     paths = sorted((FIXTURE_ROOT / "casefiles").glob("*.casefile.json"))
-    assert len(paths) == 4
+    assert len(paths) == 5
 
     question_types: set[str] = set()
     conclusion_modes: set[str] = set()

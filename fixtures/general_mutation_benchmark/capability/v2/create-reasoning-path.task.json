@@ -1,0 +1,32 @@
+{
+  "task_id": "create-reasoning-path",
+  "family": "create",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增地点“北侧观察台”，可见性规则是“仅调查组可见”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "locations",
+        "where": {
+          "/name": "北侧观察台",
+          "/visibility_rules/0": "仅调查组可见"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "create-reasoning-path.reference.json",
+  "tags": [
+    "create"
+  ]
+}

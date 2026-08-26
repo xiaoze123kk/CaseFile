@@ -1,0 +1,40 @@
+{
+  "task_id": "multi-object-two-entities",
+  "family": "multi_object",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把林研究员改名为林博士，同时把备用控制系统改名为应急系统。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/id": "ent_researcher",
+          "/name": "林博士"
+        },
+        "count": 1
+      },
+      {
+        "collection": "entities",
+        "where": {
+          "/id": "ent_backup_system",
+          "/name": "应急系统"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-object-two-entities.reference.json",
+  "tags": [
+    "multi_object"
+  ]
+}

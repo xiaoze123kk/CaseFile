@@ -18,6 +18,10 @@ from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
 )
+from casefile.agent_runtime.general_mutation import (
+    GeneralMutationPlannerRequest,
+    GeneralMutationPlannerResult,
+)
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefAnchorExtractResult,
@@ -59,6 +63,11 @@ class AgentProvider(GenerationProvider, Protocol):
     def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult: ...
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult: ...
+
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult: ...
 
     def repair_closure(
         self,

@@ -1,0 +1,18 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "rename_researcher",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_researcher"
+        },
+        "field_path": "/name",
+        "new_value": "林博士",
+        "reason": "rename researcher"
+      }
+    ]
+  }
+}

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Protocol
 
+from casefile_contracts import SemanticFillProposal, SkeletonProposal
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler import (
@@ -20,7 +21,6 @@ from casefile.domain.narrative_compiler import (
     repair_novel_plan_candidate,
     validate_novel_plan_candidate,
 )
-from casefile_contracts import SemanticFillProposal, SkeletonProposal
 
 CONSTRAINT_FIRST_PIPELINE_VERSION = "compiler.story-planner.constraint-first.v1"
 CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION = "story-planner-constraint-first-v1"

@@ -55,6 +55,22 @@ def test_analysis_profile_defaults_to_read_only_analysis_budget() -> None:
     assert route_allows_suggestions(route) is False
 
 
+def test_edit_profile_allows_bounded_multi_tool_verification() -> None:
+    route = routing_policy(
+        ChatTaskUnderstanding(
+            primary_intent="edit_request",
+            confidence=1.0,
+            reason_codes=("rule_capability:general_mutation_delete",),
+        ),
+        budget={"max_turns": 12},
+        profile="edit_request.edit",
+        route_source="rule_capability",
+    )
+
+    assert route.execution_profile["max_turns"] == 8
+    assert route.execution_profile["max_tool_calls"] == 12
+
+
 def test_budget_only_tightens_never_widens() -> None:
     route = routing_policy(
         analysis_task(),

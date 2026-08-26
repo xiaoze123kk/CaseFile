@@ -7,11 +7,10 @@ from contextlib import contextmanager
 
 import pytest
 import sqlalchemy as sa
-from sqlalchemy.engine import Connection, Engine
-from sqlalchemy.orm import sessionmaker
-
 from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
+from sqlalchemy.engine import Connection, Engine
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

@@ -5,17 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import ValidationError
-
-from casefile.domain.narrative_compiler.foundation import (
-    CompilerContractError,
-    canonical_json_sha256,
-)
 from casefile_contracts import (
     NovelProfile,
     PlannerInputBundle,
     PlannerInputBundleV2,
     PlannerInputBundleV3,
+)
+from pydantic import ValidationError
+
+from casefile.domain.narrative_compiler.foundation import (
+    CompilerContractError,
+    canonical_json_sha256,
 )
 
 PLANNER_INPUT_SCHEMA_ID = "compiler.story-planner-input.v1"

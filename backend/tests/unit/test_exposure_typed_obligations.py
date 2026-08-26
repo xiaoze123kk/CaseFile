@@ -6,14 +6,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import ValidationError
-
 from casefile.api.schemas import ExposurePlanEntryRequest
 from casefile.data_postgres.compiler_repository import (
     CompilerRepository,
     FrozenExposureEntry,
     FrozenExposureObligation,
 )
+from pydantic import ValidationError
 
 
 class _FakeSession:

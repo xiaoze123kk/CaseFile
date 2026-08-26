@@ -1,0 +1,14 @@
+{
+  "plan": {
+    "operations": [
+      {
+        "operation_key": "create_backup_room",
+        "operation_type": "create_object",
+        "local_ref": "backup_room",
+        "collection": "locations",
+        "fields": {"name": "备用机房", "access_rules": ["维护员权限"]},
+        "reason": "新增作者指定地点"
+      }
+    ]
+  }
+}

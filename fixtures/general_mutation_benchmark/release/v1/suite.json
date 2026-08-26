@@ -1,0 +1,21 @@
+{
+  "schema_version": "casefile-general-mutation-backend-release-suite-v1",
+  "suite_id": "general-mutation-backend-release-v1",
+  "tasks": [
+    {"task_id": "release-existing-entity-name", "family": "existing_update", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/existing-entity-name.task.json"},
+    {"task_id": "release-multi-field-researcher", "family": "existing_update", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/multi-field-researcher.task.json"},
+    {"task_id": "release-multi-object-event-location", "family": "existing_update", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/multi-object-event-location.task.json"},
+    {"task_id": "release-create-entity", "family": "create", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/create-entity.task.json"},
+    {"task_id": "release-cross-entity-relationship", "family": "create", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/cross-entity-relationship.task.json"},
+    {"task_id": "release-cross-two-new-entities", "family": "create", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/cross-two-new-entities.task.json"},
+    {"task_id": "release-closure-create", "family": "create", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/closure-dependent-claim-1.task.json"},
+    {"task_id": "release-delete-orphan-entity", "family": "delete", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/delete-orphan-entity.task.json"},
+    {"task_id": "release-delete-relationship", "family": "delete", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/delete-relationship.task.json"},
+    {"task_id": "release-delete-orphan-information", "family": "delete", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/delete-orphan-information.task.json"},
+    {"task_id": "release-closure-dependent-2", "family": "closure_sensitive", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/closure-dependent-claim-2.task.json"},
+    {"task_id": "release-closure-dependent-3", "family": "closure_sensitive", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/closure-dependent-claim-3.task.json"},
+    {"task_id": "release-closure-dependent-4", "family": "closure_sensitive", "expectation": "apply", "source": "capability", "source_path": "../../capability/v2/closure-dependent-claim-4.task.json"},
+    {"task_id": "release-abstain-ambiguous-object", "family": "abstention_neighbor", "expectation": "abstain", "source": "safety", "source_path": "../../safety/v1/suite.json", "source_task_id": "clarify-ambiguous-object"},
+    {"task_id": "release-abstain-protected-constraint", "family": "abstention_neighbor", "expectation": "abstain", "source": "safety", "source_path": "../../safety/v1/suite.json", "source_task_id": "protected-collection-constraint"}
+  ]
+}

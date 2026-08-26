@@ -14,6 +14,7 @@ import pytest
 from agents.tool_context import ToolContext
 from casefile.agent_runtime import DeepSeekAgentsProvider, FakeProvider, OpenAIAgentsProvider
 from casefile.agent_runtime.brief_to_draft_v8 import workflow as v8_workflow
+from casefile.agent_runtime.general_mutation import GeneralMutationPlannerRequest
 from casefile.agent_runtime.models import (
     BriefAnchorExtractRequest,
     BriefIntakeSynthesizeRequest,
@@ -225,6 +226,51 @@ def test_openai_provider_loads_the_prompt_version_frozen_on_the_request(
 
     assert result.candidate.polished_text == "原稿"
     assert loaded == [("brief_polish", "brief-polish-v1")]
+
+
+def test_deepseek_general_mutation_freezes_primary_json_object_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_run_auxiliary(
+        *_args: object,
+        **kwargs: object,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        assert kwargs["deepseek_output_protocol"] == "json_object"
+        assert kwargs["deepseek_output_protocol_is_primary"] is True
+        return (
+            {
+                "plan_version": "general-mutation-planner-v2",
+                "operations": [
+                    {
+                        "operation_type": "create_object",
+                        "operation_key": "create_entity",
+                        "local_ref": "new_entity",
+                        "collection": "entities",
+                        "fields": {"name": "新角色"},
+                        "depends_on_operation_keys": [],
+                        "reason": "新增角色",
+                    }
+                ],
+            },
+            {},
+        )
+
+    monkeypatch.setattr(DeepSeekAgentsProvider, "_run_auxiliary", fake_run_auxiliary)
+
+    result = DeepSeekAgentsProvider().plan_general_mutation(
+        GeneralMutationPlannerRequest(
+            task_run_id=1,
+            model_id="deepseek-v4-pro",
+            api_key="sk-test",
+            casefile={},
+            message="新增角色",
+            input_hash="a" * 64,
+            editable_fields_by_collection={"entities": ("name",)},
+            emit=lambda *_args: None,
+        )
+    )
+
+    assert result.candidate.plan_version == "general-mutation-planner-v2"
 
 
 def test_polish_rejects_introduced_details_outside_narrative_mode(

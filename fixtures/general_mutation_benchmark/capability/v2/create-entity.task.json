@@ -1,0 +1,33 @@
+{
+  "task_id": "create-entity",
+  "family": "create",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增一个具备“法医鉴定”能力的人物张敏。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "张敏",
+          "/entity_type": "person",
+          "/capabilities/0": "法医鉴定"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "create-entity.reference.json",
+  "tags": [
+    "create"
+  ]
+}

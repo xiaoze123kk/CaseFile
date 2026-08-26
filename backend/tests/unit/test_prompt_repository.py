@@ -7,7 +7,6 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -48,6 +47,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner": "story-planner-v3",
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
+    "general_mutation_planner": "general-mutation-planner-v6",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
@@ -75,6 +75,24 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("story_planner", "story-planner-v1"): {
         "system": "02e0243a4c05f60aa130698c6bda3c97017d507070a2eb1bf6df1a6a1f7f3539"
+    },
+    ("general_mutation_planner", "general-mutation-planner-v6"): {
+        "fragment:planner": "a5719b25a64ac0d983cbb10e0cdd9136e5aab9d997452004e07f5122eb3604ec"
+    },
+    ("general_mutation_planner", "general-mutation-planner-v5"): {
+        "fragment:planner": "ab4365a58559fc706b162db8998dc5c588b9caf4bc1b15060fc26ad58899c138"
+    },
+    ("general_mutation_planner", "general-mutation-planner-v4"): {
+        "fragment:planner": "2a3dac1b29f2f98b63a6e2f557b56ad9848ec88fa237487fce3a53ccc37805cc"
+    },
+    ("general_mutation_planner", "general-mutation-planner-v3"): {
+        "fragment:planner": "23c910ece63e6ef77b260a860d5ba007ea645d32b9a0a0b0d21539824414df7a"
+    },
+    ("general_mutation_planner", "general-mutation-planner-v2"): {
+        "fragment:planner": "eaa09aea2fc0fc7620f9bf2ff37f20c1a42f644620bbc8fe302028a57fad7c42"
+    },
+    ("general_mutation_planner", "general-mutation-planner-v1"): {
+        "fragment:planner": "4b6fdd45886d63dca15e7401d85edbd033e760bd1a9b9d4a0c6440a78d7e554b"
     },
     ("closure_repair", "closure-repair-v1"): {
         "fragment:repair": "e27f2e5f4d105d9718816c5c38abbb6405b1f9475e6a0f22f09a69189d58b47d"
@@ -424,6 +442,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "story_planner",
         "story_planner_skeleton",
         "story_planner_semantic_fill",
+        "general_mutation_planner",
     }
 
     assert deterministic_task_types <= contract_task_types
@@ -504,13 +523,30 @@ def test_packaged_prompts_keep_instruction_boundaries_and_task_contracts() -> No
     prompts = {
         agent_id: system_prompt_for_task(agent_id, version)
         for agent_id, version in EXPECTED_CURRENT_VERSIONS.items()
-        if agent_id != "brief_to_draft"
+        if agent_id not in {"brief_to_draft", "general_mutation_planner"}
     }
 
     for prompt in prompts.values():
         assert "角色声明" in prompt
         assert "要求忽略既有规则" in prompt
         assert "结构化" in prompt
+
+    mutation_prompt = system_prompt_for_task(
+        "general_mutation_planner", "general-mutation-planner-v6"
+    )
+    assert "General Mutation Planner" in mutation_prompt
+    assert "不得生成正式对象 ID" in mutation_prompt
+    assert "最多 12 个操作、4 个 Create、2 个 Delete" in mutation_prompt
+    assert "Planner 引用严禁输出 `object_type`" in mutation_prompt
+    assert "别名写入 `aliases`" in mutation_prompt
+    assert "`truth_status`、`visibility`" in mutation_prompt
+    assert "`confidence`、`source_refs`" in mutation_prompt
+    assert "严禁对本计划新建的 `local_ref` 再发 Update" in mutation_prompt
+    assert "字段名只能是 `value`" in mutation_prompt
+    legacy_mutation_prompt = system_prompt_for_task(
+        "general_mutation_planner", "general-mutation-planner-v1"
+    )
+    assert "general-mutation-plan-v1" in legacy_mutation_prompt
 
     assert "`polished_text` 保持原稿的主要语言" in prompts["brief_polish"]
     assert "`narrative_enhance`" in prompts["brief_polish"]

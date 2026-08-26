@@ -1,0 +1,50 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "tag_entity",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "ent_researcher"
+        },
+        "field_path": "/tags",
+        "new_value": [
+          "investigator",
+          "复核"
+        ],
+        "reason": "tag entity"
+      },
+      {
+        "operation_key": "tag_event",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "evt_restart_seven"
+        },
+        "field_path": "/tags",
+        "new_value": [
+          "timeline",
+          "复核"
+        ],
+        "reason": "tag event"
+      },
+      {
+        "operation_key": "tag_info",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "info_restart_log"
+        },
+        "field_path": "/tags",
+        "new_value": [
+          "log",
+          "key",
+          "复核"
+        ],
+        "reason": "tag info"
+      }
+    ]
+  }
+}

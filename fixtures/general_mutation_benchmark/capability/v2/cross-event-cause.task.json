@@ -1,0 +1,33 @@
+{
+  "task_id": "cross-event-cause",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "建立一条“林研究员监控备用控制系统”的有向关系。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "relationships",
+        "where": {
+          "/title": "林研究员监控备用控制系统",
+          "/from_ref/object_id": "ent_researcher",
+          "/to_ref/object_id": "ent_backup_system"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-event-cause.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}

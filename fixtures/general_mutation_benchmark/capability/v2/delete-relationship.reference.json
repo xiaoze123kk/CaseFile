@@ -1,0 +1,16 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "delete_relationship",
+        "operation_type": "delete_object",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "rel_researcher_controls_backup"
+        },
+        "reason": "delete relationship"
+      }
+    ]
+  }
+}

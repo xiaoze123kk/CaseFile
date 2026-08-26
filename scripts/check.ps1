@@ -69,6 +69,12 @@ try {
             throw "Novel Plan safety gate failed."
         }
 
+        & $python -m casefile.benchmark general-mutation --gate `
+            --report-path var/benchmark/general-mutation-regression-safety-v1.json
+        if ($LASTEXITCODE -ne 0) {
+            throw "General Mutation deterministic safety gate failed."
+        }
+
         & $python -m casefile.benchmark chat-outcome --mode calibrate
         if ($LASTEXITCODE -ne 0) {
             throw "CaseFile chat outcome M0 calibration failed."

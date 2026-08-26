@@ -1,0 +1,40 @@
+{
+  "task_id": "closure-dependent-claim-3",
+  "family": "closure_sensitive",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把“第3条前置主张”状态改为 unresolved（未解决），并保持依赖它的主张状态一致。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "claims",
+        "where": {
+          "/id": "claim_dev_prerequisite_3",
+          "/status": "unresolved"
+        },
+        "count": 1
+      },
+      {
+        "collection": "claims",
+        "where": {
+          "/id": "claim_dev_subject_3",
+          "/status": "unresolved"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "closure-dependent-claim-3.reference.json",
+  "tags": [
+    "closure_sensitive"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "task_id": "cross-information-claim",
+  "family": "cross_reference",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增人物孙警官，并建立“孙警官询问林研究员”的有向关系。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "孙警官"
+        },
+        "count": 1
+      },
+      {
+        "collection": "relationships",
+        "where": {
+          "/title": "孙警官询问林研究员"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "cross-information-claim.reference.json",
+  "tags": [
+    "cross_reference"
+  ]
+}

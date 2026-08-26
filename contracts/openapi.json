@@ -6630,6 +6630,18 @@
             ],
             "title": "Operation Ids"
           },
+          "confirmed_impact_hash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed Impact Hash"
+          },
           "target_finding_ids": {
             "anyOf": [
               {

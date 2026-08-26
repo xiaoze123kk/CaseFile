@@ -1,0 +1,32 @@
+{
+  "task_id": "existing-location-name",
+  "family": "existing_update",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把“主实验室”改名为“核心实验室”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "locations",
+        "where": {
+          "/id": "loc_lab",
+          "/name": "核心实验室"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "existing-location-name.reference.json",
+  "tags": [
+    "update"
+  ]
+}

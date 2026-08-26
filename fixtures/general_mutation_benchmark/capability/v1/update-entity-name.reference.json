@@ -1,0 +1,14 @@
+{
+  "plan": {
+    "operations": [
+      {
+        "operation_key": "rename_researcher",
+        "operation_type": "update_field",
+        "target": {"ref_kind": "existing", "object_id": "ent_researcher"},
+        "field_path": "/name",
+        "new_value": "林博士",
+        "reason": "按作者要求修改人物名称"
+      }
+    ]
+  }
+}

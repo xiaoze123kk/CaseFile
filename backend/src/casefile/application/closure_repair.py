@@ -92,11 +92,20 @@ def prepare_chat_repair_suggestions(
 
 
 def repair_completion_payload(
-    validation: ValidatedClosureRepair,
+    validation: ValidatedClosureRepair | None,
     primary_operation_count: int,
     total_operation_count: int,
     envelope: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
+    if validation is None:
+        return {
+            "mode": "off",
+            "status": "not_run",
+            "reason_code": "general_mutation_owns_patch_set",
+            "primary_operation_count": primary_operation_count,
+            "companion_operation_count": 0,
+            "envelope": None,
+        }
     return {
         "mode": validation.mode,
         "status": validation.status,
@@ -136,14 +145,24 @@ def primary_mutation_from_suggestions(
                 expected_object_revision=revision,
             )
         )
-    return MutationSet(
+    return primary_mutation_from_mutation_set(MutationSet(
         mutation_set_id=f"chat_t{task_run_id}",
         base_draft_id=draft_id,
         base_revision=base_revision,
         operations=tuple(operations),
         actor="agent",
         closure_policy_version=CLOSURE_POLICY_VERSION,
-    )
+    ))
+
+
+def primary_mutation_from_mutation_set(mutation_set: MutationSet) -> MutationSet:
+    """Common Closure Repair primary seam for legacy suggestions and M3.4 plans."""
+
+    if mutation_set.actor != "agent" or mutation_set.mode != "normal":
+        raise ValueError("repair_primary_mutation_policy_invalid")
+    if mutation_set.closure_policy_version != CLOSURE_POLICY_VERSION:
+        raise ValueError("repair_primary_mutation_policy_stale")
+    return mutation_set
 
 
 def closure_repair_envelope(
@@ -337,5 +356,6 @@ __all__ = [
     "prepare_chat_repair_suggestions",
     "repair_completion_payload",
     "primary_mutation_from_suggestions",
+    "primary_mutation_from_mutation_set",
     "validate_closure_repair_envelope",
 ]

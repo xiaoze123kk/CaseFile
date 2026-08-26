@@ -1,0 +1,40 @@
+{
+  "task_id": "multi-object-event-location",
+  "family": "multi_object",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "把重启事件改名为“核心区重启”，把主实验室改名为“核心区”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "events",
+        "where": {
+          "/id": "evt_restart_seven",
+          "/title": "核心区重启"
+        },
+        "count": 1
+      },
+      {
+        "collection": "locations",
+        "where": {
+          "/id": "loc_lab",
+          "/name": "核心区"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "multi-object-event-location.reference.json",
+  "tags": [
+    "multi_object"
+  ]
+}

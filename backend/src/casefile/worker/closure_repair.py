@@ -10,10 +10,12 @@ from casefile.agent_runtime.models import EventSink
 from casefile.application.closure_repair import (
     ClosureRepairMode,
     closure_repair_envelope,
+    primary_mutation_from_mutation_set,
     primary_mutation_from_suggestions,
 )
 from casefile.data_postgres.models import TaskRun
-from casefile.domain.logical_mutation.repair import run_closure_repair
+from casefile.domain.logical_mutation import MutationSet
+from casefile.domain.logical_mutation.repair import ClosureRepairResult, run_closure_repair
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.support import _required_provider_binding
 
@@ -41,6 +43,35 @@ def execute_chat_closure_repair(
         task_run_id=task.id,
         suggestions=suggestions,
     )
+    envelope, usage, _ = execute_mutation_closure_repair(
+        task,
+        primary,
+        provider=provider,
+        api_key=api_key,
+        mode=mode,
+        emit=emit,
+    )
+    return envelope, usage
+
+
+def execute_mutation_closure_repair(
+    task: TaskRun,
+    primary_mutation: MutationSet,
+    *,
+    provider: AgentProvider,
+    api_key: str,
+    mode: ClosureRepairMode,
+    emit: EventSink,
+) -> tuple[dict[str, Any] | None, dict[str, Any], ClosureRepairResult | None]:
+    """Run the existing bounded repair protocol for a formal MutationSet."""
+
+    if mode == "off":
+        return None, {}, None
+    frozen = task.input_jsonb.get("casefile")
+    intent = task.input_jsonb.get("message")
+    if not isinstance(frozen, dict) or not isinstance(intent, str) or not intent.strip():
+        raise RuntimeError("Closure repair requires frozen CaseFile and intent")
+    primary = primary_mutation_from_mutation_set(primary_mutation)
     verifier = VerificationEngine(
         profile="fast", closure_policy_version=primary.closure_policy_version
     )
@@ -74,7 +105,7 @@ def execute_chat_closure_repair(
         },
     )
     usage = _merge_usage(item.usage for item in proposer.results)
-    return envelope, usage
+    return envelope, usage, repair
 
 
 def _suggestions(result: CaseFileChatResult) -> list[dict[str, Any]]:
@@ -106,4 +137,4 @@ def _merge_usage(records: Any) -> dict[str, Any]:
     return merged
 
 
-__all__ = ["execute_chat_closure_repair"]
+__all__ = ["execute_chat_closure_repair", "execute_mutation_closure_repair"]

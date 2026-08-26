@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
 from typing import Any, Protocol
 
+from casefile_contracts import (
+    NovelPlanCandidate,
+    PlanningProblem,
+    PlanSkeleton,
+    SemanticFillProposal,
+    SkeletonProposal,
+)
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -19,13 +26,6 @@ from casefile.domain.narrative_compiler.planner_constraints import (
 from casefile.domain.narrative_compiler.planner_input import (
     PLANNER_INPUT_V3_SCHEMA_ID,
     validate_planner_input_bundle,
-)
-from casefile_contracts import (
-    NovelPlanCandidate,
-    PlanningProblem,
-    PlanSkeleton,
-    SemanticFillProposal,
-    SkeletonProposal,
 )
 
 PLANNING_PROBLEM_SCHEMA_ID = "compiler.planning-problem.v1"

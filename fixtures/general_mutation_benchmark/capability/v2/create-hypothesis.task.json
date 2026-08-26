@@ -1,0 +1,32 @@
+{
+  "task_id": "create-hypothesis",
+  "family": "create",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增一个人物赵队，他的能力是“现场指挥”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "赵队",
+          "/capabilities/0": "现场指挥"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "create-hypothesis.reference.json",
+  "tags": [
+    "create"
+  ]
+}

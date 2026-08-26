@@ -263,6 +263,7 @@ def workflow_router() -> APIRouter:
             expected_draft_id=payload.expected_draft_id,
             expected_revision=payload.expected_revision,
             operation_ids=payload.operation_ids,
+            confirmed_impact_hash=payload.confirmed_impact_hash,
             target_finding_ids=payload.target_finding_ids,
             accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
             debt_acceptance_reason=payload.debt_acceptance_reason,

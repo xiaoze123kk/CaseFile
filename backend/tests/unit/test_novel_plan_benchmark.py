@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from casefile.benchmark import novel_plan_eval
 from casefile.benchmark.novel_plan_eval import run_suite, validate_suite
 

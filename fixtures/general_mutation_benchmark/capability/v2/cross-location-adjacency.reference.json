@@ -1,0 +1,38 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_equipment_room",
+        "operation_type": "create_object",
+        "local_ref": "equipment_room",
+        "collection": "locations",
+        "fields": {
+          "name": "设备间"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create equipment room"
+      },
+      {
+        "operation_key": "link_lab",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "loc_lab"
+        },
+        "field_path": "/adjacency_refs",
+        "new_value": [
+          {
+            "ref_kind": "existing",
+            "object_id": "loc_corridor"
+          },
+          {
+            "ref_kind": "local",
+            "local_ref": "equipment_room"
+          }
+        ],
+        "reason": "link lab"
+      }
+    ]
+  }
+}

@@ -9,13 +9,13 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any, Protocol
 
+from casefile_contracts import NovelPlanCandidate, StoryPlanStructuralPatch
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler import (
     STORY_PLANNER_STRUCTURAL_REPAIR_VERSION,
     CompilerContractError,
 )
-from casefile_contracts import NovelPlanCandidate, StoryPlanStructuralPatch
 
 STORY_PLANNER_PROMPT_VERSION = "story-planner-v3"
 STORY_PLANNER_AGENT_VERSION = "compiler.story-planner.v1"

@@ -162,7 +162,7 @@ compile_runs（Build 身份与 Snapshot/Canon?/Exposure?/Profile 精确绑定）
 | `brief_versions` | 用户确认的 Brief 内容、连续版本号与 RFC 8785 哈希。 | Workflow Service。 | 只追加，不可更新/删除。 |
 | `casefiles` | Project 唯一 CaseFile，保存项目级 v1 稳定 ID、Schema、非空 Current Draft 复合指针和当前 Canon 指针。 | Project/CaseFile Service；Canon 触发器。 | 元数据可改/归档；Current Draft 原子切换并写 Audit；历史不覆盖。 |
 | `drafts` | CaseFile 下可有多份独立 Draft，分别保存文档标题/状态、v1 版本链字段、Brief 来源、revision 和基准 Canon。 | Draft/Generation Service。 | 独立持续编辑；已有正文后采用候选创建新行并设为当前；`locked` 时拒绝 Operation/激活。 |
-| `casefile_objects` | v1 对象注册表；稳定 ID、契约顺序、来源、标签、置信度和确认状态。 | Draft/Generation Service。 | 当前态可改；身份/类型不可变，软删除后 ID 不复用；`object_id` 在 Draft 内唯一。 |
+| `casefile_objects` | v1 对象注册表；稳定 ID、契约顺序、来源、标签、置信度和确认状态；M3.4 兼容 `proposed` 状态。 | Draft/Generation Service。 | 当前态可改；身份/类型不可变，软删除后 ID 不复用；`object_id` 在 Draft 内唯一。 |
 | `casefile_refs` | 兼容旧纵向切片的同 Draft 多值语义边。 | 旧版编辑服务。 | 当前态可重建；已知端点受触发器约束。 |
 | `casefile_contract_refs` | v1 ObjectRef 的来源对象、字段 JSON Pointer、目标类型/稳定 ID 与顺序。 | v1 Generation/Projection。 | 随当前 Draft 原子重建；目标由契约 Validator 校验。 |
 | `draft_operations` | 有序增量编辑日志和 revision 乐观锁输入；支持历史生成、候选显式采用、Agent 建议整批应用和整批撤销。 | Draft 编辑/Generation/Agent Patch 事务。 | 只追加，触发器推进 Draft revision。 |
@@ -198,7 +198,7 @@ compile_runs（Build 身份与 Snapshot/Canon?/Exposure?/Profile 精确绑定）
 | `agent_threads` | Project/CaseFile/Draft 下可恢复的个人 Agent 对话，保存标题来源、置顶和归档状态。 | Agent Collaboration Service。 | 可重命名、置顶、归档/恢复；不承载团队成员或共享权限。 |
 | `agent_thread_context_states` | Thread 内滚动压缩产出的结构化 Thread Memory 追加式快照：策略版本、压缩消息区间、状态 JSON、输入哈希与创建时间。 | Worker（阶段 3 滚动压缩）。 | 只追加，不可更新/删除；原始消息仍在 `agent_messages`，压缩只替换上下文视图，不删除证据。 |
 | `agent_messages` | Thread 内按连续序号保存用户、助手或系统消息及 pending/completed/failed 状态。 | Agent Collaboration Service；Worker。 | 对话记录持久保留；助手占位消息由执行结果完成或标记失败。 |
-| `agent_patch_sets` | 一次助手回复产生的结构化建议批，冻结基础 Draft revision，并记录 stale/applied/undone/rejected 生命周期和应用/撤销 revision。 | Agent Collaboration Service；Worker。 | 人工审阅后整批原子应用；过期批禁止应用，已应用批可整批撤销。 |
+| `agent_patch_sets` | 一次助手回复产生的结构化建议批，冻结基础 Draft revision；通用 Mutation 额外冻结 planner/policy/binder lineage、原子审阅模式和影响哈希。 | Agent Collaboration Service；Worker。 | 人工审阅后整批原子应用；通用 Delete 还要求影响哈希确认；过期批禁止应用，已应用批可整批撤销。 |
 | `agent_patch_operations` | PatchSet 内有序的字段级 add/remove/replace 建议、前后值、原因和逐项 accepted/rejected 决策。 | Agent Collaboration Service；Worker。 | 逐项审阅；数据库预留三种操作，当前应用首版只执行 replace，最终选择由所属 PatchSet 统一提交。 |
 | `task_runs` | Brief/Intake/Chat/Reverse Parse 与 `novel_compile` 的冻结输入、版本、预算、用量和执行状态；`novel_compile` 的 Provider 四字段必须全空，其他任务必须全非空。 | Workflow/Agent/Brief Intake/Compiler Service；Worker。 | PostgreSQL 队列行；输入、lineage 与执行配置创建后由列级触发器冻结，生命周期、租约、结果、错误和 usage 可推进；终态保留。 |
 | `task_attempts` | 每次领取/恢复执行的完整候选、Validator 错误、用量和失败摘要。 | Worker。 | 按 Run + attempt_no 只追加；一旦写入非空候选，数据库禁止改写或删除。 |
@@ -280,6 +280,11 @@ compile_runs（Build 身份与 Snapshot/Canon?/Exposure?/Profile 精确绑定）
 ## V20260822193348 Logical Mutation 契约
 
 - `agent_patch_sets` 增加 closure policy、mutation mode、baseline/candidate hash；旧 PatchSet 生命周期继续承载通用 Mutation proposal，不创建平行 proposal 表。
+
+## V20260824133544 通用 Mutation 补丁契约
+
+- `agent_patch_sets` 增加 Planner、Capability Policy、Binder 版本与 Plan/Impact hash，`review_mode=atomic` 的新批次必须具备完整 lineage。
+- 历史批次保持 `review_mode=selective`，新增列均兼容旧数据；Delete 是否存在由 `contains_delete` 明确冻结。
 - `agent_patch_operations` 扩展 `create_object/update_field/delete_object`，保存稳定对象 key 与 collection；CREATE 可无数据库 target row，UPDATE/DELETE 必须指向现存 registry，旧 `add/remove/replace` 保持兼容读取。
 - `draft_operations` 增加 logical apply/undo/redo/normalize 追加式事件；每次动作只推进一次 Draft revision，完整 before/after 文档和 hash 用于严格 LIFO、Revert 判定及投影证明。
 - 删除仍只设置 `casefile_objects.deleted_at`；业务引用清理来自 Normalizer 的显式机械 operations，数据库 cascade 不承担业务删除语义。

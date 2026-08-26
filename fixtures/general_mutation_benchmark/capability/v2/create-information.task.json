@@ -1,0 +1,33 @@
+{
+  "task_id": "create-information",
+  "family": "create",
+  "input": {
+    "fixture": "fixtures/casefiles/general_mutation_dev_v2.casefile.json",
+    "message": "新增一个人物陈晓，他的特征是“细致”，目标是“核对全部日志”。"
+  },
+  "oracle": {
+    "acceptable_statuses": [
+      "proposal_ready"
+    ],
+    "required_state": [
+      {
+        "collection": "entities",
+        "where": {
+          "/name": "陈晓",
+          "/traits/0": "细致",
+          "/goals/0": "核对全部日志"
+        },
+        "count": 1
+      }
+    ],
+    "forbidden_changes": [
+      "/resolution_specs",
+      "/constraints",
+      "/structure_locks"
+    ]
+  },
+  "reference": "create-information.reference.json",
+  "tags": [
+    "create"
+  ]
+}

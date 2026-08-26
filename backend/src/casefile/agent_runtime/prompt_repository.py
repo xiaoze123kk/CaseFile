@@ -37,6 +37,7 @@ SUPPORTED_AGENT_IDS: Final = (
     "story_planner",
     "story_planner_skeleton",
     "story_planner_semantic_fill",
+    "general_mutation_planner",
 )
 
 _VERSION_DIRECTORY = re.compile(r"^v[1-9][0-9]*$")
@@ -104,6 +105,12 @@ _PACKAGE_COMPONENT_IDS_BY_VERSION = {
     "casefile-chat-context-compactor-v1": frozenset({"compact"}),
     "closure-repair-v1": frozenset({"repair"}),
     "closure-repair-v2": frozenset({"repair"}),
+    "general-mutation-planner-v1": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v2": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v3": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v4": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v5": frozenset({"general_mutation_planner"}),
+    "general-mutation-planner-v6": frozenset({"general_mutation_planner"}),
 }
 _PACKAGE_SCHEMA_VERSION = 2
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,79}$")

@@ -1,0 +1,17 @@
+{
+  "task_id": "update-entity-profile",
+  "family": "multi_field",
+  "input": {
+    "fixture": "fixtures/casefiles/restart_loop.casefile.json",
+    "message": "林研究员现在也叫老林，并且他能检修备用系统。请同时更新这两项。"
+  },
+  "oracle": {
+    "acceptable_statuses": ["proposal_ready"],
+    "required_state": [
+      {"collection": "entities", "where": {"/id": "ent_researcher", "/aliases": {"$contains": "老林"}, "/capabilities": {"$contains": "检修备用系统"}}, "count": 1}
+    ],
+    "forbidden_changes": ["/resolution_specs", "/constraints", "/structure_locks"]
+  },
+  "reference": "update-entity-profile.reference.json",
+  "tags": ["update", "multi_field", "atomic"]
+}

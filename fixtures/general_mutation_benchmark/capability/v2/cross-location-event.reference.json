@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "plan_version": "general-mutation-planner-v2",
+    "operations": [
+      {
+        "operation_key": "create_monitor_room",
+        "operation_type": "create_object",
+        "local_ref": "monitor_room",
+        "collection": "locations",
+        "fields": {
+          "name": "监控室"
+        },
+        "depends_on_operation_keys": [],
+        "reason": "create monitor room"
+      },
+      {
+        "operation_key": "move_event",
+        "operation_type": "update_field",
+        "target": {
+          "ref_kind": "existing",
+          "object_id": "evt_restart_seven"
+        },
+        "field_path": "/location_ref",
+        "new_value": {
+          "ref_kind": "local",
+          "local_ref": "monitor_room"
+        },
+        "reason": "move event"
+      }
+    ]
+  }
+}

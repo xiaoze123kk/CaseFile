@@ -165,8 +165,8 @@ const casefilePaths = readdirSync(resolve(fixtureRoot, "casefiles"))
   .filter((name) => name.endsWith(".casefile.json"))
   .sort();
 
-if (casefilePaths.length !== 4) {
-  throw new Error(`Expected 4 valid CaseFile fixtures, found ${casefilePaths.length}`);
+if (casefilePaths.length !== 5) {
+  throw new Error(`Expected 5 valid CaseFile fixtures, found ${casefilePaths.length}`);
 }
 
 for (const name of casefilePaths) {
