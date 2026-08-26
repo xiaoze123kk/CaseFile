@@ -4185,10 +4185,304 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Submit Agent Routing Feedback Api V1 Projects  Project Id  Agent Threads  Thread Id  Messages  Message Id  Routing Feedback Post"
+                  "$ref": "#/components/schemas/PublicRoutingFeedbackReceipt"
                 }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Run",
+        "operationId": "get_agent_run_api_v1_projects__project_id__agent_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAgentRun"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Cancel Agent Run",
+        "operationId": "cancel_agent_run_api_v1_projects__project_id__agent_runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAgentRun"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}/events": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Get Agent Run Events",
+        "operationId": "get_agent_run_events_api_v1_projects__project_id__agent_runs__run_id__events_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "After Sequence"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PublicAgentEvent"
+                  },
+                  "title": "Response Get Agent Run Events Api V1 Projects  Project Id  Agent Runs  Run Id  Events Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_id}/agent/runs/{run_id}/stream": {
+      "get": {
+        "tags": [
+          "agent-workflow"
+        ],
+        "summary": "Stream Agent Run",
+        "operationId": "stream_agent_run_api_v1_projects__project_id__agent_runs__run_id__stream_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "name": "X-CaseFile-User-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Casefile-User-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           },
@@ -5917,6 +6211,17 @@
         ],
         "title": "Activity"
       },
+      "Activity1": {
+        "type": "string",
+        "enum": [
+          "understanding",
+          "reading",
+          "checking",
+          "preparing_changes",
+          "finalizing"
+        ],
+        "title": "Activity1"
+      },
       "AgentChatFocus": {
         "properties": {
           "object_ids": {
@@ -6241,26 +6546,15 @@
       },
       "AgentRoutingFeedbackRequest": {
         "properties": {
-          "correct_intent": {
+          "interpretation": {
             "anyOf": [
               {
-                "type": "string",
-                "enum": [
-                  "question",
-                  "analysis",
-                  "explain_issue",
-                  "edit_request",
-                  "validate_request",
-                  "unsupported_action",
-                  "clarify",
-                  "out_of_scope"
-                ]
+                "$ref": "#/components/schemas/PublicRoutingInterpretation"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Correct Intent"
+            ]
           },
           "note": {
             "anyOf": [
@@ -6767,6 +7061,15 @@
         ],
         "title": "Category1"
       },
+      "ContextState": {
+        "type": "string",
+        "enum": [
+          "normal",
+          "near_limit",
+          "compacted"
+        ],
+        "title": "ContextState"
+      },
       "DraftActivateRequest": {
         "properties": {
           "expected_current_draft_id": {
@@ -6988,17 +7291,6 @@
         "type": "object",
         "title": "IdeaGenerateBody",
         "description": "可选的创作偏好：时代、场景、氛围与自由关键词（均为软约束）。"
-      },
-      "Interpretation": {
-        "enum": [
-          "conversation",
-          "analysis",
-          "logic_review",
-          "change_request",
-          "clarification",
-          null
-        ],
-        "title": "Interpretation"
       },
       "ItemActionRequest": {
         "properties": {
@@ -7522,6 +7814,220 @@
         ],
         "title": "ProviderSettingRequest"
       },
+      "PublicAgentEvent": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent1"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent2"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent3"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent4"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent5"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent6"
+          },
+          {
+            "$ref": "#/components/schemas/PublicAgentEvent7"
+          }
+        ],
+        "title": "PublicAgentEvent"
+      },
+      "PublicAgentEvent1": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.accepted",
+            "title": "Event"
+          },
+          "run": {
+            "$ref": "#/components/schemas/PublicAgentRun"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "run"
+        ],
+        "title": "PublicAgentEvent1"
+      },
+      "PublicAgentEvent2": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.activity",
+            "title": "Event"
+          },
+          "activity": {
+            "$ref": "#/components/schemas/Activity1",
+            "title": "PublicEventActivity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "activity"
+        ],
+        "title": "PublicAgentEvent2"
+      },
+      "PublicAgentEvent3": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.context",
+            "title": "Event"
+          },
+          "context_state": {
+            "$ref": "#/components/schemas/ContextState",
+            "title": "PublicContextState"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "context_state"
+        ],
+        "title": "PublicAgentEvent3"
+      },
+      "PublicAgentEvent4": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.verification",
+            "title": "Event"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "title": "PublicVerificationStatus"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Summary"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "verification_status",
+          "summary"
+        ],
+        "title": "PublicAgentEvent4"
+      },
+      "PublicAgentEvent5": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.completed",
+            "title": "Event"
+          },
+          "run": {
+            "$ref": "#/components/schemas/PublicAgentRun"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "run"
+        ],
+        "title": "PublicAgentEvent5"
+      },
+      "PublicAgentEvent6": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.failed",
+            "title": "Event"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/PublicAgentFailure"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "failure"
+        ],
+        "title": "PublicAgentEvent6"
+      },
+      "PublicAgentEvent7": {
+        "properties": {
+          "sequence": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Sequence"
+          },
+          "event": {
+            "type": "string",
+            "const": "run.cancelled",
+            "title": "Event"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Message"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "sequence",
+          "event",
+          "message"
+        ],
+        "title": "PublicAgentEvent7"
+      },
       "PublicAgentFailure": {
         "properties": {
           "category": {
@@ -7585,8 +8091,14 @@
             "title": "Body"
           },
           "interpretation": {
-            "$ref": "#/components/schemas/Interpretation",
-            "title": "PublicInterpretation"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicRoutingInterpretation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "references": {
             "items": {
@@ -8192,6 +8704,42 @@
         ],
         "title": "PublicReviewNotice"
       },
+      "PublicRoutingFeedbackReceipt": {
+        "properties": {
+          "message_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Message Id"
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "const": true,
+            "title": "Acknowledged"
+          },
+          "interpretation": {
+            "$ref": "#/components/schemas/PublicRoutingInterpretation"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "message_id",
+          "acknowledged",
+          "interpretation"
+        ],
+        "title": "PublicRoutingFeedbackReceipt"
+      },
+      "PublicRoutingInterpretation": {
+        "type": "string",
+        "enum": [
+          "conversation",
+          "analysis",
+          "logic_review",
+          "change_request",
+          "clarification"
+        ],
+        "title": "PublicRoutingInterpretation"
+      },
       "Relationship1": {
         "type": "string",
         "enum": [
@@ -8483,6 +9031,15 @@
           "expected_draft_revision"
         ],
         "title": "VerificationRerunRequest"
+      },
+      "VerificationStatus": {
+        "type": "string",
+        "enum": [
+          "started",
+          "passed",
+          "blocked"
+        ],
+        "title": "VerificationStatus"
       }
     }
   }

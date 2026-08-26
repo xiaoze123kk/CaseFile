@@ -33,18 +33,23 @@ from casefile.api.schemas import (
 )
 from casefile.application.a_path_metrics import APathMetricsService
 from casefile.application.chat_public_contracts import (
+    internal_intent_for_public_interpretation,
     public_agent_message_receipt_view,
     public_agent_message_view,
     public_patch_response_view,
     public_patch_review_view,
+    public_routing_feedback_view,
 )
 from casefile.application.errors import ApplicationError
 from casefile.application.workflow_service import WorkflowService
 from casefile_contracts import (
+    PublicAgentEvent,
     PublicAgentMessage,
     PublicAgentMessageReceipt,
+    PublicAgentRun,
     PublicPatchResponse,
     PublicPatchReviewResult,
+    PublicRoutingFeedbackReceipt,
 )
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -242,6 +247,7 @@ def workflow_router() -> APIRouter:
     @router.post(
         "/projects/{project_id}/agent/threads/{thread_id}/messages/{message_id}/routing-feedback",
         status_code=201,
+        response_model=PublicRoutingFeedbackReceipt,
     )
     def submit_agent_routing_feedback(
         project_id: int,
@@ -250,14 +256,109 @@ def workflow_router() -> APIRouter:
         payload: AgentRoutingFeedbackRequest,
         actor: ActorDependency,
         session: SessionDependency,
-    ) -> dict[str, Any]:
-        return WorkflowService(session).submit_agent_routing_feedback(
+    ) -> PublicRoutingFeedbackReceipt:
+        return public_routing_feedback_view(
+            WorkflowService(session).submit_agent_routing_feedback(
+                actor,
+                project_id,
+                thread_id,
+                message_id,
+                correct_intent=internal_intent_for_public_interpretation(payload.interpretation),
+                note=payload.note,
+            )
+        )
+
+    @router.get(
+        "/projects/{project_id}/agent/runs/{run_id}",
+        response_model=PublicAgentRun,
+    )
+    def get_agent_run(
+        project_id: int,
+        run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> PublicAgentRun:
+        return WorkflowService(session).get_agent_run(actor, project_id, run_id)
+
+    @router.post(
+        "/projects/{project_id}/agent/runs/{run_id}/cancel",
+        status_code=202,
+        response_model=PublicAgentRun,
+    )
+    def cancel_agent_run(
+        project_id: int,
+        run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+    ) -> PublicAgentRun:
+        return WorkflowService(session).cancel_agent_run(actor, project_id, run_id)
+
+    @router.get(
+        "/projects/{project_id}/agent/runs/{run_id}/events",
+        response_model=list[PublicAgentEvent],
+    )
+    def get_agent_run_events(
+        project_id: int,
+        run_id: int,
+        actor: ActorDependency,
+        session: SessionDependency,
+        after_sequence: int = 0,
+    ) -> list[PublicAgentEvent]:
+        return WorkflowService(session).list_agent_run_events(
             actor,
             project_id,
-            thread_id,
-            message_id,
-            correct_intent=payload.correct_intent,
-            note=payload.note,
+            run_id,
+            after_sequence=after_sequence,
+        )
+
+    @router.get("/projects/{project_id}/agent/runs/{run_id}/stream")
+    def stream_agent_run(
+        project_id: int,
+        run_id: int,
+        request: Request,
+        actor: ActorDependency,
+        session: SessionDependency,
+        last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
+    ) -> StreamingResponse:
+        WorkflowService(session).get_agent_run(actor, project_id, run_id)
+        after_sequence = _last_event_sequence(last_event_id)
+        factory = request.app.state.session_factory
+
+        def events() -> Iterator[str]:
+            cursor = after_sequence
+            idle_polls = 0
+            while True:
+                with factory() as stream_session:
+                    service = WorkflowService(stream_session)
+                    rows = service.list_agent_run_events(
+                        actor,
+                        project_id,
+                        run_id,
+                        after_sequence=cursor,
+                    )
+                    run = service.get_agent_run(actor, project_id, run_id)
+                if rows:
+                    idle_polls = 0
+                    for event in rows:
+                        payload = event.model_dump(mode="json")
+                        cursor = int(payload["sequence"])
+                        yield _public_sse(payload)
+                else:
+                    idle_polls += 1
+                    if idle_polls % 20 == 0:
+                        yield ": keep-alive\n\n"
+                if run.status.value in TERMINAL_STATUSES and not rows:
+                    break
+                time.sleep(0.5)
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     @router.post(
@@ -474,7 +575,9 @@ def workflow_router() -> APIRouter:
             "casefile_chat",
         ],
     ) -> dict[str, Any] | None:
-        return WorkflowService(session).get_latest_task(
+        service = WorkflowService(session)
+        service.require_generic_task_type(actor, project_id, task_type)
+        return service.get_latest_task(
             actor,
             project_id,
             task_type=task_type,
@@ -495,7 +598,9 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return WorkflowService(session).get_task(actor, project_id, task_run_id)
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.get_task(actor, project_id, task_run_id)
 
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/cancel",
@@ -507,7 +612,9 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return WorkflowService(session).cancel_task(actor, project_id, task_run_id)
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.cancel_task(actor, project_id, task_run_id)
 
     @router.post(
         "/projects/{project_id}/tasks/{task_run_id}/resume",
@@ -520,7 +627,9 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> dict[str, Any]:
-        return WorkflowService(session).resume_generation_task(
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.resume_generation_task(
             actor,
             project_id,
             task_run_id,
@@ -537,7 +646,9 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
         after_sequence: int = 0,
     ) -> list[dict[str, Any]]:
-        return WorkflowService(session).list_task_events(
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        return service.list_task_events(
             actor,
             project_id,
             task_run_id,
@@ -553,7 +664,9 @@ def workflow_router() -> APIRouter:
         session: SessionDependency,
         last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
     ) -> StreamingResponse:
-        WorkflowService(session).get_task(actor, project_id, task_run_id)
+        service = WorkflowService(session)
+        service.require_generic_task_access(actor, project_id, task_run_id)
+        service.get_task(actor, project_id, task_run_id)
         after_sequence = _last_event_sequence(last_event_id)
         factory = request.app.state.session_factory
 
@@ -619,3 +732,8 @@ def _last_event_sequence(value: str | None) -> int:
 def _sse(event: dict[str, Any]) -> str:
     data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
     return f"id: {event['sequence_no']}\nevent: {event['event_type']}\ndata: {data}\n\n"
+
+
+def _public_sse(event: dict[str, Any]) -> str:
+    data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+    return f"id: {event['sequence']}\nevent: {event['event']}\ndata: {data}\n\n"

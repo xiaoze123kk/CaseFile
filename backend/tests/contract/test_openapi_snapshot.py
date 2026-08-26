@@ -23,6 +23,19 @@ def test_agent_json_routes_publish_generated_public_models() -> None:
             "get": "#/components/schemas/PublicAgentMessage",
             "post": "#/components/schemas/PublicAgentMessageReceipt",
         },
+        (
+            "/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages/"
+            "{message_id}/routing-feedback"
+        ): {"post": "#/components/schemas/PublicRoutingFeedbackReceipt"},
+        "/api/v1/projects/{project_id}/agent/runs/{run_id}": {
+            "get": "#/components/schemas/PublicAgentRun",
+        },
+        "/api/v1/projects/{project_id}/agent/runs/{run_id}/cancel": {
+            "post": "#/components/schemas/PublicAgentRun",
+        },
+        "/api/v1/projects/{project_id}/agent/runs/{run_id}/events": {
+            "get": "#/components/schemas/PublicAgentEvent",
+        },
         "/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate": {
             "post": "#/components/schemas/PublicPatchReviewResult",
         },
@@ -43,8 +56,7 @@ def test_agent_json_routes_publish_generated_public_models() -> None:
                 response for status, response in responses.items() if status.startswith("2")
             )
             schema = success["content"]["application/json"]["schema"]
-            if path.endswith("/messages") and method == "get":
-                assert schema["type"] == "array"
+            if schema.get("type") == "array":
                 assert schema["items"]["$ref"] == schema_ref
             else:
                 assert schema["$ref"] == schema_ref

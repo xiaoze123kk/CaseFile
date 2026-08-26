@@ -128,6 +128,8 @@ from ._internal import (
     PublicPatchTarget,
     PublicReference,
     PublicReviewNotice,
+    PublicRoutingFeedbackReceipt,
+    PublicRoutingInterpretation,
     TaskEvent,
     TaskRun,
 )
@@ -162,6 +164,8 @@ __all__ = [
     "PublicPatchTarget",
     "PublicReference",
     "PublicReviewNotice",
+    "PublicRoutingFeedbackReceipt",
+    "PublicRoutingInterpretation",
     "TaskEvent",
     "TaskRun",
     "ValidationIssue",
@@ -244,6 +248,9 @@ export type PublicAgentEvent = ChatPublicContracts["event"];
 
 /** Strict public Patch change union discriminated by `kind`. */
 export type PublicPatchChange = PublicPatchSet["changes"][number];
+
+/** Author-facing routing interpretation used by feedback controls. */
+export type PublicRoutingInterpretation = PublicRoutingFeedbackReceipt["interpretation"];
 '@
 Write-GeneratedFile -Path $typescriptOutput -Content $typescriptContent
 

@@ -24,6 +24,7 @@ from casefile_contracts import (  # noqa: E402
     PublicAgentEvent,
     PublicAgentMessage,
     PublicPatchReviewResult,
+    PublicRoutingFeedbackReceipt,
     TaskRun,
     ValidationIssue,
 )
@@ -446,6 +447,15 @@ def test_chat_public_contracts_roundtrip_and_reject_internal_fields(
     }
     validators["public_patch_review"].validate(review)
     assert PublicPatchReviewResult.model_validate(review).model_dump(mode="json") == review
+
+    feedback = {
+        "message_id": 56,
+        "acknowledged": True,
+        "interpretation": "logic_review",
+    }
+    assert PublicRoutingFeedbackReceipt.model_validate(feedback).model_dump(mode="json") == feedback
+    with pytest.raises(ValidationError):
+        PublicRoutingFeedbackReceipt.model_validate({**feedback, "route_source": "internal-canary"})
 
 
 def test_structural_invalid_fixtures_are_rejected_at_expected_paths(

@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 
 from casefile.application.chat_public_contracts import (
+    internal_intent_for_public_interpretation,
     public_agent_message_receipt_view,
     public_agent_message_view,
     public_patch_response_view,
     public_patch_review_view,
+    public_routing_feedback_view,
+    public_routing_interpretation,
 )
 
 
@@ -146,3 +149,26 @@ def test_patch_review_and_action_response_hide_finding_keys_and_hashes() -> None
     assert "internal_finding_key" not in serialized
     assert "internal-baseline-hash" not in serialized
     assert "internal_reason_code" not in serialized
+
+
+def test_routing_feedback_uses_only_public_interpretation() -> None:
+    assert public_routing_interpretation("logic_audit") == "logic_review"
+    assert internal_intent_for_public_interpretation("change_request") == "edit_request"
+
+    projected = public_routing_feedback_view(
+        {
+            "message_id": 56,
+            "task_run_id": 21,
+            "acknowledged": True,
+            "interpretation": "analysis",
+            "route_source": "internal-canary",
+            "reason_code": "internal-reason-canary",
+            "route": {"prompt_component": "internal-component-canary"},
+        }
+    ).model_dump(mode="json")
+
+    assert projected == {
+        "message_id": 56,
+        "acknowledged": True,
+        "interpretation": "analysis",
+    }

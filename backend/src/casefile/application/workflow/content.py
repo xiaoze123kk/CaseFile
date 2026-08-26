@@ -754,6 +754,28 @@ class ContentWorkflowMixin:
             task = self._task(actor_user_id, project_id, task_run_id)
             return _task_view(task)
 
+    def require_generic_task_type(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        task_type: str,
+    ) -> None:
+        with self.session.begin():
+            self._owned(actor_user_id, project_id)
+            if task_type == "casefile_chat":
+                _reject_casefile_chat_task_route()
+
+    def require_generic_task_access(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        task_run_id: int,
+    ) -> None:
+        with self.session.begin():
+            task = self._task(actor_user_id, project_id, task_run_id)
+            if task.task_type == "casefile_chat":
+                _reject_casefile_chat_task_route()
+
     def cancel_task(
         self,
         actor_user_id: int,
@@ -1103,6 +1125,14 @@ class ContentWorkflowMixin:
         if task is None:
             raise not_found("TaskRun")
         return task
+
+
+def _reject_casefile_chat_task_route() -> None:
+    raise ApplicationError(
+        "casefile_chat_public_route_required",
+        "对话任务只能通过 Agent Run 接口访问。",
+        status_code=409,
+    )
 
 
 __all__ = ["ContentWorkflowMixin"]

@@ -21,6 +21,8 @@ from ._internal import (
     PublicPatchTarget,
     PublicReference,
     PublicReviewNotice,
+    PublicRoutingFeedbackReceipt,
+    PublicRoutingInterpretation,
     TaskEvent,
     TaskRun,
 )
@@ -55,6 +57,8 @@ __all__ = [
     "PublicPatchTarget",
     "PublicReference",
     "PublicReviewNotice",
+    "PublicRoutingFeedbackReceipt",
+    "PublicRoutingInterpretation",
     "TaskEvent",
     "TaskRun",
     "ValidationIssue",

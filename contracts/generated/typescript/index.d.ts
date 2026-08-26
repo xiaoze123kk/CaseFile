@@ -308,8 +308,6 @@ export type PublicMessageRole = "user" | "assistant";
 export type PublicMessageStatus = "pending" | "completed" | "failed";
 export type PublicResponseKind =
   "message" | "answer" | "analysis" | "clarification" | "findings" | "patch_proposal" | "failure";
-export type PublicInterpretation =
-  "conversation" | "analysis" | "logic_review" | "change_request" | "clarification" | null;
 export type PublicReferenceKind = "story_item" | "event" | "finding";
 export type PublicFindingSeverity = "blocker" | "warning" | "note";
 export type PublicPatchStatus = "pending" | "applied" | "undone" | "stale" | "rejected";
@@ -586,6 +584,7 @@ export interface PatchOperation {
 export interface ChatPublicContracts {
   message: PublicAgentMessage;
   message_receipt: PublicAgentMessageReceipt;
+  routing_feedback: PublicRoutingFeedbackReceipt;
   run: PublicAgentRun;
   event:
     | {
@@ -635,7 +634,7 @@ export interface PublicAgentMessage {
   status: PublicMessageStatus;
   response_kind: PublicResponseKind;
   body: string | null;
-  interpretation: PublicInterpretation;
+  interpretation: ("conversation" | "analysis" | "logic_review" | "change_request" | "clarification") | null;
   /**
    * @maxItems 200
    */
@@ -735,6 +734,11 @@ export interface PublicAgentFailure {
 export interface PublicAgentMessageReceipt {
   user_message: PublicAgentMessage;
   assistant_message: PublicAgentMessage;
+}
+export interface PublicRoutingFeedbackReceipt {
+  message_id: number;
+  acknowledged: true;
+  interpretation: "conversation" | "analysis" | "logic_review" | "change_request" | "clarification";
 }
 export interface PublicPatchReviewResult {
   patch_id: number;
@@ -866,3 +870,6 @@ export type PublicAgentEvent = ChatPublicContracts["event"];
 
 /** Strict public Patch change union discriminated by `kind`. */
 export type PublicPatchChange = PublicPatchSet["changes"][number];
+
+/** Author-facing routing interpretation used by feedback controls. */
+export type PublicRoutingInterpretation = PublicRoutingFeedbackReceipt["interpretation"];

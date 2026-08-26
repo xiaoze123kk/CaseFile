@@ -52,6 +52,7 @@
 | `backend/src/casefile/application/workflow_service.py` | `WorkflowService(session)` 稳定门面，只初始化事务依赖并组合内部工作流用例；保留既有公开方法和兼容 helper 导出，不再承载具体规则。 |
 | `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Mutation review/simulate/apply/undo，`mutation_history.py` 拥有严格栈顶 Redo，`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
 | `backend/src/casefile/application/chat_public_contracts.py` | CaseFile Chat 公共 DTO 的 allowlist 投影边界；不得输出 TaskRun、TaskEvent、原始结果或 Patch 内部字段。 |
+| `backend/src/casefile/application/chat_public_events.py` | 将内部 TaskEvent 严格映射为 Chat Public Event；未知事件必须丢弃，内部 sequence 只作为恢复游标保留。 |
 | `backend/src/casefile/application/workflow_common.py` | Workflow 用例共享的稳定默认配置、TaskRun 创建、冻结输入和小型事务 helper；不拥有 HTTP DTO 或 Worker 编排。 |
 | `backend/src/casefile/application/workflow_brief_validation.py` | Workflow 使用的 Brief 契约、语义与已确认原子项门禁。 |
 | `backend/src/casefile/application/workflow_views.py` | Workflow 实体、部件步骤与公开失败信息的稳定 HTTP 读模型序列化。 |

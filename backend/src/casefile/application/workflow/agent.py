@@ -62,12 +62,21 @@ from casefile.application.agent_patch_mutation import (
     repair_provenance_by_target,
 )
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
+from casefile.application.chat_public_contracts import (
+    public_agent_run_view,
+    public_routing_interpretation,
+)
+from casefile.application.chat_public_events import public_agent_event_view
 from casefile.application.closure_repair import (
     ValidatedClosureRepair,
     prepare_chat_repair_suggestions,
     repair_completion_payload,
 )
 from casefile.application.errors import ApplicationError, not_found
+from casefile.application.task_cancellation import (
+    TERMINAL_TASK_STATUSES,
+    finalize_task_cancellation,
+)
 from casefile.application.v1_editing import COLLECTIONS, EDITABLE_FIELDS, V1EditingService
 from casefile.application.verification_engine import (
     MutationSimulation,
@@ -81,6 +90,7 @@ from casefile.application.workflow_common import (
     ChatReferenceValidationError,
     _append_event,
     _chat_context_policy_version,
+    _event_view,
     _json_hash,
     _latest_context_state_ref,
     _supported_provider,
@@ -112,6 +122,7 @@ from casefile.domain.logical_mutation import (
     MutationSet,
     UpdateField,
 )
+from casefile_contracts import PublicAgentEvent, PublicAgentRun
 
 
 class AgentWorkflowMixin(AgentPatchMutationMixin):
@@ -321,6 +332,82 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 )
                 for message in messages
             ]
+
+    def get_agent_run(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        run_id: int,
+    ) -> PublicAgentRun:
+        with self.session.begin():
+            task = self._agent_run_task(actor_user_id, project_id, run_id)
+            return public_agent_run_view(_task_view(task))
+
+    def cancel_agent_run(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        run_id: int,
+    ) -> PublicAgentRun:
+        with self.session.begin():
+            task = self._agent_run_task(
+                actor_user_id,
+                project_id,
+                run_id,
+                lock=True,
+            )
+            if task.status not in TERMINAL_TASK_STATUSES:
+                now = datetime.now(UTC)
+                if task.cancel_requested_at is None:
+                    task.cancel_requested_at = now
+                if task.status == "queued":
+                    finalize_task_cancellation(self.session, task, now=now)
+                    _append_event(
+                        self.session,
+                        task,
+                        "task.cancelled",
+                        "cancelled",
+                        {"message": "任务已取消，尚未开始生成。"},
+                    )
+                elif task.status == "running":
+                    task.status = "cancelling"
+                    task.stage = "cancelling"
+                    _append_event(
+                        self.session,
+                        task,
+                        "task.cancel_requested",
+                        "cancelling",
+                        {"message": "已请求停止任务，正在安全结束当前步骤。"},
+                    )
+            return public_agent_run_view(_task_view(task))
+
+    def list_agent_run_events(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        run_id: int,
+        *,
+        after_sequence: int = 0,
+    ) -> list[PublicAgentEvent]:
+        if after_sequence < 0:
+            raise ApplicationError(
+                "agent_event_cursor_invalid",
+                "事件序号必须是非负整数。",
+                status_code=422,
+            )
+        with self.session.begin():
+            task = self._agent_run_task(actor_user_id, project_id, run_id)
+            run = public_agent_run_view(_task_view(task))
+            rows = self.session.scalars(
+                select(TaskEvent)
+                .where(
+                    TaskEvent.task_run_id == task.id,
+                    TaskEvent.sequence_no > after_sequence,
+                )
+                .order_by(TaskEvent.sequence_no)
+            )
+            projected = (public_agent_event_view(_event_view(row), run) for row in rows)
+            return [event for event in projected if event is not None]
 
     def send_agent_message(
         self,
@@ -635,10 +722,15 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 "feedback",
                 payload,
             )
+            effective_intent = correct_intent or task.result_jsonb["routing"].get("intent")
+            interpretation = public_routing_interpretation(effective_intent)
+            if interpretation is None:
+                raise RuntimeError("Routing feedback has no public interpretation")
             return {
                 "message_id": message.id,
                 "task_run_id": task.id,
                 "acknowledged": True,
+                "interpretation": interpretation,
             }
 
     def complete_chat_task(
@@ -714,10 +806,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
             suppress_general_mutation = (
                 general_mutation_envelope is not None
                 and general_mutation_envelope.get("status") == "ready"
-                and (
-                    suggestion_policy == "deny"
-                    or route_intent == "clarify"
-                )
+                and (suggestion_policy == "deny" or route_intent == "clarify")
             )
             if suppress_general_mutation:
                 assert route is not None
@@ -730,9 +819,7 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                         **route_public_payload(route),
                         "suggestion_policy": suggestion_policy,
                         "route_intent": route_intent,
-                        "suppressed_count": patch_operation_count(
-                            general_mutation_envelope, []
-                        ),
+                        "suppressed_count": patch_operation_count(general_mutation_envelope, []),
                     },
                 )
                 general_mutation_envelope = {"status": "blocked"}
@@ -1895,6 +1982,31 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         if thread is None:
             raise not_found("AgentThread")
         return thread
+
+    def _agent_run_task(
+        self,
+        actor_user_id: int,
+        project_id: int,
+        run_id: int,
+        *,
+        lock: bool = False,
+    ) -> TaskRun:
+        owned = self._owned(actor_user_id, project_id)
+        statement = select(TaskRun).where(
+            TaskRun.id == run_id,
+            TaskRun.project_id == owned.project.id,
+            TaskRun.task_type == "casefile_chat",
+        )
+        if lock:
+            statement = statement.with_for_update()
+        task = self.session.scalar(statement)
+        if task is None:
+            raise ApplicationError(
+                "agent_run_not_found",
+                "找不到该对话任务。",
+                status_code=404,
+            )
+        return task
 
     def _agent_patch_set(
         self,

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from casefile.application.commands import ProjectCreate
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
+from casefile_contracts import PublicRoutingInterpretation
 
 
 class StrictRequest(BaseModel):
@@ -223,25 +224,13 @@ class AgentMessageCreateRequest(StrictRequest):
 
 
 class AgentRoutingFeedbackRequest(StrictRequest):
-    correct_intent: (
-        Literal[
-            "question",
-            "analysis",
-            "explain_issue",
-            "edit_request",
-            "validate_request",
-            "unsupported_action",
-            "clarify",
-            "out_of_scope",
-        ]
-        | None
-    ) = None
+    interpretation: PublicRoutingInterpretation | None = None
     note: str | None = Field(default=None, max_length=2_000)
 
     @model_validator(mode="after")
     def has_feedback(self) -> Self:
-        if self.correct_intent is None and (self.note is None or not self.note.strip()):
-            raise ValueError("correct_intent or note is required")
+        if self.interpretation is None and (self.note is None or not self.note.strip()):
+            raise ValueError("interpretation or note is required")
         return self
 
 
@@ -249,9 +238,7 @@ class AgentPatchApplyRequest(StrictRequest):
     expected_draft_id: int = Field(ge=1)
     expected_revision: int = Field(ge=1)
     operation_ids: list[int] | None = None
-    confirmed_impact_hash: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
-    )
+    confirmed_impact_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     target_finding_ids: list[int] | None = None
     accepted_debt_finding_keys: list[str] = Field(default_factory=list, max_length=100)
     debt_acceptance_reason: str | None = Field(default=None, max_length=2_000)
@@ -262,13 +249,9 @@ class AgentPatchApplyRequest(StrictRequest):
             self.operation_ids
         ):
             raise ValueError("operation_ids must be unique")
-        if len(set(self.accepted_debt_finding_keys)) != len(
-            self.accepted_debt_finding_keys
-        ):
+        if len(set(self.accepted_debt_finding_keys)) != len(self.accepted_debt_finding_keys):
             raise ValueError("accepted_debt_finding_keys must be unique")
-        if self.accepted_debt_finding_keys and not (
-            self.debt_acceptance_reason or ""
-        ).strip():
+        if self.accepted_debt_finding_keys and not (self.debt_acceptance_reason or "").strip():
             raise ValueError("debt_acceptance_reason is required")
         return self
 
@@ -296,9 +279,7 @@ class AgentPatchSimulateRequest(StrictRequest):
             self.operation_ids
         ):
             raise ValueError("operation_ids must be unique")
-        if len(set(self.accepted_debt_finding_keys)) != len(
-            self.accepted_debt_finding_keys
-        ):
+        if len(set(self.accepted_debt_finding_keys)) != len(self.accepted_debt_finding_keys):
             raise ValueError("accepted_debt_finding_keys must be unique")
         return self
 

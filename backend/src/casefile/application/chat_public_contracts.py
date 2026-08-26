@@ -16,9 +16,11 @@ from casefile_contracts import (
     PublicPatchResponse,
     PublicPatchReviewResult,
     PublicPatchSet,
+    PublicRoutingFeedbackReceipt,
 )
 
 _ACTIVITY_BY_STAGE = {
+    "queued": "understanding",
     "preparing": "understanding",
     "routing": "understanding",
     "rewriting": "understanding",
@@ -32,6 +34,7 @@ _ACTIVITY_BY_STAGE = {
     "general_mutation": "preparing_changes",
     "mutation": "preparing_changes",
     "finalizing": "finalizing",
+    "cancelling": "finalizing",
 }
 
 _TYPE_LABELS = {
@@ -59,6 +62,26 @@ _TYPE_LABELS = {
     "structure_locks": "结构锁定",
 }
 
+_PUBLIC_INTERPRETATION_BY_INTENT = {
+    "question": "conversation",
+    "analysis": "analysis",
+    "explain_issue": "analysis",
+    "logic_audit": "logic_review",
+    "validate_request": "logic_review",
+    "edit_request": "change_request",
+    "clarify": "clarification",
+    "unsupported_action": "clarification",
+    "out_of_scope": "clarification",
+}
+
+_INTERNAL_INTENT_BY_INTERPRETATION = {
+    "conversation": "question",
+    "analysis": "analysis",
+    "logic_review": "logic_audit",
+    "change_request": "edit_request",
+    "clarification": "clarify",
+}
+
 
 def public_agent_message_view(value: dict[str, Any]) -> PublicAgentMessage:
     task = value.get("task") if isinstance(value.get("task"), dict) else None
@@ -82,7 +105,7 @@ def public_agent_message_view(value: dict[str, Any]) -> PublicAgentMessage:
                 result=result,
             ),
             "body": value.get("content") if isinstance(value.get("content"), str) else None,
-            "interpretation": _public_interpretation(result.get("routing")),
+            "interpretation": public_routing_interpretation(result.get("routing")),
             "references": _public_references(value),
             "findings": findings,
             "patch": patch,
@@ -212,6 +235,37 @@ def public_patch_response_view(value: dict[str, Any]) -> PublicPatchResponse:
         review=public_patch_review_view(value),
         revision=int(value.get("draft_revision") or value.get("base_draft_revision") or 0),
     )
+
+
+def public_routing_feedback_view(
+    value: dict[str, Any],
+) -> PublicRoutingFeedbackReceipt:
+    interpretation = value.get("interpretation")
+    if not isinstance(interpretation, str):
+        raise RuntimeError("Routing feedback result has no public interpretation")
+    return PublicRoutingFeedbackReceipt.model_validate(
+        {
+            "message_id": int(value["message_id"]),
+            "acknowledged": True,
+            "interpretation": interpretation,
+        }
+    )
+
+
+def public_routing_interpretation(value: Any) -> str | None:
+    intent = value.get("intent") if isinstance(value, dict) else value
+    if not isinstance(intent, str):
+        return None
+    return _PUBLIC_INTERPRETATION_BY_INTENT.get(intent)
+
+
+def internal_intent_for_public_interpretation(value: Any) -> str | None:
+    raw = getattr(value, "value", value)
+    if raw is None:
+        return None
+    if not isinstance(raw, str) or raw not in _INTERNAL_INTENT_BY_INTERPRETATION:
+        raise ValueError("Unsupported public routing interpretation")
+    return _INTERNAL_INTENT_BY_INTERPRETATION[raw]
 
 
 def _public_patch_change(operation: dict[str, Any]) -> dict[str, Any]:
@@ -356,31 +410,12 @@ def _response_kind(
         return "patch_proposal"
     if findings:
         return "findings"
-    interpretation = _public_interpretation(result.get("routing"))
+    interpretation = public_routing_interpretation(result.get("routing"))
     if interpretation == "clarification":
         return "clarification"
     if interpretation in {"analysis", "logic_review"}:
         return "analysis"
     return "answer"
-
-
-def _public_interpretation(value: Any) -> str | None:
-    if not isinstance(value, dict):
-        return None
-    intent = value.get("intent")
-    if not isinstance(intent, str):
-        return None
-    return {
-        "question": "conversation",
-        "analysis": "analysis",
-        "explain_issue": "analysis",
-        "logic_audit": "logic_review",
-        "validate_request": "logic_review",
-        "edit_request": "change_request",
-        "clarify": "clarification",
-        "unsupported_action": "clarification",
-        "out_of_scope": "clarification",
-    }.get(intent)
 
 
 def _failure_category(value: dict[str, Any]) -> str:
@@ -405,10 +440,13 @@ def _required_dict(value: dict[str, Any], key: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "internal_intent_for_public_interpretation",
     "public_agent_message_receipt_view",
     "public_agent_message_view",
     "public_agent_run_view",
     "public_patch_review_view",
     "public_patch_response_view",
     "public_patch_set_view",
+    "public_routing_feedback_view",
+    "public_routing_interpretation",
 ]

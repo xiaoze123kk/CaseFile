@@ -17,6 +17,10 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -30,6 +34,7 @@ from casefile.agent_runtime.models import (
     ChatTaskUnderstanding,
     agent_state_to_jsonable,
 )
+from casefile.api.app import create_app
 from casefile.application.agent_mutation import (
     bind_general_mutation_plan,
     general_mutation_impact_hash,
@@ -37,6 +42,7 @@ from casefile.application.agent_mutation import (
 from casefile.application.commands import ProjectCreate
 from casefile.application.errors import ApplicationError
 from casefile.application.services import CaseFileService
+from casefile.application.task_events import append_task_event
 from casefile.application.v1_editing import V1EditingService, casefile_semantically_equal
 from casefile.application.workflow_service import WorkflowService
 from casefile.benchmark.feedback_export import export_feedback_fixtures
@@ -53,8 +59,6 @@ from casefile.data_postgres.models import (
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -85,6 +89,213 @@ class ClosureRepairFixtureProvider(RichFixtureProvider):
             )
         )
         return result
+
+
+def test_public_chat_run_boundary_recovery_cancellation_failure_and_permissions(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    class FailingChatProvider(FakeProvider):
+        def chat(self, request):  # type: ignore[no-untyped-def]
+            raise RuntimeError(f"provider failure {request.api_key}")
+
+    engine, actor_id, _master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    project_id, generation_task_id = _prepare_task(engine, actor_id)
+    assert Worker(
+        factory,
+        config=WorkerConfig(worker_id="m36-public-generation"),
+        provider_factory=lambda _task: RichFixtureProvider(),
+    ).run_once()
+    adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+    draft_id = int(adopted["draft_id"])
+
+    with factory() as session:
+        workflow = WorkflowService(session)
+        thread = workflow.create_agent_thread(
+            actor_id,
+            project_id,
+            expected_draft_id=draft_id,
+            expected_draft_revision=2,
+            title="公共运行边界",
+        )
+        sent = workflow.send_agent_message(
+            actor_id,
+            project_id,
+            int(thread["thread_id"]),
+            expected_draft_id=draft_id,
+            expected_draft_revision=2,
+            content="先排队，随后测试公共取消。",
+        )
+        queued_run_id = int(sent["task"]["task_run_id"])
+
+    with factory() as session, session.begin():
+        queued_task = session.get(TaskRun, queued_run_id)
+        assert queued_task is not None
+        append_task_event(
+            session,
+            queued_task,
+            "provider.internal.telemetry",
+            "context",
+            {
+                "api_key": "nested-secret-canary",
+                "provider": "internal-provider-canary",
+                "prompt": "internal-prompt-canary",
+            },
+        )
+
+    app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+    headers = {"X-CaseFile-User-Id": str(actor_id)}
+    with TestClient(app) as client:
+        public_run = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}",
+            headers=headers,
+        )
+        assert public_run.status_code == 200
+        assert public_run.json() == {
+            "run_id": queued_run_id,
+            "status": "queued",
+            "activity": "understanding",
+            "cancellable": True,
+            "failure": None,
+        }
+
+        generic_urls = (
+            ("GET", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}"),
+            ("POST", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}/cancel"),
+            ("GET", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}/events"),
+            ("GET", f"/api/v1/projects/{project_id}/tasks/{queued_run_id}/stream"),
+            (
+                "GET",
+                f"/api/v1/projects/{project_id}/tasks/latest?task_type=casefile_chat",
+            ),
+        )
+        for method, url in generic_urls:
+            rejected = client.request(method, url, headers=headers)
+            assert rejected.status_code == 409
+            assert rejected.json()["code"] == "casefile_chat_public_route_required"
+
+        cancelled = client.post(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}/cancel",
+            headers=headers,
+        )
+        assert cancelled.status_code == 202
+        assert cancelled.json()["status"] == "cancelled"
+        assert cancelled.json()["cancellable"] is False
+
+        events = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}/events",
+            headers=headers,
+            params={"after_sequence": 1},
+        )
+        assert events.status_code == 200
+        event_body = events.json()
+        assert [event["event"] for event in event_body] == ["run.cancelled"]
+        assert event_body[0]["sequence"] == 3
+        assert "nested-secret-canary" not in events.text
+
+        stream = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{queued_run_id}/stream",
+            headers={**headers, "Last-Event-ID": "1"},
+        )
+        assert stream.status_code == 200
+        assert "id: 3\nevent: run.cancelled" in stream.text
+        assert "id: 2" not in stream.text
+        assert "nested-secret-canary" not in stream.text
+
+        with factory() as session:
+            other_project = CaseFileService(session).create_project(
+                actor_id,
+                ProjectCreate(title="其他项目", description=None, profile=PROFILE),
+            )
+        foreign = client.get(
+            f"/api/v1/projects/{other_project['id']}/agent/runs/{queued_run_id}",
+            headers=headers,
+        )
+        assert foreign.status_code == 404
+        assert foreign.json()["code"] == "agent_run_not_found"
+
+        with factory() as session:
+            failed_sent = WorkflowService(session).send_agent_message(
+                actor_id,
+                project_id,
+                int(thread["thread_id"]),
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="让这次回复确定性失败。",
+            )
+        failed_run_id = int(failed_sent["task"]["task_run_id"])
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-public-failure"),
+            provider_factory=lambda _task: FailingChatProvider(),
+        ).run_once()
+
+        failed_run = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{failed_run_id}",
+            headers=headers,
+        )
+        assert failed_run.status_code == 200
+        assert failed_run.json()["status"] == "failed"
+        assert failed_run.json()["failure"]["category"] == "request_failed"
+        assert "sk-test-workflow-secret" not in failed_run.text
+
+        failed_events = client.get(
+            f"/api/v1/projects/{project_id}/agent/runs/{failed_run_id}/events",
+            headers=headers,
+        )
+        assert failed_events.status_code == 200
+        assert failed_events.json()[-1]["event"] == "run.failed"
+        assert "sk-test-workflow-secret" not in failed_events.text
+
+        history = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        assert len(history.json()) == 4
+        assert history.json()[-1]["response_kind"] == "failure"
+        assert "task" not in history.json()[-1]
+        assert "result" not in history.json()[-1]
+
+        with factory() as session:
+            successful_sent = WorkflowService(session).send_agent_message(
+                actor_id,
+                project_id,
+                int(thread["thread_id"]),
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请分析当前卷宗。",
+            )
+        successful_run_id = int(successful_sent["task"]["task_run_id"])
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-public-feedback"),
+            provider_factory=lambda _task: FakeProvider(),
+        ).run_once()
+        completed_history = client.get(
+            f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+            headers=headers,
+        ).json()
+        completed_message = completed_history[-1]
+        assert completed_message["run"]["run_id"] == successful_run_id
+        assert completed_message["status"] == "completed"
+
+        feedback = client.post(
+            (
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}"
+                f"/messages/{completed_message['message_id']}/routing-feedback"
+            ),
+            headers=headers,
+            json={"interpretation": "analysis"},
+        )
+        assert feedback.status_code == 201
+        assert feedback.json() == {
+            "message_id": completed_message["message_id"],
+            "acknowledged": True,
+            "interpretation": "analysis",
+        }
+        for forbidden in ("task_run_id", "route_source", "reason_code", "route"):
+            assert forbidden not in feedback.text
 
 
 def test_general_mutation_create_atomic_apply_undo_redo(
@@ -263,9 +474,7 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 thread["thread_id"],
                 expected_draft_id=draft_id,
                 expected_draft_revision=2,
-                content=(
-                    "请删除未被引用的信息“原子撤销孤立信息”。"
-                ),
+                content=("请删除未被引用的信息“原子撤销孤立信息”。"),
             )
         Worker(
             factory,
@@ -1309,9 +1518,7 @@ def test_general_mutation_ready_envelope_is_suppressed_by_deny_route(
         assert patch_sets == []
         assert current["revision"] == 2
         suppression = next(
-            event
-            for event in events
-            if event["event_type"] == "route.general_mutation_suppressed"
+            event for event in events if event["event_type"] == "route.general_mutation_suppressed"
         )
         assert suppression["payload"]["route_intent"] == "clarify"
         assert suppression["payload"]["suppressed_count"] == 1

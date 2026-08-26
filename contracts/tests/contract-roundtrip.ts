@@ -13,6 +13,8 @@ import type {
   PublicAgentEvent,
   PublicAgentMessage,
   PublicPatchReviewResult,
+  PublicRoutingFeedbackReceipt,
+  PublicRoutingInterpretation,
   ValidationIssue,
 } from "../generated/typescript/index.js";
 
@@ -275,6 +277,27 @@ assertValid(
   typedRoundTrip(publicPatchReview),
   "PublicPatchReviewResult",
 );
+
+const publicInterpretation: PublicRoutingInterpretation = "logic_review";
+const publicFeedback: PublicRoutingFeedbackReceipt = {
+  message_id: 56,
+  acknowledged: true,
+  interpretation: publicInterpretation,
+};
+const publicFeedbackValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/chat/chat-public.schema.json#/$defs/PublicRoutingFeedbackReceipt",
+);
+if (!publicFeedbackValidator) {
+  throw new Error("PublicRoutingFeedbackReceipt schema was not registered");
+}
+assertValid(
+  publicFeedbackValidator,
+  typedRoundTrip(publicFeedback),
+  "PublicRoutingFeedbackReceipt",
+);
+if (publicFeedbackValidator({ ...publicFeedback, route_source: "internal-canary" })) {
+  throw new Error("PublicRoutingFeedbackReceipt accepted internal routing metadata");
+}
 
 if (
   briefIntakeQuestionSetValidator({

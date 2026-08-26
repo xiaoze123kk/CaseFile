@@ -1175,42 +1175,22 @@ class ResponseKind(StrEnum):
     failure = 'failure'
 
 
-class Interpretation(Enum):
+class PublicRoutingInterpretation(StrEnum):
     conversation = 'conversation'
     analysis = 'analysis'
     logic_review = 'logic_review'
     change_request = 'change_request'
     clarification = 'clarification'
-    none_type_none = None
 
 
-class PublicAgentMessage(BaseModel):
+class PublicRoutingFeedbackReceipt(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
     message_id: Annotated[int, Field(ge=1)]
-    sequence: Annotated[int, Field(ge=1)]
-    role: Annotated[Role, Field(title='PublicMessageRole')]
-    status: Annotated[Status4, Field(title='PublicMessageStatus')]
-    response_kind: Annotated[ResponseKind, Field(title='PublicResponseKind')]
-    body: Annotated[str | None, Field(max_length=20000)]
-    interpretation: Annotated[Interpretation, Field(title='PublicInterpretation')]
-    references: Annotated[list[PublicReference], Field(max_length=200)]
-    findings: Annotated[list[PublicFinding], Field(max_length=200)]
-    patch: PublicPatchSet | None
-    run: PublicAgentRun | None
-    created_at: AwareDatetime
-    updated_at: AwareDatetime
-
-
-class PublicAgentMessageReceipt(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    user_message: PublicAgentMessage
-    assistant_message: PublicAgentMessage
+    acknowledged: Literal[True]
+    interpretation: PublicRoutingInterpretation
 
 
 class PublicAgentEvent1(BaseModel):
@@ -1581,6 +1561,35 @@ class ResolutionSpec(CoreMetadata):
     required_claim_refs: list[ObjectRef]
 
 
+class PublicAgentMessage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    message_id: Annotated[int, Field(ge=1)]
+    sequence: Annotated[int, Field(ge=1)]
+    role: Annotated[Role, Field(title='PublicMessageRole')]
+    status: Annotated[Status4, Field(title='PublicMessageStatus')]
+    response_kind: Annotated[ResponseKind, Field(title='PublicResponseKind')]
+    body: Annotated[str | None, Field(max_length=20000)]
+    interpretation: PublicRoutingInterpretation | None
+    references: Annotated[list[PublicReference], Field(max_length=200)]
+    findings: Annotated[list[PublicFinding], Field(max_length=200)]
+    patch: PublicPatchSet | None
+    run: PublicAgentRun | None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class PublicAgentMessageReceipt(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    user_message: PublicAgentMessage
+    assistant_message: PublicAgentMessage
+
+
 class EditingContracts(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1739,6 +1748,7 @@ class Schema_2(BaseModel):
     )
     message: PublicAgentMessage
     message_receipt: PublicAgentMessageReceipt
+    routing_feedback: PublicRoutingFeedbackReceipt
     run: PublicAgentRun
     event: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7
     patch_set: PublicPatchSet

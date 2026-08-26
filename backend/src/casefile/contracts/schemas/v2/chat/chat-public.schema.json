@@ -8,6 +8,7 @@
   "required": [
     "message",
     "message_receipt",
+    "routing_feedback",
     "run",
     "event",
     "patch_set",
@@ -17,6 +18,7 @@
   "properties": {
     "message": {"$ref": "#/$defs/PublicAgentMessage"},
     "message_receipt": {"$ref": "#/$defs/PublicAgentMessageReceipt"},
+    "routing_feedback": {"$ref": "#/$defs/PublicRoutingFeedbackReceipt"},
     "run": {"$ref": "#/$defs/PublicAgentRun"},
     "event": {"$ref": "#/$defs/PublicAgentEvent"},
     "patch_set": {"$ref": "#/$defs/PublicPatchSet"},
@@ -331,9 +333,10 @@
         },
         "body": {"type": ["string", "null"], "maxLength": 20000},
         "interpretation": {
-          "title": "PublicInterpretation",
-          "type": ["string", "null"],
-          "enum": ["conversation", "analysis", "logic_review", "change_request", "clarification", null]
+          "oneOf": [
+            {"$ref": "#/$defs/PublicRoutingInterpretation"},
+            {"type": "null"}
+          ]
         },
         "references": {
           "type": "array",
@@ -368,6 +371,20 @@
       "properties": {
         "user_message": {"$ref": "#/$defs/PublicAgentMessage"},
         "assistant_message": {"$ref": "#/$defs/PublicAgentMessage"}
+      }
+    },
+    "PublicRoutingInterpretation": {
+      "type": "string",
+      "enum": ["conversation", "analysis", "logic_review", "change_request", "clarification"]
+    },
+    "PublicRoutingFeedbackReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["message_id", "acknowledged", "interpretation"],
+      "properties": {
+        "message_id": {"type": "integer", "minimum": 1},
+        "acknowledged": {"const": true},
+        "interpretation": {"$ref": "#/$defs/PublicRoutingInterpretation"}
       }
     },
     "PublicAgentEvent": {
