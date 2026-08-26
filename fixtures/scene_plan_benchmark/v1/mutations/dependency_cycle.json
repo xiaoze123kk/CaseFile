@@ -2,8 +2,8 @@
   "schema_id": "benchmark.scene-plan-mutation.v1",
   "mutation_id": "dependency_cycle",
   "base_task_id": "dependency_transfer__dense",
-  "kind": "create_dependency_cycle",
-  "target": "input",
-  "expected_reason_code": "compiler_scene_plan_input_dependency_cycle",
+  "kind": "forward_dependency",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_fill_dependency_invalid",
   "category": "Dependency"
 }

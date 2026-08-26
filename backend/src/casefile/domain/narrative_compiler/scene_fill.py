@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from casefile_contracts import SceneSemanticFillProposal
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import CompilerContractError
+from casefile_contracts import SceneSemanticFillProposal
 
 
 def validate_scene_semantic_fill(
@@ -40,9 +40,17 @@ def validate_scene_semantic_fill(
 def _validate_scene_fill(
     fill: dict[str, Any], constraint: dict[str, Any], catalog: set[str]
 ) -> None:
-    expected_obligations = {
-        item["obligation_key"]: item for item in constraint["obligations"]
-    }
+    model_text = "\n".join(
+        [
+            fill["dramatic_goal"],
+            fill["conflict"],
+            fill["outcome"],
+            *(beat["directive"] for beat in fill["beats"]),
+        ]
+    )
+    if any(entry_key in model_text for entry_key in constraint["forbidden_reveal_entry_keys"]):
+        raise CompilerContractError("compiler_scene_fill_forbidden_reveal")
+    expected_obligations = {item["obligation_key"]: item for item in constraint["obligations"]}
     seen_obligations: Counter[str] = Counter()
     seen_local_keys: set[str] = set()
     participants = {_ref_key(ref) for ref in constraint["participant_refs"]}

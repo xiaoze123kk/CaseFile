@@ -78,7 +78,7 @@
 | `backend/src/casefile/worker/executors/story_planner.py` | 默认 v1 Story Planner 与显式未激活 Constraint-First 版本的执行器；后者按 `skeleton_proposal`/`semantic_fill` 独立 input hash 持久化 ModelCall，崩溃后只恢复 exact-match 成功输出。 |
 | `backend/src/casefile/worker/executors/scene_compiler.py` | N4.4 未默认激活的影子 Worker：复用 TaskRun Provider 绑定，逐批持久化/恢复 Scene Fill ModelCall，完成 State Engine 后仅物化 ScenePlanIR v2。 |
 | `backend/src/casefile/benchmark/novel_plan_eval.py` | Novel Plan Regression/Safety/24 Task Capability Benchmark、v1/v2 输入与定向 Task 选择、部分运行禁晋级、G2 oracle evidence 审计、生产/G2 失败分层、动态 cohort、严格 fingerprint checkpoint/resume、G0–G3 分层与精确 Pro baseline/候选晋级门禁。 |
-| `backend/src/casefile/benchmark/scene_plan_eval.py` | N4.4 ScenePlan 独立评测：审计 8×3 capability fixtures、非唯一合法 alternatives、确定性 safety mutations、G0–G2 outcome graders、G3 rubric 契约、G4 结构语义签名与 uncalibrated 报告；当前不调用 Provider、不设置晋级阈值。 |
+| `backend/src/casefile/benchmark/scene_plan_eval.py` | N4.4 ScenePlan v2 独立评测：把审计后的 8×3 capability fixtures 升级为完整 v2 Input/ModelView，复用正式 Shadow Scene Fill runtime、Provider adapter 与 State Engine；支持 Fake regression、v2 Safety mutations、DeepSeek/OpenAI live capability、精确 Pro 3-trial 冻结、checkpoint/resume、G0–G2 outcome、contract-only G3、G4 结构语义签名与 uncalibrated baseline 报告。 |
 | `backend/src/casefile/domain/logical_mutation/` | 纯 Python Logical Mutation Kernel：discriminated operations、依赖拓扑排序、机械双向投影、NetworkX 封装图、关系传播策略单一来源、Impact Cone 与显式 v1/v2 policy registry；`closure/` 预计算不可变 ClosureContext/ClosureIndex，并实现 Claim、Hypothesis assessment、ReasoningPath/Resolution、typed integration 与 Shadow travel-time 确定性规则；公开接口不泄漏 NetworkX 类型。 |
 | `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复内核：版本化 RepairPolicy、角色化 ClosureObligation、MutationSimulation 资格评估，以及确定性 RepairScope。V1/V2 context 保留历史回放；V3 Alternative Planner 只枚举服务器完整模拟证明的 Claim status 或 incompatible dependency 移除候选，以规范 hash 绑定 operation、前后 obligation 与 candidate hash。Repair Engine 默认只接受 selected alternative ID，最多两轮从同一 baseline 重放并允许 obligation 不增的 staged progress；未知、过期、篡改、无候选、scope/protected/StructureLock 越界与 rebase mismatch 全部失败关闭。本模块不接 Provider/数据库/API/UI，不执行 Apply。 |
 | `backend/src/casefile/agent_runtime/transport_diagnostics.py` | 对 Provider 异常 cause chain 做 timeout/connection/rate-limit/4xx/5xx/protocol/unknown 脱敏分类，输出稳定 retry、protocol 与 fallback 诊断，不保留 URL、正文、凭据或异常文本。 |
@@ -170,7 +170,7 @@
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
 | `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 冻结输入哈希/DAG、模型 Candidate 接地与 provenance 门禁、服务器规范化和忽略 directive 措辞的语义签名，并保留 ScenePlanIR 确定性派生、NetworkX 查询和篡改失败关闭。 |
-| `backend/tests/unit/test_scene_plan_benchmark.py` | 验证 ScenePlan 24-task 审计矩阵、8 个非唯一合法 alternatives、Safety mutation reason code、报告分母/fingerprint 与未校准资格状态；不调用 live Provider。 |
+| `backend/tests/unit/test_scene_plan_benchmark.py` | 验证 ScenePlan 24-task 审计矩阵到 v2 Input/ModelView 的确定性升级、8 个替代表达回归、v2 Safety mutation reason code、Shadow runtime 报告分母/fingerprint、live Provider 注入路径与正式 24×3 Pro 参数失败关闭；测试本身不触网。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证完整升降级、66 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon/Exposure Plan 门禁和不可变触发器。 |
 | `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 66 表清单，避免主迁移测试文件继续膨胀。 |

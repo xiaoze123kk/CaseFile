@@ -2,8 +2,8 @@
   "schema_id": "benchmark.scene-plan-mutation.v1",
   "mutation_id": "event_missing",
   "base_task_id": "event_grounding__basic",
-  "kind": "drop_event_beat",
-  "target": "candidate",
-  "expected_reason_code": "compiler_scene_plan_candidate_event_coverage_invalid",
+  "kind": "drop_event_obligation",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_fill_obligation_coverage_invalid",
   "category": "Planning Transfer"
 }

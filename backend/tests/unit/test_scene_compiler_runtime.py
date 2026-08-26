@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 import pytest
+
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.agent_runtime.scene_compiler import (
     SceneFillBatchRequest,
@@ -125,17 +126,21 @@ def test_exact_recovery_skips_provider_and_preserves_hash_chain() -> None:
 
 def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency() -> None:
     batch = _batch(1, "scene_1")
-    proposal = FakeProvider().fill_scene_batch(
-        SceneFillBatchRequest(
-            task_run_id=1,
-            prompt_version="scene-compiler-semantic-fill-v1",
-            batch_view=batch,
-            inbound_state_hash="0" * 64,
-            input_hash="1" * 64,
-            model_id="fake",
-            api_key="unused",
+    proposal = (
+        FakeProvider()
+        .fill_scene_batch(
+            SceneFillBatchRequest(
+                task_run_id=1,
+                prompt_version="scene-compiler-semantic-fill-v1",
+                batch_view=batch,
+                inbound_state_hash="0" * 64,
+                input_hash="1" * 64,
+                model_id="fake",
+                api_key="unused",
+            )
         )
-    ).proposal
+        .proposal
+    )
 
     invalid = deepcopy(proposal)
     invalid["scenes"][0]["beats"][0]["actor_refs"] = [_ref("entity", "ent_unknown")]
@@ -155,3 +160,9 @@ def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency()
     invalid["scenes"][0]["beats"][0]["depends_on"] = ["beat_local_future"]
     with pytest.raises(CompilerContractError, match="compiler_scene_fill_dependency_invalid"):
         validate_scene_semantic_fill(invalid, batch_view=batch)
+
+    forbidden = deepcopy(proposal)
+    batch["scenes"][0]["forbidden_reveal_entry_keys"] = ["exposure_future_secret"]
+    forbidden["scenes"][0]["beats"][0]["directive"] += " exposure_future_secret"
+    with pytest.raises(CompilerContractError, match="compiler_scene_fill_forbidden_reveal"):
+        validate_scene_semantic_fill(forbidden, batch_view=batch)

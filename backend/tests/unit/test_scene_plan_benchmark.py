@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
+import pytest
+
+from casefile.agent_runtime.provider_adapters.fake import FakeProvider
+from casefile.agent_runtime.scene_compiler import (
+    SceneFillBatchRequest,
+    SceneFillBatchResult,
+)
 from casefile.benchmark.scene_plan_eval import run_suite, validate_suite
 
 
@@ -21,6 +30,14 @@ def test_scene_plan_suite_is_audited_24_task_matrix() -> None:
         "qualified": False,
         "reason": "live_baseline_not_run",
     }
+    assert all(
+        item["schema_id"] == "compiler.scene-compiler-input.v2"
+        for item in validated["runtime_inputs"].values()
+    )
+    assert all(
+        item["schema_id"] == "compiler.scene-compiler-model-view.v1"
+        for item in validated["model_views"].values()
+    )
 
 
 def test_scene_plan_reference_and_alternative_outcomes_pass() -> None:
@@ -32,6 +49,9 @@ def test_scene_plan_reference_and_alternative_outcomes_pass() -> None:
     assert regression["status"] == "passed"
     assert regression["metrics"]["trial_count"] == 8
     assert capability["qualification"]["qualified"] is False
+    assert capability["schema_id"] == "benchmark.scene-plan-report.v2"
+    assert capability["frozen"]["pipeline_version"] == ("compiler.scene-compiler.shadow.v1")
+    assert all(item["provider_invoked"] for item in capability["trials"])
 
 
 def test_scene_plan_safety_mutations_are_rejected_by_expected_reason() -> None:
@@ -44,9 +64,68 @@ def test_scene_plan_safety_mutations_are_rejected_by_expected_reason() -> None:
     assert report["metrics"]["failure_taxonomy"]["Infrastructure"] == 0
 
 
+def test_live_runtime_path_uses_provider_and_formal_contract_is_fail_closed() -> None:
+    diagnostic = run_suite(
+        suite_kind="capability",
+        mode="live",
+        provider_name="deepseek",
+        model_id="deepseek-v4-pro",
+        repeats=1,
+        task_ids=("scene_decomposition__basic",),
+        provider_factory=FakeProvider,
+        api_key_override="test-only",
+    )
+
+    assert diagnostic["status"] == "passed"
+    assert diagnostic["metrics"]["trial_count"] == 1
+    assert diagnostic["trials"][0]["provider_invoked"] is True
+
+    with pytest.raises(ValueError, match="exactly 3 trials"):
+        run_suite(
+            suite_kind="capability",
+            mode="live",
+            provider_name="deepseek",
+            model_id="deepseek-v4-pro",
+            repeats=1,
+            provider_factory=FakeProvider,
+            api_key_override="test-only",
+        )
+
+
+def test_rejected_provider_output_retains_stage_usage_evidence() -> None:
+    class InvalidReferenceProvider:
+        def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+            result = FakeProvider().fill_scene_batch(request)
+            proposal = deepcopy(result.proposal)
+            proposal["scenes"][0]["beats"][0]["actor_refs"] = [
+                {"object_type": "entity", "object_id": "ent_unknown"}
+            ]
+            return SceneFillBatchResult(
+                proposal=proposal,
+                usage={"requests": 1, "total_tokens": 42},
+                raw_output="invalid-reference-output",
+            )
+
+    report = run_suite(
+        suite_kind="capability",
+        task_ids=("scene_decomposition__basic",),
+        provider_factory=InvalidReferenceProvider,
+    )
+
+    assert report["status"] == "failed"
+    assert report["trials"][0]["reason_code"] == ("compiler_scene_fill_actor_invalid")
+    assert report["trials"][0]["stages"][0]["raw_output_hash"]
+    assert report["metrics"]["usage_total"] == {
+        "requests": 1.0,
+        "total_tokens": 42.0,
+    }
+
+
 def test_scene_plan_report_fingerprint_is_deterministic() -> None:
     first = run_suite(suite_kind="regression")
     second = run_suite(suite_kind="regression")
 
     assert first["fingerprint"] == second["fingerprint"]
-    assert first["metrics"] == second["metrics"]
+    assert first["frozen"] == second["frozen"]
+    assert first["metrics"]["task_results"] == second["metrics"]["task_results"]
+    assert first["metrics"]["usage_total"] == second["metrics"]["usage_total"]

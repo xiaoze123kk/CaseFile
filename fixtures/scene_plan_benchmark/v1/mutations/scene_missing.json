@@ -2,8 +2,8 @@
   "schema_id": "benchmark.scene-plan-mutation.v1",
   "mutation_id": "scene_missing",
   "base_task_id": "scene_decomposition__basic",
-  "kind": "drop_scene",
-  "target": "candidate",
-  "expected_reason_code": "compiler_scene_plan_candidate_scene_coverage_invalid",
+  "kind": "drop_fill_scene",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_fill_scene_coverage_invalid",
   "category": "Planning Transfer"
 }

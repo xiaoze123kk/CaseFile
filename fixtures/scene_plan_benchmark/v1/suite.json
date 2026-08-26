@@ -1,6 +1,11 @@
 {
   "schema_id": "benchmark.scene-plan-suite.v1",
   "suite_id": "scene-plan-capability-v1",
+  "formal_qualification": {
+    "provider": "deepseek",
+    "model_id": "deepseek-v4-pro",
+    "trials_per_task": 3
+  },
   "grader_versions": {
     "g0": "scene-plan-contract-v1",
     "g1": "scene-plan-conformance-v1",
@@ -668,47 +673,47 @@
   "mutations": [
     {
       "path": "mutations/candidate_schema_invalid.json",
-      "hash": "0c186e494e92ec37961eca9e42c88d9788b57ec599f59202b6b15f73b6419c3c"
+      "hash": "0a048c244104a3d13fe7f07c3a66add16a2cf738f7bb7bc568378e035bfa3459"
     },
     {
       "path": "mutations/scene_missing.json",
-      "hash": "9d8ff0610f53578180435a2e408ca7924429efe17e950bcd45b38d29389faaea"
+      "hash": "62aac564cdb1fb4df3b004782a3b7e4d2ddde6ec26b2499ab30f701fd3a11ccc"
     },
     {
       "path": "mutations/event_missing.json",
-      "hash": "185d0af57b0006d414b7b74b2ba74d136e2e3699f90badf0a132a8464bf4ed9f"
+      "hash": "caf9d7e12b8a0007da6b223285a9a4f3e31876a4875757e44709dc386e3984de"
     },
     {
       "path": "mutations/fabricated_reference.json",
-      "hash": "485af73942b0b3e873da13d840ecea3b1e77f277eb8731c5eab1383c95e956f5"
+      "hash": "5ba556279c5e2fcf0db9c833f069752ff3c7789fa6ce790e7b87c414c1e9c9d5"
     },
     {
       "path": "mutations/premature_reveal.json",
-      "hash": "c7826506261d9fcb27b2e59619c59a33f59cab10622eb07684428299f372ca4f"
+      "hash": "122d94b8f900ad26e1a1f1e7a20dc29bab889e3be2f8a91fae5edb05cbea7757"
     },
     {
       "path": "mutations/temporal_ref_invalid.json",
-      "hash": "8e93ac5d1732538eddb83eefe93ac50d2fcfd4eb5c8418f7f92329dc2a79ecf1"
+      "hash": "47c1b1f146f661d66261cfeb66b25b98531e42d643f2fd68d56be11e178948a3"
     },
     {
       "path": "mutations/dependency_cycle.json",
-      "hash": "81dbf5508a896906501875a4c60f26434268f967c8d05e07bf0453ae83e39d6e"
+      "hash": "dcc8d8511228a38872d82758e1c444553f9bbfb311b9969bcdaa95aa31d7dde5"
     },
     {
       "path": "mutations/resolution_missing.json",
-      "hash": "ae8d05268029efbffcf5b57d3a5ba8a4da857956b70d552b2436ab62ccc9d94c"
+      "hash": "21e7d87de7eedf55e054f387b6c833f097f6445d805389186e1f97b4a07a0424"
     },
     {
       "path": "mutations/participant_out_of_scope.json",
-      "hash": "9213e890e874c20bac95147f75ffa00bcd6cb46dff332164ec8a9735662984c3"
+      "hash": "e00cd103843013f704233295590e2b76eb66f40c17714f9c4ee39c17ac80cffa"
     },
     {
       "path": "mutations/location_out_of_scope.json",
-      "hash": "e98fc384a5d7767a3f74ed11b5c143ad9d5b0f68386a50caa16f18dd73ef9ba9"
+      "hash": "c6701d57cfbf578e179ef69f907156ff7694747ca579cbdf8fe118dfd119f47b"
     },
     {
       "path": "mutations/provenance_tampered.json",
-      "hash": "6807ce44df2aeed87e53b711d2a700d976f759adc4d25088a3c5657b703ec4b9"
+      "hash": "bbc045c74b459e1981b0193fc8a79fa20da7bf03c01e17c131bde7ddb208948d"
     }
   ],
   "g3_rubric": {
