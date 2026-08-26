@@ -832,6 +832,10 @@ def suppress_general_mutation_finalizer_suggestions(
         or not suggestions
         or not any(
             code.startswith("rule_capability:general_mutation_")
+            or (
+                code.startswith("rule_safety:")
+                and route_suggestion_policy(route) == "deny"
+            )
             for code in route.reason_codes
         )
     ):

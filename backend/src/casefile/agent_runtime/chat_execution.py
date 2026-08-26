@@ -45,7 +45,9 @@ from casefile.agent_runtime.chat_versions import (
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
 from casefile.agent_runtime.public_language import (
     PublicLanguageValidationError,
+    normalize_general_mutation_clarification,
     normalize_internal_disclosure_refusal,
+    project_general_mutation_terminal_response,
     terminal_public_language_error,
     validate_public_language,
 )
@@ -306,6 +308,7 @@ class ChatExecutionRunner:
                 validate_chat_candidate(request, result)
                 result = apply_route_suggestion_policy(request, result)
                 if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
+                    result = normalize_general_mutation_clarification(request, result)
                     result = normalize_internal_disclosure_refusal(request, result)
                     validate_public_language(
                         result,
@@ -328,6 +331,30 @@ class ChatExecutionRunner:
                     raise
                 if isinstance(validation, PublicLanguageValidationError):
                     if public_language_repairs >= 1:
+                        projected = project_general_mutation_terminal_response(request, result)
+                        if projected is not None:
+                            validate_public_language(
+                                projected,
+                                sensitive_values=(request.api_key or "",),
+                            )
+                            if complete is not None:
+                                complete(projected)
+                            return ChatExecutionResult(
+                                result=projected,
+                                usage=_merge_usage(usages),
+                                tools=_merge_tools(tools),
+                                attempts=attempt,
+                                repair_attempted=repair_attempted,
+                                diagnostics={
+                                    "error_code": None,
+                                    "attempts": attempt,
+                                    "repair_history": repair_history,
+                                    "safe_patch_materializations": materialization_history,
+                                    "public_language_projection": (
+                                        "general_mutation_safe_terminal"
+                                    ),
+                                },
+                            )
                         terminal = terminal_public_language_error(validation)
                         _attach_failure_metrics(
                             terminal,

@@ -19,6 +19,12 @@ PUBLIC_OUTPUT_POLICY_FAILED: Final = "public_output_policy_failed"
 PUBLIC_INTERNAL_REFUSAL: Final = (
     "我不能提供内部运行信息，但可以说明本次操作对作者可见的结果。"
 )
+PUBLIC_GENERAL_MUTATION_CLARIFICATION: Final = (
+    "请确认要修改的是哪一个具体对象，并说明要修改的字段和内容？"
+)
+PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL: Final = (
+    "我只会保留通过安全检查、可供你审阅的结果；未通过的内容不会显示或应用。"
+)
 
 _DISCLOSURE_ACTION = re.compile(
     r"逐字|原文|展示|列出|输出|告诉|提供|读取|查看|公开|披露|打印|显示"
@@ -154,8 +160,63 @@ def normalize_internal_disclosure_refusal(
             "projection": "fixed_refusal",
         },
     )
+    return _replace_public_candidate(result, answer=PUBLIC_INTERNAL_REFUSAL)
+
+
+def normalize_general_mutation_clarification(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Stabilize deterministic mutation clarification as author-facing prose."""
+
+    if _general_mutation_route_intent(request) != "clarify":
+        return result
+    request.emit(
+        "public_language.general_mutation_clarification_normalized",
+        "validating",
+        {
+            "reason_code": "general_mutation_clarification_required",
+            "projection": "fixed_clarification",
+        },
+    )
+    return _replace_public_candidate(
+        result,
+        answer=PUBLIC_GENERAL_MUTATION_CLARIFICATION,
+    )
+
+
+def project_general_mutation_terminal_response(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult | None:
+    """Replace repeated invalid mutation prose without exposing model content."""
+
+    intent = _general_mutation_route_intent(request)
+    if intent is None:
+        return None
+    answer = (
+        PUBLIC_GENERAL_MUTATION_CLARIFICATION
+        if intent == "clarify"
+        else PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL
+    )
+    request.emit(
+        "public_language.general_mutation_terminal_projected",
+        "validating",
+        {
+            "reason_code": "general_mutation_public_response_projected",
+            "projection": "fixed_author_response",
+        },
+    )
+    return _replace_public_candidate(result, answer=answer)
+
+
+def _replace_public_candidate(
+    result: CaseFileChatResult,
+    *,
+    answer: str,
+) -> CaseFileChatResult:
     candidate_update: dict[str, object] = {
-        "answer": PUBLIC_INTERNAL_REFUSAL,
+        "answer": answer,
         "referenced_object_ids": [],
         "referenced_event_ids": [],
         "referenced_validation_issue_ids": [],
@@ -168,6 +229,20 @@ def normalize_internal_disclosure_refusal(
         result,
         candidate=result.candidate.model_copy(update=candidate_update),
     )
+
+
+def _general_mutation_route_intent(request: CaseFileChatRequest) -> str | None:
+    route = request.route
+    if route is None or not any(
+        code.startswith("rule_capability:general_mutation_") or code.startswith("rule_safety:")
+        for code in route.reason_codes
+    ):
+        return None
+    intent = route.execution_profile.get("primary_intent")
+    if isinstance(intent, str) and intent:
+        return intent
+    understanding = request.task_understanding
+    return None if understanding is None else understanding.primary_intent
 
 
 def public_language_rule_ids(
@@ -253,11 +328,15 @@ def _is_raw_json(value: str) -> bool:
 
 
 __all__ = [
+    "PUBLIC_GENERAL_MUTATION_CLARIFICATION",
+    "PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL",
     "PUBLIC_OUTPUT_POLICY_FAILED",
     "PUBLIC_OUTPUT_POLICY_VIOLATION",
     "PUBLIC_INTERNAL_REFUSAL",
     "PublicLanguageValidationError",
     "normalize_internal_disclosure_refusal",
+    "normalize_general_mutation_clarification",
+    "project_general_mutation_terminal_response",
     "public_language_rule_ids",
     "terminal_public_language_error",
     "validate_public_language",

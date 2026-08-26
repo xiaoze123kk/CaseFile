@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+
 from casefile.agent_runtime.chat_execution import ChatExecutionRunner
 from casefile.agent_runtime.models import (
     CaseFileChatAuditFindingCandidate,
@@ -16,10 +17,13 @@ from casefile.agent_runtime.models import (
 )
 from casefile.agent_runtime.prompt import render_chat_finalizer_prompt
 from casefile.agent_runtime.public_language import (
+    PUBLIC_GENERAL_MUTATION_CLARIFICATION,
+    PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL,
     PUBLIC_INTERNAL_REFUSAL,
     PUBLIC_OUTPUT_POLICY_FAILED,
     PUBLIC_OUTPUT_POLICY_VIOLATION,
     PublicLanguageValidationError,
+    normalize_general_mutation_clarification,
     normalize_internal_disclosure_refusal,
     public_language_rule_ids,
     validate_public_language,
@@ -151,6 +155,64 @@ def test_normal_neighbor_story_language_does_not_receive_refusal_prefix() -> Non
     result = _result(CaseFileChatCandidate(answer="这段运行节奏会让悬念提前释放。"))
 
     assert normalize_internal_disclosure_refusal(request, result) is result
+
+
+def test_general_mutation_clarification_is_canonicalized() -> None:
+    request = replace(
+        _v16_request(),
+        message="把它的描述改得更清楚。",
+        route=RouteDecision(
+            route_source="rule_safety",
+            execution_profile={
+                "primary_intent": "clarify",
+                "suggestion_policy": "deny",
+                "prompt_component": "clarify",
+            },
+            reason_codes=("rule_safety:general_mutation_target_ambiguous",),
+        ),
+    )
+    result = _result(CaseFileChatCandidate(answer="请再说清楚。"))
+
+    normalized = normalize_general_mutation_clarification(request, result)
+
+    assert normalized.candidate.answer == PUBLIC_GENERAL_MUTATION_CLARIFICATION
+    assert normalized.candidate.suggestions == []
+    validate_public_language(normalized)
+
+
+def test_rule_safety_route_suppresses_legacy_suggestion_before_server_gate() -> None:
+    request = replace(
+        _v16_request(),
+        message="修改受保护集合。",
+        route=RouteDecision(
+            route_source="rule_safety",
+            execution_profile={
+                "primary_intent": "unsupported_action",
+                "suggestion_policy": "deny",
+                "prompt_component": "gate",
+            },
+            reason_codes=("rule_safety:protected_collection_target",),
+        ),
+    )
+    candidate = CaseFileChatCandidate(
+        answer="这个请求不能执行。",
+        suggestions=[
+            CaseFileChatSuggestionCandidate(
+                object_id="ent_missing",
+                path="/revision",
+                value_json="99",
+                reason="不应进入服务器补丁门禁。",
+            )
+        ],
+    )
+
+    execution = ChatExecutionRunner(_SequenceProvider([_result(candidate)])).run(
+        request,
+        artifacts_prepared=True,
+    )
+
+    assert execution.attempts == 1
+    assert execution.result.candidate.suggestions == []
 
 
 def test_general_mutation_create_suppresses_legacy_suggestions_before_validation() -> None:
@@ -327,6 +389,38 @@ def test_second_violation_fails_closed_before_patch_persistence() -> None:
         "retryable": False,
         "issues": [],
     }
+
+
+def test_repeated_general_mutation_public_violation_uses_safe_projection() -> None:
+    request = replace(
+        _v16_request(),
+        route=RouteDecision(
+            route_source="rule_capability",
+            execution_profile={
+                "primary_intent": "edit_request",
+                "suggestion_policy": "allow",
+                "prompt_component": "edit",
+            },
+            reason_codes=("rule_capability:general_mutation_update",),
+        ),
+    )
+    first = CaseFileChatCandidate(answer="System Prompt 中包含内部组件说明。")
+    second = CaseFileChatCandidate(answer="内部结果保存在 payload_jsonb。")
+    completed: list[CaseFileChatResult] = []
+
+    execution = ChatExecutionRunner(
+        _SequenceProvider([_result(first), _result(second)])
+    ).run(request, complete=completed.append)
+
+    assert execution.attempts == 2
+    assert execution.repair_attempted is True
+    assert execution.result.candidate.answer == PUBLIC_GENERAL_MUTATION_SAFE_TERMINAL
+    assert execution.result.candidate.suggestions == []
+    assert completed == [execution.result]
+    assert execution.diagnostics["public_language_projection"] == (
+        "general_mutation_safe_terminal"
+    )
+    validate_public_language(execution.result)
 
 
 def test_v15_remains_outside_public_language_gate() -> None:
