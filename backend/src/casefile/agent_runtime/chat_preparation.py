@@ -24,7 +24,11 @@ from casefile.agent_runtime.models import (
 )
 
 
-def prepare_chat_request_artifacts(request: CaseFileChatRequest) -> CaseFileChatRequest:
+def prepare_chat_request_artifacts(
+    request: CaseFileChatRequest,
+    *,
+    general_mutation_authoritative: bool = False,
+) -> CaseFileChatRequest:
     """Freeze v13 Bundle/manifest before context rendering and provider I/O."""
 
     if request.prompt_version not in {
@@ -36,16 +40,18 @@ def prepare_chat_request_artifacts(request: CaseFileChatRequest) -> CaseFileChat
         return request
     validation = dict(request.validation)
     intent = (
-        None
-        if request.route is None
-        else request.route.execution_profile.get("primary_intent")
+        None if request.route is None else request.route.execution_profile.get("primary_intent")
     )
     if intent == "logic_audit" and "audit_evidence_bundle" not in validation:
         validation["audit_evidence_bundle"] = build_audit_evidence_bundle(
             request.casefile,
             editable_fields_by_collection=request.editable_fields_by_collection,
         ).payload
-    if intent == "edit_request" and "edit_target_manifest" not in validation:
+    if (
+        intent == "edit_request"
+        and not general_mutation_authoritative
+        and "edit_target_manifest" not in validation
+    ):
         validation["edit_target_manifest"] = build_edit_target_manifest(request).as_list()
     return replace(request, validation=validation)
 
@@ -63,9 +69,7 @@ def bind_chat_context_input(
         or request.context_policy_version == LEGACY_CONTEXT_POLICY_VERSION
     ):
         return request
-    policy_requires_thread_memory = (
-        request.context_policy_version != LEGACY_CONTEXT_POLICY_VERSION
-    )
+    policy_requires_thread_memory = request.context_policy_version != LEGACY_CONTEXT_POLICY_VERSION
     if thread_memory_state is None and policy_requires_thread_memory:
         thread_memory_state = thread_memory_state_to_jsonable(empty_thread_memory_state())
     result = build_chat_context_manifest(

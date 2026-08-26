@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, Self
 
+from casefile_contracts import PublicRoutingInterpretation
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from casefile.application.commands import ProjectCreate
 from casefile.domain.logical_mutation import ACTIVE_APPLY_POLICY
-from casefile_contracts import PublicRoutingInterpretation
 
 
 class StrictRequest(BaseModel):

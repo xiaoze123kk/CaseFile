@@ -42,7 +42,10 @@ class ChatHandler:
             ),
             allow_general_mutation_update=(context.chat_config.general_mutation_mode != "off"),
         )
-        request = prepare_chat_request_artifacts(request)
+        request = prepare_chat_request_artifacts(
+            request,
+            general_mutation_authoritative=(context.chat_config.general_mutation_mode != "off"),
+        )
         if request.route is not None:
             if previous_routing is None:
                 self._chat._emit_chat_routing_events(task.id, request)
@@ -91,7 +94,11 @@ class ChatHandler:
                 general_mutation_envelope=general_mutation_envelope,
             )
 
-        execution = ChatExecutionRunner(provider).run(request, complete=complete_chat)
+        execution = ChatExecutionRunner(provider).run(
+            request,
+            complete=complete_chat,
+            artifacts_prepared=True,
+        )
         result = execution.result
         context.state.candidate = result.candidate.model_dump(mode="json")
         context.state.usage = execution.usage

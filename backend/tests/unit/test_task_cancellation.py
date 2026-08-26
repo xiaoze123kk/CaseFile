@@ -7,8 +7,6 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-
 from casefile.api.app import create_app
 from casefile.api.dependencies import get_actor_user_id, get_session
 from casefile.application.task_cancellation import (
@@ -17,6 +15,7 @@ from casefile.application.task_cancellation import (
 )
 from casefile.application.workflow_service import WorkflowService
 from casefile.data_postgres.models import AgentMessage
+from fastapi.testclient import TestClient
 
 
 class _MessageSession:

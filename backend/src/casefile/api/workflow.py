@@ -7,6 +7,15 @@ import time
 from collections.abc import Iterator
 from typing import Annotated, Any, Literal, NoReturn
 
+from casefile_contracts import (
+    PublicAgentEvent,
+    PublicAgentMessage,
+    PublicAgentMessageReceipt,
+    PublicAgentRun,
+    PublicPatchResponse,
+    PublicPatchReviewResult,
+    PublicRoutingFeedbackReceipt,
+)
 from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -44,15 +53,6 @@ from casefile.application.chat_public_patches import resolve_public_warning_ids
 from casefile.application.errors import ApplicationError
 from casefile.application.workflow_service import WorkflowService
 from casefile.contracts import ContractValidationError
-from casefile_contracts import (
-    PublicAgentEvent,
-    PublicAgentMessage,
-    PublicAgentMessageReceipt,
-    PublicAgentRun,
-    PublicPatchResponse,
-    PublicPatchReviewResult,
-    PublicRoutingFeedbackReceipt,
-)
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled"}
 

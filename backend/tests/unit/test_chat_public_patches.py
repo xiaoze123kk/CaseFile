@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from pydantic import ValidationError
-
 from casefile.api.schemas import AgentPatchApplyRequest, AgentPatchSimulateRequest
 from casefile.application.chat_public_contracts import (
     public_patch_review_view,
@@ -18,6 +16,7 @@ from casefile.application.chat_public_patches import (
     resolve_public_warning_ids,
 )
 from casefile.application.errors import ApplicationError
+from pydantic import ValidationError
 
 
 def _patch(*, review_mode: str = "atomic") -> dict:

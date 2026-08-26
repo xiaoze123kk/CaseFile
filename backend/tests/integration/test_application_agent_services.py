@@ -17,10 +17,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_intent import INTENT_ROUTER_VERSION
 from casefile.agent_runtime.chat_routing import routing_policy
@@ -59,6 +55,9 @@ from casefile.data_postgres.models import (
 from casefile.domain.logical_mutation import CLOSURE_POLICY_V1, CLOSURE_POLICY_V2
 from casefile.domain.verification_engine import VerificationEngine
 from casefile.worker.runtime import Worker, WorkerConfig
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

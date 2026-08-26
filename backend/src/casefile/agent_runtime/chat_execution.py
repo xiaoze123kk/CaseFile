@@ -97,8 +97,10 @@ class ChatExecutionRunner:
         request: CaseFileChatRequest,
         *,
         complete: Callable[[CaseFileChatResult], None] | None = None,
+        artifacts_prepared: bool = False,
     ) -> ChatExecutionResult:
-        request = prepare_chat_request_artifacts(request)
+        if not artifacts_prepared:
+            request = prepare_chat_request_artifacts(request)
         usages: list[dict[str, Any]] = []
         tools: list[ToolMetrics] = []
         repair_attempted = False
@@ -213,9 +215,9 @@ class ChatExecutionRunner:
                                 ledger_hash=str(ledger.get("ledger_hash") or ""),
                             ),
                         )
-                    rejected_indexes = {
-                        failure.suggestion_index for failure in gate.failures
-                    } | {discard.suggestion_index for discard in gate.discards}
+                    rejected_indexes = {failure.suggestion_index for failure in gate.failures} | {
+                        discard.suggestion_index for discard in gate.discards
+                    }
                     safe_suggestions = [
                         suggestion
                         for index, suggestion in enumerate(proposals)
@@ -229,9 +231,7 @@ class ChatExecutionRunner:
                         candidate_payload["suggestions"] = materialized
                         result = replace(
                             result,
-                            candidate=result.candidate.__class__.model_validate(
-                                candidate_payload
-                            ),
+                            candidate=result.candidate.__class__.model_validate(candidate_payload),
                         )
                     result = replace(result, safe_patch_registry=gate.registry.as_dict())
                     request.emit(
@@ -274,9 +274,9 @@ class ChatExecutionRunner:
                                     "object_id": failure.object_id,
                                     "path": failure.path,
                                     "reason_code": failure.reason_code,
-                                    "value_json": proposals[
-                                        failure.suggestion_index
-                                    ].get("value_json"),
+                                    "value_json": proposals[failure.suggestion_index].get(
+                                        "value_json"
+                                    ),
                                     "validation": failure.validation,
                                     "simulation": failure.simulation,
                                 },
@@ -385,9 +385,7 @@ class ChatExecutionRunner:
                     "attempt": attempt,
                     "repair_no": repair_no,
                     "repair_mode": repair_mode,
-                    "validation_issues": [
-                        issue.as_dict() for issue in validation.issues
-                    ],
+                    "validation_issues": [issue.as_dict() for issue in validation.issues],
                     "repair_plan": validation.repair_plan.as_dict(),
                     "suggestion_count": len(result.candidate.suggestions),
                     "suggestion_targets": [
@@ -414,9 +412,7 @@ class ChatExecutionRunner:
                         "unknown_issue_ids": list(validation.issue_ids),
                         "wrong_slot_object_ids": list(validation.wrong_slot_object_ids),
                         "wrong_slot_event_ids": list(validation.wrong_slot_event_ids),
-                        "validation_issues": [
-                            issue.as_dict() for issue in validation.issues
-                        ],
+                        "validation_issues": [issue.as_dict() for issue in validation.issues],
                         "repair_plan": validation.repair_plan.as_dict(),
                         "candidate_summary": {
                             "suggestion_count": repair_record["suggestion_count"],
@@ -474,9 +470,7 @@ def _attach_failure_metrics(
         error.__dict__["attempts"] = attempts
         error.__dict__["repair_attempted"] = repair_attempted
         error.__dict__["repair_history"] = list(repair_history or ())
-        error.__dict__["safe_patch_materializations"] = list(
-            materialization_history or ()
-        )
+        error.__dict__["safe_patch_materializations"] = list(materialization_history or ())
     except (AttributeError, TypeError):
         return
 
@@ -503,12 +497,8 @@ def _as_validation_error(error: Exception) -> ChatCompletionValidationError | No
             object_ids=tuple(str(item) for item in object_ids),
             event_ids=tuple(str(item) for item in event_ids),
             issue_ids=tuple(str(item) for item in issue_ids),
-            wrong_slot_object_ids=tuple(
-                str(item) for item in (wrong_slot_object_ids or ())
-            ),
-            wrong_slot_event_ids=tuple(
-                str(item) for item in (wrong_slot_event_ids or ())
-            ),
+            wrong_slot_object_ids=tuple(str(item) for item in (wrong_slot_object_ids or ())),
+            wrong_slot_event_ids=tuple(str(item) for item in (wrong_slot_event_ids or ())),
         )
     return None
 

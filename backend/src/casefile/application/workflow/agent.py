@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+from casefile_contracts import PublicAgentEvent, PublicAgentRun
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -122,7 +123,6 @@ from casefile.domain.logical_mutation import (
     MutationSet,
     UpdateField,
 )
-from casefile_contracts import PublicAgentEvent, PublicAgentRun
 
 
 class AgentWorkflowMixin(AgentPatchMutationMixin):

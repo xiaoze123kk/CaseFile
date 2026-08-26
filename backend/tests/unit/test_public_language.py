@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from casefile.agent_runtime.chat_execution import ChatExecutionRunner
 from casefile.agent_runtime.models import (
     CaseFileChatAuditFindingCandidate,
@@ -18,6 +17,7 @@ from casefile.agent_runtime.public_language import (
     PUBLIC_OUTPUT_POLICY_FAILED,
     PUBLIC_OUTPUT_POLICY_VIOLATION,
     PublicLanguageValidationError,
+    public_language_rule_ids,
     validate_public_language,
 )
 from casefile.application.workflow_views import task_failure_view
@@ -99,6 +99,18 @@ def test_current_sensitive_value_is_rejected_without_echoing_it_in_diagnostics()
     assert "current_sensitive_value" in diagnostic
     assert canary not in diagnostic
     assert canary not in caught.value.repair_feedback()
+
+
+def test_public_rule_probe_returns_only_stable_rule_ids() -> None:
+    canary = "phase6-sensitive-canary"
+
+    rules = public_language_rule_ids(
+        f"TaskRun 当前值为 {canary}",
+        sensitive_values=(canary,),
+    )
+
+    assert rules == ("current_sensitive_value", "engineering_term")
+    assert canary not in repr(rules)
 
 
 def test_finding_and_suggestion_public_prose_are_all_guarded() -> None:

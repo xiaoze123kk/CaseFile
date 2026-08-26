@@ -23,9 +23,6 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime.context import (
     CHAT_CONTEXT_POLICY_V2_VERSION,
     CHAT_CONTEXT_POLICY_V3_VERSION,
@@ -54,6 +51,8 @@ from casefile.benchmark.chat_outcome_eval import (
 from casefile.benchmark.chat_outcome_live_eval import LIVE_THRESHOLDS
 from casefile.data_postgres.models import AgentThreadContextState, TaskEvent, TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 

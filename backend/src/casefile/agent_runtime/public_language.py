@@ -103,7 +103,7 @@ def validate_public_language(
     )
     issues: list[ValidationIssue] = []
     for public_text in _iter_public_text(result):
-        rule_ids = _violated_rules(public_text.value, sensitive)
+        rule_ids = public_language_rule_ids(public_text.value, sensitive_values=sensitive)
         if not rule_ids:
             continue
         issues.append(
@@ -118,6 +118,23 @@ def validate_public_language(
         )
     if issues:
         raise PublicLanguageValidationError(issues=tuple(issues))
+
+
+def public_language_rule_ids(
+    value: str,
+    *,
+    sensitive_values: Iterable[str] = (),
+) -> tuple[str, ...]:
+    """Return stable rule identifiers without retaining the inspected prose.
+
+    Qualification and public projectors can use this read-only surface to
+    prove that already-projected author text obeys the same policy as model
+    output.  Sensitive values are compared in memory and never included in
+    the returned diagnostics.
+    """
+
+    sensitive = tuple(item for item in sensitive_values if isinstance(item, str) and len(item) >= 4)
+    return tuple(_violated_rules(value, sensitive))
 
 
 def terminal_public_language_error(
@@ -189,6 +206,7 @@ __all__ = [
     "PUBLIC_OUTPUT_POLICY_FAILED",
     "PUBLIC_OUTPUT_POLICY_VIOLATION",
     "PublicLanguageValidationError",
+    "public_language_rule_ids",
     "terminal_public_language_error",
     "validate_public_language",
 ]
