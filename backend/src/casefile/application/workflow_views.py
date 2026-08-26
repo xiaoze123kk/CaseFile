@@ -19,6 +19,7 @@ from casefile.data_postgres.models import (
 _FAILURE_MESSAGES = {
     "agent_component_failed": "深稿生成部件未通过门禁，可从失败阶段恢复。",
     "candidate_validation_failed": "模型输出未通过 CaseFile 结构校验，已停止写入草稿。",
+    "public_output_policy_failed": "本次回复未通过安全检查，未生成修改建议，请重新表述后再试。",
     "provider_connection_failed": "无法连接模型服务，网络重试已耗尽。",
     "provider_timeout": "模型服务响应超时，网络重试已耗尽。",
     "provider_rate_limited": "模型服务当前限流，请稍后重试。",

@@ -16,6 +16,7 @@ from casefile.agent_runtime.chat_validation_contracts import (
     resolve_authoritative_repair_target,
     target_label,
 )
+from casefile.agent_runtime.chat_versions import SAFE_PATCH_PROMPT_VERSIONS
 from casefile.agent_runtime.models import (
     CaseFileChatCandidateV2,
     CaseFileChatRequest,
@@ -518,7 +519,7 @@ def target_locked_repair_contract(
 
     route = request.route
     if (
-        request.prompt_version != "casefile-chat-v15"
+        request.prompt_version not in SAFE_PATCH_PROMPT_VERSIONS
         or route is None
         or route.execution_profile.get("primary_intent") != "logic_audit"
         or not isinstance(result.candidate, CaseFileChatCandidateV2)

@@ -1,0 +1,194 @@
+"""Deterministic author-language validation for CaseFile Chat public prose."""
+
+from __future__ import annotations
+
+import json
+import re
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Final
+
+from casefile.agent_runtime.chat_validation_contracts import (
+    ChatCompletionValidationError,
+    ValidationIssue,
+)
+from casefile.agent_runtime.models import CaseFileChatResult
+
+PUBLIC_OUTPUT_POLICY_VIOLATION: Final = "public_output_policy_violation"
+PUBLIC_OUTPUT_POLICY_FAILED: Final = "public_output_policy_failed"
+
+_RESERVED_FIELD = re.compile(
+    r"(?i)(?<![a-z0-9_])(?:"
+    r"result_jsonb|payload_jsonb|field_path|operation_type|prompt_version|"
+    r"schema_id|provider_id|model_id|component_id|component_steps|route_source|"
+    r"reason_code|policy_key|policy_version|finding_key|finding_id|warning_key|"
+    r"task_run_id|patch_set_id|operation_id|object_id|event_id|message_id|"
+    r"draft_revision|object_revision|base_revision|input_hash|output_hash|ledger_hash|"
+    r"toolset_version|agent_version"
+    r")(?![a-z0-9_])"
+)
+_ENGINEERING_TERM = re.compile(
+    r"(?i)(?<![a-z0-9_])(?:"
+    r"TaskRun|TaskEvent|PatchOperation|VerificationEngine|V1EditingService|"
+    r"System\s+Prompt|Developer\s+Message|Prompt|Schema|Provider|runtime|"
+    r"Finalizer|Executor|Router|Worker|Safe\s+Patch\s+Registry|Frozen\s+Tool\s+Ledger"
+    r")(?![a-z0-9_])|"
+    r"(?<![a-z0-9_])(?:chat|analysis|audit|issue|edit|gate|clarify|scope)_finalizer"
+    r"(?![a-z0-9_])|"
+    r"(?<![a-z0-9_])(?:casefile-chat-v[0-9]+|casefile-single-agent-v[0-9]+|"
+    r"casefile-chat-tools-v[0-9]+|public-language-v[0-9]+)(?![a-z0-9_])|"
+    r"系统提示词|开发者消息|隐藏指令"
+)
+_JSON_POINTER = re.compile(
+    r"(?<![A-Za-z0-9_:/])/(?:[A-Za-z_][A-Za-z0-9_~-]*)"
+    r"(?:/(?:[A-Za-z0-9_~-]+))*"
+)
+_INTERNAL_ID = re.compile(
+    r"(?i)(?<![a-z0-9_])(?:"
+    r"(?:ent|evt|obj|claim|scene|loc|rel|clue|draft|task|patch|run|msg|thread)"
+    r"_[a-z0-9][a-z0-9_-]{2,}|"
+    r"(?:llm|policy|finding):[a-z0-9][a-z0-9._:-]{3,}|"
+    r"(?:finding|发现|审计项)\s*[:#：]?\s*F[1-9][0-9]*|"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|"
+    r"[0-9a-f]{64}"
+    r")(?![a-z0-9_])"
+)
+_EMBEDDED_JSON = re.compile(
+    r"(?:^|[\s`])(?:"
+    r"\{\s*[\"'][^\"'{}\r\n]{1,80}[\"']\s*:|"
+    r"\[\s*\{\s*[\"'][^\"'{}\r\n]{1,80}[\"']\s*:"
+    r")"
+)
+_JSON_FENCE = re.compile(r"(?i)```\s*json\b")
+
+
+@dataclass(frozen=True, slots=True)
+class _PublicText:
+    path: str
+    value: str
+
+
+class PublicLanguageValidationError(ChatCompletionValidationError):
+    """A repairable public-language violation or its terminal fail-closed form."""
+
+    def __init__(
+        self,
+        *,
+        issues: tuple[ValidationIssue, ...],
+        terminal: bool = False,
+    ) -> None:
+        code = PUBLIC_OUTPUT_POLICY_FAILED if terminal else PUBLIC_OUTPUT_POLICY_VIOLATION
+        super().__init__(code=code, issues=issues)
+        if terminal:
+            self.error_code = PUBLIC_OUTPUT_POLICY_FAILED
+
+    def repair_feedback(self) -> str:
+        return (
+            "上一轮面向作者的文字包含不可公开的工程信息。"
+            "仅重写 answer、finding 的 title/statement 与 suggestion 的 reason；"
+            "保留作者语义、引用、修改目标和值，不得解释门禁或复述被拒绝内容。"
+            "改用自然、清楚的中文创作者语言。"
+        )
+
+
+def validate_public_language(
+    result: CaseFileChatResult,
+    *,
+    sensitive_values: Iterable[str] = (),
+) -> None:
+    """Reject public prose that exposes internal or currently sensitive values."""
+
+    sensitive = tuple(
+        value for value in sensitive_values if isinstance(value, str) and len(value) >= 4
+    )
+    issues: list[ValidationIssue] = []
+    for public_text in _iter_public_text(result):
+        rule_ids = _violated_rules(public_text.value, sensitive)
+        if not rule_ids:
+            continue
+        issues.append(
+            ValidationIssue(
+                code=PUBLIC_OUTPUT_POLICY_VIOLATION,
+                stage="schema",
+                path=public_text.path,
+                message="面向作者的文字包含不可公开的工程信息。",
+                repairable=True,
+                details={"rule_ids": rule_ids},
+            )
+        )
+    if issues:
+        raise PublicLanguageValidationError(issues=tuple(issues))
+
+
+def terminal_public_language_error(
+    violation: PublicLanguageValidationError,
+) -> PublicLanguageValidationError:
+    """Convert a repeated violation into the stable non-repairable failure."""
+
+    issues = tuple(
+        ValidationIssue(
+            code=PUBLIC_OUTPUT_POLICY_FAILED,
+            stage=issue.stage,
+            path=issue.path,
+            message="面向作者的文字未通过公开语言门禁。",
+            repairable=False,
+            details=dict(issue.details),
+        )
+        for issue in violation.issues
+    )
+    return PublicLanguageValidationError(issues=issues, terminal=True)
+
+
+def _iter_public_text(result: CaseFileChatResult) -> Iterable[_PublicText]:
+    candidate = result.candidate
+    yield _PublicText(path="/answer", value=candidate.answer)
+    for index, finding in enumerate(getattr(candidate, "audit_findings", ())):
+        yield _PublicText(
+            path=f"/audit_findings/{index}/title",
+            value=finding.title,
+        )
+        yield _PublicText(
+            path=f"/audit_findings/{index}/statement",
+            value=finding.statement,
+        )
+    for index, suggestion in enumerate(candidate.suggestions):
+        reason = getattr(suggestion, "reason", None)
+        if isinstance(reason, str):
+            yield _PublicText(path=f"/suggestions/{index}/reason", value=reason)
+
+
+def _violated_rules(value: str, sensitive_values: tuple[str, ...]) -> list[str]:
+    rules: list[str] = []
+    if any(sensitive in value for sensitive in sensitive_values):
+        rules.append("current_sensitive_value")
+    if _RESERVED_FIELD.search(value):
+        rules.append("reserved_field")
+    if _ENGINEERING_TERM.search(value):
+        rules.append("engineering_term")
+    if _JSON_POINTER.search(value):
+        rules.append("json_pointer")
+    if _INTERNAL_ID.search(value):
+        rules.append("internal_id")
+    if _JSON_FENCE.search(value) or _EMBEDDED_JSON.search(value) or _is_raw_json(value):
+        rules.append("raw_json")
+    return rules
+
+
+def _is_raw_json(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped or stripped[0] not in "[{":
+        return False
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, (dict, list))
+
+
+__all__ = [
+    "PUBLIC_OUTPUT_POLICY_FAILED",
+    "PUBLIC_OUTPUT_POLICY_VIOLATION",
+    "PublicLanguageValidationError",
+    "terminal_public_language_error",
+    "validate_public_language",
+]

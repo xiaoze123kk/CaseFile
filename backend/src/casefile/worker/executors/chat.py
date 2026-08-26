@@ -46,7 +46,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V9_VERSION,
+    CHAT_CONTEXT_PROMPT_V10_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
     DEFAULT_THREAD_MEMORY_COMPACTOR,
     THREAD_MEMORY_STATE_KIND,
@@ -1207,7 +1207,7 @@ class ChatContextRuntime(_ChatComponent):
         if result.fallback is not None or legacy_policy:
             return request
         expected_prompt = (
-            CHAT_CONTEXT_PROMPT_V9_VERSION
+            CHAT_CONTEXT_PROMPT_V10_VERSION
             if policy_v6
             else (
                 CHAT_CONTEXT_PROMPT_V6_VERSION
@@ -1232,6 +1232,7 @@ class ChatContextRuntime(_ChatComponent):
             "casefile-chat-v13",
             "casefile-chat-v14",
             "casefile-chat-v15",
+            "casefile-chat-v16",
         }:
             raise RuntimeError(
                 "Context policy "

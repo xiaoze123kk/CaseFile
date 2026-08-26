@@ -7,12 +7,6 @@ from typing import Any, Literal, cast
 
 from agents import Tool
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -119,6 +113,12 @@ from casefile.agent_runtime.provider_adapters.shared import (
 )
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
+)
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
 
 
@@ -337,7 +337,11 @@ class DeepSeekAgentsProvider:
     def chat(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
-        if request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}:
+        if request.prompt_version in {
+            "casefile-chat-v14",
+            "casefile-chat-v15",
+            "casefile-chat-v16",
+        }:
             return self._chat_v14(request)
         instructions, input_text = render_chat_executor_prompt(request)
         tools, context, max_turns = _chat_tool_runtime(request)
@@ -389,7 +393,7 @@ class DeepSeekAgentsProvider:
                     )
                 )
             except Exception as error:
-                if request.prompt_version != "casefile-chat-v15":
+                if request.prompt_version not in {"casefile-chat-v15", "casefile-chat-v16"}:
                     raise
                 request.emit(
                     "model.tool_agent.failed",

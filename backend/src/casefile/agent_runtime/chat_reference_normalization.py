@@ -12,6 +12,7 @@ from typing import Any
 from casefile.agent_runtime.chat_audit_validation import rank_and_dedupe_audit_findings
 from casefile.agent_runtime.chat_reference_autofill import autofill_chat_references
 from casefile.agent_runtime.chat_validation import chat_record_ids
+from casefile.agent_runtime.chat_versions import SAFE_PATCH_PROMPT_VERSIONS
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult
 
 
@@ -135,7 +136,7 @@ def normalize_reference_slots(
             if isinstance(request.validation.get("audit_evidence_bundle"), dict)
             else None
         )
-        if request.prompt_version == "casefile-chat-v15":
+        if request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS:
             normalized_findings = autofill_pair_evidence(
                 normalized_findings,
                 object_ids=object_ids,
@@ -149,7 +150,7 @@ def normalize_reference_slots(
             deterministic_pairs=(
                 deterministic_pairs if isinstance(deterministic_pairs, list) else None
             ),
-            require_deterministic_pair=request.prompt_version == "casefile-chat-v15",
+            require_deterministic_pair=request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS,
         )
         if deduped_findings != findings:
             payload["audit_findings"] = deduped_findings
@@ -183,7 +184,7 @@ def normalize_reference_slots(
                     seen_finding_refs.add(finding_ref)
                 minimal_suggestions.append(item)
             payload["suggestions"] = minimal_suggestions
-        if request.prompt_version == "casefile-chat-v15" and isinstance(
+        if request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS and isinstance(
             payload.get("suggestions"), list
         ):
             manual_ids = {

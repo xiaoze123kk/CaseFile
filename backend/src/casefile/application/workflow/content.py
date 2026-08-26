@@ -25,7 +25,7 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V9_VERSION,
+    CHAT_CONTEXT_PROMPT_V10_VERSION,
     CHAT_CONTEXT_PROMPT_VERSION,
 )
 from casefile.agent_runtime.credentials import encrypt_api_key
@@ -979,7 +979,7 @@ class ContentWorkflowMixin:
             elif policy_version == CHAT_CONTEXT_POLICY_V5_VERSION:
                 prompt_version = CHAT_CONTEXT_PROMPT_V6_VERSION
             elif policy_version == CHAT_CONTEXT_POLICY_V6_VERSION:
-                prompt_version = CHAT_CONTEXT_PROMPT_V9_VERSION
+                prompt_version = CHAT_CONTEXT_PROMPT_V10_VERSION
             else:
                 prompt_version = "casefile-chat-v3"
             rollout_prompt = os.environ.get("CASEFILE_CHAT_PROMPT_ROLLOUT", "").strip()
@@ -987,8 +987,9 @@ class ContentWorkflowMixin:
                 "casefile-chat-v13",
                 "casefile-chat-v14",
                 "casefile-chat-v15",
+                "casefile-chat-v16",
             }:
-                # Explicit gray entry only; registry/current default remains unchanged.
+                # Explicit immutable override for rollback or controlled evaluation.
                 prompt_version = rollout_prompt
         return TaskRun(
             project_id=owned.project.id,

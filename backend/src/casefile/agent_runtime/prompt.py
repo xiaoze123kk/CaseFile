@@ -76,6 +76,7 @@ CHAT_PROMPT_PACKAGE_VERSIONS = frozenset(
         "casefile-chat-v13",
         "casefile-chat-v14",
         "casefile-chat-v15",
+        "casefile-chat-v16",
     }
 )
 CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION = "casefile-chat-context-compactor-v1"
@@ -307,9 +308,14 @@ def _with_chat_repair_feedback(
     if not request.repair_feedback:
         return instructions
     lines = "".join(f"- {item}\n" for item in request.repair_feedback)
+    repair_scope = (
+        "只执行下列最小修复"
+        if request.prompt_version == "casefile-chat-v16"
+        else "只修正引用槽"
+    )
     return (
         instructions.rstrip("\n")
-        + "\n\n系统校验修复要求（最高优先级，必须逐项满足；只修正引用槽，"
+        + f"\n\n系统校验修复要求（最高优先级，必须逐项满足；{repair_scope}，"
         "不得改写已通过的正文结论）：\n"
         + lines
     )
@@ -334,7 +340,7 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
     """Resolve the no-tool finalizer output schema for a v14 route."""
 
     if (
-        request.prompt_version == "casefile-chat-v15"
+        request.prompt_version in {"casefile-chat-v15", "casefile-chat-v16"}
         and request.target_locked_repair is not None
     ):
         return CaseFileChatTargetLockedRepairOutput
@@ -418,6 +424,8 @@ def render_chat_finalizer_prompt(
         toolset_version=definition.package.runtime_toolset_version,
     )
     instructions = rendered.instructions
+    if request.prompt_version == "casefile-chat-v16":
+        instructions = _with_chat_repair_feedback(instructions, request)
     if repair_plan:
         instructions += (
             "\n\n系统修复契约（最高优先级，必须逐项满足）：\n"

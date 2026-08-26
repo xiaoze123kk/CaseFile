@@ -1,8 +1,8 @@
 """Phase 4 Context Tools acceptance on the real production path.
 
 v6 (hardened routing + structured logic_audit rollout) is the accepted
-default, pairing ``casefile-chat-context-v6`` with the v12 prompt and v4
-toolset. The v5 opt-in test still runs when
+default, pairing ``casefile-chat-context-v6`` with the public-language v16
+prompt and v4 toolset. The v5 opt-in test still runs when
 ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v5`` (v9 prompt), the
 v4 opt-in test runs when
 ``CASEFILE_CHAT_CONTEXT_ROLLOUT=casefile-chat-context-v4``, and the v3 opt-in
@@ -23,6 +23,9 @@ from application_services_test_support import (
     _adopt_candidate,
     _prepare_task,
 )
+from sqlalchemy import Engine, select
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.chat_tools import (
     CHAT_TOOLSET_V3_VERSION,
@@ -36,15 +39,13 @@ from casefile.agent_runtime.context import (
     CHAT_CONTEXT_PROMPT_V4_VERSION,
     CHAT_CONTEXT_PROMPT_V5_VERSION,
     CHAT_CONTEXT_PROMPT_V6_VERSION,
-    CHAT_CONTEXT_PROMPT_V9_VERSION,
+    CHAT_CONTEXT_PROMPT_V10_VERSION,
 )
 from casefile.agent_runtime.models import CaseFileChatRequest
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
 from casefile.data_postgres.models import AgentThreadContextState, TaskRun
 from casefile.worker.runtime import Worker, WorkerConfig
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -364,7 +365,7 @@ def test_phase4_v5_rollout_binds_v9_v4_toolset_and_structured_audit(
         assert full_validation_issues == list(request.validation_issues)
 
 
-def test_phase4_v6_rollout_binds_v12_v4_toolset_and_hardened_router(
+def test_phase4_v6_rollout_binds_v16_v4_toolset_and_hardened_router(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     rollout = os.environ.get("CASEFILE_CHAT_CONTEXT_ROLLOUT")
@@ -434,13 +435,13 @@ def test_phase4_v6_rollout_binds_v12_v4_toolset_and_hardened_router(
                 first_row.error_code,
                 first_row.error_details_jsonb,
             )
-            assert first_row.prompt_version == CHAT_CONTEXT_PROMPT_V9_VERSION
+            assert first_row.prompt_version == CHAT_CONTEXT_PROMPT_V10_VERSION
             assert first_row.toolset_version == CHAT_TOOLSET_V4_VERSION
             assert first_row.input_jsonb.get("context_policy_version") == ROLLOUT_V6
 
         assert len(provider.requests) == 1
         request = provider.requests[0]
-        assert request.prompt_version == CHAT_CONTEXT_PROMPT_V9_VERSION
+        assert request.prompt_version == CHAT_CONTEXT_PROMPT_V10_VERSION
         assert request.toolset_version == CHAT_TOOLSET_V4_VERSION
         assert request.context_policy_version == ROLLOUT_V6
         execution_profile = request.route.execution_profile

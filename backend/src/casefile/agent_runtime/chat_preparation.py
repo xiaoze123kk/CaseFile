@@ -31,6 +31,7 @@ def prepare_chat_request_artifacts(request: CaseFileChatRequest) -> CaseFileChat
         "casefile-chat-v13",
         "casefile-chat-v14",
         "casefile-chat-v15",
+        "casefile-chat-v16",
     }:
         return request
     validation = dict(request.validation)

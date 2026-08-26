@@ -21,8 +21,10 @@ CHAT_CONTEXT_PROMPT_V6_VERSION = "casefile-chat-v9"
 CHAT_CONTEXT_PROMPT_V7_VERSION = "casefile-chat-v10"
 #: Budget-exhaustion reporting hardening package previously paired with the v6 policy.
 CHAT_CONTEXT_PROMPT_V8_VERSION = "casefile-chat-v11"
-#: Router/query-rewrite hardening package currently paired with the v6 policy.
+#: Router/query-rewrite hardening package previously paired with the v6 policy.
 CHAT_CONTEXT_PROMPT_V9_VERSION = "casefile-chat-v12"
+#: Public author-language package paired with v6 for new M3.6 Chat tasks.
+CHAT_CONTEXT_PROMPT_V10_VERSION = "casefile-chat-v16"
 _REQUIRED_BLOCK_IDS = frozenset(
     {
         "author_message",
@@ -88,5 +90,6 @@ __all__ = [
     "CHAT_CONTEXT_PROMPT_V7_VERSION",
     "CHAT_CONTEXT_PROMPT_V8_VERSION",
     "CHAT_CONTEXT_PROMPT_V9_VERSION",
+    "CHAT_CONTEXT_PROMPT_V10_VERSION",
     "chat_input_payload_from_assembly",
 ]

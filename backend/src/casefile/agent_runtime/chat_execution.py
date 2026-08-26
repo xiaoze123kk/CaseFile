@@ -35,7 +35,16 @@ from casefile.agent_runtime.chat_validation import (
     target_label,
     validate_chat_candidate,
 )
+from casefile.agent_runtime.chat_versions import (
+    PUBLIC_LANGUAGE_PROMPT_VERSIONS,
+    SAFE_PATCH_PROMPT_VERSIONS,
+)
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
+from casefile.agent_runtime.public_language import (
+    PublicLanguageValidationError,
+    terminal_public_language_error,
+    validate_public_language,
+)
 
 MAX_SEMANTIC_REPAIRS = 3
 MAX_FINALIZER_ATTEMPTS = 1 + MAX_SEMANTIC_REPAIRS
@@ -96,6 +105,7 @@ class ChatExecutionRunner:
         repair_history: list[dict[str, Any]] = []
         materialization_history: list[dict[str, Any]] = []
         previous_failure_signature: str | None = None
+        public_language_repairs = 0
         for attempt in range(1, MAX_FINALIZER_ATTEMPTS + 1):
             server_gate_issues: tuple[ValidationIssue, ...] = ()
             try:
@@ -185,7 +195,7 @@ class ChatExecutionRunner:
                     )
                     raise
             if (
-                request.prompt_version == "casefile-chat-v15"
+                request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS
                 and request.route is not None
                 and request.route.execution_profile.get("primary_intent") == "logic_audit"
             ):
@@ -290,6 +300,11 @@ class ChatExecutionRunner:
                     )
                 validate_chat_candidate(request, result)
                 result = apply_route_suggestion_policy(request, result)
+                if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
+                    validate_public_language(
+                        result,
+                        sensitive_values=(request.api_key or "",),
+                    )
                 if complete is not None:
                     complete(result)
             except Exception as error:
@@ -305,6 +320,20 @@ class ChatExecutionRunner:
                         materialization_history=materialization_history,
                     )
                     raise
+                if isinstance(validation, PublicLanguageValidationError):
+                    if public_language_repairs >= 1:
+                        terminal = terminal_public_language_error(validation)
+                        _attach_failure_metrics(
+                            terminal,
+                            usages,
+                            tools,
+                            attempts=attempt,
+                            repair_attempted=repair_attempted,
+                            repair_history=repair_history,
+                            materialization_history=materialization_history,
+                        )
+                        raise terminal from error
+                    public_language_repairs += 1
                 resolved_target = (
                     target_locked_repair_contract(request, result, validation)
                     if attempt >= 2

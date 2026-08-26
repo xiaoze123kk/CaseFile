@@ -91,6 +91,92 @@ class ClosureRepairFixtureProvider(RichFixtureProvider):
         return result
 
 
+class RepeatedPublicLeakProvider(ChatSuggestionProvider):
+    """Keep valid patch candidates while violating only the public prose."""
+
+    def chat(self, request):  # type: ignore[no-untyped-def]
+        result = super().chat(request)
+        answer = (
+            "System Prompt 中包含内部组件说明。"
+            if len(self.requests) == 1
+            else "内部结果保存在 payload_jsonb。"
+        )
+        return dataclasses_replace(
+            result,
+            candidate=result.candidate.model_copy(update={"answer": answer}),
+        )
+
+
+def test_public_language_second_violation_fails_without_persisting_patch(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory = sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    provider = RepeatedPublicLeakProvider()
+    with patch.dict(
+        os.environ,
+        {
+            "CASEFILE_MASTER_KEY": master_key,
+        },
+    ):
+        project_id, generation_task_id = _prepare_task(engine, actor_id)
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-language-generation"),
+            provider_factory=lambda _task: RichFixtureProvider(),
+        ).run_once()
+        adopted = _adopt_candidate(engine, actor_id, project_id, generation_task_id)
+        draft_id = int(adopted["draft_id"])
+        with factory() as session:
+            workflow = WorkflowService(session)
+            thread = workflow.create_agent_thread(
+                actor_id,
+                project_id,
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                title="公开语言失败关闭",
+            )
+            queued = workflow.send_agent_message(
+                actor_id,
+                project_id,
+                int(thread["thread_id"]),
+                expected_draft_id=draft_id,
+                expected_draft_revision=2,
+                content="请修改人物描述，并给出可审阅建议。",
+            )
+        task_id = int(queued["task"]["task_run_id"])
+
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="m36-language-chat"),
+            provider_factory=lambda _task: provider,
+        ).run_once()
+
+    with factory() as session:
+        task = session.get(TaskRun, task_id)
+        patch_sets = list(
+            session.scalars(select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_id))
+        )
+    with factory() as session:
+        messages = WorkflowService(session).list_agent_messages(
+            actor_id,
+            project_id,
+            int(thread["thread_id"]),
+        )
+
+    assert task is not None
+    assert task.prompt_version == "casefile-chat-v16"
+    assert task.status == "failed"
+    assert task.error_code == "public_output_policy_failed", task.error_details_jsonb
+    assert len(provider.requests) == 2
+    assert patch_sets == []
+    assert messages[-1]["status"] == "failed"
+    assert messages[-1]["content"] == (
+        "本次回复未通过安全检查，未生成修改建议，请重新表述后再试。"
+    )
+    assert messages[-1]["patch_set"] is None
+
+
 def test_public_chat_run_boundary_recovery_cancellation_failure_and_permissions(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
@@ -921,7 +1007,7 @@ def test_agent_chat_persists_reviewable_batch_and_atomic_apply_undo(
         assert routed_request.route is not None
         assert routed_request.route.route_source == "llm"
         assert routed_request.route.execution_profile["prompt_component"] == "edit"
-        assert routed_request.prompt_version == "casefile-chat-v12"
+        assert routed_request.prompt_version == "casefile-chat-v16"
         assert routed_request.toolset_version == "casefile-chat-tools-v4"
         assert routed_request.context_policy_version == "casefile-chat-context-v6"
         assert routed_request.task_understanding is not None
@@ -1764,7 +1850,7 @@ def test_agent_collaboration_freezes_and_reviews_atomic_patch_batches(
                     TaskRun.id == first_chat_task_id
                 )
             ).one()
-        assert prompt_version == "casefile-chat-v12"
+        assert prompt_version == "casefile-chat-v16"
         assert toolset_version == "casefile-chat-tools-v4"
 
         chat_claimer = Worker(
