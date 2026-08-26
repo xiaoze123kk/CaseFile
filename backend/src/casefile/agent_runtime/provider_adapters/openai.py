@@ -7,18 +7,6 @@ from typing import Any, cast
 
 from agents import ModelSettings, Tool
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import (
-    NovelPlanCandidate,
-    SemanticFillProposal,
-    SkeletonProposal,
-    StoryPlanStructuralPatch,
-)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
@@ -131,6 +119,11 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _run_chat_tool_agent,
     _validate_polish_candidate,
 )
+from casefile.agent_runtime.scene_compiler import (
+    SceneFillBatchRequest,
+    SceneFillBatchResult,
+)
+from casefile.agent_runtime.scene_compiler_prompt import render_scene_fill_prompt
 from casefile.agent_runtime.story_planner import (
     StoryPlannerPatchProviderResult,
     StoryPlannerPatchRequest,
@@ -144,10 +137,44 @@ from casefile.agent_runtime.story_planner_prompt import (
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SceneSemanticFillProposal,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
+)
 
 
 class OpenAIAgentsProvider:
     """OpenAI Responses implementation with structured outputs."""
+
+    def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_scene_fill_prompt(request)
+        proposal, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SceneSemanticFillProposal,
+                stage="scene_semantic_fill",
+                component_id="scene_compiler",
+                schema_id="compiler.scene-semantic-fill.v1",
+                max_turns=1,
+                temperature=0,
+                strict_validation=True,
+                max_protocol_attempts=1,
+            )
+        )
+        return SceneFillBatchResult(proposal=proposal, usage=usage)
 
     def propose_skeleton(
         self, request: SkeletonProposalRequest
@@ -766,6 +793,7 @@ class OpenAIAgentsProvider:
             | StoryPlannerPatchRequest
             | SkeletonProposalRequest
             | SemanticFillRequest
+            | SceneFillBatchRequest
             | GeneralMutationPlannerRequest
         ),
         *,

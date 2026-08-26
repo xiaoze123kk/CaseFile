@@ -43,6 +43,9 @@
     "story_planner_semantic_fill": {
       "current_version": "story-planner-semantic-fill-v1"
     },
+    "scene_compiler_semantic_fill": {
+      "current_version": "scene-compiler-semantic-fill-v1"
+    },
     "general_mutation_planner": {
       "current_version": "general-mutation-planner-v6"
     }

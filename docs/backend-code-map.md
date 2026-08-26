@@ -72,6 +72,7 @@
 | `backend/src/casefile/domain/narrative_compiler/scene_plan.py` | N4.4 Scene Execution 纯领域边界：绑定完整 NovelPlanIR+NarrativeIR 输入，校验模型只为既有 Scene 填充来源支持的结构化 Beat，再由服务器生成 Beat/Edge ID、来源证明、索引、读者揭露状态与语义签名；原机械展开仅作 baseline/reference helper，不生成正文或引入 Z3。 |
 | `backend/src/casefile/domain/narrative_compiler/scene_compiler_input.py` | N4.4 v2 冻结输入与最小模型视图投影：绑定 NovelPlan/NarrativeIR/Exposure/Profile，派生硬执行义务和来源状态种子，并按章生成最多八场的稳定批次。 |
 | `backend/src/casefile/agent_runtime/constraint_first_story_planner.py`、`constraint_first_story_planner_prompt.py` | 已晋级的 Constraint-First 双模型编排：静态 UNSAT 先于 Provider、skeleton/fill 独立 Prompt/Schema/hash、exact-hash stage 恢复、服务端组装与复验。 |
+| `backend/src/casefile/agent_runtime/scene_compiler.py`、`scene_compiler_prompt.py` | N4.4 影子 Scene Fill 编排：章内最多八场、逐批状态哈希链、exact-hash 恢复、单轮无工具 Prompt 与模型所有字段的确定性越权门禁。 |
 | `backend/src/casefile/agent_runtime/story_planner.py`、`story_planner_prompt.py` | Story Planner Provider-neutral 请求、最多三次结构修复和版本化无工具 Prompt 渲染；ScenePurpose 错误只允许强类型最小补丁，其他结构错误保留完整候选修复，语义错误不进入 repair。 |
 | `backend/src/casefile/worker/executors/story_planner.py` | 默认 v1 Story Planner 与显式未激活 Constraint-First 版本的执行器；后者按 `skeleton_proposal`/`semantic_fill` 独立 input hash 持久化 ModelCall，崩溃后只恢复 exact-match 成功输出。 |
 | `backend/src/casefile/benchmark/novel_plan_eval.py` | Novel Plan Regression/Safety/24 Task Capability Benchmark、v1/v2 输入与定向 Task 选择、部分运行禁晋级、G2 oracle evidence 审计、生产/G2 失败分层、动态 cohort、严格 fingerprint checkpoint/resume、G0–G3 分层与精确 Pro baseline/候选晋级门禁。 |
