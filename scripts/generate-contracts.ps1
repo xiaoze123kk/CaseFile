@@ -149,6 +149,7 @@ from .planner_model_view_v3 import Schema as PlannerModelViewV3
 from .planner_model_view_v4 import Schema as PlannerModelViewV4
 from .scene_compiler import Schema as SceneCompilerInputBundleV2
 from .scene_plan import Schema as ScenePlanIR
+from .scene_plan_v2 import Schema as ScenePlanIRV2
 from .validation_issue import Schema as ValidationIssue
 
 ScenePlan = ScenePlanIR
@@ -183,6 +184,7 @@ __all__ = [
     "SceneSemanticFillProposal",
     "ScenePlan",
     "ScenePlanIR",
+    "ScenePlanIRV2",
     "SkeletonProposal",
     "NovelProfile",
     "PlannerInputBundle",
@@ -220,6 +222,7 @@ from .public import (
     SceneCompilerModelView,
     ScenePlan,
     ScenePlanIR,
+    ScenePlanIRV2,
     SceneSemanticFillProposal,
     ValidationIssue,
 )
@@ -240,6 +243,7 @@ __all__ += [
     "SceneCompilerModelView",
     "ScenePlan",
     "ScenePlanIR",
+    "ScenePlanIRV2",
     "SceneSemanticFillProposal",
     "ValidationIssue",
 ]

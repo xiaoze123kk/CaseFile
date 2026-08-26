@@ -71,6 +71,7 @@
 | `backend/src/casefile/domain/narrative_compiler/planner_input.py`、`planner_constraints.py`、`planning_solver.py`、`novel_plan.py` | PlannerInput v1–v3、ModelView v3/v4、ConstraintIR v1/v2、PlanningProblem/slots、纯 PlanningSolver 接口与确定性参考后端，以及 NovelPlan 权威语义门禁；Constraint-First 先锁定 skeleton，再只合并模型所有 fill 字段，现有 mode-repair 仅保留为最终安全网。 |
 | `backend/src/casefile/domain/narrative_compiler/scene_plan.py` | N4.4 Scene Execution 纯领域边界：绑定完整 NovelPlanIR+NarrativeIR 输入，校验模型只为既有 Scene 填充来源支持的结构化 Beat，再由服务器生成 Beat/Edge ID、来源证明、索引、读者揭露状态与语义签名；原机械展开仅作 baseline/reference helper，不生成正文或引入 Z3。 |
 | `backend/src/casefile/domain/narrative_compiler/scene_compiler_input.py` | N4.4 v2 冻结输入与最小模型视图投影：绑定 NovelPlan/NarrativeIR/Exposure/Profile，派生硬执行义务和来源状态种子，并按章生成最多八场的稳定批次。 |
+| `backend/src/casefile/domain/narrative_compiler/scene_fill.py`、`scene_state_engine.py` | N4.4 模型字段纯领域门禁与 ScenePlanIR v2 权威状态引擎：重建 Exposure，应用知识/地点增量，规范化因果和 setup/payoff，并通过完整重放 Linter 失败关闭。 |
 | `backend/src/casefile/agent_runtime/constraint_first_story_planner.py`、`constraint_first_story_planner_prompt.py` | 已晋级的 Constraint-First 双模型编排：静态 UNSAT 先于 Provider、skeleton/fill 独立 Prompt/Schema/hash、exact-hash stage 恢复、服务端组装与复验。 |
 | `backend/src/casefile/agent_runtime/scene_compiler.py`、`scene_compiler_prompt.py` | N4.4 影子 Scene Fill 编排：章内最多八场、逐批状态哈希链、exact-hash 恢复、单轮无工具 Prompt 与模型所有字段的确定性越权门禁。 |
 | `backend/src/casefile/agent_runtime/story_planner.py`、`story_planner_prompt.py` | Story Planner Provider-neutral 请求、最多三次结构修复和版本化无工具 Prompt 渲染；ScenePurpose 错误只允许强类型最小补丁，其他结构错误保留完整候选修复，语义错误不进入 repair。 |

@@ -334,6 +334,7 @@ export interface EditingContracts {
   scene_compiler_model_view?: SceneCompilerModelView;
   scene_semantic_fill?: SceneSemanticFillProposal;
   scene_plan: ScenePlanIR;
+  scene_plan_v2?: ScenePlanIRV2;
   novel_profile: NovelProfile;
   planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
   planner_model_view: PlannerModelViewV3 | PlannerModelViewV4;
@@ -1313,6 +1314,187 @@ export interface ScenePlanMetrics {
   beat_count: number;
   exposure_count: number;
   resolution_action_count: number;
+}
+export interface ScenePlanIRV2 {
+  schema_id: "compiler.scene-plan.v2";
+  compiler_version: "compiler.scene-execution.v2";
+  source: ScenePlanSourceV2;
+  /**
+   * @minItems 1
+   */
+  chapters: [ChapterExecution, ...ChapterExecution[]];
+  /**
+   * @minItems 1
+   */
+  scenes: [SceneExecutionV2, ...SceneExecutionV2[]];
+  /**
+   * @minItems 1
+   */
+  beats: [BeatExecutionV2, ...BeatExecutionV2[]];
+  edges: NarrativeExecutionEdgeV2[];
+  initial_state: ExecutionState;
+  final_state: ExecutionState;
+  indexes: ScenePlanIndexesV2;
+  diagnostics: CompilerDiagnostic[];
+  metrics: ScenePlanMetricsV2;
+}
+export interface ScenePlanSourceV2 {
+  novel_plan_hash: string;
+  narrative_ir_hash: string;
+  scene_compiler_input_hash: string;
+  semantic_fill_hash: string;
+  component_fingerprint: string;
+}
+export interface SceneExecutionV2 {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  objective: string;
+  dramatic_goal: string;
+  conflict: string;
+  outcome: string;
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  story_time_refs: ObjectRef[];
+  audience_state_before: AudienceExposure[];
+  audience_state_after: AudienceExposure[];
+  allowed_reveals: ExposurePlacement1[];
+  forbidden_reveal_entry_keys: string[];
+  resolution_actions: ResolutionPlacement1[];
+  prerequisite_scene_ids: string[];
+  /**
+   * @minItems 1
+   */
+  beat_ids: [string, ...string[]];
+  state_before_hash: string;
+  state_after_hash: string;
+  /**
+   * @minItems 1
+   */
+  source_refs: [CompilerSourceRef, ...CompilerSourceRef[]];
+}
+export interface BeatExecutionV2 {
+  beat_id: string;
+  scene_id: string;
+  ordinal: number;
+  kind: "event" | "exposure" | "resolution" | "transition";
+  directive: string;
+  actor_refs: ObjectRef[];
+  target_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  obligation_keys: string[];
+  prerequisite_beat_ids: string[];
+  event_refs: ObjectRef[];
+  exposure_actions: ExposurePlacement1[];
+  resolution_actions: ResolutionPlacement1[];
+  state_delta: BeatStateDelta;
+  setup_keys: string[];
+  payoff_keys: string[];
+  /**
+   * @minItems 1
+   */
+  source_refs: [CompilerSourceRef, ...CompilerSourceRef[]];
+}
+export interface BeatStateDelta {
+  knowledge_transitions: KnowledgeTransition[];
+  location_assertions: LocationAssertion[];
+}
+export interface NarrativeExecutionEdgeV2 {
+  edge_id: string;
+  relation:
+    | "chapter_contains_scene"
+    | "scene_contains_beat"
+    | "scene_enables_scene"
+    | "beat_causes_beat"
+    | "beat_pays_off_setup";
+  from_node_id: string;
+  to_node_id: string;
+}
+export interface ExecutionState {
+  audience_exposure: AudienceExposure[];
+  character_knowledge: KnowledgeStateValue[];
+  locations: LocationStateValue[];
+  open_setups: OpenSetupState[];
+}
+export interface KnowledgeStateValue {
+  subject_ref: ObjectRef;
+  knows_refs: ObjectRef[];
+  believes_refs: ObjectRef[];
+  false_belief_refs: ObjectRef[];
+}
+export interface LocationStateValue {
+  subject_ref: ObjectRef;
+  location_ref: ObjectRef;
+  /**
+   * @minItems 1
+   */
+  story_time_refs: [ObjectRef, ...ObjectRef[]];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+}
+export interface OpenSetupState {
+  setup_key: string;
+  setup_beat_id: string;
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+}
+export interface ScenePlanIndexesV2 {
+  chapter_scene_ids: {
+    [k: string]: string[];
+  };
+  scene_beat_ids: {
+    [k: string]: string[];
+  };
+  scene_dependencies: {
+    [k: string]: string[];
+  };
+  beat_dependencies: {
+    [k: string]: string[];
+  };
+  exposure_scene_ids: {
+    [k: string]: string[];
+  };
+  resolution_scene_ids: {
+    [k: string]: string[];
+  };
+  setup_beat_ids: {
+    [k: string]: string;
+  };
+  payoff_beat_ids: {
+    [k: string]: string[];
+  };
+}
+export interface ScenePlanMetricsV2 {
+  chapter_count: number;
+  scene_count: number;
+  beat_count: number;
+  exposure_count: number;
+  resolution_action_count: number;
+  knowledge_transition_count: number;
+  location_assertion_count: number;
+  setup_count: number;
+  payoff_count: number;
 }
 export interface NovelProfile {
   schema_id: "compiler.novel-profile.v1";

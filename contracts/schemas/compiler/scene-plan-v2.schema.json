@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/scene-plan-v2.schema.json",
+  "title": "ScenePlanIRV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "compiler_version", "source", "chapters", "scenes", "beats",
+    "edges", "initial_state", "final_state", "indexes", "diagnostics", "metrics"
+  ],
+  "properties": {
+    "schema_id": {"const": "compiler.scene-plan.v2"},
+    "compiler_version": {"const": "compiler.scene-execution.v2"},
+    "source": {"$ref": "#/$defs/ScenePlanSourceV2"},
+    "chapters": {
+      "type": "array",
+      "items": {"$ref": "scene-plan.schema.json#/$defs/ChapterExecution"},
+      "minItems": 1
+    },
+    "scenes": {"type": "array", "items": {"$ref": "#/$defs/SceneExecutionV2"}, "minItems": 1},
+    "beats": {"type": "array", "items": {"$ref": "#/$defs/BeatExecutionV2"}, "minItems": 1},
+    "edges": {"type": "array", "items": {"$ref": "#/$defs/NarrativeExecutionEdgeV2"}},
+    "initial_state": {"$ref": "#/$defs/ExecutionState"},
+    "final_state": {"$ref": "#/$defs/ExecutionState"},
+    "indexes": {"$ref": "#/$defs/ScenePlanIndexesV2"},
+    "diagnostics": {
+      "type": "array",
+      "items": {"$ref": "compiler.schema.json#/$defs/CompilerDiagnostic"}
+    },
+    "metrics": {"$ref": "#/$defs/ScenePlanMetricsV2"}
+  },
+  "$defs": {
+    "ScenePlanSourceV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "novel_plan_hash", "narrative_ir_hash", "scene_compiler_input_hash",
+        "semantic_fill_hash", "component_fingerprint"
+      ],
+      "properties": {
+        "novel_plan_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "semantic_fill_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "component_fingerprint": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "KnowledgeStateValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "knows_refs", "believes_refs", "false_belief_refs"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "knows_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "believes_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "false_belief_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true}
+      }
+    },
+    "LocationStateValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "location_ref", "story_time_refs", "basis_refs"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "location_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "story_time_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "basis_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "OpenSetupState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup_key", "setup_beat_id", "basis_refs"],
+      "properties": {
+        "setup_key": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+        "setup_beat_id": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"},
+        "basis_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "ExecutionState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["audience_exposure", "character_knowledge", "locations", "open_setups"],
+      "properties": {
+        "audience_exposure": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/AudienceExposure"}, "uniqueItems": true},
+        "character_knowledge": {"type": "array", "items": {"$ref": "#/$defs/KnowledgeStateValue"}},
+        "locations": {"type": "array", "items": {"$ref": "#/$defs/LocationStateValue"}},
+        "open_setups": {"type": "array", "items": {"$ref": "#/$defs/OpenSetupState"}}
+      }
+    },
+    "BeatStateDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["knowledge_transitions", "location_assertions"],
+      "properties": {
+        "knowledge_transitions": {"type": "array", "items": {"$ref": "scene-compiler.schema.json#/$defs/KnowledgeTransition"}},
+        "location_assertions": {"type": "array", "items": {"$ref": "scene-compiler.schema.json#/$defs/LocationAssertion"}}
+      }
+    },
+    "SceneExecutionV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id", "chapter_id", "discourse_order", "purpose", "presentation_mode",
+        "objective", "dramatic_goal", "conflict", "outcome", "pov_ref", "participant_refs",
+        "location_ref", "story_time_refs", "audience_state_before", "audience_state_after",
+        "allowed_reveals", "forbidden_reveal_entry_keys", "resolution_actions",
+        "prerequisite_scene_ids", "beat_ids", "state_before_hash", "state_after_hash", "source_refs"
+      ],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "novel-plan.schema.json#/$defs/ScenePurpose"},
+        "presentation_mode": {"$ref": "novel-plan.schema.json#/$defs/PresentationMode"},
+        "objective": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "dramatic_goal": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "conflict": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "outcome": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "pov_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "participant_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "location_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "story_time_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "audience_state_before": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/AudienceExposure"}, "uniqueItems": true},
+        "audience_state_after": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/AudienceExposure"}, "uniqueItems": true},
+        "allowed_reveals": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/ExposurePlacement"}, "uniqueItems": true},
+        "forbidden_reveal_entry_keys": {"type": "array", "items": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"}, "uniqueItems": true},
+        "resolution_actions": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/ResolutionPlacement"}, "uniqueItems": true},
+        "prerequisite_scene_ids": {"type": "array", "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"}, "uniqueItems": true},
+        "beat_ids": {"type": "array", "items": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"}, "minItems": 1, "uniqueItems": true},
+        "state_before_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "state_after_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "source_refs": {"type": "array", "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "BeatExecutionV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beat_id", "scene_id", "ordinal", "kind", "directive", "actor_refs", "target_refs",
+        "basis_refs", "obligation_keys", "prerequisite_beat_ids", "event_refs", "exposure_actions",
+        "resolution_actions", "state_delta", "setup_keys", "payoff_keys", "source_refs"
+      ],
+      "properties": {
+        "beat_id": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"},
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "kind": {"$ref": "scene-plan.schema.json#/$defs/BeatKind"},
+        "directive": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "actor_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "target_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "basis_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "obligation_keys": {"type": "array", "items": {"type": "string", "pattern": "^obligation_scene_[a-z0-9][a-z0-9_]{0,120}$"}, "uniqueItems": true},
+        "prerequisite_beat_ids": {"type": "array", "items": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"}, "uniqueItems": true},
+        "event_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "exposure_actions": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/ExposurePlacement"}, "uniqueItems": true},
+        "resolution_actions": {"type": "array", "items": {"$ref": "scene-plan.schema.json#/$defs/ResolutionPlacement"}, "uniqueItems": true},
+        "state_delta": {"$ref": "#/$defs/BeatStateDelta"},
+        "setup_keys": {"type": "array", "items": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"}, "uniqueItems": true},
+        "payoff_keys": {"type": "array", "items": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"}, "uniqueItems": true},
+        "source_refs": {"type": "array", "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "NarrativeExecutionRelationV2": {
+      "enum": [
+        "chapter_contains_scene", "scene_contains_beat", "scene_enables_scene",
+        "beat_causes_beat", "beat_pays_off_setup"
+      ]
+    },
+    "NarrativeExecutionEdgeV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge_id", "relation", "from_node_id", "to_node_id"],
+      "properties": {
+        "edge_id": {"type": "string", "pattern": "^edge_[a-z0-9][a-z0-9_]{0,150}$"},
+        "relation": {"$ref": "#/$defs/NarrativeExecutionRelationV2"},
+        "from_node_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "to_node_id": {"type": "string", "minLength": 1, "maxLength": 160}
+      }
+    },
+    "ScenePlanIndexesV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chapter_scene_ids", "scene_beat_ids", "scene_dependencies", "beat_dependencies",
+        "exposure_scene_ids", "resolution_scene_ids", "setup_beat_ids", "payoff_beat_ids"
+      ],
+      "properties": {
+        "chapter_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "scene_beat_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "scene_dependencies": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "beat_dependencies": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "exposure_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "resolution_scene_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "setup_beat_ids": {"type": "object", "additionalProperties": {"type": "string"}},
+        "payoff_beat_ids": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}}
+      }
+    },
+    "ScenePlanMetricsV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chapter_count", "scene_count", "beat_count", "exposure_count",
+        "resolution_action_count", "knowledge_transition_count", "location_assertion_count",
+        "setup_count", "payoff_count"
+      ],
+      "properties": {
+        "chapter_count": {"type": "integer", "minimum": 1},
+        "scene_count": {"type": "integer", "minimum": 1},
+        "beat_count": {"type": "integer", "minimum": 1},
+        "exposure_count": {"type": "integer", "minimum": 0},
+        "resolution_action_count": {"type": "integer", "minimum": 0},
+        "knowledge_transition_count": {"type": "integer", "minimum": 0},
+        "location_assertion_count": {"type": "integer", "minimum": 0},
+        "setup_count": {"type": "integer", "minimum": 0},
+        "payoff_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

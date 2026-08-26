@@ -50,6 +50,7 @@
       "$ref": "compiler/scene-compiler.schema.json#/$defs/SceneSemanticFillProposal"
     },
     "scene_plan": {"$ref": "compiler/scene-plan.schema.json"},
+    "scene_plan_v2": {"$ref": "compiler/scene-plan-v2.schema.json"},
     "novel_profile": {"$ref": "compiler/novel-profile.schema.json"},
     "planner_input": {
       "oneOf": [
