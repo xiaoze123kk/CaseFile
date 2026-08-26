@@ -344,15 +344,29 @@ def chat_finalizer_output_type(request: CaseFileChatRequest) -> type[BaseModel]:
         and request.target_locked_repair is not None
     ):
         return CaseFileChatTargetLockedRepairOutput
+    _component_id, schema_id = chat_finalizer_component(request)
+    return OUTPUT_SCHEMAS[schema_id]
+
+
+def chat_finalizer_component(request: CaseFileChatRequest) -> tuple[str, str]:
+    """Resolve the persisted component and output-schema identity for a finalizer call."""
+
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
-        return chat_executor_output_type(request)
+        raise ValueError("Structured chat finalizer requires a Prompt Package")
     base_component = _chat_executor_component_id(definition, request)
-    finalizer_component = f"{base_component}_finalizer"
-    component = definition.package.components.get(finalizer_component)
+    component_id = f"{base_component}_finalizer"
+    component = definition.package.components.get(component_id)
     if component is None:
-        return chat_executor_output_type(request)
-    return OUTPUT_SCHEMAS[component.output_schema_id]
+        raise ValueError(
+            f"Prompt Package {request.prompt_version} has no finalizer for {base_component}"
+        )
+    schema_id = (
+        "casefile-chat-target-locked-repair-v1"
+        if request.target_locked_repair is not None
+        else component.output_schema_id
+    )
+    return component_id, schema_id
 
 
 def render_chat_executor_prompt(request: CaseFileChatRequest) -> tuple[str, str]:
@@ -401,12 +415,7 @@ def render_chat_finalizer_prompt(
     definition = load_prompt("casefile_chat", request.prompt_version)
     if definition.package is None:
         raise ValueError("Structured chat finalizer requires a Prompt Package")
-    base_component = _chat_executor_component_id(definition, request)
-    finalizer_component = f"{base_component}_finalizer"
-    if finalizer_component not in definition.package.components:
-        raise ValueError(
-            f"Prompt Package {request.prompt_version} has no finalizer for {base_component}"
-        )
+    finalizer_component, _schema_id = chat_finalizer_component(request)
     payload = dict(request.assembled_input or _casefile_chat_payload(request))
     payload.update(
         {
@@ -559,6 +568,7 @@ __all__ = [
     "brief_intake_synthesize_input",
     "brief_strategy_options_input",
     "casefile_chat_input",
+    "chat_finalizer_component",
     "chat_router_input",
     "generation_input",
     "idea_generation_input",

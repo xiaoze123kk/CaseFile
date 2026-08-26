@@ -93,6 +93,7 @@ from casefile.agent_runtime.models import (
 )
 from casefile.agent_runtime.prompt import (
     COMPONENT_GENERATION_PROMPT_VERSIONS,
+    chat_finalizer_component,
     chat_finalizer_output_type,
     render_chat_executor_prompt,
     render_chat_finalizer_prompt,
@@ -1017,7 +1018,7 @@ class FakeProvider:
                 },
             )
         request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
-        render_chat_finalizer_prompt(
+        finalizer_instructions, _finalizer_input = render_chat_finalizer_prompt(
             request,
             tool_ledger=ledger_payload,
             evidence_summary=""
@@ -1027,10 +1028,27 @@ class FakeProvider:
             repair_plan=request.repair_plan,
         )
         output_type = chat_finalizer_output_type(request)
+        finalizer_component_id, finalizer_schema_id = chat_finalizer_component(request)
         request.emit(
             "model.finalizer.started",
             "finalizing",
-            {"model_id": request.model_id, "repair": request.repair_plan is not None},
+            {
+                "model_id": request.model_id,
+                "schema_id": finalizer_schema_id,
+                "repair": request.repair_plan is not None,
+            },
+        )
+        request.emit(
+            "agent.model_call.started",
+            "finalizing",
+            {
+                "component_id": finalizer_component_id,
+                "schema_id": finalizer_schema_id,
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.model_id,
+                "prompt_sha256": sha256(finalizer_instructions.encode("utf-8")).hexdigest(),
+            },
         )
         referenced = [
             object_id
@@ -1051,6 +1069,20 @@ class FakeProvider:
             }
         )
         usage = _zero_usage()
+        serialized_output = candidate.model_dump_json().encode("utf-8")
+        request.emit(
+            "agent.model_call.completed",
+            "finalizing",
+            {
+                "component_id": finalizer_component_id,
+                "schema_id": finalizer_schema_id,
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(serialized_output).hexdigest(),
+                "output_size_bytes": len(serialized_output),
+                "usage": usage,
+            },
+        )
         request.emit(
             "model.finalizer.completed",
             "finalizing",

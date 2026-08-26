@@ -10,6 +10,7 @@ from casefile.benchmark.chat_public_language_qualification import (
     build_qualification_report,
     inspect_public_payload,
     load_public_language_suite,
+    run_public_language_diagnostics,
     run_public_language_trials,
 )
 
@@ -42,6 +43,10 @@ def _passing_rows() -> tuple[PublicLanguageTrialEvidence, ...]:
             false_block=False,
             patch_present=task.patch_expectation != "none",
             no_auto_apply=True,
+            model_call_count=1,
+            model_call_evidence_complete=True,
+            model_binding_mismatch=False,
+            unterminated_model_call_count=0,
             exact_model_observed=True,
             exact_prompt_observed=True,
             run_status="succeeded",
@@ -113,11 +118,14 @@ def test_all_green_report_passes_m36_but_not_whole_m_series() -> None:
     )
 
     assert report["qualification_outcome"] == "passed"
+    assert report["schema_version"].endswith("report-v2")
     assert report["m3_6_release_ready"] is True
     assert report["m_series_release_ready"] is False
     assert report["metrics"]["completed_trials"] == 48
     assert report["metrics"]["task_pass_rate"] == 1.0
     assert report["metrics"]["pass_at_3"] == 1.0
+    assert report["metrics"]["model_call_evidence_missing_count"] == 0
+    assert report["metrics"]["model_binding_mismatch_count"] == 0
     assert all(report["gates"].values())
 
 
@@ -141,6 +149,83 @@ def test_infrastructure_and_public_boundary_failures_remain_distinct() -> None:
 
     assert infrastructure["qualification_outcome"] == "inconclusive_infrastructure"
     assert boundary["qualification_outcome"] == "failed_public_boundary"
+
+
+def test_runtime_binding_and_evidence_integrity_are_mutually_classified() -> None:
+    suite = load_public_language_suite(ROOT)
+    rows = list(_passing_rows())
+    rows[0] = replace(
+        rows[0],
+        task_passed=False,
+        model_binding_mismatch=True,
+        exact_model_observed=False,
+    )
+    binding = build_qualification_report(
+        manifest=_manifest(), suite=suite, rows=rows, source_stable=True
+    )
+    rows = list(_passing_rows())
+    rows[0] = replace(
+        rows[0],
+        task_passed=False,
+        model_call_count=0,
+        model_call_evidence_complete=False,
+        exact_model_observed=False,
+    )
+    evidence = build_qualification_report(
+        manifest=_manifest(), suite=suite, rows=rows, source_stable=True
+    )
+
+    assert binding["qualification_outcome"] == "failed_runtime_binding"
+    assert binding["metrics"]["model_binding_mismatch_count"] == 1
+    assert evidence["qualification_outcome"] == "inconclusive_evidence_integrity"
+    assert evidence["metrics"]["model_call_evidence_missing_count"] == 1
+
+
+def test_diagnostic_report_is_explicitly_ineligible_and_contains_no_model_prose() -> None:
+    suite = load_public_language_suite(ROOT)
+
+    class DiagnosticExecutor:
+        def execute_trial(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return None
+
+        def diagnostic_snapshot(self):  # type: ignore[no-untyped-def]
+            return {
+                "trial_status": "passed",
+                "route": {
+                    "route_source": "rule_capability",
+                    "primary_intent": "edit_request",
+                },
+                "steps": [
+                    {"component_id": "chat_finalizer", "execution_no": 1, "status": "succeeded"}
+                ],
+                "reason_codes": ["rule_capability:general_mutation_create"],
+                "model_calls": [
+                    {
+                        "component_id": "chat_finalizer",
+                        "status": "succeeded",
+                        "provider": "deepseek",
+                        "model_id": MODEL_ID,
+                        "prompt_version": PROMPT_VERSION,
+                        "schema_id": "casefile-chat-output-v1",
+                    }
+                ],
+                "patch_set_count": 1,
+                "task_error_code": None,
+            }
+
+    report = run_public_language_diagnostics(
+        DiagnosticExecutor(),
+        suite,
+        task_id="public-create-event",
+        trial_count=1,
+    )
+
+    assert report["qualification_eligible"] is False
+    assert report["diagnostic_passed"] is True
+    assert report["task_id"] == "public-create-event"
+    assert report["results"][0]["patch_set_count"] == 1
+    assert "answer" not in repr(report)
+    assert "body" not in repr(report)
 
 
 def test_runner_records_exception_and_continues_every_frozen_trial() -> None:

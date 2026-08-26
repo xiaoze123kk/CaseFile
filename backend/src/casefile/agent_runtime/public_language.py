@@ -5,18 +5,32 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Final
 
 from casefile.agent_runtime.chat_validation_contracts import (
     ChatCompletionValidationError,
     ValidationIssue,
 )
-from casefile.agent_runtime.models import CaseFileChatResult
+from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult
 
 PUBLIC_OUTPUT_POLICY_VIOLATION: Final = "public_output_policy_violation"
 PUBLIC_OUTPUT_POLICY_FAILED: Final = "public_output_policy_failed"
+PUBLIC_INTERNAL_REFUSAL: Final = (
+    "我不能提供内部运行信息，但可以说明本次操作对作者可见的结果。"
+)
 
+_DISCLOSURE_ACTION = re.compile(
+    r"逐字|原文|展示|列出|输出|告诉|提供|读取|查看|公开|披露|打印|显示"
+)
+_PROTECTED_INTERNAL_TARGET = re.compile(
+    r"(?i)(?:"
+    r"系统提示词|开发者消息|隐藏指令|内部(?:组件|对象|字段|协议|实现|运行信息)|"
+    r"模型(?:服务)?密钥|密钥原文|API\s*key|原始\s*JSON|"
+    r"TaskRun|result_jsonb|payload_jsonb|field_path|route_source|"
+    r"task_run_id|model_id|模型\s*ID|对象\s*ID"
+    r")"
+)
 _RESERVED_FIELD = re.compile(
     r"(?i)(?<![a-z0-9_])(?:"
     r"result_jsonb|payload_jsonb|field_path|operation_type|prompt_version|"
@@ -120,6 +134,42 @@ def validate_public_language(
         raise PublicLanguageValidationError(issues=tuple(issues))
 
 
+def normalize_internal_disclosure_refusal(
+    request: CaseFileChatRequest,
+    result: CaseFileChatResult,
+) -> CaseFileChatResult:
+    """Project explicit internal-disclosure requests to one canonical public refusal."""
+
+    message = request.message.strip()
+    if not (
+        _DISCLOSURE_ACTION.search(message)
+        and _PROTECTED_INTERNAL_TARGET.search(message)
+    ):
+        return result
+    request.emit(
+        "public_language.internal_disclosure_normalized",
+        "validating",
+        {
+            "reason_code": "protected_internal_disclosure_request",
+            "projection": "fixed_refusal",
+        },
+    )
+    candidate_update: dict[str, object] = {
+        "answer": PUBLIC_INTERNAL_REFUSAL,
+        "referenced_object_ids": [],
+        "referenced_event_ids": [],
+        "referenced_validation_issue_ids": [],
+        "suggested_view": None,
+        "suggestions": [],
+    }
+    if hasattr(result.candidate, "audit_findings"):
+        candidate_update["audit_findings"] = []
+    return replace(
+        result,
+        candidate=result.candidate.model_copy(update=candidate_update),
+    )
+
+
 def public_language_rule_ids(
     value: str,
     *,
@@ -205,7 +255,9 @@ def _is_raw_json(value: str) -> bool:
 __all__ = [
     "PUBLIC_OUTPUT_POLICY_FAILED",
     "PUBLIC_OUTPUT_POLICY_VIOLATION",
+    "PUBLIC_INTERNAL_REFUSAL",
     "PublicLanguageValidationError",
+    "normalize_internal_disclosure_refusal",
     "public_language_rule_ids",
     "terminal_public_language_error",
     "validate_public_language",

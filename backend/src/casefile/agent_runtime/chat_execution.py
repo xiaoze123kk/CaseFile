@@ -16,7 +16,10 @@ from casefile.agent_runtime.chat_audit_validation import (
     apply_deterministic_audit_gate,
     audit_repair_integrity,
 )
-from casefile.agent_runtime.chat_intent import apply_route_suggestion_policy
+from casefile.agent_runtime.chat_intent import (
+    apply_route_suggestion_policy,
+    suppress_general_mutation_finalizer_suggestions,
+)
 from casefile.agent_runtime.chat_preparation import (
     bind_chat_context_input as bind_chat_context_input,
 )
@@ -42,6 +45,7 @@ from casefile.agent_runtime.chat_versions import (
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult, ToolMetrics
 from casefile.agent_runtime.public_language import (
     PublicLanguageValidationError,
+    normalize_internal_disclosure_refusal,
     terminal_public_language_error,
     validate_public_language,
 )
@@ -283,6 +287,7 @@ class ChatExecutionRunner:
                             )
                             for failure in gate.failures
                         )
+            result = suppress_general_mutation_finalizer_suggestions(request, result)
             result = normalize_reference_slots(request, result)
             result = apply_deterministic_audit_gate(request, result)
             try:
@@ -301,6 +306,7 @@ class ChatExecutionRunner:
                 validate_chat_candidate(request, result)
                 result = apply_route_suggestion_policy(request, result)
                 if request.prompt_version in PUBLIC_LANGUAGE_PROMPT_VERSIONS:
+                    result = normalize_internal_disclosure_refusal(request, result)
                     validate_public_language(
                         result,
                         sensitive_values=(request.api_key or "",),

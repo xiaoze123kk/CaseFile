@@ -187,14 +187,21 @@ def persist_agent_execution_event(
             else None
         )
         model_call.finished_at = now
-        if (
-            step.status == "running"
-            and event_type == "agent.model_call.completed"
-            and component_id in {"intent_router", "query_rewriter"}
-        ):
-            step.status = "succeeded"
+        standalone_call = component_id in {"intent_router", "query_rewriter"} or (
+            component_id.endswith("_finalizer")
+        )
+        if step.status == "running" and standalone_call:
+            step.status = (
+                "succeeded" if event_type == "agent.model_call.completed" else "failed"
+            )
             step.output_hash = step.output_hash or optional_hash(payload.get("output_hash"))
             step.usage_jsonb = dict(payload.get("usage") or step.usage_jsonb or {})
+            if event_type == "agent.model_call.failed":
+                step.diagnostic_jsonb = {
+                    "error_code": model_call.error_code,
+                    "failure_layer": "model_call",
+                    "schema_id": payload.get("schema_id"),
+                }
             step.finished_at = now
 
 

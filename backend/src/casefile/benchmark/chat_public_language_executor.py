@@ -20,7 +20,7 @@ from casefile_contracts import (
 )
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.engine import make_url
 
 from casefile.agent_runtime import DeepSeekAgentsProvider
@@ -40,7 +40,14 @@ from casefile.benchmark.chat_public_language_qualification import (
 from casefile.benchmark.eval_core import EvalTask
 from casefile.benchmark.general_mutation_capability import _grade
 from casefile.contracts import validate_casefile
-from casefile.data_postgres.models import AgentModelCall, Draft, TaskRun
+from casefile.data_postgres.models import (
+    AgentModelCall,
+    AgentPatchSet,
+    AgentStepRun,
+    Draft,
+    TaskEvent,
+    TaskRun,
+)
 from casefile.data_postgres.session import create_database_engine, create_session_factory
 from casefile.worker.runtime import Worker, WorkerConfig
 
@@ -136,6 +143,7 @@ class PostgresPublicLanguageExecutor:
         self._provider_factory = provider_factory or (
             lambda document, secret: _EphemeralCredentialProvider(document, secret)
         )
+        self._last_diagnostic: dict[str, Any] | None = None
         self.engine = create_database_engine(database_url)
         self.session_factory = create_session_factory(self.engine)
         self.app = create_app(database_url)
@@ -152,6 +160,7 @@ class PostgresPublicLanguageExecutor:
         model_id: str,
         prompt_version: str,
     ) -> PublicLanguageTrialEvidence:
+        self._last_diagnostic = None
         if model_id != MODEL_ID or prompt_version != PROMPT_VERSION:
             raise PublicLanguageExecutorError("public_language_runtime_binding_invalid")
         document = json.loads((self.repo_root / task.fixture).read_text(encoding="utf-8"))
@@ -386,14 +395,91 @@ class PostgresPublicLanguageExecutor:
                     )
                 )
             )
+            model_call_events = (
+                []
+                if not task_run_id
+                else list(
+                    session.scalars(
+                        select(TaskEvent).where(
+                            TaskEvent.task_run_id == task_run_id,
+                            TaskEvent.event_type.in_(
+                                (
+                                    "agent.model_call.started",
+                                    "agent.model_call.completed",
+                                    "agent.model_call.failed",
+                                )
+                            ),
+                        )
+                    )
+                )
+            )
+            route_event = (
+                None
+                if not task_run_id
+                else session.scalar(
+                    select(TaskEvent)
+                    .where(
+                        TaskEvent.task_run_id == task_run_id,
+                        TaskEvent.event_type == "intent.understood",
+                    )
+                    .order_by(TaskEvent.sequence_no.desc())
+                )
+            )
+            steps = (
+                []
+                if not task_run_id
+                else list(
+                    session.scalars(
+                        select(AgentStepRun)
+                        .where(AgentStepRun.task_run_id == task_run_id)
+                        .order_by(AgentStepRun.id)
+                    )
+                )
+            )
+            patch_set_count = int(
+                session.scalar(
+                    select(func.count(AgentPatchSet.id)).where(
+                        AgentPatchSet.task_run_id == task_run_id
+                    )
+                )
+                or 0
+            ) if task_run_id else 0
         if internal_task is not None:
             internal_error_code = internal_task.error_code
         infrastructure_failure = _infrastructure_failure(internal_task)
+        model_call_count = len(calls)
+        started_event_count = sum(
+            event.event_type == "agent.model_call.started" for event in model_call_events
+        )
+        terminal_event_count = sum(
+            event.event_type in {"agent.model_call.completed", "agent.model_call.failed"}
+            for event in model_call_events
+        )
+        unterminated_model_call_count = sum(
+            call.status == "running" or call.finished_at is None for call in calls
+        )
+        model_call_evidence_complete = bool(
+            calls
+            and started_event_count == model_call_count
+            and terminal_event_count == model_call_count
+            and unterminated_model_call_count == 0
+            and all(call.status in {"succeeded", "failed"} for call in calls)
+        )
+        model_binding_mismatch = bool(
+            internal_task is not None
+            and (
+                internal_task.provider != "deepseek"
+                or internal_task.model_id != MODEL_ID
+                or any(
+                    call.provider != "deepseek" or call.model_id != MODEL_ID
+                    for call in calls
+                )
+            )
+        )
         exact_model = bool(
             internal_task is not None
-            and internal_task.model_id == MODEL_ID
-            and calls
-            and all(call.model_id == MODEL_ID for call in calls)
+            and model_call_evidence_complete
+            and not model_binding_mismatch
         )
         exact_prompt = bool(
             internal_task is not None and internal_task.prompt_version == PROMPT_VERSION
@@ -415,8 +501,14 @@ class PostgresPublicLanguageExecutor:
         completed = bool(
             infrastructure_failure is None and task_run_id and run_status in _TERMINAL_RUN_STATUSES
         )
-        if not exact_model:
-            capability_failures.append("exact_model_not_observed")
+        if model_binding_mismatch:
+            capability_failures.append("model_binding_mismatch")
+        if not model_call_evidence_complete:
+            capability_failures.append(
+                "model_call_evidence_missing"
+                if model_call_count == 0
+                else "model_call_evidence_incomplete"
+            )
         if not exact_prompt:
             capability_failures.append("exact_prompt_not_observed")
         task_passed = bool(
@@ -432,6 +524,40 @@ class PostgresPublicLanguageExecutor:
             and exact_prompt
             and not capability_failures
         )
+        route_payload = {} if route_event is None else route_event.payload_jsonb
+        diagnostic_reason_codes = list(route_payload.get("reason_codes") or ())
+        diagnostic_reason_codes.extend(capability_failures)
+        if infrastructure_failure is not None:
+            diagnostic_reason_codes.append(infrastructure_failure)
+        self._last_diagnostic = {
+            "trial_status": "passed" if task_passed else "failed",
+            "route": {
+                "route_source": route_payload.get("route_source"),
+                "primary_intent": route_payload.get("primary_intent"),
+            },
+            "steps": [
+                {
+                    "component_id": step.component_id,
+                    "execution_no": step.execution_no,
+                    "status": step.status,
+                }
+                for step in steps
+            ],
+            "reason_codes": list(dict.fromkeys(diagnostic_reason_codes)),
+            "model_calls": [
+                {
+                    "component_id": call.prompt_component_id,
+                    "status": call.status,
+                    "provider": call.provider,
+                    "model_id": call.model_id,
+                    "prompt_version": call.prompt_version,
+                    "schema_id": call.target_schema_id,
+                }
+                for call in calls
+            ],
+            "patch_set_count": patch_set_count,
+            "task_error_code": internal_error_code,
+        }
         return PublicLanguageTrialEvidence(
             task_id=task.task_id,
             category=task.category,
@@ -445,6 +571,10 @@ class PostgresPublicLanguageExecutor:
             false_block=false_block,
             patch_present=patch_present,
             no_auto_apply=no_auto_apply,
+            model_call_count=model_call_count,
+            model_call_evidence_complete=model_call_evidence_complete,
+            model_binding_mismatch=model_binding_mismatch,
+            unterminated_model_call_count=unterminated_model_call_count,
             exact_model_observed=exact_model,
             exact_prompt_observed=exact_prompt,
             run_status=run_status,
@@ -453,6 +583,11 @@ class PostgresPublicLanguageExecutor:
             leak_rule_ids=tuple(sorted(leak_rules)),
             infrastructure_failure=infrastructure_failure,
         )
+
+    def diagnostic_snapshot(self) -> dict[str, Any]:
+        """Return only bounded stable diagnostics from the most recent Trial."""
+
+        return deepcopy(self._last_diagnostic or {})
 
     def _simulate_public_patch(
         self,
