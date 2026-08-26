@@ -1,62 +1,62 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { PublicAgentRun } from "@casefile/contracts";
 
-import type { TaskView } from "@/lib/api-client";
 import { WorkbenchAgentTaskStrip } from "@/features/analyst-workbench/workbench-agent-task-strip";
 
-function task(status: TaskView["status"], stage: string): TaskView {
+function run(overrides: Partial<PublicAgentRun> = {}): PublicAgentRun {
   return {
-    task_run_id: 10,
-    project_id: 1,
-    task_type: "casefile_chat",
-    status,
-    stage,
-    provider: "deepseek",
-    model_id: "chat",
-    input_draft_revision: 3,
-    input_brief_revision: null,
-    input_source_record_id: null,
-    input_brief_intake_id: null,
-    input_brief_intake_revision: null,
-    base_brief_intake_candidate_id: null,
-    agent_thread_id: 1,
-    input_message_id: 2,
-    output_message_id: 3,
-    input_hash: "hash",
-    candidate_strategy: null,
-    attempt_count: 1,
-    usage: {},
-    result_snapshot_id: null,
-    result: null,
-    error_code: null,
+    run_id: 10,
+    status: "running",
+    activity: "reading",
+    cancellable: true,
     failure: null,
-    component_steps: [],
-    created_at: null,
-    updated_at: null,
+    ...overrides,
   };
 }
 
 describe("WorkbenchAgentTaskStrip", () => {
-  it("reports the actual running stage and exposes cancellation", () => {
+  it("uses public activity and context state without token or provider metadata", () => {
+    const onCancel = vi.fn();
     render(
       <WorkbenchAgentTaskStrip
-        contextOccupancy={{ usedTokens: 120, budgetTokens: 1000 }}
-        onCancel={vi.fn()}
-        task={task("running", "reading_case")}
+        contextState="near_limit"
+        onCancel={onCancel}
+        run={run()}
       />,
     );
 
-    expect(screen.getByText("Agent 正在回复 · reading_case")).toBeInTheDocument();
-    expect(screen.getByText("上下文 120/1000 tokens")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
-    expect(screen.queryByText(/预计|剩余约/)).not.toBeInTheDocument();
+    expect(screen.getByText("卷宗统筹 · 正在阅读卷宗")).toBeInTheDocument();
+    expect(screen.getByText("对话内容较长，正在控制上下文")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "停止回复" }));
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/token|provider|prompt/i)).not.toBeInTheDocument();
   });
 
-  it("uses a real terminal status and a collapsible completion summary", () => {
-    render(<WorkbenchAgentTaskStrip task={task("succeeded", "queued")} />);
+  it("shows public verification summaries and terminal failure messages", () => {
+    const { rerender } = render(
+      <WorkbenchAgentTaskStrip
+        run={run({ activity: "checking" })}
+        verificationProgress={{ status: "blocked", summary: "发现需要作者审阅的影响" }}
+      />,
+    );
+    expect(screen.getByText("卷宗统筹 · 发现需要作者审阅的影响")).toBeInTheDocument();
 
-    expect(screen.getByText("任务已完成")).toBeInTheDocument();
-    expect(screen.getByText("执行摘要")).toBeInTheDocument();
+    rerender(
+      <WorkbenchAgentTaskStrip
+        run={run({
+          status: "failed",
+          activity: null,
+          cancellable: false,
+          failure: {
+            category: "request_failed",
+            message: "这次回复未能通过公开输出检查。",
+            retryable: true,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByText("回复未完成")).toBeInTheDocument();
+    expect(screen.getByText("回复摘要")).toBeInTheDocument();
   });
-
 });

@@ -1,165 +1,228 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import type {
+  PublicAgentMessage,
+  PublicFinding,
+  PublicPatchReviewResult,
+  PublicPatchSet,
+} from "@casefile/contracts";
 
 import { WorkbenchAgentInspector } from "@/features/analyst-workbench/workbench-agent-inspector";
-import type {
-  AgentAuditFindingView,
-  AgentMessageView,
-  AgentPatchSetView,
-} from "@/lib/api-client";
 
-const patchSet: AgentPatchSetView = {
-  patch_set_id: 61,
-  thread_id: 8,
-  source_message_id: 9,
-  task_run_id: 10,
-  base_draft_revision: 4,
-  reason_summary: "按证据补足人物说明。",
+const patchSet: PublicPatchSet = {
+  patch_id: 61,
+  title: "修改建议",
+  summary: "你要求的修改 1 项；为保持一致性同步调整 1 项。",
   status: "pending",
-  is_stale: false,
-  applied_from_revision: null,
-  applied_to_revision: null,
-  undone_to_revision: null,
-  operations: [
+  review_rule: "atomic",
+  base_revision: 4,
+  impact: {
+    summary: "共涉及 2 项卷宗修改，包含 1 项一致性调整。",
+    affected_change_count: 2,
+    has_deletions: false,
+  },
+  changes: [
     {
-      operation_id: 612,
-      operation_key: "second",
-      ordinal: 2,
-      object_id: "object:location",
-      object_type: "location",
-      operation_type: "field_update",
-      field_path: "/description",
-      expected_object_revision: 4,
-      old_value: "旧地点描述",
-      new_value: "新地点描述",
-      reason: "补足地点信息。",
-      decision: "pending",
-      reviewed_at: null,
+      change_id: 611,
+      kind: "update",
+      relationship: "requested",
+      target: {
+        target_id: "object:person",
+        type_label: "人物或对象",
+        name: "研究员",
+      },
+      field_label: "名称",
+      before: { kind: "text", text: "旧名字" },
+      after: { kind: "text", text: "新名字" },
+      explanation: "这是你要求调整的卷宗内容。",
     },
     {
-      operation_id: 611,
-      operation_key: "first",
-      ordinal: 1,
-      object_id: "object:person",
-      object_type: "entity",
-      operation_type: "field_update",
-      field_path: "/name",
-      expected_object_revision: 4,
-      old_value: "旧名字",
-      new_value: "新名字",
-      reason: "统一人物称谓。",
-      decision: "pending",
-      reviewed_at: null,
+      change_id: 612,
+      kind: "update",
+      relationship: "consistency_support",
+      target: {
+        target_id: "object:location",
+        type_label: "地点",
+        name: "灯塔",
+      },
+      field_label: "描述",
+      before: { kind: "text", text: "旧地点描述" },
+      after: { kind: "text", text: "新地点描述" },
+      explanation: "为保持卷宗前后一致，需要同步调整这项内容。",
     },
   ],
-  validation_warning: false,
-  validator_issues: [],
-  created_at: "2026-08-20T10:00:00Z",
-  updated_at: "2026-08-20T10:00:00Z",
+  actions: { can_simulate: true, can_undo: false, can_redo: false },
 };
 
-const message: AgentMessageView = {
+const message: PublicAgentMessage = {
   message_id: 9,
-  thread_id: 8,
-  sequence_no: 2,
+  sequence: 2,
   role: "assistant",
   status: "completed",
-  content: "建议补足两项信息。",
-  task: null,
-  referenced_object_ids: [],
-  referenced_event_ids: [],
-  referenced_validation_issue_ids: [],
-  suggested_view: null,
-  patch_set: patchSet,
+  response_kind: "patch_proposal",
+  body: "建议补足两项信息。",
+  interpretation: "change_request",
+  references: [],
+  findings: [],
+  patch: patchSet,
+  run: null,
   created_at: "2026-08-20T10:00:00Z",
   updated_at: "2026-08-20T10:00:00Z",
 };
 
-const finding: AgentAuditFindingView = {
-  finding_id: "F1",
-  kind: "contradiction",
-  severity: "S2",
-  title: "证词与日志时间冲突",
-  statement: "两条已取证记录对同一时段给出了不同描述。",
-  needs_manual_review: true,
-  evidence_object_ids: ["object:person"],
-  evidence_event_ids: [],
-  evidence_validation_issue_ids: [],
+const passedReview: PublicPatchReviewResult = {
+  patch_id: 61,
+  can_apply: true,
+  blockers: [],
+  warnings: [],
+  requires_author_confirmation: false,
+  confirmation_token: null,
 };
 
-function renderInspector(onApply = vi.fn()) {
+const finding: PublicFinding = {
+  finding_id: "finding_opaque_1",
+  severity: "warning",
+  title: "证词与日志时间冲突",
+  statement: "两条已取证记录对同一时段给出了不同描述。",
+};
+
+function renderInspector({
+  currentPatch = patchSet,
+  onApply,
+  onSimulate,
+  findings = [],
+}: {
+  currentPatch?: PublicPatchSet;
+  onApply?: ComponentProps<typeof WorkbenchAgentInspector>["onApply"];
+  onSimulate?: NonNullable<
+    ComponentProps<typeof WorkbenchAgentInspector>["onSimulate"]
+  >;
+  findings?: Array<{ message: PublicAgentMessage; finding: PublicFinding }>;
+} = {}) {
+  const effectiveOnApply = onApply ??
+    vi.fn<ComponentProps<typeof WorkbenchAgentInspector>["onApply"]>();
+  const effectiveOnSimulate = onSimulate ??
+    vi
+      .fn<
+        NonNullable<ComponentProps<typeof WorkbenchAgentInspector>["onSimulate"]>
+      >()
+      .mockResolvedValue(passedReview);
   render(
     <WorkbenchAgentInspector
       busyPatchSetId={null}
-      eventLabels={{}}
-      findings={[]}
+      findings={findings}
       focusFindingId={null}
-      focusPatchSetId={61}
-      issueLabels={{}}
-      objectLabels={{ "object:person": "研究员", "object:location": "灯塔" }}
-      onApply={onApply}
+      focusPatchSetId={currentPatch.patch_id}
+      onApply={effectiveOnApply}
       onFocusPatch={vi.fn()}
-      onLocateEvent={vi.fn()}
-      onLocateIssue={vi.fn()}
       onLocateObject={vi.fn()}
       onRetry={vi.fn()}
+      onSimulate={effectiveOnSimulate}
       onUndo={vi.fn()}
-      patches={[{ message, patchSet }]}
+      patches={[{ message: { ...message, patch: currentPatch }, patchSet: currentPatch }]}
     />,
   );
-  return onApply;
+  return { onApply: effectiveOnApply, onSimulate: effectiveOnSimulate };
 }
 
-describe("workbench agent inspector", () => {
+describe("workbench agent public inspector", () => {
   afterEach(cleanup);
 
-  it("uses ordinal order and waits for an author confirmation before applying", () => {
-    const onApply = renderInspector();
+  it("renders author-readable grouped changes and keeps atomic patches indivisible", async () => {
+    const { onApply, onSimulate } = renderInspector();
 
-    const entries = screen.getAllByRole("checkbox");
-    expect(entries[0]).toHaveAccessibleName("选择修改 研究员 /name");
-    expect(entries[1]).toHaveAccessibleName("选择修改 灯塔 /description");
-    expect(screen.getByText(/目标 Draft R4/)).toBeInTheDocument();
+    expect(screen.getByText("你要求的修改")).toBeInTheDocument();
+    expect(screen.getByText("为保持一致性同步调整")).toBeInTheDocument();
+    expect(screen.getAllByText("修改前")).toHaveLength(2);
+    expect(screen.getByText("新地点描述")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Patch|Draft|R4|\/description|update_field/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "全部采纳" }));
+    fireEvent.click(screen.getByRole("button", { name: "检查修改影响" }));
+    await waitFor(() =>
+      expect(onSimulate).toHaveBeenCalledWith(patchSet, null, [], undefined),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "应用修改" })).toBeEnabled(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "应用修改" }));
     expect(onApply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认应用" }));
-    expect(onApply).toHaveBeenCalledWith(patchSet, null);
+    expect(onApply).toHaveBeenCalledWith(patchSet, null, {});
   });
 
-  it("keeps an explicit two-step confirmation for rejecting every operation", () => {
-    const onApply = renderInspector();
+  it("allows change handles only for selective historical patches", async () => {
+    const selective = { ...patchSet, review_rule: "selective" as const };
+    const { onSimulate } = renderInspector({ currentPatch: selective });
 
-    fireEvent.click(screen.getByRole("button", { name: "全部拒绝" }));
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes[0]).toBeChecked();
+    expect(checkboxes[1]).toBeChecked();
+    fireEvent.click(checkboxes[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "检查修改影响" }));
+    await waitFor(() =>
+      expect(onSimulate).toHaveBeenCalledWith(selective, [612], [], undefined),
+    );
+  });
+
+  it("keeps warning handles and confirmation tokens in controller state only", async () => {
+    const warningReview: PublicPatchReviewResult = {
+      patch_id: 61,
+      can_apply: false,
+      blockers: [],
+      warnings: [
+        { notice_id: "warning_opaque_1", message: "这项影响需要作者确认。" },
+      ],
+      requires_author_confirmation: true,
+      confirmation_token: "opaque-delete-token",
+    };
+    const acceptedReview = { ...warningReview, can_apply: true };
+    const onSimulate = vi
+      .fn()
+      .mockResolvedValueOnce(warningReview)
+      .mockResolvedValueOnce(acceptedReview);
+    const onApply = vi.fn();
+    renderInspector({ onApply, onSimulate });
+
+    fireEvent.click(screen.getByRole("button", { name: "检查修改影响" }));
+    expect(await screen.findByText("这项影响需要作者确认。")).toBeInTheDocument();
+    expect(screen.queryByText(/warning_opaque|opaque-delete-token/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("确认说明"), {
+      target: { value: "我已审阅并接受这项影响。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "接受影响并重新检查" }));
+    await waitFor(() =>
+      expect(onSimulate).toHaveBeenLastCalledWith(
+        patchSet,
+        null,
+        ["warning_opaque_1"],
+        "我已审阅并接受这项影响。",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "应用修改" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认应用" }));
+    expect(onApply).toHaveBeenCalledWith(patchSet, null, {
+      confirmationToken: "opaque-delete-token",
+      acceptedWarningIds: ["warning_opaque_1"],
+      confirmationNote: "我已审阅并接受这项影响。",
+    });
+  });
+
+  it("renders public findings without exposing their opaque identifiers", () => {
+    renderInspector({ findings: [{ message, finding }] });
+
+    expect(screen.getByText("证词与日志时间冲突")).toBeInTheDocument();
+    expect(screen.getByText(finding.statement)).toBeInTheDocument();
+    expect(screen.queryByText(finding.finding_id)).not.toBeInTheDocument();
+  });
+
+  it("keeps an explicit two-step rejection", () => {
+    const { onApply } = renderInspector();
+    fireEvent.click(screen.getByRole("button", { name: "拒绝这组修改" }));
     expect(onApply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "确认拒绝" }));
     expect(onApply).toHaveBeenCalledWith(patchSet, []);
-  });
-
-  it("distinguishes evidence from a missing server-provided impact set", () => {
-    render(
-      <WorkbenchAgentInspector
-        busyPatchSetId={null}
-        eventLabels={{}}
-        findings={[{ message, finding }]}
-        focusFindingId="F1"
-        focusPatchSetId={null}
-        issueLabels={{}}
-        objectLabels={{ "object:person": "研究员" }}
-        onApply={vi.fn()}
-        onFocusPatch={vi.fn()}
-        onLocateEvent={vi.fn()}
-        onLocateIssue={vi.fn()}
-        onLocateObject={vi.fn()}
-        onRetry={vi.fn()}
-        onUndo={vi.fn()}
-        patches={[]}
-      />,
-    );
-
-    expect(screen.getByText("对象 · 研究员")).toBeInTheDocument();
-    expect(
-      screen.getByText("服务端未提供影响集；上方仅为证据引用。"),
-    ).toBeInTheDocument();
   });
 });

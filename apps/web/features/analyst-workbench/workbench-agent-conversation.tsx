@@ -1,47 +1,21 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-
 import type {
-  AgentAuditFindingView,
-  AgentMessageView,
-  AgentSuggestedView,
-  TaskView,
-} from "@/lib/api-client";
+  PublicAgentMessage,
+  PublicAgentRun,
+  PublicFinding,
+} from "@casefile/contracts";
 
 import styles from "./workbench-agent.module.css";
 
-export const agentViewLabels: Record<AgentSuggestedView, string> = {
-  timeline: "时间线",
-  relations: "关系图",
-  reasoning: "推理分析",
-  map: "地图",
-  export: "导出预览",
-  compile: "编译中心",
-  evidence: "证据对比",
-};
-
 export function agentAuditFindingsFor(
-  message: AgentMessageView,
-): AgentAuditFindingView[] {
-  const result = message.task?.result;
-  if (result === null || result === undefined) return [];
-  if (typeof result !== "object" || !("audit_findings" in result)) return [];
-  const findings = (result as { audit_findings?: unknown }).audit_findings;
-  if (!Array.isArray(findings)) return [];
-  return findings.filter(
-    (finding): finding is AgentAuditFindingView =>
-      typeof finding === "object" &&
-      finding !== null &&
-      typeof (finding as AgentAuditFindingView).finding_id === "string" &&
-      typeof (finding as AgentAuditFindingView).kind === "string" &&
-      typeof (finding as AgentAuditFindingView).severity === "string" &&
-      typeof (finding as AgentAuditFindingView).title === "string",
-  );
+  message: PublicAgentMessage,
+): PublicFinding[] {
+  return message.findings;
 }
 
-function formatRecordTime(value: string | null): string {
-  if (!value) return "刚刚";
+function formatRecordTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "记录时间未知";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -51,11 +25,18 @@ function formatRecordTime(value: string | null): string {
   }).format(date);
 }
 
-function taskStageLabel(task: TaskView | null): string {
-  if (task === null) return "任务已排队";
-  if (task.status === "queued") return "任务已排队";
-  if (task.status === "running") return task.stage || "正在分析卷宗";
-  if (task.status === "cancelling") return "正在取消";
+const activityLabels: Record<Exclude<PublicAgentRun["activity"], null>, string> = {
+  understanding: "正在理解你的要求",
+  reading: "正在阅读卷宗",
+  checking: "正在检查前后一致性",
+  preparing_changes: "正在整理修改建议",
+  finalizing: "正在完成回复",
+};
+
+function runActivityLabel(run: PublicAgentRun | null): string {
+  if (run === null || run.status === "queued") return "回复已排队";
+  if (run.status === "cancelling") return "正在停止回复";
+  if (run.activity !== null) return activityLabels[run.activity];
   return "正在整理回复";
 }
 
@@ -67,16 +48,13 @@ export function WorkbenchAgentConversation({
   messagesError,
   messages,
   selectedThreadTitle,
-  liveTasks,
-  referenceLabels,
+  liveRuns,
   busy,
   onReconnect,
   onReloadMessages,
   onRetryMessage,
   onLocateObject,
   onLocateEvent,
-  onLocateIssue,
-  onLocateView,
   onFocusPatch,
   onFocusFinding,
   renderRoutingFeedback,
@@ -86,25 +64,18 @@ export function WorkbenchAgentConversation({
   threadsError: string | null;
   messagesLoading: boolean;
   messagesError: string | null;
-  messages: AgentMessageView[];
+  messages: PublicAgentMessage[];
   selectedThreadTitle: string | null;
-  liveTasks: Record<number, TaskView>;
-  referenceLabels: {
-    objects: Record<string, string>;
-    events: Record<string, string>;
-    issues: Record<string, string>;
-  };
+  liveRuns: Record<number, PublicAgentRun>;
   busy: boolean;
   onReconnect: () => void;
   onReloadMessages: () => void;
-  onRetryMessage: (message: AgentMessageView) => void;
+  onRetryMessage: (message: PublicAgentMessage) => void;
   onLocateObject: (objectId: string) => void;
   onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
-  onLocateView: (view: AgentSuggestedView) => void;
-  onFocusPatch: (patchSetId: number) => void;
+  onFocusPatch: (patchId: number) => void;
   onFocusFinding: (findingId: string) => void;
-  renderRoutingFeedback: (message: AgentMessageView) => ReactNode;
+  renderRoutingFeedback: (message: PublicAgentMessage) => ReactNode;
 }) {
   return (
     <div aria-live="polite" className={styles.agentMessages}>
@@ -121,11 +92,10 @@ export function WorkbenchAgentConversation({
         </div>
       ) : null}
       {messages.map((message) => {
-        if (message.role === "system") return null;
-        const liveTask =
-          message.task === null
+        const run =
+          message.run === null
             ? null
-            : (liveTasks[message.task.task_run_id] ?? message.task);
+            : (liveRuns[message.run.run_id] ?? message.run);
         return (
           <article
             className={styles.agentTurn}
@@ -134,27 +104,23 @@ export function WorkbenchAgentConversation({
           >
             <header className={styles.agentTurnMeta}>
               <span>{message.role === "assistant" ? "卷宗统筹" : "你"}</span>
-              <time dateTime={message.created_at ?? undefined}>
+              <time dateTime={message.created_at}>
                 {formatRecordTime(message.created_at)}
               </time>
             </header>
-            {message.content !== null ? (
+            {message.body !== null ? (
               <div className={styles.agentTurnContent}>
                 {message.role === "assistant" ? <strong>结论</strong> : null}
-                <p>{message.content}</p>
+                <p>{message.body}</p>
               </div>
             ) : null}
             {message.role === "assistant" && message.status === "completed" ? (
               <AssistantResultSummary
-                findings={agentAuditFindingsFor(message)}
                 message={message}
                 onLocateEvent={onLocateEvent}
-                onLocateIssue={onLocateIssue}
                 onLocateObject={onLocateObject}
-                onLocateView={onLocateView}
                 onFocusPatch={onFocusPatch}
                 onFocusFinding={onFocusFinding}
-                referenceLabels={referenceLabels}
               />
             ) : null}
             {message.role === "assistant" && message.status === "completed"
@@ -165,15 +131,15 @@ export function WorkbenchAgentConversation({
             message.status === "pending" ? (
               <p className={styles.agentThinking} role="status">
                 {busy
-                  ? `Agent 正在回复 · ${taskStageLabel(liveTask)}`
-                  : "Agent 正在整理回复…"}
+                  ? `卷宗统筹 · ${runActivityLabel(run)}`
+                  : "正在整理回复…"}
               </p>
             ) : null}
             {message.role === "assistant" && message.status === "failed" ? (
               <div className={styles.agentFailure} role="status">
-                <strong>回复失败</strong>
+                <strong>回复未完成</strong>
                 <span>
-                  {message.task?.failure?.message ?? "Agent 未能完成这次回复。"}
+                  {run?.failure?.message ?? "这次回复未能完成，请稍后重试。"}
                 </span>
                 <button onClick={() => onRetryMessage(message)} type="button">
                   重试
@@ -209,67 +175,52 @@ export function WorkbenchAgentConversation({
 
 function AssistantResultSummary({
   message,
-  findings,
-  referenceLabels,
   onLocateObject,
   onLocateEvent,
-  onLocateIssue,
-  onLocateView,
   onFocusPatch,
   onFocusFinding,
 }: {
-  message: AgentMessageView;
-  findings: AgentAuditFindingView[];
-  referenceLabels: {
-    objects: Record<string, string>;
-    events: Record<string, string>;
-    issues: Record<string, string>;
-  };
+  message: PublicAgentMessage;
   onLocateObject: (objectId: string) => void;
   onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
-  onLocateView: (view: AgentSuggestedView) => void;
-  onFocusPatch: (patchSetId: number) => void;
+  onFocusPatch: (patchId: number) => void;
   onFocusFinding: (findingId: string) => void;
 }) {
-  // A finished turn stays compact. Patch/Finding details are owned by the
-  // Workbench Inspector; these buttons only provide a focus entry point.
   const [referencesOpen, setReferencesOpen] = useState(false);
-  const referenceCount =
-    message.referenced_object_ids.length +
-    message.referenced_event_ids.length +
-    message.referenced_validation_issue_ids.length +
-    (message.suggested_view === null ? 0 : 1);
-  const patchCount = message.patch_set?.operations.length ?? 0;
+  const patchCount = message.patch?.changes.length ?? 0;
 
-  if (referenceCount === 0 && findings.length === 0 && patchCount === 0) {
+  if (
+    message.references.length === 0 &&
+    message.findings.length === 0 &&
+    patchCount === 0
+  ) {
     return null;
   }
 
   return (
     <div className={styles.agentResultSummary} aria-label="分析结果摘要">
-      {referenceCount > 0 ? (
+      {message.references.length > 0 ? (
         <button
           aria-expanded={referencesOpen}
           onClick={() => setReferencesOpen((open) => !open)}
           type="button"
         >
-          引用 {referenceCount}
+          引用 {message.references.length}
         </button>
       ) : null}
-      {findings.length > 0 ? (
+      {message.findings.length > 0 ? (
         <button
           aria-expanded={false}
-          onClick={() => onFocusFinding(findings[0]?.finding_id ?? "")}
+          onClick={() => onFocusFinding(message.findings[0]?.finding_id ?? "")}
           type="button"
         >
-          验证发现 {findings.length}
+          验证发现 {message.findings.length}
         </button>
       ) : null}
-      {patchCount > 0 && message.patch_set ? (
+      {patchCount > 0 && message.patch ? (
         <button
           aria-expanded={false}
-          onClick={() => onFocusPatch(message.patch_set?.patch_set_id ?? 0)}
+          onClick={() => onFocusPatch(message.patch?.patch_id ?? 0)}
           type="button"
         >
           待审修改 {patchCount}
@@ -279,13 +230,11 @@ function AssistantResultSummary({
         <ReferenceList
           message={message}
           onLocateEvent={onLocateEvent}
-          onLocateIssue={onLocateIssue}
           onLocateObject={onLocateObject}
-          onLocateView={onLocateView}
-          referenceLabels={referenceLabels}
+          onFocusFinding={onFocusFinding}
         />
       ) : null}
-      {patchCount > 0 && message.patch_set ? (
+      {patchCount > 0 && message.patch ? (
         <p className={styles.agentInspectorHint}>
           已将这组修改移至右侧对象上下文 Inspector 审阅。
         </p>
@@ -296,64 +245,37 @@ function AssistantResultSummary({
 
 function ReferenceList({
   message,
-  referenceLabels,
   onLocateObject,
   onLocateEvent,
-  onLocateIssue,
-  onLocateView,
+  onFocusFinding,
 }: {
-  message: AgentMessageView;
-  referenceLabels: {
-    objects: Record<string, string>;
-    events: Record<string, string>;
-    issues: Record<string, string>;
-  };
+  message: PublicAgentMessage;
   onLocateObject: (objectId: string) => void;
   onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
-  onLocateView: (view: AgentSuggestedView) => void;
+  onFocusFinding: (findingId: string) => void;
 }) {
   return (
     <div className={styles.agentRefs} aria-label="回答引用">
-      {message.referenced_object_ids.map((objectId) => (
+      {message.references.map((reference, index) => (
         <button
-          data-ref-kind="object"
-          key={`object:${objectId}`}
-          onClick={() => onLocateObject(objectId)}
+          data-ref-kind={reference.kind}
+          key={`${reference.kind}:${index}`}
+          onClick={() => {
+            if (reference.kind === "event") onLocateEvent(reference.target_id);
+            else if (reference.kind === "finding") {
+              onFocusFinding(reference.target_id);
+            } else onLocateObject(reference.target_id);
+          }}
           type="button"
         >
-          对象 · {referenceLabels.objects[objectId] ?? objectId}
+          {reference.kind === "event"
+            ? "事件"
+            : reference.kind === "finding"
+              ? "发现"
+              : "卷宗"}
+          {` · ${reference.label}`}
         </button>
       ))}
-      {message.referenced_event_ids.map((eventId) => (
-        <button
-          data-ref-kind="event"
-          key={`event:${eventId}`}
-          onClick={() => onLocateEvent(eventId)}
-          type="button"
-        >
-          事件 · {referenceLabels.events[eventId] ?? eventId}
-        </button>
-      ))}
-      {message.referenced_validation_issue_ids.map((issueId) => (
-        <button
-          data-ref-kind="issue"
-          key={`issue:${issueId}`}
-          onClick={() => onLocateIssue(issueId)}
-          type="button"
-        >
-          验证 · {referenceLabels.issues[issueId] ?? issueId}
-        </button>
-      ))}
-      {message.suggested_view !== null ? (
-        <button
-          data-ref-kind="view"
-          onClick={() => onLocateView(message.suggested_view ?? "timeline")}
-          type="button"
-        >
-          视图 · {agentViewLabels[message.suggested_view]}
-        </button>
-      ) : null}
     </div>
   );
 }
