@@ -1,0 +1,993 @@
+{
+  "schema_id": "benchmark.novel-plan-suite.v4",
+  "suite_id": "novel-plan-capability-v4",
+  "formal_qualification": {
+    "provider": "deepseek",
+    "planner_model_id": "deepseek-v4-pro",
+    "quality_grader_model_id": "deepseek-v4-pro",
+    "trials_per_task": 3
+  },
+  "promotion_gate": {
+    "g2_passed_trials_min": 65,
+    "pass_at_3_tasks_min": 24,
+    "all_three_tasks_min": 18,
+    "semantic_valid_trials_min": 67,
+    "structural_exhaustion_max": 0,
+    "resolution_missing_max": 0,
+    "unsafe_trials_max": 0,
+    "infrastructure_failures_max": 0,
+    "repair_g2_regression_max": 0,
+    "solver_g2_regression_max": 0,
+    "g3_bootstrap_seed": 20260826,
+    "g3_bootstrap_iterations": 10000,
+    "g3_mean_delta_lower_bound_min": -0.03,
+    "g3_dimension_mean_delta_min": -0.05
+  },
+  "tasks": [
+    {
+      "task_id": "linear_mystery__basic",
+      "primary_capability": "linear_mystery",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/linear_mystery__basic.json",
+          "hash": "da033b14edb4fb773f1ee73ca9bbbb04389c06399835a026fc81e2d661fc6cb3"
+        }
+      },
+      "reference": "references/linear_mystery__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "all_presentation_modes",
+          "allowed": [
+            "linear"
+          ],
+          "expectation_class": "runtime_hard",
+          "input_evidence_paths": [
+            "/planning_constraints/allowed_presentation_modes"
+          ],
+          "validator_reason_codes": [
+            "compiler_story_plan_presentation_mode_invalid"
+          ]
+        },
+        {
+          "kind": "purpose_order",
+          "values": [
+            "hook",
+            "reveal",
+            "resolution"
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "linear_mystery__decoy",
+      "primary_capability": "linear_mystery",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/linear_mystery__decoy.json",
+          "hash": "ab3360d125d747bf7b9fa214b3369511d6700e76f652954bd811819c923670b8"
+        }
+      },
+      "reference": "references/linear_mystery__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "all_presentation_modes",
+          "allowed": [
+            "linear"
+          ],
+          "expectation_class": "runtime_hard",
+          "input_evidence_paths": [
+            "/planning_constraints/allowed_presentation_modes"
+          ],
+          "validator_reason_codes": [
+            "compiler_story_plan_presentation_mode_invalid"
+          ]
+        },
+        {
+          "kind": "purpose_order",
+          "values": [
+            "hook",
+            "reveal",
+            "resolution"
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "linear_mystery__dense",
+      "primary_capability": "linear_mystery",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/linear_mystery__dense.json",
+          "hash": "f8e14b2be526d698aa4465c476b437b023f371314422027689f5ae78bb474d98"
+        }
+      },
+      "reference": "references/linear_mystery__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "all_presentation_modes",
+          "allowed": [
+            "linear"
+          ],
+          "expectation_class": "runtime_hard",
+          "input_evidence_paths": [
+            "/planning_constraints/allowed_presentation_modes"
+          ],
+          "validator_reason_codes": [
+            "compiler_story_plan_presentation_mode_invalid"
+          ]
+        },
+        {
+          "kind": "purpose_order",
+          "values": [
+            "hook",
+            "reveal",
+            "resolution"
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "nonlinear_reveal__basic",
+      "primary_capability": "nonlinear_reveal",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/nonlinear_reveal__basic.json",
+          "hash": "5a85d5403c175af5e84dd32c1fb154ef3379a229066fe3afb5c9d99ee9160435"
+        }
+      },
+      "reference": "references/nonlinear_reveal__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "dependency_chain_min_length",
+          "value": 3,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "nonlinear_reveal__decoy",
+      "primary_capability": "nonlinear_reveal",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/nonlinear_reveal__decoy.json",
+          "hash": "ede606c3d0cc92083339ae8363035e622ea89d60775f00762cbb2af4ae5856c9"
+        }
+      },
+      "reference": "references/nonlinear_reveal__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "dependency_chain_min_length",
+          "value": 4,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "nonlinear_reveal__dense",
+      "primary_capability": "nonlinear_reveal",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/nonlinear_reveal__dense.json",
+          "hash": "88700991d018fed3e13d70c3aa30f46629603c00d4c21d605f82cf13fc00adf9"
+        }
+      },
+      "reference": "references/nonlinear_reveal__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "dependency_chain_min_length",
+          "value": 5,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "multiple_suspects__basic",
+      "primary_capability": "multiple_suspects",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/multiple_suspects__basic.json",
+          "hash": "53a8847bad51de8a88c50ec33ee5683aaeaabcc1ae249948e5ebb953308d2e26"
+        }
+      },
+      "reference": "references/multiple_suspects__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 2,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "multiple_suspects__decoy",
+      "primary_capability": "multiple_suspects",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/multiple_suspects__decoy.json",
+          "hash": "c84ca20c0e67041378109cb938c0bbb1fe0a3a9e371f9a7ae80c64b638689588"
+        }
+      },
+      "reference": "references/multiple_suspects__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "multiple_suspects__dense",
+      "primary_capability": "multiple_suspects",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/multiple_suspects__dense.json",
+          "hash": "7002aa4b78f4609ef5810437ec2c162f335a23dbf38ce1405cc4aa9e41a6663b"
+        }
+      },
+      "reference": "references/multiple_suspects__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "false_belief__basic",
+      "primary_capability": "false_belief",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/false_belief__basic.json",
+          "hash": "9ddc6f33721e416ae1077a2da0495a6941d4bebf7c89af8ec4fa17da865ae927"
+        }
+      },
+      "reference": "references/false_belief__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "false_belief__decoy",
+      "primary_capability": "false_belief",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/false_belief__decoy.json",
+          "hash": "89771d5419742964b21d040bed3211820e116d403d0cf5521b0df007ddfe2bbd"
+        }
+      },
+      "reference": "references/false_belief__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "false_belief__dense",
+      "primary_capability": "false_belief",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/false_belief__dense.json",
+          "hash": "4245e859363252cbd21ae5b8750f0e26003164bf47f989da0c8ed0aeb5011b5a"
+        }
+      },
+      "reference": "references/false_belief__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "claim",
+              "object_id": "claim_manual_trigger"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "competing_hypotheses__basic",
+      "primary_capability": "competing_hypotheses",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/competing_hypotheses__basic.json",
+          "hash": "0d1d26c850c87bc8ccd83fd883df56c431673e34da98556dd1d0b27c91b57355"
+        }
+      },
+      "reference": "references/competing_hypotheses__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "purpose_present",
+          "value": "reveal",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "competing_hypotheses__decoy",
+      "primary_capability": "competing_hypotheses",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/competing_hypotheses__decoy.json",
+          "hash": "c49079de1cfb904df803c16ca6cebfbb4b79a6b9978d349a7cd70abb3a73e709"
+        }
+      },
+      "reference": "references/competing_hypotheses__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "purpose_present",
+          "value": "reveal",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "competing_hypotheses__dense",
+      "primary_capability": "competing_hypotheses",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/competing_hypotheses__dense.json",
+          "hash": "ffd370afd13a501a61e28fa301de7f340cb6a93e8d973053f6b7399ce514c7cb"
+        }
+      },
+      "reference": "references/competing_hypotheses__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "purpose_present",
+          "value": "reveal",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_closure__basic",
+      "primary_capability": "resolution_closure",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/resolution_closure__basic.json",
+          "hash": "bf439713000bbaabc0aef06578155b797d79c60488d91c0572f4e5ae0810ee9a"
+        }
+      },
+      "reference": "references/resolution_closure__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "resolution_actions",
+          "refs": [
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "allowed": [
+            "resolve"
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_closure__decoy",
+      "primary_capability": "resolution_closure",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/resolution_closure__decoy.json",
+          "hash": "f5f2751b3315d1265c59dbb292ed0529d291351a0b8caf87091f6999f68c026f"
+        }
+      },
+      "reference": "references/resolution_closure__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "resolution_actions",
+          "refs": [
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "allowed": [
+            "resolve"
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_closure__dense",
+      "primary_capability": "resolution_closure",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/resolution_closure__dense.json",
+          "hash": "2e4d8dc9aca3dcf8037043aba4c39bfe664fa2ec5574be19473fd5e59d4f63fa"
+        }
+      },
+      "reference": "references/resolution_closure__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "resolution_actions",
+          "refs": [
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_root_cause"
+            },
+            {
+              "object_type": "resolution_spec",
+              "object_id": "res_shutdown_rule"
+            }
+          ],
+          "allowed": [
+            "resolve"
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "flashback_chronology__basic",
+      "primary_capability": "flashback_chronology",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/flashback_chronology__basic.json",
+          "hash": "205e1b880c7fa81ed9a2a2cf3310b417117c8bc9781e5c118a3cba4d577d9f90"
+        }
+      },
+      "reference": "references/flashback_chronology__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "flashback_after_event",
+          "earlier_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "later_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "flashback_chronology__decoy",
+      "primary_capability": "flashback_chronology",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/flashback_chronology__decoy.json",
+          "hash": "87178ee932d33355ed2c898390eaeea062f2e6b7d699ac87ba613258426292b4"
+        }
+      },
+      "reference": "references/flashback_chronology__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "flashback_after_event",
+          "earlier_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "later_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "flashback_chronology__dense",
+      "primary_capability": "flashback_chronology",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/flashback_chronology__dense.json",
+          "hash": "0257fcfad68b8a581c3994d4af2ce3639774b4fd4ec6179f76bd6bc57b71f67b"
+        }
+      },
+      "reference": "references/flashback_chronology__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "flashback_after_event",
+          "earlier_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          },
+          "later_event_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "complex_mixed__basic",
+      "primary_capability": "complex_mixed",
+      "variant": "basic",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/complex_mixed__basic.json",
+          "hash": "b40697869010770fc189a4004412b9f2c5010cd38383ae9df6e56719177dd473"
+        }
+      },
+      "reference": "references/complex_mixed__basic.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 2,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "complex_mixed__decoy",
+      "primary_capability": "complex_mixed",
+      "variant": "decoy",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/complex_mixed__decoy.json",
+          "hash": "391e54b2ef32da67a3896febe70288d45805524a36503a7e4c9f1062285f0fec"
+        }
+      },
+      "reference": "references/complex_mixed__decoy.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "complex_mixed__dense",
+      "primary_capability": "complex_mixed",
+      "variant": "dense",
+      "planner_inputs": {
+        "v3": {
+          "path": "inputs/v3/complex_mixed__dense.json",
+          "hash": "38f84176940e2066619d93c725aba827ea5a0a59db91a5bcb04e355900c79cd3"
+        }
+      },
+      "reference": "references/complex_mixed__dense.json",
+      "outcome_invariants": [
+        {
+          "kind": "presentation_mode_present",
+          "value": "flashback",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "min_distinct_participant_refs",
+          "value": 3,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "basis_refs_include_all",
+          "refs": [
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_manual_restart"
+            },
+            {
+              "object_type": "hypothesis",
+              "object_id": "hyp_automatic_restart"
+            }
+          ],
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "exposure_action_present",
+          "entry_key": "exposure_manual_trace",
+          "action": "reinterpret",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        },
+        {
+          "kind": "resolution_in_final_scene",
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/exposure_plan/frozen_payload/entries/0/note"
+          ]
+        }
+      ]
+    }
+  ],
+  "g3_baseline": {
+    "path": "g3_baseline_v3.json",
+    "hash": "20de642ed13c3684b89b84081162a3fc7198176cebd6e9998e95f46b0c51d6f0",
+    "source_fingerprint": "51385f7a2248a3d791d1a1cc1cac0827dafa32f77e6e834ecc8ab14dc5eb5071"
+  }
+}

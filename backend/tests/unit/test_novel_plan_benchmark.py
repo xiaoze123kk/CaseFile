@@ -141,6 +141,104 @@ def test_v3_fake_capability_uses_compact_provider_view_and_full_audit_bundle(
     assert report["frozen"]["comparison_baseline"]["outcome_passed_trial_count"] == 64
 
 
+def test_v4_suite_freezes_typed_obligations_prompts_and_formal_gate(
+    tmp_path: Path,
+) -> None:
+    validated = validate_suite(planner_input_version="v4")
+    gate = validated["suite"]["promotion_gate"]
+
+    assert all(
+        bundle["schema_id"] == "compiler.story-planner-input.v3"
+        and any(
+            entry.get("planning_obligations")
+            for entry in bundle["exposure_plan"]["frozen_payload"]["entries"]
+        )
+        for bundle in validated["planner_inputs"].values()
+    )
+    assert gate["semantic_valid_trials_min"] == 67
+    assert gate["g2_passed_trials_min"] == 65
+    assert gate["pass_at_3_tasks_min"] == 24
+    assert gate["all_three_tasks_min"] == 18
+    assert gate["g3_bootstrap_iterations"] == 10000
+    assert len(validated["g3_baseline"]["task_cluster_scores"]) == 24
+
+    report = run_suite(
+        suite_kind="capability",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "constraint-first-v4.json",
+        resume=False,
+        planner_input_version="v4",
+        task_ids=("linear_mystery__basic",),
+    )
+    prompts = report["frozen"]["constraint_first_prompts"]
+    assert prompts["skeleton"]["version"] == "story-planner-skeleton-v1"
+    assert prompts["semantic_fill"]["version"] == "story-planner-semantic-fill-v1"
+    assert all(len(item["sha256"]) == 64 for item in prompts.values())
+    assert [round_["stage"] for round_ in report["trials"][0]["rounds"]] == [
+        "skeleton_proposal",
+        "semantic_fill",
+    ]
+    assert report["trials"][0]["repair_attempts"] == 0
+    assert report["promotion_gate"]["evaluated"] is False
+
+
+@pytest.mark.parametrize("suite_kind", ["regression", "safety"])
+def test_v4_fake_deterministic_suites_reach_authoritative_validator(
+    suite_kind: str, tmp_path: Path
+) -> None:
+    report = run_suite(
+        suite_kind=suite_kind,
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / f"constraint-first-{suite_kind}.json",
+        resume=False,
+        planner_input_version="v4",
+    )
+
+    assert report["status"] == "passed"
+    assert report["gates"]["all_deterministic_trials_pass"] is True
+    assert report["metrics"]["infrastructure_failure_rate"] == 0
+    assert report["metrics"]["unsafe_trial_rate"] == 0
+
+
+def test_g3_paired_bootstrap_is_task_clustered_and_deterministic() -> None:
+    dimensions = ("opening", "escalation", "turn_setup", "pov", "climax", "closure")
+    baseline = {
+        "task_cluster_scores": {
+            task_id: {dimension: 0.5 for dimension in dimensions}
+            for task_id in ("task_a", "task_b")
+        }
+    }
+    trials = [
+        {
+            "task_id": task_id,
+            "graders": {
+                "g3_scores": {dimension: score for dimension in dimensions},
+                "g3_usage": {"requests": 1},
+            },
+        }
+        for task_id, score in (("task_a", 0.6), ("task_b", 0.4))
+        for _ in range(3)
+    ]
+    thresholds = {"g3_bootstrap_seed": 7, "g3_bootstrap_iterations": 1000}
+
+    first = novel_plan_eval._g3_paired_bootstrap(trials, baseline, thresholds)
+    second = novel_plan_eval._g3_paired_bootstrap(trials, baseline, thresholds)
+
+    assert first == second
+    assert first["evaluated"] is True
+    assert first["task_cluster_count"] == 2
+    assert first["mean_delta"] == pytest.approx(0.0)
+    assert set(first["dimension_mean_deltas"]) == set(dimensions)
+
+
 def test_capability_task_selection_is_sorted_fingerprinted_and_non_formal(
     tmp_path: Path,
 ) -> None:

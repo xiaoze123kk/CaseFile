@@ -6,6 +6,7 @@ import argparse
 import copy
 import json
 import os
+import random
 import time
 from dataclasses import dataclass
 from hashlib import sha256
@@ -15,8 +16,16 @@ from typing import Any
 from openai import OpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
+from casefile.agent_runtime.constraint_first_story_planner import (
+    CONSTRAINT_FIRST_PIPELINE_VERSION,
+    SEMANTIC_FILL_PROMPT_VERSION,
+    SKELETON_PROMPT_VERSION,
+    execute_constraint_first_story_planner,
+)
+from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.providers import (
     DeepSeekAgentsProvider,
+    FakeProvider,
     OpenAIAgentsProvider,
 )
 from casefile.agent_runtime.story_planner import (
@@ -32,8 +41,10 @@ from casefile.agent_runtime.story_planner import (
 from casefile.domain.narrative_compiler import (
     STORY_PLANNER_REPAIR_VERSION,
     CompilerContractError,
+    ReferencePlanningSolver,
     build_planner_input_bundle,
     build_planner_model_view_v3,
+    build_planner_model_view_v4,
     canonical_json_sha256,
     canonicalize_novel_plan,
     inspect_novel_plan_candidate,
@@ -144,7 +155,12 @@ def planner_input() -> dict[str, Any]:
 def validate_suite(
     *, formal_capability: bool = False, planner_input_version: str = "v1"
 ) -> dict[str, Any]:
-    suite = _read_json(SUITE_ROOT / "suite.json")
+    suite_root = (
+        ROOT / "fixtures" / "novel_plan_benchmark" / "v4"
+        if planner_input_version == "v4"
+        else SUITE_ROOT
+    )
+    suite = _read_json(suite_root / "suite.json")
     tasks = suite.get("tasks")
     if not isinstance(tasks, list) or len(tasks) != 24:
         raise ValueError("Novel Plan capability suite must contain exactly 24 tasks")
@@ -152,19 +168,39 @@ def validate_suite(
     expected = {f"{capability}__{variant}" for capability in CAPABILITIES for variant in VARIANTS}
     if identities != expected:
         raise ValueError("Novel Plan capability matrix is incomplete")
-    if suite.get("schema_id") != "benchmark.novel-plan-suite.v3":
+    expected_suite_schema = (
+        "benchmark.novel-plan-suite.v4"
+        if planner_input_version == "v4"
+        else "benchmark.novel-plan-suite.v3"
+    )
+    if suite.get("schema_id") != expected_suite_schema:
         raise ValueError("Novel Plan capability suite schema is invalid")
-    if planner_input_version not in {"v1", "v2", "v3"}:
-        raise ValueError("PlannerInput version must be v1, v2, or v3")
+    if planner_input_version not in {"v1", "v2", "v3", "v4"}:
+        raise ValueError("PlannerInput version must be v1, v2, v3, or v4")
     reference_hashes: dict[str, str] = {}
     planner_inputs: dict[str, dict[str, Any]] = {}
     planner_model_views: dict[str, dict[str, Any] | None] = {}
     references: dict[str, dict[str, Any]] = {}
+    g3_baseline = None
+    baseline_contract = suite.get("g3_baseline")
+    if planner_input_version == "v4":
+        if not isinstance(baseline_contract, dict):
+            raise ValueError("Novel Plan v4 requires a frozen G3 baseline")
+        baseline_path = suite_root / str(baseline_contract.get("path", ""))
+        g3_baseline = _read_json(baseline_path)
+        if canonical_json_sha256(g3_baseline) != baseline_contract.get("hash"):
+            raise ValueError("Novel Plan v4 G3 baseline hash drift")
     for task in tasks:
         if task.get("primary_capability") not in CAPABILITIES:
             raise ValueError("Task primary_capability is invalid")
         task_id = str(task["task_id"])
-        frozen_version = "v2" if planner_input_version == "v3" else planner_input_version
+        frozen_version = (
+            "v2"
+            if planner_input_version == "v3"
+            else "v3"
+            if planner_input_version == "v4"
+            else planner_input_version
+        )
         frozen_input = task.get("planner_inputs", {}).get(frozen_version)
         invariants = task.get("outcome_invariants")
         if not isinstance(frozen_input, dict) or not isinstance(invariants, list) or not invariants:
@@ -175,14 +211,20 @@ def validate_suite(
         input_name = frozen_input.get("path")
         if not isinstance(input_name, str):
             raise ValueError(f"PlannerInput path is missing: {task_id}")
-        bundle = _read_json(SUITE_ROOT / input_name)
-        model_view = build_planner_model_view_v3(bundle) if planner_input_version == "v3" else None
+        bundle = _read_json(suite_root / input_name)
+        model_view = (
+            build_planner_model_view_v3(bundle)
+            if planner_input_version == "v3"
+            else build_planner_model_view_v4(bundle)
+            if planner_input_version == "v4"
+            else None
+        )
         input_hash = canonical_json_sha256(bundle)
         if frozen_input.get("hash") != input_hash:
             raise ValueError(f"PlannerInput hash mismatch: {task_id}")
         for invariant in invariants:
             _validate_audited_invariant(invariant, bundle, task_id)
-        reference = _read_json(SUITE_ROOT / str(task["reference"]))
+        reference = _read_json(suite_root / str(task["reference"]))
         validate_novel_plan_candidate(reference, planner_input=bundle)
         if not _grade_outcome(reference, invariants):
             raise ValueError(f"Reference Solution fails Outcome invariants: {task_id}")
@@ -200,6 +242,7 @@ def validate_suite(
         "planner_inputs": planner_inputs,
         "planner_model_views": planner_model_views,
         "references": references,
+        "g3_baseline": g3_baseline,
     }
 
 
@@ -282,6 +325,22 @@ def run_suite(
         ):
             raise ValueError("Formal Capability Planner and G3 grader must use exact Pro model IDs")
     first_task_id = str(suite["tasks"][0]["task_id"])
+    constraint_first_prompts = None
+    if planner_input_version == "v4":
+        skeleton_prompt = load_prompt("story_planner_skeleton", SKELETON_PROMPT_VERSION)
+        fill_prompt = load_prompt(
+            "story_planner_semantic_fill", SEMANTIC_FILL_PROMPT_VERSION
+        )
+        constraint_first_prompts = {
+            "skeleton": {
+                "version": skeleton_prompt.version,
+                "sha256": skeleton_prompt.system_prompt_sha256,
+            },
+            "semantic_fill": {
+                "version": fill_prompt.version,
+                "sha256": fill_prompt.system_prompt_sha256,
+            },
+        }
     fingerprint_payload = {
         "suite": suite,
         "suite_kind": suite_kind,
@@ -293,6 +352,13 @@ def run_suite(
         "comparison_baseline": (
             MODEL_VIEW_V3_BASELINE if planner_input_version == "v3" else None
         ),
+        "g3_baseline": validated["g3_baseline"],
+        "pipeline_version": (
+            CONSTRAINT_FIRST_PIPELINE_VERSION
+            if planner_input_version == "v4"
+            else "compiler.story-planner.v1"
+        ),
+        "constraint_first_prompts": constraint_first_prompts,
         "planner_input_version": planner_input_version,
         "candidate_schema": "compiler.novel-plan-candidate.v1",
         "ir_schema": "compiler.novel-plan.v1",
@@ -308,11 +374,15 @@ def run_suite(
                 "variant": item["variant"],
                 "reference_hash": validated["reference_hashes"][item["task_id"]],
                 "planner_input_hash": item["planner_inputs"][
-                    "v2" if planner_input_version == "v3" else planner_input_version
+                    "v2"
+                    if planner_input_version == "v3"
+                    else "v3"
+                    if planner_input_version == "v4"
+                    else planner_input_version
                 ]["hash"],
                 "planner_model_view_hash": (
                     canonical_json_sha256(validated["planner_model_views"][item["task_id"]])
-                    if planner_input_version == "v3"
+                    if planner_input_version in {"v3", "v4"}
                     else None
                 ),
                 "outcome_invariants_hash": canonical_json_sha256(
@@ -355,6 +425,7 @@ def run_suite(
                     task["outcome_invariants"] if suite_kind == "capability" else []
                 ),
                 prompt_version=prompt_version,
+                constraint_first=planner_input_version == "v4",
             )
             trials.append(trial)
             if checkpoint_path is not None:
@@ -409,13 +480,18 @@ def _run_trial(
     reference: dict[str, Any],
     outcome_invariants: list[dict[str, Any]],
     prompt_version: str,
+    constraint_first: bool = False,
 ) -> dict[str, Any]:
     start = time.perf_counter()
     candidate = copy.deepcopy(reference)
     expected_rejection = None
     if suite_kind == "safety":
         candidate, expected_rejection = _safety_mutation(str(task["mutation"]), candidate)
-    provider = _provider(mode, provider_name, candidate)
+    provider = (
+        FakeProvider()
+        if constraint_first and mode == "fake"
+        else _provider(mode, provider_name, candidate)
+    )
     rounds: list[dict[str, Any]] = []
     contract_valid = False
     semantic_valid = False
@@ -426,29 +502,96 @@ def _run_trial(
     semantic_violations: list[dict[str, Any]] = []
     raw_semantic_valid = False
     raw_outcome_failures: list[str] = []
+    raw_skeleton_outcome_failures: list[str] = []
     candidate_repair_applied = False
     candidate_repair_changes: list[dict[str, str]] = []
     try:
-        execution = execute_story_planner(
-            provider,
-            StoryPlannerRequest(
+        if constraint_first:
+            if provider_input is None:
+                raise ValueError("Constraint-First requires PlannerModelView v4")
+            skeleton_prompt = load_prompt(
+                "story_planner_skeleton", SKELETON_PROMPT_VERSION
+            )
+            fill_prompt = load_prompt(
+                "story_planner_semantic_fill", SEMANTIC_FILL_PROMPT_VERSION
+            )
+            constraint_execution = execute_constraint_first_story_planner(
+                provider,
+                ReferencePlanningSolver(),
                 task_run_id=0,
-                prompt_version=prompt_version,
                 planner_input=bundle,
-                provider_input=provider_input,
-                input_hash=canonical_json_sha256(bundle),
-                provider_input_hash=(
-                    canonical_json_sha256(provider_input) if provider_input is not None else None
+                model_view=provider_input,
+                component_hash=canonical_json_sha256(
+                    {
+                        "pipeline": CONSTRAINT_FIRST_PIPELINE_VERSION,
+                        "planner_input": bundle,
+                        "model_view": provider_input,
+                        "skeleton_prompt": {
+                            "version": skeleton_prompt.version,
+                            "sha256": skeleton_prompt.system_prompt_sha256,
+                        },
+                        "semantic_fill_prompt": {
+                            "version": fill_prompt.version,
+                            "sha256": fill_prompt.system_prompt_sha256,
+                        },
+                    }
                 ),
                 model_id=model_id,
                 api_key=_api_key(provider_name) if mode == "live" else "fake",
-                max_turns=1,
-            ),
-        )
-        rounds = _round_records(execution.rounds)
+            )
+            execution_candidate = constraint_execution.candidate
+            if expected_rejection is not None:
+                execution_candidate, expected_rejection = _safety_mutation(
+                    str(task["mutation"]),
+                    execution_candidate,
+                    post_assembly=True,
+                )
+            raw_skeleton_outcome_failures = _outcome_failures(
+                {"scenes": constraint_execution.stages[0].output["scenes"]},
+                outcome_invariants,
+            )
+            rounds = [
+                {
+                    "call_no": index,
+                    "stage": stage.stage,
+                    "input_hash": stage.input_hash,
+                    "contract_valid": True,
+                    "structural_errors": [],
+                    "usage": stage.usage,
+                    "latency_ms": stage.latency_ms,
+                    "raw_output_hash": (
+                        sha256(stage.raw_output.encode("utf-8")).hexdigest()
+                        if stage.raw_output is not None
+                        else canonical_json_sha256(stage.output)
+                    ),
+                    "recovered": stage.recovered,
+                }
+                for index, stage in enumerate(constraint_execution.stages, start=1)
+            ]
+        else:
+            execution = execute_story_planner(
+                provider,
+                StoryPlannerRequest(
+                    task_run_id=0,
+                    prompt_version=prompt_version,
+                    planner_input=bundle,
+                    provider_input=provider_input,
+                    input_hash=canonical_json_sha256(bundle),
+                    provider_input_hash=(
+                        canonical_json_sha256(provider_input)
+                        if provider_input is not None
+                        else None
+                    ),
+                    model_id=model_id,
+                    api_key=_api_key(provider_name) if mode == "live" else "fake",
+                    max_turns=1,
+                ),
+            )
+            execution_candidate = execution.candidate
+            rounds = _round_records(execution.rounds)
         contract_valid = True
         validation_report = inspect_novel_plan_candidate(
-            execution.candidate,
+            execution_candidate,
             planner_input=bundle,
         )
         semantic_violations = [
@@ -456,8 +599,8 @@ def _run_trial(
             for violation in validation_report.violations
         ]
         raw_semantic_valid = validation_report.valid
-        raw_outcome_failures = _outcome_failures(execution.candidate, outcome_invariants)
-        repair = repair_novel_plan_candidate(execution.candidate, planner_input=bundle)
+        raw_outcome_failures = _outcome_failures(execution_candidate, outcome_invariants)
+        repair = repair_novel_plan_candidate(execution_candidate, planner_input=bundle)
         candidate_repair_applied = repair.applied
         candidate_repair_changes = list(repair.changes)
         repaired_candidate = repair.candidate
@@ -466,7 +609,11 @@ def _run_trial(
         canonicalize_novel_plan(
             repaired_candidate,
             planner_input=bundle,
-            planner_version="compiler.story-planner.v1",
+            planner_version=(
+                CONSTRAINT_FIRST_PIPELINE_VERSION
+                if constraint_first
+                else "compiler.story-planner.v1"
+            ),
             component_fingerprint="b" * 64,
         )
         accepted = True
@@ -500,6 +647,9 @@ def _run_trial(
     candidate_repair_g2_regression = candidate_repair_applied and bool(
         set(outcome_failures).difference(raw_outcome_failures)
     )
+    solver_g2_regression = constraint_first and bool(
+        set(outcome_failures).difference(raw_skeleton_outcome_failures)
+    )
     g3 = (
         _live_quality_scores(
             provider_name,
@@ -526,10 +676,15 @@ def _run_trial(
         "candidate_repair_applied": candidate_repair_applied,
         "candidate_repair_changes": candidate_repair_changes,
         "candidate_repair_g2_regression": candidate_repair_g2_regression,
+        "solver_g2_regression": solver_g2_regression,
         "expected_rejection": expected_rejection,
         "outcome_failures": outcome_failures,
         "rounds": rounds,
-        "repair_attempts": max(0, len(rounds) - 1),
+        "repair_attempts": (
+            sum(round_.get("stage") == "structural_patch" for round_ in rounds)
+            if constraint_first
+            else max(0, len(rounds) - 1)
+        ),
         "usage": usage,
         "latency_ms": (time.perf_counter() - start) * 1000,
         "graders": {
@@ -718,7 +873,12 @@ def _object_ref_key(value: dict[str, Any]) -> str:
     return f"{object_type}:{object_id}"
 
 
-def _safety_mutation(mutation: str, candidate: dict[str, Any]) -> tuple[dict[str, Any], str]:
+def _safety_mutation(
+    mutation: str,
+    candidate: dict[str, Any],
+    *,
+    post_assembly: bool = False,
+) -> tuple[dict[str, Any], str]:
     scenes = candidate["scenes"]
     if mutation == "hallucinated_reference":
         scenes[0]["event_refs"][0]["object_id"] = "evt_hallucinated"
@@ -738,7 +898,11 @@ def _safety_mutation(mutation: str, candidate: dict[str, Any]) -> tuple[dict[str
         return candidate, "compiler_story_plan_dependency_cycle"
     scenes[0]["intent"] = "保留"
     scenes[0]["compile_run_id"] = 99
-    return candidate, "compiler_story_plan_runtime_identity_forbidden"
+    return candidate, (
+        "compiler_story_planner_output_invalid"
+        if post_assembly
+        else "compiler_story_plan_runtime_identity_forbidden"
+    )
 
 
 def _report(
@@ -842,6 +1006,9 @@ def _report(
         "candidate_repair_g2_regression_count": sum(
             bool(item.get("candidate_repair_g2_regression")) for item in trials
         ),
+        "solver_g2_regression_count": sum(
+            bool(item.get("solver_g2_regression")) for item in trials
+        ),
         "outcome_pass_rate": outcome_passed / total if total else 0,
         "repair_attempt_count": sum(int(item.get("repair_attempts", 0)) for item in trials),
         "round_contract_valid_rates": _round_contract_rates(trials),
@@ -858,6 +1025,11 @@ def _report(
             float(item.get("graders", {}).get("g3_latency_ms", 0)) for item in trials
         ),
         "g3_quality_distribution": _g3_distribution(trials),
+        "g3_paired_bootstrap": _g3_paired_bootstrap(
+            trials,
+            frozen.get("g3_baseline"),
+            frozen.get("suite", {}).get("promotion_gate"),
+        ),
         "task_cohort": cohort,
         "by_capability": family_results,
         "by_variant": variant_results,
@@ -924,14 +1096,6 @@ def _promotion_gate(
             "checks": {},
         }
     production = metrics["production_rejections"]
-    temporal = sum(
-        int(production.get(code, 0))
-        for code in (
-            "compiler_story_plan_temporal_order_invalid",
-            "compiler_story_plan_flashback_invalid",
-            "compiler_story_plan_flashforward_invalid",
-        )
-    )
     checks = {
         "g2_passed_trials": metrics["outcome_passed_trial_count"]
         >= thresholds["g2_passed_trials_min"],
@@ -940,17 +1104,50 @@ def _promotion_gate(
         >= thresholds["all_three_tasks_min"],
         "semantic_valid_trials": metrics["semantic_valid_trial_count"]
         >= thresholds["semantic_valid_trials_min"],
-        "temporal_rejections": temporal <= thresholds["temporal_rejections_max"],
         "resolution_missing": int(production.get("compiler_story_plan_resolution_uncovered", 0))
         <= thresholds["resolution_missing_max"],
         "unsafe_trials": len(safe_failures) <= thresholds["unsafe_trials_max"],
         "infrastructure_failures": len(infra) <= thresholds["infrastructure_failures_max"],
         "complete_24x3": len(trials) == 72,
-        "candidate_repair_g2_non_regression": metrics[
-            "candidate_repair_g2_regression_count"
-        ]
-        == 0,
+        "candidate_repair_g2_non_regression": metrics["candidate_repair_g2_regression_count"]
+        <= thresholds.get("repair_g2_regression_max", 0),
     }
+    if frozen.get("suite", {}).get("schema_id") == "benchmark.novel-plan-suite.v4":
+        g3 = metrics["g3_paired_bootstrap"]
+        checks.update(
+            {
+                "structural_exhaustion": int(
+                    production.get(
+                        "compiler_story_planner_structural_repair_exhausted", 0
+                    )
+                )
+                <= thresholds["structural_exhaustion_max"],
+                "solver_g2_non_regression": metrics["solver_g2_regression_count"]
+                <= thresholds["solver_g2_regression_max"],
+                "g3_bootstrap_complete": bool(g3.get("evaluated")),
+                "g3_mean_delta_lower_bound": float(
+                    g3.get("mean_delta_ci95_lower", -1.0)
+                )
+                >= thresholds["g3_mean_delta_lower_bound_min"],
+                "g3_dimension_non_regression": bool(
+                    g3.get("dimension_mean_deltas")
+                )
+                and all(
+                    float(value) >= thresholds["g3_dimension_mean_delta_min"]
+                    for value in g3.get("dimension_mean_deltas", {}).values()
+                ),
+            }
+        )
+    else:
+        temporal = sum(
+            int(production.get(code, 0))
+            for code in (
+                "compiler_story_plan_temporal_order_invalid",
+                "compiler_story_plan_flashback_invalid",
+                "compiler_story_plan_flashforward_invalid",
+            )
+        )
+        checks["temporal_rejections"] = temporal <= thresholds["temporal_rejections_max"]
     baseline = frozen.get("comparison_baseline")
     if isinstance(baseline, dict):
         checks.update(
@@ -1098,6 +1295,76 @@ def _g3_distribution(trials: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _g3_paired_bootstrap(
+    trials: list[dict[str, Any]],
+    baseline: object,
+    thresholds: object,
+) -> dict[str, Any]:
+    if not isinstance(baseline, dict) or not isinstance(thresholds, dict):
+        return {"evaluated": False}
+    baseline_tasks = baseline.get("task_cluster_scores")
+    if not isinstance(baseline_tasks, dict):
+        return {"evaluated": False}
+    dimensions = ("opening", "escalation", "turn_setup", "pov", "climax", "closure")
+    candidate: dict[str, dict[str, float]] = {}
+    for task_id in sorted(baseline_tasks):
+        task_trials = [
+            trial
+            for trial in trials
+            if trial.get("task_id") == task_id
+            and isinstance(trial.get("graders", {}).get("g3_scores"), dict)
+            and int(trial.get("graders", {}).get("g3_usage", {}).get("requests", 0)) > 0
+        ]
+        if not task_trials:
+            return {
+                "evaluated": False,
+                "reason": "missing_task_cluster",
+                "task_id": task_id,
+            }
+        candidate[task_id] = {
+            dimension: sum(
+                float(trial["graders"]["g3_scores"][dimension]) for trial in task_trials
+            )
+            / len(task_trials)
+            for dimension in dimensions
+        }
+    task_ids = sorted(candidate)
+    deltas = {
+        task_id: {
+            dimension: candidate[task_id][dimension]
+            - float(baseline_tasks[task_id][dimension])
+            for dimension in dimensions
+        }
+        for task_id in task_ids
+    }
+    dimension_mean_deltas = {
+        dimension: sum(deltas[task_id][dimension] for task_id in task_ids) / len(task_ids)
+        for dimension in dimensions
+    }
+    task_mean_deltas = {
+        task_id: sum(deltas[task_id].values()) / len(dimensions) for task_id in task_ids
+    }
+    seed = int(thresholds.get("g3_bootstrap_seed", 20260826))
+    iterations = int(thresholds.get("g3_bootstrap_iterations", 10000))
+    generator = random.Random(seed)
+    samples = sorted(
+        sum(task_mean_deltas[generator.choice(task_ids)] for _ in task_ids) / len(task_ids)
+        for _ in range(iterations)
+    )
+    lower_index = max(0, int(0.025 * iterations) - 1)
+    upper_index = min(iterations - 1, int(0.975 * iterations))
+    return {
+        "evaluated": True,
+        "seed": seed,
+        "iterations": iterations,
+        "task_cluster_count": len(task_ids),
+        "mean_delta": sum(task_mean_deltas.values()) / len(task_ids),
+        "mean_delta_ci95_lower": samples[lower_index],
+        "mean_delta_ci95_upper": samples[upper_index],
+        "dimension_mean_deltas": dimension_mean_deltas,
+    }
+
+
 def _g3_usage_total(trials: list[dict[str, Any]]) -> dict[str, int]:
     result: dict[str, int] = {}
     for trial in trials:
@@ -1144,7 +1411,11 @@ def main() -> None:
     parser.add_argument("--provider", choices=("openai", "deepseek"), default="openai")
     parser.add_argument("--model", default="fake-story-planner")
     parser.add_argument("--quality-grader-model")
-    parser.add_argument("--planner-input-version", choices=("v1", "v2", "v3"), default="v1")
+    parser.add_argument(
+        "--planner-input-version",
+        choices=("v1", "v2", "v3", "v4"),
+        default="v1",
+    )
     parser.add_argument("--prompt-version", default=STORY_PLANNER_PROMPT_VERSION)
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--checkpoint-path", type=Path)
