@@ -1727,6 +1727,27 @@ class ScenePurpose(Enum):
     transition = 'transition'
 
 
+class ReplaceScenePurposePatch(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    op: Literal['replace_scene_purpose']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    purpose: ScenePurpose
+
+
+class StoryPlanStructuralPatch(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-plan-structural-patch.v1']
+    patches: Annotated[
+        list[ReplaceScenePurposePatch], Field(max_length=16, min_length=1)
+    ]
+
+
 class PresentationMode(Enum):
     linear = 'linear'
     flashback = 'flashback'
@@ -1929,6 +1950,7 @@ class EditingContracts(BaseModel):
     novel_profile: novel_profile_1.Schema
     planner_input: Schema_4 | Schema_5
     planner_model_view: Schema_6
+    story_plan_structural_patch: StoryPlanStructuralPatch
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
 

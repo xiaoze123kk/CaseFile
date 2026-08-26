@@ -133,6 +133,9 @@ def test_v3_fake_capability_uses_compact_provider_view_and_full_audit_bundle(
     )
     assert report["frozen"]["planner_input_version"] == "v3"
     assert report["frozen"]["prompt"] == "story-planner-v7"
+    assert report["frozen"]["structural_repair_version"] == (
+        "compiler.story-plan-structural-patch.v1"
+    )
     assert report["metrics"]["infrastructure_failure_rate"] == 0
     assert report["promotion_gate"]["checks"]["g2_stronger_than_v3"] is False
     assert report["frozen"]["comparison_baseline"]["outcome_passed_trial_count"] == 64

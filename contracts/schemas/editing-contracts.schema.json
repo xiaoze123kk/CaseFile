@@ -11,7 +11,8 @@
     "task_run", "task_event", "agent_generate_request", "agent_generate_result",
     "compiler_source_ref", "compiler_artifact_ref", "compiler_diagnostic",
     "compiler_profile_binding", "compile_input_manifest", "narrative_ir",
-    "novel_profile", "planner_input", "planner_model_view", "novel_plan_candidate", "novel_plan"
+    "novel_profile", "planner_input", "planner_model_view", "story_plan_structural_patch",
+    "novel_plan_candidate", "novel_plan"
   ],
   "properties": {
     "casefile": {"$ref": "casefile/casefile.schema.json"},
@@ -42,6 +43,9 @@
       ]
     },
     "planner_model_view": {"$ref": "compiler/planner-model-view-v3.schema.json"},
+    "story_plan_structural_patch": {
+      "$ref": "compiler/novel-plan.schema.json#/$defs/StoryPlanStructuralPatch"
+    },
     "novel_plan_candidate": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanCandidate"},
     "novel_plan": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanIR"}
   }

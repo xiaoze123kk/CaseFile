@@ -7,13 +7,6 @@ from typing import Any, cast
 
 from agents import ModelSettings, Tool
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import NovelPlanCandidate
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
@@ -108,13 +101,25 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _validate_polish_candidate,
 )
 from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
 )
-from casefile.agent_runtime.story_planner_prompt import render_story_planner_prompt
+from casefile.agent_runtime.story_planner_prompt import (
+    render_story_planner_patch_prompt,
+    render_story_planner_prompt,
+)
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import NovelPlanCandidate, StoryPlanStructuralPatch
 
 
 class OpenAIAgentsProvider:
@@ -143,6 +148,32 @@ class OpenAIAgentsProvider:
         except ProviderProtocolError:
             candidate, usage = {}, {}
         return StoryPlannerProviderResult(candidate=candidate, usage=usage)
+
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_patch_prompt(request)
+        try:
+            patch, usage = asyncio.run(
+                self._run_auxiliary(
+                    request,
+                    instructions=instructions,
+                    input_text=input_text,
+                    output_type=StoryPlanStructuralPatch,
+                    stage="story_planner_structural_patch",
+                    component_id="story_planner",
+                    schema_id="compiler.story-plan-structural-patch.v1",
+                    max_turns=1,
+                    temperature=0,
+                    strict_validation=False,
+                    max_protocol_attempts=1,
+                )
+            )
+        except ProviderProtocolError:
+            patch, usage = {}, {}
+        return StoryPlannerPatchProviderResult(patch=patch, usage=usage)
 
     def repair_closure(
         self,
@@ -643,6 +674,7 @@ class OpenAIAgentsProvider:
             | ThreadCompactionRequest
             | ClosureRepairRequest
             | StoryPlannerRequest
+            | StoryPlannerPatchRequest
         ),
         *,
         instructions: str,

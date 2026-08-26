@@ -104,10 +104,15 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _validate_polish_candidate,
 )
 from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
 )
-from casefile.agent_runtime.story_planner_prompt import render_story_planner_prompt
+from casefile.agent_runtime.story_planner_prompt import (
+    render_story_planner_patch_prompt,
+    render_story_planner_prompt,
+)
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
@@ -117,7 +122,7 @@ from casefile_contracts import (
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
-from casefile_contracts import NovelPlanCandidate
+from casefile_contracts import NovelPlanCandidate, StoryPlanStructuralPatch
 
 
 class DeepSeekAgentsProvider:
@@ -129,21 +134,54 @@ class DeepSeekAgentsProvider:
         if not request.api_key:
             raise ProviderProtocolError("DeepSeek API key is required")
         instructions, input_text, _prompt_hash = render_story_planner_prompt(request)
-        return asyncio.run(
-            self._plan_story_json_object(
+        candidate, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
                 request,
                 instructions=instructions,
                 input_text=input_text,
+                output_type=NovelPlanCandidate,
+                schema_id="compiler.novel-plan-candidate.v1",
+                stage="story_planner",
             )
         )
+        return StoryPlannerProviderResult(
+            candidate=candidate,
+            usage=usage,
+            raw_output=raw_output,
+        )
 
-    async def _plan_story_json_object(
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_patch_prompt(request)
+        patch, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=StoryPlanStructuralPatch,
+                schema_id="compiler.story-plan-structural-patch.v1",
+                stage="story_planner_structural_patch",
+            )
+        )
+        return StoryPlannerPatchProviderResult(
+            patch=patch,
+            usage=usage,
+            raw_output=raw_output,
+        )
+
+    async def _story_planner_json_object(
         self,
-        request: StoryPlannerRequest,
+        request: StoryPlannerRequest | StoryPlannerPatchRequest,
         *,
         instructions: str,
         input_text: str,
-    ) -> StoryPlannerProviderResult:
+        output_type: type[BaseModel],
+        schema_id: str,
+        stage: str,
+    ) -> tuple[dict[str, Any], dict[str, Any], str]:
         """Return the raw candidate so the outer bounded repair loop owns validation."""
 
         client = AsyncOpenAI(
@@ -152,17 +190,17 @@ class DeepSeekAgentsProvider:
             max_retries=request.network_retries,
         )
         schema_text = json.dumps(
-            NovelPlanCandidate.model_json_schema(),
+            output_type.model_json_schema(),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
         )
         request.emit(
             "agent.model_call.started",
-            "story_planner",
+            stage,
             {
                 "component_id": "story_planner",
-                "schema_id": "compiler.novel-plan-candidate.v1",
+                "schema_id": schema_id,
                 "protocol": "json_object",
                 "model_id": request.model_id,
             },
@@ -206,20 +244,16 @@ class DeepSeekAgentsProvider:
         }
         request.emit(
             "agent.model_call.completed",
-            "story_planner",
+            stage,
             {
                 "component_id": "story_planner",
-                "schema_id": "compiler.novel-plan-candidate.v1",
+                "schema_id": schema_id,
                 "protocol": "json_object",
                 "model_id": request.model_id,
                 "usage": usage,
             },
         )
-        return StoryPlannerProviderResult(
-            candidate=candidate,
-            usage=usage,
-            raw_output=raw_output,
-        )
+        return candidate, usage, raw_output
 
     def repair_closure(
         self,

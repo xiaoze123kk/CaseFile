@@ -13,6 +13,32 @@
     "ScenePurpose": {
       "enum": ["hook", "setup", "investigation", "discovery", "reversal", "confrontation", "reveal", "false_resolution", "climax", "resolution", "transition"]
     },
+    "ReplaceScenePurposePatch": {
+      "title": "ReplaceScenePurposePatch",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["op", "scene_id", "purpose"],
+      "properties": {
+        "op": {"const": "replace_scene_purpose"},
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "purpose": {"$ref": "#/$defs/ScenePurpose"}
+      }
+    },
+    "StoryPlanStructuralPatch": {
+      "title": "StoryPlanStructuralPatch",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "patches"],
+      "properties": {
+        "schema_id": {"const": "compiler.story-plan-structural-patch.v1"},
+        "patches": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/ReplaceScenePurposePatch"},
+          "minItems": 1,
+          "maxItems": 16
+        }
+      }
+    },
     "PresentationMode": {"enum": ["linear", "flashback", "flashforward"]},
     "ResolutionAction": {"enum": ["advance", "resolve", "intentionally_unresolved"]},
     "CandidateChapter": {

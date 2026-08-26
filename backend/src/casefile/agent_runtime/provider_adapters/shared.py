@@ -12,9 +12,6 @@ from agents import Agent, ModelSettings, RunConfig, Runner, Tool
 from agents.exceptions import ModelBehaviorError
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from agents.models.openai_responses import OpenAIResponsesModel
-from casefile_contracts import (
-    CaseFile,
-)
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
@@ -49,7 +46,10 @@ from casefile.agent_runtime.prompt_repository import (
     system_prompt_for_task,
 )
 from casefile.agent_runtime.provider_adapters.protocols import ProviderProtocolError
-from casefile.agent_runtime.story_planner import StoryPlannerRequest
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchRequest,
+    StoryPlannerRequest,
+)
 from casefile.agent_runtime.structured_output import (
     call_deepseek_strict_tool,
     compile_deepseek_strict_schema,
@@ -68,6 +68,9 @@ from casefile.agent_runtime.transport_diagnostics import (
     classify_transport_error,
 )
 from casefile.contracts import ContractValidationError, validate_casefile
+from casefile_contracts import (
+    CaseFile,
+)
 
 CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE_ENV = "CASEFILE_CHAT_CONTEXT_LIVE_TEMPERATURE"
 
@@ -235,6 +238,7 @@ async def _run_auxiliary_agent(
         | ThreadCompactionRequest
         | ClosureRepairRequest
         | StoryPlannerRequest
+        | StoryPlannerPatchRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,

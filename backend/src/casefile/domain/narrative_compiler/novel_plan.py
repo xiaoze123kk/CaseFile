@@ -25,6 +25,7 @@ NOVEL_PLAN_CANDIDATE_SCHEMA_ID = "compiler.novel-plan-candidate.v1"
 NOVEL_PLAN_SCHEMA_ID = "compiler.novel-plan.v1"
 STORY_PLANNER_COMPONENT_VERSION = "compiler.story-planner.v1"
 STORY_PLANNER_REPAIR_VERSION = "compiler.story-plan-mode-repair.v1"
+STORY_PLANNER_STRUCTURAL_REPAIR_VERSION = "compiler.story-plan-structural-patch.v1"
 
 _COLLECTION_TYPE = {
     "resolution_specs": "resolution_spec",
@@ -335,6 +336,7 @@ def story_planner_component_fingerprint(
     fingerprint = {
         "component_version": STORY_PLANNER_COMPONENT_VERSION,
         "candidate_repair_version": STORY_PLANNER_REPAIR_VERSION,
+        "structural_repair_version": STORY_PLANNER_STRUCTURAL_REPAIR_VERSION,
         "candidate_schema_id": NOVEL_PLAN_CANDIDATE_SCHEMA_ID,
         "novel_plan_schema_id": NOVEL_PLAN_SCHEMA_ID,
         **input_fp,
@@ -686,6 +688,7 @@ __all__ = [
     "NOVEL_PLAN_SCHEMA_ID",
     "STORY_PLANNER_COMPONENT_VERSION",
     "STORY_PLANNER_REPAIR_VERSION",
+    "STORY_PLANNER_STRUCTURAL_REPAIR_VERSION",
     "NovelPlanRepairResult",
     "NovelPlanValidationReport",
     "NovelPlanViolation",

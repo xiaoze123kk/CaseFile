@@ -9,22 +9,39 @@ import pytest
 
 from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_PROMPT_VERSION,
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
     execute_story_planner,
 )
-from casefile.agent_runtime.story_planner_prompt import render_story_planner_prompt
+from casefile.agent_runtime.story_planner_prompt import (
+    render_story_planner_patch_prompt,
+    render_story_planner_prompt,
+)
 from casefile.domain.narrative_compiler import CompilerContractError
 
 
 class SequenceProvider:
-    def __init__(self, values: list[dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        values: list[dict[str, Any]],
+        patches: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.values = values
+        self.patches = patches or []
         self.requests: list[StoryPlannerRequest] = []
+        self.patch_requests: list[StoryPlannerPatchRequest] = []
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
         self.requests.append(request)
         return StoryPlannerProviderResult(candidate=self.values.pop(0), usage={})
+
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        self.patch_requests.append(request)
+        return StoryPlannerPatchProviderResult(patch=self.patches.pop(0), usage={})
 
 
 def _request() -> StoryPlannerRequest:
@@ -88,6 +105,79 @@ def test_provider_input_survives_structural_repair_and_is_rendered_instead_of_au
     assert provider.requests[1].provider_input_hash == "b" * 64
     assert "compiler.story-planner-model-view.v3" in rendered
     assert '"schema_id":"audit"' not in rendered
+
+
+def test_scene_purpose_error_uses_typed_patch_and_preserves_other_fields() -> None:
+    invalid = _valid()
+    invalid["scenes"][0]["purpose"] = "opening"
+    provider = SequenceProvider(
+        [invalid],
+        [
+            {
+                "schema_id": "compiler.story-plan-structural-patch.v1",
+                "patches": [
+                    {
+                        "op": "replace_scene_purpose",
+                        "scene_id": "scene_one",
+                        "purpose": "hook",
+                    }
+                ],
+            }
+        ],
+    )
+
+    result = execute_story_planner(provider, _request())
+
+    assert result.candidate == _valid()
+    assert len(provider.requests) == 1
+    assert len(provider.patch_requests) == 1
+    request = provider.patch_requests[0]
+    assert request.expected_scene_ids == ("scene_one",)
+    system, rendered, _ = render_story_planner_patch_prompt(request)
+    assert "compiler.story-plan-structural-patch.v1" in system
+    assert "scene_one" in rendered
+
+
+def test_invalid_purpose_patch_is_bounded_without_full_candidate_regeneration() -> None:
+    invalid = _valid()
+    invalid["scenes"][0]["purpose"] = "opening"
+    provider = SequenceProvider([invalid], [{}, {}, {}])
+
+    with pytest.raises(CompilerContractError) as captured:
+        execute_story_planner(provider, _request())
+
+    assert captured.value.reason_code == "compiler_story_planner_structural_repair_exhausted"
+    assert len(provider.requests) == 1
+    assert len(provider.patch_requests) == 3
+
+
+def test_purpose_patch_rejects_scope_expansion() -> None:
+    invalid = _valid()
+    invalid["scenes"][0]["purpose"] = "opening"
+    provider = SequenceProvider(
+        [invalid],
+        [
+            {
+                "schema_id": "compiler.story-plan-structural-patch.v1",
+                "patches": [
+                    {
+                        "op": "replace_scene_purpose",
+                        "scene_id": "scene_other",
+                        "purpose": "hook",
+                    }
+                ],
+            },
+            {},
+            {},
+        ],
+    )
+
+    with pytest.raises(CompilerContractError):
+        execute_story_planner(provider, _request())
+
+    assert provider.patch_requests[1].previous_patch_errors[0]["code"] == (
+        "story_planner_structural_patch_scope_mismatch"
+    )
 
 
 def test_repairs_are_bounded_to_three() -> None:

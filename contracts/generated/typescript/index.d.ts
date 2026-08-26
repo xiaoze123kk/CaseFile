@@ -338,6 +338,7 @@ export interface EditingContracts {
   novel_profile: NovelProfile;
   planner_input: PlannerInputBundle | PlannerInputBundleV2;
   planner_model_view: PlannerModelViewV3;
+  story_plan_structural_patch: StoryPlanStructuralPatch;
   novel_plan_candidate: NovelPlanCandidate;
   novel_plan: NovelPlanIR;
 }
@@ -1023,6 +1024,30 @@ export interface PlannerModelViewV3 {
 export interface ModelObject {
   object_ref: ObjectRef;
   value: unknown;
+}
+export interface StoryPlanStructuralPatch {
+  schema_id: "compiler.story-plan-structural-patch.v1";
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  patches: [ReplaceScenePurposePatch, ...ReplaceScenePurposePatch[]];
+}
+export interface ReplaceScenePurposePatch {
+  op: "replace_scene_purpose";
+  scene_id: string;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
 }
 export interface NovelPlanCandidate {
   schema_id: "compiler.novel-plan-candidate.v1";

@@ -9,13 +9,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Literal, cast
 
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import Status as ClaimStatus
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
@@ -99,10 +92,19 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _validate_generated_descriptions,
 )
 from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
 )
 from casefile.contracts import validate_casefile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import Status as ClaimStatus
 
 
 def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
@@ -398,6 +400,25 @@ class FakeProvider:
         candidate = _fake_story_plan_candidate(request.planner_input)
         return StoryPlannerProviderResult(
             candidate=candidate,
+            usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            raw_output=None,
+        )
+
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        return StoryPlannerPatchProviderResult(
+            patch={
+                "schema_id": "compiler.story-plan-structural-patch.v1",
+                "patches": [
+                    {
+                        "op": "replace_scene_purpose",
+                        "scene_id": scene_id,
+                        "purpose": "investigation",
+                    }
+                    for scene_id in request.expected_scene_ids
+                ],
+            },
             usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
             raw_output=None,
         )

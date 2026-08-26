@@ -21,6 +21,9 @@ from casefile.agent_runtime.providers import (
 )
 from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_PROMPT_VERSION,
+    STORY_PLANNER_STRUCTURAL_REPAIR_VERSION,
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
     StoryPlannerProviderResult,
     StoryPlannerRequest,
     StoryPlannerRound,
@@ -85,6 +88,24 @@ class FrozenProvider:
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
         return StoryPlannerProviderResult(candidate=copy.deepcopy(self.candidate), usage={})
+
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        return StoryPlannerPatchProviderResult(
+            patch={
+                "schema_id": "compiler.story-plan-structural-patch.v1",
+                "patches": [
+                    {
+                        "op": "replace_scene_purpose",
+                        "scene_id": scene_id,
+                        "purpose": "investigation",
+                    }
+                    for scene_id in request.expected_scene_ids
+                ],
+            },
+            usage={},
+        )
 
 
 def planner_input() -> dict[str, Any]:
@@ -268,6 +289,7 @@ def run_suite(
         "grader": GRADER_VERSION,
         "prompt": prompt_version,
         "candidate_repair_version": STORY_PLANNER_REPAIR_VERSION,
+        "structural_repair_version": STORY_PLANNER_STRUCTURAL_REPAIR_VERSION,
         "comparison_baseline": (
             MODEL_VIEW_V3_BASELINE if planner_input_version == "v3" else None
         ),
