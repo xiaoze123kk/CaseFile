@@ -15,6 +15,8 @@ import type {
   CompilerSourceRef,
   NarrativeIR,
   PatchCandidate,
+  SceneCompilerInputBundle,
+  ScenePlanCandidate,
   ScenePlanIR,
   ValidationIssue,
 } from "../generated/typescript/index.js";
@@ -149,6 +151,12 @@ const narrativeIrValidator = ajv.getSchema(
 const scenePlanValidator = ajv.getSchema(
   "https://casefile.local/schemas/v2/compiler/scene-plan.schema.json",
 );
+const sceneCompilerInputValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/scene-plan.schema.json#/$defs/SceneCompilerInputBundle",
+);
+const scenePlanCandidateValidator = ajv.getSchema(
+  "https://casefile.local/schemas/v2/compiler/scene-plan.schema.json#/$defs/ScenePlanCandidate",
+);
 
 if (
   !casefileValidator ||
@@ -161,6 +169,8 @@ if (
   !compilerArtifactRefValidator ||
   !compilerDiagnosticValidator ||
   !narrativeIrValidator ||
+  !sceneCompilerInputValidator ||
+  !scenePlanCandidateValidator ||
   !scenePlanValidator
 ) {
   throw new Error("Editing contract entry schemas were not registered");
@@ -336,6 +346,34 @@ assertValid(
   scenePlanValidator,
   typedRoundTrip(scenePlan as unknown as ScenePlanIR),
   "ScenePlanIR",
+);
+const sceneCompilerInput = loadJson(
+  resolve(
+    fixtureRoot,
+    "compiler",
+    "scene_plan",
+    "v1",
+    "input.json",
+  ),
+);
+assertValid(
+  sceneCompilerInputValidator,
+  typedRoundTrip(sceneCompilerInput as unknown as SceneCompilerInputBundle),
+  "SceneCompilerInputBundle",
+);
+const scenePlanCandidate = loadJson(
+  resolve(
+    fixtureRoot,
+    "scene_plan_benchmark",
+    "v1",
+    "references",
+    "scene_decomposition__basic.json",
+  ),
+);
+assertValid(
+  scenePlanCandidateValidator,
+  typedRoundTrip(scenePlanCandidate as unknown as ScenePlanCandidate),
+  "ScenePlanCandidate",
 );
 
 const duplicateDiagnostic = structuredClone(compilerDiagnostic);

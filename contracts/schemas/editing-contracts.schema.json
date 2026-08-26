@@ -10,7 +10,8 @@
     "validation_issue", "patch_candidate",
     "task_run", "task_event", "agent_generate_request", "agent_generate_result",
     "compiler_source_ref", "compiler_artifact_ref", "compiler_diagnostic",
-    "compiler_profile_binding", "compile_input_manifest", "narrative_ir", "scene_plan",
+    "compiler_profile_binding", "compile_input_manifest", "narrative_ir",
+    "scene_compiler_input", "scene_plan_candidate", "scene_plan",
     "novel_profile", "planner_input", "planner_model_view", "story_plan_structural_patch",
     "constraint_first_planner", "novel_plan_candidate", "novel_plan"
   ],
@@ -35,6 +36,12 @@
     "compiler_profile_binding": {"$ref": "compiler/compiler.schema.json#/$defs/CompilerProfileBinding"},
     "compile_input_manifest": {"$ref": "compiler/compiler.schema.json#/$defs/CompileInputManifest"},
     "narrative_ir": {"$ref": "compiler/narrative-ir.schema.json"},
+    "scene_compiler_input": {
+      "$ref": "compiler/scene-plan.schema.json#/$defs/SceneCompilerInputBundle"
+    },
+    "scene_plan_candidate": {
+      "$ref": "compiler/scene-plan.schema.json#/$defs/ScenePlanCandidate"
+    },
     "scene_plan": {"$ref": "compiler/scene-plan.schema.json"},
     "novel_profile": {"$ref": "compiler/novel-profile.schema.json"},
     "planner_input": {

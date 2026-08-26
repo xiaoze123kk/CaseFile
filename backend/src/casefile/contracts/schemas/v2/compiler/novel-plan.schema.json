@@ -122,16 +122,27 @@
     },
     "NovelPlanScene": {
       "title": "NovelPlanScene",
-      "allOf": [
-        {"$ref": "#/$defs/CandidateScene"},
-        {
-          "type": "object",
-          "required": ["source_refs"],
-          "properties": {
-            "source_refs": {"type": "array", "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"}, "minItems": 1, "uniqueItems": true}
-          }
-        }
-      ]
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "chapter_id", "discourse_order", "purpose", "intent", "presentation_mode", "pov_ref", "participant_refs", "location_ref", "event_refs", "story_time_refs", "basis_refs", "exposure", "resolutions", "prerequisite_scene_ids", "source_refs"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "#/$defs/ScenePurpose"},
+        "intent": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "presentation_mode": {"$ref": "#/$defs/PresentationMode"},
+        "pov_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "participant_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "location_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "event_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "story_time_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "basis_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "exposure": {"type": "array", "items": {"$ref": "#/$defs/ExposurePlacement"}},
+        "resolutions": {"type": "array", "items": {"$ref": "#/$defs/ResolutionPlacement"}},
+        "prerequisite_scene_ids": {"type": "array", "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"}, "uniqueItems": true},
+        "source_refs": {"type": "array", "items": {"$ref": "compiler.schema.json#/$defs/CompilerSourceRef"}, "minItems": 1, "uniqueItems": true}
+      }
     },
     "NovelPlanIndexes": {
       "title": "NovelPlanIndexes",

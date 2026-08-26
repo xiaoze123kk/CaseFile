@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "fabricated_reference",
+  "base_task_id": "scene_grounding__basic",
+  "kind": "fabricate_participant_ref",
+  "target": "candidate",
+  "expected_reason_code": "compiler_scene_plan_candidate_reference_invalid",
+  "category": "Grounding"
+}

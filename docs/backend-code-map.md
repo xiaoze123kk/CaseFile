@@ -67,13 +67,14 @@
 | `backend/src/casefile/application/verification_engine.py` | VerificationEngine 的兼容导入门面；稳定 re-export 既有公开类型，纯规则实现在 domain 层。 |
 | `backend/src/casefile/application/verification_service.py` | VerificationEngine 的 SQLAlchemy application adapter：VerificationRun/finding 双写、refs/reviews/patch lineage 与 Workbench 查询读模型。 |
 | `backend/src/casefile/domain/verification_engine.py` | 脱离 API、数据库、Worker 和 Provider 的纯验证内核：Finding contract、确定性/LLM 合并、旧 batch simulation，以及统一 MutationSimulation 的增量 finding delta、作者债务授权与 can_apply policy。 |
-| `backend/src/casefile/domain/narrative_compiler/` | Narrative Compiler 纯领域内核：N4.0 hash/SourceRef/Manifest 门禁、N4.2 CaseFile→NarrativeIR 无损投影、N4.3 Story Planner 权威门禁，以及 N4.4 NovelPlanIR→ScenePlanIR 确定性执行编译；不依赖数据库、Worker、API 或 Provider。 |
+| `backend/src/casefile/domain/narrative_compiler/` | Narrative Compiler 纯领域内核：N4.0 hash/SourceRef/Manifest 门禁、N4.2 CaseFile→NarrativeIR 无损投影、N4.3 Story Planner 权威门禁，以及 N4.4 冻结 SceneCompilerInput、模型候选门禁、ScenePlanIR 规范化与机械参考编译；不依赖数据库、Worker、API 或 Provider。 |
 | `backend/src/casefile/domain/narrative_compiler/planner_input.py`、`planner_constraints.py`、`planning_solver.py`、`novel_plan.py` | PlannerInput v1–v3、ModelView v3/v4、ConstraintIR v1/v2、PlanningProblem/slots、纯 PlanningSolver 接口与确定性参考后端，以及 NovelPlan 权威语义门禁；Constraint-First 先锁定 skeleton，再只合并模型所有 fill 字段，现有 mode-repair 仅保留为最终安全网。 |
-| `backend/src/casefile/domain/narrative_compiler/scene_plan.py` | N4.4 纯 Scene Execution Compiler：仅消费规范 NovelPlanIR，稳定派生 Beat/Edge ID、Chapter/Scene/Beat 索引、读者揭露状态与禁区；NarrativeExecutionGraph 内部封装 NetworkX，确定性 linter 从输入重建期望产物并失败关闭，不生成正文或引入 Z3。 |
+| `backend/src/casefile/domain/narrative_compiler/scene_plan.py` | N4.4 Scene Execution 纯领域边界：绑定完整 NovelPlanIR+NarrativeIR 输入，校验模型只为既有 Scene 填充来源支持的结构化 Beat，再由服务器生成 Beat/Edge ID、来源证明、索引、读者揭露状态与语义签名；原机械展开仅作 baseline/reference helper，不生成正文或引入 Z3。 |
 | `backend/src/casefile/agent_runtime/constraint_first_story_planner.py`、`constraint_first_story_planner_prompt.py` | 已晋级的 Constraint-First 双模型编排：静态 UNSAT 先于 Provider、skeleton/fill 独立 Prompt/Schema/hash、exact-hash stage 恢复、服务端组装与复验。 |
 | `backend/src/casefile/agent_runtime/story_planner.py`、`story_planner_prompt.py` | Story Planner Provider-neutral 请求、最多三次结构修复和版本化无工具 Prompt 渲染；ScenePurpose 错误只允许强类型最小补丁，其他结构错误保留完整候选修复，语义错误不进入 repair。 |
 | `backend/src/casefile/worker/executors/story_planner.py` | 默认 v1 Story Planner 与显式未激活 Constraint-First 版本的执行器；后者按 `skeleton_proposal`/`semantic_fill` 独立 input hash 持久化 ModelCall，崩溃后只恢复 exact-match 成功输出。 |
 | `backend/src/casefile/benchmark/novel_plan_eval.py` | Novel Plan Regression/Safety/24 Task Capability Benchmark、v1/v2 输入与定向 Task 选择、部分运行禁晋级、G2 oracle evidence 审计、生产/G2 失败分层、动态 cohort、严格 fingerprint checkpoint/resume、G0–G3 分层与精确 Pro baseline/候选晋级门禁。 |
+| `backend/src/casefile/benchmark/scene_plan_eval.py` | N4.4 ScenePlan 独立评测：审计 8×3 capability fixtures、非唯一合法 alternatives、确定性 safety mutations、G0–G2 outcome graders、G3 rubric 契约、G4 结构语义签名与 uncalibrated 报告；当前不调用 Provider、不设置晋级阈值。 |
 | `backend/src/casefile/domain/logical_mutation/` | 纯 Python Logical Mutation Kernel：discriminated operations、依赖拓扑排序、机械双向投影、NetworkX 封装图、关系传播策略单一来源、Impact Cone 与显式 v1/v2 policy registry；`closure/` 预计算不可变 ClosureContext/ClosureIndex，并实现 Claim、Hypothesis assessment、ReasoningPath/Resolution、typed integration 与 Shadow travel-time 确定性规则；公开接口不泄漏 NetworkX 类型。 |
 | `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复内核：版本化 RepairPolicy、角色化 ClosureObligation、MutationSimulation 资格评估，以及确定性 RepairScope。V1/V2 context 保留历史回放；V3 Alternative Planner 只枚举服务器完整模拟证明的 Claim status 或 incompatible dependency 移除候选，以规范 hash 绑定 operation、前后 obligation 与 candidate hash。Repair Engine 默认只接受 selected alternative ID，最多两轮从同一 baseline 重放并允许 obligation 不增的 staged progress；未知、过期、篡改、无候选、scope/protected/StructureLock 越界与 rebase mismatch 全部失败关闭。本模块不接 Provider/数据库/API/UI，不执行 Apply。 |
 | `backend/src/casefile/agent_runtime/transport_diagnostics.py` | 对 Provider 异常 cause chain 做 timeout/connection/rate-limit/4xx/5xx/protocol/unknown 脱敏分类，输出稳定 retry、protocol 与 fallback 诊断，不保留 URL、正文、凭据或异常文本。 |
@@ -164,7 +165,8 @@
 | `backend/tests/unit/test_workbench_read_model.py` | 验证工作台确定性错误的稳定中文输出和真实 `source_fragment` 标识/JSON Pointer 追溯。 |
 | `backend/tests/unit/test_a_path_observability.py` | 验证 Brief 八类语义覆盖、标准化成本用量，以及不建表的生成、采用和采用后编辑漏斗推导。 |
 | `backend/tests/unit/test_task_cancellation.py` | 验证取消终态对 Attempt/Agent pending 消息的统一收敛，以及取消 HTTP 端点的 202 委派契约。 |
-| `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 ScenePlanIR 的确定性派生 ID、跨语言可序列化、读者揭露状态与未来禁区、NetworkX 包装查询、provenance 完整性和篡改失败关闭。 |
+| `backend/tests/unit/test_scene_plan.py` | 验证 N4.4 冻结输入哈希/DAG、模型 Candidate 接地与 provenance 门禁、服务器规范化和忽略 directive 措辞的语义签名，并保留 ScenePlanIR 确定性派生、NetworkX 查询和篡改失败关闭。 |
+| `backend/tests/unit/test_scene_plan_benchmark.py` | 验证 ScenePlan 24-task 审计矩阵、8 个非唯一合法 alternatives、Safety mutation reason code、报告分母/fingerprint 与未校准资格状态；不调用 live Provider。 |
 | `backend/tests/fixtures/contracts/` | v1 CaseFile 三类有效产品样例，以及非法 ID、悬空引用、错误引用类型、重复顺序和未知结构字段的独立失败样例。 |
 | `backend/tests/integration/test_foundation_migrations.py` | 在明确的可丢弃 PostgreSQL `_test` 库验证完整升降级、66 表、SourceRecord/注册/子类型门禁、引用、归属、并发、Canon/Exposure Plan 门禁和不可变触发器。 |
 | `backend/tests/integration/foundation_migration_tables.py` | 集中维护基础迁移测试使用的精确 66 表清单，避免主迁移测试文件继续膨胀。 |

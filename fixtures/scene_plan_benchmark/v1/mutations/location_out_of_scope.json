@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "location_out_of_scope",
+  "base_task_id": "scene_grounding__dense",
+  "kind": "borrow_location_ref",
+  "target": "candidate",
+  "expected_reason_code": "compiler_scene_plan_candidate_location_invalid",
+  "category": "Grounding"
+}

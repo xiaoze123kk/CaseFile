@@ -1573,91 +1573,6 @@ class StructureLockEnvelope(NarrativeObjectEnvelope):
     value: StructureLock | None = None
 
 
-class ScenePlanSource(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    novel_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
-    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
-    component_fingerprint: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
-
-
-class SceneId(RootModel[str]):
-    root: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
-
-
-class ChapterExecution(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
-    ordinal: Annotated[int, Field(ge=1)]
-    act_ordinal: Annotated[int, Field(ge=1, le=10)]
-    title: Annotated[str, Field(max_length=200, min_length=1)]
-    scene_ids: Annotated[list[SceneId], Field(min_length=1)]
-
-
-class Status4(Enum):
-    introduced = 'introduced'
-    reinforced = 'reinforced'
-    reinterpreted = 'reinterpreted'
-
-
-class AudienceExposure(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-    status: Status4
-    first_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
-    last_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
-
-
-class Action(Enum):
-    introduce = 'introduce'
-    reinforce = 'reinforce'
-    reinterpret = 'reinterpret'
-
-
-class ExposurePlacement(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-    action: Action
-
-
-class Action1(Enum):
-    advance = 'advance'
-    resolve = 'resolve'
-    intentionally_unresolved = 'intentionally_unresolved'
-
-
-class ResolutionPlacement(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    resolution_ref: ObjectRef
-    action: Action1
-
-
-class ForbiddenRevealEntryKey(RootModel[str]):
-    root: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-
-
-class PrerequisiteSceneId(RootModel[str]):
-    root: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
-
-
-class BeatId(RootModel[str]):
-    root: Annotated[str, Field(pattern='^beat_[a-z0-9][a-z0-9_]{0,95}$')]
-
-
 class ScenePurpose(Enum):
     hook = 'hook'
     setup = 'setup'
@@ -1716,28 +1631,32 @@ class CandidateChapter(BaseModel):
     title: Annotated[str, Field(max_length=200, min_length=1)]
 
 
-class Action2(Enum):
+class Action(Enum):
     introduce = 'introduce'
     reinforce = 'reinforce'
     reinterpret = 'reinterpret'
 
 
-class ExposurePlacement1(BaseModel):
+class ExposurePlacement(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
     entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-    action: Action2
+    action: Action
 
 
-class ResolutionPlacement1(BaseModel):
+class ResolutionPlacement(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
     resolution_ref: ObjectRef
     action: ResolutionAction
+
+
+class PrerequisiteSceneId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
 
 
 class CandidateScene(BaseModel):
@@ -1757,8 +1676,8 @@ class CandidateScene(BaseModel):
     event_refs: list[ObjectRef]
     story_time_refs: list[ObjectRef]
     basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
-    exposure: list[ExposurePlacement1]
-    resolutions: list[ResolutionPlacement1]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
     prerequisite_scene_ids: list[PrerequisiteSceneId]
 
 
@@ -1784,11 +1703,26 @@ class NovelPlanSource(BaseModel):
     component_fingerprint: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
-class NovelPlanScene(CandidateScene):
+class NovelPlanScene(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    intent: Annotated[str, Field(max_length=2000, min_length=1)]
+    presentation_mode: PresentationMode
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    event_refs: list[ObjectRef]
+    story_time_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
     source_refs: Annotated[list[CompilerSourceRef], Field(min_length=1)]
 
 
@@ -1814,11 +1748,160 @@ class NovelPlanIR(BaseModel):
     indexes: NovelPlanIndexes
 
 
+class ScenePlanSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    novel_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    scene_compiler_input_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')] = (
+        None
+    )
+    candidate_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')] = None
+    component_fingerprint: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class SceneCompilerInputSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    novel_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class SceneId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+
+
+class ChapterExecution(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    act_ordinal: Annotated[int, Field(ge=1, le=10)]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+    scene_ids: Annotated[list[SceneId], Field(min_length=1)]
+
+
+class Status4(Enum):
+    introduced = 'introduced'
+    reinforced = 'reinforced'
+    reinterpreted = 'reinterpreted'
+
+
+class AudienceExposure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    status: Status4
+    first_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    last_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+
+
+class ExposurePlacement1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    action: Action
+
+
+class Action2(Enum):
+    advance = 'advance'
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class ResolutionPlacement1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_ref: ObjectRef
+    action: Action2
+
+
+class ForbiddenRevealEntryKey(RootModel[str]):
+    root: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+
+
+class BeatId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^beat_[a-z0-9][a-z0-9_]{0,95}$')]
+
+
+class SceneExecution(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    presentation_mode: PresentationMode
+    objective: Annotated[str, Field(max_length=2000, min_length=1)]
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    story_time_refs: list[ObjectRef]
+    audience_state_before: list[AudienceExposure]
+    audience_state_after: list[AudienceExposure]
+    allowed_reveals: list[ExposurePlacement1]
+    forbidden_reveal_entry_keys: list[ForbiddenRevealEntryKey]
+    resolution_actions: list[ResolutionPlacement1]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+    beat_ids: Annotated[list[BeatId], Field(min_length=1)]
+    source_refs: Annotated[list[CompilerSourceRef], Field(min_length=1)]
+
+
 class BeatKind(Enum):
     event = 'event'
     exposure = 'exposure'
     resolution = 'resolution'
     transition = 'transition'
+
+
+class SceneBeatCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    ordinal: Annotated[int, Field(ge=1)]
+    kind: BeatKind
+    directive: Annotated[str, Field(max_length=2000, min_length=1)]
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    story_time_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    event_ref: ObjectRef | None
+    exposure: ExposurePlacement1 | None
+    resolution: ResolutionPlacement1 | None
+
+
+class SceneExecutionCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    beats: Annotated[list[SceneBeatCandidate], Field(min_length=1)]
+
+
+class ScenePlanCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-plan-candidate.v1']
+    scenes: Annotated[list[SceneExecutionCandidate], Field(min_length=1)]
 
 
 class BeatExecution(BaseModel):
@@ -1832,10 +1915,13 @@ class BeatExecution(BaseModel):
     kind: BeatKind
     directive: Annotated[str, Field(max_length=2000, min_length=1)]
     basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    story_time_refs: list[ObjectRef]
     event_ref: ObjectRef | None
-    exposure: ExposurePlacement | None
-    resolution: ResolutionPlacement | None
-    audience_delta: list[ExposurePlacement]
+    exposure: ExposurePlacement1 | None
+    resolution: ResolutionPlacement1 | None
+    audience_delta: list[ExposurePlacement1]
     source_refs: Annotated[list[CompilerSourceRef], Field(min_length=1)]
 
 
@@ -2275,8 +2361,8 @@ class SkeletonScene(BaseModel):
     story_time_refs: list[ObjectRef]
     participant_refs: list[ObjectRef]
     basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
-    exposure: list[ExposurePlacement1]
-    resolutions: list[ResolutionPlacement1]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
     prerequisite_scene_ids: list[PrerequisiteSceneId]
 
 
@@ -2383,29 +2469,15 @@ class NarrativeObjects(BaseModel):
     structure_locks: list[StructureLockEnvelope]
 
 
-class SceneExecution(BaseModel):
+class SceneCompilerInputBundle(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
-    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
-    discourse_order: Annotated[int, Field(ge=1)]
-    purpose: ScenePurpose
-    presentation_mode: PresentationMode
-    objective: Annotated[str, Field(max_length=2000, min_length=1)]
-    pov_ref: ObjectRef | None
-    participant_refs: list[ObjectRef]
-    location_ref: ObjectRef | None
-    story_time_refs: list[ObjectRef]
-    audience_state_before: list[AudienceExposure]
-    audience_state_after: list[AudienceExposure]
-    allowed_reveals: list[ExposurePlacement]
-    forbidden_reveal_entry_keys: list[ForbiddenRevealEntryKey]
-    resolution_actions: list[ResolutionPlacement]
-    prerequisite_scene_ids: list[PrerequisiteSceneId]
-    beat_ids: Annotated[list[BeatId], Field(min_length=1)]
-    source_refs: Annotated[list[CompilerSourceRef], Field(min_length=1)]
+    schema_id: Literal['compiler.scene-compiler-input.v1']
+    source: SceneCompilerInputSource
+    novel_plan: NovelPlanIR
+    narrative_ir: Schema_3
 
 
 class EditingContracts(BaseModel):
@@ -2429,6 +2501,8 @@ class EditingContracts(BaseModel):
     compiler_profile_binding: CompilerProfileBinding
     compile_input_manifest: CompileInputManifest
     narrative_ir: Schema_3
+    scene_compiler_input: SceneCompilerInputBundle
+    scene_plan_candidate: ScenePlanCandidate
     scene_plan: Schema_10
     novel_profile: novel_profile_1.Schema
     planner_input: Schema_5 | Schema_6 | Schema_7

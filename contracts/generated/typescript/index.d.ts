@@ -307,13 +307,6 @@ export type BriefIntakeCandidate = {
 export type CompileInputManifest = {
   [k: string]: unknown;
 };
-export type NovelPlanScene = CandidateScene & {
-  /**
-   * @minItems 1
-   */
-  source_refs: [CompilerSourceRef, ...CompilerSourceRef[]];
-  [k: string]: unknown;
-};
 
 /**
  * Code-generation aggregate for the CaseFile editing loop.
@@ -335,6 +328,8 @@ export interface EditingContracts {
   compiler_profile_binding: CompilerProfileBinding;
   compile_input_manifest: CompileInputManifest;
   narrative_ir: NarrativeIR;
+  scene_compiler_input: SceneCompilerInputBundle;
+  scene_plan_candidate: ScenePlanCandidate;
   scene_plan: ScenePlanIR;
   novel_profile: NovelProfile;
   planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
@@ -876,6 +871,132 @@ export interface ReferenceEdgeContext {
   container_ordinal: number;
   anchor_ref?: ObjectRef;
 }
+export interface SceneCompilerInputBundle {
+  schema_id: "compiler.scene-compiler-input.v1";
+  source: SceneCompilerInputSource;
+  novel_plan: NovelPlanIR;
+  narrative_ir: NarrativeIR;
+}
+export interface SceneCompilerInputSource {
+  novel_plan_hash: string;
+  narrative_ir_hash: string;
+  input_hash: string;
+}
+export interface NovelPlanIR {
+  schema_id: "compiler.novel-plan.v1";
+  planner_version: string;
+  source: NovelPlanSource;
+  /**
+   * @minItems 1
+   */
+  chapters: [CandidateChapter, ...CandidateChapter[]];
+  /**
+   * @minItems 1
+   */
+  scenes: [NovelPlanScene, ...NovelPlanScene[]];
+  indexes: NovelPlanIndexes;
+}
+export interface NovelPlanSource {
+  planner_input_hash: string;
+  narrative_ir_hash: string;
+  profile_hash: string;
+  exposure_hash: string | null;
+  component_fingerprint: string;
+}
+export interface CandidateChapter {
+  chapter_id: string;
+  ordinal: number;
+  act_ordinal: number;
+  title: string;
+}
+export interface NovelPlanScene {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  intent: string;
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  event_refs: ObjectRef[];
+  story_time_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
+  prerequisite_scene_ids: string[];
+  /**
+   * @minItems 1
+   */
+  source_refs: [CompilerSourceRef, ...CompilerSourceRef[]];
+}
+export interface ExposurePlacement {
+  entry_key: string;
+  action: "introduce" | "reinforce" | "reinterpret";
+}
+export interface ResolutionPlacement {
+  resolution_ref: ObjectRef;
+  action: "advance" | "resolve" | "intentionally_unresolved";
+}
+export interface NovelPlanIndexes {
+  chapter_scene_ids: {
+    [k: string]: string[];
+  };
+  scene_dependencies: {
+    [k: string]: string[];
+  };
+}
+export interface ScenePlanCandidate {
+  schema_id: "compiler.scene-plan-candidate.v1";
+  /**
+   * @minItems 1
+   */
+  scenes: [SceneExecutionCandidate, ...SceneExecutionCandidate[]];
+}
+export interface SceneExecutionCandidate {
+  scene_id: string;
+  /**
+   * @minItems 1
+   */
+  beats: [SceneBeatCandidate, ...SceneBeatCandidate[]];
+}
+export interface SceneBeatCandidate {
+  ordinal: number;
+  kind: "event" | "exposure" | "resolution" | "transition";
+  directive: string;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  story_time_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  event_ref: ObjectRef | null;
+  exposure: ExposurePlacement1 | null;
+  resolution: ResolutionPlacement1 | null;
+}
+export interface ExposurePlacement1 {
+  entry_key: string;
+  action: "introduce" | "reinforce" | "reinterpret";
+}
+export interface ResolutionPlacement1 {
+  resolution_ref: ObjectRef;
+  action: "advance" | "resolve" | "intentionally_unresolved";
+}
 export interface ScenePlanIR {
   schema_id: "compiler.scene-plan.v1";
   compiler_version: "compiler.scene-execution.v1";
@@ -900,6 +1021,8 @@ export interface ScenePlanIR {
 export interface ScenePlanSource {
   novel_plan_hash: string;
   narrative_ir_hash: string;
+  scene_compiler_input_hash?: string;
+  candidate_hash?: string;
   component_fingerprint: string;
 }
 export interface ChapterExecution {
@@ -936,9 +1059,9 @@ export interface SceneExecution {
   story_time_refs: ObjectRef[];
   audience_state_before: AudienceExposure[];
   audience_state_after: AudienceExposure[];
-  allowed_reveals: ExposurePlacement[];
+  allowed_reveals: ExposurePlacement1[];
   forbidden_reveal_entry_keys: string[];
-  resolution_actions: ResolutionPlacement[];
+  resolution_actions: ResolutionPlacement1[];
   prerequisite_scene_ids: string[];
   /**
    * @minItems 1
@@ -955,14 +1078,6 @@ export interface AudienceExposure {
   first_scene_id: string;
   last_scene_id: string;
 }
-export interface ExposurePlacement {
-  entry_key: string;
-  action: "introduce" | "reinforce" | "reinterpret";
-}
-export interface ResolutionPlacement {
-  resolution_ref: ObjectRef;
-  action: "advance" | "resolve" | "intentionally_unresolved";
-}
 export interface BeatExecution {
   beat_id: string;
   scene_id: string;
@@ -973,10 +1088,13 @@ export interface BeatExecution {
    * @minItems 1
    */
   basis_refs: [ObjectRef, ...ObjectRef[]];
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  story_time_refs: ObjectRef[];
   event_ref: ObjectRef | null;
-  exposure: ExposurePlacement | null;
-  resolution: ResolutionPlacement | null;
-  audience_delta: ExposurePlacement[];
+  exposure: ExposurePlacement1 | null;
+  resolution: ResolutionPlacement1 | null;
+  audience_delta: ExposurePlacement1[];
   /**
    * @minItems 1
    */
@@ -1353,17 +1471,9 @@ export interface SkeletonScene {
    * @minItems 1
    */
   basis_refs: [ObjectRef, ...ObjectRef[]];
-  exposure: ExposurePlacement1[];
-  resolutions: ResolutionPlacement1[];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
   prerequisite_scene_ids: string[];
-}
-export interface ExposurePlacement1 {
-  entry_key: string;
-  action: "introduce" | "reinforce" | "reinterpret";
-}
-export interface ResolutionPlacement1 {
-  resolution_ref: ObjectRef;
-  action: "advance" | "resolve" | "intentionally_unresolved";
 }
 export interface PlanSkeleton {
   schema_id: "compiler.plan-skeleton.v1";
@@ -1413,12 +1523,6 @@ export interface NovelPlanCandidate {
    */
   scenes: [CandidateScene, ...CandidateScene[]];
 }
-export interface CandidateChapter {
-  chapter_id: string;
-  ordinal: number;
-  act_ordinal: number;
-  title: string;
-}
 export interface CandidateScene {
   scene_id: string;
   chapter_id: string;
@@ -1446,36 +1550,7 @@ export interface CandidateScene {
    * @minItems 1
    */
   basis_refs: [ObjectRef, ...ObjectRef[]];
-  exposure: ExposurePlacement1[];
-  resolutions: ResolutionPlacement1[];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
   prerequisite_scene_ids: string[];
-}
-export interface NovelPlanIR {
-  schema_id: "compiler.novel-plan.v1";
-  planner_version: string;
-  source: NovelPlanSource;
-  /**
-   * @minItems 1
-   */
-  chapters: [CandidateChapter, ...CandidateChapter[]];
-  /**
-   * @minItems 1
-   */
-  scenes: [NovelPlanScene, ...NovelPlanScene[]];
-  indexes: NovelPlanIndexes;
-}
-export interface NovelPlanSource {
-  planner_input_hash: string;
-  narrative_ir_hash: string;
-  profile_hash: string;
-  exposure_hash: string | null;
-  component_fingerprint: string;
-}
-export interface NovelPlanIndexes {
-  chapter_scene_ids: {
-    [k: string]: string[];
-  };
-  scene_dependencies: {
-    [k: string]: string[];
-  };
 }

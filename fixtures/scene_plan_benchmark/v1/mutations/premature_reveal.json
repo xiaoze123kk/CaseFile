@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "premature_reveal",
+  "base_task_id": "reveal_control__basic",
+  "kind": "move_exposure_earlier",
+  "target": "candidate",
+  "expected_reason_code": "compiler_scene_plan_candidate_exposure_invalid",
+  "category": "Reveal"
+}

@@ -16,7 +16,7 @@
 | `contracts/schemas/compiler/planner-input-v3.schema.json`、`planner-model-view-v4.schema.json` | 将 Exposure v2 的 participant/basis/hypothesis typed obligations 按 hard/soft 分离；hard 进入 ConstraintIR v2 与权威校验，soft 仅进入模型规划上下文。 |
 | `contracts/schemas/compiler/constraint-first-planner.schema.json` | Constraint-First 的 PlanningProblem、SkeletonProposal、PlanSkeleton 与 SemanticFill 强类型契约；Fill 契约不含任何 skeleton 所有字段。 |
 | `contracts/schemas/compiler/novel-plan.schema.json` | 分离模型 NovelPlanCandidate 与服务器规范化 NovelPlanIR，定义 Scene 编排、事实依据、披露、Resolution、依赖及派生索引，并提供只允许替换 ScenePurpose 的结构化局部补丁契约。 |
-| `contracts/schemas/compiler/scene-plan.schema.json` | N4.4 ScenePlanIR：从规范 NovelPlanIR 确定性展开 Chapter/Scene/Beat 执行结构、读者揭露前后状态、未来揭露禁区、Resolution 动作、显式图边、索引、诊断与计数。 |
+| `contracts/schemas/compiler/scene-plan.schema.json` | N4.4 SceneCompilerInputBundle、模型所有的 ScenePlanCandidate 与服务器规范 ScenePlanIR：候选只能为既有 Scene 填来源支持的 Beat，IR 保存稳定 ID、读者状态、显式图边、provenance、索引、诊断与计数。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
@@ -42,8 +42,9 @@
 | `fixtures/general_mutation_benchmark/` | General Mutation Capability Dev、Safety / Abstention 与 Backend Release：Capability 使用自然语言输入、最终状态 Oracle 与隔离 Reference Plan；Safety v2 冻结危险请求、隐式歧义和合法近邻；Release v1 冻结 15 题真实 Apply/Undo/Redo cohort。私有 Holdout 只在 `backend/var/benchmark/private/` 保存，仓库仅保存 descriptor fingerprints。 |
 | `fixtures/compiler/foundation/` | N4.0 Compiler 基础合法/非法样例：Preview/Canonical 冻结输入、Exposure/Profile hash、SourceRef、ArtifactRef、Diagnostic 与结构/语义失败场景。 |
 | `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
-| `fixtures/compiler/scene_plan/v1/` | N4.4 ScenePlanIR 最小跨语言往返样例，覆盖稳定执行节点、显式图边、来源证明与空揭露状态。 |
+| `fixtures/compiler/scene_plan/v1/` | N4.4 SceneCompilerInputBundle 与 ScenePlanIR 最小跨语言往返样例，覆盖 NovelPlanScene 原生 Schema、稳定执行节点、显式图边、来源证明与空揭露状态。 |
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
 | `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
 | `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |
 | `fixtures/novel_plan_benchmark/v3/constraint_first_diagnostic_v1.json` | Constraint-First 实验的六 Task × 三 Trial 定向诊断集合及 `ea0bc...` 基线失败分布；只用于开发诊断，不构成正式晋级证据。 |
+| `fixtures/scene_plan_benchmark/v1/` | N4.4 Narrative Execution Benchmark v1：冻结 8 能力×basic/decoy/dense 的完整 SceneCompilerInput、人工审阅 Reference、每能力一个合法 Alternative、11 个确定性 Mutation 与 contract-only G3 rubric；Reference replay 只证明评测有效，资格保持 uncalibrated。 |

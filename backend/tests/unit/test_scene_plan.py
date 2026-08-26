@@ -8,20 +8,38 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     NarrativeExecutionGraph,
+    build_baseline_scene_plan_candidate,
+    build_scene_compiler_input,
     canonical_json_sha256,
+    canonicalize_novel_plan,
+    canonicalize_scene_plan_candidate,
     compile_scene_plan_json,
     inspect_scene_plan,
+    inspect_scene_plan_candidate,
     scene_plan_component_fingerprint,
+    scene_plan_semantic_signature,
+    validate_scene_compiler_input,
     validate_scene_plan,
+    validate_scene_plan_candidate,
 )
 from casefile_contracts import ScenePlanIR
 
 ROOT = Path(__file__).resolve().parents[3]
 REFERENCE = (
     ROOT / "fixtures" / "novel_plan_benchmark" / "v4" / "references" / "linear_mystery__basic.json"
+)
+PLANNER_INPUT = (
+    ROOT
+    / "fixtures"
+    / "novel_plan_benchmark"
+    / "v4"
+    / "inputs"
+    / "v3"
+    / "linear_mystery__basic.json"
 )
 
 
@@ -61,6 +79,21 @@ def _novel_plan() -> dict[str, Any]:
             "scene_dependencies": scene_dependencies,
         },
     }
+
+
+def _scene_compiler_case() -> tuple[dict[str, Any], dict[str, Any]]:
+    planner_input = json.loads(PLANNER_INPUT.read_text(encoding="utf-8"))
+    novel_candidate = json.loads(REFERENCE.read_text(encoding="utf-8"))
+    novel_plan = canonicalize_novel_plan(
+        novel_candidate,
+        planner_input=planner_input,
+        planner_version="test.scene-plan-reference.v1",
+        component_fingerprint="a" * 64,
+    )
+    bundle = build_scene_compiler_input(
+        novel_plan=novel_plan, narrative_ir=planner_input["narrative_ir"]
+    )
+    return bundle, build_baseline_scene_plan_candidate(novel_plan)
 
 
 def test_scene_plan_is_deterministic_serializable_and_provenance_complete() -> None:
@@ -133,3 +166,68 @@ def test_linter_rejects_tampered_scene_execution_output() -> None:
         CompilerContractError, match="compiler_scene_plan_beat_coverage_invalid"
     ):
         validate_scene_plan(compiled, novel_plan=novel_plan)
+
+
+def test_model_candidate_is_bound_validated_and_canonicalized_without_prose() -> None:
+    bundle, candidate = _scene_compiler_case()
+
+    validated = validate_scene_plan_candidate(
+        candidate, scene_compiler_input=bundle
+    ).model_dump(mode="json")
+    canonical = canonicalize_scene_plan_candidate(
+        validated, scene_compiler_input=bundle
+    )
+    rewritten = deepcopy(validated)
+    rewritten["scenes"][0]["beats"][0]["directive"] = "同义改写执行指令。"
+    rewritten_canonical = canonicalize_scene_plan_candidate(
+        rewritten, scene_compiler_input=bundle
+    )
+
+    assert bundle["schema_id"] == "compiler.scene-compiler-input.v1"
+    assert validated["schema_id"] == "compiler.scene-plan-candidate.v1"
+    assert canonical["source"]["scene_compiler_input_hash"] == bundle["source"]["input_hash"]
+    assert canonical["source"]["candidate_hash"] == canonical_json_sha256(validated)
+    assert canonical["beats"][0]["participant_refs"]
+    assert canonical["beats"][0]["source_refs"]
+    assert scene_plan_semantic_signature(canonical) == scene_plan_semantic_signature(
+        rewritten_canonical
+    )
+
+
+def test_model_candidate_rejects_out_of_scope_grounding_and_provenance() -> None:
+    bundle, candidate = _scene_compiler_case()
+    candidate["scenes"][0]["beats"][0]["participant_refs"].append(
+        {"object_type": "entity", "object_id": "ent_safety_observer"}
+    )
+    candidate["scenes"][0]["beats"][0]["basis_refs"].append(
+        {"object_type": "claim", "object_id": "claim_backup_trigger"}
+    )
+
+    report = inspect_scene_plan_candidate(candidate, scene_compiler_input=bundle)
+
+    assert not report.succeeded
+    assert {item.code for item in report.violations} >= {
+        "compiler_scene_plan_candidate_participant_invalid",
+        "compiler_scene_plan_candidate_provenance_invalid",
+    }
+
+
+def test_scene_compiler_input_rejects_hash_drift_and_dependency_cycle() -> None:
+    bundle, _candidate = _scene_compiler_case()
+    drifted = deepcopy(bundle)
+    drifted["source"]["input_hash"] = "0" * 64
+    with pytest.raises(CompilerContractError, match="compiler_scene_plan_input_hash_mismatch"):
+        validate_scene_compiler_input(drifted)
+
+    cyclic = deepcopy(bundle)
+    scenes = cyclic["novel_plan"]["scenes"]
+    first_id = scenes[0]["scene_id"]
+    last_id = scenes[-1]["scene_id"]
+    scenes[0]["prerequisite_scene_ids"] = [last_id]
+    cyclic["novel_plan"]["indexes"]["scene_dependencies"][first_id] = [last_id]
+    cyclic["source"]["novel_plan_hash"] = canonical_json_sha256(cyclic["novel_plan"])
+    cyclic["source"]["input_hash"] = canonical_json_sha256(
+        {"novel_plan": cyclic["novel_plan"], "narrative_ir": cyclic["narrative_ir"]}
+    )
+    with pytest.raises(CompilerContractError, match="compiler_scene_plan_input_dependency_cycle"):
+        validate_scene_compiler_input(cyclic)

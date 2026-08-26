@@ -31,7 +31,31 @@
       "properties": {
         "novel_plan_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
         "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "candidate_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
         "component_fingerprint": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "SceneCompilerInputSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["novel_plan_hash", "narrative_ir_hash", "input_hash"],
+      "properties": {
+        "novel_plan_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "SceneCompilerInputBundle": {
+      "title": "SceneCompilerInputBundle",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "source", "novel_plan", "narrative_ir"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-compiler-input.v1"},
+        "source": {"$ref": "#/$defs/SceneCompilerInputSource"},
+        "novel_plan": {"$ref": "novel-plan.schema.json#/$defs/NovelPlanIR"},
+        "narrative_ir": {"$ref": "narrative-ir.schema.json"}
       }
     },
     "ChapterExecution": {
@@ -158,12 +182,83 @@
       }
     },
     "BeatKind": {"enum": ["event", "exposure", "resolution", "transition"]},
+    "SceneBeatCandidate": {
+      "title": "SceneBeatCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal", "kind", "directive", "participant_refs", "location_ref",
+        "story_time_refs", "basis_refs", "event_ref", "exposure", "resolution"
+      ],
+      "properties": {
+        "ordinal": {"type": "integer", "minimum": 1},
+        "kind": {"$ref": "#/$defs/BeatKind"},
+        "directive": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "event_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "exposure": {
+          "oneOf": [{"$ref": "#/$defs/ExposurePlacement"}, {"type": "null"}]
+        },
+        "resolution": {
+          "oneOf": [{"$ref": "#/$defs/ResolutionPlacement"}, {"type": "null"}]
+        }
+      }
+    },
+    "SceneExecutionCandidate": {
+      "title": "SceneExecutionCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "beats"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "beats": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneBeatCandidate"},
+          "minItems": 1
+        }
+      }
+    },
+    "ScenePlanCandidate": {
+      "title": "ScenePlanCandidate",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-plan-candidate.v1"},
+        "scenes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneExecutionCandidate"},
+          "minItems": 1
+        }
+      }
+    },
     "BeatExecution": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "beat_id", "scene_id", "ordinal", "kind", "directive", "basis_refs",
-        "event_ref", "exposure", "resolution", "audience_delta", "source_refs"
+        "participant_refs", "location_ref", "story_time_refs", "event_ref",
+        "exposure", "resolution", "audience_delta", "source_refs"
       ],
       "properties": {
         "beat_id": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"},
@@ -175,6 +270,19 @@
           "type": "array",
           "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
           "minItems": 1,
+          "uniqueItems": true
+        },
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
           "uniqueItems": true
         },
         "event_ref": {
