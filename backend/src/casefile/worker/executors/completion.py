@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -40,24 +40,25 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.data_postgres.repositories import ProjectRepository
+from casefile.worker.execution import EventEmitter
 from casefile.worker.failures import TaskCancellationRequested
 from casefile.worker.input_contracts import required_string, text_hash
 
 
 class CompletionExecutor:
-    def __init__(self, runtime: Any) -> None:
-        self._runtime = runtime
-
-    @property
-    def session_factory(self) -> sessionmaker[Session]:
-        return cast(sessionmaker[Session], self._runtime.session_factory)
-
-    @property
-    def config(self) -> Any:
-        return self._runtime.config
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        worker_id: str,
+        emit: EventEmitter,
+    ) -> None:
+        self.session_factory = session_factory
+        self.worker_id = worker_id
+        self._event_emitter = emit
 
     def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        self._runtime._emit(task_run_id, event_type, stage, payload)
+        self._event_emitter(task_run_id, event_type, stage, payload)
 
     def _complete_polish(
         self,
@@ -224,9 +225,9 @@ class CompletionExecutor:
             raise RuntimeError("TaskRun or TaskAttempt disappeared")
         if task.task_type != expected_task_type:
             raise RuntimeError("TaskRun dispatch type changed")
-        if task.status == "cancelling" and task.leased_by == self.config.worker_id:
+        if task.status == "cancelling" and task.leased_by == self.worker_id:
             raise TaskCancellationRequested
-        if task.leased_by != self.config.worker_id or task.status != "running":
+        if task.leased_by != self.worker_id or task.status != "running":
             raise RuntimeError("TaskRun lease was lost before the final write")
         return task, attempt
 

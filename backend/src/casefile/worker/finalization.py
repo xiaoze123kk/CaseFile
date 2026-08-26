@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
@@ -48,16 +48,16 @@ from casefile.worker.observability import (
 
 
 class TaskFinalizer:
-    def __init__(self, runtime: Any) -> None:
-        self._runtime = runtime
-
-    @property
-    def session_factory(self) -> sessionmaker[Session]:
-        return cast(sessionmaker[Session], self._runtime.session_factory)
-
-    @property
-    def config(self) -> Any:
-        return self._runtime.config
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> None:
+        self.session_factory = session_factory
+        self.worker_id = worker_id
+        self.lease_seconds = lease_seconds
 
     def _cancel(
         self,
@@ -76,7 +76,7 @@ class TaskFinalizer:
             )
             if task is None or attempt is None or task.status != "cancelling":
                 return False
-            if task.leased_by != self.config.worker_id or attempt.status != "running":
+            if task.leased_by != self.worker_id or attempt.status != "running":
                 return False
             usage = _terminal_attempt_usage(session, attempt.id, usage)
             now = datetime.now(UTC)
@@ -124,7 +124,7 @@ class TaskFinalizer:
                 return
             if (
                 task.status != "running"
-                or task.leased_by != self.config.worker_id
+                or task.leased_by != self.worker_id
                 or attempt.status != "running"
             ):
                 return
@@ -284,10 +284,10 @@ class TaskFinalizer:
             )
             if task is not None and task.status == "cancelling":
                 raise TaskCancellationRequested
-            if task is None or task.status != "running" or task.leased_by != self.config.worker_id:
+            if task is None or task.status != "running" or task.leased_by != self.worker_id:
                 raise RuntimeError("TaskRun lease was lost")
             task.stage = stage
-            task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.config.lease_seconds)
+            task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.lease_seconds)
             _persist_agent_execution_event(session, task, event_type, payload)
             public_payload = {
                 key: value for key, value in payload.items() if not key.startswith("_")

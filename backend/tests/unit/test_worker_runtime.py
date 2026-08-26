@@ -6,8 +6,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+
 from casefile.worker.dispatch import SUPPORTED_TASK_TYPES, TaskDispatcher
-from casefile.worker.execution import ExecutionState, ProviderRequirement, TaskExecutionContext
+from casefile.worker.execution import (
+    ChatRuntimeConfig,
+    ExecutionState,
+    ProviderRequirement,
+    TaskExecutionContext,
+)
 from casefile.worker.generation_reuse import previous_attempt_failed_steps
 from casefile.worker.runtime import Worker, WorkerConfig
 
@@ -140,7 +146,7 @@ def test_providerless_handler_executes_without_provider_access() -> None:
         task=SimpleNamespace(task_type="probe"),  # type: ignore[arg-type]
         attempt_id=1,
         session_factory=MagicMock(),
-        config=SimpleNamespace(),
+        chat_config=ChatRuntimeConfig(),
         emit=MagicMock(),
         state=ExecutionState(),
     )
@@ -159,6 +165,10 @@ def test_worker_registers_exact_task_types_without_eager_provider_creation() -> 
     )
 
     assert worker._dispatcher.task_types == SUPPORTED_TASK_TYPES
+    assert not hasattr(worker._queue, "_runtime")
+    assert not hasattr(worker._finalizer, "_runtime")
+    assert not hasattr(worker._completion, "_runtime")
+    assert not hasattr(worker._chat._context, "_runtime")
     provider_factory.assert_not_called()
 
 

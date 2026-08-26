@@ -12,7 +12,26 @@ from casefile.agent_runtime import AgentProvider
 from casefile.data_postgres.models import TaskRun
 
 ProviderRequirement = Literal["required", "none"]
+ChatRolloutMode = Literal["off", "shadow", "suggest"]
 EventEmitter = Callable[[int, str, str, dict[str, Any]], None]
+
+
+@dataclass(frozen=True, slots=True)
+class ChatRuntimeConfig:
+    """Chat-only configuration passed to Chat handlers and executors."""
+
+    closure_repair_mode: ChatRolloutMode = "shadow"
+    general_mutation_mode: ChatRolloutMode = "off"
+    general_mutation_create_enabled: bool = False
+    general_mutation_delete_enabled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerEventPorts:
+    """Explicit event persistence ports used by Worker subcomponents."""
+
+    emit: EventEmitter = field(repr=False)
+    emit_after_completion: EventEmitter = field(repr=False)
 
 
 @dataclass(slots=True)
@@ -36,7 +55,7 @@ class TaskExecutionContext:
     task: TaskRun
     attempt_id: int
     session_factory: sessionmaker[Session] = field(repr=False)
-    config: Any = field(repr=False)
+    chat_config: ChatRuntimeConfig = field(repr=False)
     emit: EventEmitter = field(repr=False)
     state: ExecutionState = field(repr=False)
     provider: AgentProvider | None = field(default=None, repr=False)
@@ -49,8 +68,11 @@ class TaskExecutionContext:
 
 
 __all__ = [
+    "ChatRolloutMode",
+    "ChatRuntimeConfig",
     "EventEmitter",
     "ExecutionState",
     "ProviderRequirement",
     "TaskExecutionContext",
+    "WorkerEventPorts",
 ]

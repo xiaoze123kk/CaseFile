@@ -33,14 +33,14 @@ class ChatHandler:
             provider=provider,
             previous=previous_routing,
             allow_general_mutation_create=(
-                context.config.general_mutation_mode != "off"
-                and context.config.general_mutation_create_enabled
+                context.chat_config.general_mutation_mode != "off"
+                and context.chat_config.general_mutation_create_enabled
             ),
             allow_general_mutation_delete=(
-                context.config.general_mutation_mode != "off"
-                and context.config.general_mutation_delete_enabled
+                context.chat_config.general_mutation_mode != "off"
+                and context.chat_config.general_mutation_delete_enabled
             ),
-            allow_general_mutation_update=(context.config.general_mutation_mode != "off"),
+            allow_general_mutation_update=(context.chat_config.general_mutation_mode != "off"),
         )
         request = prepare_chat_request_artifacts(request)
         if request.route is not None:

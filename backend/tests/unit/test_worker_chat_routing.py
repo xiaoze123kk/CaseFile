@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
+from casefile.agent_runtime.context import CHAT_CONTEXT_POLICY_V2_VERSION
 from casefile.agent_runtime.models import (
     CaseFileChatRequest,
     ChatTaskUnderstanding,
@@ -19,6 +21,7 @@ from casefile.agent_runtime.prompt import (
     render_chat_router_prompt,
 )
 from casefile.agent_runtime.providers import FakeProvider
+from casefile.worker.execution import ChatRuntimeConfig, WorkerEventPorts
 from casefile.worker.executors.chat import (
     ChatTaskExecutor,
     chat_intent_event_payload,
@@ -31,13 +34,14 @@ class _GeneralMutationGateExecutor(ChatTaskExecutor):
     def __init__(self) -> None:
         self.events: list[tuple[str, str, dict]] = []
         super().__init__(
-            SimpleNamespace(
-                config=SimpleNamespace(general_mutation_mode="suggest"),
-                _emit=lambda _task_run_id, event_type, stage, payload: self.events.append(
+            MagicMock(),
+            config=ChatRuntimeConfig(general_mutation_mode="suggest"),
+            events=WorkerEventPorts(
+                emit=lambda _task_run_id, event_type, stage, payload: self.events.append(
                     (event_type, stage, payload)
                 ),
-                _emit_after_completion=lambda *_args, **_kwargs: None,
-            )
+                emit_after_completion=lambda *_args, **_kwargs: None,
+            ),
         )
 
 
@@ -49,6 +53,39 @@ class _CountingMutationProvider(FakeProvider):
     def plan_general_mutation(self, request):  # type: ignore[no-untyped-def]
         self.general_mutation_calls += 1
         return super().plan_general_mutation(request)
+
+
+def test_compaction_failure_redacts_current_api_key() -> None:
+    secret = "sk-compaction-secret-12345678"
+    events: list[tuple[int, str, str, dict]] = []
+    executor = ChatTaskExecutor(
+        MagicMock(side_effect=RuntimeError(f"compaction failed with {secret}")),
+        config=ChatRuntimeConfig(),
+        events=WorkerEventPorts(
+            emit=MagicMock(),
+            emit_after_completion=lambda task_id, event_type, stage, payload: events.append(
+                (task_id, event_type, stage, payload)
+            ),
+        ),
+    )
+    task = SimpleNamespace(
+        id=7,
+        input_jsonb={"context_policy_version": CHAT_CONTEXT_POLICY_V2_VERSION},
+        agent_thread_id=11,
+    )
+
+    executor._maybe_compact_chat_thread(
+        task,  # type: ignore[arg-type]
+        FakeProvider(),
+        secret,
+        model_requested_compaction=False,
+    )
+
+    assert len(events) == 1
+    task_id, event_type, stage, payload = events[0]
+    assert (task_id, event_type, stage) == (7, "context.compaction_failed", "context")
+    assert secret not in payload["detail"]
+    assert "[REDACTED]" in payload["detail"]
 
 
 def make_request(

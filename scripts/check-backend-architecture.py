@@ -80,17 +80,6 @@ CODE_MAP_PATHS = {
     "backend/src/casefile/worker/provider_resolution.py",
 }
 
-WORKER_EXECUTABLE_TASK_TYPES = {
-    "brief_polish",
-    "brief_anchor_extract",
-    "brief_intake_questions",
-    "brief_intake_synthesize",
-    "brief_strategy_options",
-    "brief_to_draft",
-    "casefile_chat",
-    "reverse_parse",
-}
-
 
 @dataclass(frozen=True, slots=True)
 class Violation:
@@ -120,11 +109,20 @@ def _literal_string_set(tree: ast.Module, name: str) -> set[str] | None:
             isinstance(target, ast.Name) and target.id == name for target in targets
         ):
             continue
+        value_node = node.value
+        if (
+            isinstance(value_node, ast.Call)
+            and isinstance(value_node.func, ast.Name)
+            and value_node.func.id == "frozenset"
+            and len(value_node.args) == 1
+            and not value_node.keywords
+        ):
+            value_node = value_node.args[0]
         try:
-            value = ast.literal_eval(node.value)
+            value = ast.literal_eval(value_node)
         except (TypeError, ValueError):
             return None
-        if isinstance(value, (list, tuple)) and all(
+        if isinstance(value, (list, tuple, set, frozenset)) and all(
             isinstance(item, str) for item in value
         ):
             return set(value)
@@ -140,6 +138,22 @@ def _is_pure_validation_or_context(relative: Path) -> bool:
 def collect_violations(repo_root: Path) -> list[Violation]:
     source_root = repo_root / "backend" / "src" / "casefile"
     violations: list[Violation] = []
+    dispatch_relative = Path("backend/src/casefile/worker/dispatch.py")
+    dispatch_path = repo_root / dispatch_relative
+    dispatch_tree = ast.parse(
+        dispatch_path.read_text(encoding="utf-8"),
+        filename=str(dispatch_path),
+    )
+    worker_task_types = _literal_string_set(dispatch_tree, "SUPPORTED_TASK_TYPES")
+    if worker_task_types is None:
+        violations.append(
+            Violation(
+                dispatch_relative.as_posix(),
+                0,
+                "SUPPORTED_TASK_TYPES must be a literal string collection",
+            )
+        )
+        worker_task_types = set()
     for path in sorted(source_root.rglob("*.py")):
         relative = path.relative_to(source_root)
         display = path.relative_to(repo_root).as_posix()
@@ -150,7 +164,7 @@ def collect_violations(repo_root: Path) -> list[Violation]:
                 for node in ast.walk(tree)
                 if isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
-                and node.value in WORKER_EXECUTABLE_TASK_TYPES
+                and node.value in worker_task_types
             }
             if task_literals:
                 violations.append(

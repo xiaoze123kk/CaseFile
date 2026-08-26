@@ -118,11 +118,15 @@ from casefile.worker.closure_repair import (
     execute_chat_closure_repair,
     execute_mutation_closure_repair,
 )
+from casefile.worker.execution import ChatRuntimeConfig, WorkerEventPorts
 from casefile.worker.failures import (
     merge_numeric_usage as _merge_numeric_usage,
 )
 from casefile.worker.failures import (
     network_retries as _network_retries,
+)
+from casefile.worker.failures import (
+    safe_error_message as _safe_error_message,
 )
 from casefile.worker.input_contracts import (
     json_hash as _json_hash,
@@ -445,19 +449,19 @@ chat_rewrite_event_payload = _chat_rewrite_event_payload
 
 
 class _ChatComponent:
-    def __init__(self, runtime: Any) -> None:
-        self._runtime = runtime
-
-    @property
-    def session_factory(self) -> sessionmaker[Session]:
-        return cast(sessionmaker[Session], self._runtime.session_factory)
-
-    @property
-    def config(self) -> Any:
-        return self._runtime.config
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        config: ChatRuntimeConfig,
+        events: WorkerEventPorts,
+    ) -> None:
+        self.session_factory = session_factory
+        self.config = config
+        self._events = events
 
     def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        self._runtime._emit(task_run_id, event_type, stage, payload)
+        self._events.emit(task_run_id, event_type, stage, payload)
 
     def _emit_after_completion(
         self,
@@ -466,12 +470,19 @@ class _ChatComponent:
         stage: str,
         payload: dict[str, Any],
     ) -> None:
-        self._runtime._emit_after_completion(task_run_id, event_type, stage, payload)
+        self._events.emit_after_completion(task_run_id, event_type, stage, payload)
 
 
 class ChatRequestRuntime(_ChatComponent):
-    def __init__(self, runtime: Any, context_runtime: ChatContextRuntime) -> None:
-        super().__init__(runtime)
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        config: ChatRuntimeConfig,
+        events: WorkerEventPorts,
+        context_runtime: ChatContextRuntime,
+    ) -> None:
+        super().__init__(session_factory, config=config, events=events)
         self._context_runtime = context_runtime
 
     def _load_chat_request(
@@ -1152,7 +1163,7 @@ class ChatContextRuntime(_ChatComponent):
                     "policy_version": request.context_policy_version,
                     "reason_code": "hard_input_cap_exceeded",
                     "hard_input_tokens": hard_input_tokens,
-                    "detail": str(error),
+                    "detail": _safe_error_message(error, (request.api_key or "",)),
                 },
             )
             raise
@@ -1523,7 +1534,7 @@ class ChatContextRuntime(_ChatComponent):
                 {
                     "reason_code": "thread_memory_compaction_error",
                     "reason": type(error).__name__,
-                    "detail": str(error),
+                    "detail": _safe_error_message(error, (api_key,)),
                 },
             )
 
@@ -1598,11 +1609,22 @@ class ChatCompletionRuntime(_ChatComponent):
 class ChatTaskExecutor:
     """Compatibility façade over focused Chat Worker components."""
 
-    def __init__(self, runtime: Any) -> None:
-        self._context = ChatContextRuntime(runtime)
-        self._requests = ChatRequestRuntime(runtime, self._context)
-        self._mutation = ChatMutationRuntime(runtime)
-        self._completion = ChatCompletionRuntime(runtime)
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        config: ChatRuntimeConfig,
+        events: WorkerEventPorts,
+    ) -> None:
+        self._context = ChatContextRuntime(session_factory, config=config, events=events)
+        self._requests = ChatRequestRuntime(
+            session_factory,
+            config=config,
+            events=events,
+            context_runtime=self._context,
+        )
+        self._mutation = ChatMutationRuntime(session_factory, config=config, events=events)
+        self._completion = ChatCompletionRuntime(session_factory, config=config, events=events)
 
     def _load_chat_request(self, task: TaskRun, api_key: str) -> CaseFileChatRequest:
         return self._requests._load_chat_request(task, api_key)

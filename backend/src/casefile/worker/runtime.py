@@ -18,7 +18,12 @@ from sqlalchemy.orm import Session, sessionmaker
 from casefile.application.closure_repair import ClosureRepairMode
 from casefile.data_postgres.models import TaskRun
 from casefile.worker.dispatch import TaskDispatcher
-from casefile.worker.execution import ExecutionState, TaskExecutionContext
+from casefile.worker.execution import (
+    ChatRuntimeConfig,
+    ExecutionState,
+    TaskExecutionContext,
+    WorkerEventPorts,
+)
 from casefile.worker.executors.chat import ChatTaskExecutor
 from casefile.worker.executors.completion import CompletionExecutor
 from casefile.worker.failures import TaskCancellationRequested, merge_numeric_usage
@@ -101,11 +106,37 @@ class Worker:
         self.session_factory = session_factory
         self.config = config
         self.provider_factory = provider_factory or provider_for_task
+        self._chat_config = ChatRuntimeConfig(
+            closure_repair_mode=config.closure_repair_mode,
+            general_mutation_mode=config.general_mutation_mode,
+            general_mutation_create_enabled=config.general_mutation_create_enabled,
+            general_mutation_delete_enabled=config.general_mutation_delete_enabled,
+        )
 
-        self._queue = TaskQueue(self)
-        self._finalizer = TaskFinalizer(self)
-        self._completion = CompletionExecutor(self)
-        self._chat = ChatTaskExecutor(self)
+        self._queue = TaskQueue(
+            session_factory,
+            worker_id=config.worker_id,
+            lease_seconds=config.lease_seconds,
+        )
+        self._finalizer = TaskFinalizer(
+            session_factory,
+            worker_id=config.worker_id,
+            lease_seconds=config.lease_seconds,
+        )
+        event_ports = WorkerEventPorts(
+            emit=self._emit,
+            emit_after_completion=self._emit_after_completion,
+        )
+        self._completion = CompletionExecutor(
+            session_factory,
+            worker_id=config.worker_id,
+            emit=event_ports.emit,
+        )
+        self._chat = ChatTaskExecutor(
+            session_factory,
+            config=self._chat_config,
+            events=event_ports,
+        )
         self._provider_resolver = ProviderResolver(session_factory, self.provider_factory)
         self._dispatcher = TaskDispatcher(
             (
@@ -148,7 +179,7 @@ class Worker:
                     task=task,
                     attempt_id=attempt_id,
                     session_factory=self.session_factory,
-                    config=self.config,
+                    chat_config=self._chat_config,
                     emit=self._emit,
                     state=state,
                     provider=provider,
