@@ -8,18 +8,18 @@ from graphlib import CycleError, TopologicalSorter
 from typing import Any
 
 import networkx as nx
-from pydantic import ValidationError
-
-from casefile.domain.narrative_compiler.foundation import (
-    CompilerContractError,
-    canonical_json_sha256,
-)
 from casefile_contracts import (
     NarrativeIR,
     NovelPlanIR,
     SceneCompilerInputBundle,
     ScenePlanCandidate,
     ScenePlanIR,
+)
+from pydantic import ValidationError
+
+from casefile.domain.narrative_compiler.foundation import (
+    CompilerContractError,
+    canonical_json_sha256,
 )
 
 SCENE_PLAN_SCHEMA_ID = "compiler.scene-plan.v1"

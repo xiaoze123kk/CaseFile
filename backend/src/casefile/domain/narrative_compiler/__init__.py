@@ -83,6 +83,17 @@ from casefile.domain.narrative_compiler.planning_solver import (
     planning_component_fingerprint,
     planning_problem_conflicts,
 )
+from casefile.domain.narrative_compiler.scene_compiler_input import (
+    SCENE_COMPILER_BATCH_SIZE,
+    SCENE_COMPILER_INPUT_V2_SCHEMA_ID,
+    SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION,
+    SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID,
+    build_scene_compiler_input_v2,
+    build_scene_compiler_model_view,
+    scene_compiler_model_view_fingerprint,
+    validate_scene_compiler_input_v2,
+)
+from casefile.domain.narrative_compiler.scene_fill import validate_scene_semantic_fill
 from casefile.domain.narrative_compiler.scene_plan import (
     SCENE_COMPILER_INPUT_SCHEMA_ID,
     SCENE_EXECUTION_COMPILER_VERSION,
@@ -106,17 +117,6 @@ from casefile.domain.narrative_compiler.scene_plan import (
     validate_scene_plan,
     validate_scene_plan_candidate,
 )
-from casefile.domain.narrative_compiler.scene_compiler_input import (
-    SCENE_COMPILER_BATCH_SIZE,
-    SCENE_COMPILER_INPUT_V2_SCHEMA_ID,
-    SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION,
-    SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID,
-    build_scene_compiler_input_v2,
-    build_scene_compiler_model_view,
-    scene_compiler_model_view_fingerprint,
-    validate_scene_compiler_input_v2,
-)
-from casefile.domain.narrative_compiler.scene_fill import validate_scene_semantic_fill
 from casefile.domain.narrative_compiler.scene_state_engine import (
     SCENE_EXECUTION_COMPILER_V2_VERSION,
     SCENE_PLAN_V2_SCHEMA_ID,

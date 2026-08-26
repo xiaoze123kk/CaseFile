@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
+from casefile_contracts import SceneSemanticFillProposal
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import CompilerContractError
-from casefile_contracts import SceneSemanticFillProposal
 
 
 def validate_scene_semantic_fill(

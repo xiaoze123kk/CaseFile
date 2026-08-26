@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.agent_runtime.scene_compiler import execute_scene_semantic_fill
 from casefile.domain.narrative_compiler import (

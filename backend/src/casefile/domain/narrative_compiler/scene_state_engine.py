@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from casefile_contracts import SceneCompilerInputBundleV2, ScenePlanIRV2
 from pydantic import ValidationError
 
 from casefile.domain.narrative_compiler.foundation import (
@@ -18,7 +19,6 @@ from casefile.domain.narrative_compiler.scene_compiler_input import (
     validate_scene_compiler_input_v2,
 )
 from casefile.domain.narrative_compiler.scene_fill import validate_scene_semantic_fill
-from casefile_contracts import SceneCompilerInputBundleV2, ScenePlanIRV2
 
 SCENE_PLAN_V2_SCHEMA_ID = "compiler.scene-plan.v2"
 SCENE_EXECUTION_COMPILER_V2_VERSION = "compiler.scene-execution.v2"

@@ -299,11 +299,9 @@ from .public import (
     PlannerModelViewV3,
     PlannerModelViewV4,
     SceneCompilerInputBundleV2,
-    SceneCompilerModelView,
     ScenePlan,
     ScenePlanIR,
     ScenePlanIRV2,
-    SceneSemanticFillProposal,
     ValidationIssue,
 )
 
@@ -320,10 +318,8 @@ __all__ += [
     "PlannerModelViewV3",
     "PlannerModelViewV4",
     "SceneCompilerInputBundleV2",
-    "SceneCompilerModelView",
     "ScenePlan",
     "ScenePlanIR",
     "ScenePlanIRV2",
-    "SceneSemanticFillProposal",
     "ValidationIssue",
 ]

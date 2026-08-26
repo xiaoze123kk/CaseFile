@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from casefile_contracts import CompileInputManifest
 from pydantic import ValidationError
 from sqlalchemy import select
 
@@ -48,7 +49,6 @@ from casefile.domain.narrative_compiler import (
     validate_compile_input_manifest,
 )
 from casefile.worker.support import TaskCancellationRequested
-from casefile_contracts import CompileInputManifest
 
 
 class CompilerExecutionError(RuntimeError):

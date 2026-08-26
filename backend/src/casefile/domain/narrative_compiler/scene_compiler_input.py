@@ -5,12 +5,6 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, cast
 
-from pydantic import ValidationError
-
-from casefile.domain.narrative_compiler.foundation import (
-    CompilerContractError,
-    canonical_json_sha256,
-)
 from casefile_contracts import (
     CompilerProfileBinding,
     ExposureBinding,
@@ -18,6 +12,12 @@ from casefile_contracts import (
     NovelPlanIR,
     SceneCompilerInputBundleV2,
     SceneCompilerModelView,
+)
+from pydantic import ValidationError
+
+from casefile.domain.narrative_compiler.foundation import (
+    CompilerContractError,
+    canonical_json_sha256,
 )
 
 SCENE_COMPILER_INPUT_V2_SCHEMA_ID = "compiler.scene-compiler-input.v2"

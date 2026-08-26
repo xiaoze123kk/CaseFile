@@ -8,11 +8,6 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import _adopt_candidate, _prepare_task
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
@@ -53,6 +48,10 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile.worker.runtime import Worker, WorkerConfig
 from casefile.worker.support import TaskCancellationRequested
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
