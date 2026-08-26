@@ -14,6 +14,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
 
 from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.constraint_first_story_planner import (
+    CONSTRAINT_FIRST_PIPELINE_VERSION,
+)
 from casefile.api.app import create_app
 from casefile.application.compiler import CompilerService
 from casefile.application.compiler.constants import (
@@ -395,6 +398,93 @@ def test_compile_artifact_is_reused_after_expired_lease(
         "input_manifest",
         "narrative_ir",
     ]
+
+
+def test_constraint_first_worker_records_exact_stage_hashes_without_changing_default(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory, project_id, draft_id, _profile_version_id = _prepare_compilable_project(
+        engine, actor_id, master_key
+    )
+    with factory() as session:
+        profile = CompilerService(session).create_profile(
+            actor_id,
+            project_id,
+            profile_key="novel.constraint-first",
+            name="Constraint First",
+            schema_id="compiler.novel-profile.v1",
+            payload={
+                "schema_id": "compiler.novel-profile.v1",
+                "structure": {
+                    "strategy": "three_act",
+                    "target_chapters": 1,
+                    "target_scenes": 2,
+                },
+                "allowed_presentation_modes": ["linear"],
+                "exposure_policy": "planner_default",
+            },
+        )
+        draft = CaseFileService(session).get_draft(actor_id, project_id)
+        with patch(
+            "casefile.application.compiler.service.STORY_PLANNER_AGENT_VERSION",
+            CONSTRAINT_FIRST_PIPELINE_VERSION,
+        ):
+            run = CompilerService(session).create_run(
+                actor_id,
+                project_id,
+                mode="preview",
+                expected_draft_id=draft_id,
+                expected_draft_revision=int(draft["revision"]),
+                canon_version_id=None,
+                exposure_plan_revision_id=None,
+                compiler_profile_version_id=int(profile["current_version_id"]),
+                planner_provider="openai",
+            )
+
+    provider_calls = 0
+
+    def provider_factory(_task: TaskRun) -> FakeProvider:
+        nonlocal provider_calls
+        provider_calls += 1
+        return FakeProvider()
+
+    with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="constraint-first-worker"),
+            provider_factory=provider_factory,
+        ).run_once()
+
+    with factory() as session:
+        task = session.get(TaskRun, int(run["task_run_id"]))
+        calls = list(
+            session.scalars(
+                select(AgentModelCall)
+                .where(AgentModelCall.task_run_id == run["task_run_id"])
+                .order_by(AgentModelCall.call_no)
+            )
+        )
+        step = session.scalar(
+            select(AgentStepRun).where(
+                AgentStepRun.task_run_id == run["task_run_id"],
+                AgentStepRun.component_id == "story_planner",
+            )
+        )
+    assert provider_calls == 1
+    assert task is not None and task.status == "succeeded"
+    assert task.agent_version == CONSTRAINT_FIRST_PIPELINE_VERSION
+    assert [call.prompt_component_id for call in calls] == [
+        "skeleton_proposal",
+        "semantic_fill",
+    ]
+    assert [call.target_schema_id for call in calls] == [
+        "compiler.skeleton-proposal.v1",
+        "compiler.semantic-fill.v1",
+    ]
+    assert all(call.status == "succeeded" and call.raw_output_text for call in calls)
+    assert calls[0].input_hash != calls[1].input_hash
+    assert step is not None and step.component_version == CONSTRAINT_FIRST_PIPELINE_VERSION
 
 
 def test_both_compiler_artifacts_are_reused_after_completion_crash(

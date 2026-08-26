@@ -46,10 +46,18 @@ EXPECTED_CURRENT_VERSIONS = {
     "idea_generation": "idea-generation-v4",
     "closure_repair": "closure-repair-v3",
     "story_planner": "story-planner-v3",
+    "story_planner_skeleton": "story-planner-skeleton-v1",
+    "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
 }
 
 # This immutable release inventory starts with the authorized pre-release Chinese baseline.
 EXPECTED_RELEASE_HASHES = {
+    ("story_planner_skeleton", "story-planner-skeleton-v1"): {
+        "system": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5"
+    },
+    ("story_planner_semantic_fill", "story-planner-semantic-fill-v1"): {
+        "system": "2106595dade90f5a79a54be34208c757f24adeab8b3c68c246efd5f6971fe73c"
+    },
     ("story_planner", "story-planner-v7"): {
         "system": "ef52318d8e1efa20f436c4ed0162b98dcf2802f17a6ffd8746d6d6e24a995656"
     },
@@ -414,6 +422,8 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "casefile_chat_context_compactor",
         "closure_repair",
         "story_planner",
+        "story_planner_skeleton",
+        "story_planner_semantic_fill",
     }
 
     assert deterministic_task_types <= contract_task_types

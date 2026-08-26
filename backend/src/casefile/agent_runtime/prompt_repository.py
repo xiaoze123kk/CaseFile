@@ -35,6 +35,8 @@ SUPPORTED_AGENT_IDS: Final = (
     "idea_generation",
     "closure_repair",
     "story_planner",
+    "story_planner_skeleton",
+    "story_planner_semantic_fill",
 )
 
 _VERSION_DIRECTORY = re.compile(r"^v[1-9][0-9]*$")

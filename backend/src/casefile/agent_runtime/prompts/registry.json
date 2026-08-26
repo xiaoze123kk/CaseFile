@@ -36,6 +36,12 @@
     },
     "story_planner": {
       "current_version": "story-planner-v3"
+    },
+    "story_planner_skeleton": {
+      "current_version": "story-planner-skeleton-v1"
+    },
+    "story_planner_semantic_fill": {
+      "current_version": "story-planner-semantic-fill-v1"
     }
   }
 }

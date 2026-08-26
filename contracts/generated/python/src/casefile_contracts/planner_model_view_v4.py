@@ -3,7 +3,7 @@
 #   filename:  editing-contracts.schema.json
 
 from ._internal import HardConstraints_2 as HardConstraints
-from ._internal import Schema_8 as Schema
-from ._internal import Source_1 as Source
+from ._internal import Schema_9 as Schema
+from ._internal import Source_2 as Source
 
 __all__ = ["HardConstraints", "Schema", "Source"]

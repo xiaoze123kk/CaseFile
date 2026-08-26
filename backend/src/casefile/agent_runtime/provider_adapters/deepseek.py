@@ -26,6 +26,16 @@ from casefile.agent_runtime.closure_repair_prompt import (
     closure_repair_output_type,
     render_closure_repair_prompt,
 )
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SemanticFillResult,
+    SkeletonProposalRequest,
+    SkeletonProposalResult,
+)
+from casefile.agent_runtime.constraint_first_story_planner_prompt import (
+    render_semantic_fill_prompt,
+    render_skeleton_proposal_prompt,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -122,13 +132,52 @@ from casefile_contracts import (
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
-from casefile_contracts import NovelPlanCandidate, StoryPlanStructuralPatch
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
+)
 
 
 class DeepSeekAgentsProvider:
     """DeepSeek OpenAI-compatible Chat Completions implementation."""
 
     base_url = "https://api.deepseek.com"
+
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)
+        proposal, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SkeletonProposal,
+                schema_id="compiler.skeleton-proposal.v1",
+                stage="skeleton_proposal",
+            )
+        )
+        return SkeletonProposalResult(proposal, usage, raw_output)
+
+    def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_semantic_fill_prompt(request)
+        fill, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SemanticFillProposal,
+                schema_id="compiler.semantic-fill.v1",
+                stage="semantic_fill",
+            )
+        )
+        return SemanticFillResult(fill, usage, raw_output)
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
         if not request.api_key:
@@ -174,7 +223,12 @@ class DeepSeekAgentsProvider:
 
     async def _story_planner_json_object(
         self,
-        request: StoryPlannerRequest | StoryPlannerPatchRequest,
+        request: (
+            StoryPlannerRequest
+            | StoryPlannerPatchRequest
+            | SkeletonProposalRequest
+            | SemanticFillRequest
+        ),
         *,
         instructions: str,
         input_text: str,

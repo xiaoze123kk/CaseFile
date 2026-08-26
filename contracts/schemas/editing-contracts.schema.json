@@ -12,7 +12,7 @@
     "compiler_source_ref", "compiler_artifact_ref", "compiler_diagnostic",
     "compiler_profile_binding", "compile_input_manifest", "narrative_ir",
     "novel_profile", "planner_input", "planner_model_view", "story_plan_structural_patch",
-    "novel_plan_candidate", "novel_plan"
+    "constraint_first_planner", "novel_plan_candidate", "novel_plan"
   ],
   "properties": {
     "casefile": {"$ref": "casefile/casefile.schema.json"},
@@ -52,6 +52,7 @@
     "story_plan_structural_patch": {
       "$ref": "compiler/novel-plan.schema.json#/$defs/StoryPlanStructuralPatch"
     },
+    "constraint_first_planner": {"$ref": "compiler/constraint-first-planner.schema.json"},
     "novel_plan_candidate": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanCandidate"},
     "novel_plan": {"$ref": "compiler/novel-plan.schema.json#/$defs/NovelPlanIR"}
   }

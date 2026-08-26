@@ -9,6 +9,8 @@ from ._internal import (
     CanonBinding,
     CompileInputManifest,
     CompileMode,
+    PlanSkeleton,
+    PlanningProblem,
     CompilerArtifactRef,
     CompilerDiagnostic,
     CompilerProfileBinding,
@@ -17,11 +19,13 @@ from ._internal import (
     NovelPlanCandidate,
     NovelPlanIR,
     StoryPlanStructuralPatch,
+    SemanticFillProposal,
+    SkeletonProposal,
     SnapshotBinding,
     TaskEvent,
     TaskRun,
 )
-from ._internal import Schema_2 as NarrativeIR
+from .narrative_ir import Schema as NarrativeIR
 from .brief import Schema as Brief
 from .brief_intake import Schema as BriefIntakeCandidate
 from .casefile import Schema as CaseFile
@@ -46,6 +50,8 @@ __all__ = [
     "CanonBinding",
     "CompileInputManifest",
     "CompileMode",
+    "PlanSkeleton",
+    "PlanningProblem",
     "CompilerArtifactRef",
     "CompilerDiagnostic",
     "CompilerProfileBinding",
@@ -54,6 +60,8 @@ __all__ = [
     "NovelPlanCandidate",
     "NovelPlanIR",
     "StoryPlanStructuralPatch",
+    "SemanticFillProposal",
+    "SkeletonProposal",
     "NovelProfile",
     "PlannerInputBundle",
     "PlannerInputBundleV2",

@@ -9,8 +9,17 @@ from typing import Any
 
 import pytest
 
+from casefile.agent_runtime import FakeProvider
+from casefile.agent_runtime.constraint_first_story_planner import (
+    execute_constraint_first_story_planner,
+)
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
+    PlanningSat,
+    PlanningSolverUnsupported,
+    PlanningUnsat,
+    ReferencePlanningSolver,
+    assemble_candidate_from_skeleton,
     build_planner_constraint_ir,
     build_planner_constraint_ir_v2,
     build_planner_input_bundle,
@@ -20,12 +29,15 @@ from casefile.domain.narrative_compiler import (
     build_planner_model_view_v4,
     canonical_json_sha256,
     canonicalize_novel_plan,
+    compile_planning_problem,
     inspect_novel_plan_candidate,
     planner_constraint_ir_fingerprint,
     planner_constraint_ir_v2_fingerprint,
     planner_input_fingerprint,
     planner_model_view_v3_fingerprint,
     planner_model_view_v4_fingerprint,
+    planning_component_fingerprint,
+    planning_problem_conflicts,
     project_narrative_ir_json,
     repair_novel_plan_candidate,
     story_planner_component_fingerprint,
@@ -387,6 +399,306 @@ def test_hard_hypothesis_coverage_has_stable_reason_code() -> None:
     assert report.violations[0].code == (
         "compiler_story_plan_hypothesis_coverage_unmet"
     )
+
+
+def test_reference_solver_builds_locked_valid_skeleton_and_fill_cannot_override() -> None:
+    v1 = _planner_input()
+    v1["exposure_plan"]["frozen_payload"]["entries"][0]["planning_obligations"] = [
+        {
+            "kind": "participant_coverage",
+            "obligation_key": "obligation_two_participants",
+            "level": "hard",
+            "eligible_refs": [
+                {"object_type": "entity", "object_id": "ent_researcher"},
+                {"object_type": "entity", "object_id": "ent_backup_system"},
+            ],
+            "min_distinct": 2,
+        },
+        {
+            "kind": "basis_ref_coverage",
+            "obligation_key": "obligation_backup_basis",
+            "level": "hard",
+            "required_refs": [
+                {"object_type": "claim", "object_id": "claim_backup_trigger"}
+            ],
+        },
+    ]
+    bundle = build_planner_input_bundle_v3(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+    problem = compile_planning_problem(bundle)
+    proposal = {
+        "schema_id": "compiler.skeleton-proposal.v1",
+        "scenes": [
+            {
+                "scene_id": "scene_001",
+                "chapter_id": "chapter_wrong",
+                "discourse_order": 2,
+                "purpose": "hook",
+                "presentation_mode": "linear",
+                "story_time_refs": [
+                    {"object_type": "event", "object_id": "evt_restart_seven"}
+                ],
+                "participant_refs": [
+                    {"object_type": "entity", "object_id": "ent_researcher"}
+                ],
+                "basis_refs": [
+                    {"object_type": "information_unit", "object_id": "info_restart_log"}
+                ],
+                "exposure": [
+                    {"entry_key": "exposure_restart_log", "action": "reinforce"},
+                    {"entry_key": "exposure_restart_log", "action": "introduce"},
+                ],
+                "resolutions": [],
+                "prerequisite_scene_ids": [],
+            },
+            {
+                "scene_id": "scene_002",
+                "chapter_id": "chapter_wrong",
+                "discourse_order": 1,
+                "purpose": "resolution",
+                "presentation_mode": "flashback",
+                "story_time_refs": [],
+                "participant_refs": [],
+                "basis_refs": [
+                    {"object_type": "resolution_spec", "object_id": "res_root_cause"}
+                ],
+                "exposure": [],
+                "resolutions": [
+                    {
+                        "resolution_ref": {
+                            "object_type": "resolution_spec",
+                            "object_id": "res_root_cause",
+                        },
+                        "action": "resolve",
+                    },
+                    {
+                        "resolution_ref": {
+                            "object_type": "resolution_spec",
+                            "object_id": "res_unknown",
+                        },
+                        "action": "advance",
+                    },
+                ],
+                "prerequisite_scene_ids": ["scene_001"],
+            },
+        ],
+    }
+
+    result = ReferencePlanningSolver().solve(problem, proposal)
+
+    assert isinstance(result, PlanningSat)
+    assert result.changes
+    assert result.proof["constraint_keys"] == sorted(
+        [
+            "exposure_order",
+            "obligation_backup_basis",
+            "obligation_two_participants",
+            "resolution_closure",
+            "structure",
+            "temporal_modes",
+        ]
+    )
+    fill = {
+        "schema_id": "compiler.semantic-fill.v1",
+        "chapters": [{"chapter_id": "chapter_001", "title": "循环"}],
+        "scenes": [
+            {
+                "scene_id": "scene_001",
+                "intent": "发现重启日志。",
+                "pov_ref": {"object_type": "entity", "object_id": "ent_researcher"},
+                "location_ref": {"object_type": "location", "object_id": "loc_lab"},
+                "event_refs": [
+                    {"object_type": "event", "object_id": "evt_restart_seven"}
+                ],
+            },
+            {
+                "scene_id": "scene_002",
+                "intent": "完成闭环。",
+                "pov_ref": {"object_type": "entity", "object_id": "ent_researcher"},
+                "location_ref": {"object_type": "location", "object_id": "loc_lab"},
+                "event_refs": [],
+            },
+        ],
+    }
+    candidate = assemble_candidate_from_skeleton(result.skeleton, fill)
+    assert validate_novel_plan_candidate(candidate, planner_input=bundle)
+    assert candidate["scenes"][0]["chapter_id"] == "chapter_001"
+    assert candidate["scenes"][0]["exposure"][0]["action"] == "introduce"
+    assert {
+        placement["resolution_ref"]["object_id"]
+        for placement in candidate["scenes"][1]["resolutions"]
+    } == {"res_root_cause", "res_shutdown_rule"}
+    assert all(
+        placement["action"] == "resolve"
+        for placement in candidate["scenes"][1]["resolutions"]
+    )
+    assert len(candidate["scenes"][0]["participant_refs"]) == 2
+    assert any(
+        ref["object_id"] == "claim_backup_trigger"
+        for ref in candidate["scenes"][0]["basis_refs"]
+    )
+
+    injected = copy.deepcopy(fill)
+    injected["scenes"][0]["purpose"] = "climax"
+    with pytest.raises(CompilerContractError) as captured:
+        assemble_candidate_from_skeleton(result.skeleton, injected)
+    assert captured.value.reason_code == "compiler_semantic_fill_invalid"
+
+    fingerprint = planning_component_fingerprint(
+        planner_input=bundle,
+        problem=problem,
+        solver_version=ReferencePlanningSolver.version,
+        skeleton_prompt_version="story-planner-skeleton-v1",
+        skeleton_prompt_sha256="a" * 64,
+        fill_prompt_version="story-planner-semantic-fill-v1",
+        fill_prompt_sha256="b" * 64,
+    )
+    assert fingerprint["planning_problem_hash"] == canonical_json_sha256(problem)
+
+
+def test_planning_problem_unsat_is_stable_and_slot_mismatch_is_unsupported() -> None:
+    v1 = _planner_input()
+    v1["exposure_plan"]["frozen_payload"]["entries"][0]["planning_obligations"] = [
+        {
+            "kind": "basis_ref_coverage",
+            "obligation_key": "obligation_missing_ref",
+            "level": "hard",
+            "required_refs": [{"object_type": "claim", "object_id": "claim_missing"}],
+        }
+    ]
+    bundle = build_planner_input_bundle_v3(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+    problem = compile_planning_problem(bundle)
+
+    assert planning_problem_conflicts(problem) == ("obligation_missing_ref",)
+    result = ReferencePlanningSolver().solve(
+        problem,
+        {"schema_id": "compiler.skeleton-proposal.v1", "scenes": []},
+    )
+    assert result == PlanningUnsat(("obligation_missing_ref",))
+
+    clean = copy.deepcopy(problem)
+    clean["hard_constraints"]["semantic_obligations"] = []
+    with pytest.raises(PlanningSolverUnsupported):
+        ReferencePlanningSolver().solve(
+            clean,
+            {
+                "schema_id": "compiler.skeleton-proposal.v1",
+                "scenes": [
+                    {
+                        "scene_id": "scene_other",
+                        "chapter_id": "chapter_001",
+                        "discourse_order": 1,
+                        "purpose": "hook",
+                        "presentation_mode": "linear",
+                        "story_time_refs": [],
+                        "participant_refs": [],
+                        "basis_refs": [clean["object_refs"][0]],
+                        "exposure": [],
+                        "resolutions": [],
+                        "prerequisite_scene_ids": [],
+                    }
+                ],
+            },
+        )
+
+
+def test_constraint_first_fake_pipeline_revalidates_and_unsat_skips_provider() -> None:
+    v1 = _planner_input()
+    bundle = build_planner_input_bundle_v3(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+    model_view = build_planner_model_view_v4(bundle)
+
+    execution = execute_constraint_first_story_planner(
+        FakeProvider(),
+        ReferencePlanningSolver(),
+        task_run_id=1,
+        planner_input=bundle,
+        model_view=model_view,
+        component_hash="a" * 64,
+        model_id="fake-story-planner",
+        api_key="fake",
+    )
+
+    assert [stage.stage for stage in execution.stages] == [
+        "skeleton_proposal",
+        "semantic_fill",
+    ]
+    assert validate_novel_plan_candidate(execution.candidate, planner_input=bundle)
+
+    recovered_outputs = {
+        (stage.stage, stage.input_hash): stage.output for stage in execution.stages
+    }
+
+    class RecoveryOnlyProvider:
+        def propose_skeleton(self, _request: Any) -> Any:
+            raise AssertionError("exact-hash skeleton output must be recovered")
+
+        def fill_semantics(self, _request: Any) -> Any:
+            raise AssertionError("exact-hash fill output must be recovered")
+
+    replay = execute_constraint_first_story_planner(
+        RecoveryOnlyProvider(),
+        ReferencePlanningSolver(),
+        task_run_id=1,
+        planner_input=bundle,
+        model_view=model_view,
+        component_hash="a" * 64,
+        model_id="recovery-only",
+        api_key="recovery-only",
+        recover_stage=lambda stage, input_hash: recovered_outputs.get((stage, input_hash)),
+    )
+    assert all(stage.recovered for stage in replay.stages)
+    assert replay.candidate == execution.candidate
+
+    invalid = copy.deepcopy(v1["exposure_plan"])
+    invalid["frozen_payload"]["entries"][0]["planning_obligations"] = [
+        {
+            "kind": "basis_ref_coverage",
+            "obligation_key": "obligation_missing_ref",
+            "level": "hard",
+            "required_refs": [{"object_type": "claim", "object_id": "claim_missing"}],
+        }
+    ]
+    unsat_bundle = build_planner_input_bundle_v3(
+        narrative_ir=v1["narrative_ir"],
+        exposure=invalid,
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+
+    class ForbiddenProvider:
+        def propose_skeleton(self, _request: Any) -> Any:
+            raise AssertionError("UNSAT must fail before Provider")
+
+        def fill_semantics(self, _request: Any) -> Any:
+            raise AssertionError("UNSAT must fail before Provider")
+
+    with pytest.raises(CompilerContractError) as captured:
+        execute_constraint_first_story_planner(
+            ForbiddenProvider(),
+            ReferencePlanningSolver(),
+            task_run_id=1,
+            planner_input=unsat_bundle,
+            model_view=build_planner_model_view_v4(unsat_bundle),
+            component_hash="b" * 64,
+            model_id="forbidden",
+            api_key="forbidden",
+        )
+    assert captured.value.reason_code == "compiler_planning_problem_unsat"
+    assert captured.value.conflict_keys == ("obligation_missing_ref",)  # type: ignore[attr-defined]
 
 
 def test_preview_default_exposure_is_allowed_but_canonical_requires_binding() -> None:

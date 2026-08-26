@@ -22,6 +22,10 @@ from casefile.agent_runtime.chat_tools import (
     freeze_chat_tool_ledger,
 )
 from casefile.agent_runtime.closure_repair import ClosureRepairRequest
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SkeletonProposalRequest,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
 )
@@ -239,6 +243,8 @@ async def _run_auxiliary_agent(
         | ClosureRepairRequest
         | StoryPlannerRequest
         | StoryPlannerPatchRequest
+        | SkeletonProposalRequest
+        | SemanticFillRequest
     ),
     *,
     model: OpenAIResponsesModel | OpenAIChatCompletionsModel,

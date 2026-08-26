@@ -339,6 +339,7 @@ export interface EditingContracts {
   planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
   planner_model_view: PlannerModelViewV3 | PlannerModelViewV4;
   story_plan_structural_patch: StoryPlanStructuralPatch;
+  constraint_first_planner: ConstraintFirstPlannerContracts;
   novel_plan_candidate: NovelPlanCandidate;
   novel_plan: NovelPlanIR;
 }
@@ -1135,6 +1136,130 @@ export interface ReplaceScenePurposePatch {
     | "resolution"
     | "transition";
 }
+export interface ConstraintFirstPlannerContracts {
+  planning_problem: PlanningProblem;
+  skeleton_proposal: SkeletonProposal;
+  plan_skeleton: PlanSkeleton;
+  semantic_fill: SemanticFillProposal;
+}
+export interface PlanningProblem {
+  schema_id: "compiler.planning-problem.v1";
+  source: {
+    constraint_ir_schema_id: "compiler.planner-constraints.v2";
+    constraint_ir_hash: string;
+  };
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  chapter_slots: [ChapterSlot, ...ChapterSlot[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scene_slots: [SceneSlot, ...SceneSlot[]];
+  /**
+   * @minItems 1
+   */
+  object_refs: [ObjectRef, ...ObjectRef[]];
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure: Exposure;
+    temporal: Temporal;
+    resolutions: Resolutions;
+    semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+  };
+}
+export interface ChapterSlot {
+  chapter_id: string;
+  ordinal: number;
+  act_ordinal: number;
+}
+export interface SceneSlot {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+}
+export interface SkeletonProposal {
+  schema_id: "compiler.skeleton-proposal.v1";
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scenes: [SkeletonScene, ...SkeletonScene[]];
+}
+export interface SkeletonScene {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  story_time_refs: ObjectRef[];
+  participant_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  exposure: ExposurePlacement[];
+  resolutions: ResolutionPlacement[];
+  prerequisite_scene_ids: string[];
+}
+export interface ExposurePlacement {
+  entry_key: string;
+  action: "introduce" | "reinforce" | "reinterpret";
+}
+export interface ResolutionPlacement {
+  resolution_ref: ObjectRef;
+  action: "advance" | "resolve" | "intentionally_unresolved";
+}
+export interface PlanSkeleton {
+  schema_id: "compiler.plan-skeleton.v1";
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  chapter_slots: [ChapterSlot, ...ChapterSlot[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scenes: [SkeletonScene, ...SkeletonScene[]];
+}
+export interface SemanticFillProposal {
+  schema_id: "compiler.semantic-fill.v1";
+  /**
+   * @minItems 1
+   * @maxItems 100
+   */
+  chapters: [SemanticChapterFill, ...SemanticChapterFill[]];
+  /**
+   * @minItems 1
+   * @maxItems 500
+   */
+  scenes: [SemanticSceneFill, ...SemanticSceneFill[]];
+}
+export interface SemanticChapterFill {
+  chapter_id: string;
+  title: string;
+}
+export interface SemanticSceneFill {
+  scene_id: string;
+  intent: string;
+  pov_ref: ObjectRef | null;
+  location_ref: ObjectRef | null;
+  event_refs: ObjectRef[];
+}
 export interface NovelPlanCandidate {
   schema_id: "compiler.novel-plan-candidate.v1";
   /**
@@ -1182,14 +1307,6 @@ export interface CandidateScene {
   exposure: ExposurePlacement[];
   resolutions: ResolutionPlacement[];
   prerequisite_scene_ids: string[];
-}
-export interface ExposurePlacement {
-  entry_key: string;
-  action: "introduce" | "reinforce" | "reinterpret";
-}
-export interface ResolutionPlacement {
-  resolution_ref: ObjectRef;
-  action: "advance" | "resolve" | "intentionally_unresolved";
 }
 export interface NovelPlanIR {
   schema_id: "compiler.novel-plan.v1";

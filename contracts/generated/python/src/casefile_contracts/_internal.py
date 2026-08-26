@@ -2057,6 +2057,128 @@ class NovelPlanIR(BaseModel):
     indexes: NovelPlanIndexes
 
 
+class ChapterSlot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    act_ordinal: Annotated[int, Field(ge=1, le=10)]
+
+
+class SceneSlot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+
+
+class Source(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    constraint_ir_schema_id: Literal['compiler.planner-constraints.v2']
+    constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class HardConstraints2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure: Exposure
+    temporal: Temporal
+    resolutions: Resolutions
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class PlanningProblem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.planning-problem.v1']
+    source: Source
+    chapter_slots: Annotated[list[ChapterSlot], Field(max_length=100, min_length=1)]
+    scene_slots: Annotated[list[SceneSlot], Field(max_length=500, min_length=1)]
+    object_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    hard_constraints: HardConstraints2
+
+
+class SkeletonScene(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    presentation_mode: PresentationMode
+    story_time_refs: list[ObjectRef]
+    participant_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+
+
+class SkeletonProposal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.skeleton-proposal.v1']
+    scenes: Annotated[list[SkeletonScene], Field(max_length=500, min_length=1)]
+
+
+class PlanSkeleton(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.plan-skeleton.v1']
+    chapter_slots: Annotated[list[ChapterSlot], Field(max_length=100, min_length=1)]
+    scenes: Annotated[list[SkeletonScene], Field(max_length=500, min_length=1)]
+
+
+class SemanticChapterFill(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+
+
+class SemanticSceneFill(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    intent: Annotated[str, Field(max_length=2000, min_length=1)]
+    pov_ref: ObjectRef | None
+    location_ref: ObjectRef | None
+    event_refs: list[ObjectRef]
+
+
+class SemanticFillProposal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.semantic-fill.v1']
+    chapters: Annotated[list[SemanticChapterFill], Field(max_length=100, min_length=1)]
+    scenes: Annotated[list[SemanticSceneFill], Field(max_length=500, min_length=1)]
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -2119,8 +2241,8 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_9
-    patch_candidate: Schema_3
+    validation_issue: Schema_10
+    patch_candidate: Schema_4
     task_run: TaskRun
     task_event: TaskEvent
     agent_generate_request: AgentGenerateRequest
@@ -2130,11 +2252,12 @@ class EditingContracts(BaseModel):
     compiler_diagnostic: CompilerDiagnostic
     compiler_profile_binding: CompilerProfileBinding
     compile_input_manifest: CompileInputManifest
-    narrative_ir: Schema_2
+    narrative_ir: Schema_3
     novel_profile: novel_profile_1.Schema
-    planner_input: Schema_4 | Schema_5 | Schema_6
-    planner_model_view: Schema_7 | Schema_8
+    planner_input: Schema_5 | Schema_6 | Schema_7
+    planner_model_view: Schema_8 | Schema_9
     story_plan_structural_patch: StoryPlanStructuralPatch
+    constraint_first_planner: Schema_2
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
 
@@ -2277,6 +2400,17 @@ class Schema_2(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    planning_problem: PlanningProblem
+    skeleton_proposal: SkeletonProposal
+    plan_skeleton: PlanSkeleton
+    semantic_fill: SemanticFillProposal
+
+
+class Schema_3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
     schema_id: Literal['compiler.narrative-ir.v1']
     projection_version: Literal['compiler.narrative-ir-projection.v1']
     source: NarrativeIRSource
@@ -2302,7 +2436,7 @@ class ApprovalStatus(StrEnum):
     superseded = 'superseded'
 
 
-class Schema_3(BaseModel):
+class Schema_4(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2344,29 +2478,16 @@ class PlanningConstraints_1(BaseModel):
     ]
 
 
-class Schema_4(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    schema_id: Literal['compiler.story-planner-input.v1']
-    narrative_ir: Schema_2
-    exposure_plan: ExposureBinding | None
-    profile: novel_profile_1.Schema
-    planning_constraints: PlanningConstraints_1
-
-
 class Schema_5(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    schema_id: Literal['compiler.story-planner-input.v2']
-    narrative_ir: Schema_2
+    schema_id: Literal['compiler.story-planner-input.v1']
+    narrative_ir: Schema_3
     exposure_plan: ExposureBinding | None
     profile: novel_profile_1.Schema
-    planning_constraints: PlanningConstraints
-    planner_view: PlannerView
+    planning_constraints: PlanningConstraints_1
 
 
 class Schema_6(BaseModel):
@@ -2374,15 +2495,28 @@ class Schema_6(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    schema_id: Literal['compiler.story-planner-input.v2']
+    narrative_ir: Schema_3
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints
+    planner_view: PlannerView
+
+
+class Schema_7(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
     schema_id: Literal['compiler.story-planner-input.v3']
-    narrative_ir: Schema_2
+    narrative_ir: Schema_3
     exposure_plan: ExposureBinding | None
     profile: novel_profile_1.Schema
     planning_constraints: PlanningConstraints
     planner_view: PlannerViewModel
 
 
-class Source(BaseModel):
+class Source_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2473,20 +2607,20 @@ class ObjectCatalog_1(BaseModel):
     structure_locks: list[ModelObject]
 
 
-class Schema_7(BaseModel):
+class Schema_8(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
     schema_id: Literal['compiler.story-planner-model-view.v3']
-    source: Source
+    source: Source_1
     case: NarrativeCase
     hard_constraints: HardConstraints_1
     object_catalog: ObjectCatalog_1
     planning_context: PlanningContextModel
 
 
-class Source_1(BaseModel):
+class Source_2(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2508,13 +2642,13 @@ class HardConstraints_2(BaseModel):
     semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
 
 
-class Schema_8(BaseModel):
+class Schema_9(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
     schema_id: Literal['compiler.story-planner-model-view.v4']
-    source: Source_1
+    source: Source_2
     case: NarrativeCase
     hard_constraints: HardConstraints_2
     object_catalog: ObjectCatalog
@@ -2541,7 +2675,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_9(BaseModel):
+class Schema_10(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

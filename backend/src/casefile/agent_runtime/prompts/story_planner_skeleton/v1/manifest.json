@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner_skeleton",
+  "version": "story-planner-skeleton-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "783b0831bb9e2c0e9aaf9901d2b5a4241a2ef4a80d140c04416c62cec04d1ec5",
+  "previous_version": null,
+  "change_summary": "约束优先管线的独立骨架提议阶段，只输出服务端可求解的结构字段。"
+}

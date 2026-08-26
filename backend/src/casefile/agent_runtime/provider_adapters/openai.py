@@ -26,6 +26,16 @@ from casefile.agent_runtime.closure_repair_prompt import (
     closure_repair_output_type,
     render_closure_repair_prompt,
 )
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SemanticFillResult,
+    SkeletonProposalRequest,
+    SkeletonProposalResult,
+)
+from casefile.agent_runtime.constraint_first_story_planner_prompt import (
+    render_semantic_fill_prompt,
+    render_skeleton_proposal_prompt,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -119,11 +129,60 @@ from casefile_contracts import (
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
-from casefile_contracts import NovelPlanCandidate, StoryPlanStructuralPatch
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
+)
 
 
 class OpenAIAgentsProvider:
     """OpenAI Responses implementation with structured outputs."""
+
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)
+        proposal, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SkeletonProposal,
+                stage="skeleton_proposal",
+                component_id="story_planner",
+                schema_id="compiler.skeleton-proposal.v1",
+                max_turns=1,
+                temperature=0,
+                strict_validation=True,
+                max_protocol_attempts=1,
+            )
+        )
+        return SkeletonProposalResult(proposal, usage)
+
+    def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_semantic_fill_prompt(request)
+        fill, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SemanticFillProposal,
+                stage="semantic_fill",
+                component_id="story_planner",
+                schema_id="compiler.semantic-fill.v1",
+                max_turns=1,
+                temperature=0,
+                strict_validation=True,
+                max_protocol_attempts=1,
+            )
+        )
+        return SemanticFillResult(fill, usage)
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
         if not request.api_key:
@@ -675,6 +734,8 @@ class OpenAIAgentsProvider:
             | ClosureRepairRequest
             | StoryPlannerRequest
             | StoryPlannerPatchRequest
+            | SkeletonProposalRequest
+            | SemanticFillRequest
         ),
         *,
         instructions: str,

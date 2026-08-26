@@ -30,6 +30,12 @@ from casefile.agent_runtime.closure_repair import (
     ClosureRepairRequest,
 )
 from casefile.agent_runtime.closure_repair_prompt import render_closure_repair_prompt
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SemanticFillResult,
+    SkeletonProposalRequest,
+    SkeletonProposalResult,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -395,6 +401,73 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
 
 class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
+
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult:
+        basis = request.planning_problem["object_refs"][0]
+        proposal = {
+            "schema_id": "compiler.skeleton-proposal.v1",
+            "scenes": [
+                {
+                    **slot,
+                    "purpose": (
+                        "resolution"
+                        if slot["discourse_order"]
+                        == len(request.planning_problem["scene_slots"])
+                        else "investigation"
+                    ),
+                    "presentation_mode": request.planning_problem["hard_constraints"][
+                        "structure"
+                    ]["allowed_presentation_modes"][0],
+                    "story_time_refs": [],
+                    "participant_refs": [],
+                    "basis_refs": [basis],
+                    "exposure": [],
+                    "resolutions": [],
+                    "prerequisite_scene_ids": (
+                        []
+                        if slot["discourse_order"] == 1
+                        else [f"scene_{slot['discourse_order'] - 1:03d}"]
+                    ),
+                }
+                for slot in request.planning_problem["scene_slots"]
+            ],
+        }
+        return SkeletonProposalResult(
+            proposal=proposal,
+            usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        )
+
+    def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult:
+        catalog = request.model_view["object_catalog"]
+        entity = _first_ref(catalog.get("entities", []))
+        location = _first_ref(catalog.get("locations", []))
+        event = _first_ref(catalog.get("events", []))
+        fill = {
+            "schema_id": "compiler.semantic-fill.v1",
+            "chapters": [
+                {
+                    "chapter_id": slot["chapter_id"],
+                    "title": f"第{slot['ordinal']}章",
+                }
+                for slot in request.skeleton["chapter_slots"]
+            ],
+            "scenes": [
+                {
+                    "scene_id": scene["scene_id"],
+                    "intent": f"推进第 {scene['discourse_order']} 个结构节点。",
+                    "pov_ref": entity,
+                    "location_ref": location,
+                    "event_refs": [] if event is None else [event],
+                }
+                for scene in request.skeleton["scenes"]
+            ],
+        }
+        return SemanticFillResult(
+            fill=fill,
+            usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+        )
 
     def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
         candidate = _fake_story_plan_candidate(request.planner_input)
@@ -1862,6 +1935,12 @@ def _fake_story_plan_candidate(planner_input: dict[str, Any]) -> dict[str, Any]:
         "chapters": chapters,
         "scenes": scenes,
     }
+
+
+def _first_ref(values: list[dict[str, Any]]) -> dict[str, str] | None:
+    if not values:
+        return None
+    return cast(dict[str, str], values[0]["object_ref"])
 
 
 __all__ = ["FakeProvider"]

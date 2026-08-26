@@ -44,6 +44,8 @@ Prompt 版本有三种互斥形态：
 
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
+`story_planner_skeleton-v1` 与 `story_planner_semantic_fill-v1` 是 Constraint-First 实验管线的两个独立、不可变 Prompt。前者只提议求解器字段，后者只填充模型所有字段；现有 `story_planner-v3` 生产指针和 Worker 路由保持不变。
+
 ## Prompt Package 边界
 
 Prompt Package 是模型调用资产与契约的发布单元，不是工作流 DSL。Agent 执行图仍由 `agent_version` 对应的 Python Runtime 管理，工具实现与 Provider 结构化输出适配仍由代码维护。

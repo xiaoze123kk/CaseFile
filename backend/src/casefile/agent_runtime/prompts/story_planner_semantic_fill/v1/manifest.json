@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner_semantic_fill",
+  "version": "story-planner-semantic-fill-v1",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "2106595dade90f5a79a54be34208c757f24adeab8b3c68c246efd5f6971fe73c",
+  "previous_version": null,
+  "change_summary": "约束优先管线的独立语义填充阶段，不允许覆盖服务端锁定骨架。"
+}
