@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from casefile_contracts import CompileInputManifest
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from casefile.agent_runtime.scene_compiler import SCENE_COMPILER_PIPELINE_VERSION
 from casefile.application.compiler.constants import (
     INPUT_FREEZE_COMPONENT_ID,
     INPUT_FREEZE_COMPONENT_VERSION,
@@ -22,6 +22,9 @@ from casefile.application.compiler.constants import (
     SCENE_PLAN_COMPONENT_ID,
     SCENE_PLAN_COMPONENT_VERSION,
     SCENE_PLAN_SCHEMA_ID,
+    SCENE_PLAN_V2_COMPONENT_ID,
+    SCENE_PLAN_V2_COMPONENT_VERSION,
+    SCENE_PLAN_V2_SCHEMA_ID,
     STORY_PLANNER_COMPONENT_ID,
 )
 from casefile.application.task_events import append_task_event
@@ -45,6 +48,7 @@ from casefile.domain.narrative_compiler import (
     validate_compile_input_manifest,
 )
 from casefile.worker.support import TaskCancellationRequested
+from casefile_contracts import CompileInputManifest
 
 
 class CompilerExecutionError(RuntimeError):
@@ -152,9 +156,14 @@ class CompilerTaskExecutorMixin:
         scene_plan_hash: str | None = None
         scene_plan_reused = False
         with self.session_factory() as session:
-            planner_enabled = (
-                session.scalar(select(TaskRun.provider).where(TaskRun.id == task_run_id))
-                is not None
+            task_identity = session.execute(
+                select(TaskRun.provider, TaskRun.agent_version).where(
+                    TaskRun.id == task_run_id
+                )
+            ).one()
+            planner_enabled = task_identity.provider is not None
+            shadow_scene_compiler = (
+                task_identity.agent_version == SCENE_COMPILER_PIPELINE_VERSION
             )
         if planner_enabled:
             from casefile.worker.executors.story_planner import (
@@ -196,45 +205,84 @@ class CompilerTaskExecutorMixin:
                     )
                 if novel_plan_json is None or novel_plan_hash is None:
                     raise CompilerExecutionError("compiler_scene_plan_novel_plan_missing")
-                scene_fingerprint = scene_plan_component_fingerprint(novel_plan_json)
-                scene_component_input_hash = canonical_json_sha256(scene_fingerprint)
                 scene_upstream_hashes = {
                     "novel_plan": novel_plan_hash,
                     "narrative_ir": narrative_ir_hash,
                 }
-                scene_plan_json = compile_scene_plan_json(novel_plan_json)
-                scene_plan_hash = canonical_json_sha256(scene_plan_json)
-                scene_plan_artifact_id, scene_plan_reused = (
-                    self._materialize_json_artifact_component(
-                        task_run_id=task_run_id,
-                        attempt_id=attempt_id,
-                        run=run,
-                        component_id=SCENE_PLAN_COMPONENT_ID,
-                        component_version=SCENE_PLAN_COMPONENT_VERSION,
-                        component_input_hash=scene_component_input_hash,
-                        upstream_hashes=scene_upstream_hashes,
-                        artifact_kind="scene_plan",
-                        artifact_key=SCENE_PLAN_ARTIFACT_KEY,
-                        schema_id=SCENE_PLAN_SCHEMA_ID,
-                        content_hash=scene_plan_hash,
-                        content_json=scene_plan_json,
-                        event_prefix="compiler.scene_plan",
-                        parent_component_id=STORY_PLANNER_COMPONENT_ID,
+                if shadow_scene_compiler:
+                    from casefile.worker.executors.scene_compiler import (
+                        execute_scene_compiler_component,
                     )
-                )
+
+                    scene_plan_artifact_id, scene_plan_hash, scene_plan_reused = (
+                        execute_scene_compiler_component(
+                            self,
+                            task_run_id=task_run_id,
+                            attempt_id=attempt_id,
+                            run=run,
+                            manifest_json=manifest_json,
+                            novel_plan_json=novel_plan_json,
+                            novel_plan_hash=novel_plan_hash,
+                            narrative_ir_json=narrative_ir_json,
+                            narrative_ir_hash=narrative_ir_hash,
+                        )
+                    )
+                else:
+                    scene_fingerprint = scene_plan_component_fingerprint(novel_plan_json)
+                    scene_component_input_hash = canonical_json_sha256(scene_fingerprint)
+                    scene_plan_json = compile_scene_plan_json(novel_plan_json)
+                    scene_plan_hash = canonical_json_sha256(scene_plan_json)
+                    scene_plan_artifact_id, scene_plan_reused = (
+                        self._materialize_json_artifact_component(
+                            task_run_id=task_run_id,
+                            attempt_id=attempt_id,
+                            run=run,
+                            component_id=SCENE_PLAN_COMPONENT_ID,
+                            component_version=SCENE_PLAN_COMPONENT_VERSION,
+                            component_input_hash=scene_component_input_hash,
+                            upstream_hashes=scene_upstream_hashes,
+                            artifact_kind="scene_plan",
+                            artifact_key=SCENE_PLAN_ARTIFACT_KEY,
+                            schema_id=SCENE_PLAN_SCHEMA_ID,
+                            content_hash=scene_plan_hash,
+                            content_json=scene_plan_json,
+                            event_prefix="compiler.scene_plan",
+                            parent_component_id=STORY_PLANNER_COMPONENT_ID,
+                        )
+                    )
             except TaskCancellationRequested:
                 raise
             except Exception as error:
                 normalized = _normalize_compiler_error(
                     error, fallback_code="compiler_scene_plan_compilation_failed"
                 )
+                if shadow_scene_compiler:
+                    from casefile.worker.executors.scene_compiler import (
+                        fail_scene_compiler_component,
+                    )
+
+                    fail_scene_compiler_component(
+                        self, task_run_id, attempt_id, normalized.error_code
+                    )
                 self._record_compile_failure_step(
                     task_run_id,
                     attempt_id,
                     normalized,
-                    component_id=SCENE_PLAN_COMPONENT_ID,
-                    component_version=SCENE_PLAN_COMPONENT_VERSION,
-                    schema_id=SCENE_PLAN_SCHEMA_ID,
+                    component_id=(
+                        SCENE_PLAN_V2_COMPONENT_ID
+                        if shadow_scene_compiler
+                        else SCENE_PLAN_COMPONENT_ID
+                    ),
+                    component_version=(
+                        SCENE_PLAN_V2_COMPONENT_VERSION
+                        if shadow_scene_compiler
+                        else SCENE_PLAN_COMPONENT_VERSION
+                    ),
+                    schema_id=(
+                        SCENE_PLAN_V2_SCHEMA_ID
+                        if shadow_scene_compiler
+                        else SCENE_PLAN_SCHEMA_ID
+                    ),
                     input_hash=scene_component_input_hash,
                     upstream_hashes=scene_upstream_hashes,
                     failure_layer="scene_plan",

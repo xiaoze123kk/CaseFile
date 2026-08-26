@@ -18,6 +18,10 @@ SCENE_PLAN_SCHEMA_ID = "compiler.scene-plan.v1"
 SCENE_PLAN_ARTIFACT_KEY = "compiler.scene_plan"
 SCENE_PLAN_COMPONENT_ID = "scene_execution_compiler"
 SCENE_PLAN_COMPONENT_VERSION = "compiler.scene-execution.v1"
+SCENE_PLAN_V2_SCHEMA_ID = "compiler.scene-plan.v2"
+SCENE_PLAN_V2_COMPONENT_ID = "scene_execution_compiler_v2"
+SCENE_PLAN_V2_COMPONENT_VERSION = "compiler.scene-execution.v2"
+SCENE_FILL_COMPONENT_ID = "scene_compiler"
 
 __all__ = [
     "INPUT_FREEZE_COMPONENT_ID",
@@ -36,6 +40,10 @@ __all__ = [
     "SCENE_PLAN_COMPONENT_ID",
     "SCENE_PLAN_COMPONENT_VERSION",
     "SCENE_PLAN_SCHEMA_ID",
+    "SCENE_PLAN_V2_SCHEMA_ID",
+    "SCENE_PLAN_V2_COMPONENT_ID",
+    "SCENE_PLAN_V2_COMPONENT_VERSION",
+    "SCENE_FILL_COMPONENT_ID",
     "NO_PROMPT_VERSION",
     "NO_TOOLSET_VERSION",
 ]

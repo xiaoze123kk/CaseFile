@@ -8,11 +8,17 @@ from unittest.mock import patch
 
 import pytest
 from application_services_test_support import _adopt_candidate, _prepare_task
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, func, select, update
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
     CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
+from casefile.agent_runtime.scene_compiler import SCENE_COMPILER_PIPELINE_VERSION
 from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_AGENT_VERSION,
     STORY_PLANNER_PROMPT_VERSION,
@@ -47,10 +53,6 @@ from casefile.domain.narrative_compiler import (
 )
 from casefile.worker.runtime import Worker, WorkerConfig
 from casefile.worker.support import TaskCancellationRequested
-from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select, update
-from sqlalchemy.exc import DBAPIError
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -526,6 +528,102 @@ def test_constraint_first_worker_is_default_and_records_exact_stage_hashes(
         "novel_plan",
         "scene_plan",
     ]
+
+
+def test_shadow_scene_compiler_persists_batched_calls_and_v2_artifact(
+    workflow_database: tuple[Engine, int, str],
+) -> None:
+    engine, actor_id, master_key = workflow_database
+    factory, project_id, draft_id, _profile_version_id = _prepare_compilable_project(
+        engine, actor_id, master_key
+    )
+    with factory() as session:
+        profile = CompilerService(session).create_profile(
+            actor_id,
+            project_id,
+            profile_key="novel.scene-shadow",
+            name="Scene Shadow",
+            schema_id="compiler.novel-profile.v1",
+            payload={
+                "schema_id": "compiler.novel-profile.v1",
+                "structure": {
+                    "strategy": "three_act",
+                    "target_chapters": 1,
+                    "target_scenes": 2,
+                },
+                "allowed_presentation_modes": ["linear"],
+                "exposure_policy": "planner_default",
+            },
+        )
+        draft = CaseFileService(session).get_draft(actor_id, project_id)
+        run = CompilerService(session).create_run(
+            actor_id,
+            project_id,
+            mode="preview",
+            expected_draft_id=draft_id,
+            expected_draft_revision=int(draft["revision"]),
+            canon_version_id=None,
+            exposure_plan_revision_id=None,
+            compiler_profile_version_id=int(profile["current_version_id"]),
+            planner_provider="openai",
+            scene_compiler_shadow=True,
+        )
+        task = session.get(TaskRun, int(run["task_run_id"]))
+        assert task is not None
+        assert task.agent_version == SCENE_COMPILER_PIPELINE_VERSION
+        assert task.budget_jsonb["max_turns"] == 3
+
+    with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
+        assert Worker(
+            factory,
+            config=WorkerConfig(worker_id="scene-compiler-shadow-worker"),
+            provider_factory=lambda _task: FakeProvider(),
+        ).run_once()
+
+    with factory() as session:
+        task = session.get(TaskRun, int(run["task_run_id"]))
+        artifacts = list(
+            session.scalars(
+                select(CompileArtifact)
+                .where(CompileArtifact.compile_run_id == run["compile_run_id"])
+                .order_by(CompileArtifact.id)
+            )
+        )
+        calls = list(
+            session.scalars(
+                select(AgentModelCall)
+                .where(AgentModelCall.task_run_id == run["task_run_id"])
+                .order_by(AgentModelCall.id)
+            )
+        )
+        steps = list(
+            session.scalars(
+                select(AgentStepRun)
+                .where(AgentStepRun.task_run_id == run["task_run_id"])
+                .order_by(AgentStepRun.id)
+            )
+        )
+
+    assert task is not None and task.status == "succeeded"
+    assert task.agent_version == SCENE_COMPILER_PIPELINE_VERSION
+    assert [call.prompt_component_id for call in calls] == [
+        "skeleton_proposal",
+        "semantic_fill",
+        "scene_semantic_fill.batch.001",
+    ]
+    assert all(call.status == "succeeded" and call.raw_output_text for call in calls)
+    assert [artifact.schema_id for artifact in artifacts] == [
+        "compiler.input-manifest.v1",
+        "compiler.narrative-ir.v1",
+        "compiler.novel-plan.v1",
+        "compiler.scene-plan.v2",
+    ]
+    scene_artifact = artifacts[-1]
+    assert scene_artifact.content_jsonb["schema_id"] == "compiler.scene-plan.v2"
+    assert scene_artifact.content_jsonb["final_state"]["open_setups"] == []
+    step_by_component = {step.component_id: step for step in steps}
+    assert step_by_component["scene_compiler"].status == "succeeded"
+    assert step_by_component["scene_execution_compiler_v2"].status == "succeeded"
 
 
 def test_both_compiler_artifacts_are_reused_after_completion_crash(
