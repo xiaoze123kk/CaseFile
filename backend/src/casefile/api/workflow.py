@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Iterator
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, NoReturn
 
 from fastapi import APIRouter, Header, Request, Response
 from fastapi.responses import StreamingResponse
@@ -40,8 +40,10 @@ from casefile.application.chat_public_contracts import (
     public_patch_review_view,
     public_routing_feedback_view,
 )
+from casefile.application.chat_public_patches import resolve_public_warning_ids
 from casefile.application.errors import ApplicationError
 from casefile.application.workflow_service import WorkflowService
+from casefile.contracts import ContractValidationError
 from casefile_contracts import (
     PublicAgentEvent,
     PublicAgentMessage,
@@ -372,20 +374,44 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> PublicPatchResponse:
-        return public_patch_response_view(
-            WorkflowService(session).apply_agent_patch_set(
-                actor,
-                project_id,
-                patch_set_id,
-                expected_draft_id=payload.expected_draft_id,
-                expected_revision=payload.expected_revision,
-                operation_ids=payload.operation_ids,
-                confirmed_impact_hash=payload.confirmed_impact_hash,
-                target_finding_ids=payload.target_finding_ids,
-                accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
-                debt_acceptance_reason=payload.debt_acceptance_reason,
+        try:
+            service = WorkflowService(session)
+            accepted_keys: list[str] = []
+            if payload.accepted_warning_ids:
+                preview = service.simulate_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    base_revision=payload.expected_revision,
+                    operation_ids=payload.change_ids,
+                    target_finding_ids=None,
+                    accepted_debt_finding_keys=[],
+                    debt_acceptance_reason=None,
+                )
+                accepted_keys = resolve_public_warning_ids(
+                    patch_id=patch_set_id,
+                    accepted_warning_ids=payload.accepted_warning_ids,
+                    simulation=preview["simulation"],
+                )
+            return public_patch_response_view(
+                service.apply_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    expected_revision=payload.expected_revision,
+                    operation_ids=payload.change_ids,
+                    confirmed_impact_hash=payload.confirmation_token,
+                    target_finding_ids=None,
+                    accepted_debt_finding_keys=accepted_keys,
+                    debt_acceptance_reason=payload.confirmation_note,
+                )
             )
-        )
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
     @router.post(
         "/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate",
@@ -398,19 +424,41 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> PublicPatchReviewResult:
-        return public_patch_review_view(
-            WorkflowService(session).simulate_agent_patch_set(
+        try:
+            service = WorkflowService(session)
+            preview = service.simulate_agent_patch_set(
                 actor,
                 project_id,
                 patch_set_id,
                 expected_draft_id=payload.expected_draft_id,
                 base_revision=payload.base_revision,
-                operation_ids=payload.operation_ids,
-                target_finding_ids=payload.target_finding_ids,
-                accepted_debt_finding_keys=payload.accepted_debt_finding_keys,
-                debt_acceptance_reason=payload.debt_acceptance_reason,
+                operation_ids=payload.change_ids,
+                target_finding_ids=None,
+                accepted_debt_finding_keys=[],
+                debt_acceptance_reason=None,
             )
-        )
+            if payload.accepted_warning_ids:
+                accepted_keys = resolve_public_warning_ids(
+                    patch_id=patch_set_id,
+                    accepted_warning_ids=payload.accepted_warning_ids,
+                    simulation=preview["simulation"],
+                )
+                preview = service.simulate_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    base_revision=payload.base_revision,
+                    operation_ids=payload.change_ids,
+                    target_finding_ids=None,
+                    accepted_debt_finding_keys=accepted_keys,
+                    debt_acceptance_reason=payload.confirmation_note,
+                )
+            return public_patch_review_view(preview)
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
     @router.post(
         "/projects/{project_id}/agent/patch-sets/{patch_set_id}/undo",
@@ -423,15 +471,20 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> PublicPatchResponse:
-        return public_patch_response_view(
-            WorkflowService(session).undo_agent_patch_set(
-                actor,
-                project_id,
-                patch_set_id,
-                expected_draft_id=payload.expected_draft_id,
-                expected_revision=payload.expected_revision,
+        try:
+            return public_patch_response_view(
+                WorkflowService(session).undo_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    expected_revision=payload.expected_revision,
+                )
             )
-        )
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
     @router.post(
         "/projects/{project_id}/agent/patch-sets/{patch_set_id}/redo",
@@ -444,15 +497,20 @@ def workflow_router() -> APIRouter:
         actor: ActorDependency,
         session: SessionDependency,
     ) -> PublicPatchResponse:
-        return public_patch_response_view(
-            WorkflowService(session).redo_agent_patch_set(
-                actor,
-                project_id,
-                patch_set_id,
-                expected_draft_id=payload.expected_draft_id,
-                expected_revision=payload.expected_revision,
+        try:
+            return public_patch_response_view(
+                WorkflowService(session).redo_agent_patch_set(
+                    actor,
+                    project_id,
+                    patch_set_id,
+                    expected_draft_id=payload.expected_draft_id,
+                    expected_revision=payload.expected_revision,
+                )
             )
-        )
+        except ApplicationError as error:
+            _raise_public_patch_error(error)
+        except ContractValidationError:
+            _raise_public_patch_contract_error()
 
     @router.post("/projects/{project_id}/tasks/generate", status_code=202)
     def create_generation_task(
@@ -727,6 +785,48 @@ def _last_event_sequence(value: str | None) -> int:
             status_code=422,
         )
     return sequence
+
+
+def _raise_public_patch_error(error: ApplicationError) -> NoReturn:
+    stale_codes = {
+        "agent_patch_stale",
+        "agent_patch_undo_stale",
+        "agent_patch_redo_stale",
+    }
+    selection_codes = {
+        "agent_patch_selection_invalid",
+        "agent_patch_atomic_subset_forbidden",
+    }
+    unavailable_codes = {
+        "agent_patch_not_pending",
+        "agent_patch_not_applied",
+        "agent_patch_not_undone",
+    }
+    if error.code in stale_codes:
+        code, message = "patch_stale", "卷宗已经变化，请刷新后重新审阅。"
+    elif error.code in selection_codes:
+        code, message = "patch_selection_invalid", "所选修改项不可用于当前审阅方式。"
+    elif error.code == "agent_patch_delete_impact_confirmation_required":
+        code, message = "patch_confirmation_required", "删除内容前需要确认当前影响范围。"
+    elif error.code == "agent_patch_impact_hash_mismatch":
+        code, message = "patch_review_changed", "影响范围已经变化，请重新模拟后再确认。"
+    elif error.code == "public_warning_selection_invalid":
+        code, message = "patch_warning_selection_invalid", error.message
+    elif error.code in unavailable_codes:
+        code, message = "patch_not_available", "这组修改当前不能执行该操作。"
+    elif error.code == "not_found":
+        code, message = "patch_not_found", "没有找到这组修改建议。"
+    else:
+        code, message = "patch_review_blocked", "这组修改未通过应用前检查。"
+    raise ApplicationError(code, message, status_code=error.status_code) from None
+
+
+def _raise_public_patch_contract_error() -> NoReturn:
+    raise ApplicationError(
+        "patch_review_blocked",
+        "这组修改未通过应用前检查。",
+        status_code=409,
+    ) from None
 
 
 def _sse(event: dict[str, Any]) -> str:

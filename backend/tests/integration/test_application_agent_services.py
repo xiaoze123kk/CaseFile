@@ -430,6 +430,17 @@ def test_general_mutation_create_atomic_apply_undo_redo(
             assert task is not None and task.status == "succeeded", (
                 None if task is None else task.error_details_jsonb
             )
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+            )
+        assert public_messages.status_code == 200
+        public_create = public_messages.json()[-1]["patch"]["changes"][0]
+        assert public_create["kind"] == "create"
+        assert public_create["target"]["type_label"] == "人物或对象"
+        assert public_create["target"]["name"] != public_create["target"]["target_id"]
         with factory() as session:
             workflow = WorkflowService(session)
             messages = workflow.list_agent_messages(actor_id, project_id, thread["thread_id"])
@@ -594,64 +605,128 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 for item in before["content"]["information_units"]
                 if item["id"] == target_object_key
             )
-        with factory() as session:
-            with pytest.raises(ApplicationError) as error:
-                WorkflowService(session).apply_agent_patch_set(
-                    actor_id,
-                    project_id,
-                    patch_set["patch_set_id"],
-                    expected_draft_id=draft_id,
-                    expected_revision=2,
-                    operation_ids=None,
-                )
-            assert error.value.code == "agent_patch_delete_impact_confirmation_required"
-        with factory() as session:
-            workflow = WorkflowService(session)
-            with pytest.raises(ApplicationError) as error:
-                workflow.apply_agent_patch_set(
-                    actor_id,
-                    project_id,
-                    patch_set["patch_set_id"],
-                    expected_draft_id=draft_id,
-                    expected_revision=2,
-                    operation_ids=None,
-                    confirmed_impact_hash="0" * 64,
-                )
-            assert error.value.code == "agent_patch_impact_hash_mismatch"
-            preview = workflow.simulate_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                base_revision=2,
-                operation_ids=None,
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        headers = {"X-CaseFile-User-Id": str(actor_id)}
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers=headers,
             )
-            debt_keys = preview["simulation"]["authorization_required_finding_keys"]
-            applied = workflow.apply_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=2,
-                operation_ids=None,
-                confirmed_impact_hash=patch_set["impact_hash"],
-                accepted_debt_finding_keys=debt_keys,
-                debt_acceptance_reason=("测试确认删除产生的逻辑债务。" if debt_keys else None),
+            assert public_messages.status_code == 200
+            public_patch = public_messages.json()[-1]["patch"]
+            public_change = public_patch["changes"][0]
+            assert public_change["kind"] == "delete"
+            assert public_change["target"]["name"] == "原子撤销孤立信息"
+            assert target_object_key not in public_change["target"]["name"]
+
+            atomic_subset = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/simulate"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "base_revision": 2,
+                    "change_ids": [public_change["change_id"]],
+                },
             )
-            assert applied["draft_revision"] == 3
-        with factory() as session:
-            after = CaseFileService(session).get_draft(actor_id, project_id)
-            assert target_object_key not in {
-                item["id"] for item in after["content"]["information_units"]
+            assert atomic_subset.status_code == 422
+            assert atomic_subset.json()["code"] == "patch_selection_invalid"
+            assert atomic_subset.json()["details"] == {}
+
+            simulated = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/simulate"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "base_revision": 2,
+                    "change_ids": None,
+                },
+            )
+            assert simulated.status_code == 200, simulated.text
+            review = simulated.json()
+            assert review["requires_author_confirmation"] is True
+            assert review["confirmation_token"] == patch_set["impact_hash"]
+            warning_ids = [item["notice_id"] for item in review["warnings"]]
+            assert all(item.startswith("warning_") for item in warning_ids)
+            assert "finding_key" not in simulated.text
+
+            confirmation = {
+                "accepted_warning_ids": warning_ids,
+                **(
+                    {"confirmation_note": "我接受删除产生的一致性风险。"}
+                    if warning_ids
+                    else {}
+                ),
             }
-            undone = WorkflowService(session).undo_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=3,
+            missing_token = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/apply"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "expected_revision": 2,
+                    "change_ids": None,
+                    **confirmation,
+                },
             )
-            assert undone["draft_revision"] == 4
+            assert missing_token.status_code == 422
+            assert missing_token.json()["code"] == "patch_confirmation_required"
+            assert missing_token.json()["details"] == {}
+            assert "impact_hash" not in missing_token.text
+            wrong_token = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/apply"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "expected_revision": 2,
+                    "change_ids": None,
+                    "confirmation_token": "stale-confirmation-token",
+                    **confirmation,
+                },
+            )
+            assert wrong_token.status_code == 409
+            assert wrong_token.json()["code"] == "patch_review_changed"
+            assert wrong_token.json()["details"] == {}
+            assert "impact_hash" not in wrong_token.text
+            applied = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/apply"
+                ),
+                headers=headers,
+                json={
+                    "expected_draft_id": draft_id,
+                    "expected_revision": 2,
+                    "change_ids": None,
+                    "confirmation_token": review["confirmation_token"],
+                    **confirmation,
+                },
+            )
+            assert applied.status_code == 200, applied.text
+            assert applied.json()["patch"]["status"] == "applied"
+            assert applied.json()["revision"] == 3
+
+            undone = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/undo"
+                ),
+                headers=headers,
+                json={"expected_draft_id": draft_id, "expected_revision": 3},
+            )
+            assert undone.status_code == 200, undone.text
+            assert undone.json()["patch"]["status"] == "undone"
+            assert undone.json()["revision"] == 4
         with factory() as session:
             restored = CaseFileService(session).get_draft(actor_id, project_id)
             restored_target = next(
@@ -663,20 +738,23 @@ def test_general_mutation_delete_requires_confirmed_impact_hash(
                 key: value for key, value in restored_target.items() if key != "updated_at"
             } == {key: value for key, value in original_target.items() if key != "updated_at"}
             assert casefile_semantically_equal(before["content"], restored["content"])
-            redone = WorkflowService(session).redo_agent_patch_set(
-                actor_id,
-                project_id,
-                patch_set["patch_set_id"],
-                expected_draft_id=draft_id,
-                expected_revision=4,
+        with TestClient(app) as client:
+            redone = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/redo"
+                ),
+                headers=headers,
+                json={"expected_draft_id": draft_id, "expected_revision": 4},
             )
-            assert redone["draft_revision"] == 5
+            assert redone.status_code == 200, redone.text
+            assert redone.json()["patch"]["status"] == "applied"
+            assert redone.json()["revision"] == 5
         with factory() as session:
             redone_draft = CaseFileService(session).get_draft(actor_id, project_id)
             assert target_object_key not in {
                 item["id"] for item in redone_draft["content"]["information_units"]
             }
-            assert casefile_semantically_equal(after["content"], redone_draft["content"])
 
 
 class ClosureRepairChatProvider(ChatSuggestionProvider):
@@ -797,6 +875,20 @@ def test_general_mutation_closure_repair_appends_proven_companions_atomically(
             assert all(item.origin == "closure_repair" for item in operations[1:])
             assert all(item.repair_obligation_keys for item in operations[1:])
             patch_set_id = patch_set.id
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+            )
+        assert public_messages.status_code == 200
+        public_patch = public_messages.json()[-1]["patch"]
+        assert public_patch["review_rule"] == "atomic"
+        relationships = [change["relationship"] for change in public_patch["changes"]]
+        assert relationships[0] == "requested"
+        assert all(value == "consistency_support" for value in relationships[1:])
+        assert "field_path" not in public_messages.text
+        assert "origin" not in public_messages.text
         with factory() as session:
             preview = WorkflowService(session).simulate_agent_patch_set(
                 actor_id,
@@ -1688,6 +1780,20 @@ def test_agent_chat_marks_result_stale_after_concurrent_manual_edit(
                     operation_ids=None,
                 )
             assert stale_apply.value.code == "agent_patch_not_pending"
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_messages = client.get(
+                f"/api/v1/projects/{project_id}/agent/threads/{thread['thread_id']}/messages",
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+            )
+        assert public_messages.status_code == 200
+        stale_patch = public_messages.json()[-1]["patch"]
+        assert stale_patch["status"] == "stale"
+        assert stale_patch["actions"]["can_simulate"] is False
+        assert all(
+            change["target"]["name"] != change["target"]["target_id"]
+            for change in stale_patch["changes"]
+        )
 
 
 def test_agent_patch_structural_failure_rolls_back_entire_batch(
@@ -1736,6 +1842,27 @@ def test_agent_patch_structural_failure_rolls_back_entire_batch(
                 thread["thread_id"],
             )[-1]["patch_set"]
             operation_id = patch_set["operations"][0]["operation_id"]
+        app = create_app(os.environ["CASEFILE_TEST_DATABASE_URL"], verify_database=False)
+        with TestClient(app) as client:
+            public_preview = client.post(
+                (
+                    f"/api/v1/projects/{project_id}/agent/patch-sets/"
+                    f"{patch_set['patch_set_id']}/simulate"
+                ),
+                headers={"X-CaseFile-User-Id": str(actor_id)},
+                json={
+                    "expected_draft_id": draft_id,
+                    "base_revision": 2,
+                    "change_ids": [operation_id],
+                },
+            )
+        assert public_preview.status_code == 200, public_preview.text
+        assert public_preview.json()["can_apply"] is False
+        assert public_preview.json()["blockers"]
+        assert "reason_code" not in public_preview.text
+        assert "finding_key" not in public_preview.text
+        with factory() as session:
+            workflow = WorkflowService(session)
             with pytest.raises(ContractValidationError):
                 workflow.apply_agent_patch_set(
                     actor_id,

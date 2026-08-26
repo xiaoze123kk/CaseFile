@@ -1686,6 +1686,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                 "patch_set_id": patch_set.id,
                 "draft_id": owned.draft.id,
                 "base_revision": base_revision,
+                "contains_delete": patch_set.contains_delete,
+                "status": patch_set.status,
                 "simulation": simulation.as_dict(),
                 "can_apply": simulation.can_apply,
                 "impact_hash": (
@@ -2044,6 +2046,8 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     .order_by(AgentPatchOperation.ordinal)
                 )
             )
+        projection_document = current_document or build_casefile_document(self.session, owned)
+        object_labels = _patch_object_labels(projection_document)
         registries = {
             row.id: row
             for row in self.session.scalars(
@@ -2074,7 +2078,6 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
         if validator_issues is None:
             validator_issues = []
             if patch_set.status == "applied":
-                document = current_document or build_casefile_document(self.session, owned)
                 accepted = [
                     {
                         "object_id": registries[operation.target_object_id].object_id,
@@ -2085,7 +2088,9 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     for operation in operations
                     if operation.decision == "accepted" and operation.target_object_id in registries
                 ]
-                validator_issues = _nonblocking_validator_issues(document, accepted)
+                validator_issues = _nonblocking_validator_issues(
+                    projection_document, accepted
+                )
         return {
             "patch_set_id": patch_set.id,
             "thread_id": patch_set.thread_id,
@@ -2141,17 +2146,44 @@ class AgentWorkflowMixin(AgentPatchMutationMixin):
                     "old_value": operation.old_value_jsonb,
                     "new_value": operation.new_value_jsonb,
                     "reason": operation.reason,
+                    "origin": operation.origin,
                     "decision": operation.decision,
                     "reviewed_at": _time(operation.reviewed_at),
                     "finding_ids": finding_ids_by_operation.get(operation.id, []),
                 }
                 for operation in operations
             ],
+            "object_labels": object_labels,
             "validation_warning": bool(validator_issues),
             "validator_issues": validator_issues,
             "created_at": _time(patch_set.created_at),
             "updated_at": _time(patch_set.updated_at),
         }
+
+
+def _patch_object_labels(document: dict[str, Any]) -> dict[str, dict[str, str | None]]:
+    labels: dict[str, dict[str, str | None]] = {}
+    for object_type, collection in COLLECTIONS.items():
+        values = document.get(collection)
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if not isinstance(value, dict) or not isinstance(value.get("id"), str):
+                continue
+            name = next(
+                (
+                    candidate.strip()[:240]
+                    for key in ("name", "title")
+                    if isinstance((candidate := value.get(key)), str)
+                    and candidate.strip()
+                ),
+                None,
+            )
+            labels[str(value["id"])] = {
+                "object_type": object_type,
+                "name": name,
+            }
+    return labels
 
 
 __all__ = ["AgentWorkflowMixin"]

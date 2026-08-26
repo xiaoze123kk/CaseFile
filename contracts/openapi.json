@@ -6364,55 +6364,43 @@
             "minimum": 1.0,
             "title": "Expected Revision"
           },
-          "operation_ids": {
+          "change_ids": {
             "anyOf": [
               {
                 "items": {
                   "type": "integer"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 200
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Operation Ids"
+            "title": "Change Ids"
           },
-          "confirmed_impact_hash": {
+          "confirmation_token": {
             "anyOf": [
               {
                 "type": "string",
-                "pattern": "^[0-9a-f]{64}$"
+                "maxLength": 256,
+                "minLength": 1
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Confirmed Impact Hash"
+            "title": "Confirmation Token"
           },
-          "target_finding_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Finding Ids"
-          },
-          "accepted_debt_finding_keys": {
+          "accepted_warning_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 100,
-            "title": "Accepted Debt Finding Keys"
+            "title": "Accepted Warning Ids"
           },
-          "debt_acceptance_reason": {
+          "confirmation_note": {
             "anyOf": [
               {
                 "type": "string",
@@ -6422,7 +6410,7 @@
                 "type": "null"
               }
             ],
-            "title": "Debt Acceptance Reason"
+            "title": "Confirmation Note"
           }
         },
         "additionalProperties": false,
@@ -6466,43 +6454,30 @@
             "minimum": 1.0,
             "title": "Base Revision"
           },
-          "operation_ids": {
+          "change_ids": {
             "anyOf": [
               {
                 "items": {
                   "type": "integer"
                 },
-                "type": "array"
+                "type": "array",
+                "maxItems": 200
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Operation Ids"
+            "title": "Change Ids"
           },
-          "target_finding_ids": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "integer"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Finding Ids"
-          },
-          "accepted_debt_finding_keys": {
+          "accepted_warning_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
             "maxItems": 100,
-            "title": "Accepted Debt Finding Keys"
+            "title": "Accepted Warning Ids"
           },
-          "debt_acceptance_reason": {
+          "confirmation_note": {
             "anyOf": [
               {
                 "type": "string",
@@ -6512,7 +6487,7 @@
                 "type": "null"
               }
             ],
-            "title": "Debt Acceptance Reason"
+            "title": "Confirmation Note"
           }
         },
         "additionalProperties": false,

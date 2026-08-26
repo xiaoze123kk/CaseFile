@@ -933,7 +933,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
         patch_set = messages[-1]["patch"]
         assert patch_set["status"] == "pending"
         assert patch_set["changes"][0]["target"]["type_label"] == "谜题解答"
-        assert patch_set["changes"][0]["field_label"] == "卷宗内容"
+        assert patch_set["changes"][0]["field_label"] == "描述"
         assert "field_path" not in patch_set["changes"][0]
 
         applied = client.post(
@@ -942,7 +942,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_revision": 2,
-                "operation_ids": None,
+                "change_ids": None,
             },
         )
         assert applied.status_code == 200
@@ -1004,7 +1004,7 @@ def test_settings_brief_generation_sse_and_completion_gate(
             json={
                 "expected_draft_id": adopted.json()["draft_id"],
                 "expected_revision": 4,
-                "operation_ids": [],
+                "change_ids": [],
             },
         )
         assert rejected.status_code == 200

@@ -95,7 +95,7 @@ def test_message_projection_is_allowlist_only_and_uses_public_run() -> None:
         "cancellable": True,
         "failure": None,
     }
-    assert projected["patch"]["changes"][0]["field_label"] == "卷宗内容"
+    assert projected["patch"]["changes"][0]["field_label"] == "开始时间"
     for forbidden in (
         "task",
         "result",
@@ -144,7 +144,9 @@ def test_patch_review_and_action_response_hide_finding_keys_and_hashes() -> None
 
     assert review["can_apply"] is False
     assert review["requires_author_confirmation"] is True
-    assert review["confirmation_token"] == "opaque-confirmation-token"
+    assert review["confirmation_token"] is None
+    assert review["blockers"] == []
+    assert review["warnings"][0]["notice_id"].startswith("warning_")
     assert response["revision"] == 5
     assert "internal_finding_key" not in serialized
     assert "internal-baseline-hash" not in serialized

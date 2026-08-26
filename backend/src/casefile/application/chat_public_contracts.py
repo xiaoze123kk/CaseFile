@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from casefile.application.chat_public_patches import (
+    public_patch_review_payload,
+    public_patch_set_payload,
+)
 from casefile_contracts import (
     PublicAgentMessage,
     PublicAgentMessageReceipt,
@@ -35,31 +39,6 @@ _ACTIVITY_BY_STAGE = {
     "mutation": "preparing_changes",
     "finalizing": "finalizing",
     "cancelling": "finalizing",
-}
-
-_TYPE_LABELS = {
-    "resolution_spec": "谜题解答",
-    "entity": "人物或对象",
-    "relationship": "关系",
-    "location": "地点",
-    "event": "事件",
-    "information_unit": "信息",
-    "claim": "主张",
-    "hypothesis": "假设",
-    "reasoning_path": "推理路径",
-    "constraint": "约束",
-    "structure_lock": "结构锁定",
-    "resolution_specs": "谜题解答",
-    "entities": "人物或对象",
-    "relationships": "关系",
-    "locations": "地点",
-    "events": "事件",
-    "information_units": "信息",
-    "claims": "主张",
-    "hypotheses": "假设",
-    "reasoning_paths": "推理路径",
-    "constraints": "约束",
-    "structure_locks": "结构锁定",
 }
 
 _PUBLIC_INTERPRETATION_BY_INTENT = {
@@ -153,80 +132,11 @@ def public_agent_run_view(value: dict[str, Any]) -> PublicAgentRun:
 
 
 def public_patch_set_view(value: dict[str, Any]) -> PublicPatchSet:
-    raw_operations = value.get("operations")
-    operations = raw_operations if isinstance(raw_operations, list) else []
-    status = "stale" if value.get("is_stale") else str(value.get("status") or "rejected")
-    if status not in {"pending", "applied", "undone", "stale", "rejected"}:
-        status = "rejected"
-    changes = [
-        _public_patch_change(operation) for operation in operations if isinstance(operation, dict)
-    ]
-    contains_delete = bool(value.get("contains_delete")) or any(
-        change["kind"] == "delete" for change in changes
-    )
-    review_rule = "atomic" if value.get("review_mode") == "atomic" else "selective"
-    return PublicPatchSet.model_validate(
-        {
-            "patch_id": int(value["patch_set_id"]),
-            "title": "修改建议",
-            "summary": f"这组建议包含 {len(changes)} 项卷宗修改。",
-            "status": status,
-            "review_rule": review_rule,
-            "base_revision": int(value.get("base_draft_revision") or 0),
-            "impact": {
-                "summary": (
-                    f"共涉及 {len(changes)} 项修改"
-                    f"，{'包含删除' if contains_delete else '不包含删除'}。"
-                ),
-                "affected_change_count": len(changes),
-                "has_deletions": contains_delete,
-            },
-            "changes": changes,
-            "actions": {
-                "can_simulate": status == "pending",
-                "can_undo": status == "applied",
-                "can_redo": status == "undone",
-            },
-        }
-    )
+    return PublicPatchSet.model_validate(public_patch_set_payload(value))
 
 
 def public_patch_review_view(value: dict[str, Any]) -> PublicPatchReviewResult:
-    simulation = value.get("simulation")
-    simulation = simulation if isinstance(simulation, dict) else {}
-    can_apply = bool(value.get("can_apply", simulation.get("can_apply", False)))
-    confirmation_token = value.get("impact_hash")
-    if not isinstance(confirmation_token, str) or not confirmation_token:
-        confirmation_token = None
-    authorization = simulation.get("authorization_required_finding_keys")
-    authorization_count = len(authorization) if isinstance(authorization, list) else 0
-    blockers = (
-        []
-        if can_apply
-        else [
-            {
-                "notice_id": "review_blocker_1",
-                "message": "这组修改尚未通过应用前检查。",
-            }
-        ]
-    )
-    warnings = [
-        {
-            "notice_id": f"review_warning_{index}",
-            "message": "这项影响需要作者审阅确认。",
-        }
-        for index in range(1, authorization_count + 1)
-    ]
-    return PublicPatchReviewResult.model_validate(
-        {
-            "patch_id": int(value["patch_set_id"]),
-            "can_apply": can_apply,
-            "blockers": blockers,
-            "warnings": warnings,
-            "requires_author_confirmation": bool(confirmation_token or warnings),
-            "confirmation_token": confirmation_token,
-        }
-    )
+    return PublicPatchReviewResult.model_validate(public_patch_review_payload(value))
 
 
 def public_patch_response_view(value: dict[str, Any]) -> PublicPatchResponse:
@@ -266,86 +176,6 @@ def internal_intent_for_public_interpretation(value: Any) -> str | None:
     if not isinstance(raw, str) or raw not in _INTERNAL_INTENT_BY_INTERPRETATION:
         raise ValueError("Unsupported public routing interpretation")
     return _INTERNAL_INTENT_BY_INTERPRETATION[raw]
-
-
-def _public_patch_change(operation: dict[str, Any]) -> dict[str, Any]:
-    operation_type = str(operation.get("operation_type") or "update_field")
-    kind = {
-        "create_object": "create",
-        "delete_object": "delete",
-    }.get(operation_type, "update")
-    target_type = str(operation.get("object_type") or operation.get("target_collection") or "")
-    type_label = _TYPE_LABELS.get(target_type, "卷宗内容")
-    old_value = operation.get("old_value")
-    new_value = operation.get("new_value")
-    target_value = new_value if kind == "create" else old_value
-    target_name = _display_name(target_value) or type_label
-    target_id = operation.get("object_id") or operation.get("target_object_key")
-    base = {
-        "change_id": int(operation["operation_id"]),
-        "kind": kind,
-        "relationship": "requested",
-        "target": {
-            "target_id": str(target_id) if target_id else None,
-            "type_label": type_label,
-            "name": target_name,
-        },
-        "explanation": (
-            "按你的要求新增这项内容。"
-            if kind == "create"
-            else "按你的要求删除这项内容。"
-            if kind == "delete"
-            else "按你的要求调整这项内容。"
-        ),
-    }
-    if kind == "create":
-        return {**base, "after": _display_value(new_value)}
-    if kind == "delete":
-        return {**base, "before": _display_value(old_value)}
-    return {
-        **base,
-        "field_label": "卷宗内容",
-        "before": _display_value(old_value),
-        "after": _display_value(new_value),
-    }
-
-
-def _display_value(value: Any) -> dict[str, str]:
-    if value is None:
-        return {"kind": "empty", "text": "未填写"}
-    if isinstance(value, bool):
-        return {"kind": "boolean", "text": "是" if value else "否"}
-    if isinstance(value, (int, float)):
-        return {"kind": "number", "text": str(value)}
-    if isinstance(value, str):
-        return {"kind": "text", "text": value[:4000]}
-    if isinstance(value, list):
-        simple = [str(item) for item in value if isinstance(item, (str, int, float, bool))]
-        text = "、".join(simple) if len(simple) == len(value) else f"{len(value)} 项内容"
-        return {"kind": "list", "text": text[:4000]}
-    if isinstance(value, dict):
-        name = _display_name(value)
-        if name:
-            return {"kind": "reference", "text": name[:4000]}
-        start = value.get("start")
-        end = value.get("end")
-        if isinstance(start, str) or isinstance(end, str):
-            return {
-                "kind": "time_range",
-                "text": f"{start or '未指定'} 至 {end or '未指定'}"[:4000],
-            }
-        return {"kind": "text", "text": "多项卷宗内容"}
-    return {"kind": "text", "text": "卷宗内容"}
-
-
-def _display_name(value: Any) -> str | None:
-    if not isinstance(value, dict):
-        return None
-    for key in ("name", "title"):
-        candidate = value.get(key)
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate.strip()[:240]
-    return None
 
 
 def _public_findings(value: Any) -> list[dict[str, str]]:
