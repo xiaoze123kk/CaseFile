@@ -16,6 +16,11 @@ from sqlalchemy.orm import sessionmaker
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
+    CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
+)
+from casefile.agent_runtime.story_planner import (
+    STORY_PLANNER_AGENT_VERSION,
+    STORY_PLANNER_PROMPT_VERSION,
 )
 from casefile.api.app import create_app
 from casefile.application.compiler import CompilerService
@@ -164,7 +169,7 @@ def test_providerless_compile_freezes_manifest_and_keeps_draft_unchanged(
     }
 
 
-def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
+def test_legacy_story_planner_replays_model_call_and_reuses_full_fingerprint(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
@@ -190,17 +195,27 @@ def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
             },
         )
         draft = CaseFileService(session).get_draft(actor_id, project_id)
-        run = CompilerService(session).create_run(
-            actor_id,
-            project_id,
-            mode="preview",
-            expected_draft_id=draft_id,
-            expected_draft_revision=int(draft["revision"]),
-            canon_version_id=None,
-            exposure_plan_revision_id=None,
-            compiler_profile_version_id=int(profile["current_version_id"]),
-            planner_provider="openai",
-        )
+        with (
+            patch(
+                "casefile.application.compiler.service.CONSTRAINT_FIRST_PIPELINE_VERSION",
+                STORY_PLANNER_AGENT_VERSION,
+            ),
+            patch(
+                "casefile.application.compiler.service.CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION",
+                STORY_PLANNER_PROMPT_VERSION,
+            ),
+        ):
+            run = CompilerService(session).create_run(
+                actor_id,
+                project_id,
+                mode="preview",
+                expected_draft_id=draft_id,
+                expected_draft_revision=int(draft["revision"]),
+                canon_version_id=None,
+                exposure_plan_revision_id=None,
+                compiler_profile_version_id=int(profile["current_version_id"]),
+                planner_provider="openai",
+            )
 
     provider_calls = 0
 
@@ -293,17 +308,27 @@ def test_story_planner_persists_model_call_and_reuses_full_fingerprint(
 
     with factory() as session:
         draft = CaseFileService(session).get_draft(actor_id, project_id)
-        reused = CompilerService(session).create_run(
-            actor_id,
-            project_id,
-            mode="preview",
-            expected_draft_id=draft_id,
-            expected_draft_revision=int(draft["revision"]),
-            canon_version_id=None,
-            exposure_plan_revision_id=None,
-            compiler_profile_version_id=int(profile["current_version_id"]),
-            planner_provider="openai",
-        )
+        with (
+            patch(
+                "casefile.application.compiler.service.CONSTRAINT_FIRST_PIPELINE_VERSION",
+                STORY_PLANNER_AGENT_VERSION,
+            ),
+            patch(
+                "casefile.application.compiler.service.CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION",
+                STORY_PLANNER_PROMPT_VERSION,
+            ),
+        ):
+            reused = CompilerService(session).create_run(
+                actor_user_id=actor_id,
+                project_id=project_id,
+                mode="preview",
+                expected_draft_id=draft_id,
+                expected_draft_revision=int(draft["revision"]),
+                canon_version_id=None,
+                exposure_plan_revision_id=None,
+                compiler_profile_version_id=int(profile["current_version_id"]),
+                planner_provider="openai",
+            )
     with patch.dict("os.environ", {"CASEFILE_MASTER_KEY": master_key}):
         worker = Worker(
             factory,
@@ -400,7 +425,7 @@ def test_compile_artifact_is_reused_after_expired_lease(
     ]
 
 
-def test_constraint_first_worker_records_exact_stage_hashes_without_changing_default(
+def test_constraint_first_worker_is_default_and_records_exact_stage_hashes(
     workflow_database: tuple[Engine, int, str],
 ) -> None:
     engine, actor_id, master_key = workflow_database
@@ -426,21 +451,17 @@ def test_constraint_first_worker_records_exact_stage_hashes_without_changing_def
             },
         )
         draft = CaseFileService(session).get_draft(actor_id, project_id)
-        with patch(
-            "casefile.application.compiler.service.STORY_PLANNER_AGENT_VERSION",
-            CONSTRAINT_FIRST_PIPELINE_VERSION,
-        ):
-            run = CompilerService(session).create_run(
-                actor_id,
-                project_id,
-                mode="preview",
-                expected_draft_id=draft_id,
-                expected_draft_revision=int(draft["revision"]),
-                canon_version_id=None,
-                exposure_plan_revision_id=None,
-                compiler_profile_version_id=int(profile["current_version_id"]),
-                planner_provider="openai",
-            )
+        run = CompilerService(session).create_run(
+            actor_id,
+            project_id,
+            mode="preview",
+            expected_draft_id=draft_id,
+            expected_draft_revision=int(draft["revision"]),
+            canon_version_id=None,
+            exposure_plan_revision_id=None,
+            compiler_profile_version_id=int(profile["current_version_id"]),
+            planner_provider="openai",
+        )
 
     provider_calls = 0
 
@@ -474,6 +495,9 @@ def test_constraint_first_worker_records_exact_stage_hashes_without_changing_def
     assert provider_calls == 1
     assert task is not None and task.status == "succeeded"
     assert task.agent_version == CONSTRAINT_FIRST_PIPELINE_VERSION
+    assert task.prompt_version == CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION
+    assert task.budget_jsonb["max_turns"] == 2
+    assert task.budget_jsonb["max_repairs"] == 0
     assert [call.prompt_component_id for call in calls] == [
         "skeleton_proposal",
         "semantic_fill",

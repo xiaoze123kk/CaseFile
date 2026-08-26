@@ -23,6 +23,7 @@ from casefile.domain.narrative_compiler import (
 from casefile_contracts import SemanticFillProposal, SkeletonProposal
 
 CONSTRAINT_FIRST_PIPELINE_VERSION = "compiler.story-planner.constraint-first.v1"
+CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION = "story-planner-constraint-first-v1"
 SKELETON_PROMPT_VERSION = "story-planner-skeleton-v1"
 SEMANTIC_FILL_PROMPT_VERSION = "story-planner-semantic-fill-v1"
 
@@ -247,6 +248,7 @@ def _stage_hash(component_hash: str, stage: str, value: dict[str, Any]) -> str:
 
 __all__ = [
     "CONSTRAINT_FIRST_PIPELINE_VERSION",
+    "CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION",
     "SEMANTIC_FILL_PROMPT_VERSION",
     "SKELETON_PROMPT_VERSION",
     "ConstraintFirstExecution",

@@ -44,7 +44,7 @@ Prompt 版本有三种互斥形态：
 
 未知版本、缺失资源、哈希漂移或 Bundle 组件不完整都会失败关闭，不会静默回退到当前版本。
 
-`story_planner_skeleton-v1` 与 `story_planner_semantic_fill-v1` 是 Constraint-First 实验管线的两个独立、不可变 Prompt。前者只提议求解器字段，后者只填充模型所有字段；现有 `story_planner-v3` 生产指针和 Worker 路由保持不变。
+`story_planner_skeleton-v1` 与 `story_planner_semantic_fill-v1` 是 Constraint-First 生产管线的两个独立、不可变 Prompt。前者只提议求解器字段，后者只填充模型所有字段；新建 Planner Task 以 `story-planner-constraint-first-v1` 记录 bundle 身份，各 AgentModelCall 继续分别记录真实 Prompt 版本与 hash。`story_planner-v3` 仅保留给历史 TaskRun 精确重放。
 
 ## Prompt Package 边界
 

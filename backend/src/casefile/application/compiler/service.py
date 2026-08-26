@@ -4,24 +4,15 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from casefile_contracts import (
-    CanonBinding,
-    CompileInputManifest,
-    CompileMode,
-    CompilerProfileBinding,
-    ExposureBinding,
-    NovelProfile,
-    SnapshotBinding,
-)
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from casefile.agent_runtime.story_planner import (
-    STORY_PLANNER_AGENT_VERSION,
-    STORY_PLANNER_PROMPT_VERSION,
-    STORY_PLANNER_TOOLSET_VERSION,
+from casefile.agent_runtime.constraint_first_story_planner import (
+    CONSTRAINT_FIRST_PIPELINE_VERSION,
+    CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
+from casefile.agent_runtime.story_planner import STORY_PLANNER_TOOLSET_VERSION
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
 from casefile.application.compiler.constants import (
     INPUT_MANIFEST_SCHEMA_ID,
@@ -48,6 +39,15 @@ from casefile.domain.narrative_compiler import (
     CompilerContractError,
     canonical_json_sha256,
     validate_compile_input_manifest,
+)
+from casefile_contracts import (
+    CanonBinding,
+    CompileInputManifest,
+    CompileMode,
+    CompilerProfileBinding,
+    ExposureBinding,
+    NovelProfile,
+    SnapshotBinding,
 )
 
 
@@ -336,10 +336,14 @@ class CompilerService:
                 provider_config_version=None if setting is None else setting.config_version,
                 schema_version=INPUT_MANIFEST_SCHEMA_ID,
                 agent_version=(
-                    NARRATIVE_COMPILER_VERSION if setting is None else STORY_PLANNER_AGENT_VERSION
+                    NARRATIVE_COMPILER_VERSION
+                    if setting is None
+                    else CONSTRAINT_FIRST_PIPELINE_VERSION
                 ),
                 prompt_version=(
-                    NO_PROMPT_VERSION if setting is None else STORY_PLANNER_PROMPT_VERSION
+                    NO_PROMPT_VERSION
+                    if setting is None
+                    else CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION
                 ),
                 toolset_version=(
                     NO_TOOLSET_VERSION if setting is None else STORY_PLANNER_TOOLSET_VERSION
@@ -347,7 +351,7 @@ class CompilerService:
                 budget_jsonb=(
                     {}
                     if setting is None
-                    else {**setting.default_budget_jsonb, "max_turns": 1, "max_repairs": 3}
+                    else {**setting.default_budget_jsonb, "max_turns": 2, "max_repairs": 0}
                 ),
                 usage_jsonb={},
                 attempt_count=0,
