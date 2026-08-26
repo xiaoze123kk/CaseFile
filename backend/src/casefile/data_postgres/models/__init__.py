@@ -45,6 +45,8 @@ from casefile.data_postgres.models.exposure import (
     ExposurePlan,
     ExposurePlanEntry,
     ExposurePlanEntryRef,
+    ExposurePlanObligation,
+    ExposurePlanObligationRef,
     ExposurePlanRevision,
 )
 from casefile.data_postgres.models.idea import IdeaCandidate
@@ -111,6 +113,8 @@ __all__ = [
     "ExposurePlan",
     "ExposurePlanEntry",
     "ExposurePlanEntryRef",
+    "ExposurePlanObligation",
+    "ExposurePlanObligationRef",
     "ExposurePlanRevision",
     "Hypothesis",
     "IdeaCandidate",

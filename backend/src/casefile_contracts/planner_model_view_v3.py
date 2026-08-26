@@ -3,10 +3,14 @@
 #   filename:  editing-contracts.schema.json
 
 from ._internal import AllowedTerminalAction_1 as AllowedTerminalAction
-from ._internal import Anchor, Exposure
+from ._internal import Anchor_1 as Anchor
+from ._internal import Exposure_1 as Exposure
 from ._internal import HardConstraints_1 as HardConstraints
-from ._internal import ObjectCatalog, PrecedenceEdge, Resolutions
-from ._internal import Schema_6 as Schema
-from ._internal import Source, Temporal
+from ._internal import ObjectCatalog_1 as ObjectCatalog
+from ._internal import PrecedenceEdge_1 as PrecedenceEdge
+from ._internal import Resolutions_1 as Resolutions
+from ._internal import Schema_7 as Schema
+from ._internal import Source
+from ._internal import Temporal_1 as Temporal
 
 __all__ = ["AllowedTerminalAction", "Anchor", "Exposure", "HardConstraints", "ObjectCatalog", "PrecedenceEdge", "Resolutions", "Schema", "Source", "Temporal"]

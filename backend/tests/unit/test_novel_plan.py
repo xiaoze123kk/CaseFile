@@ -12,22 +12,29 @@ import pytest
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     build_planner_constraint_ir,
+    build_planner_constraint_ir_v2,
     build_planner_input_bundle,
     build_planner_input_bundle_v2,
+    build_planner_input_bundle_v3,
     build_planner_model_view_v3,
+    build_planner_model_view_v4,
     canonical_json_sha256,
     canonicalize_novel_plan,
     inspect_novel_plan_candidate,
     planner_constraint_ir_fingerprint,
+    planner_constraint_ir_v2_fingerprint,
     planner_input_fingerprint,
     planner_model_view_v3_fingerprint,
+    planner_model_view_v4_fingerprint,
     project_narrative_ir_json,
     repair_novel_plan_candidate,
     story_planner_component_fingerprint,
     validate_novel_plan_candidate,
     validate_planner_constraint_ir,
+    validate_planner_constraint_ir_v2,
     validate_planner_input_bundle,
     validate_planner_model_view_v3,
+    validate_planner_model_view_v4,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -281,6 +288,105 @@ def test_planner_model_view_v3_is_compact_reprovable_and_source_ref_free() -> No
     with pytest.raises(CompilerContractError) as captured:
         validate_planner_model_view_v3(tampered, planner_input=bundle)
     assert captured.value.reason_code == "compiler_planner_model_view_v3_mismatch"
+
+
+def test_planner_input_v3_separates_typed_hard_and_soft_obligations() -> None:
+    v1 = _planner_input()
+    entry = v1["exposure_plan"]["frozen_payload"]["entries"][0]
+    entry["planning_obligations"] = [
+        {
+            "kind": "participant_coverage",
+            "obligation_key": "obligation_two_participants",
+            "level": "hard",
+            "eligible_refs": [
+                {"object_type": "entity", "object_id": "ent_researcher"},
+                {"object_type": "entity", "object_id": "ent_backup_system"},
+            ],
+            "min_distinct": 2,
+        },
+        {
+            "kind": "basis_ref_coverage",
+            "obligation_key": "obligation_backup_basis",
+            "level": "hard",
+            "required_refs": [
+                {"object_type": "claim", "object_id": "claim_backup_trigger"}
+            ],
+        },
+        {
+            "kind": "hypothesis_coverage",
+            "obligation_key": "obligation_hypothesis_context",
+            "level": "soft",
+            "required_refs": [
+                {"object_type": "hypothesis", "object_id": "hyp_automatic_restart"}
+            ],
+        },
+    ]
+    bundle = build_planner_input_bundle_v3(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+
+    assert bundle["schema_id"] == "compiler.story-planner-input.v3"
+    assert len(bundle["planner_view"]["hard_constraints"]["semantic_obligations"]) == 2
+    assert len(bundle["planner_view"]["planning_context"]["semantic_obligations"]) == 1
+    constraint_ir = build_planner_constraint_ir_v2(bundle)
+    assert constraint_ir["schema_id"] == "compiler.planner-constraints.v2"
+    assert len(constraint_ir["semantic_obligations"]) == 2
+    assert validate_planner_constraint_ir_v2(constraint_ir, planner_input=bundle) == (
+        constraint_ir
+    )
+    assert planner_constraint_ir_v2_fingerprint(constraint_ir)["content_hash"] == (
+        canonical_json_sha256(constraint_ir)
+    )
+    model_view = build_planner_model_view_v4(bundle)
+    assert model_view["schema_id"] == "compiler.story-planner-model-view.v4"
+    assert validate_planner_model_view_v4(model_view, planner_input=bundle) == model_view
+    assert planner_model_view_v4_fingerprint(model_view)["content_hash"] == (
+        canonical_json_sha256(model_view)
+    )
+
+    report = inspect_novel_plan_candidate(_candidate(), planner_input=bundle)
+    assert [violation.code for violation in report.violations] == [
+        "compiler_story_plan_basis_coverage_unmet",
+        "compiler_story_plan_participant_coverage_unmet",
+    ]
+
+    candidate = _candidate()
+    candidate["scenes"][0]["participant_refs"].append(
+        {"object_type": "entity", "object_id": "ent_backup_system"}
+    )
+    candidate["scenes"][0]["basis_refs"].append(
+        {"object_type": "claim", "object_id": "claim_backup_trigger"}
+    )
+    assert inspect_novel_plan_candidate(candidate, planner_input=bundle).valid is True
+
+
+def test_hard_hypothesis_coverage_has_stable_reason_code() -> None:
+    v1 = _planner_input()
+    v1["exposure_plan"]["frozen_payload"]["entries"][0]["planning_obligations"] = [
+        {
+            "kind": "hypothesis_coverage",
+            "obligation_key": "obligation_hypothesis_hard",
+            "level": "hard",
+            "required_refs": [
+                {"object_type": "hypothesis", "object_id": "hyp_automatic_restart"}
+            ],
+        }
+    ]
+    bundle = build_planner_input_bundle_v3(
+        narrative_ir=v1["narrative_ir"],
+        exposure=v1["exposure_plan"],
+        profile=v1["profile"],
+        compile_mode="preview",
+    )
+
+    report = inspect_novel_plan_candidate(_candidate(), planner_input=bundle)
+
+    assert report.violations[0].code == (
+        "compiler_story_plan_hypothesis_coverage_unmet"
+    )
 
 
 def test_preview_default_exposure_is_allowed_but_canonical_requires_binding() -> None:

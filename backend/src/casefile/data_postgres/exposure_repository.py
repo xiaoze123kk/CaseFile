@@ -12,6 +12,8 @@ from casefile.data_postgres.models import (
     ExposurePlan,
     ExposurePlanEntry,
     ExposurePlanEntryRef,
+    ExposurePlanObligation,
+    ExposurePlanObligationRef,
     ExposurePlanRevision,
 )
 from casefile.data_postgres.repositories import OwnedDraft
@@ -25,6 +27,26 @@ class ExposureEntryWrite:
     title: str
     note: str | None
     object_registry_ids: tuple[int, ...]
+    obligations: tuple[ExposureObligationWrite, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExposureObligationWrite:
+    """One validated typed obligation with normalized registry identities."""
+
+    obligation_key: str
+    obligation_kind: str
+    level: str
+    min_distinct: int | None
+    object_registry_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExposureObligationRead:
+    """One stored obligation plus its ordered referenced objects."""
+
+    obligation: ExposurePlanObligation
+    objects: tuple[CaseFileObject, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +55,7 @@ class ExposureEntryRead:
 
     entry: ExposurePlanEntry
     objects: tuple[CaseFileObject, ...]
+    obligations: tuple[ExposureObligationRead, ...]
 
 
 class ExposurePlanRepository:
@@ -101,6 +124,7 @@ class ExposurePlanRepository:
             draft_id=owned.draft.id,
             plan_id=plan.id,
             revision_no=revision_no,
+            payload_schema_id="casefile.exposure-plan.v2",
             created_by_user_id=actor_user_id,
         )
         self.session.add(revision)
@@ -133,6 +157,35 @@ class ExposurePlanRepository:
                     start=1,
                 )
             )
+            for obligation_write in item.obligations:
+                obligation = ExposurePlanObligation(
+                    project_id=owned.project.id,
+                    casefile_id=owned.casefile.id,
+                    draft_id=owned.draft.id,
+                    plan_revision_id=revision.id,
+                    entry_id=entry.id,
+                    obligation_key=obligation_write.obligation_key,
+                    obligation_kind=obligation_write.obligation_kind,
+                    level=obligation_write.level,
+                    min_distinct=obligation_write.min_distinct,
+                )
+                self.session.add(obligation)
+                self.session.flush()
+                self.session.add_all(
+                    ExposurePlanObligationRef(
+                        project_id=owned.project.id,
+                        casefile_id=owned.casefile.id,
+                        draft_id=owned.draft.id,
+                        plan_revision_id=revision.id,
+                        obligation_id=obligation.id,
+                        object_registry_id=registry_id,
+                        ordinal=ordinal,
+                    )
+                    for ordinal, registry_id in enumerate(
+                        obligation_write.object_registry_ids,
+                        start=1,
+                    )
+                )
 
         plan.revision = revision_no
         plan.current_revision_id = revision.id
@@ -166,11 +219,61 @@ class ExposurePlanRepository:
         )
         for reference, registry in reference_rows:
             by_entry_id[reference.entry_id].append(registry)
-        return [ExposureEntryRead(entry, tuple(by_entry_id[entry.id])) for entry in entries]
+        obligations = list(
+            self.session.scalars(
+                select(ExposurePlanObligation)
+                .where(ExposurePlanObligation.entry_id.in_(by_entry_id))
+                .order_by(ExposurePlanObligation.entry_id, ExposurePlanObligation.id)
+            )
+        )
+        by_obligation_id: dict[int, list[CaseFileObject]] = {
+            obligation.id: [] for obligation in obligations
+        }
+        if by_obligation_id:
+            obligation_rows = self.session.execute(
+                select(ExposurePlanObligationRef, CaseFileObject)
+                .join(
+                    CaseFileObject,
+                    (CaseFileObject.project_id == ExposurePlanObligationRef.project_id)
+                    & (CaseFileObject.casefile_id == ExposurePlanObligationRef.casefile_id)
+                    & (CaseFileObject.draft_id == ExposurePlanObligationRef.draft_id)
+                    & (
+                        CaseFileObject.id
+                        == ExposurePlanObligationRef.object_registry_id
+                    ),
+                )
+                .where(ExposurePlanObligationRef.obligation_id.in_(by_obligation_id))
+                .order_by(
+                    ExposurePlanObligationRef.obligation_id,
+                    ExposurePlanObligationRef.ordinal,
+                )
+            )
+            for reference, registry in obligation_rows:
+                by_obligation_id[reference.obligation_id].append(registry)
+        by_entry_obligations: dict[int, list[ExposureObligationRead]] = {
+            entry.id: [] for entry in entries
+        }
+        for obligation in obligations:
+            by_entry_obligations[obligation.entry_id].append(
+                ExposureObligationRead(
+                    obligation,
+                    tuple(by_obligation_id[obligation.id]),
+                )
+            )
+        return [
+            ExposureEntryRead(
+                entry,
+                tuple(by_entry_id[entry.id]),
+                tuple(by_entry_obligations[entry.id]),
+            )
+            for entry in entries
+        ]
 
 
 __all__ = [
     "ExposureEntryRead",
     "ExposureEntryWrite",
+    "ExposureObligationRead",
+    "ExposureObligationWrite",
     "ExposurePlanRepository",
 ]

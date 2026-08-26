@@ -336,8 +336,8 @@ export interface EditingContracts {
   compile_input_manifest: CompileInputManifest;
   narrative_ir: NarrativeIR;
   novel_profile: NovelProfile;
-  planner_input: PlannerInputBundle | PlannerInputBundleV2;
-  planner_model_view: PlannerModelViewV3;
+  planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
+  planner_model_view: PlannerModelViewV3 | PlannerModelViewV4;
   story_plan_structural_patch: StoryPlanStructuralPatch;
   novel_plan_candidate: NovelPlanCandidate;
   novel_plan: NovelPlanIR;
@@ -973,6 +973,70 @@ export interface AuthorGuidance {
   note: string | null;
   is_hard_constraint: false;
 }
+export interface PlannerInputBundleV3 {
+  schema_id: "compiler.story-planner-input.v3";
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: NovelProfile;
+  planning_constraints: PlanningConstraints;
+  planner_view: PlannerView1;
+}
+export interface PlannerView1 {
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure_obligations: ExposureObligation[];
+    resolution_obligations: ResolutionObligation[];
+    chronology_anchors: ChronologyAnchor[];
+    semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+  };
+  planning_context: PlanningContext1;
+}
+export interface ParticipantCoverageObligation {
+  kind: "participant_coverage";
+  obligation_key: string;
+  entry_key: string;
+  level: "hard" | "soft";
+  /**
+   * @minItems 1
+   */
+  eligible_refs: [ObjectRef, ...ObjectRef[]];
+  min_distinct: number;
+}
+export interface BasisRefCoverageObligation {
+  kind: "basis_ref_coverage";
+  obligation_key: string;
+  entry_key: string;
+  level: "hard" | "soft";
+  /**
+   * @minItems 1
+   */
+  required_refs: [ObjectRef, ...ObjectRef[]];
+}
+export interface HypothesisCoverageObligation {
+  kind: "hypothesis_coverage";
+  obligation_key: string;
+  entry_key: string;
+  level: "hard" | "soft";
+  /**
+   * @minItems 1
+   */
+  required_refs: [
+    ObjectRef & {
+      object_type?: "hypothesis";
+      [k: string]: unknown;
+    },
+    ...(ObjectRef & {
+      object_type?: "hypothesis";
+      [k: string]: unknown;
+    })[]
+  ];
+}
+export interface PlanningContext1 {
+  causal_edges: CausalEdge[];
+  knowledge_snapshots: KnowledgeSnapshot[];
+  author_guidance: AuthorGuidance[];
+  semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+}
 export interface PlannerModelViewV3 {
   schema_id: "compiler.story-planner-model-view.v3";
   source: {
@@ -983,47 +1047,69 @@ export interface PlannerModelViewV3 {
   case: NarrativeCase;
   hard_constraints: {
     structure: StructureConstraints;
-    exposure: {
-      introduce_order: string[];
-      precedence_edges: {
-        before_entry_key: string;
-        after_entry_key: string;
-      }[];
-    };
-    temporal: {
-      anchors: {
-        event_ref: ObjectRef;
-        rank: number;
-        comparable_time: string;
-      }[];
-    };
-    resolutions: {
-      terminal_exactly_once: ObjectRef[];
-      /**
-       * @minItems 2
-       * @maxItems 2
-       */
-      allowed_terminal_actions: ["resolve" | "intentionally_unresolved", "resolve" | "intentionally_unresolved"];
-    };
+    exposure: Exposure;
+    temporal: Temporal;
+    resolutions: Resolutions;
   };
-  object_catalog: {
-    resolution_specs: ModelObject[];
-    entities: ModelObject[];
-    relationships: ModelObject[];
-    locations: ModelObject[];
-    events: ModelObject[];
-    information_units: ModelObject[];
-    claims: ModelObject[];
-    hypotheses: ModelObject[];
-    reasoning_paths: ModelObject[];
-    constraints: ModelObject[];
-    structure_locks: ModelObject[];
-  };
+  object_catalog: ObjectCatalog;
   planning_context: PlanningContext;
+}
+export interface Exposure {
+  introduce_order: string[];
+  precedence_edges: {
+    before_entry_key: string;
+    after_entry_key: string;
+  }[];
+}
+export interface Temporal {
+  anchors: {
+    event_ref: ObjectRef;
+    rank: number;
+    comparable_time: string;
+  }[];
+}
+export interface Resolutions {
+  terminal_exactly_once: ObjectRef[];
+  /**
+   * @minItems 2
+   * @maxItems 2
+   */
+  allowed_terminal_actions: ["resolve" | "intentionally_unresolved", "resolve" | "intentionally_unresolved"];
+}
+export interface ObjectCatalog {
+  resolution_specs: ModelObject[];
+  entities: ModelObject[];
+  relationships: ModelObject[];
+  locations: ModelObject[];
+  events: ModelObject[];
+  information_units: ModelObject[];
+  claims: ModelObject[];
+  hypotheses: ModelObject[];
+  reasoning_paths: ModelObject[];
+  constraints: ModelObject[];
+  structure_locks: ModelObject[];
 }
 export interface ModelObject {
   object_ref: ObjectRef;
   value: unknown;
+}
+export interface PlannerModelViewV4 {
+  schema_id: "compiler.story-planner-model-view.v4";
+  source: {
+    projection_version: "compiler.story-planner-model-view-projection.v4";
+    planner_input_hash: string;
+    constraint_ir_hash: string;
+  };
+  case: NarrativeCase;
+  hard_constraints: {
+    structure: StructureConstraints;
+    exposure: Exposure;
+    temporal: Temporal;
+    resolutions: Resolutions;
+    semantic_obligations: (ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation)[];
+  };
+  object_catalog: ObjectCatalog;
+  planning_context: PlanningContext1;
 }
 export interface StoryPlanStructuralPatch {
   schema_id: "compiler.story-plan-structural-patch.v1";

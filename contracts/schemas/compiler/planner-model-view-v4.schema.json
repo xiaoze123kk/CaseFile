@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/planner-model-view-v4.schema.json",
+  "title": "PlannerModelViewV4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "source", "case", "hard_constraints", "object_catalog", "planning_context"],
+  "properties": {
+    "schema_id": {"const": "compiler.story-planner-model-view.v4"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projection_version", "planner_input_hash", "constraint_ir_hash"],
+      "properties": {
+        "projection_version": {"const": "compiler.story-planner-model-view-projection.v4"},
+        "planner_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "constraint_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "case": {"$ref": "narrative-ir.schema.json#/$defs/NarrativeCase"},
+    "hard_constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["structure", "exposure", "temporal", "resolutions", "semantic_obligations"],
+      "properties": {
+        "structure": {"$ref": "planner-input-v2.schema.json#/$defs/StructureConstraints"},
+        "exposure": {"$ref": "planner-model-view-v3.schema.json#/properties/hard_constraints/properties/exposure"},
+        "temporal": {"$ref": "planner-model-view-v3.schema.json#/properties/hard_constraints/properties/temporal"},
+        "resolutions": {"$ref": "planner-model-view-v3.schema.json#/properties/hard_constraints/properties/resolutions"},
+        "semantic_obligations": {"type": "array", "items": {"$ref": "planner-input-v3.schema.json#/$defs/SemanticObligation"}}
+      }
+    },
+    "object_catalog": {"$ref": "planner-model-view-v3.schema.json#/properties/object_catalog"},
+    "planning_context": {"$ref": "planner-input-v3.schema.json#/$defs/PlannerView/properties/planning_context"}
+  }
+}

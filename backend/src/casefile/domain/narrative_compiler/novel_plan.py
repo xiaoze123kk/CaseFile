@@ -17,6 +17,7 @@ from casefile.domain.narrative_compiler.foundation import (
 )
 from casefile.domain.narrative_compiler.planner_input import (
     PLANNER_INPUT_V2_SCHEMA_ID,
+    PLANNER_INPUT_V3_SCHEMA_ID,
     validate_planner_input_bundle,
 )
 from casefile_contracts import NovelPlanCandidate, NovelPlanIR
@@ -196,7 +197,7 @@ def _inspect_novel_plan_candidate(
     planner_input: dict[str, Any],
 ) -> tuple[NovelPlanValidationReport, NovelPlanCandidate | None]:
     try:
-        parsed, value, catalog = _validate_candidate_foundation(
+        parsed, value, catalog, parsed_input = _validate_candidate_foundation(
             candidate,
             planner_input=planner_input,
         )
@@ -211,9 +212,10 @@ def _inspect_novel_plan_candidate(
 
     scenes = value["scenes"]
     violations = (
-        *_exposure_violations(scenes, planner_input.get("exposure_plan")),
+        *_exposure_violations(scenes, parsed_input.get("exposure_plan")),
+        *_semantic_obligation_violations(scenes, parsed_input),
         *_resolution_violations(scenes, catalog),
-        *_story_time_violations(scenes, planner_input["narrative_ir"]),
+        *_story_time_violations(scenes, parsed_input["narrative_ir"]),
     )
     return NovelPlanValidationReport(valid=not violations, violations=violations), parsed
 
@@ -222,7 +224,12 @@ def _validate_candidate_foundation(
     candidate: dict[str, Any],
     *,
     planner_input: dict[str, Any],
-) -> tuple[NovelPlanCandidate, dict[str, Any], set[tuple[str, str]]]:
+) -> tuple[
+    NovelPlanCandidate,
+    dict[str, Any],
+    set[tuple[str, str]],
+    dict[str, Any],
+]:
 
     planner_input = validate_planner_input_bundle(planner_input)
     try:
@@ -273,7 +280,7 @@ def _validate_candidate_foundation(
     if any(scene["presentation_mode"] not in allowed_modes for scene in scenes):
         raise CompilerContractError("compiler_story_plan_presentation_mode_invalid")
 
-    return parsed, value, catalog
+    return parsed, value, catalog, planner_input
 
 
 def canonicalize_novel_plan(
@@ -362,7 +369,8 @@ def planner_input_fingerprint_json(planner_input: dict[str, Any]) -> dict[str, A
         "exposure_hash": None if exposure is None else canonical_json_sha256(exposure),
         "planner_view_hash": (
             canonical_json_sha256(planner_input["planner_view"])
-            if planner_input["schema_id"] == PLANNER_INPUT_V2_SCHEMA_ID
+            if planner_input["schema_id"]
+            in {PLANNER_INPUT_V2_SCHEMA_ID, PLANNER_INPUT_V3_SCHEMA_ID}
             else None
         ),
     }
@@ -478,6 +486,77 @@ def _exposure_violations(
             ),
         )
     return ()
+
+
+def _semantic_obligation_violations(
+    scenes: list[dict[str, Any]],
+    planner_input: dict[str, Any],
+) -> tuple[NovelPlanViolation, ...]:
+    if planner_input.get("schema_id") != PLANNER_INPUT_V3_SCHEMA_ID:
+        return ()
+    obligations = planner_input["planner_view"]["hard_constraints"][
+        "semantic_obligations"
+    ]
+    violations: list[NovelPlanViolation] = []
+    for obligation in obligations:
+        scoped_scenes = [
+            scene
+            for scene in scenes
+            if any(
+                placement["entry_key"] == obligation["entry_key"]
+                for placement in scene["exposure"]
+            )
+        ]
+        kind = obligation["kind"]
+        if kind == "participant_coverage":
+            eligible = {_ref_key(ref) for ref in obligation["eligible_refs"]}
+            observed = {
+                _ref_key(ref)
+                for scene in scoped_scenes
+                for ref in scene["participant_refs"]
+                if _ref_key(ref) in eligible
+            }
+            required = int(obligation["min_distinct"])
+            if len(observed) < required:
+                violations.append(
+                    NovelPlanViolation(
+                        code="compiler_story_plan_participant_coverage_unmet",
+                        details={
+                            "obligation_key": obligation["obligation_key"],
+                            "entry_key": obligation["entry_key"],
+                            "min_distinct": required,
+                            "actual_distinct": len(observed),
+                        },
+                    )
+                )
+            continue
+        required_refs = {_ref_key(ref) for ref in obligation["required_refs"]}
+        observed_basis = {
+            _ref_key(ref)
+            for scene in scoped_scenes
+            for ref in scene["basis_refs"]
+        }
+        missing = sorted(required_refs - observed_basis)
+        if missing:
+            code = (
+                "compiler_story_plan_basis_coverage_unmet"
+                if kind == "basis_ref_coverage"
+                else "compiler_story_plan_hypothesis_coverage_unmet"
+            )
+            violations.append(
+                NovelPlanViolation(
+                    code=code,
+                    details={
+                        "obligation_key": obligation["obligation_key"],
+                        "entry_key": obligation["entry_key"],
+                        "missing_refs": [
+                            {"object_type": object_type, "object_id": object_id}
+                            for object_type, object_id in missing
+                        ],
+                    },
+                )
+            )
+    return tuple(violations)
 
 
 def _resolution_violations(

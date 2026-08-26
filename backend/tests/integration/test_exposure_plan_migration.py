@@ -7,10 +7,11 @@ from contextlib import contextmanager
 
 import pytest
 import sqlalchemy as sa
-from casefile.application.commands import ProjectCreate
-from casefile.application.services import CaseFileService
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import sessionmaker
+
+from casefile.application.commands import ProjectCreate
+from casefile.application.services import CaseFileService
 
 pytestmark = pytest.mark.postgres
 
@@ -96,6 +97,13 @@ def test_exposure_plan_is_created_for_each_draft_and_history_is_immutable(
                 },
             ).scalar_one()
         )
+        payload_schema_id = connection.scalar(
+            sa.text(
+                "SELECT payload_schema_id FROM exposure_plan_revisions WHERE id = :id"
+            ),
+            {"id": revision_id},
+        )
+        assert payload_schema_id == "casefile.exposure-plan.v2"
         entry_id = int(
             connection.execute(
                 sa.text(
@@ -139,6 +147,52 @@ def test_exposure_plan_is_created_for_each_draft_and_history_is_immutable(
                 },
             ).scalar_one()
         )
+        obligation_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO exposure_plan_obligations (
+                        project_id, casefile_id, draft_id, plan_revision_id,
+                        entry_id, obligation_key, obligation_kind, level, min_distinct
+                    ) VALUES (
+                        :project_id, :casefile_id, :draft_id, :revision_id,
+                        :entry_id, 'obligation_event_coverage',
+                        'participant_coverage', 'hard', 1
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": plan.project_id,
+                    "casefile_id": plan.casefile_id,
+                    "draft_id": plan.draft_id,
+                    "revision_id": revision_id,
+                    "entry_id": entry_id,
+                },
+            ).scalar_one()
+        )
+        obligation_ref_id = int(
+            connection.execute(
+                sa.text(
+                    """
+                    INSERT INTO exposure_plan_obligation_refs (
+                        project_id, casefile_id, draft_id, plan_revision_id,
+                        obligation_id, object_registry_id, ordinal
+                    ) VALUES (
+                        :project_id, :casefile_id, :draft_id, :revision_id,
+                        :obligation_id, :object_registry_id, 1
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": plan.project_id,
+                    "casefile_id": plan.casefile_id,
+                    "draft_id": plan.draft_id,
+                    "revision_id": revision_id,
+                    "obligation_id": obligation_id,
+                    "object_registry_id": object_registry_id,
+                },
+            ).scalar_one()
+        )
         connection.execute(
             sa.text(
                 """
@@ -154,6 +208,8 @@ def test_exposure_plan_is_created_for_each_draft_and_history_is_immutable(
             ("exposure_plan_revisions", revision_id),
             ("exposure_plan_entries", entry_id),
             ("exposure_plan_entry_refs", reference_id),
+            ("exposure_plan_obligations", obligation_id),
+            ("exposure_plan_obligation_refs", obligation_ref_id),
         ):
             with _expect_database_error(connection):
                 connection.execute(

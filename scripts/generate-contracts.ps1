@@ -136,7 +136,9 @@ from .novel_profile import Schema as NovelProfile
 from .patch_candidate import Schema as PatchCandidate
 from .planner_input import Schema as PlannerInputBundle
 from .planner_input_v2 import Schema as PlannerInputBundleV2
+from .planner_input_v3 import Schema as PlannerInputBundleV3
 from .planner_model_view_v3 import Schema as PlannerModelViewV3
+from .planner_model_view_v4 import Schema as PlannerModelViewV4
 from .validation_issue import Schema as ValidationIssue
 
 __all__ = [
@@ -162,7 +164,9 @@ __all__ = [
     "NovelProfile",
     "PlannerInputBundle",
     "PlannerInputBundleV2",
+    "PlannerInputBundleV3",
     "PlannerModelViewV3",
+    "PlannerModelViewV4",
     "NarrativeIR",
     "PatchCandidate",
     "TaskEvent",
@@ -186,7 +190,9 @@ from .public import (
     PatchCandidate,
     PlannerInputBundle,
     PlannerInputBundleV2,
+    PlannerInputBundleV3,
     PlannerModelViewV3,
+    PlannerModelViewV4,
     ValidationIssue,
 )
 
@@ -199,7 +205,9 @@ __all__ += [
     "PatchCandidate",
     "PlannerInputBundle",
     "PlannerInputBundleV2",
+    "PlannerInputBundleV3",
     "PlannerModelViewV3",
+    "PlannerModelViewV4",
     "ValidationIssue",
 ]
 '@

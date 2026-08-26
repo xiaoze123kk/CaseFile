@@ -14,6 +14,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
+from sqlalchemy import Engine, create_engine, select, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import sessionmaker
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.brief_to_draft_v8.workflow import run_v8_generation
 from casefile.agent_runtime.brief_to_draft_v11.workflow import run_v11_generation
@@ -30,11 +36,6 @@ from casefile.api.app import create_app
 from casefile.contracts import ContractValidationError
 from casefile.data_postgres.models import TaskAttempt
 from casefile.worker.runtime import Worker, WorkerConfig
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
-from sqlalchemy import Engine, create_engine, select, text
-from sqlalchemy.engine import make_url
-from sqlalchemy.orm import sessionmaker
 
 pytestmark = pytest.mark.postgres
 
@@ -788,6 +789,14 @@ def test_settings_brief_generation_sse_and_completion_gate(
             }
             for event in reversed(factual_events)
         ]
+        exposure_entries[0]["planning_obligations"] = [
+            {
+                "kind": "basis_ref_coverage",
+                "obligation_key": "obligation_first_event_basis",
+                "level": "hard",
+                "required_refs": exposure_entries[0]["refs"],
+            }
+        ]
         exposure_plan = client.put(
             f"/api/v1/projects/{project_id}/draft/exposure-plan",
             headers=_identity(actor_id),
@@ -803,11 +812,42 @@ def test_settings_brief_generation_sse_and_completion_gate(
         assert [item["refs"][0]["object_id"] for item in exposure_plan.json()["entries"]] == [
             event["id"] for event in reversed(factual_events)
         ]
+        assert exposure_plan.json()["entries"][0]["planning_obligations"] == [
+            exposure_entries[0]["planning_obligations"][0]
+        ]
         current_exposure_plan = client.get(
             f"/api/v1/projects/{project_id}/draft/exposure-plan",
             headers=_identity(actor_id),
         )
         assert current_exposure_plan.json() == exposure_plan.json()
+        invalid_obligation_ref = client.put(
+            f"/api/v1/projects/{project_id}/draft/exposure-plan",
+            headers=_identity(actor_id),
+            json={
+                "expected_draft_id": adopted.json()["draft_id"],
+                "expected_revision": 1,
+                "entries": [
+                    {
+                        **exposure_entries[0],
+                        "planning_obligations": [
+                            {
+                                "kind": "basis_ref_coverage",
+                                "obligation_key": "obligation_cross_draft_ref",
+                                "level": "hard",
+                                "required_refs": [
+                                    {
+                                        "object_type": "event",
+                                        "object_id": "event_from_another_draft",
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        assert invalid_obligation_ref.status_code == 422
+        assert invalid_obligation_ref.json()["code"] == "exposure_plan_invalid_reference"
         unchanged_draft = client.get(
             f"/api/v1/projects/{project_id}/draft",
             headers=_identity(actor_id),
@@ -838,6 +878,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
                     "exposure_plan_revisions",
                     "exposure_plan_entries",
                     "exposure_plan_entry_refs",
+                    "exposure_plan_obligations",
+                    "exposure_plan_obligation_refs",
                 )
             }
             assert counts == {
@@ -845,6 +887,8 @@ def test_settings_brief_generation_sse_and_completion_gate(
                 "exposure_plan_revisions": 1,
                 "exposure_plan_entries": len(exposure_entries),
                 "exposure_plan_entry_refs": len(exposure_entries),
+                "exposure_plan_obligations": 1,
+                "exposure_plan_obligation_refs": 1,
             }
 
         workbench_context = client.get(

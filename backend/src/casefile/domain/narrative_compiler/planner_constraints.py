@@ -12,12 +12,16 @@ from casefile.domain.narrative_compiler.foundation import (
     canonical_json_sha256,
 )
 from casefile.domain.narrative_compiler.planner_input import validate_planner_input_bundle
-from casefile_contracts import PlannerModelViewV3
+from casefile_contracts import PlannerModelViewV3, PlannerModelViewV4
 
 PLANNER_CONSTRAINT_IR_SCHEMA_ID = "compiler.planner-constraints.v1"
 PLANNER_CONSTRAINT_IR_VERSION = "compiler.planner-constraint-projection.v1"
+PLANNER_CONSTRAINT_IR_V2_SCHEMA_ID = "compiler.planner-constraints.v2"
+PLANNER_CONSTRAINT_IR_V2_VERSION = "compiler.planner-constraint-projection.v2"
 PLANNER_MODEL_VIEW_SCHEMA_ID = "compiler.story-planner-model-view.v3"
 PLANNER_MODEL_VIEW_PROJECTION_VERSION = "compiler.story-planner-model-view-projection.v3"
+PLANNER_MODEL_VIEW_V4_SCHEMA_ID = "compiler.story-planner-model-view.v4"
+PLANNER_MODEL_VIEW_V4_PROJECTION_VERSION = "compiler.story-planner-model-view-projection.v4"
 
 
 def build_planner_constraint_ir(planner_input: dict[str, Any]) -> dict[str, Any]:
@@ -101,6 +105,34 @@ def validate_planner_constraint_ir(
     return expected
 
 
+def build_planner_constraint_ir_v2(planner_input: dict[str, Any]) -> dict[str, Any]:
+    """Compile v3 input, including only author-declared hard semantic obligations."""
+
+    parsed = validate_planner_input_bundle(planner_input)
+    if parsed["schema_id"] != "compiler.story-planner-input.v3":
+        raise CompilerContractError("compiler_planner_constraint_ir_v2_requires_input_v3")
+    value = build_planner_constraint_ir(parsed)
+    return {
+        **value,
+        "schema_id": PLANNER_CONSTRAINT_IR_V2_SCHEMA_ID,
+        "projection_version": PLANNER_CONSTRAINT_IR_V2_VERSION,
+        "semantic_obligations": parsed["planner_view"]["hard_constraints"][
+            "semantic_obligations"
+        ],
+    }
+
+
+def validate_planner_constraint_ir_v2(
+    constraint_ir: dict[str, Any],
+    *,
+    planner_input: dict[str, Any],
+) -> dict[str, Any]:
+    expected = build_planner_constraint_ir_v2(planner_input)
+    if constraint_ir != expected:
+        raise CompilerContractError("compiler_planner_constraint_ir_v2_mismatch")
+    return expected
+
+
 def planner_constraint_ir_fingerprint(constraint_ir: dict[str, Any]) -> dict[str, str]:
     """Return stable projection identity for isolated benchmark comparisons."""
 
@@ -112,6 +144,19 @@ def planner_constraint_ir_fingerprint(constraint_ir: dict[str, Any]) -> dict[str
     return {
         "schema_id": PLANNER_CONSTRAINT_IR_SCHEMA_ID,
         "projection_version": PLANNER_CONSTRAINT_IR_VERSION,
+        "content_hash": canonical_json_sha256(constraint_ir),
+    }
+
+
+def planner_constraint_ir_v2_fingerprint(constraint_ir: dict[str, Any]) -> dict[str, str]:
+    if (
+        constraint_ir.get("schema_id") != PLANNER_CONSTRAINT_IR_V2_SCHEMA_ID
+        or constraint_ir.get("projection_version") != PLANNER_CONSTRAINT_IR_V2_VERSION
+    ):
+        raise CompilerContractError("compiler_planner_constraint_ir_v2_invalid")
+    return {
+        "schema_id": PLANNER_CONSTRAINT_IR_V2_SCHEMA_ID,
+        "projection_version": PLANNER_CONSTRAINT_IR_V2_VERSION,
         "content_hash": canonical_json_sha256(constraint_ir),
     }
 
@@ -170,6 +215,59 @@ def validate_planner_model_view_v3(
     return expected
 
 
+def build_planner_model_view_v4(planner_input: dict[str, Any]) -> dict[str, Any]:
+    """Project v3 input with typed hard and soft obligations kept separate."""
+
+    parsed = validate_planner_input_bundle(planner_input)
+    if parsed["schema_id"] != "compiler.story-planner-input.v3":
+        raise CompilerContractError("compiler_planner_model_view_v4_requires_input_v3")
+    constraint_ir = build_planner_constraint_ir_v2(parsed)
+    objects = parsed["narrative_ir"]["objects"]
+    object_catalog = {
+        collection: [
+            {
+                "object_ref": envelope["object_ref"],
+                "value": _without_source_refs(envelope["value"]),
+            }
+            for envelope in sorted(values, key=lambda item: _ref_key(item["object_ref"]))
+        ]
+        for collection, values in objects.items()
+    }
+    view = {
+        "schema_id": PLANNER_MODEL_VIEW_V4_SCHEMA_ID,
+        "source": {
+            "projection_version": PLANNER_MODEL_VIEW_V4_PROJECTION_VERSION,
+            "planner_input_hash": canonical_json_sha256(parsed),
+            "constraint_ir_hash": canonical_json_sha256(constraint_ir),
+        },
+        "case": parsed["narrative_ir"]["case"],
+        "hard_constraints": {
+            "structure": constraint_ir["structure"],
+            "exposure": constraint_ir["exposure"],
+            "temporal": constraint_ir["temporal"],
+            "resolutions": constraint_ir["resolutions"],
+            "semantic_obligations": constraint_ir["semantic_obligations"],
+        },
+        "object_catalog": object_catalog,
+        "planning_context": parsed["planner_view"]["planning_context"],
+    }
+    try:
+        return PlannerModelViewV4.model_validate(view).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_planner_model_view_v4_invalid") from error
+
+
+def validate_planner_model_view_v4(
+    model_view: dict[str, Any],
+    *,
+    planner_input: dict[str, Any],
+) -> dict[str, Any]:
+    expected = build_planner_model_view_v4(planner_input)
+    if model_view != expected:
+        raise CompilerContractError("compiler_planner_model_view_v4_mismatch")
+    return expected
+
+
 def planner_model_view_v3_fingerprint(model_view: dict[str, Any]) -> dict[str, str]:
     """Freeze provider-visible content independently from the audit bundle."""
 
@@ -180,6 +278,18 @@ def planner_model_view_v3_fingerprint(model_view: dict[str, Any]) -> dict[str, s
     return {
         "schema_id": PLANNER_MODEL_VIEW_SCHEMA_ID,
         "projection_version": PLANNER_MODEL_VIEW_PROJECTION_VERSION,
+        "content_hash": canonical_json_sha256(parsed),
+    }
+
+
+def planner_model_view_v4_fingerprint(model_view: dict[str, Any]) -> dict[str, str]:
+    try:
+        parsed = PlannerModelViewV4.model_validate(model_view).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_planner_model_view_v4_invalid") from error
+    return {
+        "schema_id": PLANNER_MODEL_VIEW_V4_SCHEMA_ID,
+        "projection_version": PLANNER_MODEL_VIEW_V4_PROJECTION_VERSION,
         "content_hash": canonical_json_sha256(parsed),
     }
 
@@ -217,12 +327,22 @@ def _without_source_refs(value: Any) -> Any:
 __all__ = [
     "PLANNER_CONSTRAINT_IR_SCHEMA_ID",
     "PLANNER_CONSTRAINT_IR_VERSION",
+    "PLANNER_CONSTRAINT_IR_V2_SCHEMA_ID",
+    "PLANNER_CONSTRAINT_IR_V2_VERSION",
     "PLANNER_MODEL_VIEW_PROJECTION_VERSION",
     "PLANNER_MODEL_VIEW_SCHEMA_ID",
+    "PLANNER_MODEL_VIEW_V4_PROJECTION_VERSION",
+    "PLANNER_MODEL_VIEW_V4_SCHEMA_ID",
+    "build_planner_constraint_ir_v2",
+    "build_planner_model_view_v4",
     "build_planner_model_view_v3",
     "build_planner_constraint_ir",
     "planner_constraint_ir_fingerprint",
+    "planner_constraint_ir_v2_fingerprint",
     "planner_model_view_v3_fingerprint",
+    "planner_model_view_v4_fingerprint",
     "validate_planner_constraint_ir",
+    "validate_planner_constraint_ir_v2",
     "validate_planner_model_view_v3",
+    "validate_planner_model_view_v4",
 ]

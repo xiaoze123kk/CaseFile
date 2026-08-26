@@ -1704,6 +1704,114 @@ class PlannerView(BaseModel):
     planning_context: PlanningContext
 
 
+class Level1(Enum):
+    hard = 'hard'
+    soft = 'soft'
+
+
+class ParticipantCoverageObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['participant_coverage']
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_[a-z0-9][a-z0-9_]{0,150}$')
+    ]
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    level: Level1
+    eligible_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    min_distinct: Annotated[int, Field(ge=1, le=100)]
+
+
+class BasisRefCoverageObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['basis_ref_coverage']
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_[a-z0-9][a-z0-9_]{0,150}$')
+    ]
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    level: Level1
+    required_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+
+
+class RequiredRef(ObjectRef):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_type: Literal['hypothesis'] | None = None
+
+
+class HypothesisCoverageObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['hypothesis_coverage']
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_[a-z0-9][a-z0-9_]{0,150}$')
+    ]
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    level: Level1
+    required_refs: Annotated[list[RequiredRef], Field(min_length=1)]
+
+
+class SemanticObligation(
+    RootModel[
+        ParticipantCoverageObligation
+        | BasisRefCoverageObligation
+        | HypothesisCoverageObligation
+    ]
+):
+    root: ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation
+
+
+class HardConstraints1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure_obligations: list[ExposureObligation]
+    resolution_obligations: list[ResolutionObligation]
+    chronology_anchors: list[ChronologyAnchor]
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class PlanningContext1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class PlannerViewModel(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    hard_constraints: HardConstraints1
+    planning_context: PlanningContext1
+
+
+class PlanningContextModel(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+
+
 class ModelObject(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1711,6 +1819,82 @@ class ModelObject(BaseModel):
     )
     object_ref: ObjectRef
     value: Any
+
+
+class PrecedenceEdge(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    before_entry_key: str
+    after_entry_key: str
+
+
+class Exposure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    introduce_order: list[str]
+    precedence_edges: list[PrecedenceEdge]
+
+
+class Anchor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    rank: Annotated[int, Field(ge=1)]
+    comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
+
+
+class Temporal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    anchors: list[Anchor]
+
+
+class Resolutions(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    terminal_exactly_once: list[ObjectRef]
+    allowed_terminal_actions: Annotated[
+        list[AllowedTerminalAction], Field(max_length=2, min_length=2)
+    ]
+
+
+class ObjectCatalog(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_specs: list[ModelObject]
+    entities: list[ModelObject]
+    relationships: list[ModelObject]
+    locations: list[ModelObject]
+    events: list[ModelObject]
+    information_units: list[ModelObject]
+    claims: list[ModelObject]
+    hypotheses: list[ModelObject]
+    reasoning_paths: list[ModelObject]
+    constraints: list[ModelObject]
+    structure_locks: list[ModelObject]
+
+
+class PlanningContextModel1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
 
 
 class ScenePurpose(Enum):
@@ -1935,7 +2119,7 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_7
+    validation_issue: Schema_9
     patch_candidate: Schema_3
     task_run: TaskRun
     task_event: TaskEvent
@@ -1948,8 +2132,8 @@ class EditingContracts(BaseModel):
     compile_input_manifest: CompileInputManifest
     narrative_ir: Schema_2
     novel_profile: novel_profile_1.Schema
-    planner_input: Schema_4 | Schema_5
-    planner_model_view: Schema_6
+    planner_input: Schema_4 | Schema_5 | Schema_6
+    planner_model_view: Schema_7 | Schema_8
     story_plan_structural_patch: StoryPlanStructuralPatch
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
@@ -2185,6 +2369,19 @@ class Schema_5(BaseModel):
     planner_view: PlannerView
 
 
+class Schema_6(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-input.v3']
+    narrative_ir: Schema_2
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints
+    planner_view: PlannerViewModel
+
+
 class Source(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -2195,7 +2392,7 @@ class Source(BaseModel):
     constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
-class PrecedenceEdge(BaseModel):
+class PrecedenceEdge_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2204,16 +2401,16 @@ class PrecedenceEdge(BaseModel):
     after_entry_key: str
 
 
-class Exposure(BaseModel):
+class Exposure_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
     introduce_order: list[str]
-    precedence_edges: list[PrecedenceEdge]
+    precedence_edges: list[PrecedenceEdge_1]
 
 
-class Anchor(BaseModel):
+class Anchor_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2223,12 +2420,12 @@ class Anchor(BaseModel):
     comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
 
 
-class Temporal(BaseModel):
+class Temporal_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    anchors: list[Anchor]
+    anchors: list[Anchor_1]
 
 
 class AllowedTerminalAction_1(Enum):
@@ -2236,7 +2433,7 @@ class AllowedTerminalAction_1(Enum):
     intentionally_unresolved = 'intentionally_unresolved'
 
 
-class Resolutions(BaseModel):
+class Resolutions_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2253,12 +2450,12 @@ class HardConstraints_1(BaseModel):
         populate_by_name=True,
     )
     structure: StructureConstraints
-    exposure: Exposure
-    temporal: Temporal
-    resolutions: Resolutions
+    exposure: Exposure_1
+    temporal: Temporal_1
+    resolutions: Resolutions_1
 
 
-class ObjectCatalog(BaseModel):
+class ObjectCatalog_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2276,7 +2473,7 @@ class ObjectCatalog(BaseModel):
     structure_locks: list[ModelObject]
 
 
-class Schema_6(BaseModel):
+class Schema_7(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2285,8 +2482,43 @@ class Schema_6(BaseModel):
     source: Source
     case: NarrativeCase
     hard_constraints: HardConstraints_1
+    object_catalog: ObjectCatalog_1
+    planning_context: PlanningContextModel
+
+
+class Source_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    projection_version: Literal['compiler.story-planner-model-view-projection.v4']
+    planner_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class HardConstraints_2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure: Exposure
+    temporal: Temporal
+    resolutions: Resolutions
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class Schema_8(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-model-view.v4']
+    source: Source_1
+    case: NarrativeCase
+    hard_constraints: HardConstraints_2
     object_catalog: ObjectCatalog
-    planning_context: PlanningContext
+    planning_context: PlanningContextModel1
 
 
 class Severity_2(StrEnum):
@@ -2309,7 +2541,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_7(BaseModel):
+class Schema_9(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from casefile.application.errors import ApplicationError, not_found
 from casefile.data_postgres.exposure_repository import (
     ExposureEntryWrite,
+    ExposureObligationWrite,
     ExposurePlanRepository,
 )
 from casefile.data_postgres.models import AuditEvent, ExposurePlan
@@ -37,6 +38,32 @@ def _plan_view(
                         "object_id": registry.object_id,
                     }
                     for registry in item.objects
+                ],
+                "planning_obligations": [
+                    {
+                        "kind": obligation.obligation.obligation_kind,
+                        "obligation_key": obligation.obligation.obligation_key,
+                        "level": obligation.obligation.level,
+                        **(
+                            {"min_distinct": obligation.obligation.min_distinct}
+                            if obligation.obligation.obligation_kind
+                            == "participant_coverage"
+                            else {}
+                        ),
+                        (
+                            "eligible_refs"
+                            if obligation.obligation.obligation_kind
+                            == "participant_coverage"
+                            else "required_refs"
+                        ): [
+                            {
+                                "object_type": registry.object_type,
+                                "object_id": registry.object_id,
+                            }
+                            for registry in obligation.objects
+                        ],
+                    }
+                    for obligation in item.obligations
                 ],
             }
             for item in repository.read_current_entries(plan)
@@ -97,7 +124,20 @@ class ExposurePlanService:
                 )
 
             requested_ids = {
-                reference["object_id"] for entry in entries for reference in entry["refs"]
+                reference["object_id"]
+                for entry in entries
+                for reference in (
+                    entry["refs"]
+                    + [
+                        ref
+                        for obligation in entry["planning_obligations"]
+                        for ref in (
+                            obligation.get("eligible_refs")
+                            or obligation.get("required_refs")
+                            or []
+                        )
+                    ]
+                )
             }
             registries = self.plans.registries_by_object_id(owned, requested_ids)
             if set(registries) != requested_ids:
@@ -129,12 +169,50 @@ class ExposurePlanService:
                             details={"object_id": registry.object_id},
                         )
                     registry_ids.append(registry.id)
+                obligation_writes: list[ExposureObligationWrite] = []
+                for obligation in entry["planning_obligations"]:
+                    refs = (
+                        obligation.get("eligible_refs")
+                        or obligation.get("required_refs")
+                        or []
+                    )
+                    obligation_registry_ids: list[int] = []
+                    for reference in refs:
+                        registry = registries[reference["object_id"]]
+                        if registry.object_type != reference["object_type"]:
+                            raise ApplicationError(
+                                "exposure_plan_reference_type_mismatch",
+                                "披露计划语义义务的引用类型与当前工作稿对象不一致。",
+                                status_code=422,
+                                details={"object_id": registry.object_id},
+                            )
+                        if (
+                            obligation["kind"] == "hypothesis_coverage"
+                            and registry.object_type != "hypothesis"
+                        ):
+                            raise ApplicationError(
+                                "exposure_plan_hypothesis_reference_invalid",
+                                "假设覆盖义务只能引用 Hypothesis。",
+                                status_code=422,
+                                details={"object_id": registry.object_id},
+                            )
+                        obligation_registry_ids.append(registry.id)
+                    obligation_writes.append(
+                        ExposureObligationWrite(
+                            obligation_key=obligation["obligation_key"],
+                            obligation_kind=obligation["kind"],
+                            level=obligation["level"],
+                            min_distinct=obligation.get("min_distinct"),
+                            object_registry_ids=tuple(obligation_registry_ids),
+                        )
+                    )
                 writes.append(
                     ExposureEntryWrite(
                         entry_key=entry["entry_key"],
                         title=title,
                         note=entry["note"],
                         object_registry_ids=tuple(registry_ids),
+                        obligations=tuple(obligation_writes),
                     )
                 )
 

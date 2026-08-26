@@ -33,6 +33,8 @@ BUSINESS_TABLES = {
     "evidence_items",
     "exposure_plan_entries",
     "exposure_plan_entry_refs",
+    "exposure_plan_obligation_refs",
+    "exposure_plan_obligations",
     "exposure_plan_revisions",
     "exposure_plans",
     "hypotheses",

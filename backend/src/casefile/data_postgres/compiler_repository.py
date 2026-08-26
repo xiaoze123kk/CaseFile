@@ -15,14 +15,23 @@ from casefile.data_postgres.models import (
     CompileRun,
     ExposurePlanEntry,
     ExposurePlanEntryRef,
+    ExposurePlanObligation,
+    ExposurePlanObligationRef,
     ExposurePlanRevision,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class FrozenExposureObligation:
+    obligation: ExposurePlanObligation
+    refs: tuple[CaseFileObject, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class FrozenExposureEntry:
     entry: ExposurePlanEntry
     refs: tuple[CaseFileObject, ...]
+    obligations: tuple[FrozenExposureObligation, ...]
 
 
 class CompilerRepository:
@@ -113,11 +122,63 @@ class CompilerRepository:
             )
             for reference, registry in rows:
                 by_entry[reference.entry_id].append(registry)
-        return [FrozenExposureEntry(entry, tuple(by_entry[entry.id])) for entry in entries]
+        obligations = list(
+            self.session.scalars(
+                select(ExposurePlanObligation)
+                .where(ExposurePlanObligation.entry_id.in_(by_entry))
+                .order_by(ExposurePlanObligation.entry_id, ExposurePlanObligation.id)
+            )
+        )
+        by_obligation: dict[int, list[CaseFileObject]] = {
+            obligation.id: [] for obligation in obligations
+        }
+        if by_obligation:
+            rows = self.session.execute(
+                select(ExposurePlanObligationRef, CaseFileObject)
+                .join(
+                    CaseFileObject,
+                    (CaseFileObject.project_id == ExposurePlanObligationRef.project_id)
+                    & (CaseFileObject.casefile_id == ExposurePlanObligationRef.casefile_id)
+                    & (CaseFileObject.draft_id == ExposurePlanObligationRef.draft_id)
+                    & (
+                        CaseFileObject.id
+                        == ExposurePlanObligationRef.object_registry_id
+                    ),
+                )
+                .where(ExposurePlanObligationRef.obligation_id.in_(by_obligation))
+                .order_by(
+                    ExposurePlanObligationRef.obligation_id,
+                    ExposurePlanObligationRef.ordinal,
+                )
+            )
+            for reference, registry in rows:
+                by_obligation[reference.obligation_id].append(registry)
+        by_entry_obligations: dict[int, list[FrozenExposureObligation]] = {
+            entry.id: [] for entry in entries
+        }
+        for obligation in obligations:
+            by_entry_obligations[obligation.entry_id].append(
+                FrozenExposureObligation(
+                    obligation,
+                    tuple(by_obligation[obligation.id]),
+                )
+            )
+        return [
+            FrozenExposureEntry(
+                entry,
+                tuple(by_entry[entry.id]),
+                tuple(by_entry_obligations[entry.id]),
+            )
+            for entry in entries
+        ]
 
     def project_exposure_revision_payload(self, revision_id: int) -> dict[str, object]:
         """Project one exact immutable Exposure revision in canonical sequence order."""
 
+        revision = self.session.get(ExposurePlanRevision, revision_id)
+        if revision is None:
+            raise RuntimeError("ExposurePlanRevision is missing")
+        include_obligations = revision.payload_schema_id == "casefile.exposure-plan.v2"
         return {
             "entries": [
                 {
@@ -129,6 +190,42 @@ class CompilerRepository:
                         {"object_type": ref.object_type, "object_id": ref.object_id}
                         for ref in item.refs
                     ],
+                    **(
+                        {
+                            "planning_obligations": [
+                                {
+                                    "kind": obligation.obligation.obligation_kind,
+                                    "obligation_key": obligation.obligation.obligation_key,
+                                    "level": obligation.obligation.level,
+                                    **(
+                                        {
+                                            "min_distinct": (
+                                                obligation.obligation.min_distinct
+                                            )
+                                        }
+                                        if obligation.obligation.obligation_kind
+                                        == "participant_coverage"
+                                        else {}
+                                    ),
+                                    (
+                                        "eligible_refs"
+                                        if obligation.obligation.obligation_kind
+                                        == "participant_coverage"
+                                        else "required_refs"
+                                    ): [
+                                        {
+                                            "object_type": ref.object_type,
+                                            "object_id": ref.object_id,
+                                        }
+                                        for ref in obligation.refs
+                                    ],
+                                }
+                                for obligation in item.obligations
+                            ]
+                        }
+                        if include_obligations
+                        else {}
+                    ),
                 }
                 for item in self.read_exposure_revision_entries(revision_id)
             ]
@@ -172,4 +269,4 @@ class CompilerRepository:
         )
 
 
-__all__ = ["CompilerRepository", "FrozenExposureEntry"]
+__all__ = ["CompilerRepository", "FrozenExposureEntry", "FrozenExposureObligation"]

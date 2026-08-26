@@ -11,10 +11,16 @@ from casefile.domain.narrative_compiler.foundation import (
     CompilerContractError,
     canonical_json_sha256,
 )
-from casefile_contracts import NovelProfile, PlannerInputBundle, PlannerInputBundleV2
+from casefile_contracts import (
+    NovelProfile,
+    PlannerInputBundle,
+    PlannerInputBundleV2,
+    PlannerInputBundleV3,
+)
 
 PLANNER_INPUT_SCHEMA_ID = "compiler.story-planner-input.v1"
 PLANNER_INPUT_V2_SCHEMA_ID = "compiler.story-planner-input.v2"
+PLANNER_INPUT_V3_SCHEMA_ID = "compiler.story-planner-input.v3"
 
 
 def build_planner_input_bundle(
@@ -78,6 +84,40 @@ def build_planner_input_bundle_v2(
         raise CompilerContractError("compiler_story_planner_input_v2_invalid") from error
 
 
+def build_planner_input_bundle_v3(
+    *,
+    narrative_ir: dict[str, Any],
+    exposure: dict[str, Any] | None,
+    profile: dict[str, Any],
+    compile_mode: str,
+) -> dict[str, Any]:
+    """Build v3 with explicit hard/soft typed semantic obligations."""
+
+    narrative_ir, exposure, profile_json, planning_constraints = _validated_inputs(
+        narrative_ir=narrative_ir,
+        exposure=exposure,
+        profile=profile,
+        compile_mode=compile_mode,
+    )
+    bundle = {
+        "schema_id": PLANNER_INPUT_V3_SCHEMA_ID,
+        "narrative_ir": narrative_ir,
+        "exposure_plan": exposure,
+        "profile": profile_json,
+        "planning_constraints": planning_constraints,
+        "planner_view": _project_planner_view(
+            narrative_ir=narrative_ir,
+            exposure=exposure,
+            planning_constraints=planning_constraints,
+            include_semantic_obligations=True,
+        ),
+    }
+    try:
+        return PlannerInputBundleV3.model_validate(bundle).model_dump(mode="json")
+    except ValidationError as error:
+        raise CompilerContractError("compiler_story_planner_input_v3_invalid") from error
+
+
 def validate_planner_input_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
     """Validate either frozen input version and independently re-prove the v2 view."""
 
@@ -87,6 +127,8 @@ def validate_planner_input_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
             return PlannerInputBundle.model_validate(bundle).model_dump(mode="json")
         if schema_id == PLANNER_INPUT_V2_SCHEMA_ID:
             parsed = PlannerInputBundleV2.model_validate(bundle).model_dump(mode="json")
+        elif schema_id == PLANNER_INPUT_V3_SCHEMA_ID:
+            parsed = PlannerInputBundleV3.model_validate(bundle).model_dump(mode="json")
         else:
             raise CompilerContractError("compiler_story_planner_input_schema_invalid")
     except ValidationError as error:
@@ -95,6 +137,7 @@ def validate_planner_input_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
         narrative_ir=parsed["narrative_ir"],
         exposure=parsed["exposure_plan"],
         planning_constraints=parsed["planning_constraints"],
+        include_semantic_obligations=(schema_id == PLANNER_INPUT_V3_SCHEMA_ID),
     )
     if parsed["planner_view"] != expected:
         raise CompilerContractError("compiler_story_planner_view_mismatch")
@@ -134,6 +177,7 @@ def _project_planner_view(
     narrative_ir: dict[str, Any],
     exposure: dict[str, Any] | None,
     planning_constraints: dict[str, Any],
+    include_semantic_obligations: bool = False,
 ) -> dict[str, Any]:
     entries = [] if exposure is None else exposure["frozen_payload"].get("entries", [])
     exposure_obligations = [
@@ -210,35 +254,63 @@ def _project_planner_view(
         }
         for item in sorted(entries, key=lambda value: (value["sequence_no"], value["entry_key"]))
     ]
+    hard_semantic: list[dict[str, Any]] = []
+    soft_semantic: list[dict[str, Any]] = []
+    if include_semantic_obligations:
+        for obligation in _typed_semantic_obligations(entries):
+            if obligation["level"] == "hard":
+                hard_semantic.append(obligation)
+            else:
+                soft_semantic.append(obligation)
+    hard_constraints = {
+        "structure": planning_constraints,
+        "exposure_obligations": exposure_obligations,
+        "resolution_obligations": resolution_obligations,
+        "chronology_anchors": sorted(
+            chronology_anchors,
+            key=lambda value: (value["comparable_time"], _ref_key(value["event_ref"])),
+        ),
+    }
+    planning_context = {
+        "causal_edges": sorted(
+            causal_edges,
+            key=lambda value: (
+                value["relation"],
+                _ref_key(value["event_ref"]),
+                _ref_key(value["related_ref"]),
+            ),
+        ),
+        "knowledge_snapshots": sorted(
+            knowledge_snapshots,
+            key=lambda value: (
+                _ref_key(value["subject_ref"]),
+                _ref_key(value["as_of_event_ref"]),
+            ),
+        ),
+        "author_guidance": author_guidance,
+    }
+    if include_semantic_obligations:
+        hard_constraints["semantic_obligations"] = hard_semantic
+        planning_context["semantic_obligations"] = soft_semantic
     return {
         "hard_constraints": {
-            "structure": planning_constraints,
-            "exposure_obligations": exposure_obligations,
-            "resolution_obligations": resolution_obligations,
-            "chronology_anchors": sorted(
-                chronology_anchors,
-                key=lambda value: (value["comparable_time"], _ref_key(value["event_ref"])),
-            ),
+            **hard_constraints,
         },
         "planning_context": {
-            "causal_edges": sorted(
-                causal_edges,
-                key=lambda value: (
-                    value["relation"],
-                    _ref_key(value["event_ref"]),
-                    _ref_key(value["related_ref"]),
-                ),
-            ),
-            "knowledge_snapshots": sorted(
-                knowledge_snapshots,
-                key=lambda value: (
-                    _ref_key(value["subject_ref"]),
-                    _ref_key(value["as_of_event_ref"]),
-                ),
-            ),
-            "author_guidance": author_guidance,
+            **planning_context,
         },
     }
+
+
+def _typed_semantic_obligations(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    obligations: list[dict[str, Any]] = []
+    for entry in sorted(entries, key=lambda value: (value["sequence_no"], value["entry_key"])):
+        for item in entry.get("planning_obligations", []):
+            obligations.append({**item, "entry_key": entry["entry_key"]})
+    return sorted(
+        obligations,
+        key=lambda value: (value["obligation_key"], value["entry_key"]),
+    )
 
 
 def _ref_key(ref: dict[str, Any]) -> tuple[str, str]:
@@ -257,7 +329,7 @@ def planner_input_fingerprint(bundle: dict[str, Any]) -> dict[str, Any]:
         "planning_constraints_hash": canonical_json_sha256(parsed["planning_constraints"]),
         "planner_view_hash": (
             canonical_json_sha256(parsed["planner_view"])
-            if parsed["schema_id"] == PLANNER_INPUT_V2_SCHEMA_ID
+            if parsed["schema_id"] in {PLANNER_INPUT_V2_SCHEMA_ID, PLANNER_INPUT_V3_SCHEMA_ID}
             else None
         ),
     }
@@ -266,8 +338,10 @@ def planner_input_fingerprint(bundle: dict[str, Any]) -> dict[str, Any]:
 __all__ = [
     "PLANNER_INPUT_SCHEMA_ID",
     "PLANNER_INPUT_V2_SCHEMA_ID",
+    "PLANNER_INPUT_V3_SCHEMA_ID",
     "build_planner_input_bundle",
     "build_planner_input_bundle_v2",
+    "build_planner_input_bundle_v3",
     "planner_input_fingerprint",
     "validate_planner_input_bundle",
 ]

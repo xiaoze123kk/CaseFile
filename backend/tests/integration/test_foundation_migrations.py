@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 64-table personal foundation."""
+"""Disposable PostgreSQL verification for the 66-table personal foundation."""
 
 from __future__ import annotations
 
@@ -81,7 +81,13 @@ def migrated_engine() -> Iterator[Engine]:
             assert set(sa.inspect(engine).get_table_names()) <= {"alembic_version"}
             command.upgrade(config, PREVIOUS_REVISION)
             compatibility_ids = _seed_legacy_migration_documents(engine)
+            command.upgrade(config, "20260824233834")
+            legacy_exposure_revision_id = _seed_legacy_exposure_revision(
+                engine,
+                compatibility_ids.project_id,
+            )
             command.upgrade(config, "head")
+            _assert_legacy_exposure_revision_v1(engine, legacy_exposure_revision_id)
             first_forward = _assert_forward_migration_documents(
                 engine,
                 compatibility_ids,
@@ -120,6 +126,86 @@ def migrated_engine() -> Iterator[Engine]:
         with patch.dict(os.environ, {"DATABASE_URL": database_url}):
             _clear_projects_before_downgrade(database_url)
             command.downgrade(config, "base")
+
+
+def _seed_legacy_exposure_revision(engine: Engine, project_id: int) -> int:
+    """Create one pre-v2 Exposure revision before the typed-obligation migration."""
+
+    with engine.begin() as connection:
+        plan = connection.execute(
+            sa.text(
+                """
+                SELECT id, project_id, casefile_id, draft_id, created_by_user_id
+                  FROM exposure_plans
+                 WHERE project_id = :project_id
+                 ORDER BY id
+                 LIMIT 1
+                """
+            ),
+            {"project_id": project_id},
+        ).one()
+        revision_id = int(
+            connection.scalar(
+                sa.text(
+                    """
+                    INSERT INTO exposure_plan_revisions (
+                        project_id, casefile_id, draft_id, plan_id,
+                        revision_no, created_by_user_id
+                    ) VALUES (
+                        :project_id, :casefile_id, :draft_id, :plan_id,
+                        1, :created_by_user_id
+                    ) RETURNING id
+                    """
+                ),
+                {
+                    "project_id": plan.project_id,
+                    "casefile_id": plan.casefile_id,
+                    "draft_id": plan.draft_id,
+                    "plan_id": plan.id,
+                    "created_by_user_id": plan.created_by_user_id,
+                },
+            )
+        )
+        connection.execute(
+            sa.text(
+                """
+                INSERT INTO exposure_plan_entries (
+                    project_id, casefile_id, draft_id, plan_revision_id,
+                    entry_key, sequence_no, title, note
+                ) VALUES (
+                    :project_id, :casefile_id, :draft_id, :revision_id,
+                    'exposure_legacy_hash', 1, 'Legacy hash', NULL
+                )
+                """
+            ),
+            {
+                "project_id": plan.project_id,
+                "casefile_id": plan.casefile_id,
+                "draft_id": plan.draft_id,
+                "revision_id": revision_id,
+            },
+        )
+        connection.execute(
+            sa.text(
+                """
+                UPDATE exposure_plans
+                   SET revision = 1, current_revision_id = :revision_id
+                 WHERE id = :plan_id
+                """
+            ),
+            {"revision_id": revision_id, "plan_id": plan.id},
+        )
+        return revision_id
+
+
+def _assert_legacy_exposure_revision_v1(engine: Engine, revision_id: int) -> None:
+    with engine.connect() as connection:
+        assert connection.scalar(
+            sa.text(
+                "SELECT payload_schema_id FROM exposure_plan_revisions WHERE id = :id"
+            ),
+            {"id": revision_id},
+        ) == "casefile.exposure-plan.v1"
 
 
 @pytest.fixture
@@ -804,7 +890,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_64_identity_tables_without_team_columns(
+def test_database_has_66_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -818,7 +904,7 @@ def test_database_has_64_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 64
+    assert len(identity_rows) == 66
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(
