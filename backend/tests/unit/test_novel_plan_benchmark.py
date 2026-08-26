@@ -138,6 +138,96 @@ def test_v3_fake_capability_uses_compact_provider_view_and_full_audit_bundle(
     assert report["frozen"]["comparison_baseline"]["outcome_passed_trial_count"] == 64
 
 
+def test_capability_task_selection_is_sorted_fingerprinted_and_non_formal(
+    tmp_path: Path,
+) -> None:
+    selected = ("multiple_suspects__dense", "complex_mixed__decoy")
+    reversed_report = run_suite(
+        suite_kind="capability",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "selected-reversed.json",
+        resume=False,
+        task_ids=selected,
+    )
+    sorted_report = run_suite(
+        suite_kind="capability",
+        mode="fake",
+        provider_name="openai",
+        model_id="fake-story-planner",
+        quality_grader_model=None,
+        repeats=1,
+        checkpoint_path=tmp_path / "selected-sorted.json",
+        resume=False,
+        task_ids=tuple(sorted(selected)),
+    )
+
+    assert reversed_report["fingerprint"] == sorted_report["fingerprint"]
+    assert reversed_report["frozen"]["selection"] == {
+        "task_ids": sorted(selected),
+        "is_complete": False,
+    }
+    assert {trial["task_id"] for trial in reversed_report["trials"]} == set(selected)
+    assert reversed_report["promotion_gate"] == {
+        "evaluated": False,
+        "qualified": False,
+        "reason": "partial_task_selection",
+        "checks": {},
+    }
+
+
+def test_capability_task_selection_rejects_invalid_scope_and_identities() -> None:
+    suite = validate_suite()["suite"]
+    with pytest.raises(ValueError, match="only available for Capability"):
+        novel_plan_eval._task_selection(
+            suite,
+            suite_kind="regression",
+            task_ids=("linear_mystery__basic",),
+        )
+    with pytest.raises(ValueError, match="duplicate"):
+        novel_plan_eval._task_selection(
+            suite,
+            suite_kind="capability",
+            task_ids=("linear_mystery__basic", "linear_mystery__basic"),
+        )
+    with pytest.raises(ValueError, match="Unknown Novel Plan task IDs"):
+        novel_plan_eval._task_selection(
+            suite,
+            suite_kind="capability",
+            task_ids=("missing__dense",),
+        )
+
+
+def test_constraint_first_diagnostic_selection_freezes_current_failure_baseline() -> None:
+    descriptor = novel_plan_eval._read_json(
+        novel_plan_eval.SUITE_ROOT / "constraint_first_diagnostic_v1.json"
+    )
+    suite_ids = {
+        str(task["task_id"]) for task in validate_suite()["suite"]["tasks"]
+    }
+
+    assert descriptor["schema_id"] == "benchmark.novel-plan-diagnostic-selection.v1"
+    assert descriptor["task_ids"] == sorted(descriptor["task_ids"])
+    assert len(descriptor["task_ids"]) == 6
+    assert set(descriptor["task_ids"]) <= suite_ids
+    assert descriptor["trials_per_task"] == 3
+    assert descriptor["baseline"] == {
+        "trial_count": 18,
+        "contract_valid_trial_count": 15,
+        "semantic_valid_trial_count": 10,
+        "outcome_passed_trial_count": 7,
+        "production_rejections": {
+            "compiler_story_plan_exposure_violation": 1,
+            "compiler_story_plan_temporal_order_invalid": 4,
+            "compiler_story_planner_structural_repair_exhausted": 3,
+        },
+        "g2_outcome_failures": {"min_distinct_participant_refs": 3},
+    }
+
+
 def test_candidate_preserving_repair_improves_same_trial_without_g2_regression() -> None:
     validated = validate_suite(planner_input_version="v3")
     task = next(

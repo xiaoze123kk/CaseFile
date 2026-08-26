@@ -52,7 +52,7 @@ CAPABILITIES = (
     "complex_mixed",
 )
 VARIANTS = ("basic", "decoy", "dense")
-RUNTIME_VERSION = "novel-plan-benchmark.v4"
+RUNTIME_VERSION = "novel-plan-benchmark.v5"
 GRADER_VERSION = "novel-plan-g0-g3.v2"
 MODEL_VIEW_V3_BASELINE = {
     "fingerprint": "51385f7a2248a3d791d1a1cc1cac0827dafa32f77e6e834ecc8ab14dc5eb5071",
@@ -242,12 +242,14 @@ def run_suite(
     resume: bool,
     planner_input_version: str = "v1",
     prompt_version: str = STORY_PLANNER_PROMPT_VERSION,
+    task_ids: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     validated = validate_suite(
         formal_capability=suite_kind == "capability" and mode == "live",
         planner_input_version=planner_input_version,
     )
     suite = validated["suite"]
+    selection = _task_selection(suite, suite_kind=suite_kind, task_ids=task_ids)
     if suite_kind == "capability" and mode == "live":
         qualification = suite["formal_qualification"]
         if repeats != int(qualification["trials_per_task"]):
@@ -277,6 +279,7 @@ def run_suite(
         "quality_grader_model": quality_grader_model,
         "quality_grader_prompt_hash": canonical_json_sha256({"prompt": QUALITY_GRADER_PROMPT}),
         "repeats": repeats,
+        "selection": selection,
         "task_contracts": {
             item["task_id"]: {
                 "primary_capability": item["primary_capability"],
@@ -300,7 +303,15 @@ def run_suite(
     fingerprint = canonical_json_sha256(fingerprint_payload)
     trials = _resume_trials(checkpoint_path, fingerprint) if resume else []
     completed = {(item["task_id"], item["trial_index"]) for item in trials}
-    tasks = suite["tasks"] if suite_kind == "capability" else _synthetic_tasks(suite_kind)
+    tasks = (
+        [
+            task
+            for task in suite["tasks"]
+            if str(task["task_id"]) in selection["task_ids"]
+        ]
+        if suite_kind == "capability"
+        else _synthetic_tasks(suite_kind)
+    )
     for task in tasks:
         for trial_index in range(1, repeats + 1):
             key = (task["task_id"], trial_index)
@@ -333,6 +344,33 @@ def run_suite(
     if checkpoint_path is not None:
         _write_atomic(checkpoint_path, {**report, "partial": False})
     return report
+
+
+def _task_selection(
+    suite: dict[str, Any],
+    *,
+    suite_kind: str,
+    task_ids: tuple[str, ...] | None,
+) -> dict[str, Any]:
+    available = tuple(str(task["task_id"]) for task in suite["tasks"])
+    if task_ids is None:
+        selected = available if suite_kind == "capability" else ()
+    else:
+        if suite_kind != "capability":
+            raise ValueError("Task selection is only available for Capability suites")
+        normalized = tuple(value.strip() for value in task_ids)
+        if not normalized or any(not value for value in normalized):
+            raise ValueError("Task selection must contain non-empty task IDs")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("Task selection must not contain duplicate task IDs")
+        unknown = sorted(set(normalized) - set(available))
+        if unknown:
+            raise ValueError(f"Unknown Novel Plan task IDs: {', '.join(unknown)}")
+        selected = tuple(sorted(normalized))
+    return {
+        "task_ids": list(selected),
+        "is_complete": suite_kind == "capability" and set(selected) == set(available),
+    }
 
 
 def _run_trial(
@@ -855,6 +893,14 @@ def _promotion_gate(
     thresholds = frozen.get("suite", {}).get("promotion_gate")
     if not isinstance(thresholds, dict) or frozen.get("suite_kind") != "capability":
         return {"evaluated": False, "qualified": False, "checks": {}}
+    selection = frozen.get("selection")
+    if not isinstance(selection, dict) or not selection.get("is_complete"):
+        return {
+            "evaluated": False,
+            "qualified": False,
+            "reason": "partial_task_selection",
+            "checks": {},
+        }
     production = metrics["production_rejections"]
     temporal = sum(
         int(production.get(code, 0))
@@ -1082,6 +1128,10 @@ def main() -> None:
     parser.add_argument("--checkpoint-path", type=Path)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--report-path", type=Path)
+    parser.add_argument(
+        "--task-ids",
+        help="Comma-separated Capability task IDs for a non-formal diagnostic run",
+    )
     args = parser.parse_args()
     report = run_suite(
         suite_kind=args.suite_kind,
@@ -1094,6 +1144,9 @@ def main() -> None:
         resume=args.resume,
         planner_input_version=args.planner_input_version,
         prompt_version=args.prompt_version,
+        task_ids=(
+            tuple(args.task_ids.split(",")) if args.task_ids is not None else None
+        ),
     )
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     print(rendered)

@@ -41,3 +41,4 @@
 | `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
 | `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
 | `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |
+| `fixtures/novel_plan_benchmark/v3/constraint_first_diagnostic_v1.json` | Constraint-First 实验的六 Task × 三 Trial 定向诊断集合及 `ea0bc...` 基线失败分布；只用于开发诊断，不构成正式晋级证据。 |
