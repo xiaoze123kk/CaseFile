@@ -358,6 +358,9 @@ def run_suite(
             if planner_input_version == "v4"
             else "compiler.story-planner.v1"
         ),
+        "solver_version": (
+            ReferencePlanningSolver.version if planner_input_version == "v4" else None
+        ),
         "constraint_first_prompts": constraint_first_prompts,
         "planner_input_version": planner_input_version,
         "candidate_schema": "compiler.novel-plan-candidate.v1",
@@ -524,6 +527,7 @@ def _run_trial(
                 component_hash=canonical_json_sha256(
                     {
                         "pipeline": CONSTRAINT_FIRST_PIPELINE_VERSION,
+                        "solver": ReferencePlanningSolver.version,
                         "planner_input": bundle,
                         "model_view": provider_input,
                         "skeleton_prompt": {

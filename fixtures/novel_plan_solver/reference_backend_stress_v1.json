@@ -1,6 +1,6 @@
 {
   "schema_id": "benchmark.planning-solver-stress.v1",
-  "solver_version": "compiler.planning-solver.reference.v1",
+  "solver_version": "compiler.planning-solver.reference.v2",
   "cases": [
     {"case_id": "mixed_sat_8", "scene_count": 8, "expected": "sat"},
     {"case_id": "mixed_sat_32", "scene_count": 32, "expected": "sat"},

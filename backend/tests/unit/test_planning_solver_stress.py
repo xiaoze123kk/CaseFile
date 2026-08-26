@@ -24,10 +24,15 @@ STRESS = json.loads(
     )
 )
 
+assert STRESS["solver_version"] == ReferencePlanningSolver.version
 
-def _problem_and_proposal(scene_count: int) -> tuple[dict[str, Any], dict[str, Any]]:
+
+def _problem_and_proposal(
+    scene_count: int,
+    *,
+    task_id: str = "linear_mystery__basic",
+) -> tuple[dict[str, Any], dict[str, Any]]:
     validated = validate_suite(planner_input_version="v4")
-    task_id = "linear_mystery__basic"
     problem = compile_planning_problem(validated["planner_inputs"][task_id])
     chapter_id = problem["chapter_slots"][0]["chapter_id"]
     problem["hard_constraints"]["structure"]["target_scenes"] = scene_count
@@ -112,3 +117,21 @@ def test_reference_solver_canonical_skeleton_is_stable_across_100_runs() -> None
         hashes.add(canonical_json_sha256(result.skeleton))
 
     assert len(hashes) == 1
+
+
+def test_reference_solver_preserves_nonlinear_mode_on_equal_change_count() -> None:
+    problem, proposal = _problem_and_proposal(
+        4,
+        task_id="complex_mixed__decoy",
+    )
+    anchors = problem["hard_constraints"]["temporal"]["anchors"]
+    proposal["scenes"][0]["story_time_refs"] = [anchors[0]["event_ref"]]
+    proposal["scenes"][1]["presentation_mode"] = "flashback"
+    proposal["scenes"][1]["story_time_refs"] = [anchors[1]["event_ref"]]
+
+    result = ReferencePlanningSolver().solve(problem, proposal)
+
+    assert isinstance(result, PlanningSat)
+    second = result.skeleton["scenes"][1]
+    assert second["presentation_mode"] == "flashback"
+    assert second["story_time_refs"] == [anchors[0]["event_ref"]]

@@ -30,7 +30,7 @@ from casefile_contracts import (
 
 PLANNING_PROBLEM_SCHEMA_ID = "compiler.planning-problem.v1"
 PLANNING_PROBLEM_PROJECTION_VERSION = "compiler.planning-problem-projection.v1"
-REFERENCE_SOLVER_VERSION = "compiler.planning-solver.reference.v1"
+REFERENCE_SOLVER_VERSION = "compiler.planning-solver.reference.v2"
 PLAN_SKELETON_SCHEMA_ID = "compiler.plan-skeleton.v1"
 SKELETON_PROPOSAL_SCHEMA_ID = "compiler.skeleton-proposal.v1"
 SEMANTIC_FILL_SCHEMA_ID = "compiler.semantic-fill.v1"
@@ -416,9 +416,10 @@ def _apply_semantic_obligations(
 def _normalize_temporal_modes(
     scenes: list[dict[str, Any]], problem: dict[str, Any]
 ) -> None:
+    anchors = problem["hard_constraints"]["temporal"]["anchors"]
     rank_by_ref = {
         _ref_key(anchor["event_ref"]): int(anchor["rank"])
-        for anchor in problem["hard_constraints"]["temporal"]["anchors"]
+        for anchor in anchors
     }
     allowed = problem["hard_constraints"]["structure"]["allowed_presentation_modes"]
     previous_rank: int | None = None
@@ -439,6 +440,16 @@ def _normalize_temporal_modes(
                 or (mode == "flashforward" and current_rank >= previous_rank)
             )
             if not valid:
+                replacement = _nonlinear_anchor_replacement(
+                    mode=mode,
+                    previous_rank=previous_rank,
+                    anchors=anchors,
+                )
+                if replacement is not None:
+                    scene["story_time_refs"] = [replacement]
+                    current_rank = rank_by_ref[_ref_key(replacement)]
+                    previous_rank = current_rank
+                    continue
                 preferred = "flashback" if current_rank < previous_rank else "linear"
                 if preferred in allowed:
                     scene["presentation_mode"] = preferred
@@ -446,6 +457,29 @@ def _normalize_temporal_modes(
                     scene["story_time_refs"] = []
                     continue
         previous_rank = current_rank
+
+
+def _nonlinear_anchor_replacement(
+    *,
+    mode: str,
+    previous_rank: int,
+    anchors: list[dict[str, Any]],
+) -> dict[str, str] | None:
+    if mode == "flashback":
+        eligible = [anchor for anchor in anchors if int(anchor["rank"]) <= previous_rank]
+        ordered = sorted(
+            eligible,
+            key=lambda item: (-int(item["rank"]), _ref_key(item["event_ref"])),
+        )
+    elif mode == "flashforward":
+        eligible = [anchor for anchor in anchors if int(anchor["rank"]) >= previous_rank]
+        ordered = sorted(
+            eligible,
+            key=lambda item: (int(item["rank"]), _ref_key(item["event_ref"])),
+        )
+    else:
+        return None
+    return copy.deepcopy(ordered[0]["event_ref"]) if ordered else None
 
 
 def _prove_acyclic(scenes: list[dict[str, Any]]) -> None:
