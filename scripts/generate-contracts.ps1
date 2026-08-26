@@ -127,7 +127,9 @@ from ._internal import (
     PlanSkeleton,
     SemanticFillProposal,
     SceneCompilerInputBundle,
+    SceneCompilerModelView,
     ScenePlanCandidate,
+    SceneSemanticFillProposal,
     SkeletonProposal,
     SnapshotBinding,
     StoryPlanStructuralPatch,
@@ -145,6 +147,7 @@ from .planner_input_v2 import Schema as PlannerInputBundleV2
 from .planner_input_v3 import Schema as PlannerInputBundleV3
 from .planner_model_view_v3 import Schema as PlannerModelViewV3
 from .planner_model_view_v4 import Schema as PlannerModelViewV4
+from .scene_compiler import Schema as SceneCompilerInputBundleV2
 from .scene_plan import Schema as ScenePlanIR
 from .validation_issue import Schema as ValidationIssue
 
@@ -174,7 +177,10 @@ __all__ = [
     "StoryPlanStructuralPatch",
     "SemanticFillProposal",
     "SceneCompilerInputBundle",
+    "SceneCompilerInputBundleV2",
+    "SceneCompilerModelView",
     "ScenePlanCandidate",
+    "SceneSemanticFillProposal",
     "ScenePlan",
     "ScenePlanIR",
     "SkeletonProposal",
@@ -210,8 +216,11 @@ from .public import (
     PlannerInputBundleV3,
     PlannerModelViewV3,
     PlannerModelViewV4,
+    SceneCompilerInputBundleV2,
+    SceneCompilerModelView,
     ScenePlan,
     ScenePlanIR,
+    SceneSemanticFillProposal,
     ValidationIssue,
 )
 
@@ -227,8 +236,11 @@ __all__ += [
     "PlannerInputBundleV3",
     "PlannerModelViewV3",
     "PlannerModelViewV4",
+    "SceneCompilerInputBundleV2",
+    "SceneCompilerModelView",
     "ScenePlan",
     "ScenePlanIR",
+    "SceneSemanticFillProposal",
     "ValidationIssue",
 ]
 '@

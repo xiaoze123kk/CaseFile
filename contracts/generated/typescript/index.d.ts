@@ -330,6 +330,9 @@ export interface EditingContracts {
   narrative_ir: NarrativeIR;
   scene_compiler_input: SceneCompilerInputBundle;
   scene_plan_candidate: ScenePlanCandidate;
+  scene_compiler_input_v2?: SceneCompilerInputBundleV2;
+  scene_compiler_model_view?: SceneCompilerModelView;
+  scene_semantic_fill?: SceneSemanticFillProposal;
   scene_plan: ScenePlanIR;
   novel_profile: NovelProfile;
   planner_input: PlannerInputBundle | PlannerInputBundleV2 | PlannerInputBundleV3;
@@ -997,6 +1000,187 @@ export interface ResolutionPlacement1 {
   resolution_ref: ObjectRef;
   action: "advance" | "resolve" | "intentionally_unresolved";
 }
+export interface SceneCompilerInputBundleV2 {
+  schema_id: "compiler.scene-compiler-input.v2";
+  source: SceneCompilerInputSourceV2;
+  novel_plan: NovelPlanIR;
+  narrative_ir: NarrativeIR;
+  exposure_plan: ExposureBinding | null;
+  profile: CompilerProfileBinding;
+  /**
+   * @minItems 1
+   */
+  execution_constraints: [SceneExecutionConstraint, ...SceneExecutionConstraint[]];
+  state_seed: SceneStateSeed;
+}
+export interface SceneCompilerInputSourceV2 {
+  novel_plan_hash: string;
+  narrative_ir_hash: string;
+  exposure_hash: string | null;
+  profile_hash: string;
+  input_hash: string;
+}
+export interface ExposureBinding {
+  draft_id: number;
+  plan_revision_id: number;
+  revision_no: number;
+  frozen_payload: {
+    [k: string]: unknown;
+  };
+  content_hash: string;
+}
+export interface SceneExecutionConstraint {
+  scene_id: string;
+  chapter_id: string;
+  discourse_order: number;
+  purpose:
+    | "hook"
+    | "setup"
+    | "investigation"
+    | "discovery"
+    | "reversal"
+    | "confrontation"
+    | "reveal"
+    | "false_resolution"
+    | "climax"
+    | "resolution"
+    | "transition";
+  presentation_mode: "linear" | "flashback" | "flashforward";
+  pov_ref: ObjectRef | null;
+  participant_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  story_time_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  prerequisite_scene_ids: string[];
+  /**
+   * @minItems 1
+   */
+  obligations: [SceneObligation, ...SceneObligation[]];
+  forbidden_reveal_entry_keys: string[];
+}
+export interface SceneObligation {
+  obligation_key: string;
+  kind: "event" | "exposure" | "resolution" | "transition";
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  event_ref?: ObjectRef | null;
+  exposure?: ExposurePlacement1 | null;
+  resolution?: ResolutionPlacement1 | null;
+}
+export interface SceneStateSeed {
+  character_knowledge: CharacterKnowledgeSeed[];
+  events: EventStateSeed[];
+}
+export interface CharacterKnowledgeSeed {
+  subject_ref: ObjectRef;
+  as_of_event_ref: ObjectRef | null;
+  knows_refs: ObjectRef[];
+  believes_refs: ObjectRef[];
+  false_belief_refs: ObjectRef[];
+}
+export interface EventStateSeed {
+  event_ref: ObjectRef;
+  participant_refs: ObjectRef[];
+  observer_refs: ObjectRef[];
+  location_ref: ObjectRef | null;
+  cause_refs: ObjectRef[];
+  effect_refs: ObjectRef[];
+}
+export interface SceneCompilerModelView {
+  schema_id: "compiler.scene-compiler-model-view.v1";
+  source: {
+    projection_version: "compiler.scene-compiler-model-view-projection.v1";
+    scene_compiler_input_hash: string;
+  };
+  /**
+   * @minItems 1
+   */
+  batches: [SceneCompilerBatchView, ...SceneCompilerBatchView[]];
+}
+export interface SceneCompilerBatchView {
+  batch_id: string;
+  ordinal: number;
+  chapter_id: string;
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  scene_ids: [string, ...string[]];
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  scenes: [SceneExecutionConstraint, ...SceneExecutionConstraint[]];
+  object_catalog: SceneObjectSummary[];
+  state_seed: SceneStateSeed;
+}
+export interface SceneObjectSummary {
+  object_ref: ObjectRef;
+  label: string;
+  facts: string[];
+}
+export interface SceneSemanticFillProposal {
+  schema_id: "compiler.scene-semantic-fill.v1";
+  batch_id: string;
+  /**
+   * @minItems 1
+   * @maxItems 8
+   */
+  scenes: [SceneSemanticFill, ...SceneSemanticFill[]];
+}
+export interface SceneSemanticFill {
+  scene_id: string;
+  dramatic_goal: string;
+  conflict: string;
+  outcome: string;
+  /**
+   * @minItems 1
+   */
+  beats: [SceneBeatFill, ...SceneBeatFill[]];
+}
+export interface SceneBeatFill {
+  local_key: string;
+  kind: "event" | "exposure" | "resolution" | "transition";
+  directive: string;
+  actor_refs: ObjectRef[];
+  target_refs: ObjectRef[];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+  fulfills_obligation_keys: string[];
+  depends_on: string[];
+  knowledge_transitions: KnowledgeTransition[];
+  location_assertions: LocationAssertion[];
+  setup_keys: string[];
+  payoff_keys: string[];
+}
+export interface KnowledgeTransition {
+  operation: "learn" | "believe" | "misbelieve" | "correct";
+  subject_ref: ObjectRef;
+  object_ref: ObjectRef;
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+}
+export interface LocationAssertion {
+  subject_ref: ObjectRef;
+  location_ref: ObjectRef;
+  /**
+   * @minItems 1
+   */
+  story_time_refs: [ObjectRef, ...ObjectRef[]];
+  /**
+   * @minItems 1
+   */
+  basis_refs: [ObjectRef, ...ObjectRef[]];
+}
 export interface ScenePlanIR {
   schema_id: "compiler.scene-plan.v1";
   compiler_version: "compiler.scene-execution.v1";
@@ -1149,15 +1333,6 @@ export interface PlannerInputBundle {
   exposure_plan: ExposureBinding | null;
   profile: NovelProfile;
   planning_constraints: PlanningConstraints;
-}
-export interface ExposureBinding {
-  draft_id: number;
-  plan_revision_id: number;
-  revision_no: number;
-  frozen_payload: {
-    [k: string]: unknown;
-  };
-  content_hash: string;
 }
 export interface PlanningConstraints {
   target_chapters: number;

@@ -106,6 +106,16 @@ from casefile.domain.narrative_compiler.scene_plan import (
     validate_scene_plan,
     validate_scene_plan_candidate,
 )
+from casefile.domain.narrative_compiler.scene_compiler_input import (
+    SCENE_COMPILER_BATCH_SIZE,
+    SCENE_COMPILER_INPUT_V2_SCHEMA_ID,
+    SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION,
+    SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID,
+    build_scene_compiler_input_v2,
+    build_scene_compiler_model_view,
+    scene_compiler_model_view_fingerprint,
+    validate_scene_compiler_input_v2,
+)
 from casefile.domain.narrative_compiler.source_refs import (
     build_source_ref,
     resolve_source_fragment,
@@ -189,6 +199,10 @@ __all__ = [
     "validate_novel_plan_candidate",
     "NarrativeExecutionGraph",
     "SCENE_COMPILER_INPUT_SCHEMA_ID",
+    "SCENE_COMPILER_BATCH_SIZE",
+    "SCENE_COMPILER_INPUT_V2_SCHEMA_ID",
+    "SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION",
+    "SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID",
     "SCENE_EXECUTION_COMPILER_VERSION",
     "SCENE_PLAN_CANDIDATE_SCHEMA_ID",
     "SCENE_PLAN_SCHEMA_ID",
@@ -198,6 +212,8 @@ __all__ = [
     "ScenePlanViolation",
     "build_baseline_scene_plan_candidate",
     "build_scene_compiler_input",
+    "build_scene_compiler_input_v2",
+    "build_scene_compiler_model_view",
     "canonicalize_scene_plan_candidate",
     "compile_scene_plan",
     "compile_scene_plan_json",
@@ -205,7 +221,9 @@ __all__ = [
     "inspect_scene_plan_candidate",
     "scene_plan_semantic_signature",
     "scene_plan_component_fingerprint",
+    "scene_compiler_model_view_fingerprint",
     "validate_scene_compiler_input",
+    "validate_scene_compiler_input_v2",
     "validate_scene_plan",
     "validate_scene_plan_candidate",
 ]

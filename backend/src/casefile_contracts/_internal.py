@@ -1966,6 +1966,227 @@ class ScenePlanMetrics(BaseModel):
     resolution_action_count: Annotated[int, Field(ge=0)]
 
 
+class SceneCompilerInputSourceV2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    novel_plan_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    exposure_hash: Sha256Hex | None
+    profile_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class Kind(Enum):
+    event = 'event'
+    exposure = 'exposure'
+    resolution = 'resolution'
+    transition = 'transition'
+
+
+class SceneObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_scene_[a-z0-9][a-z0-9_]{0,120}$')
+    ]
+    kind: Kind
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    event_ref: ObjectRef | None = None
+    exposure: ExposurePlacement1 | None = None
+    resolution: ResolutionPlacement1 | None = None
+
+
+class SceneExecutionConstraint(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    presentation_mode: PresentationMode
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    story_time_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+    obligations: Annotated[list[SceneObligation], Field(min_length=1)]
+    forbidden_reveal_entry_keys: list[ForbiddenRevealEntryKey]
+
+
+class CharacterKnowledgeSeed(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    subject_ref: ObjectRef
+    as_of_event_ref: ObjectRef | None
+    knows_refs: list[ObjectRef]
+    believes_refs: list[ObjectRef]
+    false_belief_refs: list[ObjectRef]
+
+
+class EventStateSeed(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    participant_refs: list[ObjectRef]
+    observer_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    cause_refs: list[ObjectRef]
+    effect_refs: list[ObjectRef]
+
+
+class SceneStateSeed(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    character_knowledge: list[CharacterKnowledgeSeed]
+    events: list[EventStateSeed]
+
+
+class Fact(RootModel[str]):
+    root: Annotated[str, Field(max_length=2000, min_length=1)]
+
+
+class SceneObjectSummary(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    label: Annotated[str, Field(max_length=500, min_length=1)]
+    facts: list[Fact]
+
+
+class SceneCompilerBatchView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    batch_id: Annotated[str, Field(pattern='^scene_batch_[a-z0-9][a-z0-9_]{0,100}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    scene_ids: Annotated[list[SceneId], Field(max_length=8, min_length=1)]
+    scenes: Annotated[list[SceneExecutionConstraint], Field(max_length=8, min_length=1)]
+    object_catalog: list[SceneObjectSummary]
+    state_seed: SceneStateSeed
+
+
+class Source(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    projection_version: Literal['compiler.scene-compiler-model-view-projection.v1']
+    scene_compiler_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class SceneCompilerModelView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-compiler-model-view.v1']
+    source: Source
+    batches: Annotated[list[SceneCompilerBatchView], Field(min_length=1)]
+
+
+class Operation1(Enum):
+    learn = 'learn'
+    believe = 'believe'
+    misbelieve = 'misbelieve'
+    correct = 'correct'
+
+
+class KnowledgeTransition(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    operation: Operation1
+    subject_ref: ObjectRef
+    object_ref: ObjectRef
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+
+
+class LocationAssertion(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    subject_ref: ObjectRef
+    location_ref: ObjectRef
+    story_time_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+
+
+class FulfillsObligationKey(RootModel[str]):
+    root: Annotated[str, Field(pattern='^obligation_scene_[a-z0-9][a-z0-9_]{0,120}$')]
+
+
+class DependsOnItem(RootModel[str]):
+    root: Annotated[str, Field(max_length=160, min_length=1)]
+
+
+class SetupKey(RootModel[str]):
+    root: Annotated[str, Field(pattern='^setup_[a-z0-9][a-z0-9_]{0,100}$')]
+
+
+class PayoffKey(RootModel[str]):
+    root: Annotated[str, Field(pattern='^setup_[a-z0-9][a-z0-9_]{0,100}$')]
+
+
+class SceneBeatFill(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    local_key: Annotated[str, Field(pattern='^beat_local_[a-z0-9][a-z0-9_]{0,80}$')]
+    kind: Kind
+    directive: Annotated[str, Field(max_length=2000, min_length=1)]
+    actor_refs: list[ObjectRef]
+    target_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    fulfills_obligation_keys: list[FulfillsObligationKey]
+    depends_on: list[DependsOnItem]
+    knowledge_transitions: list[KnowledgeTransition]
+    location_assertions: list[LocationAssertion]
+    setup_keys: list[SetupKey]
+    payoff_keys: list[PayoffKey]
+
+
+class SceneSemanticFill(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    dramatic_goal: Annotated[str, Field(max_length=2000, min_length=1)]
+    conflict: Annotated[str, Field(max_length=2000, min_length=1)]
+    outcome: Annotated[str, Field(max_length=2000, min_length=1)]
+    beats: Annotated[list[SceneBeatFill], Field(min_length=1)]
+
+
+class SceneSemanticFillProposal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-semantic-fill.v1']
+    batch_id: Annotated[str, Field(pattern='^scene_batch_[a-z0-9][a-z0-9_]{0,100}$')]
+    scenes: Annotated[list[SceneSemanticFill], Field(max_length=8, min_length=1)]
+
+
 class AllowedPresentationMode(Enum):
     linear = 'linear'
     flashback = 'flashback'
@@ -2314,7 +2535,7 @@ class SceneSlot(BaseModel):
     discourse_order: Annotated[int, Field(ge=1)]
 
 
-class Source(BaseModel):
+class Source1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -2341,7 +2562,7 @@ class PlanningProblem(BaseModel):
         populate_by_name=True,
     )
     schema_id: Literal['compiler.planning-problem.v1']
-    source: Source
+    source: Source1
     chapter_slots: Annotated[list[ChapterSlot], Field(max_length=100, min_length=1)]
     scene_slots: Annotated[list[SceneSlot], Field(max_length=500, min_length=1)]
     object_refs: Annotated[list[ObjectRef], Field(min_length=1)]
@@ -2489,7 +2710,7 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_11
+    validation_issue: Schema_12
     patch_candidate: Schema_4
     task_run: TaskRun
     task_event: TaskEvent
@@ -2503,7 +2724,10 @@ class EditingContracts(BaseModel):
     narrative_ir: Schema_3
     scene_compiler_input: SceneCompilerInputBundle
     scene_plan_candidate: ScenePlanCandidate
-    scene_plan: Schema_10
+    scene_compiler_input_v2: Schema_10 | None = None
+    scene_compiler_model_view: SceneCompilerModelView | None = None
+    scene_semantic_fill: SceneSemanticFillProposal | None = None
+    scene_plan: Schema_11
     novel_profile: novel_profile_1.Schema
     planner_input: Schema_5 | Schema_6 | Schema_7
     planner_model_view: Schema_8 | Schema_9
@@ -2911,6 +3135,23 @@ class Schema_10(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    schema_id: Literal['compiler.scene-compiler-input.v2']
+    source: SceneCompilerInputSourceV2
+    novel_plan: NovelPlanIR
+    narrative_ir: Schema_3
+    exposure_plan: ExposureBinding | None
+    profile: CompilerProfileBinding
+    execution_constraints: Annotated[
+        list[SceneExecutionConstraint], Field(min_length=1)
+    ]
+    state_seed: SceneStateSeed
+
+
+class Schema_11(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
     schema_id: Literal['compiler.scene-plan.v1']
     compiler_version: Literal['compiler.scene-execution.v1']
     source: ScenePlanSource
@@ -2943,7 +3184,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_11(BaseModel):
+class Schema_12(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

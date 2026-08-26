@@ -42,6 +42,13 @@
     "scene_plan_candidate": {
       "$ref": "compiler/scene-plan.schema.json#/$defs/ScenePlanCandidate"
     },
+    "scene_compiler_input_v2": {"$ref": "compiler/scene-compiler.schema.json"},
+    "scene_compiler_model_view": {
+      "$ref": "compiler/scene-compiler.schema.json#/$defs/SceneCompilerModelView"
+    },
+    "scene_semantic_fill": {
+      "$ref": "compiler/scene-compiler.schema.json#/$defs/SceneSemanticFillProposal"
+    },
     "scene_plan": {"$ref": "compiler/scene-plan.schema.json"},
     "novel_profile": {"$ref": "compiler/novel-profile.schema.json"},
     "planner_input": {
