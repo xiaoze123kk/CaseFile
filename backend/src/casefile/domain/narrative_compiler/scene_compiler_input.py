@@ -23,7 +23,7 @@ from casefile.domain.narrative_compiler.foundation import (
 SCENE_COMPILER_INPUT_V2_SCHEMA_ID = "compiler.scene-compiler-input.v2"
 SCENE_COMPILER_MODEL_VIEW_SCHEMA_ID = "compiler.scene-compiler-model-view.v1"
 SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION = (
-    "compiler.scene-compiler-model-view-projection.v1"
+    "compiler.scene-compiler-model-view-projection.v2"
 )
 SCENE_COMPILER_BATCH_SIZE = 8
 
@@ -138,14 +138,22 @@ def build_scene_compiler_model_view(
             batch_ordinal += 1
             batch_scenes = scenes[offset : offset + SCENE_COMPILER_BATCH_SIZE]
             selected_refs = _constraint_refs(batch_scenes)
+            batch_state_seed = _filter_state_seed(value["state_seed"], selected_refs)
+            visible_refs = selected_refs | _object_refs(batch_state_seed)
+            object_catalog = _object_catalog(value["narrative_ir"], visible_refs)
+            catalog_refs = {_ref_key(item["object_ref"]) for item in object_catalog}
+            if catalog_refs != visible_refs:
+                raise CompilerContractError(
+                    "compiler_scene_model_view_reference_closure_invalid"
+                )
             batch = {
                 "batch_id": f"scene_batch_{chapter_id}_{chapter_batch_ordinal:03d}",
                 "ordinal": batch_ordinal,
                 "chapter_id": chapter_id,
                 "scene_ids": [scene["scene_id"] for scene in batch_scenes],
                 "scenes": batch_scenes,
-                "object_catalog": _object_catalog(value["narrative_ir"], selected_refs),
-                "state_seed": _filter_state_seed(value["state_seed"], selected_refs),
+                "object_catalog": object_catalog,
+                "state_seed": batch_state_seed,
             }
             batches.append(batch)
     model_view = {
@@ -378,6 +386,21 @@ def _filter_state_seed(
             if _ref_key(item["event_ref"]) in selected_refs
         ],
     }
+
+
+def _object_refs(value: Any) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(value, dict):
+        object_type = value.get("object_type")
+        object_id = value.get("object_id")
+        if isinstance(object_type, str) and isinstance(object_id, str):
+            refs.add(f"{object_type}:{object_id}")
+        for nested in value.values():
+            refs.update(_object_refs(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            refs.update(_object_refs(nested))
+    return refs
 
 
 def _model_json(model: Any, value: Any, error_code: str) -> dict[str, Any]:

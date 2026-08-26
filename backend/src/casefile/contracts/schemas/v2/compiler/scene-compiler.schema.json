@@ -283,7 +283,12 @@
           "additionalProperties": false,
           "required": ["projection_version", "scene_compiler_input_hash"],
           "properties": {
-            "projection_version": {"const": "compiler.scene-compiler-model-view-projection.v1"},
+            "projection_version": {
+              "enum": [
+                "compiler.scene-compiler-model-view-projection.v1",
+                "compiler.scene-compiler-model-view-projection.v2"
+              ]
+            },
             "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
           }
         },

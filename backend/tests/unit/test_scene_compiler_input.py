@@ -55,6 +55,21 @@ def _bundle() -> dict[str, Any]:
     )
 
 
+def _object_ref_keys(value: Any) -> set[str]:
+    refs: set[str] = set()
+    if isinstance(value, dict):
+        object_type = value.get("object_type")
+        object_id = value.get("object_id")
+        if isinstance(object_type, str) and isinstance(object_id, str):
+            refs.add(f"{object_type}:{object_id}")
+        for nested in value.values():
+            refs.update(_object_ref_keys(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            refs.update(_object_ref_keys(nested))
+    return refs
+
+
 def test_v2_input_is_deterministic_bound_and_cross_language_serializable() -> None:
     first = _bundle()
     second = _bundle()
@@ -87,6 +102,49 @@ def test_model_view_is_chapter_bounded_and_does_not_expose_exposure_notes() -> N
     assert "后披露自动保护触发证据" not in serialized
     assert "source_fragment_hash" not in serialized
     SceneCompilerModelView.model_validate(view)
+
+
+def test_model_view_catalog_closes_every_provider_visible_reference() -> None:
+    view = build_scene_compiler_model_view(_bundle())
+
+    assert view["source"]["projection_version"] == (
+        "compiler.scene-compiler-model-view-projection.v2"
+    )
+    for batch in view["batches"]:
+        catalog = {
+            f"{item['object_ref']['object_type']}:{item['object_ref']['object_id']}"
+            for item in batch["object_catalog"]
+        }
+        assert _object_ref_keys(batch["scenes"]) <= catalog
+        assert _object_ref_keys(batch["state_seed"]) <= catalog
+
+    historical = deepcopy(view)
+    historical["source"]["projection_version"] = (
+        "compiler.scene-compiler-model-view-projection.v1"
+    )
+    SceneCompilerModelView.model_validate(historical)
+
+
+def test_model_view_fails_closed_when_visible_reference_has_no_catalog_object() -> None:
+    novel_plan, planner_input, profile = _inputs()
+    narrative = deepcopy(planner_input["narrative_ir"])
+    knowledge = narrative["objects"]["entities"][0]["value"]["knowledge_states"][0]
+    knowledge["knows_refs"] = [
+        {"object_type": "information_unit", "object_id": "info_missing"}
+    ]
+    novel_plan["source"]["narrative_ir_hash"] = canonical_json_sha256(narrative)
+    bundle = build_scene_compiler_input_v2(
+        novel_plan=novel_plan,
+        narrative_ir=narrative,
+        exposure=planner_input["exposure_plan"],
+        profile=profile,
+    )
+
+    with pytest.raises(
+        CompilerContractError,
+        match="compiler_scene_model_view_reference_closure_invalid",
+    ):
+        build_scene_compiler_model_view(bundle)
 
 
 def test_model_view_splits_nine_scenes_without_crossing_chapters() -> None:

@@ -93,7 +93,10 @@ from casefile.domain.narrative_compiler.scene_compiler_input import (
     scene_compiler_model_view_fingerprint,
     validate_scene_compiler_input_v2,
 )
-from casefile.domain.narrative_compiler.scene_fill import validate_scene_semantic_fill
+from casefile.domain.narrative_compiler.scene_fill import (
+    SceneFillValidationError,
+    validate_scene_semantic_fill,
+)
 from casefile.domain.narrative_compiler.scene_plan import (
     SCENE_COMPILER_INPUT_SCHEMA_ID,
     SCENE_EXECUTION_COMPILER_VERSION,
@@ -221,6 +224,7 @@ __all__ = [
     "SCENE_PLAN_SCHEMA_ID",
     "SCENE_PLAN_V2_SCHEMA_ID",
     "SCENE_STATE_ENGINE_VERSION",
+    "SceneFillValidationError",
     "ScenePlanCandidateValidationReport",
     "ScenePlanCandidateViolation",
     "ScenePlanValidationReport",

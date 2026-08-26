@@ -45,7 +45,8 @@ from casefile.domain.narrative_compiler import (
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SUITE_ROOT = REPO_ROOT / "fixtures" / "scene_plan_benchmark" / "v1"
 PLANNER_SUITE_ROOT = REPO_ROOT / "fixtures" / "novel_plan_benchmark" / "v4"
-RUNNER_VERSION = "scene-plan-eval-v2.1-shadow"
+RUNNER_VERSION = "scene-plan-eval-v2.2-shadow"
+DIAGNOSTIC_PAYLOAD_POLICIES = ("hashes", "failed-proposal")
 CAPABILITIES = (
     "scene_decomposition",
     "event_grounding",
@@ -403,6 +404,7 @@ def run_suite(
     task_ids: tuple[str, ...] | None = None,
     provider_factory: Callable[[], SceneCompilerProvider] | None = None,
     api_key_override: str | None = None,
+    diagnostic_payload_policy: str = "hashes",
 ) -> dict[str, Any]:
     """Run the current N4.4 v2 shadow runtime against the audited suite."""
 
@@ -412,6 +414,8 @@ def run_suite(
         raise ValueError("ScenePlan benchmark mode is invalid")
     if repeats < 1:
         raise ValueError("ScenePlan repeats must be positive")
+    if diagnostic_payload_policy not in DIAGNOSTIC_PAYLOAD_POLICIES:
+        raise ValueError("ScenePlan diagnostic payload policy is invalid")
     if suite_kind == "safety" and mode != "fake":
         raise ValueError("ScenePlan safety mutations never call a live Provider")
     if resume and checkpoint_path is None:
@@ -446,6 +450,7 @@ def run_suite(
         "model_id": model_id,
         "mode": mode,
         "repeats": repeats,
+        "diagnostic_payload_policy": diagnostic_payload_policy,
         "selection": [str(task["task_id"]) for task in selected_tasks],
         "runtime_inputs": {
             str(task["task_id"]): {
@@ -507,6 +512,7 @@ def run_suite(
                     bundle=validated["runtime_inputs"][task_id],
                     model_view=validated["model_views"][task_id],
                     fingerprint=fingerprint,
+                    diagnostic_payload_policy=diagnostic_payload_policy,
                 )
                 trials.append(trial)
                 _write_runtime_checkpoint(checkpoint_path, fingerprint, trials)
@@ -545,9 +551,13 @@ class _AlternativeSceneProvider:
 
 
 class _CapturingSceneProvider:
-    def __init__(self, provider: SceneCompilerProvider) -> None:
+    def __init__(
+        self, provider: SceneCompilerProvider, *, diagnostic_payload_policy: str
+    ) -> None:
         self._provider = provider
+        self._diagnostic_payload_policy = diagnostic_payload_policy
         self.calls: list[dict[str, Any]] = []
+        self._proposals: list[dict[str, Any]] = []
 
     def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
         started = time.perf_counter()
@@ -583,7 +593,19 @@ class _CapturingSceneProvider:
                 "error_type": None,
             }
         )
+        self._proposals.append(copy.deepcopy(result.proposal))
         return result
+
+    def report_calls(self, *, failed: bool) -> list[dict[str, Any]]:
+        calls = copy.deepcopy(self.calls)
+        if (
+            failed
+            and self._diagnostic_payload_policy == "failed-proposal"
+            and self._proposals
+            and len(self._proposals) == len(calls)
+        ):
+            calls[-1]["diagnostic_payload"] = self._proposals[-1]
+        return calls
 
 
 def _selected_runtime_tasks(
@@ -622,6 +644,7 @@ def _run_v2_runtime_trial(
     bundle: dict[str, Any],
     model_view: dict[str, Any],
     fingerprint: str,
+    diagnostic_payload_policy: str,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     task_id = str(task["task_id"])
@@ -634,7 +657,9 @@ def _run_v2_runtime_trial(
             "model_view_hash": canonical_json_sha256(model_view),
         }
     )
-    capturing_provider = _CapturingSceneProvider(provider)
+    capturing_provider = _CapturingSceneProvider(
+        provider, diagnostic_payload_policy=diagnostic_payload_policy
+    )
     try:
         execution = execute_scene_semantic_fill(
             capturing_provider,
@@ -657,7 +682,7 @@ def _run_v2_runtime_trial(
             for invariant in task["outcome_invariants"]
             if metrics[str(invariant["kind"])] < float(invariant["minimum"])
         ]
-        stages = capturing_provider.calls
+        stages = capturing_provider.report_calls(failed=False)
         return {
             "trial_id": f"{task_id}:trial-{trial_index}",
             "task_id": task_id,
@@ -676,6 +701,7 @@ def _run_v2_runtime_trial(
             "metrics": metrics,
             "semantic_signature": _scene_plan_v2_semantic_signature(scene_plan),
             "scene_plan_hash": canonical_json_sha256(scene_plan),
+            "failure_evidence": None,
             "stages": stages,
             "usage": _stage_usage(stages),
             "latency_ms": (time.perf_counter() - started) * 1000,
@@ -688,6 +714,7 @@ def _run_v2_runtime_trial(
             },
         }
     except CompilerContractError as error:
+        stages = capturing_provider.report_calls(failed=True)
         return {
             "trial_id": f"{task_id}:trial-{trial_index}",
             "task_id": task_id,
@@ -701,11 +728,12 @@ def _run_v2_runtime_trial(
             "passed": False,
             "accepted": False,
             "reason_code": error.reason_code,
+            "failure_evidence": getattr(error, "evidence", None),
             "infrastructure_failure": None,
             "outcome_failures": [str(task["primary_capability"])],
             "metrics": {key: 0.0 for key in CAPABILITIES},
-            "stages": capturing_provider.calls,
-            "usage": _stage_usage(capturing_provider.calls),
+            "stages": stages,
+            "usage": _stage_usage(stages),
             "latency_ms": (time.perf_counter() - started) * 1000,
             "graders": {
                 "g0_contract": False,
@@ -716,6 +744,7 @@ def _run_v2_runtime_trial(
             },
         }
     except Exception as error:
+        stages = capturing_provider.report_calls(failed=True)
         return {
             "trial_id": f"{task_id}:trial-{trial_index}",
             "task_id": task_id,
@@ -729,11 +758,12 @@ def _run_v2_runtime_trial(
             "passed": False,
             "accepted": False,
             "reason_code": "infrastructure_failure",
+            "failure_evidence": None,
             "infrastructure_failure": {"type": type(error).__name__},
             "outcome_failures": [],
             "metrics": {key: 0.0 for key in CAPABILITIES},
-            "stages": capturing_provider.calls,
-            "usage": _stage_usage(capturing_provider.calls),
+            "stages": stages,
+            "usage": _stage_usage(stages),
             "latency_ms": (time.perf_counter() - started) * 1000,
             "graders": {
                 "g0_contract": False,
@@ -1065,12 +1095,16 @@ def _runtime_report(
     by_variant: dict[str, list[dict[str, Any]]] = defaultdict(list)
     by_task: dict[str, list[dict[str, Any]]] = defaultdict(list)
     failure_taxonomy: Counter[str] = Counter()
+    failure_batch_ordinals: Counter[str] = Counter()
     for trial in trials:
         by_capability[str(trial["primary_capability"])].append(trial)
         by_variant[str(trial["variant"])].append(trial)
         by_task[str(trial["task_id"])].append(trial)
         if not trial["passed"]:
             failure_taxonomy[_reason_category(str(trial["reason_code"]))] += 1
+            stages = trial.get("stages", [])
+            ordinal = "none" if not stages else str(stages[-1]["batch_ordinal"])
+            failure_batch_ordinals[ordinal] += 1
     task_results = {
         task_id: {
             "trial_count": len(values),
@@ -1087,7 +1121,7 @@ def _runtime_report(
         "reason": ("promotion_gate_not_frozen" if baseline_completed else "live_baseline_not_run"),
     }
     return {
-        "schema_id": "benchmark.scene-plan-report.v2",
+        "schema_id": "benchmark.scene-plan-report.v3",
         "status": "passed" if passed_count == len(trials) else "failed",
         "suite_kind": suite_kind,
         "fingerprint": fingerprint,
@@ -1101,6 +1135,7 @@ def _runtime_report(
             "failure_taxonomy": {
                 category: failure_taxonomy.get(category, 0) for category in FAILURE_CATEGORIES
             },
+            "failure_batch_ordinals": dict(sorted(failure_batch_ordinals.items())),
             "pass_at_k_task_count": sum(bool(item["pass_at_k"]) for item in task_results.values()),
             "all_trials_pass_task_count": sum(
                 bool(item["all_trials_passed"]) for item in task_results.values()
@@ -1563,6 +1598,11 @@ def main() -> None:
     parser.add_argument("--checkpoint-path", type=Path)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
+        "--diagnostic-payload-policy",
+        choices=DIAGNOSTIC_PAYLOAD_POLICIES,
+        default="hashes",
+    )
+    parser.add_argument(
         "--task-ids",
         help="Comma-separated task IDs for a non-formal diagnostic run",
     )
@@ -1577,6 +1617,7 @@ def main() -> None:
         checkpoint_path=args.checkpoint_path,
         resume=args.resume,
         task_ids=(tuple(args.task_ids.split(",")) if args.task_ids is not None else None),
+        diagnostic_payload_policy=args.diagnostic_payload_policy,
     )
     report_path = args.report_path or (
         REPO_ROOT

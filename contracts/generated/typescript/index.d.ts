@@ -1095,7 +1095,8 @@ export interface EventStateSeed {
 export interface SceneCompilerModelView {
   schema_id: "compiler.scene-compiler-model-view.v1";
   source: {
-    projection_version: "compiler.scene-compiler-model-view-projection.v1";
+    projection_version:
+      "compiler.scene-compiler-model-view-projection.v1" | "compiler.scene-compiler-model-view-projection.v2";
     scene_compiler_input_hash: string;
   };
   /**

@@ -6,7 +6,6 @@ from copy import deepcopy
 from typing import Any
 
 import pytest
-
 from casefile.agent_runtime.provider_adapters.fake import FakeProvider
 from casefile.agent_runtime.scene_compiler import (
     SceneFillBatchRequest,
@@ -14,7 +13,10 @@ from casefile.agent_runtime.scene_compiler import (
     execute_scene_semantic_fill,
     validate_scene_semantic_fill,
 )
-from casefile.domain.narrative_compiler import CompilerContractError
+from casefile.domain.narrative_compiler import (
+    CompilerContractError,
+    SceneFillValidationError,
+)
 
 
 def _ref(object_type: str, object_id: str) -> dict[str, str]:
@@ -146,6 +148,24 @@ def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency()
     invalid["scenes"][0]["beats"][0]["actor_refs"] = [_ref("entity", "ent_unknown")]
     with pytest.raises(CompilerContractError, match="compiler_scene_fill_actor_invalid"):
         validate_scene_semantic_fill(invalid, batch_view=batch)
+
+    invalid = deepcopy(proposal)
+    invalid["scenes"][0]["beats"][0]["target_refs"] = [
+        _ref("information_unit", "info_unknown")
+    ]
+    with pytest.raises(
+        SceneFillValidationError, match="compiler_scene_fill_reference_invalid"
+    ) as captured:
+        validate_scene_semantic_fill(invalid, batch_view=batch)
+    assert captured.value.evidence["batch_id"] == "scene_batch_chapter_1_001"
+    assert captured.value.evidence["scene_id"] == "scene_1"
+    assert captured.value.evidence["beat_local_key"] == "beat_local_scene_1_001"
+    assert captured.value.evidence["json_path"] == "/scenes/0/beats/0/target_refs/0"
+    assert captured.value.evidence["emitted_ref"] == _ref(
+        "information_unit", "info_unknown"
+    )
+    assert captured.value.evidence["allowed_ref_count"] == 2
+    assert len(captured.value.evidence["allowed_ref_hash"]) == 64
 
     invalid = deepcopy(proposal)
     invalid["scenes"][0]["beats"].append(deepcopy(invalid["scenes"][0]["beats"][0]))

@@ -2082,12 +2082,17 @@ class SceneCompilerBatchView(BaseModel):
     state_seed: SceneStateSeed
 
 
+class ProjectionVersion(Enum):
+    compiler_scene_compiler_model_view_projection_v1 = 'compiler.scene-compiler-model-view-projection.v1'
+    compiler_scene_compiler_model_view_projection_v2 = 'compiler.scene-compiler-model-view-projection.v2'
+
+
 class Source(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    projection_version: Literal['compiler.scene-compiler-model-view-projection.v1']
+    projection_version: ProjectionVersion
     scene_compiler_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
