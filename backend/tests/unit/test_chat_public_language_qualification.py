@@ -4,9 +4,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from casefile.benchmark.chat_public_language_qualification import (
+    M_SERIES_RELEASE_BLOCKER,
     MODEL_ID,
     PROMPT_VERSION,
     PublicLanguageTrialEvidence,
+    _write_chinese_report,
     build_qualification_report,
     inspect_public_payload,
     load_public_language_suite,
@@ -121,12 +123,32 @@ def test_all_green_report_passes_m36_but_not_whole_m_series() -> None:
     assert report["schema_version"].endswith("report-v2")
     assert report["m3_6_release_ready"] is True
     assert report["m_series_release_ready"] is False
+    assert report["m_series_release_blockers"] == [M_SERIES_RELEASE_BLOCKER]
     assert report["metrics"]["completed_trials"] == 48
     assert report["metrics"]["task_pass_rate"] == 1.0
     assert report["metrics"]["pass_at_3"] == 1.0
     assert report["metrics"]["model_call_evidence_missing_count"] == 0
     assert report["metrics"]["model_binding_mismatch_count"] == 0
     assert all(report["gates"].values())
+
+
+def test_m36_report_does_not_claim_stale_m34_release_status(tmp_path: Path) -> None:
+    suite = load_public_language_suite(ROOT)
+    manifest = {**_manifest(), "suite_fingerprint": suite.fingerprint}
+    report = build_qualification_report(
+        manifest=manifest,
+        suite=suite,
+        rows=_passing_rows(),
+        source_stable=True,
+    )
+    path = tmp_path / "M3.6-QUALIFICATION-REPORT.zh-CN.md"
+
+    _write_chinese_report(path, report, manifest)
+
+    rendered = path.read_text(encoding="utf-8")
+    assert "本报告不作资格结论" in rendered
+    assert "独立的跨里程碑证据汇总" in rendered
+    assert "M3.4-07e 仍需修复" not in rendered
 
 
 def test_infrastructure_and_public_boundary_failures_remain_distinct() -> None:

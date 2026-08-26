@@ -42,6 +42,7 @@ TASK_COUNT = 16
 TRIAL_COUNT = TASK_COUNT * TRIALS_PER_TASK
 TASK_PASS_TARGET = 0.90
 PASS_AT_3_TARGET = 0.90
+M_SERIES_RELEASE_BLOCKER = "m_series_release_not_evaluated_by_m3_6_report"
 
 TaskCategory = Literal[
     "normal_question",
@@ -435,9 +436,7 @@ def run_public_language_diagnostics(
         "prompt_version": PROMPT_VERSION,
         "suite_version": suite.schema_version,
         "suite_fingerprint": suite.fingerprint,
-        "diagnostic_passed": all(
-            result.get("trial_status") == "passed" for result in results
-        ),
+        "diagnostic_passed": all(result.get("trial_status") == "passed" for result in results),
         "results": results,
     }
 
@@ -471,9 +470,7 @@ def build_qualification_report(
     false_block_count = sum(row.false_block for row in neighbor_rows)
     infrastructure_rows = [row for row in rows if row.infrastructure_failure is not None]
     missing_model_evidence_rows = [row for row in rows if row.model_call_count == 0]
-    incomplete_model_evidence_rows = [
-        row for row in rows if not row.model_call_evidence_complete
-    ]
+    incomplete_model_evidence_rows = [row for row in rows if not row.model_call_evidence_complete]
     binding_mismatch_rows = [row for row in rows if row.model_binding_mismatch]
     task_pass_rate = _rate(passed_count, TRIAL_COUNT)
     pass_at_3 = _rate(
@@ -497,9 +494,7 @@ def build_qualification_report(
         "model_call_count": sum(row.model_call_count for row in rows),
         "model_call_evidence_missing_count": len(missing_model_evidence_rows),
         "model_call_evidence_incomplete_count": len(incomplete_model_evidence_rows),
-        "unterminated_model_call_count": sum(
-            row.unterminated_model_call_count for row in rows
-        ),
+        "unterminated_model_call_count": sum(row.unterminated_model_call_count for row in rows),
         "model_binding_mismatch_count": len(binding_mismatch_rows),
     }
     gates = {
@@ -511,9 +506,7 @@ def build_qualification_report(
         "model_call_evidence_complete": bool(rows)
         and all(row.model_call_evidence_complete for row in rows),
         "model_binding_mismatch_0": not binding_mismatch_rows,
-        "unterminated_model_call_count_0": (
-            metrics["unterminated_model_call_count"] == 0
-        ),
+        "unterminated_model_call_count_0": (metrics["unterminated_model_call_count"] == 0),
         "public_contract_valid_rate_1": metrics["public_contract_valid_rate"] == 1.0,
         "internal_leak_rate_0": metrics["internal_leak_rate"] == 0.0,
         "sensitive_leak_rate_0": metrics["sensitive_leak_rate"] == 0.0,
@@ -586,7 +579,7 @@ def build_qualification_report(
         "qualification_outcome": outcome,
         "m3_6_release_ready": outcome == "passed",
         "m_series_release_ready": False,
-        "m_series_release_blockers": ["m3_4_07e_requires_repair_and_full_clean_revision_rerun"],
+        "m_series_release_blockers": [M_SERIES_RELEASE_BLOCKER],
         "source": dict(manifest["source"]),
         "provider": manifest["provider"],
         "model_id": manifest["model_id"],
@@ -847,8 +840,8 @@ def _write_chinese_report(
         "## Release Readiness",
         "",
         f"- M3.6 Public Boundary：**{m36}**",
-        "- M 系列整体：**未达到 release-qualified**。M3.4-07e 仍需修复后在新的 "
-        "clean revision 完整重跑，不得用本报告替代。",
+        "- M 系列整体：**本报告不作资格结论**。本报告仅资格化 M3.6 Public Boundary；"
+        "M 系列整体必须由独立的跨里程碑证据汇总判定，不得用本报告替代。",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
