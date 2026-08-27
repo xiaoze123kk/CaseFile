@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
+
 from casefile.agent_runtime.prompt import (
     AGENT_VERSION,
     CHAT_PROMPT_PACKAGE_VERSIONS,
@@ -425,6 +426,26 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:executor-issue": "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9",  # noqa: E501
         "fragment:executor-scope": "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276",  # noqa: E501
         "fragment:finalizer": "6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70",  # noqa: E501
+        "fragment:public-language-v1": "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d",  # noqa: E501
+        "fragment:rewrite": "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921",
+        "fragment:router": "c177dad4180922e118c1a2ea9648c3909593fdafec835a19032d6e9445276f49",
+    },
+    ("casefile_chat", "casefile-chat-v17"): {
+        "fragment:audit-common": "61ef8421fdacb6b9d65dee70365d39ccac48c400d4d4c1c1e7df65c96e69d54d",  # noqa: E501
+        "fragment:audit-evidence": "e1b86d49cd462058d7a4b6314bebd951fe3c81c2ad8459f5382d26cfb6d639ef",  # noqa: E501
+        "fragment:audit-finalizer": "a43d2d14722c3fb0dedc0a4eabc78770ba71d418fa10ded5ff7f8351d636881d",  # noqa: E501
+        "fragment:evidence": "a3b9186a6631e691c569edaca48f59667f22f2e6267c70886611bdd7e75415bc",  # noqa: E501
+        "fragment:executor-analysis": "c6e7ed194b979026cf725c526e963c38d64223a3167dcc979a1f9f7d1d5d41cd",  # noqa: E501
+        "fragment:executor-chat": "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070",  # noqa: E501
+        "fragment:executor-clarify": "9a9df160de21d2a395a34bd2df3f3eca4e3c54ee8db4df7eff18952c324cc1b9",  # noqa: E501
+        "fragment:executor-edit": "9e3f5b753d56f5f9b785404c0b6d8a2ec8e1baa2d1b0f40c32117815948bba85",  # noqa: E501
+        "fragment:executor-gate": "8d75f248938b7004f0ac7673898898aaa253ede5a56491b4d8891b64d379dffb",  # noqa: E501
+        "fragment:executor-issue": "fc5e0945e57c07e0d50a672301e9aee96d71d310844c0f067d5685b0ba61a4e9",  # noqa: E501
+        "fragment:executor-scope": "cb9d39fbfaf59de9bb7ba63947350905545657a454fc7560e59eb3a1a566a276",  # noqa: E501
+        "fragment:finalizer": "6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70",  # noqa: E501
+        "fragment:goal-controller": "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f",  # noqa: E501
+        "fragment:goal-finalizer": "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6",  # noqa: E501
+        "fragment:goal-interpreter": "b97020d17fb36755a88fceeacdb03ccba58d0ea56471375dd71c6fae8d567023",  # noqa: E501
         "fragment:public-language-v1": "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d",  # noqa: E501
         "fragment:rewrite": "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921",
         "fragment:router": "c177dad4180922e118c1a2ea9648c3909593fdafec835a19032d6e9445276f49",

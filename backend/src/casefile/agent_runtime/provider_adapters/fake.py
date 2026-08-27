@@ -9,13 +9,6 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Literal, cast
 
-from casefile_contracts import (
-    BriefIntakeCandidate as BriefIntakeCandidateContract,
-)
-from casefile_contracts import (
-    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
-)
-from casefile_contracts import Status as ClaimStatus
 from pydantic import BaseModel
 
 from casefile.agent_runtime.brief_to_draft_runtime import resolve_pipeline_spec
@@ -55,6 +48,18 @@ from casefile.agent_runtime.general_mutation import (
 from casefile.agent_runtime.general_mutation_prompt import (
     general_mutation_output_type,
     render_general_mutation_prompt,
+)
+from casefile.agent_runtime.goal.contracts import (
+    GoalDecisionOutput,
+    GoalUnderstandingOutput,
+)
+from casefile.agent_runtime.goal.provider import (
+    ChatEvidenceCollection,
+    GoalDecisionRequest,
+    GoalDecisionResult,
+    GoalFinalizerRequest,
+    GoalUnderstandingRequest,
+    GoalUnderstandingResult,
 )
 from casefile.agent_runtime.models import (
     CANDIDATE_STRATEGY_VERSION,
@@ -103,6 +108,9 @@ from casefile.agent_runtime.prompt import (
     chat_finalizer_output_type,
     render_chat_executor_prompt,
     render_chat_finalizer_prompt,
+    render_goal_controller_prompt,
+    render_goal_finalizer_prompt,
+    render_goal_interpreter_prompt,
 )
 from casefile.agent_runtime.prompt_repository import (
     system_prompt_for_task,
@@ -120,6 +128,13 @@ from casefile.agent_runtime.story_planner import (
     StoryPlannerRequest,
 )
 from casefile.contracts import validate_casefile
+from casefile_contracts import (
+    BriefIntakeCandidate as BriefIntakeCandidateContract,
+)
+from casefile_contracts import (
+    BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import Status as ClaimStatus
 
 
 def _fake_intent_understanding(message: str) -> ChatTaskUnderstandingOutput:
@@ -411,9 +426,18 @@ def _fake_chat_tool_metrics(request: CaseFileChatRequest) -> ChatToolMetrics:
 class FakeProvider:
     """Zero-cost deterministic provider for tests and local acceptance runs."""
 
-    def propose_skeleton(
-        self, request: SkeletonProposalRequest
-    ) -> SkeletonProposalResult:
+    def __init__(
+        self,
+        *,
+        goal_understanding: GoalUnderstandingOutput | None = None,
+        goal_decisions: tuple[GoalDecisionOutput, ...] = (),
+        goal_final_candidate: CaseFileChatCandidateV2 | None = None,
+    ) -> None:
+        self._goal_understanding = goal_understanding
+        self._goal_decisions = list(goal_decisions)
+        self._goal_final_candidate = goal_final_candidate
+
+    def propose_skeleton(self, request: SkeletonProposalRequest) -> SkeletonProposalResult:
         basis = request.planning_problem["object_refs"][0]
         proposal = {
             "schema_id": "compiler.skeleton-proposal.v1",
@@ -422,13 +446,12 @@ class FakeProvider:
                     **slot,
                     "purpose": (
                         "resolution"
-                        if slot["discourse_order"]
-                        == len(request.planning_problem["scene_slots"])
+                        if slot["discourse_order"] == len(request.planning_problem["scene_slots"])
                         else "investigation"
                     ),
-                    "presentation_mode": request.planning_problem["hard_constraints"][
-                        "structure"
-                    ]["allowed_presentation_modes"][0],
+                    "presentation_mode": request.planning_problem["hard_constraints"]["structure"][
+                        "allowed_presentation_modes"
+                    ][0],
                     "story_time_refs": [],
                     "participant_refs": [],
                     "basis_refs": [basis],
@@ -486,9 +509,7 @@ class FakeProvider:
             raw_output=None,
         )
 
-    def patch_story(
-        self, request: StoryPlannerPatchRequest
-    ) -> StoryPlannerPatchProviderResult:
+    def patch_story(self, request: StoryPlannerPatchRequest) -> StoryPlannerPatchProviderResult:
         return StoryPlannerPatchProviderResult(
             patch={
                 "schema_id": "compiler.story-plan-structural-patch.v1",
@@ -504,6 +525,7 @@ class FakeProvider:
             usage={"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
             raw_output=None,
         )
+
     def plan_general_mutation(
         self,
         request: GeneralMutationPlannerRequest,
@@ -1066,6 +1088,7 @@ class FakeProvider:
             "casefile-chat-v14",
             "casefile-chat-v15",
             "casefile-chat-v16",
+            "casefile-chat-v17",
         }:
             return self._chat_v14(request)
         render_chat_executor_prompt(request)
@@ -1091,37 +1114,9 @@ class FakeProvider:
 
     def _chat_v14(self, request: CaseFileChatRequest) -> CaseFileChatResult:
         render_chat_executor_prompt(request)
-        metrics = _fake_chat_tool_metrics(request)
-        ledger_payload = request.frozen_tool_ledger
-        if ledger_payload is None:
-            request.emit(
-                "model.tool_agent.started",
-                "gathering_evidence",
-                {"model_id": request.model_id},
-            )
-            if request.route is not None:
-                context = ChatToolContext(request=request, route=request.route, metrics=metrics)
-                ledger_payload = freeze_chat_tool_ledger(
-                    context,
-                    evidence_summary="FakeProvider 已核对冻结输入，未发现需要补充的外部证据。",
-                ).as_dict()
-            request.emit(
-                "model.tool_agent.completed",
-                "gathering_evidence",
-                {"usage": _zero_usage(), "tool_calls": metrics.calls},
-            )
-            request.emit(
-                "model.tool_ledger.frozen",
-                "finalizing",
-                {
-                    "ledger_hash": None
-                    if ledger_payload is None
-                    else ledger_payload.get("ledger_hash"),
-                    "entry_count": 0
-                    if ledger_payload is None
-                    else len(ledger_payload.get("entries", [])),
-                },
-            )
+        evidence = self.collect_chat_evidence(request)
+        metrics = evidence.tools
+        ledger_payload = evidence.ledger
         request, safe_patch_registry = _bind_safe_patch_registry(request, ledger_payload)
         finalizer_instructions, _finalizer_input = render_chat_finalizer_prompt(
             request,
@@ -1203,6 +1198,150 @@ class FakeProvider:
             tool_ledger=ledger_payload,
             safe_patch_registry=safe_patch_registry,
         )
+
+    def collect_chat_evidence(self, request: CaseFileChatRequest) -> ChatEvidenceCollection:
+        metrics = _fake_chat_tool_metrics(request)
+        ledger_payload = request.frozen_tool_ledger
+        if ledger_payload is None:
+            request.emit(
+                "model.tool_agent.started",
+                "gathering_evidence",
+                {"model_id": request.model_id},
+            )
+            if request.route is not None:
+                context = ChatToolContext(request=request, route=request.route, metrics=metrics)
+                ledger_payload = freeze_chat_tool_ledger(
+                    context,
+                    evidence_summary="FakeProvider 已核对冻结输入，未发现需要补充的外部证据。",
+                ).as_dict()
+            request.emit(
+                "model.tool_agent.completed",
+                "gathering_evidence",
+                {"usage": _zero_usage(), "tool_calls": metrics.calls},
+            )
+            request.emit(
+                "model.tool_ledger.frozen",
+                "finalizing",
+                {
+                    "ledger_hash": None
+                    if ledger_payload is None
+                    else ledger_payload.get("ledger_hash"),
+                    "entry_count": 0
+                    if ledger_payload is None
+                    else len(ledger_payload.get("entries", [])),
+                },
+            )
+        return ChatEvidenceCollection(
+            ledger=ledger_payload,
+            evidence_summary=(
+                "" if ledger_payload is None else str(ledger_payload.get("evidence_summary") or "")
+            ),
+            usage=_zero_usage(),
+            tools=metrics,
+        )
+
+    def understand_goal(self, request: GoalUnderstandingRequest) -> GoalUnderstandingResult:
+        instructions, _input = render_goal_interpreter_prompt(request)
+        request.chat.emit(
+            "agent.model_call.started",
+            "goal_understanding",
+            {
+                "component_id": "goal_interpreter",
+                "schema_id": "casefile-chat-goal-understanding-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.chat.model_id,
+                "prompt_sha256": sha256(instructions.encode("utf-8")).hexdigest(),
+            },
+        )
+        if self._goal_understanding is None:
+            raise ProviderProtocolError("FakeProvider goal_understanding script is required")
+        usage = _zero_usage()
+        output = self._goal_understanding.model_dump_json().encode("utf-8")
+        request.chat.emit(
+            "agent.model_call.completed",
+            "goal_understanding",
+            {
+                "component_id": "goal_interpreter",
+                "schema_id": "casefile-chat-goal-understanding-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(output).hexdigest(),
+                "output_size_bytes": len(output),
+                "usage": usage,
+            },
+        )
+        return GoalUnderstandingResult(candidate=self._goal_understanding, usage=usage)
+
+    def decide_goal(self, request: GoalDecisionRequest) -> GoalDecisionResult:
+        instructions, _input = render_goal_controller_prompt(request)
+        if not self._goal_decisions:
+            raise ProviderProtocolError("FakeProvider goal_decisions script is exhausted")
+        request.chat.emit(
+            "agent.model_call.started",
+            "goal_deciding",
+            {
+                "component_id": "goal_controller",
+                "schema_id": "casefile-chat-goal-decision-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.chat.model_id,
+                "prompt_sha256": sha256(instructions.encode("utf-8")).hexdigest(),
+            },
+        )
+        candidate = self._goal_decisions.pop(0)
+        usage = _zero_usage()
+        output = candidate.model_dump_json().encode("utf-8")
+        request.chat.emit(
+            "agent.model_call.completed",
+            "goal_deciding",
+            {
+                "component_id": "goal_controller",
+                "schema_id": "casefile-chat-goal-decision-v1",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(output).hexdigest(),
+                "output_size_bytes": len(output),
+                "usage": usage,
+            },
+        )
+        return GoalDecisionResult(candidate=candidate, usage=usage)
+
+    def finalize_goal(self, request: GoalFinalizerRequest) -> CaseFileChatResult:
+        instructions, _input = render_goal_finalizer_prompt(request)
+        candidate = self._goal_final_candidate or CaseFileChatCandidateV2(
+            answer="已完成全部分析与复核；若有修改，当前仅形成待审阅建议。",
+            suggestions=[],
+            audit_findings=[],
+        )
+        usage = _zero_usage()
+        request.chat.emit(
+            "agent.model_call.started",
+            "goal_finalizing",
+            {
+                "component_id": "goal_finalizer",
+                "schema_id": "casefile-chat-output-v2",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "model_id": request.chat.model_id,
+                "prompt_sha256": sha256(instructions.encode("utf-8")).hexdigest(),
+            },
+        )
+        output = candidate.model_dump_json().encode("utf-8")
+        request.chat.emit(
+            "agent.model_call.completed",
+            "goal_finalizing",
+            {
+                "component_id": "goal_finalizer",
+                "schema_id": "casefile-chat-output-v2",
+                "attempt_no": 1,
+                "protocol": "fake_strict",
+                "output_hash": sha256(output).hexdigest(),
+                "output_size_bytes": len(output),
+                "usage": usage,
+            },
+        )
+        return CaseFileChatResult(candidate=candidate, usage=usage)
 
     def compact_thread_memory(
         self,

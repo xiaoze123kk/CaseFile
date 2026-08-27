@@ -90,6 +90,8 @@ class GoalObservation(StrictAgentOutput):
     candidate_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     mutation_proof_ref: str | None = Field(default=None, max_length=128)
     verification_proof_refs: list[str] = Field(default_factory=list, max_length=20)
+    tool_calls: int = Field(default=0, ge=0, le=48)
+    provider_operations: int = Field(default=1, ge=0, le=14)
 
 
 class GoalCompletionDecision(StrictAgentOutput):
@@ -97,6 +99,32 @@ class GoalCompletionDecision(StrictAgentOutput):
     missing_obligation_ids: list[str] = Field(default_factory=list, max_length=6)
     reason_codes: list[str] = Field(default_factory=list, max_length=20)
     state_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class GoalInterpreterInputV1(StrictAgentOutput):
+    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    author_message: str = Field(min_length=1, max_length=100_000)
+
+
+class GoalControllerInputV1(StrictAgentOutput):
+    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    goal: FrozenGoal
+    observations: list[GoalObservation] = Field(default_factory=list, max_length=4)
+    budget: dict[str, int]
+    completion_feedback: GoalCompletionDecision | None = None
+
+
+class GoalFinalizerInputV1(StrictAgentOutput):
+    input_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    casefile: dict[str, Any]
+    thread_history: list[dict[str, Any]] = Field(default_factory=list)
+    author_message: str = Field(min_length=1, max_length=100_000)
+    focus: dict[str, Any] = Field(default_factory=dict)
+    validation: dict[str, Any] = Field(default_factory=dict)
+    goal: FrozenGoal
+    observations: list[GoalObservation] = Field(min_length=2, max_length=4)
+    completion: GoalCompletionDecision
+    mutation_proof: dict[str, Any] | None = None
 
 
 def jsonable(value: Any) -> Any:
@@ -110,12 +138,15 @@ __all__ = [
     "FrozenGoal",
     "GoalCapability",
     "GoalCompletionDecision",
+    "GoalControllerInputV1",
     "GoalDecisionOutput",
     "GoalObservation",
     "GoalObligation",
     "GoalObligationDraft",
     "GoalPlanItem",
     "GoalTargetState",
+    "GoalFinalizerInputV1",
+    "GoalInterpreterInputV1",
     "GoalUnderstandingOutput",
     "InvokeCapabilityAction",
 ]
