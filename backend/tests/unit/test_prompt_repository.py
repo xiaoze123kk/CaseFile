@@ -47,7 +47,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner": "story-planner-v3",
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
-    "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v5",
+    "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -73,6 +73,9 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v5"): {
         "system": "14621f7a5cd3296c8047d59a4640a448f77e8665a493d5b5f308ebe0369e6613"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v6"): {
+        "system": "b9f5ae3b9dc0b37f5ff36575fd2da7db8c12fbc2ef4b37c26b56578366a203f6"
     },
     ("story_planner", "story-planner-v7"): {
         "system": "ef52318d8e1efa20f436c4ed0162b98dcf2802f17a6ffd8746d6d6e24a995656"

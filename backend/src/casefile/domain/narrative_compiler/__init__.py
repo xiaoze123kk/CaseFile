@@ -132,12 +132,15 @@ from casefile.domain.narrative_compiler.scene_runtime_state import (
 from casefile.domain.narrative_compiler.scene_state_engine import (
     SCENE_EXECUTION_COMPILER_V2_VERSION,
     SCENE_PLAN_V2_SCHEMA_ID,
+    SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION,
     SCENE_STATE_ENGINE_VERSION,
     ScenePlanV2ValidationReport,
     ScenePlanV2Violation,
     compile_scene_plan_v2,
     inspect_scene_plan_v2,
     scene_plan_v2_component_fingerprint,
+    scene_plan_v2_semantic_projection,
+    scene_plan_v2_semantic_signature,
     validate_scene_plan_v2,
 )
 from casefile.domain.narrative_compiler.source_refs import (
@@ -233,6 +236,7 @@ __all__ = [
     "SCENE_PLAN_CANDIDATE_SCHEMA_ID",
     "SCENE_PLAN_SCHEMA_ID",
     "SCENE_PLAN_V2_SCHEMA_ID",
+    "SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION",
     "SCENE_STATE_ENGINE_VERSION",
     "SceneFillValidationError",
     "SceneCompilerRuntimeState",
@@ -259,6 +263,8 @@ __all__ = [
     "scene_plan_semantic_signature",
     "scene_plan_component_fingerprint",
     "scene_plan_v2_component_fingerprint",
+    "scene_plan_v2_semantic_projection",
+    "scene_plan_v2_semantic_signature",
     "scene_compiler_model_view_fingerprint",
     "project_scene_compiler_inbound_state",
     "scene_compiler_runtime_state_hash",

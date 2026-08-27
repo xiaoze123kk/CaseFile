@@ -399,3 +399,22 @@ def test_v5_prompt_requires_scene_local_dependencies() -> None:
     assert "同一个 scene_fill.beats 数组中严格更早出现的 local_key" in system_prompt
     assert "绝对不能在当前 Scene 的 depends_on 中引用" in system_prompt
     assert "当前 Scene 的第一个 Beat 必须使用空 depends_on" in system_prompt
+
+
+def test_v6_prompt_requires_allowed_knowledge_operations() -> None:
+    system_prompt, _, _ = render_scene_fill_prompt(
+        SceneFillBatchRequest(
+            task_run_id=1,
+            prompt_version="scene-compiler-semantic-fill-v6",
+            batch_view=_batch(1, "scene_1"),
+            inbound_state_hash="0" * 64,
+            input_hash="1" * 64,
+            model_id="fake",
+            api_key="unused",
+        )
+    )
+
+    assert "逐条服从 inbound_state.knowledge_operation_constraints" in system_prompt
+    assert "operation 是该约束 allowed_operations 中明确列出的值" in system_prompt
+    assert "绝对不能让该主体对该对象执行 misbelieve" in system_prompt
+    assert "保持 knowledge_transitions 为空" in system_prompt

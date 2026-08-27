@@ -6,12 +6,16 @@ import argparse
 import copy
 import json
 import os
+import random
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+
+from openai import OpenAI
+from pydantic import BaseModel, ConfigDict, Field
 
 from casefile.agent_runtime.prompt_repository import load_prompt
 from casefile.agent_runtime.provider_adapters.deepseek import DeepSeekAgentsProvider
@@ -28,6 +32,7 @@ from casefile.agent_runtime.scene_compiler import (
 from casefile.benchmark.eval_core import GraderResult
 from casefile.domain.narrative_compiler import (
     SCENE_COMPILER_MODEL_VIEW_PROJECTION_VERSION,
+    SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION,
     SCENE_STATE_ENGINE_VERSION,
     CompilerContractError,
     build_scene_compiler_input_v2,
@@ -38,14 +43,15 @@ from casefile.domain.narrative_compiler import (
     inspect_scene_plan_candidate,
     scene_compiler_model_view_fingerprint,
     scene_plan_semantic_signature,
+    scene_plan_v2_semantic_signature,
     validate_scene_compiler_input,
     validate_scene_plan_v2,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-SUITE_ROOT = REPO_ROOT / "fixtures" / "scene_plan_benchmark" / "v1"
+SUITE_ROOT = REPO_ROOT / "fixtures" / "scene_plan_benchmark" / "v2"
 PLANNER_SUITE_ROOT = REPO_ROOT / "fixtures" / "novel_plan_benchmark" / "v4"
-RUNNER_VERSION = "scene-plan-eval-v2.2-shadow"
+RUNNER_VERSION = "scene-plan-eval-v3-g3-g4"
 DIAGNOSTIC_PAYLOAD_POLICIES = ("hashes", "failed-proposal")
 CAPABILITIES = (
     "scene_decomposition",
@@ -65,6 +71,14 @@ G3_DIMENSIONS = (
     "constraint_clarity",
     "writer_executability",
 )
+G3_PROMPT_VERSION = "scene-plan-g3-pairwise-v2"
+G3_SYSTEM_PROMPT = (
+    "你是 ScenePlanIR 质量评审，只评分，不补写或修复内容。"
+    "输入包含同一冻结上下文下的两个匿名执行方案。"
+    "按 rubric 的五个维度分别独立给 plan_a 与 plan_b 打 0 到 1 分；"
+    "不要猜测哪个是参考答案，也不要因结构更长而自动给高分。"
+    '只返回 JSON：{"plan_a":{五个数字字段},"plan_b":{五个数字字段}}。'
+)
 FAILURE_CATEGORIES = (
     "Contract",
     "Planning Transfer",
@@ -74,14 +88,35 @@ FAILURE_CATEGORIES = (
     "Resolution",
     "Grounding",
     "Provenance",
+    "G4 Semantic Audit",
     "Infrastructure",
 )
 
 
+class SceneQualityScores(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    scene_specificity: float = Field(ge=0, le=1)
+    dramatic_progression: float = Field(ge=0, le=1)
+    beat_coherence: float = Field(ge=0, le=1)
+    constraint_clarity: float = Field(ge=0, le=1)
+    writer_executability: float = Field(ge=0, le=1)
+
+
+class SceneQualityComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    plan_a: SceneQualityScores
+    plan_b: SceneQualityScores
+
+
 def validate_suite() -> dict[str, Any]:
     suite = _read_json(SUITE_ROOT / "suite.json")
-    if suite.get("schema_id") != "benchmark.scene-plan-suite.v1":
+    if suite.get("schema_id") != "benchmark.scene-plan-suite.v2":
         raise ValueError("ScenePlan suite schema is invalid")
+    source_suite = _read_hashed(suite.get("source_suite"), label="source suite")
+    if source_suite.get("schema_id") != "benchmark.scene-plan-suite.v1":
+        raise ValueError("ScenePlan source suite schema is invalid")
     tasks = suite.get("tasks")
     if not isinstance(tasks, list) or len(tasks) != 24:
         raise ValueError("ScenePlan capability suite must contain exactly 24 tasks")
@@ -94,12 +129,43 @@ def validate_suite() -> dict[str, Any]:
         raise ValueError("ScenePlan G3 rubric contract is missing")
     rubric = _read_hashed(rubric_contract, label="G3 rubric")
     dimensions = rubric.get("dimensions")
-    if rubric.get("grader_status") != "contract_only" or not isinstance(dimensions, list):
+    if rubric.get("grader_status") != "active_pairwise" or not isinstance(dimensions, list):
         raise ValueError("ScenePlan G3 rubric is invalid")
+    if (
+        rubric.get("judge_protocol") != "blind_pairwise-empty-retry-v2"
+        or rubric.get("judge_provider") != "deepseek"
+        or rubric.get("judge_model_id") != "deepseek-v4-flash"
+    ):
+        raise ValueError("ScenePlan G3 judge identity drifted")
     if tuple(item.get("id") for item in dimensions) != G3_DIMENSIONS:
         raise ValueError("ScenePlan G3 dimensions drifted")
     if any(item.get("minimum") != 0.0 or item.get("maximum") != 1.0 for item in dimensions):
         raise ValueError("ScenePlan G3 score range is invalid")
+    formal_qualification = suite.get("formal_qualification")
+    if (
+        not isinstance(formal_qualification, dict)
+        or formal_qualification.get("provider") != "deepseek"
+        or formal_qualification.get("model_id") != "deepseek-v4-pro"
+        or formal_qualification.get("quality_grader_provider") != rubric["judge_provider"]
+        or formal_qualification.get("quality_grader_model_id") != rubric["judge_model_id"]
+        or formal_qualification.get("trials_per_task") != 3
+    ):
+        raise ValueError("ScenePlan formal qualification identity drifted")
+    promotion_gate = suite.get("promotion_gate")
+    required_gate_fields = {
+        "passed_trials_min",
+        "pass_at_3_tasks_min",
+        "all_trials_pass_tasks_min",
+        "infrastructure_failures_max",
+        "g3_infrastructure_failures_max",
+        "g3_bootstrap_seed",
+        "g3_bootstrap_iterations",
+        "g3_mean_delta_lower_bound_min",
+        "g3_dimension_mean_delta_min",
+        "g4_audit_failures_max",
+    }
+    if not isinstance(promotion_gate, dict) or set(promotion_gate) != required_gate_fields:
+        raise ValueError("ScenePlan promotion gate contract drifted")
 
     planner_suite = _read_json(PLANNER_SUITE_ROOT / "suite.json")
     planner_tasks = {str(item["task_id"]): item for item in planner_suite.get("tasks", [])}
@@ -107,6 +173,7 @@ def validate_suite() -> dict[str, Any]:
     runtime_inputs: dict[str, dict[str, Any]] = {}
     model_views: dict[str, dict[str, Any]] = {}
     references: dict[str, dict[str, Any]] = {}
+    runtime_references: dict[str, dict[str, Any]] = {}
     alternatives: dict[str, dict[str, Any]] = {}
     for task in tasks:
         task_id = str(task["task_id"])
@@ -153,6 +220,19 @@ def validate_suite() -> dict[str, Any]:
         runtime_bundle = _runtime_bundle(task, bundle, planner_tasks)
         runtime_inputs[task_id] = runtime_bundle
         model_views[task_id] = build_scene_compiler_model_view(runtime_bundle)
+        runtime_reference = _read_hashed(
+            task.get("runtime_reference"), label=f"runtime reference {task_id}"
+        )
+        if (
+            runtime_reference.get("source", {}).get("scene_compiler_input_hash")
+            != runtime_bundle["source"]["input_hash"]
+        ):
+            raise ValueError(f"ScenePlan runtime reference input drifted: {task_id}")
+        if task["runtime_reference"].get("semantic_signature") != scene_plan_v2_semantic_signature(
+            runtime_reference
+        ):
+            raise ValueError(f"ScenePlan runtime reference signature drifted: {task_id}")
+        runtime_references[task_id] = runtime_reference
         references[task_id] = reference
 
     mutations: list[dict[str, Any]] = []
@@ -172,6 +252,7 @@ def validate_suite() -> dict[str, Any]:
         "runtime_inputs": runtime_inputs,
         "model_views": model_views,
         "references": references,
+        "runtime_references": runtime_references,
         "alternatives": alternatives,
         "mutations": mutations,
     }
@@ -269,11 +350,11 @@ def grade_candidate(
         evidence={"invariants": invariant_results, "metrics": metrics},
     )
     g3 = GraderResult(
-        grader_id="g3_quality_contract",
+        grader_id="g3_rubric_contract",
         severity="soft",
         passed=tuple(item["id"] for item in rubric["dimensions"]) == G3_DIMENSIONS,
         score=0.0,
-        evidence={"status": "contract_only", "dimensions": list(G3_DIMENSIONS)},
+        evidence={"status": "not_run", "dimensions": list(G3_DIMENSIONS)},
     )
     signature: str | None = None
     if report.succeeded:
@@ -369,7 +450,7 @@ def _run_legacy_suite(*, suite_kind: str) -> dict[str, Any]:
             "suite_id": suite["suite_id"],
             "suite_hash": canonical_json_sha256(suite),
             "grader_versions": suite["grader_versions"],
-            "g3_status": "contract_only",
+            "g3_status": "not_run",
         },
         "metrics": {
             "trial_count": len(trials),
@@ -398,6 +479,7 @@ def run_suite(
     mode: str = "fake",
     provider_name: str = "deepseek",
     model_id: str = "fake-scene-compiler",
+    quality_grader_model: str | None = None,
     repeats: int = 1,
     checkpoint_path: Path | None = None,
     resume: bool = False,
@@ -433,8 +515,14 @@ def run_suite(
             raise ValueError("ScenePlan formal qualification contract is missing")
         if repeats != int(qualification["trials_per_task"]):
             raise ValueError("Formal ScenePlan baseline requires exactly 3 trials per task")
-        if provider_name != qualification["provider"] or model_id != qualification["model_id"]:
-            raise ValueError("Formal ScenePlan baseline requires the exact Pro model")
+        if (
+            provider_name != qualification["provider"]
+            or model_id != qualification["model_id"]
+            or quality_grader_model != qualification["quality_grader_model_id"]
+        ):
+            raise ValueError(
+                "Formal ScenePlan qualification requires the exact Pro generator and Flash G3 judge"
+            )
 
     prompt = load_prompt("scene_compiler_semantic_fill", SCENE_SEMANTIC_FILL_PROMPT_VERSION)
     fingerprint_payload = {
@@ -448,6 +536,13 @@ def run_suite(
         "prompt_sha256": prompt.system_prompt_sha256,
         "provider": provider_name,
         "model_id": model_id,
+        "quality_grader_provider": "deepseek",
+        "quality_grader_model": quality_grader_model,
+        "quality_grader_prompt_version": G3_PROMPT_VERSION,
+        "quality_grader_prompt_hash": canonical_json_sha256(
+            {"system_prompt": G3_SYSTEM_PROMPT, "rubric": validated["rubric"]}
+        ),
+        "g4_signature_version": SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION,
         "mode": mode,
         "repeats": repeats,
         "diagnostic_payload_policy": diagnostic_payload_policy,
@@ -508,9 +603,13 @@ def run_suite(
                     provider=provider,
                     provider_name=provider_name,
                     model_id=model_id,
+                    mode=mode,
+                    quality_grader_model=quality_grader_model,
                     api_key=key,
                     bundle=validated["runtime_inputs"][task_id],
                     model_view=validated["model_views"][task_id],
+                    runtime_reference=validated["runtime_references"][task_id],
+                    rubric=validated["rubric"],
                     fingerprint=fingerprint,
                     diagnostic_payload_policy=diagnostic_payload_policy,
                 )
@@ -524,6 +623,7 @@ def run_suite(
         trials=trials,
         complete_capability=complete_capability,
         formal=formal,
+        promotion_thresholds=suite.get("promotion_gate"),
     )
     if checkpoint_path is not None:
         _write_json(checkpoint_path, {**report, "partial": False})
@@ -533,9 +633,11 @@ def run_suite(
 class _AlternativeSceneProvider:
     def __init__(self, provider: SceneCompilerProvider) -> None:
         self._provider = provider
+        self._original_proposals: list[dict[str, Any]] = []
 
     def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
         result = self._provider.fill_scene_batch(request)
+        self._original_proposals.append(copy.deepcopy(result.proposal))
         proposal = copy.deepcopy(result.proposal)
         for scene in proposal["scenes"]:
             scene["dramatic_goal"] = f"另一种合法执行：{scene['dramatic_goal']}"
@@ -549,11 +651,13 @@ class _AlternativeSceneProvider:
             raw_output=result.raw_output,
         )
 
+    @property
+    def original_proposals(self) -> list[dict[str, Any]]:
+        return copy.deepcopy(self._original_proposals)
+
 
 class _CapturingSceneProvider:
-    def __init__(
-        self, provider: SceneCompilerProvider, *, diagnostic_payload_policy: str
-    ) -> None:
+    def __init__(self, provider: SceneCompilerProvider, *, diagnostic_payload_policy: str) -> None:
         self._provider = provider
         self._diagnostic_payload_policy = diagnostic_payload_policy
         self.calls: list[dict[str, Any]] = []
@@ -640,9 +744,13 @@ def _run_v2_runtime_trial(
     provider: SceneCompilerProvider,
     provider_name: str,
     model_id: str,
+    mode: str,
+    quality_grader_model: str | None,
     api_key: str,
     bundle: dict[str, Any],
     model_view: dict[str, Any],
+    runtime_reference: dict[str, Any],
+    rubric: dict[str, Any],
     fingerprint: str,
     diagnostic_payload_policy: str,
 ) -> dict[str, Any]:
@@ -657,6 +765,7 @@ def _run_v2_runtime_trial(
             "model_view_hash": canonical_json_sha256(model_view),
         }
     )
+    alternative_provider = provider if isinstance(provider, _AlternativeSceneProvider) else None
     capturing_provider = _CapturingSceneProvider(
         provider, diagnostic_payload_policy=diagnostic_payload_policy
     )
@@ -682,6 +791,36 @@ def _run_v2_runtime_trial(
             for invariant in task["outcome_invariants"]
             if metrics[str(invariant["kind"])] < float(invariant["minimum"])
         ]
+        semantic_signature = scene_plan_v2_semantic_signature(scene_plan)
+        g4_reference_signature = None
+        g4_semantic_equivalent = None
+        if alternative_provider is not None:
+            reference_scene_plan = compile_scene_plan_v2(
+                scene_compiler_input=bundle,
+                semantic_fills=alternative_provider.original_proposals,
+            )
+            g4_reference_signature = scene_plan_v2_semantic_signature(reference_scene_plan)
+            g4_semantic_equivalent = semantic_signature == g4_reference_signature
+        g4_passed = g4_semantic_equivalent is not False
+        g3 = _ungraded_quality_result(quality_grader_model)
+        if mode == "live" and quality_grader_model is not None:
+            g3_started = time.perf_counter()
+            try:
+                g3 = _live_quality_comparison(
+                    model_id=quality_grader_model,
+                    task_id=task_id,
+                    trial_index=trial_index,
+                    rubric=rubric,
+                    model_view=model_view,
+                    candidate=scene_plan,
+                    reference=runtime_reference,
+                )
+            except Exception as error:
+                g3 = _failed_quality_result(
+                    quality_grader_model,
+                    error,
+                    latency_ms=(time.perf_counter() - g3_started) * 1000,
+                )
         stages = capturing_provider.report_calls(failed=False)
         return {
             "trial_id": f"{task_id}:trial-{trial_index}",
@@ -693,13 +832,13 @@ def _run_v2_runtime_trial(
             "provider": provider_name,
             "model_id": model_id,
             "provider_invoked": True,
-            "passed": not outcome_failures,
+            "passed": not outcome_failures and g4_passed,
             "accepted": True,
-            "reason_code": "ok",
+            "reason_code": "ok" if g4_passed else "compiler_scene_g4_semantic_regression",
             "infrastructure_failure": None,
             "outcome_failures": outcome_failures,
             "metrics": metrics,
-            "semantic_signature": _scene_plan_v2_semantic_signature(scene_plan),
+            "semantic_signature": semantic_signature,
             "scene_plan_hash": canonical_json_sha256(scene_plan),
             "failure_evidence": None,
             "stages": stages,
@@ -709,8 +848,24 @@ def _run_v2_runtime_trial(
                 "g0_contract": True,
                 "g1_replay": True,
                 "g2_outcome": not outcome_failures,
-                "g3_status": "contract_only",
-                "g4_signature": True,
+                "g3_status": g3["status"],
+                "g3_model_id": quality_grader_model,
+                "g3_scores": g3["scores"],
+                "g3_reference_scores": g3["reference_scores"],
+                "g3_deltas": g3["deltas"],
+                "g3_candidate_slot": g3["candidate_slot"],
+                "g3_usage": g3["usage"],
+                "g3_latency_ms": g3["latency_ms"],
+                "g3_infrastructure_failure": g3["infrastructure_failure"],
+                "g3_known_limitation": "same_provider_family_bias",
+                "g4_version": SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION,
+                "g4_signature": semantic_signature,
+                "g4_frozen_reference_signature": scene_plan_v2_semantic_signature(
+                    runtime_reference
+                ),
+                "g4_regression_reference_signature": g4_reference_signature,
+                "g4_semantic_equivalent": g4_semantic_equivalent,
+                "g4_passed": g4_passed,
             },
         }
     except CompilerContractError as error:
@@ -1057,27 +1212,111 @@ def _capability_metrics_v2(bundle: dict[str, Any], scene_plan: dict[str, Any]) -
     }
 
 
-def _scene_plan_v2_semantic_signature(scene_plan: dict[str, Any]) -> str:
-    return canonical_json_sha256(
-        {
-            "scenes": [
-                {
-                    key: value
-                    for key, value in scene.items()
-                    if key not in {"dramatic_goal", "conflict", "outcome"}
-                }
-                for scene in scene_plan["scenes"]
-            ],
-            "beats": [
-                {key: value for key, value in beat.items() if key != "directive"}
-                for beat in scene_plan["beats"]
-            ],
-            "edges": scene_plan["edges"],
-            "initial_state": scene_plan["initial_state"],
-            "final_state": scene_plan["final_state"],
-            "indexes": scene_plan["indexes"],
-        }
+def _ungraded_quality_result(model_id: str | None) -> dict[str, Any]:
+    return {
+        "status": "not_run" if model_id is None else "not_applicable",
+        "scores": {},
+        "reference_scores": {},
+        "deltas": {},
+        "candidate_slot": None,
+        "usage": {},
+        "latency_ms": 0.0,
+        "infrastructure_failure": None,
+    }
+
+
+def _failed_quality_result(
+    model_id: str, error: Exception, *, latency_ms: float
+) -> dict[str, Any]:
+    return {
+        **_ungraded_quality_result(model_id),
+        "status": "infrastructure_failure",
+        "latency_ms": latency_ms,
+        "infrastructure_failure": {"type": type(error).__name__},
+    }
+
+
+def _live_quality_comparison(
+    *,
+    model_id: str,
+    task_id: str,
+    trial_index: int,
+    rubric: dict[str, Any],
+    model_view: dict[str, Any],
+    candidate: dict[str, Any],
+    reference: dict[str, Any],
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    candidate_slot = (
+        "plan_a"
+        if int(canonical_json_sha256([task_id, trial_index])[:2], 16) % 2 == 0
+        else "plan_b"
     )
+    plans = {
+        candidate_slot: candidate,
+        "plan_b" if candidate_slot == "plan_a" else "plan_a": reference,
+    }
+    payload = {
+        "rubric": rubric["dimensions"],
+        "frozen_context": model_view,
+        **plans,
+    }
+    client = OpenAI(
+        api_key=_runtime_api_key("deepseek"),
+        base_url="https://api.deepseek.com",
+        max_retries=2,
+    )
+    usage_totals = {
+        "requests": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0,
+    }
+    content = None
+    for _attempt in range(2):
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[
+                {"role": "system", "content": G3_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+                },
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+        )
+        usage = response.usage
+        usage_totals["requests"] += 1
+        usage_totals["input_tokens"] += int(getattr(usage, "prompt_tokens", 0) or 0)
+        usage_totals["output_tokens"] += int(getattr(usage, "completion_tokens", 0) or 0)
+        usage_totals["total_tokens"] += int(getattr(usage, "total_tokens", 0) or 0)
+        usage_totals["cached_tokens"] += int(
+            getattr(usage, "prompt_cache_hit_tokens", 0) or 0
+        )
+        content = response.choices[0].message.content
+        if content:
+            break
+    if not content:
+        raise RuntimeError("ScenePlan G3 grader returned no content after empty-response retry")
+    comparison = SceneQualityComparison.model_validate_json(content).model_dump(mode="json")
+    reference_slot = "plan_b" if candidate_slot == "plan_a" else "plan_a"
+    scores = comparison[candidate_slot]
+    reference_scores = comparison[reference_slot]
+    return {
+        "status": "graded",
+        "scores": scores,
+        "reference_scores": reference_scores,
+        "deltas": {
+            dimension: float(scores[dimension]) - float(reference_scores[dimension])
+            for dimension in G3_DIMENSIONS
+        },
+        "candidate_slot": candidate_slot,
+        "usage": usage_totals,
+        "latency_ms": (time.perf_counter() - started) * 1000,
+        "infrastructure_failure": None,
+    }
 
 
 def _runtime_report(
@@ -1088,6 +1327,7 @@ def _runtime_report(
     trials: list[dict[str, Any]],
     complete_capability: bool,
     formal: bool,
+    promotion_thresholds: object,
 ) -> dict[str, Any]:
     passed_count = sum(bool(item["passed"]) for item in trials)
     infrastructure = [item for item in trials if item["infrastructure_failure"]]
@@ -1114,41 +1354,233 @@ def _runtime_report(
         }
         for task_id, values in sorted(by_task.items())
     }
+    accepted_count = sum(bool(item["accepted"]) for item in trials)
+    g3_infrastructure = [
+        item for item in trials if item.get("graders", {}).get("g3_infrastructure_failure")
+    ]
+    g3_distribution = _g3_distribution(trials)
+    g3_bootstrap = _g3_paired_bootstrap(trials, promotion_thresholds)
+    g4_audit_failures = [
+        item for item in trials if item.get("graders", {}).get("g4_passed") is False
+    ]
+    g4_signatures = [
+        str(item["semantic_signature"])
+        for item in trials
+        if isinstance(item.get("semantic_signature"), str)
+    ]
+    g4_by_task = {
+        task_id: len(
+            {
+                str(item["semantic_signature"])
+                for item in values
+                if isinstance(item.get("semantic_signature"), str)
+            }
+        )
+        for task_id, values in sorted(by_task.items())
+    }
+    metrics = {
+        "trial_count": len(trials),
+        "passed_trial_count": passed_count,
+        "pass_rate": passed_count / len(trials) if trials else 0.0,
+        "accepted_trial_count": accepted_count,
+        "infrastructure_failure_count": len(infrastructure),
+        "failure_taxonomy": {
+            category: failure_taxonomy.get(category, 0) for category in FAILURE_CATEGORIES
+        },
+        "failure_batch_ordinals": dict(sorted(failure_batch_ordinals.items())),
+        "pass_at_k_task_count": sum(bool(item["pass_at_k"]) for item in task_results.values()),
+        "all_trials_pass_task_count": sum(
+            bool(item["all_trials_passed"]) for item in task_results.values()
+        ),
+        "latency_ms_total": sum(float(item["latency_ms"]) for item in trials),
+        "usage_total": _usage_total(trials),
+        "g3_usage_total": _g3_usage_total(trials),
+        "g3_latency_ms_total": sum(
+            float(item.get("graders", {}).get("g3_latency_ms", 0.0)) for item in trials
+        ),
+        "g3_infrastructure_failure_count": len(g3_infrastructure),
+        "g3_quality_distribution": g3_distribution,
+        "g3_paired_bootstrap": g3_bootstrap,
+        "g4_audited_trial_count": len(g4_signatures),
+        "g4_audit_failure_count": len(g4_audit_failures),
+        "g4_unique_signature_count": len(set(g4_signatures)),
+        "g4_unique_signatures_by_task": g4_by_task,
+        "g4_regression_equivalence_evaluated_count": sum(
+            item.get("graders", {}).get("g4_semantic_equivalent") is not None for item in trials
+        ),
+        "by_capability": _group_results(by_capability),
+        "by_variant": _group_results(by_variant),
+        "task_results": task_results,
+    }
+    promotion = _promotion_gate(
+        formal=formal,
+        complete_capability=complete_capability,
+        thresholds=promotion_thresholds,
+        metrics=metrics,
+        trials=trials,
+    )
     baseline_completed = formal and complete_capability and len(trials) == 72
     qualification = {
-        "status": "baseline_observed" if baseline_completed else "uncalibrated",
-        "qualified": False,
-        "reason": ("promotion_gate_not_frozen" if baseline_completed else "live_baseline_not_run"),
+        "status": (
+            "qualified"
+            if promotion["qualified"]
+            else "evaluated_not_qualified"
+            if promotion["evaluated"]
+            else "uncalibrated"
+        ),
+        "qualified": promotion["qualified"],
+        "reason": (
+            "all_promotion_checks_passed"
+            if promotion["qualified"]
+            else "promotion_checks_failed"
+            if promotion["evaluated"]
+            else "fresh_full_g3_g4_run_required"
+        ),
+        "baseline_completed": baseline_completed,
     }
     return {
-        "schema_id": "benchmark.scene-plan-report.v3",
+        "schema_id": "benchmark.scene-plan-report.v4",
         "status": "passed" if passed_count == len(trials) else "failed",
         "suite_kind": suite_kind,
         "fingerprint": fingerprint,
         "frozen": fingerprint_payload,
-        "metrics": {
-            "trial_count": len(trials),
-            "passed_trial_count": passed_count,
-            "pass_rate": passed_count / len(trials) if trials else 0.0,
-            "accepted_trial_count": sum(bool(item["accepted"]) for item in trials),
-            "infrastructure_failure_count": len(infrastructure),
-            "failure_taxonomy": {
-                category: failure_taxonomy.get(category, 0) for category in FAILURE_CATEGORIES
-            },
-            "failure_batch_ordinals": dict(sorted(failure_batch_ordinals.items())),
-            "pass_at_k_task_count": sum(bool(item["pass_at_k"]) for item in task_results.values()),
-            "all_trials_pass_task_count": sum(
-                bool(item["all_trials_passed"]) for item in task_results.values()
-            ),
-            "latency_ms_total": sum(float(item["latency_ms"]) for item in trials),
-            "usage_total": _usage_total(trials),
-            "by_capability": _group_results(by_capability),
-            "by_variant": _group_results(by_variant),
-            "task_results": task_results,
-        },
+        "metrics": metrics,
+        "promotion_gate": promotion,
         "qualification": qualification,
         "trials": trials,
     }
+
+
+def _promotion_gate(
+    *,
+    formal: bool,
+    complete_capability: bool,
+    thresholds: object,
+    metrics: dict[str, Any],
+    trials: list[dict[str, Any]],
+) -> dict[str, Any]:
+    if not formal or not complete_capability or not isinstance(thresholds, dict):
+        return {
+            "evaluated": False,
+            "qualified": False,
+            "reason": "formal_complete_capability_required",
+            "checks": {},
+        }
+    g3 = metrics["g3_paired_bootstrap"]
+    checks = {
+        "complete_24x3": len(trials) == 72,
+        "passed_trials": metrics["passed_trial_count"] >= thresholds["passed_trials_min"],
+        "pass_at_3_tasks": metrics["pass_at_k_task_count"] >= thresholds["pass_at_3_tasks_min"],
+        "all_trials_pass_tasks": metrics["all_trials_pass_task_count"]
+        >= thresholds["all_trials_pass_tasks_min"],
+        "infrastructure_failures": metrics["infrastructure_failure_count"]
+        <= thresholds["infrastructure_failures_max"],
+        "g3_infrastructure_failures": metrics["g3_infrastructure_failure_count"]
+        <= thresholds["g3_infrastructure_failures_max"],
+        "g3_all_accepted_trials_graded": metrics["g3_quality_distribution"]["graded_trial_count"]
+        == metrics["accepted_trial_count"],
+        "g3_bootstrap_complete": bool(g3.get("evaluated")),
+        "g3_mean_delta_lower_bound": float(g3.get("mean_delta_ci95_lower", -1.0))
+        >= thresholds["g3_mean_delta_lower_bound_min"],
+        "g3_dimension_non_regression": bool(g3.get("dimension_mean_deltas"))
+        and all(
+            float(value) >= thresholds["g3_dimension_mean_delta_min"]
+            for value in g3.get("dimension_mean_deltas", {}).values()
+        ),
+        "g4_all_accepted_trials_audited": metrics["g4_audited_trial_count"]
+        == metrics["accepted_trial_count"],
+        "g4_audit_failures": metrics["g4_audit_failure_count"]
+        <= thresholds["g4_audit_failures_max"],
+    }
+    return {"evaluated": True, "qualified": all(checks.values()), "checks": checks}
+
+
+def _g3_distribution(trials: list[dict[str, Any]]) -> dict[str, Any]:
+    graded = [trial for trial in trials if trial.get("graders", {}).get("g3_status") == "graded"]
+    by_dimension: dict[str, dict[str, float]] = {}
+    all_candidate_scores: list[float] = []
+    all_reference_scores: list[float] = []
+    all_deltas: list[float] = []
+    for dimension in G3_DIMENSIONS:
+        candidate_scores = [float(item["graders"]["g3_scores"][dimension]) for item in graded]
+        reference_scores = [
+            float(item["graders"]["g3_reference_scores"][dimension]) for item in graded
+        ]
+        deltas = [float(item["graders"]["g3_deltas"][dimension]) for item in graded]
+        all_candidate_scores.extend(candidate_scores)
+        all_reference_scores.extend(reference_scores)
+        all_deltas.extend(deltas)
+        by_dimension[dimension] = {
+            "count": float(len(candidate_scores)),
+            "candidate_mean": _mean(candidate_scores),
+            "reference_mean": _mean(reference_scores),
+            "mean_delta": _mean(deltas),
+        }
+    return {
+        "graded_trial_count": len(graded),
+        "candidate_mean": _mean(all_candidate_scores),
+        "reference_mean": _mean(all_reference_scores),
+        "mean_delta": _mean(all_deltas),
+        "by_dimension": by_dimension,
+    }
+
+
+def _g3_paired_bootstrap(trials: list[dict[str, Any]], thresholds: object) -> dict[str, Any]:
+    if not isinstance(thresholds, dict):
+        return {"evaluated": False, "reason": "thresholds_missing"}
+    task_ids = sorted({str(item["task_id"]) for item in trials})
+    task_deltas: dict[str, dict[str, float]] = {}
+    for task_id in task_ids:
+        task_trials = [
+            item
+            for item in trials
+            if item["task_id"] == task_id and item.get("graders", {}).get("g3_status") == "graded"
+        ]
+        if not task_trials:
+            return {
+                "evaluated": False,
+                "reason": "missing_task_cluster",
+                "task_id": task_id,
+            }
+        task_deltas[task_id] = {
+            dimension: _mean(
+                [float(item["graders"]["g3_deltas"][dimension]) for item in task_trials]
+            )
+            for dimension in G3_DIMENSIONS
+        }
+    dimension_mean_deltas = {
+        dimension: _mean([task_deltas[task_id][dimension] for task_id in task_ids])
+        for dimension in G3_DIMENSIONS
+    }
+    task_mean_deltas = {task_id: _mean(list(task_deltas[task_id].values())) for task_id in task_ids}
+    seed = int(thresholds.get("g3_bootstrap_seed", 20260827))
+    iterations = int(thresholds.get("g3_bootstrap_iterations", 10000))
+    generator = random.Random(seed)
+    samples = sorted(
+        _mean([task_mean_deltas[generator.choice(task_ids)] for _ in task_ids])
+        for _ in range(iterations)
+    )
+    lower_index = max(0, int(0.025 * iterations) - 1)
+    upper_index = min(iterations - 1, int(0.975 * iterations))
+    return {
+        "evaluated": True,
+        "seed": seed,
+        "iterations": iterations,
+        "task_cluster_count": len(task_ids),
+        "mean_delta": _mean(list(task_mean_deltas.values())),
+        "mean_delta_ci95_lower": samples[lower_index],
+        "mean_delta_ci95_upper": samples[upper_index],
+        "dimension_mean_deltas": dimension_mean_deltas,
+    }
+
+
+def _g3_usage_total(trials: list[dict[str, Any]]) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for trial in trials:
+        for key, value in trial.get("graders", {}).get("g3_usage", {}).items():
+            if isinstance(value, int):
+                result[key] = result.get(key, 0) + value
+    return result
 
 
 def _reason_category(reason_code: str) -> str:
@@ -1164,6 +1596,8 @@ def _reason_category(reason_code: str) -> str:
         return "Resolution"
     if "provenance" in reason_code or "basis" in reason_code:
         return "Provenance"
+    if "g4" in reason_code:
+        return "G4 Semantic Audit"
     if "actor" in reason_code or "location" in reason_code or "reference" in reason_code:
         return "Grounding"
     if "coverage" in reason_code:
@@ -1594,6 +2028,7 @@ def main() -> None:
     parser.add_argument("--mode", choices=("fake", "live"), default="fake")
     parser.add_argument("--provider", choices=("openai", "deepseek"), default="deepseek")
     parser.add_argument("--model", default="fake-scene-compiler")
+    parser.add_argument("--quality-grader-model", default="deepseek-v4-flash")
     parser.add_argument("--repeats", type=int, default=1)
     parser.add_argument("--checkpoint-path", type=Path)
     parser.add_argument("--resume", action="store_true")
@@ -1613,6 +2048,7 @@ def main() -> None:
         mode=args.mode,
         provider_name=args.provider,
         model_id=args.model,
+        quality_grader_model=args.quality_grader_model,
         repeats=args.repeats,
         checkpoint_path=args.checkpoint_path,
         resume=args.resume,
@@ -1624,7 +2060,7 @@ def main() -> None:
         / "backend"
         / "var"
         / "benchmark"
-        / f"scene-plan-{args.suite_kind}-{args.mode}-v2.json"
+        / f"scene-plan-{args.suite_kind}-{args.mode}-v3.json"
     )
     _write_json(report_path, report)
     print(json.dumps(report, ensure_ascii=False, indent=2))

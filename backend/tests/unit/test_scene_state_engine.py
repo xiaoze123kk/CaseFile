@@ -18,6 +18,8 @@ from casefile.domain.narrative_compiler import (
     canonicalize_novel_plan,
     compile_scene_plan_v2,
     inspect_scene_plan_v2,
+    scene_plan_v2_semantic_projection,
+    scene_plan_v2_semantic_signature,
     validate_scene_plan_v2,
 )
 from casefile_contracts import ScenePlanIRV2
@@ -83,6 +85,25 @@ def test_scene_plan_v2_is_deterministic_typed_and_replayable() -> None:
     assert validate_scene_plan_v2(
         first, scene_compiler_input=bundle, semantic_fills=fills
     ).schema_id == "compiler.scene-plan.v2"
+
+
+def test_scene_plan_v2_semantic_signature_ignores_wording_but_binds_structure() -> None:
+    bundle, fills = _input_and_fills()
+    compiled = compile_scene_plan_v2(scene_compiler_input=bundle, semantic_fills=fills)
+    rewritten = deepcopy(compiled)
+    rewritten["scenes"][0]["dramatic_goal"] = "同义改写后的戏剧目标。"
+    rewritten["scenes"][0]["conflict"] = "同义改写后的冲突。"
+    rewritten["scenes"][0]["outcome"] = "同义改写后的结果。"
+    rewritten["beats"][0]["directive"] = "同义改写后的执行指令。"
+    semantic_drift = deepcopy(compiled)
+    semantic_drift["scenes"][0]["objective"] = "改变后的权威场景目标。"
+
+    projection = scene_plan_v2_semantic_projection(compiled)
+    assert projection["signature_version"] == ("compiler.scene-plan-v2-semantic-signature.v1")
+    assert scene_plan_v2_semantic_signature(rewritten) == scene_plan_v2_semantic_signature(compiled)
+    assert scene_plan_v2_semantic_signature(semantic_drift) != scene_plan_v2_semantic_signature(
+        compiled
+    )
 
 
 def test_state_engine_applies_knowledge_location_and_cross_scene_setup_payoff() -> None:

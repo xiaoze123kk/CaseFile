@@ -26,6 +26,7 @@ from casefile.domain.narrative_compiler.scene_runtime_state import (
 SCENE_PLAN_V2_SCHEMA_ID = "compiler.scene-plan.v2"
 SCENE_EXECUTION_COMPILER_V2_VERSION = "compiler.scene-execution.v2"
 SCENE_STATE_ENGINE_VERSION = "compiler.scene-state-engine.v1"
+SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION = "compiler.scene-plan-v2-semantic-signature.v1"
 
 
 @dataclass(frozen=True)
@@ -136,6 +137,44 @@ def scene_plan_v2_component_fingerprint(
         "scene_compiler_input_hash": scene_compiler_input_hash,
         "semantic_fill_hash": semantic_fill_hash,
     }
+
+
+def scene_plan_v2_semantic_projection(
+    scene_plan: ScenePlanIRV2 | dict[str, Any],
+) -> dict[str, Any]:
+    """Project only executable semantics, excluding model-owned presentation wording."""
+
+    try:
+        value = (
+            scene_plan.model_dump(mode="json")
+            if isinstance(scene_plan, ScenePlanIRV2)
+            else ScenePlanIRV2.model_validate(scene_plan).model_dump(mode="json")
+        )
+    except ValidationError as error:
+        raise CompilerContractError("compiler_scene_plan_v2_contract_invalid") from error
+    return {
+        "signature_version": SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION,
+        "chapters": value["chapters"],
+        "scenes": [
+            {key: item[key] for key in item if key not in {"dramatic_goal", "conflict", "outcome"}}
+            for item in value["scenes"]
+        ],
+        "beats": [
+            {key: item[key] for key in item if key != "directive"} for item in value["beats"]
+        ],
+        "edges": value["edges"],
+        "initial_state": value["initial_state"],
+        "final_state": value["final_state"],
+        "indexes": value["indexes"],
+    }
+
+
+def scene_plan_v2_semantic_signature(
+    scene_plan: ScenePlanIRV2 | dict[str, Any],
+) -> str:
+    """Hash the versioned ScenePlanIR v2 executable-semantic projection."""
+
+    return canonical_json_sha256(scene_plan_v2_semantic_projection(scene_plan))
 
 
 def _compile_scene_plan_v2_raw(
@@ -609,6 +648,7 @@ def _ref_key(ref: dict[str, str]) -> str:
 
 __all__ = [
     "SCENE_EXECUTION_COMPILER_V2_VERSION",
+    "SCENE_PLAN_V2_SEMANTIC_SIGNATURE_VERSION",
     "SCENE_PLAN_V2_SCHEMA_ID",
     "SCENE_STATE_ENGINE_VERSION",
     "ScenePlanV2ValidationReport",
@@ -616,5 +656,7 @@ __all__ = [
     "compile_scene_plan_v2",
     "inspect_scene_plan_v2",
     "scene_plan_v2_component_fingerprint",
+    "scene_plan_v2_semantic_projection",
+    "scene_plan_v2_semantic_signature",
     "validate_scene_plan_v2",
 ]
