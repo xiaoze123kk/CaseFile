@@ -4,14 +4,13 @@ import os
 from dataclasses import replace
 from pathlib import Path
 
-from sqlalchemy import select
-
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
     GeneralMutationPlannerResult,
     MutationPlanV2,
 )
+from casefile.agent_runtime.goal.contracts import GoalDecisionOutput, GoalUnderstandingOutput
 from casefile.agent_runtime.models import (
     CaseFileChatResult,
     CaseFileChatSuggestionCandidate,
@@ -19,6 +18,8 @@ from casefile.agent_runtime.models import (
     IntentConstraintsOutput,
     IntentUnderstandingResult,
 )
+from casefile.benchmark.chat_goal_qualification import _public_task
+from casefile.benchmark.chat_goal_suite import load_chat_goal_suite
 from casefile.benchmark.chat_public_language_executor import (
     PostgresPublicLanguageExecutor,
     _EphemeralCredentialProvider,
@@ -29,6 +30,7 @@ from casefile.benchmark.chat_public_language_qualification import (
     load_public_language_suite,
 )
 from casefile.data_postgres.models import AgentModelCall, AgentStepRun, TaskEvent, TaskRun
+from sqlalchemy import select
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -346,6 +348,113 @@ def test_create_event_reaches_public_patch_with_exact_time_and_no_auto_apply(
     assert row.unsafe_patch is False
     assert row.capability_failures == ()
     assert row.model_call_count == 2
+    assert row.model_call_evidence_complete is True
+    assert row.unterminated_model_call_count == 0
+
+
+def test_goal_executor_injects_ephemeral_key_through_wrapped_requests(
+    workflow_database,  # type: ignore[no-untyped-def]
+) -> None:
+    del workflow_database
+    task = next(
+        item
+        for item in load_chat_goal_suite().tasks
+        if item.task_id == "goal_read_timeline_audit"
+    )
+    provider = FakeProvider(
+        goal_understanding=GoalUnderstandingOutput.model_validate(
+            {
+                "goal": "分析并审计当前时间线",
+                "confidence": 1.0,
+                "obligations": [
+                    {
+                        "kind": "analysis",
+                        "target_state": "baseline",
+                        "source_excerpt": "分析时间线",
+                    },
+                    {
+                        "kind": "audit",
+                        "target_state": "baseline",
+                        "source_excerpt": "审计其中的因果矛盾",
+                        "depends_on": [1],
+                    },
+                ],
+            }
+        ),
+        goal_decisions=(
+            GoalDecisionOutput.model_validate(
+                {
+                    "plan_items": [
+                        {"obligation_id": "obl_1", "status": "pending"},
+                        {"obligation_id": "obl_2", "status": "pending"},
+                    ],
+                    "action": {
+                        "action": "invoke_capability",
+                        "capability": "analyze",
+                        "obligation_ids": ["obl_1"],
+                        "target_state": "baseline",
+                    },
+                }
+            ),
+            GoalDecisionOutput.model_validate(
+                {
+                    "plan_items": [
+                        {"obligation_id": "obl_1", "status": "completed"},
+                        {"obligation_id": "obl_2", "status": "pending"},
+                    ],
+                    "action": {
+                        "action": "invoke_capability",
+                        "capability": "audit",
+                        "obligation_ids": ["obl_2"],
+                        "target_state": "baseline",
+                    },
+                }
+            ),
+            GoalDecisionOutput.model_validate(
+                {
+                    "plan_items": [
+                        {"obligation_id": "obl_1", "status": "completed"},
+                        {"obligation_id": "obl_2", "status": "completed"},
+                    ],
+                    "action": {"action": "finish"},
+                }
+            ),
+        ),
+    )
+    executor = PostgresPublicLanguageExecutor(
+        repo_root=ROOT,
+        database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
+        api_key="ephemeral-test-secret",
+        provider_factory=lambda document, secret: _EphemeralCredentialProvider(
+            document,
+            secret,
+            provider,
+        ),
+        expected_model_id="deepseek-v4-pro",
+        expected_prompt_version="casefile-chat-v17",
+        goal_rollout="active",
+    )
+    try:
+        row = executor.execute_trial(
+            _public_task(task),
+            trial_no=1,
+            model_id="deepseek-v4-pro",
+            prompt_version="casefile-chat-v17",
+        )
+        diagnostic = executor.diagnostic_snapshot()
+    finally:
+        executor.close()
+
+    assert row.infrastructure_failure is None
+    assert row.task_passed is True
+    assert {step["component_id"] for step in diagnostic["steps"]} >= {
+        "goal_interpreter",
+        "goal_controller",
+        "goal_finalizer",
+    }
+    assert row.no_auto_apply is True
+    assert row.unsafe_patch is False
+    assert row.capability_failures == ()
     assert row.model_call_evidence_complete is True
     assert row.unterminated_model_call_count == 0
 

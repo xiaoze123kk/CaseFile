@@ -11,7 +11,7 @@
     "evidence": {"file": "evidence.md", "sha256": "a3b9186a6631e691c569edaca48f59667f22f2e6267c70886611bdd7e75415bc"},
     "finalizer": {"file": "finalizer.md", "sha256": "6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70"},
     "public-language-v1": {"file": "public-language-v1.md", "sha256": "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d"},
-    "goal-interpreter": {"file": "goal-interpreter.md", "sha256": "b97020d17fb36755a88fceeacdb03ccba58d0ea56471375dd71c6fae8d567023"},
+    "goal-interpreter": {"file": "goal-interpreter.md", "sha256": "1473a810aa85b207a7ca2c6f7db15cc04a0f919889220ecce9f736cbb77dedd2"},
     "goal-controller": {"file": "goal-controller.md", "sha256": "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f"},
     "goal-finalizer": {"file": "goal-finalizer.md", "sha256": "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6"},
     "executor-chat": {"file": "executor-chat.md", "sha256": "c2c695fe5335daa3e6a3dd86bbd85d6688ddb150504751ff672b465bd3bc1070"},

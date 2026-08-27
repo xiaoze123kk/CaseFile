@@ -205,9 +205,11 @@ class GoalExecutionRunner:
                 raise GoalExecutionError("goal_budget_exhausted")
             if capability.tools.calls + tools.calls > budget.max_total_tool_calls:
                 raise GoalExecutionError("goal_budget_exhausted")
-            if len(capability.summary) > budget.max_observation_chars:
-                raise GoalExecutionError("goal_capability_blocked")
-            total_observation_chars += len(capability.summary)
+            observation_summary = _bounded_observation_summary(
+                capability.summary,
+                max_chars=budget.max_observation_chars,
+            )
+            total_observation_chars += len(observation_summary)
             if total_observation_chars > budget.max_total_observation_chars:
                 raise GoalExecutionError("goal_budget_exhausted")
             observation = GoalObservation(
@@ -216,7 +218,7 @@ class GoalExecutionRunner:
                 obligation_ids=action.obligation_ids,
                 target_state=action.target_state,
                 status="completed",
-                summary=capability.summary,
+                summary=observation_summary,
                 object_refs=list(capability.object_refs),
                 evidence_refs=list(capability.evidence_refs),
                 action_hash=action_hash,
@@ -333,6 +335,15 @@ def _merge_usage(records: list[dict[str, Any]]) -> dict[str, Any]:
             else:
                 merged[key] = value
     return merged
+
+
+def _bounded_observation_summary(value: str, *, max_chars: int) -> str:
+    if len(value) <= max_chars:
+        return value
+    marker = "\n[Goal Observation 已截断；完整结果由 output_hash 与 ledger_hash 证明。]"
+    if max_chars <= len(marker):
+        return marker[:max_chars]
+    return value[: max_chars - len(marker)] + marker
 
 
 def _merge_tools(target: ToolMetrics, source: ToolMetrics) -> None:

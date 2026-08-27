@@ -444,7 +444,7 @@ EXPECTED_RELEASE_HASHES = {
         "fragment:finalizer": "6ed167febbe9549dcd1ec49691ed7046a10bf469441f084b8a7cc147b5101c70",  # noqa: E501
         "fragment:goal-controller": "fc324770b91351c315c51a4ff49acf66303e0a19b2029da4debda125b0bb3d1f",  # noqa: E501
         "fragment:goal-finalizer": "698c45e55c74afe551eb664d18b99cd6fdd9812bf2bd3c2a188753e6627056a6",  # noqa: E501
-        "fragment:goal-interpreter": "b97020d17fb36755a88fceeacdb03ccba58d0ea56471375dd71c6fae8d567023",  # noqa: E501
+        "fragment:goal-interpreter": "1473a810aa85b207a7ca2c6f7db15cc04a0f919889220ecce9f736cbb77dedd2",  # noqa: E501
         "fragment:public-language-v1": "f4074e81a9edfd0fcd7334eeb602b3ca3c8ec6e66cb612ab05d68ea0603b158d",  # noqa: E501
         "fragment:rewrite": "38c0d859578e72a889d2b03cae396c547fec436122881e068e90b89f12c5e921",
         "fragment:router": "c177dad4180922e118c1a2ea9648c3909593fdafec835a19032d6e9445276f49",

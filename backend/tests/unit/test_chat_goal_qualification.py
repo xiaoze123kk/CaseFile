@@ -1,9 +1,9 @@
 from dataclasses import replace
 
 import pytest
-
 from casefile.benchmark.chat_goal_qualification import (
     GoalTrialEvidence,
+    _fatal_infrastructure_failure,
     _report,
     _trial_progress_line,
 )
@@ -103,3 +103,43 @@ def test_goal_qualification_requires_complete_frozen_72_trials() -> None:
     )
     assert failed["qualified"] is False
     assert failed["metrics"]["auto_apply"] == 1
+
+
+def test_goal_qualification_excludes_infrastructure_from_capability_rate() -> None:
+    row = GoalTrialEvidence(
+        task_id="task_1",
+        family="read_only",
+        trial_no=1,
+        expected_path="goal",
+        completed=False,
+        passed=False,
+        goal_observed=False,
+        completion_observed=False,
+        obligation_coverage=0.0,
+        patch_present=False,
+        no_auto_apply=True,
+        public_contract_valid=False,
+        internal_leak=False,
+        sensitive_leak=False,
+        unsafe_patch=False,
+        model_evidence_complete=False,
+        exact_model=False,
+        exact_prompt=False,
+        infrastructure_failure="provider_transport:provider_4xx",
+        failures=("trial_not_completed",),
+    )
+    report = _report(
+        [row],
+        source={"revision": "a" * 40, "clean": True},
+        source_stable=True,
+        suite_fingerprint="b" * 64,
+        database_revision="head",
+        prompt_fingerprint="c" * 64,
+        runtime_fingerprint="d" * 64,
+    )
+
+    assert report["qualification_outcome"] == "inconclusive_infrastructure"
+    assert report["metrics"]["task_pass_rate"] is None
+    assert report["metrics"]["capability_trial_count"] == 0
+    assert _fatal_infrastructure_failure(row.infrastructure_failure) is True
+    assert _fatal_infrastructure_failure("provider_transport:provider_timeout") is False

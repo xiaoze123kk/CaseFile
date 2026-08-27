@@ -107,8 +107,8 @@ class _EphemeralCredentialProvider:
         def call(*arguments: Any, **keywords: Any) -> Any:
             positional = list(arguments)
             request = positional[0] if positional else keywords.get("request")
-            if request is not None and hasattr(request, "api_key"):
-                request = replace(request, api_key=self.api_key)
+            if request is not None:
+                request = _inject_ephemeral_api_key(request, self.api_key)
                 if positional:
                     positional[0] = request
                 else:
@@ -116,6 +116,17 @@ class _EphemeralCredentialProvider:
             return target(*positional, **keywords)
 
         return call
+
+
+def _inject_ephemeral_api_key(request: Any, api_key: str) -> Any:
+    """Replace direct and Goal-wrapped chat credentials without mutating frozen input."""
+
+    if hasattr(request, "api_key"):
+        return replace(request, api_key=api_key)
+    chat = getattr(request, "chat", None)
+    if chat is not None and hasattr(chat, "api_key"):
+        return replace(request, chat=replace(chat, api_key=api_key))
+    return request
 
 
 class PostgresPublicLanguageExecutor:
@@ -222,7 +233,7 @@ class PostgresPublicLanguageExecutor:
                 rollout_environment = (
                     {"CASEFILE_CHAT_GOAL_ROLLOUT": self.goal_rollout}
                     if self.goal_rollout is not None
-                    else {}
+                    else {"CASEFILE_CHAT_GOAL_ROLLOUT": "off"}
                 )
                 with mock_patch.dict(os.environ, rollout_environment, clear=False):
                     receipt_payload = self._json_response(
@@ -464,7 +475,7 @@ class PostgresPublicLanguageExecutor:
             )
         if internal_task is not None:
             internal_error_code = internal_task.error_code
-        infrastructure_failure = _infrastructure_failure(internal_task)
+        infrastructure_failure = _infrastructure_failure(internal_task, model_call_events)
         model_call_count = len(calls)
         started_event_count = sum(
             event.event_type == "agent.model_call.started" for event in model_call_events
@@ -770,11 +781,12 @@ class PostgresPublicLanguageExecutor:
         return response.json()
 
 
-def _infrastructure_failure(task: TaskRun | None) -> str | None:
+def _infrastructure_failure(
+    task: TaskRun | None,
+    model_call_events: Sequence[TaskEvent] = (),
+) -> str | None:
     if task is None:
         return "task_run_missing"
-    if task.status != "failed":
-        return None
     values: set[str] = set()
 
     def walk(value: Any) -> None:
@@ -788,20 +800,36 @@ def _infrastructure_failure(task: TaskRun | None) -> str | None:
             for nested in value:
                 walk(nested)
 
-    walk(task.error_details_jsonb or {})
-    if task.error_code:
-        values.add(task.error_code)
-    transport = next(
-        (
-            value
-            for value in sorted(values)
-            if value in _TRANSPORT_CODES
-            or value.startswith("provider_")
-            or value in {"timeout", "connection", "rate_limit", "server_5xx"}
-        ),
-        None,
-    )
-    return None if transport is None else f"provider_transport:{transport}"
+    if task.status == "failed":
+        walk(task.error_details_jsonb or {})
+        if task.error_code:
+            values.add(task.error_code)
+        transport = next(
+            (
+                value
+                for value in sorted(values)
+                if value in _TRANSPORT_CODES
+                or value.startswith("provider_")
+                or value in {"timeout", "connection", "rate_limit", "server_5xx"}
+            ),
+            None,
+        )
+        if transport is not None:
+            return f"provider_transport:{transport}"
+
+    for event in model_call_events:
+        if event.event_type != "agent.model_call.failed":
+            continue
+        payload = event.payload_jsonb or {}
+        error_class = payload.get("transport_error_class")
+        if (
+            payload.get("failure_layer") == "transport"
+            and payload.get("retry_exhausted") is True
+            and error_class
+            in {"timeout", "connection", "rate_limit", "provider_4xx", "provider_5xx"}
+        ):
+            return f"provider_transport:{error_class}"
+    return None
 
 
 def _brief(source_record_id: int) -> dict[str, Any]:

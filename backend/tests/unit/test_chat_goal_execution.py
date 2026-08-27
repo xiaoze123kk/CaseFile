@@ -128,6 +128,37 @@ def test_repeated_action_is_no_progress() -> None:
         )
 
 
+def test_goal_loop_bounds_observation_summary_without_discarding_proof() -> None:
+    provider = FakeProvider(
+        goal_decisions=(
+            _decision("analyze", "obl_1"),
+            _decision("audit", "obl_2"),
+            _finish(),
+        )
+    )
+
+    def verbose_capability(action, action_no: int) -> GoalCapabilityResult:
+        return GoalCapabilityResult(
+            summary="证据" * 100,
+            input_hash=stable_hash(["input", action_no]),
+            output_hash=stable_hash(["output", action_no]),
+            ledger_hash=stable_hash(["ledger", action_no]),
+        )
+
+    result = GoalExecutionRunner(provider).run(
+        _request(),
+        _goal(),
+        budget=GoalBudget(max_observation_chars=64),
+        execute_capability=verbose_capability,
+    )
+
+    assert result.completion.allowed is True
+    assert all(len(item.summary) == 64 for item in result.observations)
+    assert all(item.output_hash for item in result.observations)
+    assert all(item.ledger_hash for item in result.observations)
+    assert all("已截断" in item.summary for item in result.observations)
+
+
 @pytest.mark.parametrize(
     ("message", "entrypoint", "candidate"),
     [
