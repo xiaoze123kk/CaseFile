@@ -380,3 +380,22 @@ def test_v4_prompt_requires_setup_payoff_closed_loop() -> None:
     assert "同一 batch 的严格后续 Beat 能兑现" in system_prompt
     assert "当前 batch 必须兑现的显式 payoff 义务" in system_prompt
     assert "没有任何创建后未兑现的 setup" in system_prompt
+
+
+def test_v5_prompt_requires_scene_local_dependencies() -> None:
+    system_prompt, _, _ = render_scene_fill_prompt(
+        SceneFillBatchRequest(
+            task_run_id=1,
+            prompt_version="scene-compiler-semantic-fill-v5",
+            batch_view=_batch(1, "scene_1"),
+            inbound_state_hash="0" * 64,
+            input_hash="1" * 64,
+            model_id="fake",
+            api_key="unused",
+        )
+    )
+
+    assert "depends_on 是严格的 Scene-local 引用" in system_prompt
+    assert "同一个 scene_fill.beats 数组中严格更早出现的 local_key" in system_prompt
+    assert "绝对不能在当前 Scene 的 depends_on 中引用" in system_prompt
+    assert "当前 Scene 的第一个 Beat 必须使用空 depends_on" in system_prompt
