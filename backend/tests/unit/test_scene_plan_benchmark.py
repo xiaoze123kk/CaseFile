@@ -92,7 +92,7 @@ def test_scene_plan_reference_and_alternative_outcomes_pass() -> None:
     assert regression["metrics"]["trial_count"] == 8
     assert capability["qualification"]["qualified"] is False
     assert capability["schema_id"] == "benchmark.scene-plan-report.v3"
-    assert capability["frozen"]["pipeline_version"] == ("compiler.scene-compiler.shadow.v1")
+    assert capability["frozen"]["pipeline_version"] == ("compiler.scene-compiler.shadow.v2")
     assert all(item["provider_invoked"] for item in capability["trials"])
 
 
@@ -186,9 +186,7 @@ def test_scene_plan_report_fingerprint_is_deterministic() -> None:
     assert first["frozen"] == second["frozen"]
     assert first["metrics"]["task_results"] == second["metrics"]["task_results"]
     assert first["metrics"]["usage_total"] == second["metrics"]["usage_total"]
-    retained = run_suite(
-        suite_kind="regression", diagnostic_payload_policy="failed-proposal"
-    )
+    retained = run_suite(suite_kind="regression", diagnostic_payload_policy="failed-proposal")
     assert retained["fingerprint"] != first["fingerprint"]
 
 

@@ -8,13 +8,18 @@ from time import perf_counter
 from typing import Any, Protocol
 
 from casefile.domain.narrative_compiler import (
+    CompilerContractError,
+    advance_scene_compiler_runtime_state,
+    build_scene_compiler_runtime_state,
     canonical_json_sha256,
+    project_scene_compiler_inbound_state,
+    scene_compiler_runtime_state_hash,
     validate_scene_semantic_fill,
 )
 
-SCENE_COMPILER_PIPELINE_VERSION = "compiler.scene-compiler.shadow.v1"
+SCENE_COMPILER_PIPELINE_VERSION = "compiler.scene-compiler.shadow.v2"
 SCENE_COMPILER_PROMPT_BUNDLE_VERSION = "scene-compiler-shadow-v1"
-SCENE_SEMANTIC_FILL_PROMPT_VERSION = "scene-compiler-semantic-fill-v2"
+SCENE_SEMANTIC_FILL_PROMPT_VERSION = "scene-compiler-semantic-fill-v3"
 SCENE_SEMANTIC_FILL_SCHEMA_ID = "compiler.scene-semantic-fill.v1"
 
 
@@ -27,6 +32,7 @@ class SceneFillBatchRequest:
     input_hash: str
     model_id: str
     api_key: str
+    inbound_state: dict[str, Any] | None = None
     max_turns: int = 1
     network_retries: int = 0
     emit: Callable[[str, str, dict[str, Any]], None] = lambda *_: None
@@ -80,18 +86,18 @@ def execute_scene_semantic_fill(
 ) -> SceneCompilerExecution:
     """Fill deterministic chapter-local batches and chain every exact input hash."""
 
-    inbound_hash = initial_state_hash or canonical_json_sha256(
-        {"scene_compiler_state": "empty.v1"}
-    )
+    runtime_state = build_scene_compiler_runtime_state(model_view)
+    inbound_hash = scene_compiler_runtime_state_hash(runtime_state)
+    if initial_state_hash is not None and initial_state_hash != inbound_hash:
+        raise CompilerContractError("compiler_scene_initial_state_hash_mismatch")
     stages: list[SceneFillStage] = []
     proposals: list[dict[str, Any]] = []
     for batch in model_view["batches"]:
         batch_id = str(batch["batch_id"])
         batch_ordinal = int(batch["ordinal"])
-        input_hash = _batch_input_hash(component_hash, batch, inbound_hash)
-        recovered = (
-            None if recover_stage is None else recover_stage(batch_id, input_hash)
-        )
+        inbound_state = project_scene_compiler_inbound_state(runtime_state, batch_view=batch)
+        input_hash = _batch_input_hash(component_hash, batch, inbound_hash, inbound_state)
+        recovered = None if recover_stage is None else recover_stage(batch_id, input_hash)
         result: SceneFillBatchResult | None = None
         latency_ms = 0.0
         if recovered is None:
@@ -111,6 +117,7 @@ def execute_scene_semantic_fill(
                 input_hash=input_hash,
                 model_id=model_id,
                 api_key=api_key,
+                inbound_state=inbound_state,
                 max_turns=1,
                 network_retries=network_retries,
             )
@@ -121,13 +128,12 @@ def execute_scene_semantic_fill(
         else:
             raw_proposal = recovered
         proposal = validate_scene_semantic_fill(raw_proposal, batch_view=batch)
-        outbound_hash = canonical_json_sha256(
-            {
-                "inbound_state_hash": inbound_hash,
-                "batch_id": batch_id,
-                "proposal": proposal,
-            }
+        runtime_state = advance_scene_compiler_runtime_state(
+            runtime_state,
+            batch_view=batch,
+            semantic_fill=proposal,
         )
+        outbound_hash = scene_compiler_runtime_state_hash(runtime_state)
         stage = SceneFillStage(
             batch_id=batch_id,
             batch_ordinal=batch_ordinal,
@@ -149,7 +155,10 @@ def execute_scene_semantic_fill(
 
 
 def _batch_input_hash(
-    component_hash: str, batch: dict[str, Any], inbound_state_hash: str
+    component_hash: str,
+    batch: dict[str, Any],
+    inbound_state_hash: str,
+    inbound_state: dict[str, Any],
 ) -> str:
     return canonical_json_sha256(
         {
@@ -157,6 +166,7 @@ def _batch_input_hash(
             "stage": "scene_semantic_fill",
             "batch": batch,
             "inbound_state_hash": inbound_state_hash,
+            "inbound_state": inbound_state,
         }
     )
 

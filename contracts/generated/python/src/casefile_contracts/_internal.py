@@ -2054,6 +2054,60 @@ class SceneStateSeed(BaseModel):
     events: list[EventStateSeed]
 
 
+class SceneRuntimeKnowledgeState(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    subject_ref: ObjectRef
+    knows_refs: list[ObjectRef]
+    believes_refs: list[ObjectRef]
+    false_belief_refs: list[ObjectRef]
+
+
+class AllowedOperation(Enum):
+    learn = 'learn'
+    believe = 'believe'
+    misbelieve = 'misbelieve'
+    correct = 'correct'
+
+
+class SceneKnowledgeOperationConstraint(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    subject_ref: ObjectRef
+    object_ref: ObjectRef
+    allowed_operations: Annotated[list[AllowedOperation], Field(min_length=1)]
+
+
+class SceneCompilerOpenSetupState(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    setup_key: Annotated[str, Field(pattern='^setup_[a-z0-9][a-z0-9_]{0,100}$')]
+    setup_beat_id: Annotated[str, Field(pattern='^beat_[a-z0-9][a-z0-9_]{0,95}$')]
+
+
+class UsedSetupKey(RootModel[str]):
+    root: Annotated[str, Field(pattern='^setup_[a-z0-9][a-z0-9_]{0,100}$')]
+
+
+class SceneCompilerInboundState(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.scene-compiler-inbound-state.v1']
+    state_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    character_knowledge: list[SceneRuntimeKnowledgeState]
+    knowledge_operation_constraints: list[SceneKnowledgeOperationConstraint]
+    open_setups: list[SceneCompilerOpenSetupState]
+    used_setup_keys: list[UsedSetupKey]
+
+
 class Fact(RootModel[str]):
     root: Annotated[str, Field(max_length=2000, min_length=1)]
 

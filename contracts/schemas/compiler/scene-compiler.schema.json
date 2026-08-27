@@ -226,6 +226,83 @@
         }
       }
     },
+    "SceneRuntimeKnowledgeState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "knows_refs", "believes_refs", "false_belief_refs"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "knows_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "believes_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "false_belief_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneKnowledgeOperationConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "object_ref", "allowed_operations"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "allowed_operations": {
+          "type": "array",
+          "items": {"enum": ["learn", "believe", "misbelieve", "correct"]},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneCompilerOpenSetupState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup_key", "setup_beat_id"],
+      "properties": {
+        "setup_key": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+        "setup_beat_id": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"}
+      }
+    },
+    "SceneCompilerInboundState": {
+      "title": "SceneCompilerInboundState",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "state_hash", "character_knowledge",
+        "knowledge_operation_constraints", "open_setups", "used_setup_keys"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-compiler-inbound-state.v1"},
+        "state_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "character_knowledge": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneRuntimeKnowledgeState"}
+        },
+        "knowledge_operation_constraints": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneKnowledgeOperationConstraint"}
+        },
+        "open_setups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneCompilerOpenSetupState"}
+        },
+        "used_setup_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+          "uniqueItems": true
+        }
+      }
+    },
     "SceneObjectSummary": {
       "type": "object",
       "additionalProperties": false,

@@ -15,6 +15,7 @@ def render_scene_fill_prompt(
     payload = {
         "batch": request.batch_view,
         "inbound_state_hash": request.inbound_state_hash,
+        "inbound_state": request.inbound_state,
     }
     return (
         definition.system_prompt,

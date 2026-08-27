@@ -19,6 +19,9 @@ from casefile.domain.narrative_compiler.scene_compiler_input import (
     validate_scene_compiler_input_v2,
 )
 from casefile.domain.narrative_compiler.scene_fill import validate_scene_semantic_fill
+from casefile.domain.narrative_compiler.scene_runtime_state import (
+    allowed_scene_knowledge_operations,
+)
 
 SCENE_PLAN_V2_SCHEMA_ID = "compiler.scene-plan.v2"
 SCENE_EXECUTION_COMPILER_V2_VERSION = "compiler.scene-execution.v2"
@@ -94,9 +97,7 @@ def inspect_scene_plan_v2(
     )
     return ScenePlanV2ValidationReport(
         tuple(
-            ScenePlanV2Violation(code)
-            for field, code in checks
-            if actual[field] != expected[field]
+            ScenePlanV2Violation(code) for field, code in checks if actual[field] != expected[field]
         )
     )
 
@@ -143,9 +144,7 @@ def _compile_scene_plan_v2_raw(
     plan = bundle["novel_plan"]
     narrative = bundle["narrative_ir"]
     constraints = {item["scene_id"]: item for item in bundle["execution_constraints"]}
-    fill_by_scene = {
-        scene["scene_id"]: scene for fill in fills for scene in fill["scenes"]
-    }
+    fill_by_scene = {scene["scene_id"]: scene for fill in fills for scene in fill["scenes"]}
     source_refs = _source_ref_catalog(narrative)
     object_refs = _object_ref_catalog(narrative)
     state = _initial_state(bundle["state_seed"], object_refs)
@@ -180,21 +179,16 @@ def _compile_scene_plan_v2_raw(
             local_to_beat[beat_fill["local_key"]] = beat_id
             beat_dependencies[beat_id] = dependencies
             edges.extend(
-                _edge("beat_causes_beat", dependency, beat_id)
-                for dependency in dependencies
+                _edge("beat_causes_beat", dependency, beat_id) for dependency in dependencies
             )
             selected_obligations = [
                 obligations[key] for key in beat_fill["fulfills_obligation_keys"]
             ]
             event_refs = [
-                item["event_ref"]
-                for item in selected_obligations
-                if item["event_ref"] is not None
+                item["event_ref"] for item in selected_obligations if item["event_ref"] is not None
             ]
             exposure_actions = [
-                item["exposure"]
-                for item in selected_obligations
-                if item["exposure"] is not None
+                item["exposure"] for item in selected_obligations if item["exposure"] is not None
             ]
             resolution_actions = [
                 item["resolution"]
@@ -241,9 +235,7 @@ def _compile_scene_plan_v2_raw(
                 setup = state["open_setups"].get(payoff_key)
                 if setup is None or setup["setup_beat_id"] == beat_id:
                     raise CompilerContractError("compiler_scene_payoff_without_prior_setup")
-                edges.append(
-                    _edge("beat_pays_off_setup", setup["setup_beat_id"], beat_id)
-                )
+                edges.append(_edge("beat_pays_off_setup", setup["setup_beat_id"], beat_id))
                 payoff_beat_ids[payoff_key].append(beat_id)
                 del state["open_setups"][payoff_key]
             beat_source_refs = _refs_to_sources(beat_fill["basis_refs"], source_refs)
@@ -357,9 +349,7 @@ def _compile_scene_plan_v2_raw(
             "scene_count": len(scenes),
             "beat_count": len(beats),
             "exposure_count": len(exposure_scene_ids),
-            "resolution_action_count": sum(
-                len(scene["resolutions"]) for scene in plan["scenes"]
-            ),
+            "resolution_action_count": sum(len(scene["resolutions"]) for scene in plan["scenes"]),
             "knowledge_transition_count": knowledge_count,
             "location_assertion_count": location_count,
             "setup_count": len(setup_beat_ids),
@@ -377,9 +367,7 @@ def _initial_state(seed: dict[str, Any], object_refs: dict[str, dict[str, str]])
         )
         current["knows"].update(_ref_key(ref) for ref in item["knows_refs"])
         current["believes"].update(_ref_key(ref) for ref in item["believes_refs"])
-        current["false_beliefs"].update(
-            _ref_key(ref) for ref in item["false_belief_refs"]
-        )
+        current["false_beliefs"].update(_ref_key(ref) for ref in item["false_belief_refs"])
         current["believes"] -= current["knows"]
         current["false_beliefs"] -= current["knows"]
     locations: list[dict[str, Any]] = []
@@ -413,12 +401,8 @@ def _state_snapshot(state: dict[str, Any]) -> dict[str, Any]:
             {
                 "subject_ref": object_refs[subject_key],
                 "knows_refs": [object_refs[key] for key in sorted(values["knows"])],
-                "believes_refs": [
-                    object_refs[key] for key in sorted(values["believes"])
-                ],
-                "false_belief_refs": [
-                    object_refs[key] for key in sorted(values["false_beliefs"])
-                ],
+                "believes_refs": [object_refs[key] for key in sorted(values["believes"])],
+                "false_belief_refs": [object_refs[key] for key in sorted(values["false_beliefs"])],
             }
         )
     locations = sorted(
@@ -433,9 +417,7 @@ def _state_snapshot(state: dict[str, Any]) -> dict[str, Any]:
         "audience_exposure": [dict(state["audience"][key]) for key in sorted(state["audience"])],
         "character_knowledge": knowledge,
         "locations": locations,
-        "open_setups": [
-            state["open_setups"][key] for key in sorted(state["open_setups"])
-        ],
+        "open_setups": [state["open_setups"][key] for key in sorted(state["open_setups"])],
     }
 
 
@@ -458,6 +440,8 @@ def _apply_knowledge_transition(
         subject_key, {"knows": set(), "believes": set(), "false_beliefs": set()}
     )
     operation = transition["operation"]
+    if operation not in allowed_scene_knowledge_operations(current, object_key):
+        raise CompilerContractError("compiler_scene_known_fact_cannot_be_false_belief")
     if operation in {"learn", "correct"}:
         current["knows"].add(object_key)
         current["believes"].discard(object_key)
@@ -467,8 +451,6 @@ def _apply_knowledge_transition(
             current["believes"].add(object_key)
             current["false_beliefs"].discard(object_key)
     else:
-        if object_key in current["knows"]:
-            raise CompilerContractError("compiler_scene_known_fact_cannot_be_false_belief")
         current["false_beliefs"].add(object_key)
         current["believes"].discard(object_key)
 
@@ -526,16 +508,14 @@ def _travel_check(
     previous: dict[str, Any], current: dict[str, Any], narrative: dict[str, Any]
 ) -> str:
     event_values = {
-        _ref_key(item["object_ref"]): item["value"]
-        for item in narrative["objects"]["events"]
+        _ref_key(item["object_ref"]): item["value"] for item in narrative["objects"]["events"]
     }
     previous_time = _exact_time(previous["story_time_refs"], event_values)
     current_time = _exact_time(current["story_time_refs"], event_values)
     if previous_time is None or current_time is None or current_time <= previous_time:
         return "unverifiable"
     locations = {
-        _ref_key(item["object_ref"]): item["value"]
-        for item in narrative["objects"]["locations"]
+        _ref_key(item["object_ref"]): item["value"] for item in narrative["objects"]["locations"]
     }
     source = locations.get(_ref_key(previous["location_ref"]))
     if source is None:
@@ -585,9 +565,7 @@ def _apply_exposure(
 
 
 def _observer_refs(seed: dict[str, Any]) -> set[str]:
-    return {
-        _ref_key(ref) for event in seed["events"] for ref in event["observer_refs"]
-    }
+    return {_ref_key(ref) for event in seed["events"] for ref in event["observer_refs"]}
 
 
 def _source_ref_catalog(narrative: dict[str, Any]) -> dict[str, dict[str, Any]]:

@@ -1,0 +1,8 @@
+{
+  "agent_id": "scene_compiler_semantic_fill",
+  "version": "scene-compiler-semantic-fill-v3",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "ae1d70363cc2565037021090e71e2a4848f52f14a1c58f7baaa8702a94616fa3",
+  "previous_version": "scene-compiler-semantic-fill-v2",
+  "change_summary": "显式锁定 obligation.kind 与 Beat.kind 一致性，禁止跨 kind 合并 obligation。"
+}

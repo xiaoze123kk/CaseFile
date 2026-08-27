@@ -127,6 +127,109 @@ def test_exact_recovery_skips_provider_and_preserves_hash_chain() -> None:
     assert recovered.final_state_hash == baseline.final_state_hash
 
 
+def test_typed_state_rejects_an_unbound_initial_hash() -> None:
+    with pytest.raises(
+        CompilerContractError, match="compiler_scene_initial_state_hash_mismatch"
+    ):
+        execute_scene_semantic_fill(
+            FakeProvider(),
+            task_run_id=8,
+            model_view=_model_view(),
+            component_hash="3" * 64,
+            model_id="fake-scene-compiler",
+            api_key="unused",
+            initial_state_hash="0" * 64,
+        )
+
+
+def test_typed_inbound_state_carries_known_facts_and_open_setups() -> None:
+    model_view = _model_view(2)
+    claim = _ref("claim", "claim_manual_trigger")
+    for batch in model_view["batches"]:
+        batch["object_catalog"].append({"object_ref": claim, "label": "手动触发", "facts": []})
+    requests: list[SceneFillBatchRequest] = []
+
+    class StatefulProvider:
+        def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+            requests.append(request)
+            proposal = FakeProvider().fill_scene_batch(request).proposal
+            beat = proposal["scenes"][0]["beats"][0]
+            if request.batch_view["ordinal"] == 1:
+                beat["knowledge_transitions"] = [
+                    {
+                        "operation": "learn",
+                        "subject_ref": _ref("entity", "ent_actor"),
+                        "object_ref": claim,
+                        "basis_refs": [_ref("event", "evt_anchor")],
+                    }
+                ]
+                beat["setup_keys"] = ["setup_manual_trace"]
+            else:
+                beat["payoff_keys"] = ["setup_manual_trace"]
+            return SceneFillBatchResult(proposal=proposal, usage={})
+
+    execution = execute_scene_semantic_fill(
+        StatefulProvider(),
+        task_run_id=9,
+        model_view=model_view,
+        component_hash="4" * 64,
+        model_id="fake-scene-compiler",
+        api_key="unused",
+    )
+
+    second_state = requests[1].inbound_state
+    assert second_state is not None
+    assert second_state["schema_id"] == "compiler.scene-compiler-inbound-state.v1"
+    assert second_state["open_setups"] == [
+        {
+            "setup_key": "setup_manual_trace",
+            "setup_beat_id": "beat_scene_1_001",
+        }
+    ]
+    assert second_state["knowledge_operation_constraints"] == [
+        {
+            "subject_ref": _ref("entity", "ent_actor"),
+            "object_ref": claim,
+            "allowed_operations": ["learn", "believe", "correct"],
+        }
+    ]
+    assert execution.stages[1].outbound_state_hash != requests[1].inbound_state_hash
+
+
+def test_runtime_rejects_cross_batch_known_fact_misbelief() -> None:
+    model_view = _model_view(2)
+    claim = _ref("claim", "claim_manual_trigger")
+    for batch in model_view["batches"]:
+        batch["object_catalog"].append({"object_ref": claim, "label": "手动触发", "facts": []})
+
+    class InvalidStatefulProvider:
+        def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+            proposal = FakeProvider().fill_scene_batch(request).proposal
+            beat = proposal["scenes"][0]["beats"][0]
+            beat["knowledge_transitions"] = [
+                {
+                    "operation": ("learn" if request.batch_view["ordinal"] == 1 else "misbelieve"),
+                    "subject_ref": _ref("entity", "ent_actor"),
+                    "object_ref": claim,
+                    "basis_refs": [_ref("event", "evt_anchor")],
+                }
+            ]
+            return SceneFillBatchResult(proposal=proposal, usage={})
+
+    with pytest.raises(
+        CompilerContractError,
+        match="compiler_scene_known_fact_cannot_be_false_belief",
+    ):
+        execute_scene_semantic_fill(
+            InvalidStatefulProvider(),
+            task_run_id=10,
+            model_view=model_view,
+            component_hash="5" * 64,
+            model_id="fake-scene-compiler",
+            api_key="unused",
+        )
+
+
 def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency() -> None:
     batch = _batch(1, "scene_1")
     proposal = (
@@ -151,9 +254,7 @@ def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency()
         validate_scene_semantic_fill(invalid, batch_view=batch)
 
     invalid = deepcopy(proposal)
-    invalid["scenes"][0]["beats"][0]["target_refs"] = [
-        _ref("information_unit", "info_unknown")
-    ]
+    invalid["scenes"][0]["beats"][0]["target_refs"] = [_ref("information_unit", "info_unknown")]
     with pytest.raises(
         SceneFillValidationError, match="compiler_scene_fill_reference_invalid"
     ) as captured:
@@ -162,9 +263,7 @@ def test_fill_rejects_unknown_refs_duplicate_obligation_and_forward_dependency()
     assert captured.value.evidence["scene_id"] == "scene_1"
     assert captured.value.evidence["beat_local_key"] == "beat_local_scene_1_001"
     assert captured.value.evidence["json_path"] == "/scenes/0/beats/0/target_refs/0"
-    assert captured.value.evidence["emitted_ref"] == _ref(
-        "information_unit", "info_unknown"
-    )
+    assert captured.value.evidence["emitted_ref"] == _ref("information_unit", "info_unknown")
     assert captured.value.evidence["allowed_ref_count"] == 2
     assert len(captured.value.evidence["allowed_ref_hash"]) == 64
 
@@ -222,9 +321,7 @@ def test_v3_allowlist_is_visible_but_cannot_widen_validator_provenance() -> None
     assert captured.value.evidence["allowed_ref_count"] == 1
 
     batch["scenes"][0]["beat_basis_allowlist"].append(catalog_only)
-    with pytest.raises(
-        SceneFillValidationError, match="compiler_scene_fill_provenance_invalid"
-    ):
+    with pytest.raises(SceneFillValidationError, match="compiler_scene_fill_provenance_invalid"):
         validate_scene_semantic_fill(proposal, batch_view=batch)
 
 
@@ -246,3 +343,21 @@ def test_v2_prompt_distinguishes_catalog_membership_from_beat_provenance() -> No
     assert "object_catalog 只证明 ObjectRef 存在" in system_prompt
     assert "每一项都必须逐项来自" in system_prompt
     assert '"beat_basis_allowlist"' in user_prompt
+    assert '"inbound_state":null' in user_prompt
+
+
+def test_v3_prompt_requires_obligation_and_beat_kind_alignment() -> None:
+    system_prompt, _, _ = render_scene_fill_prompt(
+        SceneFillBatchRequest(
+            task_run_id=1,
+            prompt_version="scene-compiler-semantic-fill-v3",
+            batch_view=_batch(1, "scene_1"),
+            inbound_state_hash="0" * 64,
+            input_hash="1" * 64,
+            model_id="fake",
+            api_key="unused",
+        )
+    )
+
+    assert "Beat.kind 必须与该 obligation.kind 完全一致" in system_prompt
+    assert "同一个 Beat 不得合并不同 kind" in system_prompt
