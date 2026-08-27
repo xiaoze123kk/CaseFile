@@ -992,7 +992,9 @@ class ContentWorkflowMixin:
             }:
                 # Explicit immutable override for rollback or controlled evaluation.
                 prompt_version = rollout_prompt
-            goal_rollout = os.environ.get("CASEFILE_CHAT_GOAL_ROLLOUT", "").strip().lower()
+            goal_rollout = os.environ.get(
+                "CASEFILE_CHAT_GOAL_ROLLOUT", "active"
+            ).strip().lower()
             if goal_rollout in {"shadow", "active"}:
                 goal_runtime = GoalRuntimeConfig.model_validate({"mode": goal_rollout})
                 input_jsonb = {
