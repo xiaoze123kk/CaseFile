@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch as mock_patch
 
 from casefile_contracts import (
     PublicAgentEvent,
@@ -126,6 +128,9 @@ class PostgresPublicLanguageExecutor:
         database_url: str,
         api_key: str,
         provider_factory: Callable[[dict[str, Any], str], Any] | None = None,
+        expected_model_id: str = MODEL_ID,
+        expected_prompt_version: str = PROMPT_VERSION,
+        goal_rollout: str | None = None,
     ) -> None:
         try:
             database_name = make_url(database_url).database or ""
@@ -143,6 +148,9 @@ class PostgresPublicLanguageExecutor:
         self._provider_factory = provider_factory or (
             lambda document, secret: _EphemeralCredentialProvider(document, secret)
         )
+        self.expected_model_id = expected_model_id
+        self.expected_prompt_version = expected_prompt_version
+        self.goal_rollout = goal_rollout
         self._last_diagnostic: dict[str, Any] | None = None
         self.engine = create_database_engine(database_url)
         self.session_factory = create_session_factory(self.engine)
@@ -161,7 +169,7 @@ class PostgresPublicLanguageExecutor:
         prompt_version: str,
     ) -> PublicLanguageTrialEvidence:
         self._last_diagnostic = None
-        if model_id != MODEL_ID or prompt_version != PROMPT_VERSION:
+        if model_id != self.expected_model_id or prompt_version != self.expected_prompt_version:
             raise PublicLanguageExecutorError("public_language_runtime_binding_invalid")
         document = json.loads((self.repo_root / task.fixture).read_text(encoding="utf-8"))
         provider = self._provider_factory(document, self._api_key)
@@ -211,20 +219,26 @@ class PostgresPublicLanguageExecutor:
                     "thread_create_failed",
                 )
                 thread_id = int(thread["thread_id"])
-                receipt_payload = self._json_response(
-                    client.post(
-                        f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
-                        headers=headers,
-                        json={
-                            "expected_draft_id": draft_id,
-                            "expected_draft_revision": base_revision,
-                            "content": task.message,
-                            "provider": "deepseek",
-                        },
-                    ),
-                    202,
-                    "message_enqueue_failed",
+                rollout_environment = (
+                    {"CASEFILE_CHAT_GOAL_ROLLOUT": self.goal_rollout}
+                    if self.goal_rollout is not None
+                    else {}
                 )
+                with mock_patch.dict(os.environ, rollout_environment, clear=False):
+                    receipt_payload = self._json_response(
+                        client.post(
+                            f"/api/v1/projects/{project_id}/agent/threads/{thread_id}/messages",
+                            headers=headers,
+                            json={
+                                "expected_draft_id": draft_id,
+                                "expected_draft_revision": base_revision,
+                                "content": task.message,
+                                "provider": "deepseek",
+                            },
+                        ),
+                        202,
+                        "message_enqueue_failed",
+                    )
                 receipt = PublicAgentMessageReceipt.model_validate(receipt_payload)
                 if receipt.assistant_message.run is None:
                     raise PublicLanguageExecutorError("public_run_receipt_missing")
@@ -436,14 +450,18 @@ class PostgresPublicLanguageExecutor:
                     )
                 )
             )
-            patch_set_count = int(
-                session.scalar(
-                    select(func.count(AgentPatchSet.id)).where(
-                        AgentPatchSet.task_run_id == task_run_id
+            patch_set_count = (
+                int(
+                    session.scalar(
+                        select(func.count(AgentPatchSet.id)).where(
+                            AgentPatchSet.task_run_id == task_run_id
+                        )
                     )
+                    or 0
                 )
-                or 0
-            ) if task_run_id else 0
+                if task_run_id
+                else 0
+            )
         if internal_task is not None:
             internal_error_code = internal_task.error_code
         infrastructure_failure = _infrastructure_failure(internal_task)
@@ -469,9 +487,9 @@ class PostgresPublicLanguageExecutor:
             internal_task is not None
             and (
                 internal_task.provider != "deepseek"
-                or internal_task.model_id != MODEL_ID
+                or internal_task.model_id != self.expected_model_id
                 or any(
-                    call.provider != "deepseek" or call.model_id != MODEL_ID
+                    call.provider != "deepseek" or call.model_id != self.expected_model_id
                     for call in calls
                 )
             )
@@ -482,7 +500,8 @@ class PostgresPublicLanguageExecutor:
             and not model_binding_mismatch
         )
         exact_prompt = bool(
-            internal_task is not None and internal_task.prompt_version == PROMPT_VERSION
+            internal_task is not None
+            and internal_task.prompt_version == self.expected_prompt_version
         )
         leak_rules: set[str] = set()
         sensitive_leak = False
