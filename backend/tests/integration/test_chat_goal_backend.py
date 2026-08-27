@@ -101,6 +101,7 @@ def test_active_read_only_goal_persists_lineage_and_one_completed_message(
         patch_sets = list(
             session.scalars(select(AgentPatchSet).where(AgentPatchSet.task_run_id == task_id))
         )
+    with factory() as session:
         messages = WorkflowService(session).list_agent_messages(
             actor_id, project_id, int(thread["thread_id"])
         )

@@ -609,6 +609,16 @@ class ChatHandler:
                 {"reason_code": error.code},
             )
             raise
+        context.emit(
+            task.id,
+            "goal.completed",
+            "goal",
+            {
+                "state_hash": execution.completion.state_hash,
+                "observation_count": len(execution.observations),
+                "decision_calls": execution.decision_calls,
+            },
+        )
         self._complete_chat(
             task.id,
             context.attempt_id,
@@ -620,16 +630,6 @@ class ChatHandler:
         )
         context.state.candidate = execution.result.candidate.model_dump(mode="json")
         context.state.usage = execution.usage
-        context.emit(
-            task.id,
-            "goal.completed",
-            "goal",
-            {
-                "state_hash": execution.completion.state_hash,
-                "observation_count": len(execution.observations),
-                "decision_calls": execution.decision_calls,
-            },
-        )
         self._chat._maybe_compact_chat_thread(
             task,
             provider,
