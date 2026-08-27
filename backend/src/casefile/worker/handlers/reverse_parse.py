@@ -9,6 +9,7 @@ from casefile.worker.execution import ProviderRequirement, TaskExecutionContext
 from casefile.worker.executors.completion import CompletionExecutor
 from casefile.worker.failures import network_retries as _network_retries
 from casefile.worker.input_contracts import json_hash as _json_hash
+from casefile.worker.provider_resolution import required_provider_binding
 
 
 class ReverseParseHandler:
@@ -32,7 +33,7 @@ class ReverseParseHandler:
                 prompt_version=task.prompt_version,
                 blocks=deepcopy(blocks),
                 input_hash=task.input_hash,
-                model_id=task.model_id,
+                model_id=required_provider_binding(task)[1],
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(

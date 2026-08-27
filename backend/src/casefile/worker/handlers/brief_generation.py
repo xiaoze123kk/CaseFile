@@ -37,6 +37,7 @@ from casefile.worker.input_contracts import (
 from casefile.worker.input_contracts import (
     required_string as _required_string,
 )
+from casefile.worker.provider_resolution import required_provider_binding
 
 
 class BriefGenerationHandler:
@@ -146,7 +147,7 @@ class BriefGenerationHandler:
                 version_id=_required_string(frozen_version, "version_id"),
                 version_no=_required_integer(frozen_version, "version_no"),
                 parent_version_id=_optional_string(frozen_version, "parent_version_id"),
-                model_id=task.model_id,
+                model_id=required_provider_binding(task)[1],
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(

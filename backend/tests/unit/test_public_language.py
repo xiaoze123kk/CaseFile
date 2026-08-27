@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-
 from casefile.agent_runtime.chat_execution import ChatExecutionRunner
 from casefile.agent_runtime.models import (
     CaseFileChatAuditFindingCandidate,

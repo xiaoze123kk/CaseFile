@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any, Literal, cast
 
 from agents import Tool
@@ -12,6 +13,12 @@ from casefile_contracts import (
 )
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
+)
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
 )
 from openai import AsyncOpenAI
 from pydantic import BaseModel
@@ -30,6 +37,16 @@ from casefile.agent_runtime.closure_repair import (
 from casefile.agent_runtime.closure_repair_prompt import (
     closure_repair_output_type,
     render_closure_repair_prompt,
+)
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SemanticFillResult,
+    SkeletonProposalRequest,
+    SkeletonProposalResult,
+)
+from casefile.agent_runtime.constraint_first_story_planner_prompt import (
+    render_semantic_fill_prompt,
+    render_skeleton_proposal_prompt,
 )
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
@@ -118,6 +135,16 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _run_chat_tool_agent,
     _validate_polish_candidate,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
+from casefile.agent_runtime.story_planner_prompt import (
+    render_story_planner_patch_prompt,
+    render_story_planner_prompt,
+)
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
@@ -128,6 +155,169 @@ class DeepSeekAgentsProvider:
 
     base_url = "https://api.deepseek.com"
 
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)
+        proposal, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SkeletonProposal,
+                schema_id="compiler.skeleton-proposal.v1",
+                stage="skeleton_proposal",
+            )
+        )
+        return SkeletonProposalResult(proposal, usage, raw_output)
+
+    def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_semantic_fill_prompt(request)
+        fill, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SemanticFillProposal,
+                schema_id="compiler.semantic-fill.v1",
+                stage="semantic_fill",
+            )
+        )
+        return SemanticFillResult(fill, usage, raw_output)
+
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_prompt(request)
+        candidate, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=NovelPlanCandidate,
+                schema_id="compiler.novel-plan-candidate.v1",
+                stage="story_planner",
+            )
+        )
+        return StoryPlannerProviderResult(
+            candidate=candidate,
+            usage=usage,
+            raw_output=raw_output,
+        )
+
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_patch_prompt(request)
+        patch, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=StoryPlanStructuralPatch,
+                schema_id="compiler.story-plan-structural-patch.v1",
+                stage="story_planner_structural_patch",
+            )
+        )
+        return StoryPlannerPatchProviderResult(
+            patch=patch,
+            usage=usage,
+            raw_output=raw_output,
+        )
+
+    async def _story_planner_json_object(
+        self,
+        request: (
+            StoryPlannerRequest
+            | StoryPlannerPatchRequest
+            | SkeletonProposalRequest
+            | SemanticFillRequest
+        ),
+        *,
+        instructions: str,
+        input_text: str,
+        output_type: type[BaseModel],
+        schema_id: str,
+        stage: str,
+    ) -> tuple[dict[str, Any], dict[str, Any], str]:
+        """Return the raw candidate so the outer bounded repair loop owns validation."""
+
+        client = AsyncOpenAI(
+            api_key=request.api_key,
+            base_url=self.base_url,
+            max_retries=request.network_retries,
+        )
+        schema_text = json.dumps(
+            output_type.model_json_schema(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        request.emit(
+            "agent.model_call.started",
+            stage,
+            {
+                "component_id": "story_planner",
+                "schema_id": schema_id,
+                "protocol": "json_object",
+                "model_id": request.model_id,
+            },
+        )
+        try:
+            response = await client.chat.completions.create(
+                model=request.model_id,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": instructions
+                        + "\n\n必须严格遵守以下 JSON Schema：\n"
+                        + schema_text,
+                    },
+                    {"role": "user", "content": input_text},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+                extra_body={"thinking": {"type": "disabled"}},
+            )
+        finally:
+            await client.close()
+        if len(response.choices) != 1:
+            raise ProviderProtocolError("DeepSeek Story Planner returned an invalid choice count")
+        raw_output = response.choices[0].message.content
+        if not raw_output:
+            raise ProviderProtocolError("DeepSeek Story Planner returned no content")
+        try:
+            parsed = json.loads(raw_output)
+        except json.JSONDecodeError:
+            parsed = {}
+        candidate = parsed if isinstance(parsed, dict) else {}
+        response_usage = response.usage
+        usage = {
+            "requests": 1,
+            "input_tokens": int(getattr(response_usage, "prompt_tokens", 0) or 0),
+            "output_tokens": int(getattr(response_usage, "completion_tokens", 0) or 0),
+            "total_tokens": int(getattr(response_usage, "total_tokens", 0) or 0),
+            "cached_tokens": int(getattr(response_usage, "prompt_cache_hit_tokens", 0) or 0),
+            "reasoning_tokens": 0,
+        }
+        request.emit(
+            "agent.model_call.completed",
+            stage,
+            {
+                "component_id": "story_planner",
+                "schema_id": schema_id,
+                "protocol": "json_object",
+                "model_id": request.model_id,
+                "usage": usage,
+            },
+        )
+        return candidate, usage, raw_output
     def plan_general_mutation(
         self,
         request: GeneralMutationPlannerRequest,
@@ -641,6 +831,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | StoryPlannerRequest
             | GeneralMutationPlannerRequest
         ),
         *,
@@ -657,6 +848,7 @@ class DeepSeekAgentsProvider:
         deepseek_output_protocol_is_primary: bool = False,
         temperature: float | None = None,
         strict_validation: bool = False,
+        max_protocol_attempts: int = 3,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         model = self.create_model(request)
         client = _model_client(model)
@@ -678,6 +870,7 @@ class DeepSeekAgentsProvider:
                 ),
                 deepseek_output_protocol_is_primary=deepseek_output_protocol_is_primary,
                 strict_validation=strict_validation,
+                max_protocol_attempts=max_protocol_attempts,
                 tools=tools,
                 context=context,
                 max_turns=max_turns,
@@ -701,6 +894,7 @@ class DeepSeekAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | StoryPlannerRequest
             | GeneralMutationPlannerRequest
         ),
     ) -> OpenAIChatCompletionsModel:

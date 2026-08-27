@@ -1,4 +1,4 @@
-"""Static contracts for the 60-table personal-product database metadata."""
+"""Static contracts for the 66-table personal-product database metadata."""
 
 from __future__ import annotations
 
@@ -30,6 +30,10 @@ EXPECTED_TABLES = {
     "casefile_refs",
     "casefiles",
     "claims",
+    "compile_artifacts",
+    "compile_runs",
+    "compiler_profile_versions",
+    "compiler_profiles",
     "draft_operations",
     "draft_snapshots",
     "drafts",
@@ -38,6 +42,8 @@ EXPECTED_TABLES = {
     "evidence_items",
     "exposure_plan_entries",
     "exposure_plan_entry_refs",
+    "exposure_plan_obligation_refs",
+    "exposure_plan_obligations",
     "exposure_plan_revisions",
     "exposure_plans",
     "hypotheses",
@@ -117,6 +123,8 @@ JSONB_ALLOWLIST = {
     ("brief_versions", "content_jsonb"),
     ("briefs", "draft_jsonb"),
     ("canon_versions", "content_jsonb"),
+    ("compile_artifacts", "content_jsonb"),
+    ("compiler_profile_versions", "payload_jsonb"),
     ("casefile_constraints", "rule_jsonb"),
     ("casefile_contract_refs", "metadata_jsonb"),
     ("casefile_objects", "source_jsonb"),
@@ -209,6 +217,8 @@ EXPECTED_UNIQUES = {
     "uq_exposure_plan_entries_revision_entry_key",
     "uq_exposure_plan_entries_revision_sequence_no",
     "uq_exposure_plan_entry_refs_entry_object_registry",
+    "uq_exposure_plan_obligation_refs_obligation_object",
+    "uq_exposure_plan_obligations_revision_key",
     "uq_exposure_plan_revisions_plan_id_revision_no",
     "uq_exposure_plans_draft_id",
     "uq_canon_versions_source_snapshot_id",
@@ -239,6 +249,9 @@ EXPECTED_FOREIGN_KEYS = {
     "fk_exposure_plan_entries_lineage_revision_revisions",
     "fk_exposure_plan_entry_refs_lineage_entry_entries",
     "fk_exposure_plan_entry_refs_lineage_object_casefile_objects",
+    "fk_exposure_plan_obligation_refs_lineage_object_registry",
+    "fk_exposure_plan_obligation_refs_lineage_obligation_obligations",
+    "fk_exposure_plan_obligations_lineage_entry_entries",
     "fk_exposure_plan_revisions_lineage_plan_exposure_plans",
     "fk_exposure_plans_lineage_current_revision_revisions",
     "fk_exposure_plans_project_casefile_draft_drafts",
@@ -281,10 +294,10 @@ def _constraint_names(constraint_type: type[sa.Constraint]) -> set[str]:
     }
 
 
-def test_metadata_contains_exactly_the_60_personal_tables() -> None:
+def test_metadata_contains_exactly_the_66_personal_tables() -> None:
     assert set(Base.metadata.tables) == EXPECTED_TABLES
     assert set(models.__all__) == {table.class_.__name__ for table in Base.registry.mappers}
-    assert len(models.__all__) == 60
+    assert len(models.__all__) == 66
 
     all_column_names = {
         column.name for table in Base.metadata.tables.values() for column in table.columns

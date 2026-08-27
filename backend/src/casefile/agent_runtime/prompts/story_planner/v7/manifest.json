@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner",
+  "version": "story-planner-v7",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "ef52318d8e1efa20f436c4ed0162b98dcf2802f17a6ffd8746d6d6e24a995656",
+  "previous_version": "story-planner-v6",
+  "change_summary": "适配完整 PlannerInput v2 与精简 PlannerModelView v3 的等价约束路径，不改变规划目标或修复策略。"
+}

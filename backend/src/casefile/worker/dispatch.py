@@ -16,6 +16,7 @@ SUPPORTED_TASK_TYPES = frozenset(
         "brief_strategy_options",
         "brief_to_draft",
         "casefile_chat",
+        "novel_compile",
         "reverse_parse",
     }
 )

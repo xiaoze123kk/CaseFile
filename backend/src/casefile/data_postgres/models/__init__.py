@@ -20,6 +20,12 @@ from casefile.data_postgres.models.collaboration import (
     AgentPatchSet,
     AgentThread,
 )
+from casefile.data_postgres.models.compiler import (
+    CompileArtifact,
+    CompilerProfile,
+    CompilerProfileVersion,
+    CompileRun,
+)
 from casefile.data_postgres.models.content import (
     Claim,
     Entity,
@@ -39,6 +45,8 @@ from casefile.data_postgres.models.exposure import (
     ExposurePlan,
     ExposurePlanEntry,
     ExposurePlanEntryRef,
+    ExposurePlanObligation,
+    ExposurePlanObligationRef,
     ExposurePlanRevision,
 )
 from casefile.data_postgres.models.idea import IdeaCandidate
@@ -86,6 +94,10 @@ __all__ = [
     "BriefIntakeQuestion",
     "BriefVersion",
     "CanonVersion",
+    "CompileArtifact",
+    "CompileRun",
+    "CompilerProfile",
+    "CompilerProfileVersion",
     "CaseFile",
     "CaseFileContractRef",
     "CaseFileObject",
@@ -101,6 +113,8 @@ __all__ = [
     "ExposurePlan",
     "ExposurePlanEntry",
     "ExposurePlanEntryRef",
+    "ExposurePlanObligation",
+    "ExposurePlanObligationRef",
     "ExposurePlanRevision",
     "Hypothesis",
     "IdeaCandidate",

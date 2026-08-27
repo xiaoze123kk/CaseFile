@@ -137,6 +137,7 @@ from casefile.worker.input_contracts import (
 from casefile.worker.input_contracts import (
     required_string as _required_string,
 )
+from casefile.worker.provider_resolution import required_provider_binding
 
 DEFAULT_CONTEXT_HARD_INPUT_TOKENS = 128_000
 
@@ -542,7 +543,7 @@ class ChatRequestRuntime(_ChatComponent):
             message=message,
             editable_fields_by_collection=chat_editable_fields_by_collection(),
             input_hash=task.input_hash,
-            model_id=task.model_id,
+            model_id=required_provider_binding(task)[1],
             api_key=api_key,
             max_turns=int(task.budget_jsonb.get("max_turns", 12)),
             emit=lambda event_type, stage, payload: self._emit(task.id, event_type, stage, payload),
@@ -715,7 +716,7 @@ class ChatMutationRuntime(_ChatComponent):
             planned = provider.plan_general_mutation(
                 GeneralMutationPlannerRequest(
                     task_run_id=task.id,
-                    model_id=task.model_id,
+                    model_id=required_provider_binding(task)[1],
                     api_key=api_key,
                     casefile=request.casefile,
                     message=request.message,
@@ -1150,8 +1151,8 @@ class ChatContextRuntime(_ChatComponent):
                 routing=chat_routing_payload_as_dict(request),
                 prebuilt_input=executor_input,
                 extra_input=extra_input,
-                provider=task.provider,
-                model_id=task.model_id,
+                provider=required_provider_binding(task)[0],
+                model_id=required_provider_binding(task)[1],
                 hard_input_tokens=hard_input_tokens,
             )
         except ContextEngineError as error:
@@ -1447,7 +1448,7 @@ class ChatContextRuntime(_ChatComponent):
                     prompt_version=CASEFILE_CHAT_CONTEXT_COMPACTOR_VERSION,
                     input_hash=str(input_data["input_hash"]),
                     input_data=input_data,
-                    model_id=task.model_id,
+                    model_id=required_provider_binding(task)[1],
                     api_key=api_key,
                     network_retries=_network_retries(task),
                     max_turns=1,

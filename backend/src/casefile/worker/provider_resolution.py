@@ -18,12 +18,19 @@ from casefile.data_postgres.models import TaskRun, UserProviderSetting
 ProviderFactory = Callable[[TaskRun], AgentProvider]
 
 
+def required_provider_binding(task: TaskRun) -> tuple[str, str]:
+    if not task.provider or not task.model_id:
+        raise RuntimeError(f"TaskRun requires a frozen Provider binding: {task.task_type}")
+    return task.provider, task.model_id
+
+
 def provider_for_task(task: TaskRun) -> AgentProvider:
-    if task.provider == "openai":
+    provider = task.provider
+    if provider == "openai":
         return OpenAIAgentsProvider()
-    if task.provider == "deepseek":
+    if provider == "deepseek":
         return DeepSeekAgentsProvider()
-    raise RuntimeError(f"Unsupported provider frozen on TaskRun: {task.provider}")
+    raise RuntimeError(f"Unsupported provider frozen on TaskRun: {provider}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,11 +49,12 @@ class ProviderResolver:
         self._provider_factory = provider_factory
 
     def resolve(self, task: TaskRun) -> ResolvedProvider:
+        provider, _model_id = required_provider_binding(task)
         with self._session_factory() as session, session.begin():
             setting = session.get(UserProviderSetting, task.provider_setting_id)
             if setting is None:
                 raise RuntimeError("Frozen provider setting is missing")
-            if setting.user_id != task.actor_user_id or setting.provider != task.provider:
+            if setting.user_id != task.actor_user_id or setting.provider != provider:
                 raise RuntimeError("Frozen provider setting does not match TaskRun provenance")
             if setting.config_version != task.provider_config_version:
                 raise RuntimeError("Frozen provider setting version no longer matches TaskRun")
@@ -72,4 +80,5 @@ __all__ = [
     "ProviderResolver",
     "ResolvedProvider",
     "provider_for_task",
+    "required_provider_binding",
 ]

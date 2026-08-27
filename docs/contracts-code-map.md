@@ -7,10 +7,19 @@
 | 路径 | 职责 |
 |---|---|
 | `contracts/schemas/` | 面向跨语言消费者的 CaseFile、编辑、验证、任务、Chat Public DTO、推理、Benchmark、Compiler 与 API Schema 集合；`chat/chat-public.schema.json` 是 M3.6 作者侧协议事实源。 |
+| `contracts/schemas/compiler/compiler.schema.json` | N4.0 Narrative Compiler 基础契约：稳定 SourceRef/ArtifactRef、Diagnostic、Profile binding、Snapshot/Canon/Exposure 冻结绑定与 CompileInputManifest；不定义具体 IR 或 Artifact payload。 |
+| `contracts/schemas/compiler/narrative-ir.schema.json` | N4.2 NarrativeIR：Snapshot 无损对象 envelope、根与对象来源证明、带嵌套上下文的完整引用导航边。 |
+| `contracts/schemas/compiler/novel-profile.schema.json` | N4.3 小说结构、章节/场景目标、叙述方式和 Exposure 策略契约。 |
+| `contracts/schemas/compiler/planner-input.schema.json` | 仅由冻结 NarrativeIR、Exposure、Profile 与规划约束组成的 Story Planner 输入。 |
+| `contracts/schemas/compiler/planner-input-v2.schema.json` | 兼容新增的 Story Planner v2 输入：保留完整冻结输入，并加入可独立复验的 PlannerView；硬约束只投影现有权威规则，因果、知识与作者备注保持规划上下文。 |
+| `contracts/schemas/compiler/planner-model-view-v3.schema.json` | 显式 Provider-facing 精简视图：从完整 PlannerInput v2 确定性投影结构、Exposure precedence、Temporal rank、Resolution obligations、对象目录和规划上下文；不替代完整审计输入。 |
+| `contracts/schemas/compiler/planner-input-v3.schema.json`、`planner-model-view-v4.schema.json` | 将 Exposure v2 的 participant/basis/hypothesis typed obligations 按 hard/soft 分离；hard 进入 ConstraintIR v2 与权威校验，soft 仅进入模型规划上下文。 |
+| `contracts/schemas/compiler/constraint-first-planner.schema.json` | Constraint-First 的 PlanningProblem、SkeletonProposal、PlanSkeleton 与 SemanticFill 强类型契约；Fill 契约不含任何 skeleton 所有字段。 |
+| `contracts/schemas/compiler/novel-plan.schema.json` | 分离模型 NovelPlanCandidate 与服务器规范化 NovelPlanIR，定义 Scene 编排、事实依据、披露、Resolution、依赖及派生索引，并提供只允许替换 ScenePurpose 的结构化局部补丁契约。 |
 | `contracts/generated/python/` | 由根目录 Schema 生成的 Python 契约包，禁止手改。 |
 | `contracts/generated/typescript/` | 由根目录 Schema 生成的 TypeScript workspace 包，禁止手改。 |
 | `contracts/tests/` | TypeScript 契约消费者与 Fixture 往返检查。 |
-| `contracts/openapi.json` | 由 `scripts/generate-openapi.py` 从 FastAPI 应用导出的完整 OpenAPI 3.1 快照，包含 Chat Public response model、多工作稿、Logical Mutation、事件时间预览及 Exposure Plan 契约。 |
+| `contracts/openapi.json` | 从 FastAPI 应用导出的完整 OpenAPI 3.1 快照，包含 Chat Public response model、多工作稿、Logical Mutation Preview/Apply、旧 Draft shadow/normalization、Agent debt/Undo/Redo、事件时间预览、Exposure Plan，以及 N4.1 Compiler Profile/CompileRun 契约。 |
 
 ## 契约变更顺序
 
@@ -30,4 +39,9 @@
 | `fixtures/validator_benchmark/` | Validator V0 规则、V1 patch/safe-gate、V2 RepairPlan/authoritative-target/repair-state 确定性 release-gate fixtures，包含可拷贝示例和扩展约定。 |
 | `fixtures/closure_repair_benchmark/` | M3.3 Closure Repair Benchmark v2：保留 24 个 FakeProvider Regression/Safety Golden；`capability/v1/` 冻结 61 个 input/oracle 分离 Task、真实文档、Policy finding catalog 与逐 Task Reference，覆盖 `closure-repair-v1` 全部 52 个策略项。12 个 agent Task 与 49 个正确拒绝 Task 分开计分。 |
 | `fixtures/general_mutation_benchmark/` | General Mutation Capability Dev、Safety / Abstention 与 Backend Release：Capability 使用自然语言输入、最终状态 Oracle 与隔离 Reference Plan；Safety v2 冻结危险请求、隐式歧义和合法近邻；Release v1 冻结 15 题真实 Apply/Undo/Redo cohort。私有 Holdout 只在 `backend/var/benchmark/private/` 保存，仓库仅保存 descriptor fingerprints。 |
-| `fixtures/compiler/` | Compiler 输入、IR、Source Map 和期望产物的预留落位。 |
+| `fixtures/compiler/foundation/` | N4.0 Compiler 基础合法/非法样例：Preview/Canonical 冻结输入、Exposure/Profile hash、SourceRef、ArtifactRef、Diagnostic 与结构/语义失败场景。 |
+| `fixtures/compiler/narrative_ir/v1/` | N4.2 现有 CaseFile Golden 的 IR hash、component fingerprint 和引用边数量，冻结 projection version 行为。 |
+| `fixtures/novel_plan_benchmark/v1/` | N4.3 早期 placeholder Capability 样例，仅保留历史诊断，不得用于正式基线。 |
+| `fixtures/novel_plan_benchmark/v2/` | N4.3 正式 8 能力 × basic/decoy/dense 矩阵；逐 Task 冻结 PlannerInput hash、声明式 Outcome invariants 和经生产 Validator/G2 双重验证的 Reference Solution。`generate_v2.py` 从稳定 CaseFile 资产确定性重建这些 fixtures。 |
+| `fixtures/novel_plan_benchmark/v3/` | N4.3 审计后的 24 Task 矩阵：每项 G2 invariant 冻结 expectation class 与 Planner 可见 evidence pointer，同时保存 v1/v2 PlannerInput，精确限定正式 Pro 模型并冻结候选晋级门禁；`generate_v3.py` 确定性重建。 |
+| `fixtures/novel_plan_benchmark/v3/constraint_first_diagnostic_v1.json` | Constraint-First 实验的六 Task × 三 Trial 定向诊断集合及 `ea0bc...` 基线失败分布；只用于开发诊断，不构成正式晋级证据。 |

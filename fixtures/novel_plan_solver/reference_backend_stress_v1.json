@@ -1,0 +1,13 @@
+{
+  "schema_id": "benchmark.planning-solver-stress.v1",
+  "solver_version": "compiler.planning-solver.reference.v2",
+  "cases": [
+    {"case_id": "mixed_sat_8", "scene_count": 8, "expected": "sat"},
+    {"case_id": "mixed_sat_32", "scene_count": 32, "expected": "sat"},
+    {"case_id": "mixed_sat_100", "scene_count": 100, "expected": "sat"},
+    {"case_id": "mixed_sat_500", "scene_count": 500, "expected": "sat", "budget_ms": 2000},
+    {"case_id": "missing_obligation_ref", "scene_count": 8, "expected": "unsat", "conflict_keys": ["obligation_stress_missing_ref"]}
+  ],
+  "canonical_repeat_count": 100,
+  "z3_prototype_trigger": "legal_mixed_problem_unsupported_or_unstable_minimal_solution"
+}

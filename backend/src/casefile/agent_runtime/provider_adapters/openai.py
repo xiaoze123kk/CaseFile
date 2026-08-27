@@ -13,6 +13,12 @@ from casefile_contracts import (
 from casefile_contracts import (
     BriefIntakeQuestionSet as BriefIntakeQuestionSetContract,
 )
+from casefile_contracts import (
+    NovelPlanCandidate,
+    SemanticFillProposal,
+    SkeletonProposal,
+    StoryPlanStructuralPatch,
+)
 from openai import AsyncOpenAI
 from openai.types.shared import Reasoning
 from pydantic import BaseModel
@@ -31,6 +37,16 @@ from casefile.agent_runtime.closure_repair import (
 from casefile.agent_runtime.closure_repair_prompt import (
     closure_repair_output_type,
     render_closure_repair_prompt,
+)
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SemanticFillResult,
+    SkeletonProposalRequest,
+    SkeletonProposalResult,
+)
+from casefile.agent_runtime.constraint_first_story_planner_prompt import (
+    render_semantic_fill_prompt,
+    render_skeleton_proposal_prompt,
 )
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
@@ -116,6 +132,16 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _run_chat_tool_agent,
     _validate_polish_candidate,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerPatchProviderResult,
+    StoryPlannerPatchRequest,
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
+from casefile.agent_runtime.story_planner_prompt import (
+    render_story_planner_patch_prompt,
+    render_story_planner_prompt,
+)
 from casefile.agent_runtime.structured_output import (
     merge_usage as _merge_structured_usage,
 )
@@ -124,6 +150,99 @@ from casefile.agent_runtime.structured_output import (
 class OpenAIAgentsProvider:
     """OpenAI Responses implementation with structured outputs."""
 
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_skeleton_proposal_prompt(request)
+        proposal, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SkeletonProposal,
+                stage="skeleton_proposal",
+                component_id="story_planner",
+                schema_id="compiler.skeleton-proposal.v1",
+                max_turns=1,
+                temperature=0,
+                strict_validation=True,
+                max_protocol_attempts=1,
+            )
+        )
+        return SkeletonProposalResult(proposal, usage)
+
+    def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_semantic_fill_prompt(request)
+        fill, usage = asyncio.run(
+            self._run_auxiliary(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SemanticFillProposal,
+                stage="semantic_fill",
+                component_id="story_planner",
+                schema_id="compiler.semantic-fill.v1",
+                max_turns=1,
+                temperature=0,
+                strict_validation=True,
+                max_protocol_attempts=1,
+            )
+        )
+        return SemanticFillResult(fill, usage)
+
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_prompt(request)
+        try:
+            candidate, usage = asyncio.run(
+                self._run_auxiliary(
+                    request,
+                    instructions=instructions,
+                    input_text=input_text,
+                    output_type=NovelPlanCandidate,
+                    stage="story_planner",
+                    component_id="story_planner",
+                    schema_id="compiler.novel-plan-candidate.v1",
+                    max_turns=1,
+                    temperature=0,
+                    strict_validation=False,
+                    max_protocol_attempts=1,
+                )
+            )
+        except ProviderProtocolError:
+            candidate, usage = {}, {}
+        return StoryPlannerProviderResult(candidate=candidate, usage=usage)
+
+    def patch_story(
+        self, request: StoryPlannerPatchRequest
+    ) -> StoryPlannerPatchProviderResult:
+        if not request.api_key:
+            raise ProviderProtocolError("OpenAI API key is required")
+        instructions, input_text, _prompt_hash = render_story_planner_patch_prompt(request)
+        try:
+            patch, usage = asyncio.run(
+                self._run_auxiliary(
+                    request,
+                    instructions=instructions,
+                    input_text=input_text,
+                    output_type=StoryPlanStructuralPatch,
+                    stage="story_planner_structural_patch",
+                    component_id="story_planner",
+                    schema_id="compiler.story-plan-structural-patch.v1",
+                    max_turns=1,
+                    temperature=0,
+                    strict_validation=False,
+                    max_protocol_attempts=1,
+                )
+            )
+        except ProviderProtocolError:
+            patch, usage = {}, {}
+        return StoryPlannerPatchProviderResult(patch=patch, usage=usage)
     def plan_general_mutation(
         self,
         request: GeneralMutationPlannerRequest,
@@ -651,6 +770,10 @@ class OpenAIAgentsProvider:
             | IdeaGenerationRequest
             | ThreadCompactionRequest
             | ClosureRepairRequest
+            | StoryPlannerRequest
+            | StoryPlannerPatchRequest
+            | SkeletonProposalRequest
+            | SemanticFillRequest
             | GeneralMutationPlannerRequest
         ),
         *,
@@ -665,6 +788,7 @@ class OpenAIAgentsProvider:
         max_turns: int | None = None,
         temperature: float | None = None,
         strict_validation: bool = False,
+        max_protocol_attempts: int = 3,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         client = AsyncOpenAI(
             api_key=request.api_key,
@@ -694,6 +818,7 @@ class OpenAIAgentsProvider:
                 context=context,
                 max_turns=max_turns,
                 strict_validation=strict_validation,
+                max_protocol_attempts=max_protocol_attempts,
             )
         finally:
             await client.close()

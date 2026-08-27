@@ -83,9 +83,25 @@ from casefile.agent_runtime.providers import (
     FakeProvider,
     OpenAIAgentsProvider,
 )
+from casefile.agent_runtime.story_planner import (
+    STORY_PLANNER_AGENT_VERSION,
+    STORY_PLANNER_MAX_REPAIRS,
+    STORY_PLANNER_PROMPT_VERSION,
+    STORY_PLANNER_TOOLSET_VERSION,
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+    execute_story_planner,
+)
 
 __all__ = [
     "AgentProvider",
+    "STORY_PLANNER_AGENT_VERSION",
+    "STORY_PLANNER_MAX_REPAIRS",
+    "STORY_PLANNER_PROMPT_VERSION",
+    "STORY_PLANNER_TOOLSET_VERSION",
+    "StoryPlannerProviderResult",
+    "StoryPlannerRequest",
+    "execute_story_planner",
     "CLOSURE_REPAIR_AGENT_VERSION",
     "CLOSURE_REPAIR_PROMPT_VERSION",
     "CLOSURE_REPAIR_SCHEMA_ID",

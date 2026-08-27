@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/planner-input-v3.schema.json",
+  "title": "PlannerInputBundleV3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "narrative_ir", "exposure_plan", "profile", "planning_constraints", "planner_view"],
+  "properties": {
+    "schema_id": {"const": "compiler.story-planner-input.v3"},
+    "narrative_ir": {"$ref": "narrative-ir.schema.json"},
+    "exposure_plan": {
+      "oneOf": [
+        {"$ref": "compiler.schema.json#/$defs/ExposureBinding"},
+        {"type": "null"}
+      ]
+    },
+    "profile": {"$ref": "novel-profile.schema.json"},
+    "planning_constraints": {"$ref": "planner-input.schema.json#/properties/planning_constraints"},
+    "planner_view": {"$ref": "#/$defs/PlannerView"}
+  },
+  "$defs": {
+    "ParticipantCoverageObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "obligation_key", "entry_key", "level", "eligible_refs", "min_distinct"],
+      "properties": {
+        "kind": {"const": "participant_coverage"},
+        "obligation_key": {"type": "string", "pattern": "^obligation_[a-z0-9][a-z0-9_]{0,150}$"},
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "level": {"enum": ["hard", "soft"]},
+        "eligible_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "min_distinct": {"type": "integer", "minimum": 1, "maximum": 100}
+      }
+    },
+    "BasisRefCoverageObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "obligation_key", "entry_key", "level", "required_refs"],
+      "properties": {
+        "kind": {"const": "basis_ref_coverage"},
+        "obligation_key": {"type": "string", "pattern": "^obligation_[a-z0-9][a-z0-9_]{0,150}$"},
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "level": {"enum": ["hard", "soft"]},
+        "required_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true}
+      }
+    },
+    "HypothesisCoverageObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "obligation_key", "entry_key", "level", "required_refs"],
+      "properties": {
+        "kind": {"const": "hypothesis_coverage"},
+        "obligation_key": {"type": "string", "pattern": "^obligation_[a-z0-9][a-z0-9_]{0,150}$"},
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "level": {"enum": ["hard", "soft"]},
+        "required_refs": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+              {"properties": {"object_type": {"const": "hypothesis"}}}
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "SemanticObligation": {
+      "oneOf": [
+        {"$ref": "#/$defs/ParticipantCoverageObligation"},
+        {"$ref": "#/$defs/BasisRefCoverageObligation"},
+        {"$ref": "#/$defs/HypothesisCoverageObligation"}
+      ]
+    },
+    "PlannerView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hard_constraints", "planning_context"],
+      "properties": {
+        "hard_constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["structure", "exposure_obligations", "resolution_obligations", "chronology_anchors", "semantic_obligations"],
+          "properties": {
+            "structure": {"$ref": "planner-input-v2.schema.json#/$defs/StructureConstraints"},
+            "exposure_obligations": {"type": "array", "items": {"$ref": "planner-input-v2.schema.json#/$defs/ExposureObligation"}},
+            "resolution_obligations": {"type": "array", "items": {"$ref": "planner-input-v2.schema.json#/$defs/ResolutionObligation"}},
+            "chronology_anchors": {"type": "array", "items": {"$ref": "planner-input-v2.schema.json#/$defs/ChronologyAnchor"}},
+            "semantic_obligations": {"type": "array", "items": {"$ref": "#/$defs/SemanticObligation"}}
+          }
+        },
+        "planning_context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["causal_edges", "knowledge_snapshots", "author_guidance", "semantic_obligations"],
+          "properties": {
+            "causal_edges": {"type": "array", "items": {"$ref": "planner-input-v2.schema.json#/$defs/CausalEdge"}},
+            "knowledge_snapshots": {"type": "array", "items": {"$ref": "planner-input-v2.schema.json#/$defs/KnowledgeSnapshot"}},
+            "author_guidance": {"type": "array", "items": {"$ref": "planner-input-v2.schema.json#/$defs/AuthorGuidance"}},
+            "semantic_obligations": {"type": "array", "items": {"$ref": "#/$defs/SemanticObligation"}}
+          }
+        }
+      }
+    }
+  }
+}

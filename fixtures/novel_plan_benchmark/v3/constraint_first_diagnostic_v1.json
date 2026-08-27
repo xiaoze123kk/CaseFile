@@ -1,0 +1,28 @@
+{
+  "schema_id": "benchmark.novel-plan-diagnostic-selection.v1",
+  "selection_id": "constraint-first-current-failures-v1",
+  "source_report_fingerprint": "ea0bc726d53dca424f4912d6d6e2cdf5e81a41646479740b8e61048399e4d275",
+  "task_ids": [
+    "complex_mixed__decoy",
+    "false_belief__dense",
+    "flashback_chronology__dense",
+    "multiple_suspects__decoy",
+    "multiple_suspects__dense",
+    "resolution_closure__dense"
+  ],
+  "trials_per_task": 3,
+  "baseline": {
+    "trial_count": 18,
+    "contract_valid_trial_count": 15,
+    "semantic_valid_trial_count": 10,
+    "outcome_passed_trial_count": 7,
+    "production_rejections": {
+      "compiler_story_plan_exposure_violation": 1,
+      "compiler_story_plan_temporal_order_invalid": 4,
+      "compiler_story_planner_structural_repair_exhausted": 3
+    },
+    "g2_outcome_failures": {
+      "min_distinct_participant_refs": 3
+    }
+  }
+}

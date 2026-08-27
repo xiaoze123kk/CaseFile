@@ -1,4 +1,4 @@
-"""Disposable PostgreSQL verification for the 60-table personal foundation."""
+"""Disposable PostgreSQL verification for the 66-table personal foundation."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import os
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from threading import Barrier
 from unittest.mock import patch
@@ -19,34 +18,18 @@ import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
 from application_services_test_support import _clear_projects_before_downgrade
+from foundation_migration_exposure import (
+    assert_legacy_exposure_revision_v1,
+    seed_legacy_exposure_revision,
+)
 from foundation_migration_tables import BUSINESS_TABLES
+from foundation_migration_types import Lineage, MigrationCompatibilityIds
 from sqlalchemy.engine import Connection, Engine, make_url
 
 pytestmark = pytest.mark.postgres
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_REVISION = "20260728084832"
-
-
-@dataclass(frozen=True)
-class Lineage:
-    owner_id: int
-    project_id: int
-    casefile_id: int
-    draft_id: int
-
-
-@dataclass(frozen=True)
-class MigrationCompatibilityIds:
-    project_id: int
-    brief_id: int
-    brief_version_id: int
-    task_run_id: int
-    task_attempt_id: int
-    snapshot_id: int
-    canon_id: int
-    legacy_casefile: dict[str, object]
-    legacy_brief: dict[str, object]
 
 
 def _test_database_url() -> str:
@@ -81,7 +64,13 @@ def migrated_engine() -> Iterator[Engine]:
             assert set(sa.inspect(engine).get_table_names()) <= {"alembic_version"}
             command.upgrade(config, PREVIOUS_REVISION)
             compatibility_ids = _seed_legacy_migration_documents(engine)
+            command.upgrade(config, "20260824233834")
+            legacy_exposure_revision_id = seed_legacy_exposure_revision(
+                engine,
+                compatibility_ids.project_id,
+            )
             command.upgrade(config, "head")
+            assert_legacy_exposure_revision_v1(engine, legacy_exposure_revision_id)
             first_forward = _assert_forward_migration_documents(
                 engine,
                 compatibility_ids,
@@ -804,7 +793,7 @@ def _assert_task_attempt_document(
     assert document == expected
 
 
-def test_database_has_60_identity_tables_without_team_columns(
+def test_database_has_66_identity_tables_without_team_columns(
     connection: Connection,
 ) -> None:
     identity_rows = connection.execute(
@@ -818,7 +807,7 @@ def test_database_has_60_identity_tables_without_team_columns(
             """
         )
     ).all()
-    assert len(identity_rows) == 60
+    assert len(identity_rows) == 66
     assert all(row[1:] == ("bigint", "YES", "BY DEFAULT") for row in identity_rows)
 
     columns = connection.execute(

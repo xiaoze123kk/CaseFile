@@ -10,6 +10,7 @@ from typing import Annotated, Any, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, RootModel, constr
 
 from . import brief as brief_1
+from . import novel_profile as novel_profile_1
 
 
 class QuestionType(StrEnum):
@@ -1309,6 +1310,7 @@ class TaskType(StrEnum):
     brief_to_draft = 'brief_to_draft'
     casefile_chat = 'casefile_chat'
     reverse_parse = 'reverse_parse'
+    novel_compile = 'novel_compile'
     idea_generation = 'idea_generation'
 
 
@@ -1324,6 +1326,10 @@ class Status5(StrEnum):
 class Provider(StrEnum):
     openai = 'openai'
     deepseek = 'deepseek'
+
+
+class ModelId(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
 
 
 class InputBriefRevision(RootModel[int]):
@@ -1483,8 +1489,8 @@ class TaskRun(BaseModel):
     task_type: TaskType
     status: Status5
     stage: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-    provider: Provider
-    model_id: Annotated[str, Field(min_length=1)]
+    provider: Provider | None
+    model_id: ModelId | None
     input_draft_revision: Annotated[int, Field(ge=1)]
     input_brief_revision: InputBriefRevision | None
     input_source_record_id: InputSourceRecordId | None
@@ -1545,6 +1551,1025 @@ class AgentGenerateResult(BaseModel):
     content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
+class Sha256Hex(RootModel[str]):
+    root: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class StableKey(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+
+
+class NamespacedKey(RootModel[str]):
+    root: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+
+
+class ArtifactKind(StrEnum):
+    input_manifest = 'input_manifest'
+    narrative_ir = 'narrative_ir'
+    novel_plan = 'novel_plan'
+    exposure_schedule = 'exposure_schedule'
+    scene_plan = 'scene_plan'
+    scene_context = 'scene_context'
+    scene_render = 'scene_render'
+    scene_assertions = 'scene_assertions'
+    validation_report = 'validation_report'
+    source_map = 'source_map'
+    novel_candidate = 'novel_candidate'
+    compile_manifest = 'compile_manifest'
+
+
+class CompilerDiagnosticSeverity(StrEnum):
+    info = 'info'
+    warning = 'warning'
+    error = 'error'
+
+
+class CompileMode(StrEnum):
+    preview = 'preview'
+    canonical = 'canonical'
+
+
+class CompilerSourceRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    field_path: Annotated[str, Field(pattern='^(?:/(?:[^~/]|~[01])*)*$')]
+    source_fragment_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CompilerArtifactRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    artifact_kind: ArtifactKind
+    artifact_key: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+    schema_id: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CompilerDiagnostic(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    severity: CompilerDiagnosticSeverity
+    code: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+    message: Annotated[str, Field(max_length=2000, min_length=1)]
+    artifact_ref: CompilerArtifactRef | None = None
+    source_refs: list[CompilerSourceRef]
+
+
+class CompilerProfileBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    profile_key: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+    profile_schema_id: Annotated[
+        str,
+        Field(
+            max_length=160,
+            min_length=3,
+            pattern='^[a-z][a-z0-9]*[._-][a-z0-9]+(?:[._-][a-z0-9]+)*$',
+        ),
+    ]
+    profile_version: Annotated[int, Field(ge=1)]
+    frozen_payload: dict[str, Any]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class SnapshotBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    snapshot_id: Annotated[int, Field(ge=1)]
+    draft_id: Annotated[int, Field(ge=1)]
+    snapshot_revision: Annotated[int, Field(ge=1)]
+    schema_version: Annotated[str, Field(max_length=32, min_length=1)]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CanonBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    canon_version_id: Annotated[int, Field(ge=1)]
+    source_snapshot_id: Annotated[int, Field(ge=1)]
+    version_no: Annotated[int, Field(ge=1)]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class ExposureBinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    draft_id: Annotated[int, Field(ge=1)]
+    plan_revision_id: Annotated[int, Field(ge=1)]
+    revision_no: Annotated[int, Field(ge=1)]
+    frozen_payload: dict[str, Any]
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class CompileInputManifest(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target: Literal['novel']
+    mode: CompileMode
+    source_snapshot: SnapshotBinding
+    source_canon: CanonBinding | None
+    exposure: ExposureBinding | None
+    profile: CompilerProfileBinding
+    compiler_version: Annotated[
+        str,
+        Field(
+            max_length=160, min_length=1, pattern='^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$'
+        ),
+    ]
+
+
+class Severity1(StrEnum):
+    low = 'low'
+    medium = 'medium'
+    high = 'high'
+
+
+class Items(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    notice_id: Annotated[str, Field(pattern='^notice_[a-z0-9][a-z0-9_]{0,53}$')]
+    category: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
+    severity: Severity1
+    description: Annotated[str, Field(min_length=1)]
+
+
+class NarrativeIRSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    casefile_ref: ObjectRef
+    source_schema_id: Literal['casefile.v2']
+    content_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    root_source_refs: Annotated[list[CompilerSourceRef], Field(min_length=7)]
+
+
+class Title(RootModel[str]):
+    root: Annotated[str, Field(min_length=1)]
+
+
+class StatusModel(StrEnum):
+    draft = 'draft'
+    canon = 'canon'
+    archived = 'archived'
+
+
+class ParentVersionId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^cv_[a-z0-9][a-z0-9_]{0,56}$')]
+
+
+class Version(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    version_id: Annotated[
+        str, Field(pattern='^(?:draft|snapshot|cv)_[a-z0-9][a-z0-9_]{0,54}$')
+    ]
+    version_no: Annotated[int, Field(ge=1)]
+    parent_version_id: ParentVersionId | None
+
+
+class BriefRef(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    brief_id: Annotated[str, Field(pattern='^brief_[a-z0-9][a-z0-9_]{0,54}$')]
+    version: Annotated[int, Field(ge=1)]
+
+
+class ReferenceRelation(StrEnum):
+    object_source = 'object.source'
+    resolution_accepted_answer = 'resolution.accepted_answer'
+    resolution_required_claim = 'resolution.required_claim'
+    resolution_conclusion_value = 'resolution.conclusion_value'
+    resolution_selected_hypothesis = 'resolution.selected_hypothesis'
+    resolution_supporting_reasoning_path = 'resolution.supporting_reasoning_path'
+    entity_knowledge_anchor = 'entity.knowledge_anchor'
+    entity_knows = 'entity.knows'
+    entity_believes = 'entity.believes'
+    entity_false_belief = 'entity.false_belief'
+    relationship_from = 'relationship.from'
+    relationship_to = 'relationship.to'
+    location_parent = 'location.parent'
+    location_adjacent = 'location.adjacent'
+    location_travel_to = 'location.travel_to'
+    event_relative_anchor = 'event.relative_anchor'
+    event_participant = 'event.participant'
+    event_location = 'event.location'
+    event_cause = 'event.cause'
+    event_effect = 'event.effect'
+    event_observer = 'event.observer'
+    information_source_event = 'information.source_event'
+    information_supports_claim = 'information.supports_claim'
+    information_refutes_claim = 'information.refutes_claim'
+    information_perspective = 'information.perspective'
+    information_alternative_path = 'information.alternative_path'
+    claim_support = 'claim.support'
+    claim_refute = 'claim.refute'
+    claim_dependency = 'claim.dependency'
+    hypothesis_target_resolution = 'hypothesis.target_resolution'
+    hypothesis_required_claim = 'hypothesis.required_claim'
+    hypothesis_falsifier = 'hypothesis.falsifier'
+    hypothesis_competitor = 'hypothesis.competitor'
+    hypothesis_evidence = 'hypothesis.evidence'
+    reasoning_target = 'reasoning.target'
+    reasoning_input = 'reasoning.input'
+    reasoning_output = 'reasoning.output'
+    reasoning_alternative_path = 'reasoning.alternative_path'
+    constraint_scope = 'constraint.scope'
+    constraint_conflict = 'constraint.conflict'
+    structure_lock_object = 'structure_lock.object'
+
+
+class ReferenceEdgeContext(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    container_path: Annotated[str, Field(pattern='^(?:/(?:[^~/]|~[01])*)*$')]
+    container_key: Annotated[str | None, Field(max_length=160, min_length=1)] = None
+    container_ordinal: Annotated[int, Field(ge=1)]
+    anchor_ref: ObjectRef | None = None
+
+
+class ReferenceEdge(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    relation: ReferenceRelation
+    from_ref: ObjectRef
+    to_ref: ObjectRef
+    ordinal: Annotated[int, Field(ge=1)]
+    source_ref: CompilerSourceRef
+    context: ReferenceEdgeContext | None = None
+
+
+class NarrativeIndexes(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    reference_edges: list[ReferenceEdge]
+
+
+class NarrativeObjectEnvelope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    source_ref: CompilerSourceRef
+    value: Any
+
+
+class EntityEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Entity | None = None
+
+
+class RelationshipEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Relationship | None = None
+
+
+class LocationEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Location | None = None
+
+
+class EventEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Event | None = None
+
+
+class InformationEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: InformationUnit | None = None
+
+
+class ClaimEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Claim | None = None
+
+
+class HypothesisEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Hypothesis | None = None
+
+
+class ReasoningEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: ReasoningPath | None = None
+
+
+class ConstraintEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: Constraint | None = None
+
+
+class StructureLockEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: StructureLock | None = None
+
+
+class AllowedPresentationMode(Enum):
+    linear = 'linear'
+    flashback = 'flashback'
+    flashforward = 'flashforward'
+
+
+class PlanningConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode], Field(min_length=1)
+    ]
+
+
+class StructureConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode], Field(min_length=1)
+    ]
+
+
+class ExposureObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    sequence_no: Annotated[int, Field(ge=1)]
+    introduce_exactly_once: Literal[True]
+    subsequent_actions_require_introduction: Literal[True]
+
+
+class AllowedTerminalAction(Enum):
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class ResolutionObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_ref: ObjectRef
+    terminal_exactly_once: Literal[True]
+    allowed_terminal_actions: Annotated[
+        list[AllowedTerminalAction], Field(max_length=2, min_length=2)
+    ]
+
+
+class ChronologyAnchor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
+
+
+class Relation1(Enum):
+    cause = 'cause'
+    effect = 'effect'
+
+
+class CausalEdge(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    relation: Relation1
+    event_ref: ObjectRef
+    related_ref: ObjectRef
+
+
+class KnowledgeSnapshot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    subject_ref: ObjectRef
+    as_of_event_ref: ObjectRef
+    knows_refs: list[ObjectRef]
+    believes_refs: list[ObjectRef]
+    false_belief_refs: list[ObjectRef]
+
+
+class AuthorGuidance(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    title: Annotated[str, Field(min_length=1)]
+    note: str | None
+    is_hard_constraint: Literal[False]
+
+
+class HardConstraints(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure_obligations: list[ExposureObligation]
+    resolution_obligations: list[ResolutionObligation]
+    chronology_anchors: list[ChronologyAnchor]
+
+
+class PlanningContext(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+
+
+class PlannerView(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    hard_constraints: HardConstraints
+    planning_context: PlanningContext
+
+
+class Level1(Enum):
+    hard = 'hard'
+    soft = 'soft'
+
+
+class ParticipantCoverageObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['participant_coverage']
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_[a-z0-9][a-z0-9_]{0,150}$')
+    ]
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    level: Level1
+    eligible_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    min_distinct: Annotated[int, Field(ge=1, le=100)]
+
+
+class BasisRefCoverageObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['basis_ref_coverage']
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_[a-z0-9][a-z0-9_]{0,150}$')
+    ]
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    level: Level1
+    required_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+
+
+class RequiredRef(ObjectRef):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_type: Literal['hypothesis'] | None = None
+
+
+class HypothesisCoverageObligation(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Literal['hypothesis_coverage']
+    obligation_key: Annotated[
+        str, Field(pattern='^obligation_[a-z0-9][a-z0-9_]{0,150}$')
+    ]
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    level: Level1
+    required_refs: Annotated[list[RequiredRef], Field(min_length=1)]
+
+
+class SemanticObligation(
+    RootModel[
+        ParticipantCoverageObligation
+        | BasisRefCoverageObligation
+        | HypothesisCoverageObligation
+    ]
+):
+    root: ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation
+
+
+class HardConstraints1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure_obligations: list[ExposureObligation]
+    resolution_obligations: list[ResolutionObligation]
+    chronology_anchors: list[ChronologyAnchor]
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class PlanningContext1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class PlannerViewModel(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    hard_constraints: HardConstraints1
+    planning_context: PlanningContext1
+
+
+class PlanningContextModel(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+
+
+class ModelObject(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    object_ref: ObjectRef
+    value: Any
+
+
+class PrecedenceEdge(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    before_entry_key: str
+    after_entry_key: str
+
+
+class Exposure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    introduce_order: list[str]
+    precedence_edges: list[PrecedenceEdge]
+
+
+class Anchor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    rank: Annotated[int, Field(ge=1)]
+    comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
+
+
+class Temporal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    anchors: list[Anchor]
+
+
+class Resolutions(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    terminal_exactly_once: list[ObjectRef]
+    allowed_terminal_actions: Annotated[
+        list[AllowedTerminalAction], Field(max_length=2, min_length=2)
+    ]
+
+
+class ObjectCatalog(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_specs: list[ModelObject]
+    entities: list[ModelObject]
+    relationships: list[ModelObject]
+    locations: list[ModelObject]
+    events: list[ModelObject]
+    information_units: list[ModelObject]
+    claims: list[ModelObject]
+    hypotheses: list[ModelObject]
+    reasoning_paths: list[ModelObject]
+    constraints: list[ModelObject]
+    structure_locks: list[ModelObject]
+
+
+class PlanningContextModel1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    causal_edges: list[CausalEdge]
+    knowledge_snapshots: list[KnowledgeSnapshot]
+    author_guidance: list[AuthorGuidance]
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class ScenePurpose(Enum):
+    hook = 'hook'
+    setup = 'setup'
+    investigation = 'investigation'
+    discovery = 'discovery'
+    reversal = 'reversal'
+    confrontation = 'confrontation'
+    reveal = 'reveal'
+    false_resolution = 'false_resolution'
+    climax = 'climax'
+    resolution = 'resolution'
+    transition = 'transition'
+
+
+class ReplaceScenePurposePatch(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    op: Literal['replace_scene_purpose']
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    purpose: ScenePurpose
+
+
+class StoryPlanStructuralPatch(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-plan-structural-patch.v1']
+    patches: Annotated[
+        list[ReplaceScenePurposePatch], Field(max_length=16, min_length=1)
+    ]
+
+
+class PresentationMode(Enum):
+    linear = 'linear'
+    flashback = 'flashback'
+    flashforward = 'flashforward'
+
+
+class ResolutionAction(Enum):
+    advance = 'advance'
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class CandidateChapter(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    act_ordinal: Annotated[int, Field(ge=1, le=10)]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+
+
+class Action(Enum):
+    introduce = 'introduce'
+    reinforce = 'reinforce'
+    reinterpret = 'reinterpret'
+
+
+class ExposurePlacement(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
+    action: Action
+
+
+class ResolutionPlacement(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_ref: ObjectRef
+    action: ResolutionAction
+
+
+class PrerequisiteSceneId(RootModel[str]):
+    root: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+
+
+class CandidateScene(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    intent: Annotated[str, Field(max_length=2000, min_length=1)]
+    presentation_mode: PresentationMode
+    pov_ref: ObjectRef | None
+    participant_refs: list[ObjectRef]
+    location_ref: ObjectRef | None
+    event_refs: list[ObjectRef]
+    story_time_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+
+
+class NovelPlanCandidate(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.novel-plan-candidate.v1']
+    chapters: Annotated[list[CandidateChapter], Field(min_length=1)]
+    scenes: Annotated[list[CandidateScene], Field(min_length=1)]
+
+
+class NovelPlanSource(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    planner_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    narrative_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    profile_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    exposure_hash: Sha256Hex | None
+    component_fingerprint: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class NovelPlanScene(CandidateScene):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    source_refs: Annotated[list[CompilerSourceRef], Field(min_length=1)]
+
+
+class NovelPlanIndexes(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_scene_ids: dict[str, list[str]]
+    scene_dependencies: dict[str, list[str]]
+
+
+class NovelPlanIR(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.novel-plan.v1']
+    planner_version: Annotated[str, Field(max_length=80, min_length=1)]
+    source: NovelPlanSource
+    chapters: Annotated[list[CandidateChapter], Field(min_length=1)]
+    scenes: Annotated[list[NovelPlanScene], Field(min_length=1)]
+    indexes: NovelPlanIndexes
+
+
+class ChapterSlot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    ordinal: Annotated[int, Field(ge=1)]
+    act_ordinal: Annotated[int, Field(ge=1, le=10)]
+
+
+class SceneSlot(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+
+
+class Source(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    constraint_ir_schema_id: Literal['compiler.planner-constraints.v2']
+    constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class HardConstraints2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure: Exposure
+    temporal: Temporal
+    resolutions: Resolutions
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class PlanningProblem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.planning-problem.v1']
+    source: Source
+    chapter_slots: Annotated[list[ChapterSlot], Field(max_length=100, min_length=1)]
+    scene_slots: Annotated[list[SceneSlot], Field(max_length=500, min_length=1)]
+    object_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    hard_constraints: HardConstraints2
+
+
+class SkeletonScene(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    discourse_order: Annotated[int, Field(ge=1)]
+    purpose: ScenePurpose
+    presentation_mode: PresentationMode
+    story_time_refs: list[ObjectRef]
+    participant_refs: list[ObjectRef]
+    basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
+    exposure: list[ExposurePlacement]
+    resolutions: list[ResolutionPlacement]
+    prerequisite_scene_ids: list[PrerequisiteSceneId]
+
+
+class SkeletonProposal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.skeleton-proposal.v1']
+    scenes: Annotated[list[SkeletonScene], Field(max_length=500, min_length=1)]
+
+
+class PlanSkeleton(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.plan-skeleton.v1']
+    chapter_slots: Annotated[list[ChapterSlot], Field(max_length=100, min_length=1)]
+    scenes: Annotated[list[SkeletonScene], Field(max_length=500, min_length=1)]
+
+
+class SemanticChapterFill(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    chapter_id: Annotated[str, Field(pattern='^chapter_[a-z0-9][a-z0-9_]{0,70}$')]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+
+
+class SemanticSceneFill(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
+    intent: Annotated[str, Field(max_length=2000, min_length=1)]
+    pov_ref: ObjectRef | None
+    location_ref: ObjectRef | None
+    event_refs: list[ObjectRef]
+
+
+class SemanticFillProposal(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.semantic-fill.v1']
+    chapters: Annotated[list[SemanticChapterFill], Field(max_length=100, min_length=1)]
+    scenes: Annotated[list[SemanticSceneFill], Field(max_length=500, min_length=1)]
+
+
 class ResolutionSpec(CoreMetadata):
     model_config = ConfigDict(
         extra='forbid',
@@ -1590,6 +2615,43 @@ class PublicAgentMessageReceipt(BaseModel):
     assistant_message: PublicAgentMessage
 
 
+class NarrativeCase(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    title: Annotated[str, Field(min_length=1)]
+    status: StatusModel
+    version: Version
+    brief_ref: BriefRef
+
+
+class ResolutionEnvelope(NarrativeObjectEnvelope):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    value: ResolutionSpec | None = None
+
+
+class NarrativeObjects(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_specs: list[ResolutionEnvelope]
+    entities: list[EntityEnvelope]
+    relationships: list[RelationshipEnvelope]
+    locations: list[LocationEnvelope]
+    events: list[EventEnvelope]
+    information_units: list[InformationEnvelope]
+    claims: list[ClaimEnvelope]
+    hypotheses: list[HypothesisEnvelope]
+    reasoning_paths: list[ReasoningEnvelope]
+    constraints: list[ConstraintEnvelope]
+    structure_locks: list[StructureLockEnvelope]
+
+
 class EditingContracts(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -1599,13 +2661,26 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_4
-    patch_candidate: Schema_3
+    validation_issue: Schema_11
+    patch_candidate: Schema_5
     chat_public: Schema_2
     task_run: TaskRun
     task_event: TaskEvent
     agent_generate_request: AgentGenerateRequest
     agent_generate_result: AgentGenerateResult
+    compiler_source_ref: CompilerSourceRef
+    compiler_artifact_ref: CompilerArtifactRef
+    compiler_diagnostic: CompilerDiagnostic
+    compiler_profile_binding: CompilerProfileBinding
+    compile_input_manifest: CompileInputManifest
+    narrative_ir: Schema_4
+    novel_profile: novel_profile_1.Schema
+    planner_input: Schema_6 | Schema_7 | Schema_8
+    planner_model_view: Schema_9 | Schema_10
+    story_plan_structural_patch: StoryPlanStructuralPatch
+    constraint_first_planner: Schema_3
+    novel_plan_candidate: NovelPlanCandidate
+    novel_plan: NovelPlanIR
 
 
 class CoreSellingPoint(RootModel[str]):
@@ -1669,11 +2744,11 @@ class Status_1(StrEnum):
     archived = 'archived'
 
 
-class ParentVersionId(RootModel[str]):
+class ParentVersionId_1(RootModel[str]):
     root: Annotated[str, Field(pattern='^cv_[a-z0-9][a-z0-9_]{0,56}$')]
 
 
-class Version(BaseModel):
+class Version_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1682,10 +2757,10 @@ class Version(BaseModel):
         str, Field(pattern='^(?:draft|snapshot|cv)_[a-z0-9][a-z0-9_]{0,54}$')
     ]
     version_no: Annotated[int, Field(ge=1)]
-    parent_version_id: ParentVersionId | None
+    parent_version_id: ParentVersionId_1 | None
 
 
-class BriefRef(BaseModel):
+class BriefRef_1(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1720,8 +2795,8 @@ class Schema_1(BaseModel):
     casefile_id: Annotated[str, Field(pattern='^case_[a-z0-9][a-z0-9_]{0,55}$')]
     title: Annotated[str, Field(min_length=1)]
     status: Status_1
-    version: Version
-    brief_ref: BriefRef
+    version: Version_1
+    brief_ref: BriefRef_1
     resolution_specs: list[ResolutionSpec]
     entities: list[Entity]
     relationships: list[Relationship]
@@ -1756,6 +2831,36 @@ class Schema_2(BaseModel):
     patch_response: PublicPatchResponse
 
 
+class Schema_3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    planning_problem: PlanningProblem
+    skeleton_proposal: SkeletonProposal
+    plan_skeleton: PlanSkeleton
+    semantic_fill: SemanticFillProposal
+
+
+class Schema_4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.narrative-ir.v1']
+    projection_version: Literal['compiler.narrative-ir-projection.v1']
+    source: NarrativeIRSource
+    case: NarrativeCase
+    objects: NarrativeObjects
+    spatial_scenes: list[SpatialScene] | None = None
+    content_notices: list[Items]
+    extensions: Annotated[
+        dict[constr(pattern=r'^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$'), Any],
+        Field(title='Extensions'),
+    ]
+    indexes: NarrativeIndexes
+
+
 class IssueRef(RootModel[str]):
     root: Annotated[str, Field(pattern='^issue_[a-z0-9][a-z0-9_]{0,54}$')]
 
@@ -1767,7 +2872,7 @@ class ApprovalStatus(StrEnum):
     superseded = 'superseded'
 
 
-class Schema_3(BaseModel):
+class Schema_5(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -1791,6 +2896,201 @@ class Schema_3(BaseModel):
     ]
 
 
+class AllowedPresentationMode_1(Enum):
+    linear = 'linear'
+    flashback = 'flashback'
+    flashforward = 'flashforward'
+
+
+class PlanningConstraints_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_chapters: Annotated[int, Field(ge=1, le=100)]
+    target_scenes: Annotated[int, Field(ge=1, le=500)]
+    allowed_presentation_modes: Annotated[
+        list[AllowedPresentationMode_1], Field(min_length=1)
+    ]
+
+
+class Schema_6(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-input.v1']
+    narrative_ir: Schema_4
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints_1
+
+
+class Schema_7(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-input.v2']
+    narrative_ir: Schema_4
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints
+    planner_view: PlannerView
+
+
+class Schema_8(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-input.v3']
+    narrative_ir: Schema_4
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints
+    planner_view: PlannerViewModel
+
+
+class Source_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    projection_version: Literal['compiler.story-planner-model-view-projection.v3']
+    planner_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class PrecedenceEdge_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    before_entry_key: str
+    after_entry_key: str
+
+
+class Exposure_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    introduce_order: list[str]
+    precedence_edges: list[PrecedenceEdge_1]
+
+
+class Anchor_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    event_ref: ObjectRef
+    rank: Annotated[int, Field(ge=1)]
+    comparable_time: Annotated[str, Field(max_length=64, min_length=1)]
+
+
+class Temporal_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    anchors: list[Anchor_1]
+
+
+class AllowedTerminalAction_1(Enum):
+    resolve = 'resolve'
+    intentionally_unresolved = 'intentionally_unresolved'
+
+
+class Resolutions_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    terminal_exactly_once: list[ObjectRef]
+    allowed_terminal_actions: Annotated[
+        list[AllowedTerminalAction_1], Field(max_length=2, min_length=2)
+    ]
+
+
+class HardConstraints_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure: Exposure_1
+    temporal: Temporal_1
+    resolutions: Resolutions_1
+
+
+class ObjectCatalog_1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    resolution_specs: list[ModelObject]
+    entities: list[ModelObject]
+    relationships: list[ModelObject]
+    locations: list[ModelObject]
+    events: list[ModelObject]
+    information_units: list[ModelObject]
+    claims: list[ModelObject]
+    hypotheses: list[ModelObject]
+    reasoning_paths: list[ModelObject]
+    constraints: list[ModelObject]
+    structure_locks: list[ModelObject]
+
+
+class Schema_9(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-model-view.v3']
+    source: Source_1
+    case: NarrativeCase
+    hard_constraints: HardConstraints_1
+    object_catalog: ObjectCatalog_1
+    planning_context: PlanningContextModel
+
+
+class Source_2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    projection_version: Literal['compiler.story-planner-model-view-projection.v4']
+    planner_input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+    constraint_ir_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
+
+
+class HardConstraints_2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    structure: StructureConstraints
+    exposure: Exposure
+    temporal: Temporal
+    resolutions: Resolutions
+    semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
+
+
+class Schema_10(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    schema_id: Literal['compiler.story-planner-model-view.v4']
+    source: Source_2
+    case: NarrativeCase
+    hard_constraints: HardConstraints_2
+    object_catalog: ObjectCatalog
+    planning_context: PlanningContextModel1
+
+
 class Severity_2(StrEnum):
     s0 = 'S0'
     s1 = 'S1'
@@ -1811,7 +3111,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_4(BaseModel):
+class Schema_11(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

@@ -1,0 +1,8 @@
+{
+  "object_ref": {
+    "object_type": "event",
+    "object_id": "evt_archive_arrival"
+  },
+  "field_path": "/time/start",
+  "source_fragment_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

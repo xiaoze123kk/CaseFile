@@ -34,6 +34,9 @@ SUPPORTED_AGENT_IDS: Final = (
     "reverse_parse",
     "idea_generation",
     "closure_repair",
+    "story_planner",
+    "story_planner_skeleton",
+    "story_planner_semantic_fill",
     "general_mutation_planner",
 )
 

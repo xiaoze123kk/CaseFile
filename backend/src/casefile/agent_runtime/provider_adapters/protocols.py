@@ -8,6 +8,12 @@ from casefile.agent_runtime.closure_repair import (
     ClosureRepairProviderResult,
     ClosureRepairRequest,
 )
+from casefile.agent_runtime.constraint_first_story_planner import (
+    SemanticFillRequest,
+    SemanticFillResult,
+    SkeletonProposalRequest,
+    SkeletonProposalResult,
+)
 from casefile.agent_runtime.context.thread_memory import (
     ThreadCompactionRequest,
     ThreadCompactionResult,
@@ -39,6 +45,10 @@ from casefile.agent_runtime.models import (
     RouteSpecificRewriteRequest,
     RouteSpecificRewriteResult,
 )
+from casefile.agent_runtime.story_planner import (
+    StoryPlannerProviderResult,
+    StoryPlannerRequest,
+)
 
 
 class GenerationProvider(Protocol):
@@ -46,6 +56,14 @@ class GenerationProvider(Protocol):
 
 
 class AgentProvider(GenerationProvider, Protocol):
+    def propose_skeleton(
+        self, request: SkeletonProposalRequest
+    ) -> SkeletonProposalResult: ...
+
+    def fill_semantics(self, request: SemanticFillRequest) -> SemanticFillResult: ...
+
+    def plan_story(self, request: StoryPlannerRequest) -> StoryPlannerProviderResult: ...
+
     def plan_general_mutation(
         self,
         request: GeneralMutationPlannerRequest,

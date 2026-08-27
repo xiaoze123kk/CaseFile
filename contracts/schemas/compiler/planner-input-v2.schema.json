@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/planner-input-v2.schema.json",
+  "title": "PlannerInputBundleV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "narrative_ir", "exposure_plan", "profile", "planning_constraints", "planner_view"],
+  "properties": {
+    "schema_id": {"const": "compiler.story-planner-input.v2"},
+    "narrative_ir": {"$ref": "narrative-ir.schema.json"},
+    "exposure_plan": {
+      "oneOf": [
+        {"$ref": "compiler.schema.json#/$defs/ExposureBinding"},
+        {"type": "null"}
+      ]
+    },
+    "profile": {"$ref": "novel-profile.schema.json"},
+    "planning_constraints": {"$ref": "planner-input.schema.json#/properties/planning_constraints"},
+    "planner_view": {"$ref": "#/$defs/PlannerView"}
+  },
+  "$defs": {
+    "StructureConstraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_chapters", "target_scenes", "allowed_presentation_modes"],
+      "properties": {
+        "target_chapters": {"type": "integer", "minimum": 1, "maximum": 100},
+        "target_scenes": {"type": "integer", "minimum": 1, "maximum": 500},
+        "allowed_presentation_modes": {
+          "type": "array",
+          "items": {"enum": ["linear", "flashback", "flashforward"]},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "ExposureObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_key", "sequence_no", "introduce_exactly_once", "subsequent_actions_require_introduction"],
+      "properties": {
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "sequence_no": {"type": "integer", "minimum": 1},
+        "introduce_exactly_once": {"const": true},
+        "subsequent_actions_require_introduction": {"const": true}
+      }
+    },
+    "ResolutionObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resolution_ref", "terminal_exactly_once", "allowed_terminal_actions"],
+      "properties": {
+        "resolution_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "terminal_exactly_once": {"const": true},
+        "allowed_terminal_actions": {
+          "type": "array",
+          "items": {"enum": ["resolve", "intentionally_unresolved"]},
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        }
+      }
+    },
+    "ChronologyAnchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_ref", "comparable_time"],
+      "properties": {
+        "event_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "comparable_time": {"type": "string", "minLength": 1, "maxLength": 64}
+      }
+    },
+    "CausalEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relation", "event_ref", "related_ref"],
+      "properties": {
+        "relation": {"enum": ["cause", "effect"]},
+        "event_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "related_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}
+      }
+    },
+    "KnowledgeSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "as_of_event_ref", "knows_refs", "believes_refs", "false_belief_refs"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "as_of_event_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "knows_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "believes_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "false_belief_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true}
+      }
+    },
+    "AuthorGuidance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_key", "title", "note", "is_hard_constraint"],
+      "properties": {
+        "entry_key": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+        "title": {"type": "string", "minLength": 1},
+        "note": {"type": ["string", "null"]},
+        "is_hard_constraint": {"const": false}
+      }
+    },
+    "PlannerView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hard_constraints", "planning_context"],
+      "properties": {
+        "hard_constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["structure", "exposure_obligations", "resolution_obligations", "chronology_anchors"],
+          "properties": {
+            "structure": {"$ref": "#/$defs/StructureConstraints"},
+            "exposure_obligations": {"type": "array", "items": {"$ref": "#/$defs/ExposureObligation"}},
+            "resolution_obligations": {"type": "array", "items": {"$ref": "#/$defs/ResolutionObligation"}},
+            "chronology_anchors": {"type": "array", "items": {"$ref": "#/$defs/ChronologyAnchor"}}
+          }
+        },
+        "planning_context": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["causal_edges", "knowledge_snapshots", "author_guidance"],
+          "properties": {
+            "causal_edges": {"type": "array", "items": {"$ref": "#/$defs/CausalEdge"}},
+            "knowledge_snapshots": {"type": "array", "items": {"$ref": "#/$defs/KnowledgeSnapshot"}},
+            "author_guidance": {"type": "array", "items": {"$ref": "#/$defs/AuthorGuidance"}}
+          }
+        }
+      }
+    }
+  }
+}

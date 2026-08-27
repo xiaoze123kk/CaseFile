@@ -384,6 +384,67 @@ class ExposurePlanRefRequest(StrictRequest):
     object_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,127}$")
 
 
+ExposurePlanningObligationLevel = Literal["hard", "soft"]
+
+
+class ParticipantCoverageObligationRequest(StrictRequest):
+    kind: Literal["participant_coverage"]
+    obligation_key: str = Field(pattern=r"^obligation_[a-z0-9][a-z0-9_]{0,150}$")
+    level: ExposurePlanningObligationLevel
+    eligible_refs: list[ExposurePlanRefRequest] = Field(min_length=1, max_length=100)
+    min_distinct: int = Field(ge=1, le=100)
+
+    @model_validator(mode="after")
+    def valid_participant_coverage(self) -> Self:
+        keys = [(item.object_type, item.object_id) for item in self.eligible_refs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("eligible_refs must be unique")
+        if self.min_distinct > len(keys):
+            raise ValueError("min_distinct cannot exceed eligible_refs")
+        return self
+
+
+class BasisRefCoverageObligationRequest(StrictRequest):
+    kind: Literal["basis_ref_coverage"]
+    obligation_key: str = Field(pattern=r"^obligation_[a-z0-9][a-z0-9_]{0,150}$")
+    level: ExposurePlanningObligationLevel
+    required_refs: list[ExposurePlanRefRequest] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_required_refs(self) -> Self:
+        keys = [(item.object_type, item.object_id) for item in self.required_refs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("required_refs must be unique")
+        return self
+
+
+class HypothesisCoverageRefRequest(StrictRequest):
+    object_type: Literal["hypothesis"]
+    object_id: str = Field(pattern=r"^[a-z][a-z0-9_]{1,127}$")
+
+
+class HypothesisCoverageObligationRequest(StrictRequest):
+    kind: Literal["hypothesis_coverage"]
+    obligation_key: str = Field(pattern=r"^obligation_[a-z0-9][a-z0-9_]{0,150}$")
+    level: ExposurePlanningObligationLevel
+    required_refs: list[HypothesisCoverageRefRequest] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def unique_required_refs(self) -> Self:
+        ids = [item.object_id for item in self.required_refs]
+        if len(ids) != len(set(ids)):
+            raise ValueError("required_refs must be unique")
+        return self
+
+
+ExposurePlanningObligationRequest = Annotated[
+    ParticipantCoverageObligationRequest
+    | BasisRefCoverageObligationRequest
+    | HypothesisCoverageObligationRequest,
+    Field(discriminator="kind"),
+]
+
+
 class ExposurePlanEntryRequest(StrictRequest):
     entry_key: str = Field(
         pattern=r"^exposure_[a-z0-9][a-z0-9_]{0,150}$",
@@ -391,12 +452,19 @@ class ExposurePlanEntryRequest(StrictRequest):
     title: str = Field(min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=4_000)
     refs: list[ExposurePlanRefRequest] = Field(min_length=1, max_length=100)
+    planning_obligations: list[ExposurePlanningObligationRequest] = Field(
+        default_factory=list,
+        max_length=100,
+    )
 
     @model_validator(mode="after")
     def unique_refs(self) -> Self:
         keys = [(item.object_type, item.object_id) for item in self.refs]
         if len(keys) != len(set(keys)):
             raise ValueError("refs must be unique within one entry")
+        obligation_keys = [item.obligation_key for item in self.planning_obligations]
+        if len(obligation_keys) != len(set(obligation_keys)):
+            raise ValueError("obligation_key must be unique within one entry")
         return self
 
 
@@ -410,4 +478,51 @@ class ExposurePlanPutRequest(StrictRequest):
         keys = [item.entry_key for item in self.entries]
         if len(keys) != len(set(keys)):
             raise ValueError("entry_key must be unique within one revision")
+        obligation_keys = [
+            obligation.obligation_key
+            for entry in self.entries
+            for obligation in entry.planning_obligations
+        ]
+        if len(obligation_keys) != len(set(obligation_keys)):
+            raise ValueError("obligation_key must be unique within one revision")
+        return self
+
+
+class CompilerProfileCreateRequest(StrictRequest):
+    profile_key: str = Field(
+        min_length=1,
+        max_length=160,
+        pattern=r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+    )
+    name: str = Field(min_length=1, max_length=160)
+    schema_id: str = Field(min_length=3, max_length=160)
+    payload: dict[str, Any]
+
+
+class CompilerProfileVersionCreateRequest(StrictRequest):
+    expected_current_version_id: int = Field(ge=1)
+    schema_id: str = Field(min_length=3, max_length=160)
+    payload: dict[str, Any]
+
+
+class CompileRunCreateRequest(StrictRequest):
+    mode: Literal["preview", "canonical"]
+    expected_draft_id: int = Field(ge=1)
+    expected_draft_revision: int = Field(ge=1)
+    canon_version_id: int | None = Field(default=None, ge=1)
+    exposure_plan_revision_id: int | None = Field(default=None, ge=1)
+    compiler_profile_version_id: int = Field(ge=1)
+    planner_provider: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=40,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+
+    @model_validator(mode="after")
+    def canon_matches_mode(self) -> Self:
+        if self.mode == "preview" and self.canon_version_id is not None:
+            raise ValueError("preview compile cannot bind canon_version_id")
+        if self.mode == "canonical" and self.canon_version_id is None:
+            raise ValueError("canonical compile requires canon_version_id")
         return self

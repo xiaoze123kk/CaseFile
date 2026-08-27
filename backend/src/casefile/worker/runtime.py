@@ -25,6 +25,7 @@ from casefile.worker.execution import (
     WorkerEventPorts,
 )
 from casefile.worker.executors.chat import ChatTaskExecutor
+from casefile.worker.executors.compiler import CompilerExecutor
 from casefile.worker.executors.completion import CompletionExecutor
 from casefile.worker.failures import TaskCancellationRequested, merge_numeric_usage
 from casefile.worker.finalization import TaskFinalizer
@@ -33,6 +34,7 @@ from casefile.worker.handlers import (
     BriefGenerationHandler,
     BriefIntakeHandler,
     ChatHandler,
+    CompilerHandler,
     ReverseParseHandler,
 )
 from casefile.worker.provider_resolution import (
@@ -137,6 +139,12 @@ class Worker:
             config=self._chat_config,
             events=event_ports,
         )
+        self._compiler = CompilerExecutor(
+            session_factory,
+            worker_id=config.worker_id,
+            provider_factory=self.provider_factory,
+            completion=self._completion,
+        )
         self._provider_resolver = ProviderResolver(session_factory, self.provider_factory)
         self._dispatcher = TaskDispatcher(
             (
@@ -145,6 +153,7 @@ class Worker:
                 ReverseParseHandler(self._completion),
                 BriefGenerationHandler(self._completion),
                 ChatHandler(self._chat, self._complete_chat),
+                CompilerHandler(self._compiler),
             )
         )
 

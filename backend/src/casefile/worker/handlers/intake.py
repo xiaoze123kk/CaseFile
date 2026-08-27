@@ -17,6 +17,7 @@ from casefile.worker.input_contracts import (
 from casefile.worker.input_contracts import (
     required_string as _required_string,
 )
+from casefile.worker.provider_resolution import required_provider_binding
 
 
 class BriefIntakeHandler:
@@ -52,7 +53,7 @@ class BriefIntakeHandler:
                 existing_questions=deepcopy(existing_questions),
                 mode=mode,
                 input_hash=task.input_hash,
-                model_id=task.model_id,
+                model_id=required_provider_binding(task)[1],
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(
@@ -78,7 +79,7 @@ class BriefIntakeHandler:
                 prompt_version=task.prompt_version,
                 input_data=task.input_jsonb,
                 input_hash=task.input_hash,
-                model_id=task.model_id,
+                model_id=required_provider_binding(task)[1],
                 api_key=api_key,
                 max_turns=int(task.budget_jsonb.get("max_turns", 12)),
                 emit=lambda event_type, stage, payload: context.emit(

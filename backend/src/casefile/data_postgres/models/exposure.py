@@ -116,6 +116,10 @@ class ExposurePlanRevision(BigIntIdentityPrimaryKeyMixin, Base):
             name="uq_exposure_plan_revisions_plan_lineage_id",
         ),
         CheckConstraint("revision_no >= 1", name="revision_no_positive"),
+        CheckConstraint(
+            "payload_schema_id IN ('casefile.exposure-plan.v1', 'casefile.exposure-plan.v2')",
+            name="payload_schema_id_known",
+        ),
     )
 
     project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -123,6 +127,11 @@ class ExposurePlanRevision(BigIntIdentityPrimaryKeyMixin, Base):
     draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     plan_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     revision_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload_schema_id: Mapped[str] = mapped_column(
+        String(80),
+        nullable=False,
+        server_default=text("'casefile.exposure-plan.v2'"),
+    )
     created_by_user_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("users.id", ondelete="RESTRICT"),
@@ -160,6 +169,14 @@ class ExposurePlanEntry(BigIntIdentityPrimaryKeyMixin, Base):
             "plan_revision_id",
             "entry_key",
             name="uq_exposure_plan_entries_revision_entry_key",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "casefile_id",
+            "draft_id",
+            "plan_revision_id",
+            "id",
+            name="uq_exposure_plan_entries_revision_lineage_id",
         ),
         UniqueConstraint(
             "project_id",
@@ -234,9 +251,131 @@ class ExposurePlanEntryRef(BigIntIdentityPrimaryKeyMixin, Base):
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
+class ExposurePlanObligation(BigIntIdentityPrimaryKeyMixin, Base):
+    """One typed planning obligation owned by an immutable Exposure entry."""
+
+    __tablename__ = "exposure_plan_obligations"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            [
+                "project_id",
+                "casefile_id",
+                "draft_id",
+                "plan_revision_id",
+                "entry_id",
+            ],
+            [
+                "exposure_plan_entries.project_id",
+                "exposure_plan_entries.casefile_id",
+                "exposure_plan_entries.draft_id",
+                "exposure_plan_entries.plan_revision_id",
+                "exposure_plan_entries.id",
+            ],
+            name="fk_exposure_plan_obligations_lineage_entry_entries",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "plan_revision_id",
+            "obligation_key",
+            name="uq_exposure_plan_obligations_revision_key",
+        ),
+        UniqueConstraint(
+            "project_id",
+            "casefile_id",
+            "draft_id",
+            "plan_revision_id",
+            "id",
+            name="uq_exposure_plan_obligations_revision_lineage_id",
+        ),
+        CheckConstraint(
+            "obligation_kind IN ('participant_coverage', 'basis_ref_coverage', "
+            "'hypothesis_coverage')",
+            name="kind_known",
+        ),
+        CheckConstraint("level IN ('hard', 'soft')", name="level_known"),
+        CheckConstraint(
+            "obligation_key ~ '^obligation_[a-z0-9][a-z0-9_]{0,150}$'",
+            name="obligation_key_format",
+        ),
+        CheckConstraint(
+            "(obligation_kind = 'participant_coverage' AND min_distinct >= 1) OR "
+            "(obligation_kind <> 'participant_coverage' AND min_distinct IS NULL)",
+            name="min_distinct_matches_kind",
+        ),
+    )
+
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    plan_revision_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    entry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    obligation_key: Mapped[str] = mapped_column(String(160), nullable=False)
+    obligation_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    level: Mapped[str] = mapped_column(String(10), nullable=False)
+    min_distinct: Mapped[int | None] = mapped_column(Integer)
+
+
+class ExposurePlanObligationRef(BigIntIdentityPrimaryKeyMixin, Base):
+    """One ordered normalized CaseFile object ref for a typed obligation."""
+
+    __tablename__ = "exposure_plan_obligation_refs"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            [
+                "project_id",
+                "casefile_id",
+                "draft_id",
+                "plan_revision_id",
+                "obligation_id",
+            ],
+            [
+                "exposure_plan_obligations.project_id",
+                "exposure_plan_obligations.casefile_id",
+                "exposure_plan_obligations.draft_id",
+                "exposure_plan_obligations.plan_revision_id",
+                "exposure_plan_obligations.id",
+            ],
+            name="fk_exposure_plan_obligation_refs_lineage_obligation_obligations",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["project_id", "casefile_id", "draft_id", "object_registry_id"],
+            [
+                "casefile_objects.project_id",
+                "casefile_objects.casefile_id",
+                "casefile_objects.draft_id",
+                "casefile_objects.id",
+            ],
+            name="fk_exposure_plan_obligation_refs_lineage_object_registry",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "obligation_id",
+            "ordinal",
+            name="uq_exposure_plan_obligation_refs_obligation_ordinal",
+        ),
+        UniqueConstraint(
+            "obligation_id",
+            "object_registry_id",
+            name="uq_exposure_plan_obligation_refs_obligation_object",
+        ),
+        CheckConstraint("ordinal >= 1", name="ordinal_positive"),
+    )
+
+    project_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    casefile_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draft_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    plan_revision_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    obligation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    object_registry_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
 __all__ = [
     "ExposurePlan",
     "ExposurePlanEntry",
     "ExposurePlanEntryRef",
+    "ExposurePlanObligation",
+    "ExposurePlanObligationRef",
     "ExposurePlanRevision",
 ]

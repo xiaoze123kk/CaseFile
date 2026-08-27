@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/constraint-first-planner.schema.json",
+  "title": "ConstraintFirstPlannerContracts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["planning_problem", "skeleton_proposal", "plan_skeleton", "semantic_fill"],
+  "properties": {
+    "planning_problem": {"$ref": "#/$defs/PlanningProblem"},
+    "skeleton_proposal": {"$ref": "#/$defs/SkeletonProposal"},
+    "plan_skeleton": {"$ref": "#/$defs/PlanSkeleton"},
+    "semantic_fill": {"$ref": "#/$defs/SemanticFillProposal"}
+  },
+  "$defs": {
+    "ChapterSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapter_id", "ordinal", "act_ordinal"],
+      "properties": {
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "act_ordinal": {"type": "integer", "minimum": 1, "maximum": 10}
+      }
+    },
+    "SceneSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "chapter_id", "discourse_order"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1}
+      }
+    },
+    "PlanningProblem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "source", "chapter_slots", "scene_slots", "object_refs", "hard_constraints"],
+      "properties": {
+        "schema_id": {"const": "compiler.planning-problem.v1"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["constraint_ir_schema_id", "constraint_ir_hash"],
+          "properties": {
+            "constraint_ir_schema_id": {"const": "compiler.planner-constraints.v2"},
+            "constraint_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+          }
+        },
+        "chapter_slots": {"type": "array", "items": {"$ref": "#/$defs/ChapterSlot"}, "minItems": 1, "maxItems": 100},
+        "scene_slots": {"type": "array", "items": {"$ref": "#/$defs/SceneSlot"}, "minItems": 1, "maxItems": 500},
+        "object_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "hard_constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["structure", "exposure", "temporal", "resolutions", "semantic_obligations"],
+          "properties": {
+            "structure": {"$ref": "planner-input-v2.schema.json#/$defs/StructureConstraints"},
+            "exposure": {"$ref": "planner-model-view-v3.schema.json#/properties/hard_constraints/properties/exposure"},
+            "temporal": {"$ref": "planner-model-view-v3.schema.json#/properties/hard_constraints/properties/temporal"},
+            "resolutions": {"$ref": "planner-model-view-v3.schema.json#/properties/hard_constraints/properties/resolutions"},
+            "semantic_obligations": {"type": "array", "items": {"$ref": "planner-input-v3.schema.json#/$defs/SemanticObligation"}}
+          }
+        }
+      }
+    },
+    "SkeletonScene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "chapter_id", "discourse_order", "purpose", "presentation_mode", "story_time_refs", "participant_refs", "basis_refs", "exposure", "resolutions", "prerequisite_scene_ids"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "novel-plan.schema.json#/$defs/ScenePurpose"},
+        "presentation_mode": {"$ref": "novel-plan.schema.json#/$defs/PresentationMode"},
+        "story_time_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "participant_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true},
+        "basis_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "minItems": 1, "uniqueItems": true},
+        "exposure": {"type": "array", "items": {"$ref": "novel-plan.schema.json#/$defs/ExposurePlacement"}},
+        "resolutions": {"type": "array", "items": {"$ref": "novel-plan.schema.json#/$defs/ResolutionPlacement"}},
+        "prerequisite_scene_ids": {"type": "array", "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"}, "uniqueItems": true}
+      }
+    },
+    "SkeletonProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.skeleton-proposal.v1"},
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/SkeletonScene"}, "minItems": 1, "maxItems": 500}
+      }
+    },
+    "PlanSkeleton": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "chapter_slots", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.plan-skeleton.v1"},
+        "chapter_slots": {"type": "array", "items": {"$ref": "#/$defs/ChapterSlot"}, "minItems": 1, "maxItems": 100},
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/SkeletonScene"}, "minItems": 1, "maxItems": 500}
+      }
+    },
+    "SemanticChapterFill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chapter_id", "title"],
+      "properties": {
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 200}
+      }
+    },
+    "SemanticSceneFill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "intent", "pov_ref", "location_ref", "event_refs"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "intent": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "pov_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "location_ref": {"oneOf": [{"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, {"type": "null"}]},
+        "event_refs": {"type": "array", "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"}, "uniqueItems": true}
+      }
+    },
+    "SemanticFillProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "chapters", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.semantic-fill.v1"},
+        "chapters": {"type": "array", "items": {"$ref": "#/$defs/SemanticChapterFill"}, "minItems": 1, "maxItems": 100},
+        "scenes": {"type": "array", "items": {"$ref": "#/$defs/SemanticSceneFill"}, "minItems": 1, "maxItems": 500}
+      }
+    }
+  }
+}

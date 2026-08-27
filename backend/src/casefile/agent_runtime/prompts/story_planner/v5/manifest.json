@@ -1,0 +1,8 @@
+{
+  "agent_id": "story_planner",
+  "version": "story-planner-v5",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "12fed75612c28647d21298e57cf65c4061602f48dc7afdd892767e6634d8bcba",
+  "previous_version": "story-planner-v3",
+  "change_summary": "PlannerInput v2 单变量实验：优先读取硬约束，再使用规划上下文，并明确 chronology 与 ObjectRef 边界。"
+}

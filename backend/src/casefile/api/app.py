@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from casefile.api.brief_intake import brief_intake_router
+from casefile.api.compiler import compiler_router
 from casefile.api.dependencies import (
     ActorDependency,
     DraftIdentityDependency,
@@ -98,6 +99,7 @@ def create_app(database_url: str | None = None, *, verify_database: bool = True)
     application.include_router(_health_router())
     application.include_router(_api_router())
     application.include_router(brief_intake_router())
+    application.include_router(compiler_router())
     application.include_router(ideas_router())
     application.include_router(reverse_parse_router())
     application.include_router(workflow_router())
