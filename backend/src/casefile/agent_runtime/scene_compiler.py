@@ -19,7 +19,7 @@ from casefile.domain.narrative_compiler import (
 
 SCENE_COMPILER_PIPELINE_VERSION = "compiler.scene-compiler.shadow.v2"
 SCENE_COMPILER_PROMPT_BUNDLE_VERSION = "scene-compiler-shadow-v1"
-SCENE_SEMANTIC_FILL_PROMPT_VERSION = "scene-compiler-semantic-fill-v3"
+SCENE_SEMANTIC_FILL_PROMPT_VERSION = "scene-compiler-semantic-fill-v4"
 SCENE_SEMANTIC_FILL_SCHEMA_ID = "compiler.scene-semantic-fill.v1"
 
 

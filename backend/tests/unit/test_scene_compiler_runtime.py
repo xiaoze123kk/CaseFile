@@ -361,3 +361,22 @@ def test_v3_prompt_requires_obligation_and_beat_kind_alignment() -> None:
 
     assert "Beat.kind 必须与该 obligation.kind 完全一致" in system_prompt
     assert "同一个 Beat 不得合并不同 kind" in system_prompt
+
+
+def test_v4_prompt_requires_setup_payoff_closed_loop() -> None:
+    system_prompt, _, _ = render_scene_fill_prompt(
+        SceneFillBatchRequest(
+            task_run_id=1,
+            prompt_version="scene-compiler-semantic-fill-v4",
+            batch_view=_batch(1, "scene_1"),
+            inbound_state_hash="0" * 64,
+            input_hash="1" * 64,
+            model_id="fake",
+            api_key="unused",
+        )
+    )
+
+    assert "默认让 setup_keys 与 payoff_keys 都保持空数组" in system_prompt
+    assert "同一 batch 的严格后续 Beat 能兑现" in system_prompt
+    assert "当前 batch 必须兑现的显式 payoff 义务" in system_prompt
+    assert "没有任何创建后未兑现的 setup" in system_prompt

@@ -1,0 +1,8 @@
+{
+  "agent_id": "scene_compiler_semantic_fill",
+  "version": "scene-compiler-semantic-fill-v4",
+  "system_prompt_file": "system.md",
+  "system_prompt_sha256": "870a8924b5ed44798236d3e619cf8de808c8e079c008ae7f6108ca4b4a8bbb23",
+  "previous_version": "scene-compiler-semantic-fill-v3",
+  "change_summary": "默认不创建可选 setup，并要求新 setup 同批闭环、入站 open setup 当前批次逐项兑现。"
+}
