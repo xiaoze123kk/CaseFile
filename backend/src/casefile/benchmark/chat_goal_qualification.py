@@ -8,6 +8,7 @@ import subprocess
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from casefile.agent_runtime.goal.policy import (
@@ -94,10 +95,23 @@ def run_qualification(
         goal_rollout="active",
     )
     rows: list[GoalTrialEvidence] = []
+    total_trials = len(suite.tasks) * 3
     try:
         for task in suite.tasks:
             public_task = _public_task(task)
             for trial_no in range(1, 4):
+                trial_index = len(rows) + 1
+                print(
+                    _trial_progress_line(
+                        trial_index=trial_index,
+                        total_trials=total_trials,
+                        task_id=task.task_id,
+                        trial_no=trial_no,
+                        state="started",
+                    ),
+                    flush=True,
+                )
+                started_at = monotonic()
                 try:
                     public = executor.execute_trial(
                         public_task,
@@ -132,8 +146,17 @@ def run_qualification(
                     )
                 rows.append(row)
                 print(
-                    f"[{len(rows)}/72] {task.task_id} trial={trial_no} "
-                    f"{'passed' if row.passed else ','.join(row.failures)}",
+                    _trial_progress_line(
+                        trial_index=trial_index,
+                        total_trials=total_trials,
+                        task_id=task.task_id,
+                        trial_no=trial_no,
+                        state="completed",
+                        passed=row.passed,
+                        failures=row.failures,
+                        infrastructure_failure=row.infrastructure_failure,
+                        elapsed_seconds=monotonic() - started_at,
+                    ),
                     flush=True,
                 )
     finally:
@@ -155,6 +178,32 @@ def run_qualification(
             }
         ),
     )
+
+
+def _trial_progress_line(
+    *,
+    trial_index: int,
+    total_trials: int,
+    task_id: str,
+    trial_no: int,
+    state: str,
+    passed: bool | None = None,
+    failures: tuple[str, ...] = (),
+    infrastructure_failure: str | None = None,
+    elapsed_seconds: float | None = None,
+) -> str:
+    prefix = f"[{trial_index}/{total_trials}] {task_id} trial={trial_no}"
+    if state == "started":
+        return f"{prefix} started"
+    if state != "completed" or passed is None or elapsed_seconds is None:
+        raise ValueError("goal_trial_progress_state_invalid")
+    outcome = "passed" if passed else "failed"
+    details = ""
+    if failures:
+        details += f" failures={','.join(failures)}"
+    if infrastructure_failure is not None:
+        details += f" infrastructure={infrastructure_failure}"
+    return f"{prefix} completed status={outcome} elapsed_s={elapsed_seconds:.3f}{details}"
 
 
 def _public_task(task: ChatGoalBenchmarkTask) -> PublicLanguageTask:

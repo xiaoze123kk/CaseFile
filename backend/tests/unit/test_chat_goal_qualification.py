@@ -1,6 +1,49 @@
 from dataclasses import replace
 
-from casefile.benchmark.chat_goal_qualification import GoalTrialEvidence, _report
+import pytest
+
+from casefile.benchmark.chat_goal_qualification import (
+    GoalTrialEvidence,
+    _report,
+    _trial_progress_line,
+)
+
+
+def test_goal_qualification_progress_tracks_trial_start_and_completion() -> None:
+    assert (
+        _trial_progress_line(
+            trial_index=7,
+            total_trials=72,
+            task_id="goal_read_timeline_audit",
+            trial_no=1,
+            state="started",
+        )
+        == "[7/72] goal_read_timeline_audit trial=1 started"
+    )
+    assert _trial_progress_line(
+        trial_index=7,
+        total_trials=72,
+        task_id="goal_read_timeline_audit",
+        trial_no=1,
+        state="completed",
+        passed=False,
+        failures=("goal_not_observed",),
+        infrastructure_failure="executor_exception:TimeoutError",
+        elapsed_seconds=12.3456,
+    ) == (
+        "[7/72] goal_read_timeline_audit trial=1 completed status=failed "
+        "elapsed_s=12.346 failures=goal_not_observed "
+        "infrastructure=executor_exception:TimeoutError"
+    )
+
+    with pytest.raises(ValueError, match="goal_trial_progress_state_invalid"):
+        _trial_progress_line(
+            trial_index=7,
+            total_trials=72,
+            task_id="goal_read_timeline_audit",
+            trial_no=1,
+            state="unknown",
+        )
 
 
 def test_goal_qualification_requires_complete_frozen_72_trials() -> None:
