@@ -47,6 +47,7 @@ EXPECTED_CURRENT_VERSIONS = {
     "story_planner": "story-planner-v3",
     "story_planner_skeleton": "story-planner-skeleton-v1",
     "story_planner_semantic_fill": "story-planner-semantic-fill-v1",
+    "scene_compiler_semantic_fill": "scene-compiler-semantic-fill-v6",
     "general_mutation_planner": "general-mutation-planner-v6",
 }
 
@@ -57,6 +58,24 @@ EXPECTED_RELEASE_HASHES = {
     },
     ("story_planner_semantic_fill", "story-planner-semantic-fill-v1"): {
         "system": "2106595dade90f5a79a54be34208c757f24adeab8b3c68c246efd5f6971fe73c"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v1"): {
+        "system": "5ea507befff7f3778bb1b7f4c8f30e605ee81cb9b621664564b7e63e3aab8aa0"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v2"): {
+        "system": "e91767565e6c5f6cdd9d9f0725e79c84b93e55ed90a8c3d0313a362778e6a3e6"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v3"): {
+        "system": "ae1d70363cc2565037021090e71e2a4848f52f14a1c58f7baaa8702a94616fa3"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v4"): {
+        "system": "870a8924b5ed44798236d3e619cf8de808c8e079c008ae7f6108ca4b4a8bbb23"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v5"): {
+        "system": "14621f7a5cd3296c8047d59a4640a448f77e8665a493d5b5f308ebe0369e6613"
+    },
+    ("scene_compiler_semantic_fill", "scene-compiler-semantic-fill-v6"): {
+        "system": "b9f5ae3b9dc0b37f5ff36575fd2da7db8c12fbc2ef4b37c26b56578366a203f6"
     },
     ("story_planner", "story-planner-v7"): {
         "system": "ef52318d8e1efa20f436c4ed0162b98dcf2802f17a6ffd8746d6d6e24a995656"
@@ -459,6 +478,7 @@ def test_packaged_registry_maps_every_agent_task_exactly_once() -> None:
         "story_planner",
         "story_planner_skeleton",
         "story_planner_semantic_fill",
+        "scene_compiler_semantic_fill",
         "general_mutation_planner",
     }
 

@@ -21,6 +21,10 @@ from casefile.agent_runtime.constraint_first_story_planner import (
     CONSTRAINT_FIRST_PIPELINE_VERSION,
     CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION,
 )
+from casefile.agent_runtime.scene_compiler import (
+    SCENE_COMPILER_PIPELINE_VERSION,
+    SCENE_COMPILER_PROMPT_BUNDLE_VERSION,
+)
 from casefile.agent_runtime.story_planner import STORY_PLANNER_TOOLSET_VERSION
 from casefile.application.casefile_v1 import build_casefile_document, casefile_content_hash
 from casefile.application.compiler.constants import (
@@ -45,6 +49,7 @@ from casefile.data_postgres.models import (
 )
 from casefile.data_postgres.repositories import ProjectRepository, SnapshotRepository
 from casefile.domain.narrative_compiler import (
+    SCENE_COMPILER_BATCH_SIZE,
     CompilerContractError,
     canonical_json_sha256,
     validate_compile_input_manifest,
@@ -169,6 +174,7 @@ class CompilerService:
         exposure_plan_revision_id: int | None,
         compiler_profile_version_id: int,
         planner_provider: str | None = None,
+        scene_compiler_shadow: bool = False,
     ) -> dict[str, Any]:
         with self.session.begin():
             owned = self.projects.get_owned(actor_user_id, project_id, lock=True)
@@ -270,6 +276,17 @@ class CompilerService:
                         "绑定 Exposure 时 Profile 必须使用 bound_plan。",
                         status_code=422,
                     )
+            if scene_compiler_shadow and setting is None:
+                raise ApplicationError(
+                    "compiler_scene_shadow_provider_required",
+                    "Scene Compiler 影子运行必须显式绑定 Planner Provider。",
+                    status_code=422,
+                )
+            scene_batch_count = (
+                0
+                if novel_profile is None
+                else _scene_batch_count(novel_profile.model_dump(mode="json"))
+            )
             manifest = CompileInputManifest(
                 target="novel",
                 mode=CompileMode(mode),
@@ -338,12 +355,20 @@ class CompilerService:
                 agent_version=(
                     NARRATIVE_COMPILER_VERSION
                     if setting is None
-                    else CONSTRAINT_FIRST_PIPELINE_VERSION
+                    else (
+                        SCENE_COMPILER_PIPELINE_VERSION
+                        if scene_compiler_shadow
+                        else CONSTRAINT_FIRST_PIPELINE_VERSION
+                    )
                 ),
                 prompt_version=(
                     NO_PROMPT_VERSION
                     if setting is None
-                    else CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION
+                    else (
+                        SCENE_COMPILER_PROMPT_BUNDLE_VERSION
+                        if scene_compiler_shadow
+                        else CONSTRAINT_FIRST_PROMPT_BUNDLE_VERSION
+                    )
                 ),
                 toolset_version=(
                     NO_TOOLSET_VERSION if setting is None else STORY_PLANNER_TOOLSET_VERSION
@@ -351,7 +376,13 @@ class CompilerService:
                 budget_jsonb=(
                     {}
                     if setting is None
-                    else {**setting.default_budget_jsonb, "max_turns": 2, "max_repairs": 0}
+                    else {
+                        **setting.default_budget_jsonb,
+                        "max_turns": (
+                            2 + scene_batch_count if scene_compiler_shadow else 2
+                        ),
+                        "max_repairs": 0,
+                    }
                 ),
                 usage_jsonb={},
                 attempt_count=0,
@@ -579,6 +610,24 @@ class CompilerService:
             ],
             "created_at": run.created_at.isoformat(),
         }
+
+
+def _scene_batch_count(profile: dict[str, Any]) -> int:
+    structure = profile["structure"]
+    chapter_count = int(structure["target_chapters"])
+    scene_count = int(structure["target_scenes"])
+    per_chapter = [0] * chapter_count
+    for discourse_order in range(1, scene_count + 1):
+        chapter_index = min(
+            chapter_count - 1,
+            (discourse_order - 1) * chapter_count // scene_count,
+        )
+        per_chapter[chapter_index] += 1
+    return sum(
+        (count + SCENE_COMPILER_BATCH_SIZE - 1) // SCENE_COMPILER_BATCH_SIZE
+        for count in per_chapter
+        if count
+    )
 
 
 __all__ = ["CompilerService"]

@@ -1,0 +1,9 @@
+{
+  "schema_id": "benchmark.scene-plan-mutation.v1",
+  "mutation_id": "temporal_ref_invalid",
+  "base_task_id": "temporal_grounding__dense",
+  "kind": "borrow_story_time_ref",
+  "target": "semantic_fill",
+  "expected_reason_code": "compiler_scene_location_time_invalid",
+  "category": "Temporal"
+}

@@ -1,0 +1,574 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://casefile.local/schemas/v2/compiler/scene-compiler.schema.json",
+  "title": "SceneCompilerInputBundleV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "source", "novel_plan", "narrative_ir", "exposure_plan",
+    "profile", "execution_constraints", "state_seed"
+  ],
+  "properties": {
+    "schema_id": {"const": "compiler.scene-compiler-input.v2"},
+    "source": {"$ref": "#/$defs/SceneCompilerInputSourceV2"},
+    "novel_plan": {"$ref": "novel-plan.schema.json#/$defs/NovelPlanIR"},
+    "narrative_ir": {"$ref": "narrative-ir.schema.json"},
+    "exposure_plan": {
+      "oneOf": [
+        {"$ref": "compiler.schema.json#/$defs/ExposureBinding"},
+        {"type": "null"}
+      ]
+    },
+    "profile": {"$ref": "compiler.schema.json#/$defs/CompilerProfileBinding"},
+    "execution_constraints": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/SceneExecutionConstraint"},
+      "minItems": 1
+    },
+    "state_seed": {"$ref": "#/$defs/SceneStateSeed"}
+  },
+  "$defs": {
+    "SceneCompilerInputSourceV2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "novel_plan_hash", "narrative_ir_hash", "exposure_hash", "profile_hash",
+        "input_hash"
+      ],
+      "properties": {
+        "novel_plan_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "narrative_ir_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "exposure_hash": {
+          "oneOf": [
+            {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+            {"type": "null"}
+          ]
+        },
+        "profile_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+      }
+    },
+    "SceneObligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["obligation_key", "kind", "basis_refs"],
+      "properties": {
+        "obligation_key": {
+          "type": "string",
+          "pattern": "^obligation_scene_[a-z0-9][a-z0-9_]{0,120}$"
+        },
+        "kind": {"enum": ["event", "exposure", "resolution", "transition"]},
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "event_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "exposure": {
+          "oneOf": [
+            {"$ref": "scene-plan.schema.json#/$defs/ExposurePlacement"},
+            {"type": "null"}
+          ]
+        },
+        "resolution": {
+          "oneOf": [
+            {"$ref": "scene-plan.schema.json#/$defs/ResolutionPlacement"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "SceneExecutionConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id", "chapter_id", "discourse_order", "purpose", "presentation_mode",
+        "pov_ref", "participant_refs", "location_ref", "story_time_refs", "basis_refs",
+        "prerequisite_scene_ids", "obligations", "forbidden_reveal_entry_keys"
+      ],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "novel-plan.schema.json#/$defs/ScenePurpose"},
+        "presentation_mode": {"$ref": "novel-plan.schema.json#/$defs/PresentationMode"},
+        "pov_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "prerequisite_scene_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+          "uniqueItems": true
+        },
+        "obligations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneObligation"},
+          "minItems": 1
+        },
+        "forbidden_reveal_entry_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "CharacterKnowledgeSeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject_ref", "as_of_event_ref", "knows_refs", "believes_refs", "false_belief_refs"
+      ],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "as_of_event_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "knows_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "believes_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "false_belief_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "EventStateSeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_ref", "participant_refs", "observer_refs", "location_ref", "cause_refs",
+        "effect_refs"
+      ],
+      "properties": {
+        "event_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "observer_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "cause_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "effect_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneStateSeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["character_knowledge", "events"],
+      "properties": {
+        "character_knowledge": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/CharacterKnowledgeSeed"}
+        },
+        "events": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/EventStateSeed"}
+        }
+      }
+    },
+    "SceneRuntimeKnowledgeState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "knows_refs", "believes_refs", "false_belief_refs"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "knows_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "believes_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "false_belief_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneKnowledgeOperationConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "object_ref", "allowed_operations"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "allowed_operations": {
+          "type": "array",
+          "items": {"enum": ["learn", "believe", "misbelieve", "correct"]},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneCompilerOpenSetupState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup_key", "setup_beat_id"],
+      "properties": {
+        "setup_key": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+        "setup_beat_id": {"type": "string", "pattern": "^beat_[a-z0-9][a-z0-9_]{0,95}$"}
+      }
+    },
+    "SceneCompilerInboundState": {
+      "title": "SceneCompilerInboundState",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_id", "state_hash", "character_knowledge",
+        "knowledge_operation_constraints", "open_setups", "used_setup_keys"
+      ],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-compiler-inbound-state.v1"},
+        "state_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"},
+        "character_knowledge": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneRuntimeKnowledgeState"}
+        },
+        "knowledge_operation_constraints": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneKnowledgeOperationConstraint"}
+        },
+        "open_setups": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneCompilerOpenSetupState"}
+        },
+        "used_setup_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneObjectSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object_ref", "label", "facts"],
+      "properties": {
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "label": {"type": "string", "minLength": 1, "maxLength": 500},
+        "facts": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 2000},
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneCompilerBatchView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id", "ordinal", "chapter_id", "scene_ids", "scenes", "object_catalog",
+        "state_seed"
+      ],
+      "properties": {
+        "batch_id": {"type": "string", "pattern": "^scene_batch_[a-z0-9][a-z0-9_]{0,100}$"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "scene_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true
+        },
+        "scenes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneCompilerBatchSceneView"},
+          "minItems": 1,
+          "maxItems": 8
+        },
+        "object_catalog": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneObjectSummary"}
+        },
+        "state_seed": {"$ref": "#/$defs/SceneStateSeed"}
+      }
+    },
+    "SceneCompilerBatchSceneView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scene_id", "chapter_id", "discourse_order", "purpose", "presentation_mode",
+        "pov_ref", "participant_refs", "location_ref", "story_time_refs", "basis_refs",
+        "prerequisite_scene_ids", "obligations", "forbidden_reveal_entry_keys"
+      ],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "chapter_id": {"type": "string", "pattern": "^chapter_[a-z0-9][a-z0-9_]{0,70}$"},
+        "discourse_order": {"type": "integer", "minimum": 1},
+        "purpose": {"$ref": "novel-plan.schema.json#/$defs/ScenePurpose"},
+        "presentation_mode": {"$ref": "novel-plan.schema.json#/$defs/PresentationMode"},
+        "pov_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "participant_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "location_ref": {
+          "oneOf": [
+            {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+            {"type": "null"}
+          ]
+        },
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "prerequisite_scene_ids": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+          "uniqueItems": true
+        },
+        "obligations": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneObligation"},
+          "minItems": 1
+        },
+        "forbidden_reveal_entry_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^exposure_[a-z0-9][a-z0-9_]{0,150}$"},
+          "uniqueItems": true
+        },
+        "beat_basis_allowlist": {
+          "description": "Exact allowlist for top-level SceneBeatFill.basis_refs. Object catalog membership alone does not grant provenance eligibility.",
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneCompilerModelView": {
+      "title": "SceneCompilerModelView",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "source", "batches"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-compiler-model-view.v1"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["projection_version", "scene_compiler_input_hash"],
+          "properties": {
+            "projection_version": {
+              "enum": [
+                "compiler.scene-compiler-model-view-projection.v1",
+                "compiler.scene-compiler-model-view-projection.v2",
+                "compiler.scene-compiler-model-view-projection.v3"
+              ]
+            },
+            "scene_compiler_input_hash": {"$ref": "compiler.schema.json#/$defs/Sha256Hex"}
+          }
+        },
+        "batches": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneCompilerBatchView"},
+          "minItems": 1
+        }
+      }
+    },
+    "KnowledgeTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "subject_ref", "object_ref", "basis_refs"],
+      "properties": {
+        "operation": {"enum": ["learn", "believe", "misbelieve", "correct"]},
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "object_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "LocationAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject_ref", "location_ref", "story_time_refs", "basis_refs"],
+      "properties": {
+        "subject_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "location_ref": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+        "story_time_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneBeatFill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_key", "kind", "directive", "actor_refs", "target_refs", "basis_refs",
+        "fulfills_obligation_keys", "depends_on", "knowledge_transitions",
+        "location_assertions", "setup_keys", "payoff_keys"
+      ],
+      "properties": {
+        "local_key": {"type": "string", "pattern": "^beat_local_[a-z0-9][a-z0-9_]{0,80}$"},
+        "kind": {"enum": ["event", "exposure", "resolution", "transition"]},
+        "directive": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "actor_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "target_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "uniqueItems": true
+        },
+        "basis_refs": {
+          "type": "array",
+          "items": {"$ref": "../casefile/common.schema.json#/$defs/ObjectRef"},
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "fulfills_obligation_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^obligation_scene_[a-z0-9][a-z0-9_]{0,120}$"},
+          "uniqueItems": true
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 160},
+          "uniqueItems": true
+        },
+        "knowledge_transitions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/KnowledgeTransition"}
+        },
+        "location_assertions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/LocationAssertion"}
+        },
+        "setup_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+          "uniqueItems": true
+        },
+        "payoff_keys": {
+          "type": "array",
+          "items": {"type": "string", "pattern": "^setup_[a-z0-9][a-z0-9_]{0,100}$"},
+          "uniqueItems": true
+        }
+      }
+    },
+    "SceneSemanticFill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scene_id", "dramatic_goal", "conflict", "outcome", "beats"],
+      "properties": {
+        "scene_id": {"type": "string", "pattern": "^scene_[a-z0-9][a-z0-9_]{0,70}$"},
+        "dramatic_goal": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "conflict": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "outcome": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "beats": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneBeatFill"},
+          "minItems": 1
+        }
+      }
+    },
+    "SceneSemanticFillProposal": {
+      "title": "SceneSemanticFillProposal",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_id", "batch_id", "scenes"],
+      "properties": {
+        "schema_id": {"const": "compiler.scene-semantic-fill.v1"},
+        "batch_id": {"type": "string", "pattern": "^scene_batch_[a-z0-9][a-z0-9_]{0,100}$"},
+        "scenes": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/SceneSemanticFill"},
+          "minItems": 1,
+          "maxItems": 8
+        }
+      }
+    }
+  }
+}

@@ -83,6 +83,16 @@ from casefile.agent_runtime.providers import (
     FakeProvider,
     OpenAIAgentsProvider,
 )
+from casefile.agent_runtime.scene_compiler import (
+    SCENE_COMPILER_PIPELINE_VERSION,
+    SCENE_COMPILER_PROMPT_BUNDLE_VERSION,
+    SCENE_SEMANTIC_FILL_PROMPT_VERSION,
+    SceneCompilerExecution,
+    SceneFillBatchRequest,
+    SceneFillBatchResult,
+    execute_scene_semantic_fill,
+    validate_scene_semantic_fill,
+)
 from casefile.agent_runtime.story_planner import (
     STORY_PLANNER_AGENT_VERSION,
     STORY_PLANNER_MAX_REPAIRS,
@@ -95,6 +105,14 @@ from casefile.agent_runtime.story_planner import (
 
 __all__ = [
     "AgentProvider",
+    "SCENE_COMPILER_PIPELINE_VERSION",
+    "SCENE_COMPILER_PROMPT_BUNDLE_VERSION",
+    "SCENE_SEMANTIC_FILL_PROMPT_VERSION",
+    "SceneCompilerExecution",
+    "SceneFillBatchRequest",
+    "SceneFillBatchResult",
+    "execute_scene_semantic_fill",
+    "validate_scene_semantic_fill",
     "STORY_PLANNER_AGENT_VERSION",
     "STORY_PLANNER_MAX_REPAIRS",
     "STORY_PLANNER_PROMPT_VERSION",

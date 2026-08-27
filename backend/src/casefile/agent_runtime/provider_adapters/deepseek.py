@@ -16,6 +16,7 @@ from casefile_contracts import (
 )
 from casefile_contracts import (
     NovelPlanCandidate,
+    SceneSemanticFillProposal,
     SemanticFillProposal,
     SkeletonProposal,
     StoryPlanStructuralPatch,
@@ -135,6 +136,11 @@ from casefile.agent_runtime.provider_adapters.shared import (
     _run_chat_tool_agent,
     _validate_polish_candidate,
 )
+from casefile.agent_runtime.scene_compiler import (
+    SceneFillBatchRequest,
+    SceneFillBatchResult,
+)
+from casefile.agent_runtime.scene_compiler_prompt import render_scene_fill_prompt
 from casefile.agent_runtime.story_planner import (
     StoryPlannerPatchProviderResult,
     StoryPlannerPatchRequest,
@@ -154,6 +160,23 @@ class DeepSeekAgentsProvider:
     """DeepSeek OpenAI-compatible Chat Completions implementation."""
 
     base_url = "https://api.deepseek.com"
+
+    def fill_scene_batch(self, request: SceneFillBatchRequest) -> SceneFillBatchResult:
+        if not request.api_key:
+            raise ProviderProtocolError("DeepSeek API key is required")
+        instructions, input_text, _prompt_hash = render_scene_fill_prompt(request)
+        proposal, usage, raw_output = asyncio.run(
+            self._story_planner_json_object(
+                request,
+                instructions=instructions,
+                input_text=input_text,
+                output_type=SceneSemanticFillProposal,
+                schema_id="compiler.scene-semantic-fill.v1",
+                stage="scene_semantic_fill",
+                component_id="scene_compiler",
+            )
+        )
+        return SceneFillBatchResult(proposal, usage, raw_output)
 
     def propose_skeleton(
         self, request: SkeletonProposalRequest
@@ -238,6 +261,7 @@ class DeepSeekAgentsProvider:
             | StoryPlannerPatchRequest
             | SkeletonProposalRequest
             | SemanticFillRequest
+            | SceneFillBatchRequest
         ),
         *,
         instructions: str,
@@ -245,6 +269,7 @@ class DeepSeekAgentsProvider:
         output_type: type[BaseModel],
         schema_id: str,
         stage: str,
+        component_id: str = "story_planner",
     ) -> tuple[dict[str, Any], dict[str, Any], str]:
         """Return the raw candidate so the outer bounded repair loop owns validation."""
 
@@ -263,7 +288,7 @@ class DeepSeekAgentsProvider:
             "agent.model_call.started",
             stage,
             {
-                "component_id": "story_planner",
+                "component_id": component_id,
                 "schema_id": schema_id,
                 "protocol": "json_object",
                 "model_id": request.model_id,
@@ -310,7 +335,7 @@ class DeepSeekAgentsProvider:
             "agent.model_call.completed",
             stage,
             {
-                "component_id": "story_planner",
+                "component_id": component_id,
                 "schema_id": schema_id,
                 "protocol": "json_object",
                 "model_id": request.model_id,

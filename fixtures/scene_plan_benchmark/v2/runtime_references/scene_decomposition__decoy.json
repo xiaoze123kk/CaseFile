@@ -1,0 +1,1408 @@
+{
+  "schema_id": "compiler.scene-plan.v2",
+  "compiler_version": "compiler.scene-execution.v2",
+  "source": {
+    "novel_plan_hash": "d4260883d7b8ea3c33e3d9c7703569e56b91275d103c7e7719c6c1af447df13b",
+    "narrative_ir_hash": "3ae56a41e597941588f4d2fb43bad8a5bb8d3328eb6671b6df15ddbb868bf9a2",
+    "scene_compiler_input_hash": "5d281ada9765eb49dec4615254eb83f3797c92ad4f7733d2e36dc019aecaebf0",
+    "semantic_fill_hash": "40e9c5a130add711b4d2c6137433940a213aa6f303691a5607a3fdab41e11496",
+    "component_fingerprint": "ac1b0eb99f0add34575d9a1c69b17ef196037618dcf1b82345113676b51111eb"
+  },
+  "chapters": [
+    {
+      "chapter_id": "chapter_1",
+      "ordinal": 1,
+      "act_ordinal": 1,
+      "title": "第1章",
+      "scene_ids": [
+        "scene_1",
+        "scene_2"
+      ]
+    },
+    {
+      "chapter_id": "chapter_2",
+      "ordinal": 2,
+      "act_ordinal": 2,
+      "title": "第2章",
+      "scene_ids": [
+        "scene_3",
+        "scene_4"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "scene_id": "scene_1",
+      "chapter_id": "chapter_1",
+      "discourse_order": 1,
+      "purpose": "hook",
+      "presentation_mode": "linear",
+      "objective": "推进 linear_mystery 的 decoy 场景 1。",
+      "dramatic_goal": "落实 scene_1 的既定目标。",
+      "conflict": "来源事实与角色目标形成可执行阻力。",
+      "outcome": "硬义务完成并为后续场景留下可追溯状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "audience_state_before": [],
+      "audience_state_after": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        }
+      ],
+      "allowed_reveals": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "action": "introduce"
+        }
+      ],
+      "forbidden_reveal_entry_keys": [
+        "exposure_restart_log"
+      ],
+      "resolution_actions": [],
+      "prerequisite_scene_ids": [],
+      "beat_ids": [
+        "beat_scene_1_001",
+        "beat_scene_1_002"
+      ],
+      "state_before_hash": "d4d9889077ca7b8f97c439934bf6adef9e28209f88a47c872d12eb99b60e7666",
+      "state_after_hash": "490deb25df21df2cd82b610e997f0d6e1ef316bf011a62cc6393c47a86d1e426",
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "field_path": "",
+          "source_fragment_hash": "9adc1888f69651041a2ab6e6820065211a744d9948ea3dad1cf19cf79cbb8fd4"
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "field_path": "",
+          "source_fragment_hash": "dca993063b5c935f909be90f7085854579f900b9160e697c56ae26e95daddb37"
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_2",
+      "chapter_id": "chapter_1",
+      "discourse_order": 2,
+      "purpose": "investigation",
+      "presentation_mode": "linear",
+      "objective": "推进 linear_mystery 的 decoy 场景 2。",
+      "dramatic_goal": "落实 scene_2 的既定目标。",
+      "conflict": "来源事实与角色目标形成可执行阻力。",
+      "outcome": "硬义务完成并为后续场景留下可追溯状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "audience_state_before": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        }
+      ],
+      "audience_state_after": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "status": "introduced",
+          "first_scene_id": "scene_2",
+          "last_scene_id": "scene_2"
+        }
+      ],
+      "allowed_reveals": [
+        {
+          "entry_key": "exposure_restart_log",
+          "action": "introduce"
+        }
+      ],
+      "forbidden_reveal_entry_keys": [],
+      "resolution_actions": [],
+      "prerequisite_scene_ids": [
+        "scene_1"
+      ],
+      "beat_ids": [
+        "beat_scene_2_001",
+        "beat_scene_2_002"
+      ],
+      "state_before_hash": "490deb25df21df2cd82b610e997f0d6e1ef316bf011a62cc6393c47a86d1e426",
+      "state_after_hash": "b7b4672e25849e057845557db85e86b35bd437e0e7d1c9cf81d4c85be264a560",
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "field_path": "",
+          "source_fragment_hash": "91da5febae81c62038200b22ba254a4dc856d5127a57616db8c1612bcee767e7"
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "field_path": "",
+          "source_fragment_hash": "459f50c195487b3d63f92d7deb8043cc176c161e6202e57c424f9dbeb891b8b7"
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_3",
+      "chapter_id": "chapter_2",
+      "discourse_order": 3,
+      "purpose": "reveal",
+      "presentation_mode": "linear",
+      "objective": "推进 linear_mystery 的 decoy 场景 3。",
+      "dramatic_goal": "落实 scene_3 的既定目标。",
+      "conflict": "来源事实与角色目标形成可执行阻力。",
+      "outcome": "硬义务完成并为后续场景留下可追溯状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "audience_state_before": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "status": "introduced",
+          "first_scene_id": "scene_2",
+          "last_scene_id": "scene_2"
+        }
+      ],
+      "audience_state_after": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "status": "introduced",
+          "first_scene_id": "scene_2",
+          "last_scene_id": "scene_2"
+        }
+      ],
+      "allowed_reveals": [],
+      "forbidden_reveal_entry_keys": [],
+      "resolution_actions": [],
+      "prerequisite_scene_ids": [
+        "scene_2"
+      ],
+      "beat_ids": [
+        "beat_scene_3_001"
+      ],
+      "state_before_hash": "b7b4672e25849e057845557db85e86b35bd437e0e7d1c9cf81d4c85be264a560",
+      "state_after_hash": "b7b4672e25849e057845557db85e86b35bd437e0e7d1c9cf81d4c85be264a560",
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "field_path": "",
+          "source_fragment_hash": "27312587f803744595e0eb4db9d5f8059465669e75e34803371ededa0bf88cdd"
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "field_path": "",
+          "source_fragment_hash": "bc7fcad806a9aae3e34b1456080bcb166f100b03fbcee9b70051ec93fb1bf990"
+        }
+      ]
+    },
+    {
+      "scene_id": "scene_4",
+      "chapter_id": "chapter_2",
+      "discourse_order": 4,
+      "purpose": "resolution",
+      "presentation_mode": "linear",
+      "objective": "推进 linear_mystery 的 decoy 场景 4。",
+      "dramatic_goal": "落实 scene_4 的既定目标。",
+      "conflict": "来源事实与角色目标形成可执行阻力。",
+      "outcome": "硬义务完成并为后续场景留下可追溯状态。",
+      "pov_ref": {
+        "object_type": "entity",
+        "object_id": "ent_researcher"
+      },
+      "participant_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        }
+      ],
+      "location_ref": {
+        "object_type": "location",
+        "object_id": "loc_lab"
+      },
+      "story_time_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "audience_state_before": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "status": "introduced",
+          "first_scene_id": "scene_2",
+          "last_scene_id": "scene_2"
+        }
+      ],
+      "audience_state_after": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "status": "introduced",
+          "first_scene_id": "scene_1",
+          "last_scene_id": "scene_1"
+        },
+        {
+          "entry_key": "exposure_restart_log",
+          "status": "introduced",
+          "first_scene_id": "scene_2",
+          "last_scene_id": "scene_2"
+        }
+      ],
+      "allowed_reveals": [],
+      "forbidden_reveal_entry_keys": [],
+      "resolution_actions": [
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "action": "resolve"
+        },
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "action": "resolve"
+        }
+      ],
+      "prerequisite_scene_ids": [
+        "scene_3"
+      ],
+      "beat_ids": [
+        "beat_scene_4_001",
+        "beat_scene_4_002",
+        "beat_scene_4_003"
+      ],
+      "state_before_hash": "b7b4672e25849e057845557db85e86b35bd437e0e7d1c9cf81d4c85be264a560",
+      "state_after_hash": "b7b4672e25849e057845557db85e86b35bd437e0e7d1c9cf81d4c85be264a560",
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_automatic_restart"
+          },
+          "field_path": "",
+          "source_fragment_hash": "27312587f803744595e0eb4db9d5f8059465669e75e34803371ededa0bf88cdd"
+        },
+        {
+          "object_ref": {
+            "object_type": "hypothesis",
+            "object_id": "hyp_manual_restart"
+          },
+          "field_path": "",
+          "source_fragment_hash": "bc7fcad806a9aae3e34b1456080bcb166f100b03fbcee9b70051ec93fb1bf990"
+        },
+        {
+          "object_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "field_path": "",
+          "source_fragment_hash": "557ef621b39947efdf13d38ff8b0b1ec16dec3d665c7bd4d3f5b2d055113e69b"
+        },
+        {
+          "object_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "field_path": "",
+          "source_fragment_hash": "a3326fb1054e531e088b95da1afded90877ab2e5d62b99cedd3b2d004575bc29"
+        }
+      ]
+    }
+  ],
+  "beats": [
+    {
+      "beat_id": "beat_scene_1_001",
+      "scene_id": "scene_1",
+      "ordinal": 1,
+      "kind": "event",
+      "directive": "执行 obligation_scene_1_event_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_1_event_001"
+      ],
+      "prerequisite_beat_ids": [],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_1_002",
+      "scene_id": "scene_1",
+      "ordinal": 2,
+      "kind": "exposure",
+      "directive": "执行 obligation_scene_1_exposure_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [],
+      "basis_refs": [
+        {
+          "object_type": "claim",
+          "object_id": "claim_manual_trigger"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        },
+        {
+          "object_type": "information_unit",
+          "object_id": "info_manual_trace"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_1_exposure_001"
+      ],
+      "prerequisite_beat_ids": [
+        "beat_scene_1_001"
+      ],
+      "event_refs": [],
+      "exposure_actions": [
+        {
+          "entry_key": "exposure_manual_trace",
+          "action": "introduce"
+        }
+      ],
+      "resolution_actions": [],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          },
+          "field_path": "",
+          "source_fragment_hash": "9adc1888f69651041a2ab6e6820065211a744d9948ea3dad1cf19cf79cbb8fd4"
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_manual_trace"
+          },
+          "field_path": "",
+          "source_fragment_hash": "dca993063b5c935f909be90f7085854579f900b9160e697c56ae26e95daddb37"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_2_001",
+      "scene_id": "scene_2",
+      "ordinal": 1,
+      "kind": "event",
+      "directive": "执行 obligation_scene_2_event_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_2_event_001"
+      ],
+      "prerequisite_beat_ids": [],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_2_002",
+      "scene_id": "scene_2",
+      "ordinal": 2,
+      "kind": "exposure",
+      "directive": "执行 obligation_scene_2_exposure_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [],
+      "basis_refs": [
+        {
+          "object_type": "claim",
+          "object_id": "claim_backup_trigger"
+        },
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        },
+        {
+          "object_type": "information_unit",
+          "object_id": "info_restart_log"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_2_exposure_001"
+      ],
+      "prerequisite_beat_ids": [
+        "beat_scene_2_001"
+      ],
+      "event_refs": [],
+      "exposure_actions": [
+        {
+          "entry_key": "exposure_restart_log",
+          "action": "introduce"
+        }
+      ],
+      "resolution_actions": [],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          },
+          "field_path": "",
+          "source_fragment_hash": "91da5febae81c62038200b22ba254a4dc856d5127a57616db8c1612bcee767e7"
+        },
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        },
+        {
+          "object_ref": {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          },
+          "field_path": "",
+          "source_fragment_hash": "459f50c195487b3d63f92d7deb8043cc176c161e6202e57c424f9dbeb891b8b7"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_3_001",
+      "scene_id": "scene_3",
+      "ordinal": 1,
+      "kind": "event",
+      "directive": "执行 obligation_scene_3_event_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_3_event_001"
+      ],
+      "prerequisite_beat_ids": [],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_4_001",
+      "scene_id": "scene_4",
+      "ordinal": 1,
+      "kind": "event",
+      "directive": "执行 obligation_scene_4_event_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_4_event_001"
+      ],
+      "prerequisite_beat_ids": [],
+      "event_refs": [
+        {
+          "object_type": "event",
+          "object_id": "evt_restart_seven"
+        }
+      ],
+      "exposure_actions": [],
+      "resolution_actions": [],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          },
+          "field_path": "",
+          "source_fragment_hash": "db77c929c0a560efabf9993eb982e84425faec114632547597c52ffa3382a707"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_4_002",
+      "scene_id": "scene_4",
+      "ordinal": 2,
+      "kind": "resolution",
+      "directive": "执行 obligation_scene_4_resolution_001 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [
+        {
+          "object_type": "resolution_spec",
+          "object_id": "res_root_cause"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "resolution_spec",
+          "object_id": "res_root_cause"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_4_resolution_001"
+      ],
+      "prerequisite_beat_ids": [
+        "beat_scene_4_001"
+      ],
+      "event_refs": [],
+      "exposure_actions": [],
+      "resolution_actions": [
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "action": "resolve"
+        }
+      ],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_root_cause"
+          },
+          "field_path": "",
+          "source_fragment_hash": "557ef621b39947efdf13d38ff8b0b1ec16dec3d665c7bd4d3f5b2d055113e69b"
+        }
+      ]
+    },
+    {
+      "beat_id": "beat_scene_4_003",
+      "scene_id": "scene_4",
+      "ordinal": 3,
+      "kind": "resolution",
+      "directive": "执行 obligation_scene_4_resolution_002 并推进场景目标。",
+      "actor_refs": [
+        {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        }
+      ],
+      "target_refs": [
+        {
+          "object_type": "resolution_spec",
+          "object_id": "res_shutdown_rule"
+        }
+      ],
+      "basis_refs": [
+        {
+          "object_type": "resolution_spec",
+          "object_id": "res_shutdown_rule"
+        }
+      ],
+      "obligation_keys": [
+        "obligation_scene_4_resolution_002"
+      ],
+      "prerequisite_beat_ids": [
+        "beat_scene_4_002"
+      ],
+      "event_refs": [],
+      "exposure_actions": [],
+      "resolution_actions": [
+        {
+          "resolution_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "action": "resolve"
+        }
+      ],
+      "state_delta": {
+        "knowledge_transitions": [],
+        "location_assertions": []
+      },
+      "setup_keys": [],
+      "payoff_keys": [],
+      "source_refs": [
+        {
+          "object_ref": {
+            "object_type": "resolution_spec",
+            "object_id": "res_shutdown_rule"
+          },
+          "field_path": "",
+          "source_fragment_hash": "a3326fb1054e531e088b95da1afded90877ab2e5d62b99cedd3b2d004575bc29"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge_008d46d04cc6503b7248b205",
+      "relation": "beat_causes_beat",
+      "from_node_id": "beat_scene_2_001",
+      "to_node_id": "beat_scene_2_002"
+    },
+    {
+      "edge_id": "edge_103c31d1f7889d5118246088",
+      "relation": "scene_enables_scene",
+      "from_node_id": "scene_1",
+      "to_node_id": "scene_2"
+    },
+    {
+      "edge_id": "edge_176ecbbe925aa26b9316d47d",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_1",
+      "to_node_id": "beat_scene_1_001"
+    },
+    {
+      "edge_id": "edge_1abf2de4c72759b35b9d83a1",
+      "relation": "chapter_contains_scene",
+      "from_node_id": "chapter_1",
+      "to_node_id": "scene_2"
+    },
+    {
+      "edge_id": "edge_24dab22ace704708b9c65d6d",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_2",
+      "to_node_id": "beat_scene_2_002"
+    },
+    {
+      "edge_id": "edge_26f717659b0cdf35fcb19b23",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_3",
+      "to_node_id": "beat_scene_3_001"
+    },
+    {
+      "edge_id": "edge_314ddb1134f780394a8761c4",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_2",
+      "to_node_id": "beat_scene_2_001"
+    },
+    {
+      "edge_id": "edge_410314cc1666301832b8d152",
+      "relation": "beat_causes_beat",
+      "from_node_id": "beat_scene_1_001",
+      "to_node_id": "beat_scene_1_002"
+    },
+    {
+      "edge_id": "edge_8269672d148535212f094126",
+      "relation": "chapter_contains_scene",
+      "from_node_id": "chapter_1",
+      "to_node_id": "scene_1"
+    },
+    {
+      "edge_id": "edge_8a40d25a6619eafc9fda3d66",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_4",
+      "to_node_id": "beat_scene_4_001"
+    },
+    {
+      "edge_id": "edge_b6dd7196676358715dda7f99",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_4",
+      "to_node_id": "beat_scene_4_003"
+    },
+    {
+      "edge_id": "edge_c063bf308f8833e6081fd286",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_4",
+      "to_node_id": "beat_scene_4_002"
+    },
+    {
+      "edge_id": "edge_c5cc8eda5c5927713deac77a",
+      "relation": "chapter_contains_scene",
+      "from_node_id": "chapter_2",
+      "to_node_id": "scene_4"
+    },
+    {
+      "edge_id": "edge_c84d740e5e2e0fb41f65b97a",
+      "relation": "beat_causes_beat",
+      "from_node_id": "beat_scene_4_002",
+      "to_node_id": "beat_scene_4_003"
+    },
+    {
+      "edge_id": "edge_cbc740c94d3a48dde9d0c541",
+      "relation": "scene_enables_scene",
+      "from_node_id": "scene_3",
+      "to_node_id": "scene_4"
+    },
+    {
+      "edge_id": "edge_e0a421410530a5962dfe8546",
+      "relation": "scene_contains_beat",
+      "from_node_id": "scene_1",
+      "to_node_id": "beat_scene_1_002"
+    },
+    {
+      "edge_id": "edge_e796a8ffd9d672724b79110b",
+      "relation": "beat_causes_beat",
+      "from_node_id": "beat_scene_4_001",
+      "to_node_id": "beat_scene_4_002"
+    },
+    {
+      "edge_id": "edge_f3a0079dbba50be4d2d077b8",
+      "relation": "scene_enables_scene",
+      "from_node_id": "scene_2",
+      "to_node_id": "scene_3"
+    },
+    {
+      "edge_id": "edge_f6bf69630a52a2ce81c7876a",
+      "relation": "chapter_contains_scene",
+      "from_node_id": "chapter_2",
+      "to_node_id": "scene_3"
+    }
+  ],
+  "initial_state": {
+    "audience_exposure": [],
+    "character_knowledge": [
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        "knows_refs": [
+          {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          }
+        ],
+        "believes_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          }
+        ],
+        "false_belief_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          }
+        ]
+      }
+    ],
+    "locations": [
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ]
+      },
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ]
+      },
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ]
+      },
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ]
+      }
+    ],
+    "open_setups": []
+  },
+  "final_state": {
+    "audience_exposure": [
+      {
+        "entry_key": "exposure_manual_trace",
+        "status": "introduced",
+        "first_scene_id": "scene_1",
+        "last_scene_id": "scene_1"
+      },
+      {
+        "entry_key": "exposure_restart_log",
+        "status": "introduced",
+        "first_scene_id": "scene_2",
+        "last_scene_id": "scene_2"
+      }
+    ],
+    "character_knowledge": [
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        "knows_refs": [
+          {
+            "object_type": "information_unit",
+            "object_id": "info_restart_log"
+          }
+        ],
+        "believes_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_backup_trigger"
+          }
+        ],
+        "false_belief_refs": [
+          {
+            "object_type": "claim",
+            "object_id": "claim_manual_trigger"
+          }
+        ]
+      }
+    ],
+    "locations": [
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ]
+      },
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_backup_system"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ]
+      },
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_researcher"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_seven"
+          }
+        ]
+      },
+      {
+        "subject_ref": {
+          "object_type": "entity",
+          "object_id": "ent_safety_observer"
+        },
+        "location_ref": {
+          "object_type": "location",
+          "object_id": "loc_lab"
+        },
+        "story_time_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ],
+        "basis_refs": [
+          {
+            "object_type": "event",
+            "object_id": "evt_restart_six"
+          }
+        ]
+      }
+    ],
+    "open_setups": []
+  },
+  "indexes": {
+    "chapter_scene_ids": {
+      "chapter_1": [
+        "scene_1",
+        "scene_2"
+      ],
+      "chapter_2": [
+        "scene_3",
+        "scene_4"
+      ]
+    },
+    "scene_beat_ids": {
+      "scene_1": [
+        "beat_scene_1_001",
+        "beat_scene_1_002"
+      ],
+      "scene_2": [
+        "beat_scene_2_001",
+        "beat_scene_2_002"
+      ],
+      "scene_3": [
+        "beat_scene_3_001"
+      ],
+      "scene_4": [
+        "beat_scene_4_001",
+        "beat_scene_4_002",
+        "beat_scene_4_003"
+      ]
+    },
+    "scene_dependencies": {
+      "scene_1": [],
+      "scene_2": [
+        "scene_1"
+      ],
+      "scene_3": [
+        "scene_2"
+      ],
+      "scene_4": [
+        "scene_3"
+      ]
+    },
+    "beat_dependencies": {
+      "beat_scene_1_001": [],
+      "beat_scene_1_002": [
+        "beat_scene_1_001"
+      ],
+      "beat_scene_2_001": [],
+      "beat_scene_2_002": [
+        "beat_scene_2_001"
+      ],
+      "beat_scene_3_001": [],
+      "beat_scene_4_001": [],
+      "beat_scene_4_002": [
+        "beat_scene_4_001"
+      ],
+      "beat_scene_4_003": [
+        "beat_scene_4_002"
+      ]
+    },
+    "exposure_scene_ids": {
+      "exposure_manual_trace": [
+        "scene_1"
+      ],
+      "exposure_restart_log": [
+        "scene_2"
+      ]
+    },
+    "resolution_scene_ids": {
+      "resolution_spec:res_root_cause": [
+        "scene_4"
+      ],
+      "resolution_spec:res_shutdown_rule": [
+        "scene_4"
+      ]
+    },
+    "setup_beat_ids": {},
+    "payoff_beat_ids": {}
+  },
+  "diagnostics": [],
+  "metrics": {
+    "chapter_count": 2,
+    "scene_count": 4,
+    "beat_count": 8,
+    "exposure_count": 2,
+    "resolution_action_count": 2,
+    "knowledge_transition_count": 0,
+    "location_assertion_count": 0,
+    "setup_count": 0,
+    "payoff_count": 0
+  }
+}

@@ -1,0 +1,723 @@
+{
+  "schema_id": "benchmark.scene-plan-suite.v1",
+  "suite_id": "scene-plan-capability-v1",
+  "formal_qualification": {
+    "provider": "deepseek",
+    "model_id": "deepseek-v4-pro",
+    "trials_per_task": 3
+  },
+  "grader_versions": {
+    "g0": "scene-plan-contract-v1",
+    "g1": "scene-plan-conformance-v1",
+    "g2": "scene-plan-outcome-v1",
+    "g3": "scene-plan-quality-contract-v1",
+    "g4": "scene-plan-semantic-signature-v1"
+  },
+  "qualification": {
+    "status": "uncalibrated",
+    "qualified": false,
+    "reason": "live_baseline_not_run"
+  },
+  "tasks": [
+    {
+      "task_id": "scene_decomposition__basic",
+      "primary_capability": "scene_decomposition",
+      "variant": "basic",
+      "source_task_id": "linear_mystery__basic",
+      "input": {
+        "path": "inputs/scene_decomposition__basic.json",
+        "hash": "d17d2566d8aadfcd0fa7ea6b6a6b7650956c58069a3dc6072f0f8c612ab1d4ea"
+      },
+      "reference": {
+        "path": "references/scene_decomposition__basic.json",
+        "hash": "7c96161e13fd2912de155dcc37ad5ca2d67b825907b5e8361ccf9be857a2d457",
+        "semantic_signature": "1ebce7e5187f6c921649e52bea454e58499102b698b2f43c1127e484b9af4fc7"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "scene_decomposition",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/scene_decomposition__basic.json",
+        "hash": "a96335514467710f3269f6e8435d079f071db0dac92e23ad49ac5b7642eb7ca3"
+      }
+    },
+    {
+      "task_id": "scene_decomposition__decoy",
+      "primary_capability": "scene_decomposition",
+      "variant": "decoy",
+      "source_task_id": "linear_mystery__decoy",
+      "input": {
+        "path": "inputs/scene_decomposition__decoy.json",
+        "hash": "574072760cf4fa4598b15b8658c1e122a8a9c245dd9974bf12f01454817b3e2d"
+      },
+      "reference": {
+        "path": "references/scene_decomposition__decoy.json",
+        "hash": "ad44ffea9baf961eacd0ebbabc216e093ebf468a874d42be3ad187be05f34d65",
+        "semantic_signature": "fbcc2f5c8b6b874bc307f63e1ad51a64012c9d84b675c3579edecc058544f7bf"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "scene_decomposition",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "scene_decomposition__dense",
+      "primary_capability": "scene_decomposition",
+      "variant": "dense",
+      "source_task_id": "linear_mystery__dense",
+      "input": {
+        "path": "inputs/scene_decomposition__dense.json",
+        "hash": "a2a02c5885fd60bde073c47fc2ab2c145d398955f76bea05135e9b58eb9fdffa"
+      },
+      "reference": {
+        "path": "references/scene_decomposition__dense.json",
+        "hash": "02bbd9af6228e9ab52adcd9b38a0da5810fe5981724746cda8e3953525202f05",
+        "semantic_signature": "09bdeb2e22498ae6ef9d9472855ef948e9be00fba9d1a2ce401aaed0eeffad3c"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "scene_decomposition",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "event_grounding__basic",
+      "primary_capability": "event_grounding",
+      "variant": "basic",
+      "source_task_id": "competing_hypotheses__basic",
+      "input": {
+        "path": "inputs/event_grounding__basic.json",
+        "hash": "649bf9620c0c7111f259d7860eef5604535f745cdab7b429c7d58068af983d5d"
+      },
+      "reference": {
+        "path": "references/event_grounding__basic.json",
+        "hash": "34bd6357703dbb99aa979ddf5f41289e8208265a9f7b51e2ad98993584e375e9",
+        "semantic_signature": "6687230f0c16d7351c6171090c6981e315c2d545bbcc5aba34c8501f37dc6b48"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "event_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/events"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/event_grounding__basic.json",
+        "hash": "953e86407081616d527583e6154af82b29c351cf03784eb90e05606adfbd720a"
+      }
+    },
+    {
+      "task_id": "event_grounding__decoy",
+      "primary_capability": "event_grounding",
+      "variant": "decoy",
+      "source_task_id": "competing_hypotheses__decoy",
+      "input": {
+        "path": "inputs/event_grounding__decoy.json",
+        "hash": "7254162fa71519c24ad18931c2c694b91b8c2fb8d012e29db8874536448e602b"
+      },
+      "reference": {
+        "path": "references/event_grounding__decoy.json",
+        "hash": "476927ea8e6b4a84e8f3da3ba45b217f78f91987533e0a53417163a00ba64f62",
+        "semantic_signature": "d187a496eb6d2d585fc416f3a8a63d6d10621bb6bc33b098657423a633f10210"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "event_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/events"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "event_grounding__dense",
+      "primary_capability": "event_grounding",
+      "variant": "dense",
+      "source_task_id": "competing_hypotheses__dense",
+      "input": {
+        "path": "inputs/event_grounding__dense.json",
+        "hash": "627b7bc1bc72a8361634a30c35acef16d0657e31050f6ed726d83cc3868a43b1"
+      },
+      "reference": {
+        "path": "references/event_grounding__dense.json",
+        "hash": "b3055ab4f457a7a093dd4effca54c4cb6b4c9c6127d7b39fbe6d9333be7e2b8d",
+        "semantic_signature": "7f4101ea221ecd7bc85cc374974bc903a6260316ca7fd0580d1c768f4f6ba155"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "event_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/events"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "reveal_control__basic",
+      "primary_capability": "reveal_control",
+      "variant": "basic",
+      "source_task_id": "nonlinear_reveal__basic",
+      "input": {
+        "path": "inputs/reveal_control__basic.json",
+        "hash": "c8ee6b7846c5920bc7f13b9bd5d7429187428ffaef8212ad3ceb27cf3560a79a"
+      },
+      "reference": {
+        "path": "references/reveal_control__basic.json",
+        "hash": "cf8c2c391a95ef18e0d15ce4a1d9589ce226ba5853a7b3fcca7bdba65e615851",
+        "semantic_signature": "14d27be1c60325e65a9e30f7ebc19f790e3b36595030a0eff7ae5121742f6852"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "reveal_control",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/reveal_control__basic.json",
+        "hash": "5f724e9b44b4bdb7ca4c48f8b381396e5b3059f1402e8ecdb87407e62cfff262"
+      }
+    },
+    {
+      "task_id": "reveal_control__decoy",
+      "primary_capability": "reveal_control",
+      "variant": "decoy",
+      "source_task_id": "nonlinear_reveal__decoy",
+      "input": {
+        "path": "inputs/reveal_control__decoy.json",
+        "hash": "e2430984e3329f7594d91973929e7c2692b1168a26dac7f28bba5765ecb6d64a"
+      },
+      "reference": {
+        "path": "references/reveal_control__decoy.json",
+        "hash": "4181e5a07ce612fce944b3639be7e9e39962de95e3a8eaa22e3bc6852884ba51",
+        "semantic_signature": "70c468417b6a552b923360849a0fb881dfc624b096cff9dfe3a8bee516b8181a"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "reveal_control",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "reveal_control__dense",
+      "primary_capability": "reveal_control",
+      "variant": "dense",
+      "source_task_id": "nonlinear_reveal__dense",
+      "input": {
+        "path": "inputs/reveal_control__dense.json",
+        "hash": "9e74fd06f82cf4f00f0c6fb7e13846e7791ee5c5cb47fdf8c86c2830c2f49497"
+      },
+      "reference": {
+        "path": "references/reveal_control__dense.json",
+        "hash": "c97c879ed84b2c1b75eec680dd201240f6a1beac3b0741791fdd367a11836f03",
+        "semantic_signature": "9e9071cf4144bf2e14c25cd4732bfad3df8e9b84f40d99f96771c9f47503b287"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "reveal_control",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "temporal_grounding__basic",
+      "primary_capability": "temporal_grounding",
+      "variant": "basic",
+      "source_task_id": "flashback_chronology__basic",
+      "input": {
+        "path": "inputs/temporal_grounding__basic.json",
+        "hash": "4e9d8cada37a950ee933926de2dffc20ee7fca99665e30e7f575d76421dd114e"
+      },
+      "reference": {
+        "path": "references/temporal_grounding__basic.json",
+        "hash": "8754f0b1f72b91a1c63cf1642c4274d9972bc0c9700663a2d89e7eb6dabd17ee",
+        "semantic_signature": "af34712f448384537fceb3909157d2345cd034edfa0e8ce47cec03f74b4d1875"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "temporal_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/events"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/temporal_grounding__basic.json",
+        "hash": "9ea2809ac87e8f82fedda5e11d6749c190ef151cd80b354af0c2c45991aca9ce"
+      }
+    },
+    {
+      "task_id": "temporal_grounding__decoy",
+      "primary_capability": "temporal_grounding",
+      "variant": "decoy",
+      "source_task_id": "flashback_chronology__decoy",
+      "input": {
+        "path": "inputs/temporal_grounding__decoy.json",
+        "hash": "ff17db7d2d2e3944c0cf450c8df306f61e84c5a615a4f17df079953c019523f9"
+      },
+      "reference": {
+        "path": "references/temporal_grounding__decoy.json",
+        "hash": "9a6200ddf2c9449103a055d2e951005c095b61eab0a289906ce9b6dfc442e563",
+        "semantic_signature": "84be990492bb1bdfd41d815543ee2388c00730003f4279a717bfc07dfaefd79c"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "temporal_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/events"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "temporal_grounding__dense",
+      "primary_capability": "temporal_grounding",
+      "variant": "dense",
+      "source_task_id": "flashback_chronology__dense",
+      "input": {
+        "path": "inputs/temporal_grounding__dense.json",
+        "hash": "db9db4c67e88229805a5f4828a21065a25c7c5ba00cf4d4f7103d2b6eccc819e"
+      },
+      "reference": {
+        "path": "references/temporal_grounding__dense.json",
+        "hash": "90c3359233210d70876db5b8f213b0568d02304d3988b5c9ab24eb228c4df4c8",
+        "semantic_signature": "19da61640b9e4152200537ac77c25ecbdfa91f7c1e0a5177763911ff6c0c5a9b"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "temporal_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/events"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "dependency_transfer__basic",
+      "primary_capability": "dependency_transfer",
+      "variant": "basic",
+      "source_task_id": "complex_mixed__basic",
+      "input": {
+        "path": "inputs/dependency_transfer__basic.json",
+        "hash": "cd6514c5757c85abd41e1ee15d10283450dad988806a08b8dd8cb9d2958cc21c"
+      },
+      "reference": {
+        "path": "references/dependency_transfer__basic.json",
+        "hash": "e6bc82c287cdb6b1761b7624ae5aa1b3645012f00d525d3c6f5c820fe8c9edce",
+        "semantic_signature": "8dc201406e4f6587a2287b8e283af919498841515602124b5cbbadc460440362"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "dependency_transfer",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/indexes/scene_dependencies"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/dependency_transfer__basic.json",
+        "hash": "e09a7a2de3976815b5c5cb01602765383921be4bddbb62fc98235b25b2febea9"
+      }
+    },
+    {
+      "task_id": "dependency_transfer__decoy",
+      "primary_capability": "dependency_transfer",
+      "variant": "decoy",
+      "source_task_id": "complex_mixed__decoy",
+      "input": {
+        "path": "inputs/dependency_transfer__decoy.json",
+        "hash": "6789c45f24afdaf20cf84bed7064260d1ac3a3f946d5621e4043665f21542362"
+      },
+      "reference": {
+        "path": "references/dependency_transfer__decoy.json",
+        "hash": "a685c36737efa4c43e2c8c7a5039d6b4027ee1841ffe9ac00b99ecc679a9d959",
+        "semantic_signature": "7b245a964430fe622e21b45192675cef6aba3fcb27d25701c026dfc33c85078c"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "dependency_transfer",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/indexes/scene_dependencies"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "dependency_transfer__dense",
+      "primary_capability": "dependency_transfer",
+      "variant": "dense",
+      "source_task_id": "complex_mixed__dense",
+      "input": {
+        "path": "inputs/dependency_transfer__dense.json",
+        "hash": "11d540f747bbfc7ec373a0abfe7128b1a6d5eef21972ebc4e7a148244bf3f888"
+      },
+      "reference": {
+        "path": "references/dependency_transfer__dense.json",
+        "hash": "60d8b62638e859805986ea5acae13702032a72f90fcbd73d00dc45c3ecbc3984",
+        "semantic_signature": "9179a5e2d341f77127857047c5517b3bf3772bae0e1eea5dc87a6183a4d92bac"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "dependency_transfer",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/indexes/scene_dependencies"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_execution__basic",
+      "primary_capability": "resolution_execution",
+      "variant": "basic",
+      "source_task_id": "resolution_closure__basic",
+      "input": {
+        "path": "inputs/resolution_execution__basic.json",
+        "hash": "2bf23d3a71852dc4c73b38231ea05545177c5fd7d35c011a5a3488374befec35"
+      },
+      "reference": {
+        "path": "references/resolution_execution__basic.json",
+        "hash": "562cb01be5969e0016cf2c1b9d449e4ec9aa086ac26d1643074e27ed75c90233",
+        "semantic_signature": "f79788e2002b05ccf93dec449f44365c4b6d292704566e0948f1e36c782cad48"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "resolution_execution",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/resolution_specs"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/resolution_execution__basic.json",
+        "hash": "d497eb8f65c4b3ed97539c187a97e45246fcdc9a5558b980f84fc056e1a765b4"
+      }
+    },
+    {
+      "task_id": "resolution_execution__decoy",
+      "primary_capability": "resolution_execution",
+      "variant": "decoy",
+      "source_task_id": "resolution_closure__decoy",
+      "input": {
+        "path": "inputs/resolution_execution__decoy.json",
+        "hash": "aa9ff4e0fb91b143486b720f3ba9b66fd691a3970a5ab8b870cdd748ad269dd4"
+      },
+      "reference": {
+        "path": "references/resolution_execution__decoy.json",
+        "hash": "3296dfbb0f7ca79d5c65f702e48161d247b94d78ba7f2fec4b00e4c0672fd232",
+        "semantic_signature": "67b1bc540fa1ee8b8da2eb7ee857a593b8fda27107ee8fc055b1d89c797e313b"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "resolution_execution",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/resolution_specs"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "resolution_execution__dense",
+      "primary_capability": "resolution_execution",
+      "variant": "dense",
+      "source_task_id": "resolution_closure__dense",
+      "input": {
+        "path": "inputs/resolution_execution__dense.json",
+        "hash": "2052aa89ff186a56ccbf5adaf7098b6eb1dba9fe597678a4d63a2fa79ad6b540"
+      },
+      "reference": {
+        "path": "references/resolution_execution__dense.json",
+        "hash": "5f46ed4afd37eec771d605fef4307cb01fca766814dd202a4641b6bd887899d0",
+        "semantic_signature": "57a70d2b07c5e79789332a534967b3085abc1fc8e909e67d9a77e380d5a1881e"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "resolution_execution",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/resolution_specs"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "scene_grounding__basic",
+      "primary_capability": "scene_grounding",
+      "variant": "basic",
+      "source_task_id": "multiple_suspects__basic",
+      "input": {
+        "path": "inputs/scene_grounding__basic.json",
+        "hash": "06ef417d4ca2a953aa430d460e2433a913d9d07b11e43cceb9370e03018aaec8"
+      },
+      "reference": {
+        "path": "references/scene_grounding__basic.json",
+        "hash": "969c300354ab3e913488c26987cc6d8d6b1531818a4e1f5336f4ef55e389302b",
+        "semantic_signature": "bc37872c9f621f98e60110295e8604eca00e8336d08db9052781b0d1f08f4fc5"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "scene_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/entities",
+            "/narrative_ir/objects/locations"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/scene_grounding__basic.json",
+        "hash": "57850b87d93b0f4b381daf6bc0b5f8cb0b02462dc937d8497c1727414d4d185a"
+      }
+    },
+    {
+      "task_id": "scene_grounding__decoy",
+      "primary_capability": "scene_grounding",
+      "variant": "decoy",
+      "source_task_id": "multiple_suspects__decoy",
+      "input": {
+        "path": "inputs/scene_grounding__decoy.json",
+        "hash": "702f98d5db21f8df2466ec8804989c49c652681f65921286456aa5d59a15f799"
+      },
+      "reference": {
+        "path": "references/scene_grounding__decoy.json",
+        "hash": "2fa21791af4d009b28d8fdae30c2b316f8a33b24e2dcba1a369a2171ada10bbc",
+        "semantic_signature": "75cfe2fd381f7105c02ca1932aa0716bf44f32030791ef4cc984a63031302b7c"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "scene_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/entities",
+            "/narrative_ir/objects/locations"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "scene_grounding__dense",
+      "primary_capability": "scene_grounding",
+      "variant": "dense",
+      "source_task_id": "multiple_suspects__dense",
+      "input": {
+        "path": "inputs/scene_grounding__dense.json",
+        "hash": "dc0d38f2ee1a133752c09dd3883af2d95a4c71c353eb1ec69b22652bfc100155"
+      },
+      "reference": {
+        "path": "references/scene_grounding__dense.json",
+        "hash": "6238a025120e3ee0f93ef4b9c81c7e44c499325bdc17a63b9429f9f3b1372ff3",
+        "semantic_signature": "3b1c24f8733dbbd55062a40e862df8538f38358831ba282f0e82bf2061a15474"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "scene_grounding",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects/entities",
+            "/narrative_ir/objects/locations"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "provenance_coverage__basic",
+      "primary_capability": "provenance_coverage",
+      "variant": "basic",
+      "source_task_id": "false_belief__basic",
+      "input": {
+        "path": "inputs/provenance_coverage__basic.json",
+        "hash": "ab6e964aa5399fced4c6cab2720315e68139f6debbb33c7db9c66c8aa756de95"
+      },
+      "reference": {
+        "path": "references/provenance_coverage__basic.json",
+        "hash": "e08c56e8131d4356239d5206d5e37d54d3b00f3bed2910617d0408bd3bc14d49",
+        "semantic_signature": "4e281a8555572a3f4159d1a221e1e3dd52dcfde517a79e43ea1bc6aa39e0ed37"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "provenance_coverage",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects"
+          ]
+        }
+      ],
+      "alternative_reference": {
+        "path": "alternatives/provenance_coverage__basic.json",
+        "hash": "d6243f62bb8d949542319bb0b2f63569aaed7a7f136690439cb28d8ebe7f1a09"
+      }
+    },
+    {
+      "task_id": "provenance_coverage__decoy",
+      "primary_capability": "provenance_coverage",
+      "variant": "decoy",
+      "source_task_id": "false_belief__decoy",
+      "input": {
+        "path": "inputs/provenance_coverage__decoy.json",
+        "hash": "4cd91dc8b3206a80c7d95e8ffee36f6ef2460eff291e13851add6ea8486e4725"
+      },
+      "reference": {
+        "path": "references/provenance_coverage__decoy.json",
+        "hash": "f9196d35b2c0f7dd98a829f8fb0d4a3c28ad7b6e2b748c5cb3c97b696c947d9f",
+        "semantic_signature": "4655c707153538738bfba5aaa2faca6fe725eb685186af63eae180899046468c"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "provenance_coverage",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "provenance_coverage__dense",
+      "primary_capability": "provenance_coverage",
+      "variant": "dense",
+      "source_task_id": "false_belief__dense",
+      "input": {
+        "path": "inputs/provenance_coverage__dense.json",
+        "hash": "37e08ef91783a0da1c00f8fb34ef22ac49efd71ea4c271b0fc581776dc656ccd"
+      },
+      "reference": {
+        "path": "references/provenance_coverage__dense.json",
+        "hash": "2cdc44fbb2c3c3468b448cc65362e991f8438a4348f7f565b9a94267605424b1",
+        "semantic_signature": "c227206c180ec14c9e63822cb4f8563d95b494904115937ddb430ac26e88460c"
+      },
+      "outcome_invariants": [
+        {
+          "kind": "provenance_coverage",
+          "minimum": 1.0,
+          "expectation_class": "capability",
+          "input_evidence_paths": [
+            "/novel_plan/scenes",
+            "/narrative_ir/objects"
+          ]
+        }
+      ]
+    }
+  ],
+  "mutations": [
+    {
+      "path": "mutations/candidate_schema_invalid.json",
+      "hash": "0a048c244104a3d13fe7f07c3a66add16a2cf738f7bb7bc568378e035bfa3459"
+    },
+    {
+      "path": "mutations/scene_missing.json",
+      "hash": "62aac564cdb1fb4df3b004782a3b7e4d2ddde6ec26b2499ab30f701fd3a11ccc"
+    },
+    {
+      "path": "mutations/event_missing.json",
+      "hash": "caf9d7e12b8a0007da6b223285a9a4f3e31876a4875757e44709dc386e3984de"
+    },
+    {
+      "path": "mutations/fabricated_reference.json",
+      "hash": "5ba556279c5e2fcf0db9c833f069752ff3c7789fa6ce790e7b87c414c1e9c9d5"
+    },
+    {
+      "path": "mutations/premature_reveal.json",
+      "hash": "122d94b8f900ad26e1a1f1e7a20dc29bab889e3be2f8a91fae5edb05cbea7757"
+    },
+    {
+      "path": "mutations/temporal_ref_invalid.json",
+      "hash": "47c1b1f146f661d66261cfeb66b25b98531e42d643f2fd68d56be11e178948a3"
+    },
+    {
+      "path": "mutations/dependency_cycle.json",
+      "hash": "dcc8d8511228a38872d82758e1c444553f9bbfb311b9969bcdaa95aa31d7dde5"
+    },
+    {
+      "path": "mutations/resolution_missing.json",
+      "hash": "21e7d87de7eedf55e054f387b6c833f097f6445d805389186e1f97b4a07a0424"
+    },
+    {
+      "path": "mutations/participant_out_of_scope.json",
+      "hash": "e00cd103843013f704233295590e2b76eb66f40c17714f9c4ee39c17ac80cffa"
+    },
+    {
+      "path": "mutations/location_out_of_scope.json",
+      "hash": "c6701d57cfbf578e179ef69f907156ff7694747ca579cbdf8fe118dfd119f47b"
+    },
+    {
+      "path": "mutations/provenance_tampered.json",
+      "hash": "bbc045c74b459e1981b0193fc8a79fa20da7bf03c01e17c131bde7ddb208948d"
+    }
+  ],
+  "g3_rubric": {
+    "path": "g3_rubric.json",
+    "hash": "6ce4bea50cedf25dc1e69595a5d7d2d13d354824a460f99519ee4999ee49d981"
+  }
+}

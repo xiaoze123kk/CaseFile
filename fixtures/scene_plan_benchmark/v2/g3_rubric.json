@@ -1,0 +1,43 @@
+{
+  "schema_id": "benchmark.scene-plan-g3-rubric.v2",
+  "grader_status": "active_pairwise",
+  "judge_protocol": "blind_pairwise-empty-retry-v2",
+  "judge_provider": "deepseek",
+  "judge_model_id": "deepseek-v4-flash",
+  "known_limitations": [
+    "same_provider_family_bias",
+    "model_judge_not_human_literary_review"
+  ],
+  "dimensions": [
+    {
+      "id": "scene_specificity",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "criterion": "Beat 是否把场景目标转成具体、来源支持的行动。"
+    },
+    {
+      "id": "dramatic_progression",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "criterion": "Beat 顺序是否形成明确推进，而非重复 NovelPlan 摘要。"
+    },
+    {
+      "id": "beat_coherence",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "criterion": "相邻 Beat 的行动、发现和结果是否连贯。"
+    },
+    {
+      "id": "constraint_clarity",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "criterion": "允许与禁止的事实、揭露和时序边界是否明确。"
+    },
+    {
+      "id": "writer_executability",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "criterion": "Writer 仅凭 ScenePlan 是否能写作而无需重新规划剧情。"
+    }
+  ]
+}

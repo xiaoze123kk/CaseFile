@@ -12,6 +12,12 @@ from casefile.benchmark.runner import BenchmarkOptions, run_benchmark, run_to_re
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "scene-plan":
+        from casefile.benchmark.scene_plan_eval import main as scene_plan_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        scene_plan_main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "novel-plan":
         from casefile.benchmark.novel_plan_eval import main as novel_plan_main
 
