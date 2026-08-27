@@ -13,6 +13,7 @@ from casefile.agent_runtime.scene_compiler import (
     execute_scene_semantic_fill,
     validate_scene_semantic_fill,
 )
+from casefile.agent_runtime.scene_compiler_prompt import render_scene_fill_prompt
 from casefile.domain.narrative_compiler import (
     CompilerContractError,
     SceneFillValidationError,
@@ -225,3 +226,23 @@ def test_v3_allowlist_is_visible_but_cannot_widen_validator_provenance() -> None
         SceneFillValidationError, match="compiler_scene_fill_provenance_invalid"
     ):
         validate_scene_semantic_fill(proposal, batch_view=batch)
+
+
+def test_v2_prompt_distinguishes_catalog_membership_from_beat_provenance() -> None:
+    batch = _batch(1, "scene_1")
+    batch["scenes"][0]["beat_basis_allowlist"] = [_ref("event", "evt_anchor")]
+    system_prompt, user_prompt, _ = render_scene_fill_prompt(
+        SceneFillBatchRequest(
+            task_run_id=1,
+            prompt_version="scene-compiler-semantic-fill-v2",
+            batch_view=batch,
+            inbound_state_hash="0" * 64,
+            input_hash="1" * 64,
+            model_id="fake",
+            api_key="unused",
+        )
+    )
+
+    assert "object_catalog 只证明 ObjectRef 存在" in system_prompt
+    assert "每一项都必须逐项来自" in system_prompt
+    assert '"beat_basis_allowlist"' in user_prompt
