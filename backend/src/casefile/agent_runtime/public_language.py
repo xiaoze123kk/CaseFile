@@ -146,11 +146,7 @@ def normalize_internal_disclosure_refusal(
 ) -> CaseFileChatResult:
     """Project explicit internal-disclosure requests to one canonical public refusal."""
 
-    message = request.message.strip()
-    if not (
-        _DISCLOSURE_ACTION.search(message)
-        and _PROTECTED_INTERNAL_TARGET.search(message)
-    ):
+    if not is_protected_internal_disclosure_request(request.message):
         return result
     request.emit(
         "public_language.internal_disclosure_normalized",
@@ -161,6 +157,16 @@ def normalize_internal_disclosure_refusal(
         },
     )
     return _replace_public_candidate(result, answer=PUBLIC_INTERNAL_REFUSAL)
+
+
+def is_protected_internal_disclosure_request(message: str) -> bool:
+    """Recognize requests for raw internal material before any effectful route."""
+
+    normalized = message.strip()
+    return bool(
+        _DISCLOSURE_ACTION.search(normalized)
+        and _PROTECTED_INTERNAL_TARGET.search(normalized)
+    )
 
 
 def normalize_general_mutation_clarification(
@@ -334,6 +340,7 @@ __all__ = [
     "PUBLIC_OUTPUT_POLICY_VIOLATION",
     "PUBLIC_INTERNAL_REFUSAL",
     "PublicLanguageValidationError",
+    "is_protected_internal_disclosure_request",
     "normalize_internal_disclosure_refusal",
     "normalize_general_mutation_clarification",
     "project_general_mutation_terminal_response",

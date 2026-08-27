@@ -20,6 +20,9 @@ from casefile.agent_runtime.models import (
     RouteDecision,
     agent_state_to_jsonable,
 )
+from casefile.agent_runtime.public_language import (
+    is_protected_internal_disclosure_request,
+)
 
 INTENT_ROUTER_VERSION = "casefile-chat-router-v2"
 
@@ -354,6 +357,13 @@ def resolve_rule_route(
     """Resolve preset and issue-action entrypoints; no hint means legacy path."""
 
     normalized_message = request.message.casefold()
+    if is_protected_internal_disclosure_request(request.message):
+        return RuleRoute(
+            route_source="rule_safety",
+            primary_intent="unsupported_action",
+            profile="unsupported_action.scope",
+            reason_code="rule_safety:protected_internal_disclosure_request",
+        )
     protected_ids = {
         str(item["id"]).casefold()
         for collection in _PROTECTED_COLLECTIONS

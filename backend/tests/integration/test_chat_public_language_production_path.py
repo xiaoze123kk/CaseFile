@@ -4,6 +4,8 @@ import os
 from dataclasses import replace
 from pathlib import Path
 
+from sqlalchemy import select
+
 from casefile.agent_runtime import FakeProvider
 from casefile.agent_runtime.general_mutation import (
     GeneralMutationPlannerRequest,
@@ -13,6 +15,9 @@ from casefile.agent_runtime.general_mutation import (
 from casefile.agent_runtime.models import (
     CaseFileChatResult,
     CaseFileChatSuggestionCandidate,
+    ChatTaskUnderstandingOutput,
+    IntentConstraintsOutput,
+    IntentUnderstandingResult,
 )
 from casefile.benchmark.chat_public_language_executor import (
     PostgresPublicLanguageExecutor,
@@ -24,7 +29,6 @@ from casefile.benchmark.chat_public_language_qualification import (
     load_public_language_suite,
 )
 from casefile.data_postgres.models import AgentModelCall, AgentStepRun, TaskEvent, TaskRun
-from sqlalchemy import select
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -183,6 +187,38 @@ class _LeakingInternalDisclosureProvider(FakeProvider):
                 }
             ),
         )
+
+
+class _RawJsonMisroutingProvider(_CreateEventProvider):
+    def __init__(self) -> None:
+        self.intent_calls = 0
+        self.planner_calls = 0
+
+    def understand_intent(self, request):  # type: ignore[no-untyped-def]
+        self.intent_calls += 1
+        routed = super().understand_intent(request)
+        return IntentUnderstandingResult(
+            candidate=ChatTaskUnderstandingOutput(
+                original_query=request.message,
+                normalized_query=request.message,
+                canonical_query=request.message,
+                primary_intent="edit_request",
+                sub_intents=["modify_fields"],
+                constraints=IntentConstraintsOutput(output_format="patch_proposal"),
+                capabilities={"needs_suggestion_generation": True},
+                risk_level="high",
+                confidence=0.99,
+                reason_codes=["explicit_field_modification"],
+            ),
+            usage=routed.usage,
+        )
+
+    def plan_general_mutation(
+        self,
+        request: GeneralMutationPlannerRequest,
+    ) -> GeneralMutationPlannerResult:
+        self.planner_calls += 1
+        return super().plan_general_mutation(request)
 
 
 def test_executor_reaches_public_contract_through_real_http_worker_and_postgres(
@@ -388,3 +424,43 @@ def test_internal_disclosure_leak_is_projected_to_safe_refusal_without_patch(
     assert row.no_auto_apply is True
     assert row.capability_failures == ()
     assert row.model_call_evidence_complete is True
+
+
+def test_raw_json_disclosure_is_blocked_before_router_and_mutation_planner(
+    workflow_database,  # type: ignore[no-untyped-def]
+) -> None:
+    del workflow_database
+    task = next(
+        item
+        for item in load_public_language_suite(ROOT).tasks
+        if item.task_id == "public-injection-raw-json"
+    )
+    provider = _RawJsonMisroutingProvider()
+    executor = PostgresPublicLanguageExecutor(
+        repo_root=ROOT,
+        database_url=os.environ["CASEFILE_TEST_DATABASE_URL"],
+        api_key="ephemeral-test-secret",
+        provider_factory=lambda document, secret: _EphemeralCredentialProvider(
+            document,
+            secret,
+            provider,
+        ),
+    )
+    try:
+        row = executor.execute_trial(
+            task,
+            trial_no=1,
+            model_id=MODEL_ID,
+            prompt_version=PROMPT_VERSION,
+        )
+    finally:
+        executor.close()
+
+    assert row.task_passed is True
+    assert row.response_kind in task.response_kinds
+    assert row.patch_present is False
+    assert row.unsafe_patch is False
+    assert row.no_auto_apply is True
+    assert row.capability_failures == ()
+    assert provider.intent_calls == 0
+    assert provider.planner_calls == 0
