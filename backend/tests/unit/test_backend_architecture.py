@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -22,3 +23,57 @@ def test_backend_architecture_and_stable_exports_are_locked() -> None:
     module = _architecture_check_module()
 
     assert module.collect_violations(repo_root) == []
+
+
+def test_literal_string_set_accepts_frozenset_and_fails_closed() -> None:
+    module = _architecture_check_module()
+
+    literal_tree = ast.parse('SUPPORTED_TASK_TYPES = frozenset({"one", "two"})')
+    computed_tree = ast.parse("SUPPORTED_TASK_TYPES = frozenset(build_types())")
+
+    assert module._literal_string_set(literal_tree, "SUPPORTED_TASK_TYPES") == {
+        "one",
+        "two",
+    }
+    assert module._literal_string_set(computed_tree, "SUPPORTED_TASK_TYPES") is None
+
+
+def test_architecture_check_rejects_nonliteral_supported_task_types() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    module = _architecture_check_module()
+    literal_string_set = module._literal_string_set
+
+    def reject_supported_task_types(tree: ast.Module, name: str) -> set[str] | None:
+        if name == "SUPPORTED_TASK_TYPES":
+            return None
+        return literal_string_set(tree, name)
+
+    module._literal_string_set = reject_supported_task_types
+
+    violations = module.collect_violations(repo_root)
+
+    assert any(
+        violation.path == "backend/src/casefile/worker/dispatch.py"
+        and "must be a literal string collection" in violation.message
+        for violation in violations
+    )
+
+
+def test_agent_route_internal_view_detection_is_fail_closed() -> None:
+    module = _architecture_check_module()
+    tree = ast.parse(
+        """
+@router.get('/projects/{project_id}/agent/runs/{run_id}')
+def leaked_agent_run():
+    return task_view(TaskRun.result_jsonb)
+"""
+    )
+    function = tree.body[0]
+    assert isinstance(function, ast.FunctionDef)
+
+    assert module._http_route_path(function) == ("/projects/{project_id}/agent/runs/{run_id}")
+    assert module._agent_route_internal_names(function) == {
+        "TaskRun",
+        "result_jsonb",
+        "task_view",
+    }

@@ -40,20 +40,26 @@ from casefile.data_postgres.models import (
     TaskRun,
 )
 from casefile.data_postgres.repositories import ProjectRepository
-from casefile.worker.support import (
-    TaskCancellationRequested,
-    _required_provider_binding,
-    _required_string,
-    _text_hash,
-)
+from casefile.worker.execution import EventEmitter
+from casefile.worker.failures import TaskCancellationRequested
+from casefile.worker.input_contracts import required_string, text_hash
+from casefile.worker.provider_resolution import required_provider_binding
 
 
-class CompletionExecutorMixin:
-    session_factory: sessionmaker[Session]
-    config: Any
+class CompletionExecutor:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        worker_id: str,
+        emit: EventEmitter,
+    ) -> None:
+        self.session_factory = session_factory
+        self.worker_id = worker_id
+        self._event_emitter = emit
 
     def _emit(self, task_run_id: int, event_type: str, stage: str, payload: dict[str, Any]) -> None:
-        raise NotImplementedError
+        self._event_emitter(task_run_id, event_type, stage, payload)
 
     def _complete_polish(
         self,
@@ -78,7 +84,7 @@ class CompletionExecutorMixin:
             )
             if source is None:
                 raise RuntimeError("Polish input SourceRecord disappeared")
-            frozen_mode = _required_string(task.input_jsonb, "polish_mode")
+            frozen_mode = required_string(task.input_jsonb, "polish_mode")
             if frozen_mode != result.polish_mode:
                 raise RuntimeError("Polish result mode does not match its frozen task input")
             polished_text = result.candidate.polished_text
@@ -86,7 +92,7 @@ class CompletionExecutorMixin:
                 project_id=task.project_id,
                 source_kind="agent_polish_proposal",
                 content_text=polished_text,
-                content_hash=_text_hash(polished_text),
+                content_hash=text_hash(polished_text),
                 parent_source_record_id=source.id,
                 generated_by_task_run_id=task.id,
                 created_by_user_id=task.actor_user_id,
@@ -220,9 +226,9 @@ class CompletionExecutorMixin:
             raise RuntimeError("TaskRun or TaskAttempt disappeared")
         if task.task_type != expected_task_type:
             raise RuntimeError("TaskRun dispatch type changed")
-        if task.status == "cancelling" and task.leased_by == self.config.worker_id:
+        if task.status == "cancelling" and task.leased_by == self.worker_id:
             raise TaskCancellationRequested
-        if task.leased_by != self.config.worker_id or task.status != "running":
+        if task.leased_by != self.worker_id or task.status != "running":
             raise RuntimeError("TaskRun lease was lost before the final write")
         return task, attempt
 
@@ -312,7 +318,7 @@ class CompletionExecutorMixin:
                 brief_version.content_jsonb,
                 candidate,
             )
-            provider_name, model_id = _required_provider_binding(task)
+            provider_name, model_id = required_provider_binding(task)
             cost_usage = standardize_generation_cost_usage(
                 result.usage,
                 provider=provider_name,
@@ -365,4 +371,4 @@ class CompletionExecutorMixin:
             )
 
 
-__all__ = ["CompletionExecutorMixin"]
+__all__ = ["CompletionExecutor"]

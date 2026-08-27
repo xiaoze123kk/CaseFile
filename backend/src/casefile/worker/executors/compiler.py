@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from casefile_contracts import CompileInputManifest
 from pydantic import ValidationError
 from sqlalchemy import select
+from sqlalchemy.orm import Session, sessionmaker
 
 from casefile.agent_runtime.scene_compiler import SCENE_COMPILER_PIPELINE_VERSION
 from casefile.application.compiler.constants import (
@@ -48,7 +50,9 @@ from casefile.domain.narrative_compiler import (
     scene_plan_component_fingerprint,
     validate_compile_input_manifest,
 )
-from casefile.worker.support import TaskCancellationRequested
+from casefile.worker.executors.completion import CompletionExecutor
+from casefile.worker.failures import TaskCancellationRequested
+from casefile.worker.provider_resolution import ProviderFactory
 
 
 class CompilerExecutionError(RuntimeError):
@@ -67,11 +71,63 @@ def _normalize_compiler_error(error: Exception, *, fallback_code: str) -> Compil
     return CompilerExecutionError(fallback_code)
 
 
-class CompilerTaskExecutorMixin:
-    """Execute deterministic Compiler foundation tasks without Provider context."""
+@dataclass(frozen=True, slots=True)
+class _CompilerRuntimeConfig:
+    worker_id: str
 
-    session_factory: Any
-    config: Any
+
+class CompilerExecutor:
+    """Execute Compiler tasks through the compositional Worker runtime."""
+
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        worker_id: str,
+        provider_factory: ProviderFactory,
+        completion: CompletionExecutor,
+    ) -> None:
+        self.session_factory = session_factory
+        self.config = _CompilerRuntimeConfig(worker_id=worker_id)
+        self.provider_factory = provider_factory
+        self._completion = completion
+
+    def execute(self, task_run_id: int, attempt_id: int) -> None:
+        self._execute_novel_compile(task_run_id, attempt_id)
+
+    def _locked_completion_rows(
+        self,
+        session: Session,
+        task_run_id: int,
+        attempt_id: int,
+        *,
+        expected_task_type: str,
+    ) -> tuple[TaskRun, TaskAttempt]:
+        return self._completion._locked_completion_rows(
+            session,
+            task_run_id,
+            attempt_id,
+            expected_task_type=expected_task_type,
+        )
+
+    def _finish_auxiliary_success(
+        self,
+        session: Session,
+        task: TaskRun,
+        attempt: TaskAttempt,
+        *,
+        candidate: dict[str, Any],
+        usage: dict[str, Any],
+        message: str,
+    ) -> None:
+        self._completion._finish_auxiliary_success(
+            session,
+            task,
+            attempt,
+            candidate=candidate,
+            usage=usage,
+            message=message,
+        )
 
     def _execute_novel_compile(self, task_run_id: int, attempt_id: int) -> None:
         try:
@@ -293,7 +349,7 @@ class CompilerTaskExecutorMixin:
                 raise normalized from error
 
         with self.session_factory() as session, session.begin():
-            task, attempt = self._locked_completion_rows(  # type: ignore[attr-defined]
+            task, attempt = self._locked_completion_rows(
                 session,
                 task_run_id,
                 attempt_id,
@@ -320,7 +376,7 @@ class CompilerTaskExecutorMixin:
                 result["scene_plan_artifact_id"] = scene_plan_artifact_id
                 result["scene_plan_hash"] = scene_plan_hash
                 component_reuse["scene_plan"] = scene_plan_reused
-            self._finish_auxiliary_success(  # type: ignore[attr-defined]
+            self._finish_auxiliary_success(
                 session,
                 task,
                 attempt,
@@ -672,4 +728,4 @@ class CompilerTaskExecutorMixin:
             )
 
 
-__all__ = ["CompilerExecutionError", "CompilerTaskExecutorMixin"]
+__all__ = ["CompilerExecutionError", "CompilerExecutor"]

@@ -1,33 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
 import type {
-  AgentAuditFindingView,
-  AgentMessageView,
-  AgentPatchOperationView,
-  AgentPatchSimulationView,
-  AgentPatchSetView,
-  VerificationFindingView,
-} from "@/lib/api-client";
+  PublicAgentMessage,
+  PublicFinding,
+  PublicPatchChange,
+  PublicPatchReviewResult,
+  PublicPatchSet,
+} from "@casefile/contracts";
 
 import styles from "./workbench-agent.module.css";
 
-const findingKindLabels: Record<string, string> = {
-  dangling_ref: "断链",
-  contradiction: "矛盾",
-  temporal: "时序错误",
-  motivation_gap: "动机缺口",
-  scope_gap: "范围缺口",
-};
-
-const findingSeverityLabels: Record<string, string> = {
-  S1: "致命",
-  S2: "主要",
-  S3: "次要",
-};
-
-const patchStatusLabels: Record<AgentPatchSetView["status"], string> = {
+const patchStatusLabels: Record<PublicPatchSet["status"], string> = {
   pending: "待审阅",
   stale: "已失效",
   applied: "已应用",
@@ -35,34 +19,29 @@ const patchStatusLabels: Record<AgentPatchSetView["status"], string> = {
   rejected: "已拒绝",
 };
 
-const operationDecisionLabels: Record<string, string> = {
-  pending: "待决定",
-  accepted: "已采纳",
-  rejected: "已拒绝",
+const findingSeverityLabels: Record<PublicFinding["severity"], string> = {
+  blocker: "阻断",
+  warning: "提醒",
+  note: "记录",
 };
 
-function displayValue(value: unknown): string {
-  const text = typeof value === "string" ? value : JSON.stringify(value);
-  return text.length > 96 ? `${text.slice(0, 95)}…` : text;
-}
+const relationshipLabels: Record<PublicPatchChange["relationship"], string> = {
+  requested: "你要求的修改",
+  consistency_support: "为保持一致性同步调整",
+};
 
-function objectRefLabel(
-  ref: { object_type?: string; object_id?: string },
-  labels: Record<string, string>,
-) {
-  return labels[ref.object_id ?? ""] ?? ref.object_id ?? ref.object_type ?? "对象";
+interface PatchConfirmation {
+  confirmationToken?: string;
+  acceptedWarningIds?: string[];
+  confirmationNote?: string;
 }
 
 export function WorkbenchAgentInspector({
   patches,
   patchError,
   findings,
-  verificationFindings = [],
   focusPatchSetId,
   focusFindingId,
-  objectLabels,
-  eventLabels,
-  issueLabels,
   onApply,
   onSimulate,
   requireApplyConfirmation = true,
@@ -71,42 +50,35 @@ export function WorkbenchAgentInspector({
   onRedo,
   onRetry,
   onLocateObject,
-  onLocateEvent,
-  onLocateIssue,
   busyPatchSetId,
 }: {
-  patches: Array<{ message: AgentMessageView; patchSet: AgentPatchSetView }>;
+  patches: Array<{ message: PublicAgentMessage; patchSet: PublicPatchSet }>;
   patchError?: string | null;
-  findings: Array<{ message: AgentMessageView; finding: AgentAuditFindingView }>;
-  verificationFindings?: Array<{
-    message: AgentMessageView;
-    finding: VerificationFindingView;
-  }>;
+  findings: Array<{ message: PublicAgentMessage; finding: PublicFinding }>;
   focusPatchSetId: number | null;
   focusFindingId: string | null;
-  objectLabels: Record<string, string>;
-  eventLabels: Record<string, string>;
-  issueLabels: Record<string, string>;
-  onApply: (patchSet: AgentPatchSetView, operationIds: number[] | null, acceptedDebtFindingKeys?: string[], debtAcceptanceReason?: string) => void;
+  onApply: (
+    patchSet: PublicPatchSet,
+    changeIds: number[] | null,
+    confirmation?: PatchConfirmation,
+  ) => void;
   onSimulate?: (
-    patchSet: AgentPatchSetView,
-    operationIds: number[],
-    acceptedDebtFindingKeys?: string[],
-    debtAcceptanceReason?: string,
-  ) => Promise<AgentPatchSimulationView | null>;
+    patchSet: PublicPatchSet,
+    changeIds: number[] | null,
+    acceptedWarningIds?: string[],
+    confirmationNote?: string,
+  ) => Promise<PublicPatchReviewResult | null>;
   requireApplyConfirmation?: boolean;
-  onFocusPatch: (patchSetId: number) => void;
-  onUndo: (patchSet: AgentPatchSetView) => void;
-  onRedo?: (patchSet: AgentPatchSetView) => void;
-  onRetry: (message: AgentMessageView) => void;
-  onLocateObject: (objectId: string) => void;
-  onLocateEvent: (eventId: string) => void;
-  onLocateIssue: (issueId: string) => void;
+  onFocusPatch: (patchId: number) => void;
+  onUndo: (patchSet: PublicPatchSet) => void;
+  onRedo?: (patchSet: PublicPatchSet) => void;
+  onRetry: (message: PublicAgentMessage) => void;
+  onLocateObject?: (objectId: string) => void;
   busyPatchSetId: number | null;
 }) {
   const activePatch = useMemo(
     () =>
-      patches.find(({ patchSet }) => patchSet.patch_set_id === focusPatchSetId) ??
+      patches.find(({ patchSet }) => patchSet.patch_id === focusPatchSetId) ??
       patches.find(({ patchSet }) => patchSet.status === "pending") ??
       patches[0] ??
       null,
@@ -117,30 +89,25 @@ export function WorkbenchAgentInspector({
     <section aria-label="Agent 审阅" className={styles.agentInspector}>
       <header className={styles.agentInspectorHeader}>
         <div>
-          <span>AGENT REVIEW</span>
+          <span>作者审阅</span>
           <strong>修改与发现</strong>
         </div>
         <small>
-          {patches.length > 0 ? `待审修改 ${patches.length}` : "暂无待审修改"}
-          {findings.length + verificationFindings.length > 0
-            ? ` · 验证发现 ${findings.length + verificationFindings.length}`
-            : ""}
-          {findings.some(({ finding }) => finding.needs_manual_review)
-            ? ` · 待人工确认 ${findings.filter(({ finding }) => finding.needs_manual_review).length}`
-            : ""}
+          {patches.length > 0 ? `修改建议 ${patches.length} 组` : "暂无修改建议"}
+          {findings.length > 0 ? ` · 验证发现 ${findings.length}` : ""}
         </small>
       </header>
 
       {patches.length > 1 ? (
         <nav aria-label="修改建议列表" className={styles.agentInspectorNav}>
-          {patches.map(({ patchSet }) => (
+          {patches.map(({ patchSet }, index) => (
             <button
-              aria-current={activePatch?.patchSet.patch_set_id === patchSet.patch_set_id}
-              key={patchSet.patch_set_id}
-              onClick={() => onFocusPatch(patchSet.patch_set_id)}
+              aria-current={activePatch?.patchSet.patch_id === patchSet.patch_id}
+              key={patchSet.patch_id}
+              onClick={() => onFocusPatch(patchSet.patch_id)}
               type="button"
             >
-              #{patchSet.patch_set_id} · {patchStatusLabels[patchSet.status]}
+              修改建议 {index + 1} · {patchStatusLabels[patchSet.status]}
             </button>
           ))}
         </nav>
@@ -148,13 +115,17 @@ export function WorkbenchAgentInspector({
 
       {activePatch ? (
         <AgentPatchReview
-          key={`${activePatch.patchSet.patch_set_id}:${activePatch.patchSet.status}:${activePatch.patchSet.updated_at}`}
-          busy={busyPatchSetId === activePatch.patchSet.patch_set_id}
-          objectLabels={objectLabels}
-          onApply={(operationIds, keys, reason) => keys?.length || reason ? onApply(activePatch.patchSet, operationIds, keys, reason) : onApply(activePatch.patchSet, operationIds)}
+          key={`${activePatch.patchSet.patch_id}:${activePatch.patchSet.status}`}
+          busy={busyPatchSetId === activePatch.patchSet.patch_id}
+          onApply={(changeIds, confirmation) =>
+            confirmation === undefined
+              ? onApply(activePatch.patchSet, changeIds)
+              : onApply(activePatch.patchSet, changeIds, confirmation)
+          }
           onSimulate={
             onSimulate
-              ? (operationIds, keys, reason) => keys?.length || reason ? onSimulate(activePatch.patchSet, operationIds, keys, reason) : onSimulate(activePatch.patchSet, operationIds)
+              ? (changeIds, warningIds, note) =>
+                  onSimulate(activePatch.patchSet, changeIds, warningIds, note)
               : undefined
           }
           requireApplyConfirmation={requireApplyConfirmation}
@@ -165,179 +136,59 @@ export function WorkbenchAgentInspector({
           patchSet={activePatch.patchSet}
         />
       ) : null}
-      {patchError ? <p className={styles.agentPatchBlocker}>操作未完成：{patchError}。请以当前 Draft 重新预演后重试；服务端未执行静默部分应用。</p> : null}
+      {patchError ? (
+        <p className={styles.agentPatchBlocker}>
+          操作未完成：{patchError}。请按当前卷宗重新审阅后再试；系统没有应用部分修改。
+        </p>
+      ) : null}
 
-      {findings.map(({ finding }) => (
-        <AgentFindingReview
-          key={finding.finding_id}
-          ariaLabel={finding === findings[0]?.finding ? "逻辑漏洞复查发现" : `验证发现 ${finding.finding_id}`}
+      {findings.map(({ finding }, index) => (
+        <PublicFindingReview
+          finding={finding}
           focused={finding.finding_id === focusFindingId}
-          eventLabels={eventLabels}
-          finding={finding}
-          issueLabels={issueLabels}
-          objectLabels={objectLabels}
-          onLocateEvent={onLocateEvent}
-          onLocateIssue={onLocateIssue}
-          onLocateObject={onLocateObject}
-        />
-      ))}
-      {verificationFindings.map(({ finding }) => (
-        <VerificationFindingReview
-          eventLabels={eventLabels}
-          finding={finding}
-          issueLabels={issueLabels}
-          key={`verification:${finding.finding_id}`}
-          objectLabels={objectLabels}
-          onLocateEvent={onLocateEvent}
-          onLocateIssue={onLocateIssue}
-          onLocateObject={onLocateObject}
+          key={finding.finding_id}
+          position={index + 1}
         />
       ))}
 
-      {patches.length === 0 && findings.length === 0 && verificationFindings.length === 0 ? (
-        <p className={styles.agentInspectorEmpty}>对话产生的修改建议和验证发现会出现在这里。</p>
+      {patches.length === 0 && findings.length === 0 ? (
+        <p className={styles.agentInspectorEmpty}>
+          对话产生的修改建议和验证发现会出现在这里。
+        </p>
       ) : null}
     </section>
   );
 }
 
-function AgentFindingReview({
+function PublicFindingReview({
   finding,
-  ariaLabel,
   focused,
-  objectLabels,
-  eventLabels,
-  issueLabels,
-  onLocateObject,
-  onLocateEvent,
-  onLocateIssue,
+  position,
 }: {
-  finding: AgentAuditFindingView;
-  ariaLabel: string;
+  finding: PublicFinding;
   focused: boolean;
-  objectLabels: Record<string, string>;
-  eventLabels: Record<string, string>;
-  issueLabels: Record<string, string>;
-  onLocateObject: (id: string) => void;
-  onLocateEvent: (id: string) => void;
-  onLocateIssue: (id: string) => void;
+  position: number;
 }) {
   return (
-    <article aria-label={ariaLabel} className={styles.agentFindingReview} data-focused={focused || undefined}>
-      <header className={styles.agentAuditHeader}>
-        <strong>逻辑漏洞复查发现 · {finding.finding_id}</strong>
-        <span>{findingSeverityLabels[finding.severity] ?? finding.severity}</span>
-      </header>
-      <div className={styles.agentFindingMeta}>
-        <span>{findingKindLabels[finding.kind] ?? finding.kind}</span>
-        {finding.needs_manual_review ? <b>待人工确认</b> : <b>已取证</b>}
-      </div>
-      <strong>{finding.title}</strong>
-      <p>{finding.statement}</p>
-      <div className={styles.agentFindingEvidence}>
-        <span>证据链与影响集</span>
-        {finding.evidence_object_ids.map((id) => (
-          <button key={`object:${id}`} onClick={() => onLocateObject(id)} type="button">
-            对象 · {objectLabels[id] ?? id}
-          </button>
-        ))}
-        {finding.evidence_event_ids.map((id) => (
-          <button key={`event:${id}`} onClick={() => onLocateEvent(id)} type="button">
-            事件 · {eventLabels[id] ?? id}
-          </button>
-        ))}
-        {finding.evidence_validation_issue_ids.map((id) => (
-          <button key={`issue:${id}`} onClick={() => onLocateIssue(id)} type="button">
-            验证 · {issueLabels[id] ?? id}
-          </button>
-        ))}
-        {finding.impact_refs?.map((ref, index) => (
-          <button
-            key={`impact:${ref.object_type ?? "ref"}:${ref.object_id ?? index}`}
-            onClick={() => {
-              if (ref.object_type === "event") onLocateEvent(ref.object_id ?? "");
-              else if (ref.object_type === "validation_issue") onLocateIssue(ref.object_id ?? "");
-              else onLocateObject(ref.object_id ?? "");
-            }}
-            type="button"
-          >
-            影响 · {objectRefLabel(ref, objectLabels)}
-          </button>
-        ))}
-        {!finding.impact_refs?.length &&
-        (finding.evidence_object_ids.length > 0 ||
-          finding.evidence_event_ids.length > 0 ||
-          finding.evidence_validation_issue_ids.length > 0) ? (
-          <small>服务端未提供影响集；上方仅为证据引用。</small>
-        ) : null}
-        {finding.evidence_object_ids.length === 0 &&
-        finding.evidence_event_ids.length === 0 &&
-        finding.evidence_validation_issue_ids.length === 0 &&
-        !finding.impact_refs?.length ? <small>服务端未提供可定位引用。</small> : null}
-      </div>
-      <p className={styles.agentFindingNotice}>
-        Finding 只说明问题与影响，不代表已授权自动修复；如有 Patch，请在上方逐项确认。
-      </p>
-    </article>
-  );
-}
-
-function VerificationFindingReview({
-  finding,
-  objectLabels,
-  eventLabels,
-  issueLabels,
-  onLocateObject,
-  onLocateEvent,
-  onLocateIssue,
-}: {
-  finding: VerificationFindingView;
-  objectLabels: Record<string, string>;
-  eventLabels: Record<string, string>;
-  issueLabels: Record<string, string>;
-  onLocateObject: (id: string) => void;
-  onLocateEvent: (id: string) => void;
-  onLocateIssue: (id: string) => void;
-}) {
-  const objectRefs = finding.refs.filter((ref) => ref.ref_kind === "object");
-  const eventRefs = finding.refs.filter((ref) => ref.ref_kind === "event");
-  const issueRefs = finding.refs.filter((ref) => ref.ref_kind === "validation_issue");
-  return (
-    <article aria-label="持久化验证发现" className={styles.agentFindingReview}>
+    <article
+      aria-label={`验证发现 ${position}`}
+      className={styles.agentFindingReview}
+      data-focused={focused || undefined}
+    >
       <header className={styles.agentAuditHeader}>
         <strong>{finding.title}</strong>
-        <span>服务端记录 · {finding.severity}</span>
+        <span>{findingSeverityLabels[finding.severity]}</span>
       </header>
-      <div className={styles.agentFindingMeta}>
-        <span>{finding.kind === "deterministic" ? "确定性验证" : "Agent 复查"}</span>
-        <b>{finding.status === "open" ? "待处理" : finding.status}</b>
-      </div>
-      <p>{finding.message}</p>
-      {finding.suggested_fix ? <p>建议：{finding.suggested_fix}</p> : null}
-      <div className={styles.agentFindingEvidence}>
-        {objectRefs.map((ref) => (
-          <button key={`object:${ref.ref_key}`} onClick={() => onLocateObject(ref.ref_key)} type="button">
-            目标 · {objectLabels[ref.ref_key] ?? ref.ref_key}
-          </button>
-        ))}
-        {eventRefs.map((ref) => (
-          <button key={`event:${ref.ref_key}`} onClick={() => onLocateEvent(ref.ref_key)} type="button">
-            事件 · {eventLabels[ref.ref_key] ?? ref.ref_key}
-          </button>
-        ))}
-        {issueRefs.map((ref) => (
-          <button key={`issue:${ref.ref_key}`} onClick={() => onLocateIssue(ref.ref_key)} type="button">
-            验证 · {issueLabels[ref.ref_key] ?? ref.ref_key}
-          </button>
-        ))}
-      </div>
+      <p>{finding.statement}</p>
+      <p className={styles.agentFindingNotice}>
+        这项发现只说明问题，不代表已经授权自动修改。
+      </p>
     </article>
   );
 }
 
 export function AgentPatchReview({
   patchSet,
-  objectLabels,
   busy,
   onApply,
   onSimulate,
@@ -347,59 +198,87 @@ export function AgentPatchReview({
   onRetry,
   onLocateObject,
 }: {
-  patchSet: AgentPatchSetView;
-  objectLabels: Record<string, string>;
+  patchSet: PublicPatchSet;
   busy: boolean;
-  onApply: (operationIds: number[] | null, acceptedDebtFindingKeys?: string[], debtAcceptanceReason?: string) => void;
-  onSimulate?: (operationIds: number[], acceptedDebtFindingKeys?: string[], debtAcceptanceReason?: string) => Promise<AgentPatchSimulationView | null>;
+  onApply: (changeIds: number[] | null, confirmation?: PatchConfirmation) => void;
+  onSimulate?: (
+    changeIds: number[] | null,
+    acceptedWarningIds?: string[],
+    confirmationNote?: string,
+  ) => Promise<PublicPatchReviewResult | null>;
   requireApplyConfirmation: boolean;
   onUndo: () => void;
   onRedo?: () => void;
   onRetry?: () => void;
   onLocateObject?: (objectId: string) => void;
 }) {
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [confirmingApply, setConfirmingApply] = useState<
-    { operationIds: number[] | null } | undefined
-  >();
-  const [confirmingReject, setConfirmingReject] = useState(false);
-  const [issuesExpanded, setIssuesExpanded] = useState(false);
-  const [simulation, setSimulation] = useState<AgentPatchSimulationView | null>(null);
-  const [debtReason, setDebtReason] = useState("");
-  const actionable = patchSet.status === "pending" && !patchSet.is_stale;
-  const operations = useMemo(
-    () => [...patchSet.operations].sort((left, right) => left.ordinal - right.ordinal),
-    [patchSet.operations],
+  const [selectedIds, setSelectedIds] = useState<number[]>(() =>
+    patchSet.review_rule === "selective"
+      ? patchSet.changes.map((change) => change.change_id)
+      : [],
   );
-  function toggleOperation(operationId: number) {
+  const [confirmingApply, setConfirmingApply] = useState(false);
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [review, setReview] = useState<PublicPatchReviewResult | null>(null);
+  const [confirmationNote, setConfirmationNote] = useState("");
+  const [acceptedWarningIds, setAcceptedWarningIds] = useState<string[]>([]);
+  const actionable = patchSet.status === "pending";
+  const selective = patchSet.review_rule === "selective";
+  const groupedChanges = useMemo(
+    () => ({
+      requested: patchSet.changes.filter(
+        (change) => change.relationship === "requested",
+      ),
+      consistency_support: patchSet.changes.filter(
+        (change) => change.relationship === "consistency_support",
+      ),
+    }),
+    [patchSet.changes],
+  );
+  const selectedChangeIds = selective ? selectedIds : null;
+  const warningIds = review?.warnings.map((warning) => warning.notice_id) ?? [];
+  const warningsAccepted = warningIds.every((id) => acceptedWarningIds.includes(id));
+  const canApply = review?.can_apply === true && warningsAccepted;
+
+  function toggleChange(changeId: number) {
+    if (!selective) return;
     setSelectedIds((previous) =>
-      previous.includes(operationId)
-        ? previous.filter((id) => id !== operationId)
-        : [...previous, operationId],
+      previous.includes(changeId)
+        ? previous.filter((id) => id !== changeId)
+        : [...previous, changeId],
     );
+    setReview(null);
+    setAcceptedWarningIds([]);
   }
 
-  function requestApply(operationIds: number[] | null) {
-    if (busy || !actionable) return;
-    if (requireApplyConfirmation) setConfirmingApply({ operationIds });
-    else if (simulation?.authorization_required_finding_keys?.length || debtReason.trim()) onApply(operationIds, simulation?.authorization_required_finding_keys ?? [], debtReason.trim() || undefined);
-    else onApply(operationIds);
-  }
-
-  async function simulateSelected() {
+  async function simulate(
+    warningIdsToAccept: string[] = [],
+    note?: string,
+  ) {
     if (!onSimulate || busy) return;
-    const operationIds = selectedIds.length > 0
-      ? selectedIds
-      : operations.map((operation) => operation.operation_id);
-    setSimulation(await onSimulate(operationIds));
+    const result = await onSimulate(selectedChangeIds, warningIdsToAccept, note);
+    setAcceptedWarningIds(warningIdsToAccept);
+    setReview(result);
+    setConfirmingApply(false);
   }
 
-  async function acceptDebtAndResimulate() {
-    if (!onSimulate || !simulation || !debtReason.trim()) return;
-    const operationIds = selectedIds.length > 0
-      ? selectedIds
-      : operations.map((operation) => operation.operation_id);
-    setSimulation(await onSimulate(operationIds, simulation.authorization_required_finding_keys ?? [], debtReason.trim()));
+  async function acceptWarningsAndResimulate() {
+    if (warningIds.length === 0 || !confirmationNote.trim()) return;
+    await simulate(warningIds, confirmationNote.trim());
+  }
+
+  function applyReviewed() {
+    if (!canApply || review === null) return;
+    onApply(selectedChangeIds, {
+      ...(review.confirmation_token === null
+        ? {}
+        : { confirmationToken: review.confirmation_token }),
+      ...(acceptedWarningIds.length === 0 ? {} : { acceptedWarningIds }),
+      ...(confirmationNote.trim()
+        ? { confirmationNote: confirmationNote.trim() }
+        : {}),
+    });
+    setConfirmingApply(false);
   }
 
   function rejectAll() {
@@ -412,106 +291,256 @@ export function AgentPatchReview({
   }
 
   return (
-    <article className={styles.agentPatchCard} data-status={patchSet.status} data-stale={patchSet.is_stale || undefined}>
+    <article
+      className={styles.agentPatchCard}
+      data-status={patchSet.status}
+      data-stale={patchSet.status === "stale" || undefined}
+    >
       <header className={styles.agentPatchHeader}>
-        <strong>修改建议</strong>
-        <span>
-          {patchStatusLabels[patchSet.status]}
-          {patchSet.is_stale ? " · 草稿已变化" : ""}
-          {patchSet.status === "applied" && patchSet.applied_to_revision !== null
-            ? ` · R${patchSet.applied_from_revision}→R${patchSet.applied_to_revision}`
-            : ""}
-        </span>
+        <strong>{patchSet.title}</strong>
+        <span>{patchStatusLabels[patchSet.status]}</span>
       </header>
-      <p className={styles.agentPatchReason}>
-        Patch #{patchSet.patch_set_id} · 目标 Draft R{patchSet.base_draft_revision}
-        {patchSet.reason_summary ? ` · ${patchSet.reason_summary}` : ""}
-      </p>
+      <p className={styles.agentPatchReason}>{patchSet.summary}</p>
       <p className={styles.agentPatchSimulationNote}>
-        只读预演 · 按 ordinal 执行 · 服务端会以 Draft、对象 revision 门禁原子校验，冲突时不会静默部分应用。
+        {patchSet.review_rule === "atomic"
+          ? "这些修改必须作为一组审阅，不能拆开应用。"
+          : "这组历史建议允许选择其中的修改项。"}
       </p>
-      {patchSet.is_stale ? (
-        <p className={styles.agentPatchBlocker}>阻断：当前 Draft 已不是生成该建议时的版本，请重新生成。</p>
+      <p className={styles.agentPatchImpact}>{patchSet.impact.summary}</p>
+      {patchSet.status === "stale" ? (
+        <p className={styles.agentPatchBlocker}>
+          当前卷宗已经变化，请重新生成并审阅修改建议。
+        </p>
       ) : null}
-      <div className={styles.agentPatchOps}>
-        {operations.map((operation: AgentPatchOperationView) => {
-          const decision = operation.decision ?? "pending";
-          const checked = decision === "accepted" || (actionable && selectedIds.includes(operation.operation_id));
-          const label = objectLabels[operation.object_id ?? ""] ?? operation.object_id ?? "对象";
-          return (
-            <label className={styles.agentPatchOp} key={operation.operation_id}>
-              <input
-                aria-label={`选择修改 ${label} ${operation.field_path}`}
-                checked={checked}
-                disabled={!actionable || busy}
-                onChange={() => toggleOperation(operation.operation_id)}
-                type="checkbox"
-              />
-              <span>
-                <strong><i>#{operation.ordinal}</i>{label}<code>{operation.field_path}</code></strong>
-                <span className={styles.agentPatchOpMeta}>
-                  {operation.object_type ? <span>{operation.object_type}</span> : null}
-                  {operation.expected_object_revision !== null ? <span>对象 R{operation.expected_object_revision}</span> : null}
-                  <span>{operation.operation_type}</span>
-                  {operation.object_id !== null && onLocateObject ? (
-                    <button aria-label={`定位对象 ${label}`} onClick={() => onLocateObject(operation.object_id ?? "")} type="button">在工作台定位</button>
-                  ) : null}
-                </span>
-                <small>{displayValue(operation.old_value)} → {displayValue(operation.new_value)}</small>
-                <em>{operation.reason}</em>
-              </span>
-              <b data-decision={decision}>{operationDecisionLabels[decision]}</b>
-            </label>
-          );
-        })}
-      </div>
-      {patchSet.validator_issues.length > 0 ? (
-        <div className={styles.agentPatchIssues}>
-          <button aria-expanded={issuesExpanded} onClick={() => setIssuesExpanded((expanded) => !expanded)} type="button">
-            {issuesExpanded ? "收起" : "查看"}验证警告（{patchSet.validator_issues.length}）
-          </button>
-          {issuesExpanded ? <ul>{patchSet.validator_issues.map((issue, index) => <li key={`${String(issue.rule_id ?? "issue")}:${index}`}><strong>{typeof issue.title === "string" ? issue.title : `验证警告 ${index + 1}`}</strong>{typeof issue.rule_id === "string" ? <code>{issue.rule_id}</code> : null}{typeof issue.message === "string" ? <span>{issue.message}</span> : null}</li>)}</ul> : null}
-        </div>
-      ) : null}
-      {patchSet.validation_warning ? <p className={styles.agentPatchWarning}>服务端标记应用后仍有 {patchSet.validator_issues.length} 条验证警告，应用结果后会刷新工作台。</p> : null}
-      {simulation ? (
-        <div className={styles.agentPatchSimulation} data-can-apply={simulation.can_apply}>
+
+      {(["requested", "consistency_support"] as const).map((relationship) => {
+        const changes = groupedChanges[relationship];
+        if (changes.length === 0) return null;
+        return (
+          <section
+            className={styles.agentPatchGroup}
+            data-relationship={relationship}
+            key={relationship}
+          >
+            <header>
+              <strong>{relationshipLabels[relationship]}</strong>
+              <span>{changes.length} 项</span>
+            </header>
+            <div className={styles.agentPatchOps}>
+              {changes.map((change) => (
+                <PublicPatchChangeRow
+                  busy={busy}
+                  change={change}
+                  checked={selectedIds.includes(change.change_id)}
+                  key={change.change_id}
+                  onLocateObject={onLocateObject}
+                  onToggle={selective ? () => toggleChange(change.change_id) : undefined}
+                />
+              ))}
+            </div>
+          </section>
+        );
+      })}
+
+      {review ? (
+        <div className={styles.agentPatchSimulation} data-can-apply={review.can_apply}>
           <header>
-            <strong>批量预演</strong>
-            <span>{simulation.can_apply ? "可应用" : "已阻断"}</span>
+            <strong>应用前审阅</strong>
+            <span>{review.can_apply ? "检查通过" : "还不能应用"}</span>
           </header>
-          <dl>
-            <div><dt>已修复</dt><dd>{simulation.fixed_finding_keys.length}</dd></div>
-            <div><dt>目标残留</dt><dd>{(simulation.residual_target_finding_keys ?? simulation.residual_finding_keys ?? []).length}</dd></div>
-            <div><dt>新增</dt><dd>{(simulation.introduced_finding_keys ?? simulation.new_finding_keys ?? []).length}</dd></div>
-            <div><dt>恶化</dt><dd>{(simulation.worsened_finding_keys ?? []).length}</dd></div>
-          </dl>
-          {simulation.impact ? <p>影响：{simulation.impact.collections.length ? simulation.impact.collections.join("、") : "无可见画布"}{simulation.impact.full_rebuild ? " · 需要完整刷新" : " · 局部刷新"}</p> : <p>影响对象：{simulation.impact_cone?.transitive_object_ids.length ?? 0} · 受影响结论：{simulation.impact_cone?.affected_resolution_ids.length ?? 0}</p>}
-          {simulation.closure_policy_version ? <p>机械补全：{simulation.normalized_mutation?.mechanical_operations.length ?? 0} 项 · {simulation.closure_policy_version}</p> : null}
-          {!simulation.can_apply ? <p>阻断原因：{simulation.reason_code ?? "应用前验证未通过"}</p> : null}
-          {simulation.structure_lock_conflicts?.length ? <p>结构锁：{simulation.structure_lock_conflicts.join("、")}</p> : null}
-          {(simulation.authorization_required_finding_keys?.length ?? 0) > 0 ? <div><label>接受逻辑债务理由<input onChange={(event) => setDebtReason(event.target.value)} value={debtReason} /></label><button disabled={!debtReason.trim() || busy} onClick={() => void acceptDebtAndResimulate()} type="button">精确授权并重新预演</button></div> : null}
+          {review.blockers.length > 0 ? (
+            <ul>
+              {review.blockers.map((blocker) => (
+                <li key={blocker.notice_id}>{blocker.message}</li>
+              ))}
+            </ul>
+          ) : null}
+          {review.warnings.length > 0 ? (
+            <div className={styles.agentPatchWarnings}>
+              <strong>需要你确认的影响</strong>
+              <ul>
+                {review.warnings.map((warning) => (
+                  <li key={warning.notice_id}>{warning.message}</li>
+                ))}
+              </ul>
+              {!warningsAccepted ? (
+                <label>
+                  确认说明
+                  <input
+                    onChange={(event) => setConfirmationNote(event.target.value)}
+                    placeholder="说明你已审阅并接受这项影响"
+                    value={confirmationNote}
+                  />
+                </label>
+              ) : (
+                <small>你已确认这些影响。</small>
+              )}
+              {!warningsAccepted ? (
+                <button
+                  disabled={!confirmationNote.trim() || busy}
+                  onClick={() => void acceptWarningsAndResimulate()}
+                  type="button"
+                >
+                  接受影响并重新检查
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {review.requires_author_confirmation && review.warnings.length === 0 ? (
+            <p>这组修改包含需要你亲自确认的影响。</p>
+          ) : null}
         </div>
       ) : null}
+
       <div className={styles.agentPatchActions}>
-        {actionable ? confirmingApply ? (
-          <span className={styles.agentPatchConfirm}>
-            <strong>{confirmingApply.operationIds === null ? "确认按 ordinal 顺序应用全部修改？" : `确认应用所选 ${confirmingApply.operationIds.length} 项？`}</strong>
-            <button disabled={busy} onClick={() => { const choice = confirmingApply.operationIds; setConfirmingApply(undefined); if (simulation?.authorization_required_finding_keys?.length || debtReason.trim()) onApply(choice, simulation?.authorization_required_finding_keys ?? [], debtReason.trim() || undefined); else onApply(choice); }} type="button">确认应用</button>
-            <button disabled={busy} onClick={() => setConfirmingApply(undefined)} type="button">返回预演</button>
-          </span>
-        ) : (
-          <>
-            {onSimulate ? <button disabled={busy} onClick={() => void simulateSelected()} type="button">预演批量修改</button> : null}
-            <button disabled={busy || simulation?.can_apply === false} onClick={() => requestApply(null)} type="button">全部采纳</button>
-            <button disabled={busy || selectedIds.length === 0 || simulation?.can_apply === false} onClick={() => requestApply(selectedIds)} type="button">采纳所选（{selectedIds.length}）</button>
-            {confirmingReject ? <><button className={styles.agentPatchDanger} disabled={busy} onClick={rejectAll} type="button">确认拒绝</button><button disabled={busy} onClick={() => setConfirmingReject(false)} type="button">取消</button></> : <button disabled={busy} onClick={rejectAll} type="button">全部拒绝</button>}
-          </>
+        {actionable ? (
+          confirmingApply ? (
+            <span className={styles.agentPatchConfirm}>
+              <strong>确认应用这组已经通过检查的修改？</strong>
+              <button disabled={busy || !canApply} onClick={applyReviewed} type="button">
+                确认应用
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => setConfirmingApply(false)}
+                type="button"
+              >
+                返回审阅
+              </button>
+            </span>
+          ) : (
+            <>
+              {onSimulate && patchSet.actions.can_simulate ? (
+                <button
+                  disabled={busy || (selective && selectedIds.length === 0)}
+                  onClick={() => void simulate()}
+                  type="button"
+                >
+                  检查修改影响
+                </button>
+              ) : null}
+              <button
+                disabled={busy || !canApply}
+                onClick={() =>
+                  requireApplyConfirmation ? setConfirmingApply(true) : applyReviewed()
+                }
+                type="button"
+              >
+                应用修改
+              </button>
+              {confirmingReject ? (
+                <>
+                  <button
+                    className={styles.agentPatchDanger}
+                    disabled={busy}
+                    onClick={rejectAll}
+                    type="button"
+                  >
+                    确认拒绝
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => setConfirmingReject(false)}
+                    type="button"
+                  >
+                    取消
+                  </button>
+                </>
+              ) : (
+                <button disabled={busy} onClick={rejectAll} type="button">
+                  拒绝这组修改
+                </button>
+              )}
+            </>
+          )
         ) : null}
-        {patchSet.status === "applied" ? <button disabled={busy} onClick={onUndo} type="button">撤销应用</button> : null}
-        {patchSet.status === "undone" && onRedo ? <button disabled={busy} onClick={onRedo} type="button">重做应用</button> : null}
-        {patchSet.is_stale && onRetry ? <button disabled={busy} onClick={onRetry} type="button">重新生成建议</button> : null}
+        {patchSet.actions.can_undo ? (
+          <button disabled={busy} onClick={onUndo} type="button">
+            撤销应用
+          </button>
+        ) : null}
+        {patchSet.actions.can_redo && onRedo ? (
+          <button disabled={busy} onClick={onRedo} type="button">
+            重做应用
+          </button>
+        ) : null}
+        {patchSet.status === "stale" && onRetry ? (
+          <button disabled={busy} onClick={onRetry} type="button">
+            重新生成建议
+          </button>
+        ) : null}
       </div>
     </article>
+  );
+}
+
+function PublicPatchChangeRow({
+  change,
+  checked,
+  busy,
+  onToggle,
+  onLocateObject,
+}: {
+  change: PublicPatchChange;
+  checked: boolean;
+  busy: boolean;
+  onToggle?: () => void;
+  onLocateObject?: (objectId: string) => void;
+}) {
+  const fieldLabel = change.kind === "update" ? change.field_label : null;
+  const actionLabel =
+    change.kind === "create" ? "新增" : change.kind === "delete" ? "删除" : "调整";
+  return (
+    <article
+      className={styles.agentPatchOp}
+      data-selectable={onToggle ? true : undefined}
+    >
+      {onToggle ? (
+        <input
+          aria-label={`选择修改 ${change.target.name}${fieldLabel ? ` ${fieldLabel}` : ""}`}
+          checked={checked}
+          disabled={busy}
+          onChange={onToggle}
+          type="checkbox"
+        />
+      ) : null}
+      <span>
+        <strong>
+          <i>{actionLabel}</i>
+          {change.target.name}
+          <small>{change.target.type_label}</small>
+        </strong>
+        {fieldLabel ? <b>{fieldLabel}</b> : null}
+        {change.kind === "create" ? (
+          <ValueLine label="新增后" value={change.after.text} />
+        ) : change.kind === "delete" ? (
+          <ValueLine label="删除前" value={change.before.text} />
+        ) : (
+          <div className={styles.agentPatchValues}>
+            <ValueLine label="修改前" value={change.before.text} />
+            <ValueLine label="修改后" value={change.after.text} />
+          </div>
+        )}
+        <em>{change.explanation}</em>
+        {change.target.target_id !== null && onLocateObject ? (
+          <button
+            className={styles.agentPatchLocate}
+            onClick={() => onLocateObject(change.target.target_id ?? "")}
+            type="button"
+          >
+            在工作台定位
+          </button>
+        ) : null}
+      </span>
+    </article>
+  );
+}
+
+function ValueLine({ label, value }: { label: string; value: string }) {
+  return (
+    <span className={styles.agentPatchValue}>
+      <small>{label}</small>
+      <span>{value}</span>
+    </span>
   );
 }

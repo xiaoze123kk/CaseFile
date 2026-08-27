@@ -53,6 +53,8 @@
 | `backend/src/casefile/application/logical_mutation_rollout.py` | 旧 Current Draft 的只读 shadow scanner 与显式 system mechanical normalization；只修复双向投影并保留 before/after hash，不自动改写语义状态。 |
 | `backend/src/casefile/application/workflow_service.py` | `WorkflowService(session)` 稳定门面，只初始化事务依赖并组合内部工作流用例；保留既有公开方法和兼容 helper 导出，不再承载具体规则。 |
 | `backend/src/casefile/application/workflow/` | Workflow 内部用例实现：`agent.py` 拥有 Thread/Message、Chat Task、Finding 与 Mutation review/simulate/apply/undo，`mutation_history.py` 拥有严格栈顶 Redo，`content.py` 拥有 Provider 设置、Source/Brief、润色/拆解/生成任务和候选查询。API 与 Worker 不直接依赖这些 mixin。 |
+| `backend/src/casefile/application/chat_public_contracts.py` | CaseFile Chat 公共 DTO 的 allowlist 投影边界；不得输出 TaskRun、TaskEvent、原始结果或 Patch 内部字段。 |
+| `backend/src/casefile/application/chat_public_events.py` | 将内部 TaskEvent 严格映射为 Chat Public Event；未知事件必须丢弃，内部 sequence 只作为恢复游标保留。 |
 | `backend/src/casefile/application/workflow_common.py` | Workflow 用例共享的稳定默认配置、TaskRun 创建、冻结输入和小型事务 helper；不拥有 HTTP DTO 或 Worker 编排。 |
 | `backend/src/casefile/application/workflow_brief_validation.py` | Workflow 使用的 Brief 契约、语义与已确认原子项门禁。 |
 | `backend/src/casefile/application/workflow_views.py` | Workflow 实体、部件步骤与公开失败信息的稳定 HTTP 读模型序列化。 |
@@ -83,7 +85,9 @@
 | `backend/src/casefile/domain/logical_mutation/repair/` | M3.3 纯领域修复内核：版本化 RepairPolicy、角色化 ClosureObligation、MutationSimulation 资格评估，以及确定性 RepairScope。V1/V2 context 保留历史回放；V3 Alternative Planner 只枚举服务器完整模拟证明的 Claim status 或 incompatible dependency 移除候选，以规范 hash 绑定 operation、前后 obligation 与 candidate hash。Repair Engine 默认只接受 selected alternative ID，最多两轮从同一 baseline 重放并允许 obligation 不增的 staged progress；未知、过期、篡改、无候选、scope/protected/StructureLock 越界与 rebase mismatch 全部失败关闭。本模块不接 Provider/数据库/API/UI，不执行 Apply。 |
 | `backend/src/casefile/agent_runtime/transport_diagnostics.py` | 对 Provider 异常 cause chain 做 timeout/connection/rate-limit/4xx/5xx/protocol/unknown 脱敏分类，输出稳定 retry、protocol 与 fallback 诊断，不保留 URL、正文、凭据或异常文本。 |
 | `backend/src/casefile/agent_runtime/chat_intent.py` | CaseFile Chat 的确定性意图规则、Route 建议权限、显式编辑目标 Manifest 与 General Mutation abstention 判定；未绑定代词、未决二选一、字段/值缺失和非唯一删除均在 Provider 前要求澄清。 |
+| `backend/src/casefile/agent_runtime/public_language.py` | CaseFile Chat v16 面向作者文字的确定性公开语言门禁；统一检查保留字段、工程术语、内部 ID、JSON Pointer、原始 JSON 与当前敏感值，并向 Qualification 暴露不保留正文的稳定规则 ID 探针。 |
 | `backend/src/casefile/agent_runtime/general_mutation.py`、`general_mutation_prompt.py` | M3.4 runtime-private General Mutation Planner 严格输出契约、预算/依赖 DAG/保护集合规则与不可变 Prompt Package 渲染；不访问数据库或应用服务。 |
+| `backend/src/casefile/benchmark/chat_public_language_qualification.py`、`chat_public_language_executor.py` | M3.6 Public Language 正式资格：冻结 16×3 普通问答、分析、审计、Create/Update/Delete、关联修改、内部信息诱导与正常近邻任务；在 clean revision、独立 `_test` PostgreSQL、精确 `deepseek-v4-pro` 上经公共 HTTP/Worker/Simulation/Apply 验证契约、泄漏、敏感值、Patch 安全、误拦与模型能力。真实凭据只从本地加密设置读入内存，测试库仅保存非密钥 canary，报告不保存正文或凭据。 |
 | `backend/src/casefile/benchmark/closure_repair_lineage.py` | 对 repair domain、Closure policy、VerificationEngine、V3 Prompt/Schema、Application/Worker 与 Provider contract 生成统一 repair runtime fingerprint。 |
 | `backend/src/casefile/benchmark/general_mutation_eval.py` | M3.4 General Mutation deterministic Kernel Regression：给定 Plan 后冻结 prompt/policy/binder/closure lineage，覆盖 Update/Create/Delete 与越权、ID、引用、DAG、预算失败关闭；只报告 kernel failure/escape，不冒充 Safety 或 Pro Capability。 |
 | `backend/src/casefile/benchmark/general_mutation_capability.py` | General Mutation Outcome-first Provider Dev Capability：以自然语言作者任务驱动正式 Planner、Binder、Simulation，Reference Plan 仅证明题目可解，正交评分最终 CaseFile 状态、Safety 与 Scope，并区分能力、协议和基础设施失败。 |
@@ -107,10 +111,12 @@
 | `backend/src/casefile/api/reverse_parse.py` | 路径 C 反向解析 HTTP 路由：文档上传/读取、解析块与逐项查询、逐项确认、失败重试与形成 Brief 候选。 |
 | `backend/src/casefile/api/compiler.py` | 显式 Profile 创建/追加版本/查询、CompileRun 创建/列表/详情及不可变 Artifact 内容读取 HTTP 路由；执行状态仅投影关联 TaskRun。 |
 | `backend/src/casefile/worker/` | 基于 PostgreSQL `FOR UPDATE SKIP LOCKED` 的 TaskRun 领取、lease/Attempt 恢复、任务执行、结果/事件原子持久化；只拥有运行与持久化编排，不拥有 Agent 领域规则。 |
-| `backend/src/casefile/worker/runtime.py`、`worker/closure_repair.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；保留 claim → dispatch → execute → finalize 主循环。`CLOSURE_REPAIR_MODE=off|shadow|suggest` 默认 `shadow`；环境启动的 `CASEFILE_CHAT_GENERAL_MUTATION_MODE=off|shadow|suggest` 默认 `suggest`，Create/Delete 独立开关默认启用且均可显式回退。直接构造 `WorkerConfig` 仍采用隔离安全默认值。Chat repair 与 General Mutation 只形成可审阅 PatchSet，不决定或绕过 Apply。 |
-| `backend/src/casefile/worker/queue.py` | TaskRun claim、lease 恢复、取消观察和 Attempt 初始化；不执行具体任务。 |
-| `backend/src/casefile/worker/finalization.py` | TaskRun 成功、失败、取消、可重试状态收敛与稳定错误/事件落库。 |
-| `backend/src/casefile/worker/executors/` | `chat.py` 执行 Chat、上下文装配与压缩持久化编排，并公开 route 解析入口；General Mutation Planner 入口必须服从最终 Route deny/clarify 与 `agent_runtime` abstention 判定。`completion.py` 执行 generation、Brief Intake、润色与 reverse parse 等非 Chat 任务；`compiler.py` 在加载 Provider 前执行输入冻结与 NarrativeIR 投影，在规范 NovelPlanIR 后执行 providerless ScenePlanIR 编译，并统一逐组件失败归因、Artifact 幂等写入、取消和租约 fencing。领域 routing/context/repair 仍由 `agent_runtime` 所有。 |
+| `backend/src/casefile/worker/runtime.py`、`backend/src/casefile/worker/dispatch.py`、`backend/src/casefile/worker/execution.py` | `Worker`、`WorkerConfig` 与 `provider_for_task` 稳定入口；以组合组件保留 claim → resolve handler → execute → finalize 主循环。Dispatcher 对九类可执行 TaskRun 精确注册、重复/未知类型失败关闭；Execution Context 只携带冻结 TaskRun、Attempt、短事务工厂、事件端口和按需 Provider，不跨模型调用持有 Session。 |
+| `backend/src/casefile/worker/provider_resolution.py` | 在 Handler 解析后校验冻结 Provider provenance、短事务解密凭据并构造 Provider；支持显式 providerless Handler，禁止凭据进入 repr、事件或持久化。 |
+| `backend/src/casefile/worker/queue.py`、`backend/src/casefile/worker/finalization.py` | 组合式 TaskRun claim、lease 恢复、取消观察、Attempt 初始化，以及成功/失败/取消终态和稳定事件落库；保留既有 PostgreSQL 状态、显式恢复与租约语义。 |
+| `backend/src/casefile/worker/handlers/` | 按变化原因承载辅助 Brief、Brief Intake、Brief-to-Draft、Reverse Parse、Chat 与 Compiler 六类同步 Handler；冻结输入、Provider 调用次数、完成事务和结果结构保持兼容。Compiler Handler 以 providerless dispatch 进入专用执行器，Story Planner 再按冻结绑定短事务读取凭据。 |
+| `backend/src/casefile/worker/executors/`、`backend/src/casefile/worker/closure_repair.py` | `chat.py` 以独立 Request、Mutation、Context/Compaction、Completion 组件组合 Chat Worker 编排并保留 route 解析兼容入口；`completion.py` 统一非 Chat 终态物化；`compiler.py`/`story_planner.py` 执行输入冻结、NarrativeIR、可选规划器、Artifact 幂等写入、取消和租约 fencing。`CLOSURE_REPAIR_MODE` 与 General Mutation rollout 只形成可审阅 PatchSet，不决定或绕过 Apply；领域 routing/context/repair 仍由 `agent_runtime`/domain 所有。 |
+| `backend/src/casefile/worker/failures.py`、`backend/src/casefile/worker/observability.py`、`backend/src/casefile/worker/generation_reuse.py`、`backend/src/casefile/worker/input_contracts.py` | 分别拥有稳定失败分类与脱敏、TaskEvent 到 Step/ModelCall 投影及终态 usage、Brief-to-Draft Attempt 复用、冻结输入读取与规范哈希；禁止重新形成无明确职责的通用 support 模块。 |
 
 ## 领域模块
 

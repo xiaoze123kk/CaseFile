@@ -1359,22 +1359,20 @@ function AnalystWorkbenchSurface({
           onClose: closeAgent,
           onContinueInDesk: () => setAgentSurface("desk"),
           onLocateEvent: (eventId: string) => selectEvent(eventId, { preserveView: true }),
-          onLocateIssue: openIssue,
           onLocateObject: (objectId: string) => selectObject(objectId, true),
-          onLocateView: setView,
           onFocusPatch: (patchSetId: number) => {
             setAgentFocusPatchSetId(patchSetId);
             setAgentFocusFindingId(null);
             setMobileRegion("inspector");
             setInspectorOpen(true);
-            announce(`已将修改建议 #${patchSetId} 聚焦到对象上下文。`);
+            announce("已将修改建议聚焦到对象上下文。");
           },
           onFocusFinding: (findingId: string) => {
             setAgentFocusFindingId(findingId);
             setAgentFocusPatchSetId(null);
             setMobileRegion("inspector");
             setInspectorOpen(true);
-            announce(`已将验证发现 ${findingId} 聚焦到对象上下文。`);
+            announce("已将验证发现聚焦到对象上下文。");
           },
           focusPatchSetId: agentFocusPatchSetId,
           focusFindingId: agentFocusFindingId,

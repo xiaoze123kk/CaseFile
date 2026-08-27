@@ -26,6 +26,7 @@ from casefile.agent_runtime.chat_validation_contracts import (
     select_semantic_repair_mode,
     target_label,
 )
+from casefile.agent_runtime.chat_versions import SAFE_PATCH_PROMPT_VERSIONS
 from casefile.agent_runtime.models import CaseFileChatRequest, CaseFileChatResult
 
 
@@ -186,7 +187,7 @@ def validate_chat_candidate(
                 and isinstance(bundle.get("candidate_pairs"), list)
                 else None
             ),
-            require_deterministic_pair=request.prompt_version == "casefile-chat-v15",
+            require_deterministic_pair=request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS,
         )
         for finding in normalized:
             referenced_objects.update(finding["evidence_object_ids"])
@@ -224,11 +225,12 @@ def validate_chat_candidate(
                             code="audit_suggestion_reference_missing"
                         )
         if (
-            request.prompt_version in {"casefile-chat-v14", "casefile-chat-v15"}
+            request.prompt_version
+            in {"casefile-chat-v14", *SAFE_PATCH_PROMPT_VERSIONS}
             and request.route is not None
             and request.route.execution_profile.get("primary_intent") == "logic_audit"
         ):
-            if request.prompt_version == "casefile-chat-v15":
+            if request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS:
                 registry = (
                     safe_patch_registry_from_dict(result.safe_patch_registry)
                     if isinstance(result.safe_patch_registry, dict)
@@ -253,7 +255,7 @@ def validate_chat_candidate(
                     issues=simulation_issues,
                 )
             if (
-                request.prompt_version == "casefile-chat-v15"
+                request.prompt_version in SAFE_PATCH_PROMPT_VERSIONS
                 and request.route is not None
                 and request.route.execution_profile.get("primary_intent") == "logic_audit"
             ):

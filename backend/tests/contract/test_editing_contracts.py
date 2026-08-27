@@ -25,6 +25,10 @@ from casefile_contracts import (  # noqa: E402
     CompilerDiagnostic,
     CompilerSourceRef,
     PatchCandidate,
+    PublicAgentEvent,
+    PublicAgentMessage,
+    PublicPatchReviewResult,
+    PublicRoutingFeedbackReceipt,
     TaskRun,
     ValidationIssue,
 )
@@ -108,10 +112,35 @@ def validators(
             format_checker=checker,
         ),
         "task": Draft202012Validator(
+            {"$ref": ("https://casefile.local/schemas/v2/task/task.schema.json#/$defs/TaskRun")},
+            registry=registry,
+            format_checker=checker,
+        ),
+        "public_message": Draft202012Validator(
             {
                 "$ref": (
-                    "https://casefile.local/schemas/v2/task/task.schema.json"
-                    "#/$defs/TaskRun"
+                    "https://casefile.local/schemas/v2/chat/chat-public.schema.json"
+                    "#/$defs/PublicAgentMessage"
+                )
+            },
+            registry=registry,
+            format_checker=checker,
+        ),
+        "public_event": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v2/chat/chat-public.schema.json"
+                    "#/$defs/PublicAgentEvent"
+                )
+            },
+            registry=registry,
+            format_checker=checker,
+        ),
+        "public_patch_review": Draft202012Validator(
+            {
+                "$ref": (
+                    "https://casefile.local/schemas/v2/chat/chat-public.schema.json"
+                    "#/$defs/PublicPatchReviewResult"
                 )
             },
             registry=registry,
@@ -195,10 +224,28 @@ def walk_object_refs(value: Any) -> list[dict[str, str]]:
 def test_all_schema_files_are_valid_draft_2020_12(
     schemas: dict[str, dict[str, Any]],
 ) -> None:
-    assert len(schemas) == 22
+    assert len(schemas) == 23
     for schema in schemas.values():
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
         Draft202012Validator.check_schema(schema)
+
+
+def test_chat_public_object_contracts_forbid_unknown_fields(
+    schemas: dict[str, dict[str, Any]],
+) -> None:
+    chat_schema = schemas["https://casefile.local/schemas/v2/chat/chat-public.schema.json"]
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            if value.get("type") == "object":
+                assert value.get("additionalProperties") is False
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(chat_schema)
 
 
 def test_casefiles_validate_and_cover_contract_foundation(
@@ -264,9 +311,7 @@ def test_location_spatial_positions_are_optional_strict_and_bounded(
         location.pop("spatial_position")
     validators["casefile"].validate(legacy)
     assert (
-        CaseFile.model_validate(legacy).model_dump(
-            mode="json", by_alias=True, exclude_unset=True
-        )
+        CaseFile.model_validate(legacy).model_dump(mode="json", by_alias=True, exclude_unset=True)
         == legacy
     )
 
@@ -285,8 +330,7 @@ def test_location_spatial_positions_are_optional_strict_and_bounded(
         errors = list(validators["casefile"].iter_errors(invalid))
         assert errors, position
         assert any(
-            error_path(error).startswith("/locations/0/spatial_position")
-            for error in errors
+            error_path(error).startswith("/locations/0/spatial_position") for error in errors
         )
         with pytest.raises(ValidationError):
             CaseFile.model_validate(invalid)
@@ -368,13 +412,64 @@ def test_casefile_chat_task_roundtrips_with_message_lineage(
     }
 
     validators["task"].validate(task)
-    assert (
-        TaskRun.model_validate(task).model_dump(mode="json", exclude_unset=True) == task
-    )
+    assert TaskRun.model_validate(task).model_dump(mode="json", exclude_unset=True) == task
 
     missing_lineage = copy.deepcopy(task)
     del missing_lineage["agent_thread_id"]
     assert list(validators["task"].iter_errors(missing_lineage))
+
+
+def test_chat_public_contracts_roundtrip_and_reject_internal_fields(
+    validators: dict[str, Draft202012Validator],
+) -> None:
+    message = load_json(FIXTURE_ROOT / "editing" / "chat_public_message.json")
+    validators["public_message"].validate(message)
+    generated_message = PublicAgentMessage.model_validate(message)
+    assert generated_message.model_dump(mode="json") == message
+
+    leaked_message = copy.deepcopy(message)
+    leaked_message["task"] = {"provider": "deepseek"}
+    assert list(validators["public_message"].iter_errors(leaked_message))
+    with pytest.raises(ValidationError):
+        PublicAgentMessage.model_validate(leaked_message)
+
+    event = {
+        "sequence": 8,
+        "event": "run.context",
+        "context_state": "compacted",
+    }
+    validators["public_event"].validate(event)
+    assert PublicAgentEvent.model_validate(event).model_dump(mode="json") == event
+
+    leaked_event = {**event, "payload_jsonb": {"token_count": 12000}}
+    assert list(validators["public_event"].iter_errors(leaked_event))
+    with pytest.raises(ValidationError):
+        PublicAgentEvent.model_validate(leaked_event)
+
+    review = {
+        "patch_id": 13,
+        "can_apply": False,
+        "blockers": [],
+        "warnings": [
+            {
+                "notice_id": "warning_1",
+                "message": "删除会影响 2 项相关内容。",
+            }
+        ],
+        "requires_author_confirmation": True,
+        "confirmation_token": "confirmation-token",
+    }
+    validators["public_patch_review"].validate(review)
+    assert PublicPatchReviewResult.model_validate(review).model_dump(mode="json") == review
+
+    feedback = {
+        "message_id": 56,
+        "acknowledged": True,
+        "interpretation": "logic_review",
+    }
+    assert PublicRoutingFeedbackReceipt.model_validate(feedback).model_dump(mode="json") == feedback
+    with pytest.raises(ValidationError):
+        PublicRoutingFeedbackReceipt.model_validate({**feedback, "route_source": "internal-canary"})
 
 
 def test_compiler_foundation_contracts_roundtrip_and_reject_invalid_shapes(

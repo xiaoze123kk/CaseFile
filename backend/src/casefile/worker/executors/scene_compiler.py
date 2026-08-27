@@ -42,7 +42,7 @@ from casefile.domain.narrative_compiler import (
     compile_scene_plan_v2,
 )
 from casefile.worker.executors.compiler import CompilerExecutionError
-from casefile.worker.support import TaskCancellationRequested
+from casefile.worker.failures import TaskCancellationRequested
 
 
 def execute_scene_compiler_component(

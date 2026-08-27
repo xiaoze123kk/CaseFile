@@ -911,6 +911,396 @@ class PatchOperation(BaseModel):
     new_value: Any
 
 
+class Category1(StrEnum):
+    temporarily_unavailable = 'temporarily_unavailable'
+    request_failed = 'request_failed'
+    output_rejected = 'output_rejected'
+
+
+class PublicAgentFailure(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    category: Annotated[Category1, Field(title='PublicFailureCategory')]
+    message: Annotated[str, Field(max_length=500, min_length=1)]
+    retryable: bool
+
+
+class Status2(StrEnum):
+    queued = 'queued'
+    running = 'running'
+    cancelling = 'cancelling'
+    succeeded = 'succeeded'
+    failed = 'failed'
+    cancelled = 'cancelled'
+
+
+class Activity(Enum):
+    understanding = 'understanding'
+    reading = 'reading'
+    checking = 'checking'
+    preparing_changes = 'preparing_changes'
+    finalizing = 'finalizing'
+    none_type_none = None
+
+
+class PublicAgentRun(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    run_id: Annotated[int, Field(ge=1)]
+    status: Annotated[Status2, Field(title='PublicRunStatus')]
+    activity: Annotated[Activity, Field(title='PublicAgentActivity')]
+    cancellable: bool
+    failure: PublicAgentFailure | None
+
+
+class Kind(StrEnum):
+    story_item = 'story_item'
+    event = 'event'
+    finding = 'finding'
+
+
+class PublicReference(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Annotated[Kind, Field(title='PublicReferenceKind')]
+    target_id: Annotated[str, Field(max_length=160, min_length=1)]
+    label: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class Severity(StrEnum):
+    blocker = 'blocker'
+    warning = 'warning'
+    note = 'note'
+
+
+class PublicFinding(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    finding_id: Annotated[str, Field(max_length=160, min_length=1)]
+    severity: Annotated[Severity, Field(title='PublicFindingSeverity')]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+    statement: Annotated[str, Field(max_length=2000, min_length=1)]
+
+
+class PublicPatchTarget(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    target_id: Annotated[str | None, Field(max_length=160, min_length=1)]
+    type_label: Annotated[str, Field(max_length=80, min_length=1)]
+    name: Annotated[str, Field(max_length=240, min_length=1)]
+
+
+class Kind1(StrEnum):
+    empty = 'empty'
+    text = 'text'
+    number = 'number'
+    boolean = 'boolean'
+    time_range = 'time_range'
+    reference = 'reference'
+    list = 'list'
+
+
+class PublicDisplayValue(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    kind: Annotated[Kind1, Field(title='PublicDisplayKind')]
+    text: Annotated[str, Field(max_length=4000)]
+
+
+class Relationship1(StrEnum):
+    requested = 'requested'
+    consistency_support = 'consistency_support'
+
+
+class PublicPatchChange1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    change_id: Annotated[int, Field(ge=1)]
+    kind: Literal['create']
+    relationship: Annotated[Relationship1, Field(title='PublicChangeRelationship')]
+    target: PublicPatchTarget
+    after: PublicDisplayValue
+    explanation: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class PublicPatchChange2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    change_id: Annotated[int, Field(ge=1)]
+    kind: Literal['update']
+    relationship: Annotated[Relationship1, Field(title='PublicChangeRelationship')]
+    target: PublicPatchTarget
+    field_label: Annotated[str, Field(max_length=120, min_length=1)]
+    before: PublicDisplayValue
+    after: PublicDisplayValue
+    explanation: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class PublicPatchChange3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    change_id: Annotated[int, Field(ge=1)]
+    kind: Literal['delete']
+    relationship: Annotated[Relationship1, Field(title='PublicChangeRelationship')]
+    target: PublicPatchTarget
+    before: PublicDisplayValue
+    explanation: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class PublicPatchChange(
+    RootModel[PublicPatchChange1 | PublicPatchChange2 | PublicPatchChange3]
+):
+    root: PublicPatchChange1 | PublicPatchChange2 | PublicPatchChange3
+
+
+class PublicPatchImpact(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    summary: Annotated[str, Field(max_length=1000, min_length=1)]
+    affected_change_count: Annotated[int, Field(ge=0)]
+    has_deletions: bool
+
+
+class PublicPatchActions(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    can_simulate: bool
+    can_undo: bool
+    can_redo: bool
+
+
+class Status3(StrEnum):
+    pending = 'pending'
+    applied = 'applied'
+    undone = 'undone'
+    stale = 'stale'
+    rejected = 'rejected'
+
+
+class ReviewRule(StrEnum):
+    atomic = 'atomic'
+    selective = 'selective'
+
+
+class PublicPatchSet(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    patch_id: Annotated[int, Field(ge=1)]
+    title: Annotated[str, Field(max_length=200, min_length=1)]
+    summary: Annotated[str, Field(max_length=1200, min_length=1)]
+    status: Annotated[Status3, Field(title='PublicPatchStatus')]
+    review_rule: Annotated[ReviewRule, Field(title='PublicPatchReviewRule')]
+    base_revision: Annotated[int, Field(ge=0)]
+    impact: PublicPatchImpact
+    changes: Annotated[
+        list[PublicPatchChange1 | PublicPatchChange2 | PublicPatchChange3],
+        Field(max_length=200),
+    ]
+    actions: PublicPatchActions
+
+
+class PublicReviewNotice(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    notice_id: Annotated[str, Field(max_length=160, min_length=1)]
+    message: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class PublicPatchReviewResult(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    patch_id: Annotated[int, Field(ge=1)]
+    can_apply: bool
+    blockers: Annotated[list[PublicReviewNotice], Field(max_length=200)]
+    warnings: Annotated[list[PublicReviewNotice], Field(max_length=200)]
+    requires_author_confirmation: bool
+    confirmation_token: Annotated[str | None, Field(max_length=256, min_length=1)]
+
+
+class PublicPatchResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    patch: PublicPatchSet
+    review: PublicPatchReviewResult
+    revision: Annotated[int, Field(ge=0)]
+
+
+class Role(StrEnum):
+    user = 'user'
+    assistant = 'assistant'
+
+
+class Status4(StrEnum):
+    pending = 'pending'
+    completed = 'completed'
+    failed = 'failed'
+
+
+class ResponseKind(StrEnum):
+    message = 'message'
+    answer = 'answer'
+    analysis = 'analysis'
+    clarification = 'clarification'
+    findings = 'findings'
+    patch_proposal = 'patch_proposal'
+    failure = 'failure'
+
+
+class PublicRoutingInterpretation(StrEnum):
+    conversation = 'conversation'
+    analysis = 'analysis'
+    logic_review = 'logic_review'
+    change_request = 'change_request'
+    clarification = 'clarification'
+
+
+class PublicRoutingFeedbackReceipt(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    message_id: Annotated[int, Field(ge=1)]
+    acknowledged: Literal[True]
+    interpretation: PublicRoutingInterpretation
+
+
+class PublicAgentEvent1(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.accepted']
+    run: PublicAgentRun
+
+
+class Activity1(StrEnum):
+    understanding = 'understanding'
+    reading = 'reading'
+    checking = 'checking'
+    preparing_changes = 'preparing_changes'
+    finalizing = 'finalizing'
+
+
+class PublicAgentEvent2(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.activity']
+    activity: Annotated[Activity1, Field(title='PublicEventActivity')]
+
+
+class ContextState(StrEnum):
+    normal = 'normal'
+    near_limit = 'near_limit'
+    compacted = 'compacted'
+
+
+class PublicAgentEvent3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.context']
+    context_state: Annotated[ContextState, Field(title='PublicContextState')]
+
+
+class VerificationStatus(StrEnum):
+    started = 'started'
+    passed = 'passed'
+    blocked = 'blocked'
+
+
+class PublicAgentEvent4(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.verification']
+    verification_status: Annotated[
+        VerificationStatus, Field(title='PublicVerificationStatus')
+    ]
+    summary: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class PublicAgentEvent5(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.completed']
+    run: PublicAgentRun
+
+
+class PublicAgentEvent6(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.failed']
+    failure: PublicAgentFailure
+
+
+class PublicAgentEvent7(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    sequence: Annotated[int, Field(ge=1)]
+    event: Literal['run.cancelled']
+    message: Annotated[str, Field(max_length=500, min_length=1)]
+
+
+class PublicAgentEvent(
+    RootModel[
+        PublicAgentEvent1
+        | PublicAgentEvent2
+        | PublicAgentEvent3
+        | PublicAgentEvent4
+        | PublicAgentEvent5
+        | PublicAgentEvent6
+        | PublicAgentEvent7
+    ]
+):
+    root: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7
+
+
 class TaskType(StrEnum):
     brief_polish = 'brief_polish'
     brief_anchor_extract = 'brief_anchor_extract'
@@ -924,7 +1314,7 @@ class TaskType(StrEnum):
     idea_generation = 'idea_generation'
 
 
-class Status2(StrEnum):
+class Status5(StrEnum):
     queued = 'queued'
     running = 'running'
     cancelling = 'cancelling'
@@ -1015,7 +1405,7 @@ class AgentDiagnosticIssue(BaseModel):
     message: Annotated[str, Field(max_length=240, min_length=1)]
 
 
-class Status3(StrEnum):
+class Status6(StrEnum):
     pending = 'pending'
     running = 'running'
     succeeded = 'succeeded'
@@ -1034,7 +1424,7 @@ class AgentComponentStepView(BaseModel):
     component_id: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     parent_component_id: str | None
     execution_no: Annotated[int, Field(ge=1)]
-    status: Status3
+    status: Status6
     schema_id: Annotated[str, Field(min_length=1)]
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
     output_hash: Annotated[str | None, Field(pattern='^[0-9a-f]{64}$')]
@@ -1097,7 +1487,7 @@ class TaskRun(BaseModel):
     task_run_id: Annotated[int, Field(ge=1)]
     project_id: Annotated[int, Field(ge=1)]
     task_type: TaskType
-    status: Status2
+    status: Status5
     stage: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
     provider: Provider | None
     model_id: ModelId | None
@@ -1344,7 +1734,7 @@ class CompileInputManifest(BaseModel):
     ]
 
 
-class Severity(StrEnum):
+class Severity1(StrEnum):
     low = 'low'
     medium = 'medium'
     high = 'high'
@@ -1357,7 +1747,7 @@ class Items(BaseModel):
     )
     notice_id: Annotated[str, Field(pattern='^notice_[a-z0-9][a-z0-9_]{0,53}$')]
     category: Annotated[str, Field(pattern='^[a-z][a-z0-9_]*$')]
-    severity: Severity
+    severity: Severity1
     description: Annotated[str, Field(min_length=1)]
 
 
@@ -1788,7 +2178,7 @@ class ChapterExecution(BaseModel):
     scene_ids: Annotated[list[SceneId], Field(min_length=1)]
 
 
-class Status4(Enum):
+class Status7(Enum):
     introduced = 'introduced'
     reinforced = 'reinforced'
     reinterpreted = 'reinterpreted'
@@ -1800,7 +2190,7 @@ class AudienceExposure(BaseModel):
         populate_by_name=True,
     )
     entry_key: Annotated[str, Field(pattern='^exposure_[a-z0-9][a-z0-9_]{0,150}$')]
-    status: Status4
+    status: Status7
     first_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
     last_scene_id: Annotated[str, Field(pattern='^scene_[a-z0-9][a-z0-9_]{0,70}$')]
 
@@ -1978,7 +2368,7 @@ class SceneCompilerInputSourceV2(BaseModel):
     input_hash: Annotated[str, Field(pattern='^[0-9a-f]{64}$')]
 
 
-class Kind(Enum):
+class Kind2(Enum):
     event = 'event'
     exposure = 'exposure'
     resolution = 'resolution'
@@ -1993,7 +2383,7 @@ class SceneObligation(BaseModel):
     obligation_key: Annotated[
         str, Field(pattern='^obligation_scene_[a-z0-9][a-z0-9_]{0,120}$')
     ]
-    kind: Kind
+    kind: Kind2
     basis_refs: Annotated[list[ObjectRef], Field(min_length=1)]
     event_ref: ObjectRef | None = None
     exposure: ExposurePlacement1 | None = None
@@ -2215,7 +2605,7 @@ class SceneBeatFill(BaseModel):
         populate_by_name=True,
     )
     local_key: Annotated[str, Field(pattern='^beat_local_[a-z0-9][a-z0-9_]{0,80}$')]
-    kind: Kind
+    kind: Kind2
     directive: Annotated[str, Field(max_length=2000, min_length=1)]
     actor_refs: list[ObjectRef]
     target_refs: list[ObjectRef]
@@ -2892,6 +3282,35 @@ class ResolutionSpec(CoreMetadata):
     required_claim_refs: list[ObjectRef]
 
 
+class PublicAgentMessage(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    message_id: Annotated[int, Field(ge=1)]
+    sequence: Annotated[int, Field(ge=1)]
+    role: Annotated[Role, Field(title='PublicMessageRole')]
+    status: Annotated[Status4, Field(title='PublicMessageStatus')]
+    response_kind: Annotated[ResponseKind, Field(title='PublicResponseKind')]
+    body: Annotated[str | None, Field(max_length=20000)]
+    interpretation: PublicRoutingInterpretation | None
+    references: Annotated[list[PublicReference], Field(max_length=200)]
+    findings: Annotated[list[PublicFinding], Field(max_length=200)]
+    patch: PublicPatchSet | None
+    run: PublicAgentRun | None
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
+
+
+class PublicAgentMessageReceipt(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
+    user_message: PublicAgentMessage
+    assistant_message: PublicAgentMessage
+
+
 class NarrativeCase(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -2963,7 +3382,7 @@ class SceneCompilerInputBundle(BaseModel):
     schema_id: Literal['compiler.scene-compiler-input.v1']
     source: SceneCompilerInputSource
     novel_plan: NovelPlanIR
-    narrative_ir: Schema_3
+    narrative_ir: Schema_4
 
 
 class EditingContracts(BaseModel):
@@ -2975,8 +3394,9 @@ class EditingContracts(BaseModel):
     brief: brief_1.Schema
     brief_intake_candidate: Schema
     brief_intake_question_set: BriefIntakeQuestionSet
-    validation_issue: Schema_13
-    patch_candidate: Schema_4
+    validation_issue: Schema_14
+    patch_candidate: Schema_5
+    chat_public: Schema_2
     task_run: TaskRun
     task_event: TaskEvent
     agent_generate_request: AgentGenerateRequest
@@ -2986,19 +3406,19 @@ class EditingContracts(BaseModel):
     compiler_diagnostic: CompilerDiagnostic
     compiler_profile_binding: CompilerProfileBinding
     compile_input_manifest: CompileInputManifest
-    narrative_ir: Schema_3
+    narrative_ir: Schema_4
     scene_compiler_input: SceneCompilerInputBundle
     scene_plan_candidate: ScenePlanCandidate
-    scene_compiler_input_v2: Schema_10 | None = None
+    scene_compiler_input_v2: Schema_11 | None = None
     scene_compiler_model_view: SceneCompilerModelView | None = None
     scene_semantic_fill: SceneSemanticFillProposal | None = None
-    scene_plan: Schema_11
-    scene_plan_v2: Schema_12 | None = None
+    scene_plan: Schema_12
+    scene_plan_v2: Schema_13 | None = None
     novel_profile: novel_profile_1.Schema
-    planner_input: Schema_5 | Schema_6 | Schema_7
-    planner_model_view: Schema_8 | Schema_9
+    planner_input: Schema_6 | Schema_7 | Schema_8
+    planner_model_view: Schema_9 | Schema_10
     story_plan_structural_patch: StoryPlanStructuralPatch
-    constraint_first_planner: Schema_2
+    constraint_first_planner: Schema_3
     novel_plan_candidate: NovelPlanCandidate
     novel_plan: NovelPlanIR
 
@@ -3141,13 +3561,28 @@ class Schema_2(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    message: PublicAgentMessage
+    message_receipt: PublicAgentMessageReceipt
+    routing_feedback: PublicRoutingFeedbackReceipt
+    run: PublicAgentRun
+    event: PublicAgentEvent1 | PublicAgentEvent2 | PublicAgentEvent3 | PublicAgentEvent4 | PublicAgentEvent5 | PublicAgentEvent6 | PublicAgentEvent7
+    patch_set: PublicPatchSet
+    patch_review: PublicPatchReviewResult
+    patch_response: PublicPatchResponse
+
+
+class Schema_3(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
     planning_problem: PlanningProblem
     skeleton_proposal: SkeletonProposal
     plan_skeleton: PlanSkeleton
     semantic_fill: SemanticFillProposal
 
 
-class Schema_3(BaseModel):
+class Schema_4(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3177,7 +3612,7 @@ class ApprovalStatus(StrEnum):
     superseded = 'superseded'
 
 
-class Schema_4(BaseModel):
+class Schema_5(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3219,29 +3654,16 @@ class PlanningConstraints_1(BaseModel):
     ]
 
 
-class Schema_5(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-        populate_by_name=True,
-    )
-    schema_id: Literal['compiler.story-planner-input.v1']
-    narrative_ir: Schema_3
-    exposure_plan: ExposureBinding | None
-    profile: novel_profile_1.Schema
-    planning_constraints: PlanningConstraints_1
-
-
 class Schema_6(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
     )
-    schema_id: Literal['compiler.story-planner-input.v2']
-    narrative_ir: Schema_3
+    schema_id: Literal['compiler.story-planner-input.v1']
+    narrative_ir: Schema_4
     exposure_plan: ExposureBinding | None
     profile: novel_profile_1.Schema
-    planning_constraints: PlanningConstraints
-    planner_view: PlannerView
+    planning_constraints: PlanningConstraints_1
 
 
 class Schema_7(BaseModel):
@@ -3249,8 +3671,21 @@ class Schema_7(BaseModel):
         extra='forbid',
         populate_by_name=True,
     )
+    schema_id: Literal['compiler.story-planner-input.v2']
+    narrative_ir: Schema_4
+    exposure_plan: ExposureBinding | None
+    profile: novel_profile_1.Schema
+    planning_constraints: PlanningConstraints
+    planner_view: PlannerView
+
+
+class Schema_8(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+        populate_by_name=True,
+    )
     schema_id: Literal['compiler.story-planner-input.v3']
-    narrative_ir: Schema_3
+    narrative_ir: Schema_4
     exposure_plan: ExposureBinding | None
     profile: novel_profile_1.Schema
     planning_constraints: PlanningConstraints
@@ -3348,7 +3783,7 @@ class ObjectCatalog_1(BaseModel):
     structure_locks: list[ModelObject]
 
 
-class Schema_8(BaseModel):
+class Schema_9(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3383,7 +3818,7 @@ class HardConstraints_2(BaseModel):
     semantic_obligations: list[ParticipantCoverageObligation | BasisRefCoverageObligation | HypothesisCoverageObligation]
 
 
-class Schema_9(BaseModel):
+class Schema_10(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3396,7 +3831,7 @@ class Schema_9(BaseModel):
     planning_context: PlanningContextModel1
 
 
-class Schema_10(BaseModel):
+class Schema_11(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3404,7 +3839,7 @@ class Schema_10(BaseModel):
     schema_id: Literal['compiler.scene-compiler-input.v2']
     source: SceneCompilerInputSourceV2
     novel_plan: NovelPlanIR
-    narrative_ir: Schema_3
+    narrative_ir: Schema_4
     exposure_plan: ExposureBinding | None
     profile: CompilerProfileBinding
     execution_constraints: Annotated[
@@ -3413,7 +3848,7 @@ class Schema_10(BaseModel):
     state_seed: SceneStateSeed
 
 
-class Schema_11(BaseModel):
+class Schema_12(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3430,7 +3865,7 @@ class Schema_11(BaseModel):
     metrics: ScenePlanMetrics
 
 
-class Schema_12(BaseModel):
+class Schema_13(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,
@@ -3469,7 +3904,7 @@ class Status_2(StrEnum):
     dismissed = 'dismissed'
 
 
-class Schema_13(BaseModel):
+class Schema_14(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
         populate_by_name=True,

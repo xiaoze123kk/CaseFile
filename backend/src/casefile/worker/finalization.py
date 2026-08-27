@@ -21,29 +21,43 @@ from casefile.data_postgres.models import (
     TaskEvent,
     TaskRun,
 )
-from casefile.worker.executors.chat import _chat_intent_event_payload as _chat_intent_event_payload
-from casefile.worker.executors.chat import (
-    _chat_rewrite_event_payload as _chat_rewrite_event_payload,
-)
-from casefile.worker.executors.chat import _resolve_chat_route as _resolve_chat_route
-from casefile.worker.support import (
+from casefile.worker.failures import (
     TaskCancellationRequested,
-    _error_code,
-    _failure_validation_issues,
-    _network_retries,
-    _persist_agent_execution_event,
-    _record_component_coordinator_failure,
-    _safe_error_message,
-    _terminal_attempt_usage,
 )
-from casefile.worker.support import (
-    _previous_attempt_failed_steps as _previous_attempt_failed_steps,
+from casefile.worker.failures import (
+    error_code as _error_code,
+)
+from casefile.worker.failures import (
+    failure_validation_issues as _failure_validation_issues,
+)
+from casefile.worker.failures import (
+    network_retries as _network_retries,
+)
+from casefile.worker.failures import (
+    safe_error_message as _safe_error_message,
+)
+from casefile.worker.observability import (
+    persist_agent_execution_event as _persist_agent_execution_event,
+)
+from casefile.worker.observability import (
+    record_component_coordinator_failure as _record_component_coordinator_failure,
+)
+from casefile.worker.observability import (
+    terminal_attempt_usage as _terminal_attempt_usage,
 )
 
 
-class TaskFinalizationMixin:
-    session_factory: sessionmaker[Session]
-    config: Any
+class TaskFinalizer:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        *,
+        worker_id: str,
+        lease_seconds: int,
+    ) -> None:
+        self.session_factory = session_factory
+        self.worker_id = worker_id
+        self.lease_seconds = lease_seconds
 
     def _cancel(
         self,
@@ -62,7 +76,7 @@ class TaskFinalizationMixin:
             )
             if task is None or attempt is None or task.status != "cancelling":
                 return False
-            if task.leased_by != self.config.worker_id or attempt.status != "running":
+            if task.leased_by != self.worker_id or attempt.status != "running":
                 return False
             usage = _terminal_attempt_usage(session, attempt.id, usage)
             now = datetime.now(UTC)
@@ -110,7 +124,7 @@ class TaskFinalizationMixin:
                 return
             if (
                 task.status != "running"
-                or task.leased_by != self.config.worker_id
+                or task.leased_by != self.worker_id
                 or attempt.status != "running"
             ):
                 return
@@ -270,10 +284,10 @@ class TaskFinalizationMixin:
             )
             if task is not None and task.status == "cancelling":
                 raise TaskCancellationRequested
-            if task is None or task.status != "running" or task.leased_by != self.config.worker_id:
+            if task is None or task.status != "running" or task.leased_by != self.worker_id:
                 raise RuntimeError("TaskRun lease was lost")
             task.stage = stage
-            task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.config.lease_seconds)
+            task.lease_expires_at = datetime.now(UTC) + timedelta(seconds=self.lease_seconds)
             _persist_agent_execution_event(session, task, event_type, payload)
             public_payload = {
                 key: value for key, value in payload.items() if not key.startswith("_")
@@ -281,4 +295,4 @@ class TaskFinalizationMixin:
             append_task_event(session, task, event_type, stage, public_payload)
 
 
-__all__ = ["TaskFinalizationMixin"]
+__all__ = ["TaskFinalizer"]

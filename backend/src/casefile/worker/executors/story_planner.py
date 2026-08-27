@@ -56,7 +56,7 @@ from casefile.domain.narrative_compiler import (
     validate_novel_plan_candidate,
 )
 from casefile.worker.executors.compiler import CompilerExecutionError
-from casefile.worker.support import TaskCancellationRequested
+from casefile.worker.failures import TaskCancellationRequested
 
 
 def execute_story_planner_component(

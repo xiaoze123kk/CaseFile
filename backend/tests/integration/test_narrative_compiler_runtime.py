@@ -46,8 +46,8 @@ from casefile.domain.narrative_compiler import (
     narrative_ir_component_fingerprint,
     project_narrative_ir_json,
 )
+from casefile.worker.failures import TaskCancellationRequested
 from casefile.worker.runtime import Worker, WorkerConfig
-from casefile.worker.support import TaskCancellationRequested
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.exc import DBAPIError
@@ -380,8 +380,9 @@ def test_compile_artifact_is_reused_after_expired_lease(
     claimed = first._claim_next()
     assert isinstance(claimed, tuple)
     task_run_id, attempt_id = claimed
-    manifest, detached_run, _snapshot = first._validate_compile_inputs(task_run_id)
-    artifact_id, reused = first._materialize_input_manifest(
+    compiler = first._compiler
+    manifest, detached_run, _snapshot = compiler._validate_compile_inputs(task_run_id)
+    artifact_id, reused = compiler._materialize_input_manifest(
         task_run_id, attempt_id, detached_run, manifest
     )
     assert reused is False
@@ -649,13 +650,14 @@ def test_both_compiler_artifacts_are_reused_after_completion_crash(
     claimed = first._claim_next()
     assert isinstance(claimed, tuple)
     task_run_id, attempt_id = claimed
-    manifest, detached_run, snapshot = first._validate_compile_inputs(task_run_id)
-    first._materialize_input_manifest(task_run_id, attempt_id, detached_run, manifest)
+    compiler = first._compiler
+    manifest, detached_run, snapshot = compiler._validate_compile_inputs(task_run_id)
+    compiler._materialize_input_manifest(task_run_id, attempt_id, detached_run, manifest)
     fingerprint = narrative_ir_component_fingerprint(snapshot)
     component_hash = canonical_json_sha256(fingerprint)
     narrative_json = project_narrative_ir_json(snapshot)
     narrative_hash = canonical_json_sha256(narrative_json)
-    first._materialize_json_artifact_component(
+    compiler._materialize_json_artifact_component(
         task_run_id=task_run_id,
         attempt_id=attempt_id,
         run=detached_run,
@@ -730,8 +732,9 @@ def test_narrative_ir_write_is_rejected_after_cancellation(
     claimed = worker._claim_next()
     assert isinstance(claimed, tuple)
     task_run_id, attempt_id = claimed
-    manifest, detached_run, snapshot = worker._validate_compile_inputs(task_run_id)
-    worker._materialize_input_manifest(task_run_id, attempt_id, detached_run, manifest)
+    compiler = worker._compiler
+    manifest, detached_run, snapshot = compiler._validate_compile_inputs(task_run_id)
+    compiler._materialize_input_manifest(task_run_id, attempt_id, detached_run, manifest)
     fingerprint = narrative_ir_component_fingerprint(snapshot)
     narrative_json = project_narrative_ir_json(snapshot)
     with factory() as session, session.begin():
@@ -740,7 +743,7 @@ def test_narrative_ir_write_is_rejected_after_cancellation(
         )
 
     with pytest.raises(TaskCancellationRequested):
-        worker._materialize_json_artifact_component(
+        compiler._materialize_json_artifact_component(
             task_run_id=task_run_id,
             attempt_id=attempt_id,
             run=detached_run,

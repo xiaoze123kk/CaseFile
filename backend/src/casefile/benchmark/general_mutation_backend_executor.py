@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError
 
 from casefile.agent_runtime import FakeProvider
 from casefile.api.app import create_app
+from casefile.application.chat_public_patches import public_warning_id
 from casefile.application.commands import ProjectCreate
 from casefile.application.services import CaseFileService
 from casefile.application.workflow_service import WorkflowService
@@ -123,7 +124,7 @@ class PostgresBackendReleaseExecutor:
             )
             if queued_response.status_code != 202:
                 return self._terminal_failure(task, trial_index, "message_enqueue_failed")
-            task_run_id = int(queued_response.json()["task"]["task_run_id"])
+            task_run_id = int(queued_response.json()["assistant_message"]["run"]["run_id"])
             worker_claimed = Worker(
                 self.session_factory,
                 config=WorkerConfig(
@@ -140,7 +141,7 @@ class PostgresBackendReleaseExecutor:
                 headers=headers,
             )
             messages = messages_response.json() if messages_response.status_code == 200 else []
-            patch = messages[-1].get("patch_set") if messages else None
+            patch = messages[-1].get("patch") if messages else None
 
             persisted = self._persisted_evidence(task_run_id, draft_id, base_revision)
             self._last_context = {
@@ -158,10 +159,7 @@ class PostgresBackendReleaseExecutor:
                     and patch is None
                     and persisted["revision"] == base_revision
                     and persisted["route_lineage_continuous"]
-                    and (
-                        persisted["model_call_count"] == 0
-                        or persisted["exact_model_observed"]
-                    )
+                    and (persisted["model_call_count"] == 0 or persisted["exact_model_observed"])
                 )
                 return self._abstention_evidence(
                     task,
@@ -200,8 +198,8 @@ class PostgresBackendReleaseExecutor:
                     persisted=persisted,
                     base_revision=base_revision,
                 )
-            patch_set_id = int(patch["patch_set_id"])
-            operation_ids = [int(item["operation_id"]) for item in patch["operations"]]
+            patch_set_id = int(patch["patch_id"])
+            operation_ids = [int(item["change_id"]) for item in patch["changes"]]
             pending_before = (
                 patch.get("status") == "pending" and persisted["revision"] == base_revision
             )
@@ -211,7 +209,7 @@ class PostgresBackendReleaseExecutor:
                 json={
                     "expected_draft_id": draft_id,
                     "base_revision": base_revision,
-                    "operation_ids": [max(operation_ids, default=0) + 10_000_000],
+                    "change_ids": [max(operation_ids, default=0) + 10_000_000],
                 },
             )
             selection_tamper = invalid_selection.status_code in {409, 422}
@@ -222,42 +220,44 @@ class PostgresBackendReleaseExecutor:
                 json={
                     "expected_draft_id": draft_id,
                     "base_revision": base_revision,
-                    "operation_ids": None,
+                    "change_ids": None,
                 },
             )
             preview_body = preview.json() if preview.status_code == 200 else {}
-            impact_hash = preview_body.get("impact_hash")
-            simulation = preview_body.get("simulation", {})
-            debt_keys = simulation.get("authorization_required_finding_keys", [])
-            if preview.status_code == 200 and debt_keys:
+            confirmation_token = preview_body.get("confirmation_token")
+            warning_ids = [
+                str(item["notice_id"])
+                for item in preview_body.get("warnings", [])
+                if isinstance(item, dict) and isinstance(item.get("notice_id"), str)
+            ]
+            if preview.status_code == 200 and warning_ids:
                 authorized_preview = client.post(
                     f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/simulate",
                     headers=headers,
                     json={
                         "expected_draft_id": draft_id,
                         "base_revision": base_revision,
-                        "operation_ids": None,
-                        "accepted_debt_finding_keys": debt_keys,
-                        "debt_acceptance_reason": ("M3.4-07e 对预览警告的显式测试确认。"),
+                        "change_ids": None,
+                        "accepted_warning_ids": warning_ids,
+                        "confirmation_note": ("M3.4-07e 对预览警告的显式测试确认。"),
                     },
                 )
                 if authorized_preview.status_code == 200:
                     preview_body = authorized_preview.json()
-                    simulation = preview_body.get("simulation", {})
             can_apply = preview_body.get("can_apply") is True
             apply_payload: dict[str, Any] = {
                 "expected_draft_id": draft_id,
                 "expected_revision": base_revision,
-                "operation_ids": None,
-                "accepted_debt_finding_keys": debt_keys,
-                "debt_acceptance_reason": (
+                "change_ids": None,
+                "accepted_warning_ids": warning_ids,
+                "confirmation_note": (
                     "M3.4-07e 正式 Backend Release 对已预览警告的显式测试确认。"
-                    if debt_keys
+                    if warning_ids
                     else None
                 ),
             }
             delete_gate = True
-            if patch.get("contains_delete"):
+            if patch.get("impact", {}).get("has_deletions"):
                 missing = client.post(
                     f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply",
                     headers=headers,
@@ -266,16 +266,15 @@ class PostgresBackendReleaseExecutor:
                 tampered = client.post(
                     f"/api/v1/projects/{project_id}/agent/patch-sets/{patch_set_id}/apply",
                     headers=headers,
-                    json={**apply_payload, "confirmed_impact_hash": "0" * 64},
+                    json={**apply_payload, "confirmation_token": "0" * 64},
                 )
                 delete_gate = (
                     missing.status_code == 422
-                    and missing.json().get("code")
-                    == "agent_patch_delete_impact_confirmation_required"
+                    and missing.json().get("code") == "patch_confirmation_required"
                     and tampered.status_code == 409
-                    and tampered.json().get("code") == "agent_patch_impact_hash_mismatch"
+                    and tampered.json().get("code") == "patch_review_changed"
                 )
-                apply_payload["confirmed_impact_hash"] = impact_hash
+                apply_payload["confirmation_token"] = confirmation_token
                 self._delete_gate_rows.append(
                     {"missing": missing.status_code == 422, "tampered": tampered.status_code == 409}
                 )
@@ -286,8 +285,7 @@ class PostgresBackendReleaseExecutor:
             )
             apply_revision = base_revision + 1
             apply_verified = (
-                applied.status_code == 200
-                and applied.json().get("draft_revision") == apply_revision
+                applied.status_code == 200 and applied.json().get("revision") == apply_revision
             )
             with self.session_factory() as session:
                 applied_document = CaseFileService(session).get_draft(actor_id, project_id)[
@@ -313,7 +311,7 @@ class PostgresBackendReleaseExecutor:
                 ]
             undo_verified = (
                 undone.status_code == 200
-                and undone.json().get("draft_revision") == undo_revision
+                and undone.json().get("revision") == undo_revision
                 and _semantic_hash(undone_document) == _semantic_hash(before)
             )
             undo_reason_code = (
@@ -332,7 +330,7 @@ class PostgresBackendReleaseExecutor:
                 ]
             redo_verified = (
                 redone.status_code == 200
-                and redone.json().get("draft_revision") == redo_revision
+                and redone.json().get("revision") == redo_revision
                 and _semantic_hash(redone_document) == _semantic_hash(applied_document)
             )
             redo_reason_code = (
@@ -528,7 +526,7 @@ class PostgresBackendReleaseExecutor:
         passed = (
             changed.status_code == 200
             and stale.status_code == 409
-            and stale.json().get("code") == "agent_patch_stale"
+            and stale.json().get("code") == "patch_stale"
             and after == before + 1
         )
         return passed, {
@@ -561,7 +559,7 @@ class PostgresBackendReleaseExecutor:
     def _fault_impact_changed(self) -> tuple[bool, dict[str, Any]]:
         passed, details = self._fault_stale_patch()
         details["old_preview_hash_reusable"] = False
-        details["reason_code"] = "agent_patch_stale"
+        details["reason_code"] = "patch_stale"
         return passed, details
 
     def _fault_concurrent_apply(self) -> tuple[bool, dict[str, Any]]:
@@ -634,9 +632,7 @@ class PostgresBackendReleaseExecutor:
             task = session.get(TaskRun, int(context["task_run_id"]))
             events = list(
                 session.scalars(
-                    select(TaskEvent).where(
-                        TaskEvent.task_run_id == context["task_run_id"]
-                    )
+                    select(TaskEvent).where(TaskEvent.task_run_id == context["task_run_id"])
                 )
             )
             patch_count = int(
@@ -653,8 +649,7 @@ class PostgresBackendReleaseExecutor:
             if event.payload_jsonb.get("reason_code") or event.payload_jsonb.get("error_code")
         ]
         provider_timeout_observed = any(
-            code in {"provider_timeout", "general_mutation_planner_failed"}
-            for code in reason_codes
+            code in {"provider_timeout", "general_mutation_planner_failed"} for code in reason_codes
         )
         passed = (
             task is not None
@@ -757,7 +752,7 @@ class PostgresBackendReleaseExecutor:
                     "provider": "deepseek",
                 },
             )
-        task_run_id = int(queued.json()["task"]["task_run_id"])
+        task_run_id = int(queued.json()["assistant_message"]["run"]["run_id"])
         Worker(
             self.session_factory,
             config=WorkerConfig(
@@ -775,7 +770,7 @@ class PostgresBackendReleaseExecutor:
             )
         if expect_patch and patch is None:
             raise BackendReleaseContractError("backend_executor_fault_patch_missing")
-        debt_keys: list[str] = []
+        warning_ids: list[str] = []
         if patch is not None:
             with self.session_factory() as session:
                 preview = WorkflowService(session).simulate_agent_patch_set(
@@ -786,7 +781,12 @@ class PostgresBackendReleaseExecutor:
                     base_revision=revision,
                     operation_ids=None,
                 )
-            debt_keys = list(preview["simulation"].get("authorization_required_finding_keys", []))
+            warning_ids = [
+                public_warning_id(patch.id, finding_key)
+                for finding_key in preview["simulation"].get(
+                    "authorization_required_finding_keys", []
+                )
+            ]
         return {
             "actor_id": actor_id,
             "project_id": project_id,
@@ -794,9 +794,9 @@ class PostgresBackendReleaseExecutor:
             "base_revision": revision,
             "task_run_id": task_run_id,
             "patch_set_id": None if patch is None else patch.id,
-            "impact_hash": None if patch is None else patch.impact_hash,
+            "confirmation_token": None if patch is None else patch.impact_hash,
             "contains_delete": False if patch is None else patch.contains_delete,
-            "accepted_debt_finding_keys": debt_keys,
+            "accepted_warning_ids": warning_ids,
         }
 
     def _apply_pending(
@@ -814,11 +814,12 @@ class PostgresBackendReleaseExecutor:
             json={
                 "expected_draft_id": expected_draft_id or context["draft_id"],
                 "expected_revision": expected_revision,
-                "operation_ids": None,
-                "accepted_debt_finding_keys": context.get("accepted_debt_finding_keys", []),
-                "debt_acceptance_reason": (
+                "change_ids": None,
+                "confirmation_token": context.get("confirmation_token"),
+                "accepted_warning_ids": context.get("accepted_warning_ids", []),
+                "confirmation_note": (
                     "M3.4-07e 故障矩阵对已预览警告的显式测试确认。"
-                    if context.get("accepted_debt_finding_keys")
+                    if context.get("accepted_warning_ids")
                     else None
                 ),
             },
@@ -836,7 +837,7 @@ class PostgresBackendReleaseExecutor:
                 json={
                     "expected_draft_id": context["draft_id"],
                     "expected_revision": context["current_revision"],
-                    "operation_ids": None,
+                    "change_ids": None,
                 },
             )
         after = self._draft_revision(int(context["draft_id"]))
@@ -879,7 +880,7 @@ class PostgresBackendReleaseExecutor:
             revision = session.scalar(select(Draft.revision).where(Draft.id == draft_id))
         event_types = [item.event_type for item in events]
         event_reason_codes = [
-            f'{item.event_type}={item.payload_jsonb["reason_code"]}'
+            f"{item.event_type}={item.payload_jsonb['reason_code']}"
             for item in events
             if isinstance(item.payload_jsonb, dict)
             and isinstance(item.payload_jsonb.get("reason_code"), str)
@@ -1095,10 +1096,10 @@ class PostgresBackendReleaseExecutor:
         }
         transport_error = persisted.get("transport_error_class")
         is_infrastructure = is_setup_failure or isinstance(transport_error, str)
-        is_routing_failure = (
-            not is_infrastructure
-            and persisted["primary_intent"] in {"clarify", "unsupported_action"}
-        )
+        is_routing_failure = not is_infrastructure and persisted["primary_intent"] in {
+            "clarify",
+            "unsupported_action",
+        }
         is_protocol_failure = not is_infrastructure and _protocol_failure_reason(reason)
         classification = (
             "infrastructure_failure"
@@ -1184,9 +1185,7 @@ class PostgresBackendReleaseExecutor:
             step_run_persisted=bool(persisted["step_run_persisted"]),
             model_call_persisted=bool(persisted["model_call_persisted"]),
             exact_model_observed=(
-                bool(persisted["exact_model_observed"])
-                if persisted["model_call_count"]
-                else None
+                bool(persisted["exact_model_observed"]) if persisted["model_call_count"] else None
             ),
             pending_before_approval=None,
             no_auto_apply=True,
@@ -1279,9 +1278,7 @@ def _semantic_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict
 def _route_event_payload(events: list[Any]) -> Mapping[str, Any]:
     event = next((item for item in events if item.event_type == "route.decided"), None)
     return (
-        event.payload_jsonb
-        if event is not None and isinstance(event.payload_jsonb, dict)
-        else {}
+        event.payload_jsonb if event is not None and isinstance(event.payload_jsonb, dict) else {}
     )
 
 

@@ -41,12 +41,12 @@
 | `apps/web/features/analyst-workbench/workbench-evidence-comparison.tsx` | 证据对比视图的「证据 × 假设」矩阵：按核心问题展示每条信息/证据对每个假设的支持/冲突/中立判定、强度与理由，并在选中单元格时给出可靠度、叙事分类、信息类型与支持/反驳的主张；数据来自 `reasoningGroups`（`Hypothesis.evidence_assessments`），真实工作稿立即可用。 |
 | `apps/web/features/analyst-workbench/workbench-validation-issues.tsx` | 证据对比视图的「验证问题」子视图：统一展示确定性与持久化 Agent finding 的来源、severity、规则代码、JSON 路径、字段路径、状态和可定位证据，并可发起普通 CaseFile Chat TaskRun 的验证重跑；fixture 演示保留知识状态三段式对照与补丁审批流程。 |
 | `apps/web/features/analyst-workbench/workbench-agent-surface.tsx`、`workbench-agent-composer.tsx`、`workbench-agent.module.css` | 卷宗统筹 Agent 的 `closed / quick / desk` 表面边界、基于真实 Workbench Focus 的上下文输入、中文 IME 安全的多行 Composer，以及独立于主工作台的 Agent 视觉布局。 |
-| `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread/Message/Task 控制器、SSE 跟随、消息发送与 Patch API 生命周期；把 Thread/Task/消息事实交给 Agent Presentation，并向 Workbench Inspector 暴露 Patch/Finding 审阅事实与服务端操作。 |
-| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的 Agent Mutation/Finding 唯一审阅所有者：分区展示原始操作、服务端机械补全、Impact Cone、policy/hash 与 hard/repair/warning 门禁，支持精确 finding 债务理由、Apply/Undo/Redo；不自行推导 impact 或 can_apply。 |
+| `apps/web/features/analyst-workbench/workbench-agent-live-panel.tsx` | 生产 Thread 与公共 Message/Run 控制器、公共 SSE 恢复、消息发送与 Patch API 生命周期；opaque handle 仅保存在控制器状态中，并向 Workbench Inspector 提供生成契约中的作者审阅事实。 |
+| `apps/web/features/analyst-workbench/workbench-agent-inspector.tsx` | Workbench 右侧 Inspector 中的公共 Patch/Finding 唯一审阅所有者：按“你要求的修改 / 为保持一致性同步调整”展示中文 target、field、before/after/why、影响与原子规则，支持公共 warning 确认、Apply/Undo/Redo；不展示内部操作、版本、hash 或 policy，也不自行推导 can_apply。 |
 | `apps/web/features/analyst-workbench/workbench-agent-desk.tsx` | Desk/Quick 的统一阅读列布局：Header、Conversation、Task Strip、预设指令和 Composer 组合，不拥有领域状态。 |
 | `apps/web/features/analyst-workbench/workbench-agent-thread-menu.tsx` | Agent Thread 搜索、Combobox/Listbox 键盘选择、新建、置顶、重命名、归档和归档筛选呈现；持久化由 live panel 回调完成。 |
-| `apps/web/features/analyst-workbench/workbench-agent-task-strip.tsx` | 真实 Task/SSE 阶段、上下文用量、取消按钮和终态摘要的 Sticky 展示；不估算进度。 |
-| `apps/web/features/analyst-workbench/workbench-agent-conversation.tsx` | 调查记录式消息 Turn、引用/Finding/Patch 结构化摘要入口和 Workbench 定位回调；不执行 Patch 写入。 |
+| `apps/web/features/analyst-workbench/workbench-agent-task-strip.tsx` | 公共 Run activity、上下文状态、验证摘要、停止回复和终态摘要的 Sticky 展示；不显示 token、Provider、Prompt 或内部阶段。 |
+| `apps/web/features/analyst-workbench/workbench-agent-conversation.tsx` | 基于生成 Public DTO 的调查记录式消息 Turn、公共引用/Finding/Patch 摘要入口和 Workbench 定位回调；不读取原始 Task result，也不执行 Patch 写入。 |
 | `apps/web/features/analyst-workbench/workbench-agent-panel.tsx` | 本地预览 Agent 编排；与生产面板共享 Agent Surface，但不接真实 Thread/Task 持久化。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-kernel.tsx`、`workbench-canvas-layout.ts`、`workbench-canvas.module.css` | 关系图与推理图共享的 React Flow 只读画布内核、确定性 Dagre 布局、按 `project:{projectId}:draft:{draftId}` 隔离的浏览器布局偏好、选择/平移/多选/全屏交互和专属视觉样式；不得表达或触发领域写入。 |
 | `apps/web/features/analyst-workbench/workbench-canvas-controls.tsx`、`workbench-icon.tsx`、`workbench-geometry.ts`、`workbench-presenters.ts` | 工作台内部复用的画布控件、悬浮提示、图标、几何边界和展示标签；不承载跨功能业务状态。 |
@@ -65,7 +65,7 @@
 
 | 路径 | 职责 |
 |---|---|
-| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、Logical Mutation simulation/hash/debt/Undo/Redo DTO、工作流/工作台读模型、Compiler Artifact 内容读取类型，以及统一错误消息。 |
+| `apps/web/lib/api-client.ts` | 真实 `/api/v1` HTTP/SSE Client、CaseFile Chat 公共 Run/Event/Patch 生成契约消费者、Logical Mutation simulation/hash/debt/Undo/Redo DTO、工作流/工作台读模型、Compiler Artifact 内容读取类型，以及统一错误消息；Chat 未知 SSE 事件失败关闭。 |
 | `apps/web/lib/prototype-model.ts` | 仅供本地原型使用的状态模型、样例数据和编译门禁纯函数；正式服务端契约继续来自 `@casefile/contracts`。 |
 | `apps/web/lib/reasoning-prototype.ts` | 推理实验室本地 Fixture、推理路径/节点/边/候选模型与纯查询函数；不承担 React UI。 |
 | `apps/web/lib/` | 其他无 UI 基础设施；不得放 React 业务状态。 |

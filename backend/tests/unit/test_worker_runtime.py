@@ -6,8 +6,29 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from casefile.worker.runtime import WorkerConfig
-from casefile.worker.support import previous_attempt_failed_steps
+from casefile.worker.dispatch import SUPPORTED_TASK_TYPES, TaskDispatcher
+from casefile.worker.execution import (
+    ChatRuntimeConfig,
+    ExecutionState,
+    ProviderRequirement,
+    TaskExecutionContext,
+)
+from casefile.worker.generation_reuse import previous_attempt_failed_steps
+from casefile.worker.runtime import Worker, WorkerConfig
+
+
+class _ProbeHandler:
+    task_types = frozenset({"probe"})
+    provider_requirement: ProviderRequirement = "none"
+
+    def __init__(self) -> None:
+        self.called = False
+
+    def execute(self, context: TaskExecutionContext) -> None:
+        provider, api_key = context.provider, context.api_key
+        assert provider is None
+        assert api_key is None
+        self.called = True
 
 
 def test_general_mutation_mode_defaults_off_and_rejects_invalid_value() -> None:
@@ -84,7 +105,7 @@ def test_previous_attempt_failed_steps_uses_only_last_generation_run() -> None:
     ]
     task = SimpleNamespace(id=17, attempt_count=2)
 
-    failed_steps = previous_attempt_failed_steps(session, task)
+    failed_steps = previous_attempt_failed_steps(session, task)  # type: ignore[arg-type]
 
     assert failed_steps == [latest_temporal_failure]
 
@@ -102,4 +123,69 @@ def test_previous_attempt_failed_steps_returns_empty_without_failures() -> None:
     ]
     task = SimpleNamespace(id=17, attempt_count=2)
 
-    assert previous_attempt_failed_steps(session, task) == []
+    assert previous_attempt_failed_steps(session, task) == []  # type: ignore[arg-type]
+
+
+def test_dispatcher_rejects_duplicate_unknown_and_incomplete_registries() -> None:
+    first = _ProbeHandler()
+    second = _ProbeHandler()
+    with pytest.raises(ValueError, match="Duplicate Worker handler registration"):
+        TaskDispatcher((first, second), expected_task_types=frozenset({"probe"}))
+    with pytest.raises(ValueError, match="missing=.*other"):
+        TaskDispatcher((first,), expected_task_types=frozenset({"probe", "other"}))
+    dispatcher = TaskDispatcher((first,), expected_task_types=frozenset({"probe"}))
+    with pytest.raises(RuntimeError, match="Unsupported TaskRun type: unknown"):
+        dispatcher.resolve("unknown")
+
+
+def test_providerless_handler_executes_without_provider_access() -> None:
+    handler = _ProbeHandler()
+    dispatcher = TaskDispatcher((handler,), expected_task_types=frozenset({"probe"}))
+    context = TaskExecutionContext(
+        task=SimpleNamespace(task_type="probe"),  # type: ignore[arg-type]
+        attempt_id=1,
+        session_factory=MagicMock(),
+        chat_config=ChatRuntimeConfig(),
+        emit=MagicMock(),
+        state=ExecutionState(),
+    )
+
+    dispatcher.resolve("probe").execute(context)
+
+    assert handler.called is True
+
+
+def test_worker_registers_exact_task_types_without_eager_provider_creation() -> None:
+    provider_factory = MagicMock()
+    worker = Worker(
+        MagicMock(),
+        config=WorkerConfig(worker_id="dispatch-test"),
+        provider_factory=provider_factory,
+    )
+
+    assert worker._dispatcher.task_types == SUPPORTED_TASK_TYPES
+    assert not hasattr(worker._queue, "_runtime")
+    assert not hasattr(worker._finalizer, "_runtime")
+    assert not hasattr(worker._completion, "_runtime")
+    assert not hasattr(worker._chat._context, "_runtime")
+    provider_factory.assert_not_called()
+
+
+def test_unknown_task_fails_before_provider_resolution() -> None:
+    worker = Worker(MagicMock(), config=WorkerConfig(worker_id="dispatch-test"))
+    resolver = MagicMock()
+    cancel = MagicMock(return_value=False)
+    fail = MagicMock()
+    worker._load_task_snapshot = MagicMock(  # type: ignore[method-assign]
+        return_value=SimpleNamespace(task_type="unknown")
+    )
+    worker._provider_resolver = resolver
+    worker._cancel = cancel  # type: ignore[method-assign]
+    worker._fail = fail  # type: ignore[method-assign]
+
+    worker._execute(1, 2)
+
+    resolver.resolve.assert_not_called()
+    failure = fail.call_args.args[2]
+    assert isinstance(failure, RuntimeError)
+    assert str(failure) == "Unsupported TaskRun type: unknown"
